@@ -35,7 +35,10 @@ export function mockAdapter(cfg = {}) {
       // MOCK_FAIL_WRITE=<substring> makes exactly the step whose prompt mentions that output blow
       // up, so the engine's "keep the siblings' work" behaviour is testable without a real CLI.
       if (process.env.MOCK_FAIL_WRITE && prompt.includes(process.env.MOCK_FAIL_WRITE)) {
-        throw new Error(`mock: simulated adapter failure for ${process.env.MOCK_FAIL_WRITE}`);
+        // Bill it like a real vendor would: the request was made and charged before it failed.
+        const e = new Error(`mock: simulated adapter failure for ${process.env.MOCK_FAIL_WRITE}`);
+        e.usage = { input_tokens: 100, output_tokens: 10, cost_usd: 0.07 };
+        throw e;
       }
       onEvent?.({ type: 'stdout', line: `[mock] ${key} call #${n} (model ${model ?? '-'}, cwd ${path.basename(cwd ?? '')}, write=${allowWrite})` });
       await new Promise((r) => setTimeout(r, cfg.delayMs ?? 20));

@@ -30,27 +30,35 @@ export function claudeAdapter(cfg = {}) {
       const t0 = Date.now();
       onEvent?.({ type: 'spawn', vendor: 'claude', cmd: `${bin} ${args.map(q).join(' ')}` });
       const r = await exec(bin, args, { cwd, stdin: prompt, onLine: (l) => onEvent?.({ type: 'stdout', line: l }) });
-      if (r.code !== 0) {
-        const auth = authError('claude', r.stderr + r.stdout);
-        throw new Error(auth ?? `claude exited ${r.code}: ${r.stderr.slice(-2000)}`);
-      }
+      // Parse first: claude reports failure inside the envelope on stdout, with stderr empty, and
+      // can set is_error while still exiting 0. Deciding on the exit code alone loses the message
+      // ("claude exited 1:" and nothing) and can mistake a failure for a success. See Q-0002.
       let env;
       try { env = JSON.parse(r.stdout); } catch { env = null; }
+      if (r.code !== 0 || env?.is_error === true) {
+        const streams = `${r.stderr}\n${r.stdout}`.trim();   // whitespace-only is still "nothing"
+        const detail = env?.result ?? env?.error?.message ?? env?.subtype ?? (streams.slice(-2000) || 'no output on stderr or stdout');
+        const auth = authError('claude', `${r.stderr}\n${r.stdout}`);
+        const err = new Error(auth ?? `claude failed (exit ${r.code}${env?.subtype ? `, ${env.subtype}` : ''}): ${String(detail).slice(0, 2000)}`);
+        // The vendor already billed this attempt; carry the usage so the run can still count it.
+        err.usage = usageOf(env);
+        throw err;
+      }
       const raw = env?.result ?? r.stdout;
       const output = env?.structured_output ?? extractJson(raw);
-      return {
-        vendor: 'claude', output, raw,
-        usage: {
-          // input_tokens excludes cache traffic, which is most of a real prompt: a probe that
-          // cost $0.39 reported 65 tokens. Count the cache fields or every roll-up is fiction.
-          input_tokens: env?.usage ? (env.usage.input_tokens ?? 0) + (env.usage.cache_creation_input_tokens ?? 0) + (env.usage.cache_read_input_tokens ?? 0) : null,
-          output_tokens: env?.usage?.output_tokens ?? null,
-          cost_usd: env?.total_cost_usd ?? null,
-        },
-        session: env?.session_id ?? null,
-        ms: Date.now() - t0,
-      };
+      return { vendor: 'claude', output, raw, usage: usageOf(env), session: env?.session_id ?? null, ms: Date.now() - t0 };
     },
+  };
+}
+
+// input_tokens excludes cache traffic, which is most of a real prompt: a probe that cost $0.39
+// reported 65 tokens. Count the cache fields or every roll-up is fiction. See Q-0001.
+function usageOf(env) {
+  const u = env?.usage;
+  return {
+    input_tokens: u ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) : null,
+    output_tokens: u?.output_tokens ?? null,
+    cost_usd: env?.total_cost_usd ?? null,
   };
 }
 

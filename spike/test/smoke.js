@@ -96,6 +96,13 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/ failed /.test(fs.readFileSync(at('runs.log'), 'utf8')), 'failed run is recorded in runs.log');
   assert(fs.readFileSync(at('ticket.md'), 'utf8').includes('stage: draft'), 'failed run does not advance the stage');
 
+  // Money spent by a step that then failed still has to appear in the run's cost.
+  const log3 = fs.readFileSync(at('runs.log'), 'utf8');
+  assert(/step=pm-claude .*FAILED cost=0\.07/.test(log3), 'a failed step records what it cost');
+  const failLine = log3.split('\n').find((l) => / failed /.test(l)) ?? '';
+  const runCost = Number((failLine.match(/cost=([\d.]+)/) ?? [])[1] ?? 0);
+  assert(runCost >= 0.07, `failed run's cost includes the failed step (saw ${runCost})`);
+
   // A failed run writes no history entry, so the next run must not reuse its id.
   run(['run', 'requirements', 'T-0003', '--adapter', 'mock', '--auto']);
   const ids = [...fs.readFileSync(at('runs.log'), 'utf8').matchAll(/\brun=(\d+) flow=/g)].map((m) => m[1]);
@@ -118,6 +125,29 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(!/log ?out/i.test(translated), 'unsupported-model error does not tell the user to re-login');
 
   assert((await probeAdapter(mockAdapter())).ok === true, 'probe succeeds on a working adapter');
+
+  // claude reports failure inside the envelope on stdout, with stderr empty — and can set
+  // is_error while exiting 0. Deciding on the exit code alone loses the message entirely.
+  const { claudeAdapter } = await import('../src/adapters/claude.js');
+  let stubN = 0;
+  // A fake CLI on disk, so the real spawn/parse path runs and production code needs no seam.
+  const claudeStub = (code, stdout) => {
+    const p = path.join(tmp, `fake-claude-${stubN++}.sh`);
+    fs.writeFileSync(p, `#!/bin/sh\ncat <<'QEOF'\n${stdout}\nQEOF\nexit ${code}\n`, { mode: 0o755 });
+    return claudeAdapter({ bin: p });
+  };
+  const envelope = (o) => JSON.stringify(o);
+  const cases = [
+    ['exit 1 with the reason only in the envelope', 1, envelope({ is_error: true, subtype: 'error_max_turns', result: 'reached the turn limit', total_cost_usd: 4.54 }), /error_max_turns.*turn limit/s],
+    ['is_error: true while exiting 0', 0, envelope({ is_error: true, result: 'overloaded', total_cost_usd: 4.54 }), /overloaded/],
+    ['nothing on either stream', 1, '', /no output on stderr or stdout/],
+  ];
+  for (const [label, code, stdout, expected] of cases) {
+    let caught = null;
+    try { await claudeStub(code, stdout).run({ prompt: 'x', schema: { type: 'object', properties: {}, required: [] }, cwd: tmp }); } catch (e) { caught = e; }
+    assert(caught !== null && expected.test(caught.message), `claude surfaces: ${label} (got ${caught?.message?.slice(0, 90)})`);
+    if (stdout) assert(caught.usage?.cost_usd === 4.54, `a failed claude step carries its cost: ${label}`);
+  }
   const broken = { vendor: 'codex', async check() { return 'x'; }, async run() { throw new Error(real); } };
   const p = await probeAdapter(broken);
   assert(p.ok === false && /logout/.test(p.error), 'probe reports an unusable login rather than claiming ✓');

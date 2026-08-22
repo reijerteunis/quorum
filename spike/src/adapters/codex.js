@@ -78,7 +78,9 @@ export function codexAdapter(cfg = {}) {
         fs.rmSync(tmp, { recursive: true, force: true });
         const reported = [...new Set(errors)].join('; ');
         const all = `${r.stderr}\n${r.stdout}`;
-        throw new Error(authError('codex', all) ?? (reported ? `codex exited ${r.code}: ${reported}` : `codex exited ${r.code}: ${(r.stderr || r.stdout).slice(-2000) || 'no output on stderr or stdout'}`));
+        const err = new Error(authError('codex', all) ?? `codex exited ${r.code}: ${reported || all.trim().slice(-2000) || 'no output on stderr or stdout'}`);
+        err.usage = usage;   // whatever the stream reported before it died — the tokens were spent
+        throw err;
       }
       const raw = fs.existsSync(lastPath) ? fs.readFileSync(lastPath, 'utf8') : r.stdout;
       let output; try { output = JSON.parse(raw); } catch { output = extractJson(raw); }

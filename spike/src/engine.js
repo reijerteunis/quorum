@@ -142,14 +142,24 @@ async function runAgentStep(step, ctx, extra = {}) {
   ui.step(step.id, `${adapterName}${model ? '/' + model : ''} role=${step.role ?? '-'}`);
   if (ctx.dry) { ui.info(`${step.id}: dry run — prompt ${prompt.length} chars, schema ${Object.keys(schema.properties).join(',')}`); return null; }
 
-  const res = await adapter.run({
-    prompt, schema, model, cwd,
-    extraDirs: [ticket.dir, ctx.harnessDir],
-    allowWrite: Boolean(step.worktree),
-    maxTurns: step.max_turns ?? 40,
-    onEvent: (e) => ui.trace(step.id, e),
-  });
-  ctx.stats.cost += res.usage.cost_usd ?? 0; ctx.stats.tokens += (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0);
+  let res;
+  try {
+    res = await adapter.run({
+      prompt, schema, model, cwd,
+      extraDirs: [ticket.dir, ctx.harnessDir],
+      allowWrite: Boolean(step.worktree),
+      maxTurns: step.max_turns ?? 40,
+      onEvent: (e) => ui.trace(step.id, e),
+    });
+  } catch (e) {
+    // A step that fails after the vendor has already billed it still cost money. Dropping it makes
+    // the roll-up understate exactly where accuracy matters most — one failed review step hid
+    // $4.54 of a $10.25 run. Bill it, log it, then let it propagate. See Q-0002.
+    countUsage(ctx, e.usage);
+    backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${adapterName} model=${model ?? '-'} FAILED cost=${e.usage?.cost_usd ?? '?'} error=${JSON.stringify(String(e.message).split('\n')[0].slice(0, 200))}`);
+    throw e;
+  }
+  countUsage(ctx, res.usage);
 
   const problems = checkAgainstSchema(res.output, schema);
   if (problems.length) {
@@ -182,6 +192,12 @@ async function runAgentStep(step, ctx, extra = {}) {
     }
   }
   return null;
+}
+
+function countUsage(ctx, usage) {
+  if (!usage) return;
+  ctx.stats.cost += usage.cost_usd ?? 0;
+  ctx.stats.tokens += (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
 }
 
 function handleFail(step, ctx) {
