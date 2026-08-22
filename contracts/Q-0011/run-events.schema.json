@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quorum.local/contracts/Q-0011/run-events.schema.json",
+  "title": "Q-0011 run event",
+  "oneOf": [
+    { "$ref": "#/$defs/step_started" },
+    { "$ref": "#/$defs/text" },
+    { "$ref": "#/$defs/tool" },
+    { "$ref": "#/$defs/verdict" },
+    { "$ref": "#/$defs/usage_event" },
+    { "$ref": "#/$defs/retry" },
+    { "$ref": "#/$defs/step_completed" },
+    { "$ref": "#/$defs/step_failed" },
+    { "$ref": "#/$defs/raw" }
+  ],
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": 1 },
+        "ts": { "type": "string", "format": "date-time" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "type": { "type": "string" },
+        "data": { "type": "object" }
+      },
+      "required": ["schema_version", "ts", "seq", "type", "data"],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "vendor": { "type": "string", "minLength": 1 },
+        "input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "output_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cached_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cache_write_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cost_usd": { "$ref": "#/$defs/nullable_number" }
+      },
+      "required": ["vendor", "input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens", "cost_usd"],
+      "additionalProperties": false
+    },
+    "nullable_number": { "type": ["number", "null"], "minimum": 0 },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "required": ["category", "message"],
+      "additionalProperties": false
+    },
+    "step_started": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "properties": {
+            "type": { "const": "step_started" },
+            "data": {
+              "type": "object",
+              "properties": {
+                "step_id": { "type": "string", "minLength": 1 },
+                "kind": { "enum": ["adapter", "script", "integrate", "gate"] },
+                "role": { "type": ["string", "null"] },
+                "adapter": { "type": ["string", "null"] },
+                "model": { "type": ["string", "null"] },
+                "argv": { "type": ["array", "null"], "items": { "type": "string" } }
+              },
+              "required": ["step_id", "kind", "role", "adapter", "model", "argv"],
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "text": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "text" }, "data": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"], "additionalProperties": false } } }
+      ]
+    },
+    "tool": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "tool" }, "data": { "type": "object", "properties": { "name": { "type": "string", "minLength": 1 }, "status": { "enum": ["started", "completed", "failed"] }, "input": { "type": ["string", "null"] }, "output": { "type": ["string", "null"] } }, "required": ["name", "status", "input", "output"], "additionalProperties": false } } }
+      ]
+    },
+    "verdict": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "verdict" }, "data": { "type": "object", "properties": { "value": { "type": "string", "minLength": 1 }, "findings": { "type": "array", "items": { "type": "string" } } }, "required": ["value", "findings"], "additionalProperties": false } } }
+      ]
+    },
+    "usage_event": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "usage" }, "data": { "type": "object", "properties": { "usage": { "$ref": "#/$defs/usage" } }, "required": ["usage"], "additionalProperties": false } } }
+      ]
+    },
+    "retry": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "retry" }, "data": { "type": "object", "properties": { "vendor": { "type": "string", "minLength": 1 }, "attempt": { "type": "integer", "minimum": 1 }, "max_attempts": { "type": "integer", "minimum": 2 }, "delay_ms": { "type": "integer", "minimum": 0 }, "reason": { "type": "string", "minLength": 1 } }, "required": ["vendor", "attempt", "max_attempts", "delay_ms", "reason"], "additionalProperties": false } } }
+      ]
+    },
+    "step_completed": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "step_completed" }, "data": { "type": "object", "properties": { "status": { "const": "completed" }, "duration_ms": { "type": "integer", "minimum": 0 } }, "required": ["status", "duration_ms"], "additionalProperties": false } } }
+      ]
+    },
+    "step_failed": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "step_failed" }, "data": { "type": "object", "properties": { "status": { "enum": ["failed", "interrupted"] }, "duration_ms": { "type": "integer", "minimum": 0 }, "error": { "$ref": "#/$defs/error" } }, "required": ["status", "duration_ms", "error"], "additionalProperties": false } } }
+      ]
+    },
+    "raw": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "properties": { "type": { "const": "raw" }, "data": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"], "additionalProperties": false } } }
+      ]
+    }
+  }
+}
