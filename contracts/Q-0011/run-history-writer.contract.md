@@ -6,9 +6,11 @@ therefore cannot be expressed by JSON Schema alone.
 
 ## Adapter boundary
 
-`adapter.run(options)` retains its current result shape and receives `options.onEvent(event)`.
-Built-in adapters translate native output before calling it. Above the adapter, `event` is one
-of the types in `run-events.schema.json`; engine and readers never parse vendor-native text.
+`adapter.run(options)` retains its current result shape and receives `options.onEvent(payload)`.
+Built-in adapters translate native output into `{ type, data }` payloads before calling it; an
+adapter never supplies run metadata. The occurrence writer stamps `schema_version`, UTC `ts`,
+and the next contiguous `seq` while serialising the append, producing an envelope that validates
+against `run-events.schema.json`. Engine and readers never parse vendor-native text.
 `raw` is preservation-only: removing all `raw` lines cannot change a timeline's terminal state,
 usage, verdict, retries, or roll-up.
 
@@ -31,14 +33,27 @@ copied into the manifest occurrence and counted once in the roll-up.
   History append failures warn and disable further history writes for the affected artifact but
   do not cancel already-billed work.
 - Write exact prompt bytes before adapter spawn and exact final/raw validation-failure text when
-  available. Non-adapter occurrences have `events.jsonl` and no `prompt.txt`. Persist argv only;
-  never persist an environment object or environment value.
+  available. Non-adapter occurrences always have `events.jsonl`, never have `prompt.txt`, and
+  have `output.txt` only when the script, integration, or gate produced textual output. Persist
+  argv only in `step_started.data.argv`; there is no `spawn` event. Never persist an environment
+  object or environment value.
 - Serialize manifest updates through one promise queue. Write a complete same-directory temporary
   file, fsync/close it, then rename it over `manifest.json`. Update after every terminal occurrence
   and at run termination. Store project-relative paths only.
 - Signal handlers finalize the active occurrence where applicable and the run as `interrupted`.
   Run terminal status uses the existing engine outcome. A billed throw copies its full error and
   usage before propagation. Every started occurrence remains represented.
+
+## Status and gate mapping
+
+Manifest occurrences begin `running`. `step_completed` terminates them as `completed`,
+`aborted`, `regressed`, or `exhausted`; `step_failed` terminates them as `failed` or
+`interrupted`. Run status has the same terminal vocabulary plus `running`, but is a flow outcome,
+not a copy of the last occurrence. A gate answer (`advance`, `retry`, or `abort`) is a successful
+gate occurrence: its occurrence status is `completed` and its answer is the `verdict`; `abort`
+then makes the run `aborted`. A backward-edge declaration terminates that adapter occurrence as
+`regressed`. The occurrence that reaches its traversal limit terminates as `exhausted`. Ctrl-C
+or SIGTERM terminates every active occurrence and the run as `interrupted`.
 
 ## Roll-up algorithm
 

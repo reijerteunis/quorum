@@ -30,8 +30,10 @@ be read; no warning may be suppressed and no terminal result may be inferred.
 
 `harness validate <schema> <file...>` keeps JSON/YAML behavior. For a `.jsonl` input it ignores
 blank lines, parses and validates every other line independently, and reports all failures as
-`<file>:<line>: <schema error>`. It additionally applies the `events.jsonl` stream invariant:
-the first sequence is 1 and every subsequent sequence is exactly one greater.
+`<file>:<line>: <schema error>`. When, and only when, the loaded schema `$id` is the Q-0011 event
+schema, it additionally applies the stream invariant: the first sequence is 1 and every
+subsequent sequence is exactly one greater. The schema's top-level type enum produces a named
+unknown-type failure without reporting the failures of every other event shape.
 
 When validating a Q-0011 manifest, it additionally checks invariants JSON Schema cannot express:
 unique occurrence directories; status/time consistency; adapter/usage consistency; distinct
