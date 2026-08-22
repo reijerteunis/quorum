@@ -1,9 +1,11 @@
 # Adapter contract (spike v0)
 
-*Status: 2026-08-22 — Q-0001 probe filled in the verification table, dropped `--max-turns`
-from the Claude invocation, and fixed the BYOS guard to run before the CLI check. Every flag
-both adapters pass is now verified against the installed CLIs; only the two real-run questions
-(Claude's structured output for a large document, Codex's JSONL field names) remain open.*
+*Status: 2026-08-22 — Q-0001. Verification table filled in, `--max-turns` dropped from the
+Claude invocation, BYOS guard moved ahead of the CLI check. The first real run then failed on an
+expired Codex login that `check()` had reported as ✓, which added `adapters --probe`, the
+`authError()` translation, and the rule that a failing parallel branch must not discard its
+siblings' work. Still open: Claude's structured output for a large document, and Codex's JSONL
+field names.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -13,7 +15,10 @@ sees one shape.
 
 ```js
 adapter.vendor            // 'claude' | 'codex' | ...
-await adapter.check()     // throws if the CLI is missing, not logged in, or an API key is set
+await adapter.check()     // cheap: throws if an API key is set, or if the CLI is missing.
+                          // Does NOT prove the login works — no request is made.
+await probeAdapter(a)     // the real thing: smallest possible authenticated request, returns
+                          // { ok, ms, cost_usd, tokens } or { ok: false, error }
 await adapter.run({
   prompt,                 // string — complete prompt (role + ticket + inputs + task + output contract)
   schema,                 // JSON Schema object the final answer must match
@@ -61,6 +66,22 @@ The key check runs **before** the CLI is probed. The guard is about the environm
 about the CLI, so a CLI that is missing on this machine must not mask a key that is set —
 otherwise `adapters` reports "not installed" and the user never learns the real problem.
 
+## check() is not proof of login
+
+A CLI can be installed, print a version, and still be unable to reach its vendor because the
+subscription's OAuth token expired. `check()` cannot see that: it makes no request. `codex
+login status` cannot always see it either — it reported "Logged in using ChatGPT" while the
+refresh token was dead (Q-0001, 2026-08-22).
+
+So `harness adapters` prints presence only and says so; `harness adapters --probe` performs the
+smallest possible authenticated request per adapter and reports round-trip time and cost.
+**Run `--probe` before a real run**, and before trusting any green tick in this document.
+
+Auth failures are translated into one actionable line ("codex login expired or missing — run:
+`codex logout && codex login`") instead of the vendor's stack trace. The translation lives in
+`authError()` at the contract layer as well as inside each built-in adapter, so a contributor's
+adapter inherits it without doing anything.
+
 ## Exact invocations used by this spike
 
 Claude Code:
@@ -74,8 +95,14 @@ Codex CLI:
 
 ```
 codex exec --json --output-schema schema.json -o last.txt -C <cwd> \
-  --sandbox workspace-write|read-only --skip-git-repo-check --ephemeral -m <model> -
+  --sandbox workspace-write|read-only --skip-git-repo-check --ephemeral \
+  --ignore-user-config [-m <model> only if the flow names one] -
 ```
+
+`--ignore-user-config` is deliberate: `~/.codex/config.toml` can pin a model the user's own
+subscription cannot use, and that pin wins even when Quorum passes no `-m`. The flow file is the
+source of truth, so the machine's personal CLI config must not decide what a run does. The cost
+is that MCP servers and sandbox preferences configured there do not apply inside a run.
 
 Both take the prompt on stdin. Override any flag via `harness.yaml → adapters.<vendor>.extraArgs`.
 
@@ -87,9 +114,37 @@ Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220 and codex-cli
 | `claude --max-turns` | **verified absent** — removed from the adapter; see the `maxTurns` note above |
 | `codex exec --json --output-schema -o -C --sandbox --skip-git-repo-check --ephemeral -m --add-dir` | **verified present** — every flag the adapter passes, including `--add-dir`, which this doc previously called out as doubtful |
 | `codex` prompt on stdin via trailing `-` | **verified** — documented behaviour of the `[PROMPT]` argument |
-| Both CLIs logged in on a subscription (`claude --version`, `codex login status` → "Logged in using ChatGPT") | **verified** |
-| `claude` structured output actually returned for a 2–4 KB document | unverified — needs a real run |
-| `codex` JSONL usage/session field names | unverified — needs a real run; the adapter tolerates their absence |
+| Both CLIs logged in on a subscription | **not verified — and not verifiable this way.** An earlier revision of this table claimed it on the strength of `codex login status`, which reported "Logged in using ChatGPT" while the refresh token was already dead. Only `adapters --probe` settles it. |
+| Both adapters return schema-valid structured output on subscription auth | **verified** by `adapters --probe`, 2026-08-22: claude 4674ms / $0.3919 / 74264 tokens, codex 4148ms / 14026 tokens |
+| `codex` JSONL usage/session field names | **verified** — see below |
+| Codex model aliases (`gpt-5`, `gpt-5-codex`, `gpt-5.1-codex`, `gpt-5.1`, `gpt-5.2`, `gpt-5.2-codex`) | **verified rejected** on a ChatGPT account: *"The 'X' model is not supported when using Codex with a ChatGPT account."* No model name is pinned for codex anywhere any more |
+| `claude` structured output for a full 2–4 KB document | still open — the probe proves the mechanism, not the size |
+
+### Codex JSONL, as observed on 0.149.0
+
+Session id arrives first as `{"type":"thread.started","thread_id":"…"}`. Usage arrives on
+`turn.completed`:
+
+```json
+{"type":"turn.completed","usage":{"input_tokens":13970,"cached_input_tokens":9984,
+ "cache_write_input_tokens":0,"output_tokens":6,"reasoning_output_tokens":0}}
+```
+
+There is no cost field: **Codex is tokens-only**, which settles the premise of Q-0003.
+`reasoning_output_tokens` is billed as output and must be added to `output_tokens`.
+
+Failures do **not** go to stderr. They arrive on stdout as `{"type":"error"}`,
+`{"type":"turn.failed"}` or an `item.type === "error"`, with the vendor's own JSON error nested
+as a string inside `message`. An adapter that reports `stderr` alone prints an empty error.
+
+Codex enforces OpenAI strict structured outputs: every object needs `additionalProperties: false`
+and every property listed in `required`. `schemaFor()` already complies.
+
+### Claude usage fields
+
+`usage.input_tokens` counts only uncached input. A hello-world probe reported 65 tokens against
+a real cost of $0.39; adding `cache_creation_input_tokens` and `cache_read_input_tokens` gives
+74264. `total_cost_usd` was correct throughout — only the token roll-up was fiction.
 
 ## What to verify on day 1 (the real spike questions)
 
