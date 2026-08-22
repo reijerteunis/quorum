@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Q-0006/ticket-review-state",
+  "title": "Additive review state in ticket.md frontmatter",
+  "type": "object",
+  "required": ["stage", "iterations", "history"],
+  "properties": {
+    "stage": {
+      "enum": ["draft", "requirements", "solutioned", "red", "green", "reviewed", "qa-passed", "deployed", "blocked", "abandoned"]
+    },
+    "iterations": {
+      "type": "object",
+      "properties": { "review": { "type": "integer", "minimum": 0 } },
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "run": { "type": "integer", "minimum": 1 },
+          "flow": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["completed", "regressed", "exhausted", "aborted", "failed"] },
+          "stage_before": { "type": "string" },
+          "stage_after": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" },
+          "cost": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true,
+        "oneOf": [
+          {
+            "title": "Legacy pre-Q-0006 history entry",
+            "required": ["stage", "run", "flow", "at", "cost"],
+            "not": { "required": ["status"] }
+          },
+          {
+            "title": "Q-0006 terminal event",
+            "required": ["stage", "run", "flow", "status", "stage_before", "stage_after", "at", "cost"],
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "exhausted" } } },
+                "then": { "properties": { "cost": { "const": 0 } } }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": true
+}

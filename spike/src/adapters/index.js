@@ -127,7 +127,11 @@ export function authError(vendor, text = '') {
 // binary exists; this proves the subscription actually answers. Used by `harness adapters --probe`.
 // additionalProperties:false and every property in `required` are mandatory for OpenAI strict
 // structured outputs — codex rejects anything else. schemaFor() already obeys this; so must we.
-const PROBE_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false };
+const PROBE_SCHEMA = {
+  type: 'object',
+  properties: { ok: { type: 'boolean' }, summary: { type: 'string' } },
+  required: ['ok'], additionalProperties: false,
+};
 const PROBE_PROMPT = 'Reply with exactly this JSON and nothing else: {"ok": true}. Do not use any tools.';
 
 export async function probeAdapter(adapter, { cwd, model } = {}) {
@@ -164,10 +168,28 @@ export function extractJson(text) {
 // Minimal schema check: required keys present, enums honoured. Not a full validator on purpose.
 export function checkAgainstSchema(obj, schema) {
   const problems = [];
-  if (!obj || typeof obj !== 'object') return ['output is not an object'];
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return ['output is not an object'];
   for (const k of schema.required ?? []) if (!(k in obj)) problems.push(`missing "${k}"`);
+  if (schema.additionalProperties === false) {
+    for (const k of Object.keys(obj)) if (!(k in (schema.properties ?? {}))) problems.push(`unknown "${k}"`);
+  }
   for (const [k, def] of Object.entries(schema.properties ?? {})) {
     if (k in obj && def.enum && !def.enum.includes(obj[k])) problems.push(`"${k}" must be one of ${def.enum.join('|')}, got ${JSON.stringify(obj[k])}`);
+    if (!(k in obj)) continue;
+    if (def.type === 'string' && (typeof obj[k] !== 'string' || (def.minLength && obj[k].length < def.minLength))) problems.push(`"${k}" must be a non-empty string`);
+    if (def.type === 'array') {
+      if (!Array.isArray(obj[k])) problems.push(`"${k}" must be an array`);
+      else {
+        if (def.minItems != null && obj[k].length < def.minItems) problems.push(`"${k}" needs at least ${def.minItems} item(s)`);
+        if (def.maxItems != null && obj[k].length > def.maxItems) problems.push(`"${k}" needs at most ${def.maxItems} item(s)`);
+        if (def.items?.type === 'string') for (const item of obj[k]) {
+          if (typeof item !== 'string') problems.push(`"${k}" items must be strings`);
+          else if (def.items.pattern && !(new RegExp(def.items.pattern)).test(item)) problems.push(`"${k}" item has invalid format: ${JSON.stringify(item)}`);
+        }
+      }
+    }
   }
+  if (obj.verdict === 'approve' && Array.isArray(obj.findings) && obj.findings.length) problems.push('approve requires empty findings');
+  if (obj.verdict === 'changes-requested' && Array.isArray(obj.findings) && !obj.findings.length) problems.push('changes-requested requires findings');
   return problems;
 }

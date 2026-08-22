@@ -17,8 +17,26 @@ typed interface + stub; schema: migration skeleton in your tool's format; UI: pr
 and states; …). Tests in the red phase compile against these stubs.
 
 ## Roles for task fan-out
-A table of role → directories it may write in → typical contracts. Must match the
-`developer-<role>.md` files in `harness/roles/`.
+
+This table is the repository's current fan-out write contract. The engine does not read
+`paths` frontmatter; enforcement reaches an agent through the allowed-path prose in the
+role body. Frontmatter and prose must nevertheless agree so tooling can validate them.
+
+| role | directories it may write | typical contracts |
+| --- | --- | --- |
+| backend | `spike/`, `harness/`, `docs/`, `backlog/` | CLI/engine behaviour, YAML flows and roles, Markdown documentation |
+| frontend | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
+| data | `packages/database` | persistence schemas and migrations |
+
+The backend breadth is intentional while M1's runnable product is the spike and its
+file-backed project assets. Tasks must still assign each concrete file to one owner.
+
+Template sharing is explicit, not directory-wide. All files under `harness/flows/` and
+the `harness/roles/code-reviewer.md` role are byte-shared with their paths under
+`spike/templates/harness/`. Repository configuration and context (`harness.yaml`,
+`product-context.md`, `rules.md`, `architecture.md`) and developer roles are
+repository-specific; their template counterparts describe an adopter's project and
+must not acquire Quorum's dogfood paths.
 
 ## Testing and tooling
 The exact commands: unit/integration, e2e, lint, typecheck. `harness.yaml → commands.test`

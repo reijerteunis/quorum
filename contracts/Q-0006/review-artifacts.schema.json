@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Q-0006/review-artifacts",
+  "title": "Review structured output",
+  "oneOf": [
+    {
+      "title": "Panel review output",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "document"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "document": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "title": "Verdict output",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "document", "verdict", "findings"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "document": { "type": "string", "minLength": 1 },
+        "verdict": { "enum": ["approve", "changes-requested"] },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(blocker|major|nit): .+:[1-9][0-9]* .+"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verdict": { "const": "approve" } } },
+          "then": { "properties": { "findings": { "maxItems": 0 } } },
+          "else": { "properties": { "findings": { "minItems": 1 } } }
+        }
+      ]
+    }
+  ]
+}
+
