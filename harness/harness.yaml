@@ -12,7 +12,15 @@ adapters:
 budget:
   per_run_usd: 10
   per_ticket_usd: 60
+repo:
+  # The branch ticket work integrates against. `integrate` merges it into the ticket branch
+  # before testing, so a long-running ticket never builds on the base it was cut from.
+  base_branch: main
 commands:
   # Used by integrate steps with run_tests: true. Until packages/core lands (M2) the runnable
   # code is the spike, so the suite is the spike's mock-adapter smoke test.
+  # Run in the integration worktree before `test`. A worktree is a fresh checkout with no
+  # node_modules; without this the suite dies on a missing dependency and `expect: fail` reads
+  # that as proof of red.
+  install: npm install --prefix spike --no-audit --no-fund --silent
   test: npm test --prefix spike

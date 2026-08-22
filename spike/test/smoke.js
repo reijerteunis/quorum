@@ -18,7 +18,15 @@ const assert = (cond, msg) => { if (!cond) { console.error('✗ ' + msg); proces
 
 execSync('git init -q && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init', { cwd: tmp });
 assert(run(['init']).status === 0, 'init');
-{ const hy = path.join(tmp, 'harness/harness.yaml'); fs.writeFileSync(hy, fs.readFileSync(hy, 'utf8').replace(/test: npm test.*/, 'test: sh tests/check.sh')); }
+// This fixture repo is not a node project, so point both commands at something it can run. The
+// install command writes a marker, which lets the assertions below prove it ran in the
+// integration worktree and ran *before* the tests.
+{
+  const hy = path.join(tmp, 'harness/harness.yaml');
+  fs.writeFileSync(hy, fs.readFileSync(hy, 'utf8')
+    .replace(/install: npm install.*/, 'install: sh -c "date > .installed"')
+    .replace(/test: npm test.*/, 'test: sh tests/check.sh'));
+}
 assert(run(['lint']).status === 0, 'lint passes on shipped flows');
 assert(run(['ticket', 'new', 'Subscription downgrade mid-cycle', '--intent', 'Clinics can downgrade mid-cycle. Define proration.', '--owner', 'ruud']).status === 0, 'ticket created');
 
@@ -66,6 +74,10 @@ assert(ticket().includes('stage: green'), 'stage advanced to green');
 const tree = execSync('git ls-tree -r --name-only harness/T-0001/integration', { cwd: tmp, encoding: 'utf8' });
 assert(tree.includes('src/T-0001.1.ts') && tree.includes('src/T-0001.2.ts') && tree.includes('tests/check.sh') && tree.includes('contracts/ProrationService.ts'), 'ticket branch holds contracts, tests and both implementations');
 assert(!fs.existsSync(path.join(tmp, 'src')), 'user working tree still untouched');
+// The integrate step must prepare the worktree before testing it: a fresh checkout has no
+// dependencies, and a suite that cannot start would otherwise satisfy expect: fail (Q-0004).
+assert(fs.existsSync(path.join(tmp, '.harness/worktrees/harness__T-0001__integration/.installed')),
+  'integrate runs commands.install in the integration worktree before the tests');
 
 // Exhausted loop lands on a gate; --auto advances it
 r = run(['ticket', 'new', 'Second ticket']);
@@ -161,6 +173,32 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
                  ...fs.readdirSync(path.join(tplRoot, 'roles')).map((f) => path.join(tplRoot, 'roles', f))];
   const offenders = files.filter((f) => /^\s*model:\s*gpt-/m.test(fs.readFileSync(f, 'utf8'))).map((f) => path.basename(f));
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
+}
+
+// `expect: fail` must not accept a suite that never started. A worktree has no node_modules, so
+// without this a missing dependency proves "red" on every ticket, forever (found by Q-0004).
+{
+  const { environmentFailure } = await import('../src/engine.js');
+  const notRed = [
+    ["node:internal/modules/esm/resolve:264\nError: Cannot find package 'yaml' imported from /x/bin.js", /missing dependency "yaml"/],
+    ['Error: Cannot find module \'./nope.js\'', /missing module "\.\/nope\.js"/],
+    ['code: \'ERR_MODULE_NOT_FOUND\'', /could not be resolved/],
+    ['/x/test.js:12\nSyntaxError: Unexpected token \'||\'', /does not parse/],
+    ['sh: vitest: command not found', /not installed/],
+  ];
+  for (const [out, expected] of notRed) {
+    const d = environmentFailure(out);
+    assert(d !== null && expected.test(d), `a broken environment is not a red phase: ${out.split('\n').pop().slice(0, 44)}`);
+  }
+  // The other half matters more: a real failing suite must still count as red.
+  const realRed = [
+    'AssertionError [ERR_ASSERTION]: expected stage to be red\n  at Object.<anonymous>\n✗ 3 of 71 checks failed',
+    '✗ init\nnpm ERR! Test failed.  See above for more details.',   // npm says ERR! on every failure
+    'FAIL test/review.test.js\n  ● review flow › regresses the stage\n    expect(received).toBe(expected)',
+  ];
+  for (const out of realRed) {
+    assert(environmentFailure(out) === null, `a genuine assertion failure is still red: ${out.split('\n')[0].slice(0, 44)}`);
+  }
 }
 
 // qa-red proves a red phase by writing NEW test files. A runner that does not discover them
