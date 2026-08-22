@@ -1,0 +1,49 @@
+# Contract fixture for Q-0006. The shipped harness/flows/review.yaml must
+# parse to the same value as this document after deleting the loader-only `file` key
+# from both values; the test uses YAML.parse and deep equality.
+name: review
+consumes: green
+produces: reviewed
+cross_vendor: required
+steps:
+  - parallel:
+      - id: review-claude
+        role: code-reviewer
+        adapter: claude
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/claude.md"]}
+      - id: review-codex
+        role: code-reviewer
+        adapter: codex
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/codex.md"]}
+
+  - id: verdict
+    role: code-reviewer
+    adapter: claude
+    input:
+      backlog:
+        - "review/round-{round}/claude.md"
+        - "review/round-{round}/codex.md"
+        - requirements/merged.md
+        - solution/solution.md
+    output:
+      writes: ["review/round-{round}/verdict.md", review/verdict.md]
+      verdict: approve|changes-requested
+    instructions: >
+      Deduplicate the panel findings. Preserve file:line references and group surviving
+      findings as blocker, major, or nit. Approve exactly when no blocker or major
+      survives; nits alone approve. Findings must be empty on approve and non-empty on
+      changes-requested. Judge the reviews, not the code diff.
+    on_fail:
+      goto: flow:development
+      counter: review
+      max_iterations: 3
+      on_exhausted: gate
+
+  - gate: human
+    reason: Review verdict is approve; accept or abort handover to final QA
