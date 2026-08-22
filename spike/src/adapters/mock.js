@@ -1,6 +1,6 @@
 // Mock adapter: runs flows without any CLI. Proves the engine, loops, gates, worktrees and integration.
 // - A reviewer returns the failing verdict on its first call per role, the passing one afterwards
-//   (MOCK_ALWAYS_FAIL=1 exhausts loops).
+//   (MOCK_ALWAYS_PASS=1 and MOCK_ALWAYS_FAIL=1 force deterministic verdicts).
 // - The architect writes a contract file; the "tasks" step emits a real tasks.yaml.
 // - QA writes tests/check.sh that fails until every task's src file exists.
 // - Developers write src/<task>.ts in their worktree. MOCK_DEV_FLAKY=1 makes the second task
@@ -63,10 +63,17 @@ export function mockAdapter(cfg = {}) {
       }
       if (schema.properties.ok) output.ok = true;   // the adapters --probe round-trip
       if (schema.properties.verdict) {
+        const alwaysPass = process.env.MOCK_ALWAYS_PASS === '1';
+        const alwaysFail = process.env.MOCK_ALWAYS_FAIL === '1';
+        if (alwaysPass && alwaysFail) {
+          throw new Error('MOCK_ALWAYS_PASS and MOCK_ALWAYS_FAIL are mutually exclusive');
+        }
         const opts = schema.properties.verdict.enum;
-        const fail = process.env.MOCK_ALWAYS_FAIL === '1' || n === 1;
+        const fail = alwaysFail || (!alwaysPass && n === 1);
         output.verdict = fail ? opts[opts.length - 1] : opts[0];
-        output.findings = fail ? ['(mock) tighten acceptance criterion 2', '(mock) missing non-goal'] : [];
+        output.findings = fail ? [
+          'major: src/mock.ts:1 (mock) placeholder finding',
+        ] : [];
       }
       return { vendor: 'mock', output, raw: JSON.stringify(output), usage: { input_tokens: prompt.length / 4 | 0, output_tokens: 200, cost_usd: 0.01 }, session: null, ms: 20 };
     },
