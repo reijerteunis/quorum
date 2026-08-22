@@ -1,5 +1,6 @@
 # Contract fixture for Q-0006. The shipped harness/flows/review.yaml must be
-# semantically identical to this document (comments need not be preserved).
+# parse to the same value as this document after deleting the loader-only `file` key
+# from both values; the test uses YAML.parse and deep equality.
 name: review
 consumes: green
 produces: reviewed
@@ -45,4 +46,3 @@ steps:
 
   - gate: human
     reason: Review verdict is approve; accept or abort handover to final QA
-

@@ -16,7 +16,9 @@ contract, not a second implementation.
 
 For a step with `input.diff`, the engine resolves the range and, before spawning any
 adapter, verifies both the base ref and `harness/<id>/integration`. A missing base ref is
-an error naming `repo.base_branch`, `harness/harness.yaml`, and the ref. The prompt embeds:
+an error naming `repo.base_branch`, `harness/harness.yaml`, and the ref. A missing
+integration ref is an error naming the ticket id, the expected
+`harness/<id>/integration` ref, and that review requires an integrated branch. The prompt embeds:
 
 1. the complete `git diff --stat <base>...harness/<id>/integration`;
 2. the patch from `git diff <base>...harness/<id>/integration`, truncated by UTF-8 byte
@@ -31,8 +33,11 @@ worktree or branch.
 On `changes-requested`, validate structured output before changing state. Increment
 `iterations.review` once per accepted traversal. Counts `1`, `2`, and `3` regress to the
 `consumes` stage loaded from the `flow:development` target and finish with `regressed`;
-the target flow is not run. Attempt `4` persists count `4` and enters an exhaustion gate
-without changing stage.
+the target flow is not run. The CLI reports target flow, `stage_before -> stage_after`,
+current count, limit, and remaining ordinary traversals. Attempt `4` persists count `4`,
+records an `exhausted` history/log event when the gate is presented, and enters an
+exhaustion gate without changing stage. The later gate answer adds a second terminal
+event (`completed`, `regressed`, or `aborted`) rather than replacing the exhaustion event.
 
 The exhaustion gate cannot be bypassed by `--auto`. Its reason includes counter `review`,
 current count, limit, outstanding blocker/major findings, and `advance`, `retry`, `abort`.
@@ -54,3 +59,13 @@ Invalid structured output is saved under the ticket's `.harness/` directory and 
 `failed` without stage or counter change. A parallel panel uses all-settled semantics:
 successful artifacts remain, but any failed reviewer prevents verdict execution and
 leaves stage and counter unchanged.
+
+## Audit compatibility
+
+Every terminal outcome (`completed`, `regressed`, `exhausted`, `aborted`, `failed`) is
+appended to both `runs.log` and ticket `history`, with run id, flow, status, stage before,
+stage after, timestamp, and cost. Existing legacy history entries shaped as
+`{stage, run, flow, at, cost}` remain valid and are not rewritten. New entries also write
+`stage: stage_after` as a compatibility alias. `harness board` requires no production
+change; its regression test asserts that persisted `iterations.review` appears in the
+existing `iter={...}` output.

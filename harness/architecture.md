@@ -17,8 +17,18 @@ typed interface + stub; schema: migration skeleton in your tool's format; UI: pr
 and states; …). Tests in the red phase compile against these stubs.
 
 ## Roles for task fan-out
-A table of role → directories it may write in → typical contracts. Must match the
-`developer-<role>.md` files in `harness/roles/`.
+
+This table is the repository's current fan-out write contract. It must match the
+`paths` frontmatter in `harness/roles/developer-<role>.md` and its template copy.
+
+| role | directories it may write | typical contracts |
+| --- | --- | --- |
+| backend | `spike/`, `harness/`, `docs/`, `backlog/`, `contracts/` | CLI/engine behaviour, YAML flows and roles, Markdown documentation, JSON Schema and test contracts |
+| frontend | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
+| data | `packages/database` | persistence schemas and migrations |
+
+The backend breadth is intentional while M1's runnable product is the spike and its
+file-backed project assets. Tasks must still assign each concrete file to one owner.
 
 ## Testing and tooling
 The exact commands: unit/integration, e2e, lint, typecheck. `harness.yaml → commands.test`
