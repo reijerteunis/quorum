@@ -163,6 +163,51 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
 }
 
+// Contracts must be executable, or qa-red's red phase is prose. checkAgainstSchema cannot express
+// oneOf / if-then / format / nested required; the contract validator must (DECISIONS 2026-08-22).
+{
+  const { validate } = await import('../src/contracts.js');
+  const schema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: {
+      stage: { type: 'string', enum: ['draft', 'requirements'] },
+      history: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['run', 'at'],
+          properties: { run: { type: 'integer' }, at: { type: 'string', format: 'date-time' }, cost: { type: 'number' } },
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['stage'],
+    additionalProperties: false,
+  };
+  const good = { stage: 'draft', history: [{ run: 1, at: '2026-08-22T16:51:48.368Z', cost: 4.146 }] };
+  assert(validate(schema, good).ok, 'the contract validator accepts a conforming artifact');
+
+  const cases = [
+    [{}, /required property 'stage'/, 'missing required key'],
+    [{ stage: 'nonsense' }, /must be equal to one of/, 'enum violation'],
+    [{ stage: 'draft', extra: 1 }, /additionalProperty|must NOT have additional/, 'additionalProperties: false'],
+    [{ stage: 'draft', history: [{ run: 1, at: 'yesterday' }] }, /format "date-time"/, 'format constraint'],
+    [{ stage: 'draft', history: [{ run: 'one', at: '2026-08-22T00:00:00Z' }] }, /must be integer/, 'nested type'],
+  ];
+  for (const [data, expected, label] of cases) {
+    const r = validate(schema, data);
+    assert(!r.ok && expected.test(r.errors.join(' ')), `contract validator rejects: ${label} (${r.errors.join('; ') || 'accepted!'})`);
+  }
+
+  // And it has to be reachable from a qa-red script step, i.e. exit non-zero from the CLI.
+  fs.writeFileSync(path.join(tmp, 'c.schema.json'), JSON.stringify(schema));
+  fs.writeFileSync(path.join(tmp, 'good.json'), JSON.stringify(good));
+  fs.writeFileSync(path.join(tmp, 'bad.json'), JSON.stringify({ stage: 'nonsense' }));
+  assert(run(['validate', 'c.schema.json', 'good.json']).status === 0, 'harness validate exits 0 on a conforming artifact');
+  assert(run(['validate', 'c.schema.json', 'bad.json']).status === 1, 'harness validate exits 1 so a red test can fail on it');
+}
+
 // Tokens-only: a vendor that reports no cost is unpriced, not free. Rounding null to $0.000
 // would state a price Quorum does not know (DECISIONS, 2026-08-22).
 {
