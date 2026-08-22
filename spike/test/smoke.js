@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -173,6 +173,33 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
                  ...fs.readdirSync(path.join(tplRoot, 'roles')).map((f) => path.join(tplRoot, 'roles', f))];
   const offenders = files.filter((f) => /^\s*model:\s*gpt-/m.test(fs.readFileSync(f, 'utf8'))).map((f) => path.basename(f));
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
+}
+
+// Interrupting a run at a gate must record the outcome and persist counters. Otherwise Ctrl-C is
+// an undocumented way to hand back the iteration budget and retry forever (found by Q-0004).
+{
+  run(['ticket', 'new', 'Interrupted at a gate']);
+  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith('T-0004'));
+  const at = (rel) => path.join(tmp, 'backlog', dir, rel);
+  // No --auto, so it stops at the flow's closing gate and waits on stdin.
+  const child = spawn('node', [bin, 'run', 'requirements', 'T-0004', '--adapter', 'mock'], { cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
+  const deadline = Date.now() + 20000;
+  const waitFor = (test) => {
+    while (Date.now() < deadline) {
+      if (fs.existsSync(at('runs.log')) && test(fs.readFileSync(at('runs.log'), 'utf8'))) return true;
+      execSync('sleep 0.2');
+    }
+    return false;
+  };
+  const reached = waitFor((log) => /step=head-of-product/.test(log));
+  assert(reached, 'the interrupt fixture reaches the gate');
+  child.kill('SIGINT');
+  const recorded = waitFor((log) => / interrupted /.test(log));
+  child.kill('SIGKILL');   // belt and braces; the process should already be gone
+  assert(recorded, 'an interrupted run is recorded in runs.log');
+  const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
+  assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
+  assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
 }
 
 // `expect: fail` must not accept a suite that never started. A worktree has no node_modules, so

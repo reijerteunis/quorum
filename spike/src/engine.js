@@ -67,6 +67,16 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
 
+  // Ctrl-C at a gate used to leave no terminal line in runs.log and no persisted counters, so an
+  // interrupted run silently handed its iteration budget back — an undocumented way to buy
+  // unlimited retries, which defeats the bound the design rests on. See Q-0004.
+  const onSignal = (sig) => {
+    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
+    process.exit(130);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+
   const steps = flow.steps;
   let i = 0;
   try {
@@ -93,6 +103,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     // never shows a run that started and then simply stopped existing. See Q-0001.
     finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
     throw e;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
   return finish(ctx, flow.produces, 'completed');
 }

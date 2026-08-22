@@ -57,6 +57,9 @@ const ui = {
     console.log(c.dim(`  inspect: ${ticketDir}`));
     const opts = retry ? 'advance / retry / abort' : 'advance / abort';
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
+    // handler never runs and the interrupted run leaves no record. See Q-0004.
+    rl.on('SIGINT', () => { rl.close(); process.kill(process.pid, 'SIGINT'); });
     const answer = await new Promise((r) => rl.question(`  ${opts} > `, r));
     rl.close();
     const a = answer.trim().toLowerCase();
