@@ -51,7 +51,7 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 - The review flow (`review.yaml`, Claude + Codex panel → verdict → backward edge to development) exists and runs once.
 
 **Tickets**
-- Q-0004 qa-red on the M0 ticket; tune the automation-qa role until red is "for the right reason".
+- Q-0004 qa-red on the M0 ticket. *(Done 2026-08-22 — the role needed no tuning; six engine defects did. See the DECISIONS entry "Red for the right reason is an engine property".)*
 - Q-0005 development fan-out; record merge-conflict rate and iterations to green.
 - Q-0006 Implement `review.yaml` + cross-flow backward edge (`goto: flow:development` regresses stage).
 - Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters.
