@@ -2,6 +2,15 @@
 
 *Status: v1 plan, 2026-08-22. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
+*M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
+resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
+**Q-0011 run history on disk**, pulled forward from M2, because Q-0006's four serial single-role
+tasks cannot demonstrate "two roles on two vendors". Q-0006 still ships in M1 as the review flow
+itself — it is the wrong vehicle for the fan-out demo, not the wrong feature. M1's `development`
+fan-out therefore runs on Q-0011, with the new repo-local `developer-tooling` role (claude) beside
+`developer-backend` (codex); `developer-frontend` cannot serve, since its paths (`apps/*`,
+`packages/ui`) do not exist until M3.*
+
 ## How to read this
 
 - **M0–M1** retire the two unknowns (real CLIs, real repo) with the spike code.
@@ -13,7 +22,7 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 
 ---
 
-## M0 — Real adapters on a real repo (≈ 1 week)
+## M0 — Real adapters on a real repo (≈ 1 week) — ✅ closed 2026-08-22
 
 **Goal:** the four adapter-contract questions answered with evidence, `requirements` and `solutioning` run end to end on real Claude Code + Codex CLI on one of your SaaS repos.
 

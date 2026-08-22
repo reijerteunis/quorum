@@ -163,6 +163,80 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
 }
 
+// qa-red proves a red phase by writing NEW test files. A runner that does not discover them
+// leaves the suite green and `integrate --expect fail` loops to a gate having proved nothing.
+{
+  const rdir = path.join(tmp, 'runner-check');
+  fs.mkdirSync(rdir, { recursive: true });
+  fs.copyFileSync(path.join(root, 'test', 'run.js'), path.join(rdir, 'run.js'));
+  fs.writeFileSync(path.join(rdir, 'smoke.js'), 'process.exit(0);\n');
+  const runner = () => spawnSync(process.execPath, [path.join(rdir, 'run.js')], { encoding: 'utf8' });
+  assert(runner().status === 0, 'test runner exits 0 when every discovered file passes');
+
+  fs.writeFileSync(path.join(rdir, 'new-red.js'), 'process.exit(1);\n');
+  const red = runner();
+  assert(red.status === 1, 'a newly added failing test file turns the suite red');
+  assert(/new-red\.js/.test(red.stdout + red.stderr), 'the runner names the file that failed');
+
+  fs.rmSync(path.join(rdir, 'new-red.js'));
+  assert(runner().status === 0, 'the suite goes green again once the failing file is gone');
+}
+
+// Contracts must be executable, or qa-red's red phase is prose. checkAgainstSchema cannot express
+// oneOf / if-then / format / nested required; the contract validator must (DECISIONS 2026-08-22).
+{
+  const { validate } = await import('../src/contracts.js');
+  const schema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: {
+      stage: { type: 'string', enum: ['draft', 'requirements'] },
+      history: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['run', 'at'],
+          properties: { run: { type: 'integer' }, at: { type: 'string', format: 'date-time' }, cost: { type: 'number' } },
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['stage'],
+    additionalProperties: false,
+  };
+  const good = { stage: 'draft', history: [{ run: 1, at: '2026-08-22T16:51:48.368Z', cost: 4.146 }] };
+  assert(validate(schema, good).ok, 'the contract validator accepts a conforming artifact');
+
+  const cases = [
+    [{}, /required property 'stage'/, 'missing required key'],
+    [{ stage: 'nonsense' }, /must be equal to one of/, 'enum violation'],
+    [{ stage: 'draft', extra: 1 }, /additionalProperty|must NOT have additional/, 'additionalProperties: false'],
+    [{ stage: 'draft', history: [{ run: 1, at: 'yesterday' }] }, /format "date-time"/, 'format constraint'],
+    [{ stage: 'draft', history: [{ run: 'one', at: '2026-08-22T00:00:00Z' }] }, /must be integer/, 'nested type'],
+  ];
+  for (const [data, expected, label] of cases) {
+    const r = validate(schema, data);
+    assert(!r.ok && expected.test(r.errors.join(' ')), `contract validator rejects: ${label} (${r.errors.join('; ') || 'accepted!'})`);
+  }
+
+  // And it has to be reachable from a qa-red script step, i.e. exit non-zero from the CLI.
+  fs.writeFileSync(path.join(tmp, 'c.schema.json'), JSON.stringify(schema));
+  fs.writeFileSync(path.join(tmp, 'good.json'), JSON.stringify(good));
+  fs.writeFileSync(path.join(tmp, 'bad.json'), JSON.stringify({ stage: 'nonsense' }));
+  assert(run(['validate', 'c.schema.json', 'good.json']).status === 0, 'harness validate exits 0 on a conforming artifact');
+  assert(run(['validate', 'c.schema.json', 'bad.json']).status === 1, 'harness validate exits 1 so a red test can fail on it');
+}
+
+// Tokens-only: a vendor that reports no cost is unpriced, not free. Rounding null to $0.000
+// would state a price Quorum does not know (DECISIONS, 2026-08-22).
+{
+  const { formatCost } = await import('../src/engine.js');
+  assert(formatCost({ cost_usd: 2.2056, input_tokens: 1, output_tokens: 2 }) === 'cost=$2.206', 'a priced step shows money');
+  const unpriced = formatCost({ cost_usd: null, input_tokens: 71600, output_tokens: 4218 });
+  assert(/n\/a/.test(unpriced) && /75818 tokens/.test(unpriced), 'an unpriced step shows tokens, not $0.000');
+  assert(!/\$0\.000/.test(unpriced), 'an unpriced step is never displayed as free');
+}
+
 // A role's default model must not leak to a step running on a different vendor's adapter.
 {
   const { resolveModel } = await import('../src/engine.js');

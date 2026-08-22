@@ -6,6 +6,7 @@
 //   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock]
 //   harness lint                            lint all flows
 //   harness adapters [--probe] [--json]     CLIs installed + no API keys; --probe also proves login
+//   harness validate <schema.json> <file…>  check artifacts against a contract; exit 1 on failure
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -14,6 +15,7 @@ import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
+import { validateFile } from '../src/contracts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -97,6 +99,11 @@ async function main() {
           console.log(`  ${c.teal(t.meta.id)} ${t.meta.title}  ${c.dim(`owner=${t.meta.owner} cost=$${cost.toFixed(2)} iter=${JSON.stringify(t.meta.iterations ?? {})}`)}`);
         }
       }
+      // The roll-up can only see vendors that report a price. Saying so is the whole point of the
+      // tokens-only decision (2026-08-22); an unlabelled total reads as the cost of the run.
+      if (tickets.some((t) => (t.meta.history ?? []).length)) {
+        console.log(c.dim('· cost = billed cost where the vendor reports one; steps on token-only vendors (codex) are not included'));
+      }
       return;
     }
     case 'lint': {
@@ -127,6 +134,21 @@ async function main() {
       if (!flags.probe) console.log(c.dim('· presence only — logins NOT verified; run `harness adapters --probe` before a real run'));
       if (flags.json) console.log(JSON.stringify({ probed: Boolean(flags.probe), adapters: report }, null, 2));
       return;
+    }
+    case 'validate': {
+      // Runs from a qa-red `type: script` step, so a contract failure is a red test rather than
+      // prose in a review. Exits non-zero on the first invalid file.
+      const [schemaFile, ...dataFiles] = rest;
+      if (!schemaFile || !dataFiles.length) die('usage: harness validate <schema.json> <file…>');
+      let bad = 0;
+      for (const f of dataFiles) {
+        let r;
+        try { r = validateFile(schemaFile, f); }
+        catch (e) { console.log(c.red('✗') + ` ${f}: ${e.message}`); bad += 1; continue; }
+        if (r.ok) console.log(c.green('✓') + ` ${f} matches ${r.schema}`);
+        else { bad += 1; console.log(c.red('✗') + ` ${f} violates ${r.schema}:\n    ${r.errors.join('\n    ')}`); }
+      }
+      process.exit(bad ? 1 : 0);
     }
     case 'run': {
       const [flowName, ticketId] = rest;

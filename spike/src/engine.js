@@ -61,7 +61,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   }
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
-    counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0 }, runId: nextRunId(ticket),
+    counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1 },
   };
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
@@ -181,7 +181,9 @@ async function runAgentStep(step, ctx, extra = {}) {
     ui.info(`${step.id}: ${files ? files.length + ' file(s) committed on ' + branch : 'no file changes on ' + branch}`);
   }
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${res.vendor} model=${model ?? '-'} verdict=${res.output.verdict ?? '-'} cost=${res.usage.cost_usd ?? '?'} ms=${res.ms}`);
-  ui.done(step.id, `${res.output.verdict ? 'verdict=' + res.output.verdict + ' ' : ''}cost=$${(res.usage.cost_usd ?? 0).toFixed(3)} ${res.ms}ms`);
+  // A vendor that reports no cost is unpriced, not free. Rounding null to $0.000 states a price
+  // Quorum does not know — see the tokens-only decision, 2026-08-22.
+  ui.done(step.id, `${res.output.verdict ? 'verdict=' + res.output.verdict + ' ' : ''}${formatCost(res.usage)} ${res.ms}ms`);
 
   // Verdict routing: first enum value = pass; anything else = fail → on_fail.
   if (step.output?.verdict) {
@@ -196,8 +198,18 @@ async function runAgentStep(step, ctx, extra = {}) {
 
 function countUsage(ctx, usage) {
   if (!usage) return;
+  // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
+  // say how much of its total it could not see. See the tokens-only decision, 2026-08-22.
+  if (usage.cost_usd == null) ctx.stats.unpriced += 1;
   ctx.stats.cost += usage.cost_usd ?? 0;
   ctx.stats.tokens += (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
+}
+
+// Money where the vendor reports it, tokens where it does not. Never both, never a guess.
+export function formatCost(usage) {
+  if (usage?.cost_usd != null) return `cost=$${usage.cost_usd.toFixed(3)}`;
+  const t = (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+  return `cost=n/a (${t} tokens, vendor reports no price)`;
 }
 
 function handleFail(step, ctx) {
@@ -251,7 +263,8 @@ function finish(ctx, stage, status, note) {
   }
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
-  ctx.ui.info(`run #${ctx.runId} ${status}: ${from} → ${ticket.meta.stage}   cost $${round(ctx.stats.cost)}  tokens ${ctx.stats.tokens}`);
+  const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
+  ctx.ui.info(`run #${ctx.runId} ${status}: ${from} → ${ticket.meta.stage}   cost $${round(ctx.stats.cost)}  tokens ${ctx.stats.tokens}${partial}`);
   return { status, stage: ticket.meta.stage, cost: ctx.stats.cost, runId: ctx.runId };
 }
 
