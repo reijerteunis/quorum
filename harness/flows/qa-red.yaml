@@ -1,0 +1,51 @@
+name: qa-red
+consumes: solutioned
+produces: red
+cross_vendor: required
+steps:
+  - id: scenarios
+    role: automation-qa
+    adapter: claude
+    model: sonnet
+    input: { backlog: [requirements/merged.md, solution/solution.md, solution/tasks.yaml] }
+    output: { write: qa/scenarios.md }
+    instructions: >
+      Write the test scenarios for this ticket: one Given/When/Then scenario per acceptance
+      criterion, plus edge cases the architecture reviewer or the solution call out. Tag
+      each scenario with the task id(s) it covers.
+
+  - id: write-tests
+    role: automation-qa
+    adapter: codex
+    worktree: true
+    branch: "harness/{id}/tests"
+    base: "harness/{id}/integration"
+    input: { backlog: [qa/scenarios.md, solution/tasks.yaml], harness: [architecture.md], repo: true }
+    instructions: >
+      Implement automated tests for every scenario against the contracts under contracts/.
+      Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
+      symbols. Do not implement production code. Summarise which files you created.
+
+  - id: prove-red
+    type: integrate
+    branches: ["harness/{id}/tests"]
+    into: "harness/{id}/integration"
+    run_tests: true
+    expect: fail
+    output: { writes: [qa/red-integration.md, qa/red-report.md] }
+    on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
+
+  - id: scenario-review
+    role: architecture-reviewer
+    adapter: claude
+    model: opus
+    input: { backlog: [requirements/merged.md, qa/scenarios.md, qa/red-report.md] }
+    output: { write: qa/scenario-review.md, verdict: approve|revise }
+    instructions: >
+      Check coverage: every acceptance criterion has at least one scenario and the red
+      report shows the suite failing on assertions (not compile errors). "revise" lists the
+      uncovered criteria or the compile failures.
+    on_fail: { goto: scenarios, max_iterations: 1, on_exhausted: gate }
+
+  - gate: human
+    reason: QA owner approves the failing suite

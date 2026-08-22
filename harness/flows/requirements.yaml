@@ -1,0 +1,35 @@
+name: requirements
+consumes: draft
+produces: requirements
+cross_vendor: required
+steps:
+  - parallel:
+    - id: pm-claude
+      role: product-manager
+      adapter: claude
+      model: opus
+      input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
+      output: { write: requirements/candidate-claude.md }
+    - id: pm-codex
+      role: product-manager
+      adapter: codex
+      input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
+      output: { write: requirements/candidate-codex.md }
+
+  - id: head-of-product
+    role: head-of-product
+    adapter: claude
+    model: opus
+    input: { backlog: [ticket.md, requirements/candidate-*.md] }
+    output: { write: requirements/merged.md, verdict: ready|needs-input }
+    instructions: >
+      Judge both candidate requirement documents for completeness, testability and
+      scope discipline. Produce ONE merged requirement: user story, acceptance criteria
+      (numbered, each independently testable), non-goals, open questions, and a short
+      "provenance" section noting which candidate contributed what. Verdict "ready" when
+      no open question blocks solutioning; otherwise "needs-input" with the blocking
+      questions as findings.
+    on_fail: { goto: head-of-product, max_iterations: 1, on_exhausted: gate }
+
+  - gate: human
+    reason: PM owner approves requirements/merged.md

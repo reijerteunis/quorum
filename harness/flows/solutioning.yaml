@@ -1,0 +1,59 @@
+name: solutioning
+consumes: requirements
+produces: solutioned
+cross_vendor: required
+steps:
+  - id: architect
+    role: principal-architect
+    adapter: codex
+    worktree: true
+    branch: "harness/{id}/contracts"
+    input: { backlog: [requirements/merged.md, solution/review.md], harness: [architecture.md, rules.md], repo: true }
+    output: { writes: [solution/draft.md] }
+    instructions: >
+      Produce the solution document for this requirement. It MUST contain: (1) chosen
+      approach and rejected alternatives, (2) a "Contracts" section listing every
+      interface, schema, stub or migration skeleton you created as files under
+      contracts/ in the repository worktree, (3) a "Tasks" section as a YAML block with
+      id, role (frontend|backend|data), title, contracts, depends_on — every task
+      references at least one contract. If a solution/review.md input is present, this
+      is a revision round: address every finding explicitly.
+
+  - id: architecture-review
+    role: architecture-reviewer
+    adapter: claude
+    model: opus
+    input: { backlog: [requirements/merged.md, solution/draft.md], harness: [architecture.md, rules.md], repo: true }
+    output: { write: solution/review.md, verdict: approve|revise }
+    instructions: >
+      Review the solution against the requirement and the architecture rules. Check that
+      every acceptance criterion maps to a task, every task references a contract, and
+      contracts are concrete enough to write failing tests against. "approve" only if you
+      would let QA start writing tests today.
+    on_fail: { goto: architect, max_iterations: 2, on_exhausted: gate }
+
+  - id: finalize
+    role: principal-architect
+    adapter: codex
+    input: { backlog: [solution/draft.md, solution/review.md] }
+    output: { write: solution/solution.md }
+    instructions: Produce the final solution document, incorporating the review. Keep the Contracts and Tasks sections verbatim unless the review changed them.
+
+  - id: tasks
+    role: principal-architect
+    adapter: codex
+    input: { backlog: [solution/solution.md] }
+    output: { write: solution/tasks.yaml }
+    instructions: >
+      Extract the Tasks section of the solution as a YAML document with exactly this shape
+      and nothing else: tasks: [{id, role, title, description, contracts: [paths], depends_on: [ids]}].
+      Put the YAML in "document" without code fences.
+
+  - gate: human
+    reason: Architect owner approves solution/solution.md and solution/tasks.yaml
+
+  - id: merge-contracts
+    type: integrate
+    branches: ["harness/{id}/contracts"]
+    into: "harness/{id}/integration"
+    output: { write: solution/integration.md }

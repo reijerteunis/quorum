@@ -1,0 +1,18 @@
+# Harness project config (spike). Truth lives in harness/; vendor files are compiled later.
+backlog:
+  layout: in-repo
+  path: backlog
+adapters:
+  claude:
+    bin: claude
+    # extraArgs: ["--allowedTools", "Read", "Bash(git diff *)"]
+  codex:
+    bin: codex
+    # extraArgs: ["--full-auto"]
+budget:
+  per_run_usd: 10
+  per_ticket_usd: 60
+commands:
+  # Used by integrate steps with run_tests: true. Until packages/core lands (M2) the runnable
+  # code is the spike, so the suite is the spike's mock-adapter smoke test.
+  test: npm test --prefix spike
