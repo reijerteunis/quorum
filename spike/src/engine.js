@@ -514,8 +514,17 @@ const ENV_FAILURES = [
 ];
 
 export function environmentFailure(out = '') {
+  // Only unhandled output counts. A suite is entitled to *print* these signatures — a test that
+  // asserts "a broken environment is not a red phase" names one in its own pass message, and
+  // matching that rejected a perfectly good red phase (Q-0004, run 6). A line that reports a test
+  // result is proof the suite ran, so it cannot also be proof it never started.
+  const text = String(out)
+    .split('\n')
+    .map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))          // colour codes hide the leading marker
+    .filter((l) => !/^\s*(?:[✓✗×√]|(?:not )?ok\s|#|\d+\)\s)/.test(l))
+    .join('\n');
   for (const [re, describe] of ENV_FAILURES) {
-    const m = out.match(re);
+    const m = text.match(re);
     if (m) return describe(m);
   }
   return null;

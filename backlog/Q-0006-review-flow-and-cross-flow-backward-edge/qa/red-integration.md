@@ -1,7 +1,10 @@
-# Integration — run 5, iteration 2
+# Integration — run 6, iteration 1
 
 Target: `harness/Q-0006/integration`
 
+- ✓ base `main`
 - ✓ harness/Q-0006/tests
 
-Tests: `npm test --prefix spike` → exit 1 (expected fail) → OK
+Install: `npm install --prefix spike --no-audit --no-fund --silent` → exit 0
+
+Tests: `npm test --prefix spike` → exit 1 (expected fail) → INVALID

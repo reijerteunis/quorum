@@ -263,6 +263,23 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   for (const out of realRed) {
     assert(environmentFailure(out) === null, `a genuine assertion failure is still red: ${out.split('\n')[0].slice(0, 44)}`);
   }
+
+  // A suite is entitled to print these signatures. This very block does, and matching a test's
+  // own pass message rejected a real red phase on Q-0006 run 6 — the detector failed on the
+  // output of the tests written to prove it works.
+  const inResultLines = [
+    "✓ a broken environment is not a red phase: Error: Cannot find package 'yaml' imported from /x/bin.js",
+    "\x1b[32m✓\x1b[0m handled: Cannot find module './nope.js'",
+    'ok 4 - reports ERR_MODULE_NOT_FOUND',
+    "1) rejects SyntaxError: Unexpected token '||'",
+  ];
+  for (const line of inResultLines) {
+    assert(environmentFailure(`✓ setup\n${line}\n✓ done`) === null,
+      `a signature quoted inside a test result is not an environment failure: ${line.replace(/\x1b\[[0-9;]*m/g, '').slice(0, 40)}`);
+  }
+  // But the same signature on its own line — an actual crash — must still be caught.
+  assert(environmentFailure("✓ setup\nnode:internal/modules/esm/resolve\nError: Cannot find package 'yaml' imported from /x/bin.js") !== null,
+    'an unhandled crash is still an environment failure even after some checks passed');
 }
 
 // qa-red proves a red phase by writing NEW test files. A runner that does not discover them
