@@ -7,7 +7,7 @@
     "harness": "bin/harness.js"
   },
   "scripts": {
-    "test": "node test/smoke.js",
+    "test": "node test/run.js",
     "lint": "node bin/harness.js lint"
   },
   "engines": {

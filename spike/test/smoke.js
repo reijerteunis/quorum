@@ -163,6 +163,25 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
 }
 
+// qa-red proves a red phase by writing NEW test files. A runner that does not discover them
+// leaves the suite green and `integrate --expect fail` loops to a gate having proved nothing.
+{
+  const rdir = path.join(tmp, 'runner-check');
+  fs.mkdirSync(rdir, { recursive: true });
+  fs.copyFileSync(path.join(root, 'test', 'run.js'), path.join(rdir, 'run.js'));
+  fs.writeFileSync(path.join(rdir, 'smoke.js'), 'process.exit(0);\n');
+  const runner = () => spawnSync(process.execPath, [path.join(rdir, 'run.js')], { encoding: 'utf8' });
+  assert(runner().status === 0, 'test runner exits 0 when every discovered file passes');
+
+  fs.writeFileSync(path.join(rdir, 'new-red.js'), 'process.exit(1);\n');
+  const red = runner();
+  assert(red.status === 1, 'a newly added failing test file turns the suite red');
+  assert(/new-red\.js/.test(red.stdout + red.stderr), 'the runner names the file that failed');
+
+  fs.rmSync(path.join(rdir, 'new-red.js'));
+  assert(runner().status === 0, 'the suite goes green again once the failing file is gone');
+}
+
 // Contracts must be executable, or qa-red's red phase is prose. checkAgainstSchema cannot express
 // oneOf / if-then / format / nested required; the contract validator must (DECISIONS 2026-08-22).
 {
