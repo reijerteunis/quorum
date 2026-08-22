@@ -8,6 +8,7 @@ adapters:
     # extraArgs: ["--allowedTools", "Read", "Bash(git diff *)"]
   codex:
     bin: codex
+    # retry: { attempts: 5, base_delay_ms: 5000 }   # transient network/5xx only; never auth or model errors
     # extraArgs: ["--full-auto"]
 budget:
   per_run_usd: 10

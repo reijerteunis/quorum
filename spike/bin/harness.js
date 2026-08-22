@@ -51,7 +51,12 @@ const ui = {
   warn: (m) => console.log(c.amber('!') + ' ' + m),
   step: (id, m) => console.log(c.teal('▸') + ' ' + c.bold(id) + ' ' + c.dim(m)),
   done: (id, m) => console.log(c.green('✓') + ' ' + c.bold(id) + ' ' + c.dim(m)),
-  trace: (id, e) => { if (flags.verbose && e.type === 'stdout') console.log(c.dim(`  [${id}] ${e.line.slice(0, 160)}`)); if (e.type === 'spawn') console.log(c.dim(`  [${id}] $ ${e.cmd}`)); },
+  trace: (id, e) => {
+    if (flags.verbose && e.type === 'stdout') console.log(c.dim(`  [${id}] ${e.line.slice(0, 160)}`));
+    if (e.type === 'spawn') console.log(c.dim(`  [${id}] $ ${e.cmd}`));
+    // Always shown, verbose or not: a run that goes quiet for 30s should say why.
+    if (e.type === 'retry') console.log(c.amber('↻') + ` ${id}: ${e.reason} — attempt ${e.attempt}/${e.of} failed, retrying in ${Math.round(e.delayMs / 1000)}s` + c.dim(`\n    ${e.message}`));
+  },
   gate: async ({ kind, reason, ticketDir, retry }) => {
     console.log('\n' + c.amber('■ GATE') + ` (${kind}) ${reason}`);
     console.log(c.dim(`  inspect: ${ticketDir}`));
