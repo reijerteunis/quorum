@@ -163,6 +163,16 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
 }
 
+// Tokens-only: a vendor that reports no cost is unpriced, not free. Rounding null to $0.000
+// would state a price Quorum does not know (DECISIONS, 2026-08-22).
+{
+  const { formatCost } = await import('../src/engine.js');
+  assert(formatCost({ cost_usd: 2.2056, input_tokens: 1, output_tokens: 2 }) === 'cost=$2.206', 'a priced step shows money');
+  const unpriced = formatCost({ cost_usd: null, input_tokens: 71600, output_tokens: 4218 });
+  assert(/n\/a/.test(unpriced) && /75818 tokens/.test(unpriced), 'an unpriced step shows tokens, not $0.000');
+  assert(!/\$0\.000/.test(unpriced), 'an unpriced step is never displayed as free');
+}
+
 // A role's default model must not leak to a step running on a different vendor's adapter.
 {
   const { resolveModel } = await import('../src/engine.js');

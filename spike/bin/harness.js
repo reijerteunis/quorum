@@ -97,6 +97,11 @@ async function main() {
           console.log(`  ${c.teal(t.meta.id)} ${t.meta.title}  ${c.dim(`owner=${t.meta.owner} cost=$${cost.toFixed(2)} iter=${JSON.stringify(t.meta.iterations ?? {})}`)}`);
         }
       }
+      // The roll-up can only see vendors that report a price. Saying so is the whole point of the
+      // tokens-only decision (2026-08-22); an unlabelled total reads as the cost of the run.
+      if (tickets.some((t) => (t.meta.history ?? []).length)) {
+        console.log(c.dim('· cost = billed cost where the vendor reports one; steps on token-only vendors (codex) are not included'));
+      }
       return;
     }
     case 'lint': {
