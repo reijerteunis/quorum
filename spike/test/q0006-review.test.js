@@ -333,6 +333,27 @@ test('EC-20 every shipped exhaustible flow proves --auto cannot bypass exhaustio
   assert.doesNotMatch(read(path.join(spike, 'test/smoke.js')), /--auto advances it/);
 });
 
+test('SC-42 backend role allow-list includes repository-root Markdown and agrees with architecture', () => {
+  const role = read(path.join(shipped, 'roles/developer-backend.md'));
+  const architecture = read(path.join(shipped, 'architecture.md'));
+  const frontmatter = parseFrontmatter(role).meta;
+
+  assert.ok(
+    Array.isArray(frontmatter.paths) && frontmatter.paths.includes('*.md'),
+    'developer-backend frontmatter must allow repository-root Markdown files',
+  );
+  assert.match(
+    role,
+    /(?:repository-root|root)[^\n]*Markdown[^\n]*README\.md|README\.md[^\n]*(?:repository-root|root)/i,
+    'developer-backend body must name repository-root Markdown including README.md',
+  );
+  assert.match(
+    architecture,
+    /backend[^\n]*\*\.md[^\n]*README\.md|backend[^\n]*README\.md[^\n]*\*\.md/i,
+    'architecture role table must grant backend the same repository-root Markdown scope',
+  );
+});
+
 function quietUi() {
   return { info() {}, warn() {}, step() {}, done() {}, trace() {}, async gate() { throw new Error('gate must not be reached'); } };
 }
