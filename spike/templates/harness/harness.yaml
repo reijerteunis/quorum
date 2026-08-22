@@ -12,5 +12,12 @@ adapters:
 budget:
   per_run_usd: 10
   per_ticket_usd: 60
+repo:
+  # The branch ticket work integrates against. `integrate` merges it into the ticket branch
+  # before testing, so a long-running ticket never builds on the base it was cut from.
+  base_branch: main
 commands:
+  # Run in the integration worktree before `test` — a worktree has no node_modules, and a suite
+  # that cannot start would otherwise satisfy `expect: fail` on every ticket.
+  install: npm install --no-audit --no-fund --silent
   test: npm test          # used by integrate steps with run_tests: true

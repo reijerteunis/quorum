@@ -67,6 +67,16 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
 
+  // Ctrl-C at a gate used to leave no terminal line in runs.log and no persisted counters, so an
+  // interrupted run silently handed its iteration budget back — an undocumented way to buy
+  // unlimited retries, which defeats the bound the design rests on. See Q-0004.
+  const onSignal = (sig) => {
+    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
+    process.exit(130);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+
   const steps = flow.steps;
   let i = 0;
   try {
@@ -93,6 +103,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     // never shows a run that started and then simply stopped existing. See Q-0001.
     finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
     throw e;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
   return finish(ctx, flow.produces, 'completed');
 }
@@ -133,9 +146,18 @@ async function runAgentStep(step, ctx, extra = {}) {
   let branch = null;
   if (step.worktree && !ctx.dry) {
     branch = interpolate(step.branch ?? `harness/${ticket.meta.id}/${step.id}`, ctx.vars);
-    cwd = ensureWorktree(ctx.repoDir, branch, interpolate(step.base ?? ticket.meta.branch, ctx.vars));
+    const stepBase = interpolate(step.base ?? ticket.meta.branch, ctx.vars);
+    const existed = branchExists(ctx.repoDir, branch);
+    cwd = ensureWorktree(ctx.repoDir, branch, stepBase);
     ui.info(`${step.id}: worktree ${cwd} (${branch})`);
-    if (extra.syncBase) { const m = mergeInto(cwd, interpolate(step.base ?? ticket.meta.branch, ctx.vars)); if (!m.ok) ui.warn(`${step.id}: could not sync base: ${m.conflicts.join(',')}`); }
+    // A branch created on an earlier round is stale: its base has moved on since. Sync whenever
+    // it already existed, not only on fan-out retries, or the agent works against yesterday's
+    // tree and appears to revert whatever landed since. See Q-0004.
+    if (existed || extra.syncBase) {
+      const m = mergeInto(cwd, stepBase);
+      if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
+      else ui.warn(`${step.id}: could not sync base: ${m.conflicts.join(',')}`);
+    }
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
 
@@ -222,7 +244,11 @@ function handleFail(step, ctx) {
     return { goto: f.goto };
   }
   ctx.ui.warn(`${step.id}: loop exhausted (${f.max_iterations}) → human gate`);
-  return runGate({ gate: 'human', reason: `loop exhausted at ${step.id}; choose: advance (accept as is), retry (one more ${f.goto}), abort` , retryTarget: f.goto }, ctx);
+  return runGate({
+    gate: 'human',
+    reason: `loop exhausted at ${step.id} (${counter} = ${n}, limit ${f.max_iterations}); choose: advance (accept as is), retry (exactly one more ${f.goto}), abort`,
+    retryTarget: f.goto, retryCounter: counter, retryMax: f.max_iterations,
+  }, ctx);
 }
 
 async function runGate(step, ctx) {
@@ -232,7 +258,16 @@ async function runGate(step, ctx) {
   const answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=${kind} answer=${answer}`);
   if (answer === 'advance') return null;
-  if (answer === 'retry' && step.retryTarget) { ctx.counters = {}; return { goto: step.retryTarget }; }
+  if (answer === 'retry' && step.retryTarget) {
+    // Exactly one more traversal, and only for this loop. Setting the counter to max_iterations
+    // makes the retry's own goto the grace traversal: the next failure increments past the limit
+    // and re-presents this gate. Clearing every counter (the old behaviour) refunded unrelated
+    // loops a ticket had already spent — a qa budget restored by a review retry — and granted
+    // max_iterations+1 further traversals rather than one. See Q-0004 / DECISIONS 2026-08-22.
+    if (step.retryCounter != null) ctx.counters[step.retryCounter] = step.retryMax;
+    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=retry counter=${step.retryCounter} set=${step.retryMax} (one further traversal authorised)`);
+    return { goto: step.retryTarget };
+  }
   return { abort: true };
 }
 
@@ -403,24 +438,56 @@ async function runIntegrate(step, ctx) {
   branches = branches.filter((b) => branchExists(ctx.repoDir, b));
   const notes = [`# Integration — run ${ctx.runId}, iteration ${ctx.vars.iter}`, '', `Target: \`${into}\``, ''];
   const conflicts = [];
+  // Catch the ticket branch up with the repository's base branch first. A ticket open for more
+  // than a day otherwise integrates against the base it was cut from, and work landed on the base
+  // in the meantime looks like the ticket reverting it. See Q-0004.
+  const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+  if (base && base !== into && branchExists(ctx.repoDir, base)) {
+    const m = mergeInto(dir, base);
+    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'CONFLICT syncing base'} ${base}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
+    if (!m.ok) conflicts.push(base);
+  }
   for (const b of branches) {
     const m = mergeInto(dir, b);
     notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
     ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'CONFLICT'} ${b}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
     if (!m.ok) conflicts.push(b);
   }
-  let testsOk = true; let out = '';
+  let testsOk = true; let out = ''; let envError = null;
   const cmd = step.run_tests === true ? ctx.config.commands?.test ?? 'npm test' : step.run_tests ? interpolate(step.run_tests, { ...ctx.vars, ...flatten(ctx.config.commands ?? {}, 'cmd') }) : null;
-  if (cmd && !conflicts.length) {
+  // A worktree is a fresh checkout with no node_modules. Without this the test command dies on a
+  // missing dependency, which `expect: fail` happily reads as proof of red. See Q-0004.
+  const install = cmd ? ctx.config.commands?.install : null;
+  if (install && !conflicts.length) {
+    const r = runCommand(install, dir);
+    notes.push('', `Install: \`${install}\` → exit ${r.code}`);
+    ui[r.code === 0 ? 'info' : 'warn'](`${step.id}: install exit ${r.code}`);
+    if (r.code !== 0) { envError = `install failed (\`${install}\` exited ${r.code})`; out = r.out; }
+  }
+  if (cmd && !conflicts.length && !envError) {
     const r = runCommand(cmd, dir);
     out = r.out;
     const expect = step.expect ?? 'pass';
-    testsOk = expect === 'fail' ? r.code !== 0 : r.code === 0;
-    notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${testsOk ? 'OK' : 'NOT OK'}`);
-    ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}`);
+    const broken = environmentFailure(out);
+    if (broken) {
+      // Non-zero because the suite could not start is not a red phase. Accepting it would let a
+      // missing dependency satisfy `expect: fail` on every ticket, forever.
+      envError = `the suite never ran — ${broken}`;
+      testsOk = false;
+    } else {
+      testsOk = expect === 'fail' ? r.code !== 0 : r.code === 0;
+    }
+    notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${envError ? 'INVALID' : testsOk ? 'OK' : 'NOT OK'}`);
+    ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
   for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
-  backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (testsOk ? 'ok' : 'fail') : '-'}`);
+  backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
+  // Looping back to the author cannot fix a broken environment, so stop with the reason rather
+  // than burning the step's iteration budget on it.
+  if (envError) {
+    throw new FlowError(`${step.id}: ${envError}. The report is on disk, but it is not evidence of anything — fix the environment (commands.install in harness.yaml) and re-run.`);
+  }
   if (conflicts.length || !testsOk) {
     ctx.lastIntegration = notes.join('\n') + '\n\n' + out.slice(-3000);
     // Failing set: conflicted tasks; if tests failed without conflicts, every fanned task (the agents get the test output).
@@ -431,6 +498,26 @@ async function runIntegrate(step, ctx) {
   }
   ui.done(step.id, `${branches.length} branch(es) on ${into}${cmd ? ', tests ' + (step.expect === 'fail' ? 'red as expected' : 'green') : ''}`);
   ctx.failingTasks = null;
+  return null;
+}
+
+// Signatures of a suite that could not start, as opposed to one that ran and failed. Deliberately
+// narrow: `npm ERR!` is excluded because npm prints it for every ordinary test failure, and a
+// false positive here would reject a legitimate red phase. See Q-0004.
+const ENV_FAILURES = [
+  [/Cannot find package '([^']+)'/, (m) => `missing dependency "${m[1]}"`],
+  [/Cannot find module '([^']+)'/, (m) => `missing module "${m[1]}"`],
+  [/ERR_MODULE_NOT_FOUND/, () => 'a module could not be resolved'],
+  [/\bSyntaxError:\s*(.+)/, (m) => `the test file does not parse (${m[1].trim().slice(0, 80)})`],
+  [/: command not found/, () => 'the test command is not installed'],
+  [/ERR_REQUIRE_ESM/, () => 'a module was loaded with the wrong module system'],
+];
+
+export function environmentFailure(out = '') {
+  for (const [re, describe] of ENV_FAILURES) {
+    const m = out.match(re);
+    if (m) return describe(m);
+  }
   return null;
 }
 
