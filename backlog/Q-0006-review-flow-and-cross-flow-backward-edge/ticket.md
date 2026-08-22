@@ -1,7 +1,7 @@
 ---
 id: Q-0006
 title: Review flow — engine, counters and the backward edge
-stage: solutioned
+stage: red
 owner: ruud
 repos: []
 branch: harness/Q-0006/integration
@@ -9,6 +9,7 @@ priority: p2
 created: 2026-08-22
 iterations:
   solutioning.architecture-review: 3
+  qa-red.scenario-review: 1
 history:
   - stage: requirements
     run: 1
@@ -25,6 +26,11 @@ history:
     flow: solutioning
     at: 2026-08-22T18:46:11.606Z
     cost: 3.887
+  - stage: red
+    run: 8
+    flow: qa-red
+    at: 2026-08-22T21:52:29.658Z
+    cost: 9.094
 ---
 The seven-stage SDLC has no review stage yet: a ticket reaching `green` has passing tests but
 nobody has read the diff. This ticket adds `review.yaml` — a panel of reviewers on different
