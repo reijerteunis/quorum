@@ -5,7 +5,7 @@
   "type": "module",
   "bin": { "harness": "bin/harness.js" },
   "scripts": {
-    "test": "node test/smoke.js",
+    "test": "node test/smoke.js && node --test test/q0006-review.test.js",
     "lint": "node bin/harness.js lint"
   },
   "engines": { "node": ">=20" },
