@@ -1,14 +1,15 @@
 ---
 id: Q-0033
 title: Review flow surface — CLI, lint, config, shipped assets and docs
-stage: requirements
+stage: solutioned
 owner: ruud
 repos: []
 branch: harness/Q-0033/integration
 priority: p2
 created: 2026-08-22
 depends_on: Q-0006
-iterations: {}
+iterations:
+  solutioning.architecture-review: 1
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-08-22T22:21:48.757Z
     cost: 4.485
+  - stage: solutioned
+    run: 2
+    flow: solutioning
+    status: completed
+    stage_before: requirements
+    stage_after: solutioned
+    at: 2026-08-22T22:50:12.672Z
+    cost: 6.232
 ---
 The second half of the review flow, split out of Q-0006 on 2026-08-22 because thirty acceptance
 criteria in one ticket hit the iteration bound at every stage. Q-0006 builds the engine — round
