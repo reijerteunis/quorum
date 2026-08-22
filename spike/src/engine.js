@@ -302,7 +302,18 @@ export function flattenSteps(steps) { return steps.flatMap((s) => (s.parallel ? 
 export function writesOf(step) { const o = step.output ?? {}; return [...(o.write ? [o.write] : []), ...(o.writes ?? [])]; }
 export function interpolate(s, vars) { return String(s).replace(/\{([\w.]+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`)); }
 function globMatch(pattern, p) { return new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(p) || (pattern.endsWith('/') && p.startsWith(pattern)); }
-function nextRunId(ticket) { return (ticket.meta.history ?? []).reduce((m, h) => Math.max(m, h.run ?? 0), 0) + 1; }
+// History only gains an entry when a run completes or regresses, so deriving the id from it alone
+// hands a failed run's number to the next one and the audit trail cannot tell them apart.
+// runs.log is the append-only record of every attempt, successful or not. See Q-0001.
+function nextRunId(ticket) {
+  const fromHistory = (ticket.meta.history ?? []).reduce((m, h) => Math.max(m, h.run ?? 0), 0);
+  let fromLog = 0;
+  const logPath = path.join(ticket.dir, 'runs.log');
+  if (fs.existsSync(logPath)) {
+    for (const m of fs.readFileSync(logPath, 'utf8').matchAll(/\brun=(\d+)\b/g)) fromLog = Math.max(fromLog, Number(m[1]));
+  }
+  return Math.max(fromHistory, fromLog) + 1;
+}
 const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------

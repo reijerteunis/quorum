@@ -95,6 +95,11 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(!fs.existsSync(at('requirements/candidate-claude.md')), 'failed parallel sibling wrote nothing');
   assert(/ failed /.test(fs.readFileSync(at('runs.log'), 'utf8')), 'failed run is recorded in runs.log');
   assert(fs.readFileSync(at('ticket.md'), 'utf8').includes('stage: draft'), 'failed run does not advance the stage');
+
+  // A failed run writes no history entry, so the next run must not reuse its id.
+  run(['run', 'requirements', 'T-0003', '--adapter', 'mock', '--auto']);
+  const ids = [...fs.readFileSync(at('runs.log'), 'utf8').matchAll(/\brun=(\d+) flow=/g)].map((m) => m[1]);
+  assert(new Set(ids).size === ids.length, `each run attempt gets its own id (saw ${ids.join(', ')})`);
 }
 
 // Auth failures are translated into one actionable line instead of a vendor stack trace.
