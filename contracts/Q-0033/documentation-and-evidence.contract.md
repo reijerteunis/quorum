@@ -24,11 +24,17 @@ README is outside this contract; Q-0028 owns its first-run rewrite.
 
 ## Automated evidence
 
-`npm test --prefix spike` is deterministic and covers the asset parity, init discovery
-and fallback, all whole-directory lint fixtures, run-preflight ordering and zero side
-effects, ordered gate answers, non-interactive failures, `--auto` exhaustion protection,
-and unchanged board display/cost behavior. Existing API-key refusal and no-pinned-Codex-
-model assertions remain green. Tests requiring a gate provide explicit answers.
+The qa-red stage writes deterministic tests before development; development tasks do not
+edit tests. `npm test --prefix spike` covers asset parity; init discovery and fallback,
+including a named unborn non-`main` branch and preservation of the existing
+`commands.install` comment; all whole-directory lint fixtures; run-preflight ordering and
+zero side effects; ordered gate answers; non-interactive failures; `--auto` exhaustion
+protection; and unchanged board display/cost behavior. Using the frozen mock switches,
+the shipped review flow also traverses `green -> red` through
+`targetFlow.consumes` under `MOCK_ALWAYS_FAIL` and `green -> reviewed` under
+`MOCK_ALWAYS_PASS`. Existing API-key refusal and no-pinned-Codex-model assertions remain
+green. Tests requiring a gate provide explicit answers, and exhaustion retry asserts the
+E-1 value `iterations.review = 3`.
 
 ## Manual closing evidence
 
@@ -38,4 +44,3 @@ the Q-0033 ticket folder that both reviewers received the harness-materialised d
 plan/read-only sandbox and that the verdict applied the severity threshold. This task is
 manual, subscription-consuming, and never runs during developer fan-out or automated
 tests. No API key is introduced.
-

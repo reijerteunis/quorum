@@ -34,9 +34,12 @@ and adopter-template developer roles intentionally differ.
 ## Frozen-input guard
 
 The surface implementation and its tests do not modify `contracts/Q-0006/**` relative to
-commit `5d16e06`. The executable guard is:
+commit `5d16e06`. When the commit is reachable, the executable guard is:
 
 ```sh
 git diff --quiet 5d16e06 -- contracts/Q-0006/
 ```
 
+If `5d16e06` is unreachable in a shallow clone, the guard skips and prints a reason naming
+the unavailable baseline; it does not expose an unhandled Git error or claim that parity
+was checked.

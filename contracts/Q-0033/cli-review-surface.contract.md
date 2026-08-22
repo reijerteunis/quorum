@@ -18,9 +18,12 @@ Both shipped `harness.yaml` files explicitly contain the keys and a one-line exp
 comment for each. `harness init [dir]` copies the template, then attempts to discover the
 current branch of `dir`. If Git returns a named current branch, only
 `repo.base_branch` is replaced with that name; `repo.max_diff_bytes` remains `200000` and
-all other template values remain unchanged. Outside Git, or for detached, unborn, or
-otherwise unnameable HEAD, discovery is best-effort: init retains `main`, exits zero, and
-does not expose Git stderr.
+all other template values remain unchanged. The edit preserves the copied YAML's comments
+and formatting, including the one-line comments on both `repo` keys and the existing
+`commands.install` comment. An unborn HEAD whose current branch Git can name is a discovery
+success. Outside Git, or for detached, unborn, or other HEAD states whose current branch Git
+cannot name, discovery is best-effort: init retains `main`, exits zero, and does not expose
+Git stderr.
 
 ## Whole-directory validation
 
@@ -53,8 +56,9 @@ flows are never mutated to create a fixture.
 
 ## Gate-answer input
 
-`--gate-answer advance|retry|abort` is repeatable. Parsing preserves all occurrences and
-the gate callback consumes exactly one answer per encounter, in command-line order.
+`--gate-answer advance|retry|abort` is repeatable. Parsing accumulates all occurrences of
+this flag only; all other flags retain their existing last-wins behavior. The gate callback
+consumes exactly one answer per encounter, in command-line order.
 Values are exact words after trimming and case normalization; prefixes are not accepted.
 An answer invalid for the current gate is an error rather than an implicit alternative.
 
@@ -63,9 +67,12 @@ stdin, or missing, empty, or invalid input, the command exits non-zero with a di
 naming the gate and does not block or default. `--auto` does not provide an answer for an
 engine-presented exhaustion gate of kind `human-locked`.
 
+At that exhaustion gate, `retry` persists `iterations.review = max_iterations`, which is
+`3` for the shipped limit. Q-0006 errata E-1 supersedes the frozen runtime contract's
+`max_iterations - 1` / persisted `2` clause; a test expecting `2` is incorrect.
+
 ## Observable compatibility
 
 `harness board` receives no production change. It continues to print persisted
 `iterations.review` in `iter={...}` and sums a run's cost once: the exhaustion event is
 zero-cost and the terminal event carries the measured cost.
-
