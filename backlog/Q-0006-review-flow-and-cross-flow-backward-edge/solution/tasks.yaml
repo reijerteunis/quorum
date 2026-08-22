@@ -16,7 +16,7 @@ tasks:
     title: Implement review execution, persistence, gates, and rework
     description: >
       Own spike/src/engine.js, spike/src/backlog.js, spike/src/git.js,
-      spike/src/fanout.js, harness/flows/development.yaml, and its template
+      spike/src/fanout.js, spike/src/adapters/index.js, harness/flows/development.yaml, and its template
       copy. Implement variables, diff materialisation, derived regression, exact
       retry and exhaustion semantics, dependency-free verdict/findings
       validation for all adapters, atomic panel failure, history and cost

@@ -1,232 +1,256 @@
-# Q-0006 — Scenario review (qa-red gate), round 2
+# Q-0006 — Scenario review, round 4
 
-*Architecture review of `qa/scenarios.md` and `qa/red-report.md` against `requirements/merged.md`,
-`solution/solution.md` and the frozen contracts on `harness/Q-0006/contracts`.
-Verdict: **revise**.*
+Reviewing `qa/scenarios.md` (round 3 revision) and `qa/red-report.md` against
+`requirements/merged.md` (30 ACs), `contracts/Q-0006/**`, `solution/tasks.yaml` (post-split),
+`solution/errata.md` and the actual test file on `harness/Q-0006/integration`.
 
-## What was checked
+**Verdict: approve.**
 
-Two questions, per the gate's charter: does every acceptance criterion have at least one scenario,
-and does the red report show the suite failing on assertions rather than on compilation? I also
-traced the report back to the tree that produced it — the integration worktree, the test file on
-`harness/Q-0006/tests`, that branch's merge-base against `main`, and the frozen contracts — because
-a red report is only as good as the tree it ran in.
+This gate asks two questions. Every acceptance criterion has at least one scenario, and the red
+report shows the suite failing on assertions rather than compile errors. Both are satisfied, and
+unlike rounds 2 and 3 there is nothing left in this document to re-cut.
 
-`scenarios.md` has been rewritten since round 1: the EC-* block is gone, replaced by SC-31…SC-42,
-and every one of the 42 scenarios now carries a `**Tasks:**` line. That closes round 1's N1 and N3.
-`red-report.md` has not been touched.
+Everything below the verdict is either evidence for it or a hand-off. Two of the hand-offs are
+blockers **for the fan-out**, not for this document — they are against `solution/tasks.yaml` and
+`harness/roles/`, they cannot be fixed by a further QA round, and one of them is round 3's B3
+still open. They are stated as sharply as blockers because a developer agent will hit them within
+its first write, but they do not make the red phase untrustworthy, which is what this verdict is
+about.
 
-## Coverage: passes
+---
 
-`SC-01` … `SC-30` map one-to-one onto AC-1 … AC-30. No criterion is orphaned, and the mapping is
-substantive rather than nominal — SC-12 covers both halves of AC-12 (absent key → `main`, present
-but unresolvable ref → stop before spawning), SC-16 covers both the exact bound and the four invalid
-`max_iterations` forms, SC-22 covers all five terminal outcomes plus the reconstructability clause.
+## Coverage: 30 of 30
 
-`SC-31` … `SC-42` carry the reviewer rounds' findings and the solution's decisions. They remain the
-strongest part of the document: SC-39 (exhaustion costs zero, terminal cost recorded exactly once)
-and SC-34 (preflight validates the pristine on-disk flows before the `--adapter mock` substitution)
-are scenarios that only get written by someone who thought about how the thing fails.
+`AC-1` … `AC-30` each carry a scenario, in requirement order, plus `EDGE-1` … `EDGE-17` for
+behaviour the architecture review and the frozen contracts named but the requirement did not
+number. No criterion is unaddressed and none is deferred as untestable.
 
-The closing note — that real-CLI diff behaviour and reviewer-quality judgment are deliberately not
-automated, because faking determinism or spending the user's subscription inside a test run both
-violate BYOS test isolation — is the right call, stated in the right place.
+Round 3's three findings against this document are closed, and closed correctly:
 
-That is the half that passes. Everything below is why the gate does not open.
+- **B5** → `EDGE-17`. `review-runtime.contract.md` §Diff input requires a missing
+  `harness/<id>/integration` ref to fail before any adapter spawns, naming the ticket id, the
+  expected ref, and that review requires an integrated branch, with wording distinct from the
+  missing-base-ref error. The new scenario states all four properties, and the test at
+  `spike/test/q0006-engine.js:119` asserts the distinctness negatively
+  (`!/repo\.base_branch/.test(e.message)`) rather than by hoping the strings differ. That is the
+  right shape.
+- **N1** → AC-3 now says outright that it has no group of its own and why: an unsupported step
+  field would fail the AC-4/AC-6/AC-7 end-to-end runs outright. Discharge by a stronger test is
+  legitimate; leaving it unstated was the defect.
+- **N2** → EDGE-4's Then clause is now falsifiable: truncated byte length ≤ `max_diff_bytes`, and
+  no U+FFFD introduced that the source diff did not already carry. The test implements exactly
+  that (`Buffer.byteLength(patch) <= 32`, `patch.includes('�') === false`) against a fixture
+  containing `🧪`, so the boundary is genuinely exercised rather than round-tripped.
 
-## Blockers
+**Split accounting.** The seven criteria with no test group — AC-1, AC-2, AC-19, AC-25, AC-26,
+AC-30, and AC-3 by design — are precisely the ones tagged `Q0006-cli-lint` / `Q0006-assets-docs`,
+which E-2 moved to Q-0033. That is the split working, not a gap. I checked the inverse direction
+too: of the scenarios tagged `Q0006-runtime` or `Q0006-mock-switch`, only `EDGE-15` has no group
+of its own, and its engine-side half is in fact asserted at `q0006-engine.js:134`
+(`parallel.every((s) => !s.worktree && !s.instructions)`) — a labelling omission, not a coverage
+one. See N2 below.
 
-### B1 — The red report is an environment failure, not a red phase, and it has not changed
+## The red phase is red, and red for the right reason
 
-```
-Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'yaml' imported from
-  .../.harness/worktrees/harness__Q-0006__integration/spike/bin/harness.js
-✗ init
-```
+The environment is healthy, which is the thing Q-0004 taught this project to check first.
+`qa/red-integration.md` records `npm install --prefix spike` exit 0 and a base sync against
+`main`; the smoke suite is fully green in the same run, including the `ajv` contract-validator
+checks and `harness validate`'s exit codes — so `yaml`, `ajv` and `ajv-formats` all resolve, and
+`test/run.js` discovered both files. Nothing here is Q-0004's defect 1 or 3 wearing a disguise.
 
-That worktree has no `spike/node_modules`. The error is thrown by the *harness binary* spawned as a
-child process by the pre-existing smoke suite, and `✗ init` is smoke check #1 (`smoke.js:20`) —
-nothing in `q0006-review.test.js` is involved. The test script on that branch is
+All 13 scenario groups executed. Every one of the eight imports at the top of the test file
+resolved, including `checkAgainstSchema` from `../src/adapters/index.js` and `mockAdapter` from
+`../src/adapters/mock.js`. There is no `ERR_MODULE_NOT_FOUND`, no `SyntaxError`, and no
+unhandled crash — the failure mode is 9 groups each reporting an assertion diff.
 
-```
-"test": "node test/smoke.js && node --test test/q0006-review.test.js"
-```
+I traced each failure to the specific missing behaviour, because "it failed" and "it failed for
+the reason the scenario claims" are different facts:
 
-so the `&&` short-circuited on smoke's non-zero exit and **not one Q-0006 assertion ever ran**. The
-report contains zero evidence about any acceptance criterion. It is the report you would get from a
-branch on which no work had been done at all.
+| Group | Assertion | Missing behaviour |
+| --- | --- | --- |
+| AC-7/AC-28/EDGE-3 | `'changes-requested' !== 'approve'` | `MOCK_ALWAYS_PASS` does not exist; `mock.js:67` is still `MOCK_ALWAYS_FAIL === '1' \|\| n === 1` |
+| EDGE-2/AC-23 | `approve` + one finding not rejected | `checkAgainstSchema` (`adapters/index.js:165`) checks `required` keys and `enum` only |
+| AC-5/AC-10/AC-11/EDGE-4/EDGE-5 | prompt lacks `git diff --stat main...` | `buildPrompt` still emits ``Run `git diff …` `` — the exact defect merged.md cites |
+| AC-12/EDGE-5, EDGE-17 | `Missing expected rejection` | no pre-spawn ref validation at all |
+| AC-4/AC-6/AC-8/AC-9 | `review/round-1/claude.md` absent | `{round}` is not a flow variable, so the write path never interpolates |
+| AC-17/AC-18/EDGE-1/EDGE-12 | `'completed' !== 'regressed'` | `--auto` walks through the exhaustion gate (`runGate`, D5) |
+| AC-17/AC-18/EDGE-10 | `gates` 0, expected 1 | same |
+| AC-22/AC-24 | `codex.md` absent after asymmetric failure | `{round}` again |
 
-This file is byte-identical to the one round 1 rejected as B1. `scenarios.md` was rewritten in
-response to that review; `red-report.md` was not re-run. `qa/red-integration.md` still records:
+Two `✗` lines in the report between the ✓ and ✗ blocks are **not** q0006 failures — they read
+`flow "solutioning" consumes "requirements"` and `simulated adapter failure for
+candidate-claude.md`, and this test file loads neither a solutioning flow nor any
+`candidate-*.md`. They are smoke.js's stderr for its own error-path cases, separated from stdout
+by stream buffering. `run.js` agrees: `1 of 2 test file(s) failed`.
 
-> Tests: `npm test --prefix spike` → exit 1 (expected fail) → OK
+**Why 4 of 13 groups are green.** Worth stating, because "green groups in a red phase" is how a
+false red usually looks. Three are legitimate regression guards over behaviour that already
+landed:
 
-A missing dependency satisfied `expect: fail` — twice now. This is the failure the M0 decision warned
-about ("without contracts the red→green mechanism is a hope, not a mechanism") one turn further
-along: the mechanism accepts an unresolved import as proof, and accepted the same one again.
+- **AC-13/14/15/16** — the cross-flow edge is already in `engine.js:76-86`, and the counter
+  already survives a disk round-trip. The group now drives three real rejection rounds rather
+  than pre-seeding (round 3's guidance) and rereads from disk via `f.backlog.read(...)` (round 3
+  M5). Correct as a guard.
+- **AC-20** — `engine.js:156` is `if (existed || extra.syncBase)`, fixed by Q-0004 after
+  merged.md was written. The group does build the pre-existing worktree properly (round 3 B2):
+  it creates `harness/T-0001/task-a` from `main`, commits into its worktree, then asserts
+  `unicode.txt` — which only lives on the integration branch — appears there afterwards. It
+  exercises the merge, not a fresh checkout.
+- **EDGE-11** — legacy history is already valid.
 
-The good news is that this is shallow. The tests branch forks at `4c69a48`, before `f755f07` (ajv)
-and `e9126b5` (`test/run.js`) landed on `main`; every symbol the test file imports exists on `main`.
-The file will link and run once the branch is current and dependencies are installed.
+The fourth, AC-29/EDGE-13, is green for a weaker reason. See M2.
 
-**Do:** install dependencies in the integration worktree — better, have the `integrate` step do it
-before `commands.test`, since every future qa-red run hits this — rebase the tests branch onto
-`main`, re-run, and attach a report in which every failure line is an `AssertionError` naming a
-scenario id. A red phase that cannot name which criterion is red is not a red phase.
+---
 
-### B2 — Scenario ids and test ids no longer share a namespace
+## Findings
 
-`scenarios.md` renumbered the edge cases from `EC-01`…`EC-20` to `SC-31`…`SC-42`.
-`spike/test/q0006-review.test.js` still titles them `EC-01`…`EC-20`. Only `SC-42` appears in both.
+### B1 — no role in `harness/roles/` may write `spike/src/**`, and that is every file both tasks own *(blocker for the fan-out; not a defect in this document)*
 
-The result is a two-way break: 19 test titles cite ids that no longer exist in the scenario
-document, and `SC-31`…`SC-41` have no test citing them. The mapping is recoverable by reading both
-files side by side, which is exactly what a traceable id is supposed to make unnecessary.
+Both tasks in `solution/tasks.yaml` declare `role: backend`. The shipped `development.yaml`
+expands that to `role: "developer-{role}"` → `harness/roles/developer-backend.md`, whose
+frontmatter is `paths: [services/api, packages/domain]` and whose body says "you write … only in
+your allowed paths: services/api, packages/domain". The step's own `instructions` repeat it: "Do
+not touch files outside your role's allowed paths."
 
-This also blocks B1's remedy. "Attach a report whose every failure names a scenario" is not
-achievable while the failing test names `EC-05`.
+`Q0006-mock-switch` owns `spike/src/adapters/mock.js`. `Q0006-runtime` owns `spike/src/engine.js`,
+`backlog.js`, `git.js`, `fanout.js`. Neither path is reachable under that allow-list, and neither
+directory exists in this repository. The one repo-local role that names `spike/` —
+`developer-tooling`, `paths: [spike/bin, spike/test]` — forecloses it explicitly: "if your task
+seems to need a change under spike/src, stop and report it rather than reaching across the
+boundary."
 
-**Do:** retitle the test file to the `SC-` ids in the same change that re-runs the suite.
+`paths` is not enforced by the engine (no reader in `engine.js` or `fanout.js`), so this is
+prompt-level. That makes it worse, not better: a compliant agent stops and reports, and a
+non-compliant one writes wherever it likes. Either outcome fails the first wave.
 
-### B3 — SC-29's implementing test has no legal path to green
+The fix is a repo-local role — `developer-engine` with `paths: [spike/src]` — and the tasks
+retargeted to it. **Do not widen `developer-backend`.** That file is a shipped starter template;
+`harness init` copies it into every adopter's repo, AC-1/AC-2 assert the `harness/` and
+`spike/templates/harness/` copies stay byte-identical, and widening it to Quorum's own layout is
+the precise mistake the cross-vendor reviewer caught and reverted in solutioning round 2 (recorded
+in the M0 decision as the clearest demonstration of the product's thesis). Repeating it here would
+be the same defect with the reviewer absent.
 
-```js
-assert.deepEqual(pkg.dependencies, { yaml: '^2.5.0' });
-assert.match(pkg.scripts.test, /smoke\.js/);
-```
+While there: `harness/architecture.md` is still the unfilled template stub — its "Roles for task
+fan-out" section is the instruction to write a table, not a table. EDGE-14 asks that the role
+table, the frontmatter and the prose agree; in this repo there is nothing to compare against.
+That is Q-0033's to carry, but it is the same root cause.
 
-On `main`, `spike/package.json` carries `ajv`, `ajv-formats` and `yaml`, and its test script is
-`node test/run.js`. Both assertions therefore fail permanently against the target of this ticket, and
-development's only route to green is to delete ajv and re-hard-code the runner:
+### B2 — EDGE-2/AC-23 can only go green in a file no task owns, and doing so contradicts a decision *(round 3 B3, still open)*
 
-- **`ajv` / `ajv-formats`** landed in `f755f07` under the DECISIONS entry *"Contracts are executable:
-  ajv in the toolchain, `harness validate` in the flows"*. `spike/src/contracts.js` imports ajv.
-  Deleting them breaks `harness validate` — the mechanism qa-red exists to use to turn a contract
-  into a failing test.
-- **`test/run.js`** landed in `e9126b5`, whose commit message is *"discover test files so qa-red can
-  prove a red phase"*. Replacing it with a hard-coded `&&` chain reintroduces exactly the
-  short-circuit that produced B1.
+The test imports `checkAgainstSchema` from `../src/adapters/index.js` and asserts it rejects
+`approve` with a finding, `changes-requested` with none, and `major: no-line` for want of a
+`file:line`. The implementation at `adapters/index.js:165` handles `required` keys and `enum`
+values and nothing else, so the group cannot pass without editing that file.
 
-AC-29 says *Q-0006 adds no new dependency*; it does not say the repository has exactly one. SC-29's
-own wording ("no new npm dependency was added") is what licensed the absolute assertion, so both need
-fixing.
+`Q0006-mock-switch` owns `mock.js` only. `Q0006-runtime`'s description says "dependency-free
+verdict/findings validation for all adapters" but its ownership list is `engine.js`, `backlog.js`,
+`git.js`, `fanout.js`, `harness/flows/development.yaml` and its template copy —
+`adapters/index.js` is in neither. I diffed `tasks-before-split.yaml` against `tasks.yaml`: apart
+from reflowing, the only change is the removal of the two Q-0033 tasks. Round 3 asked for this to
+be decided before fan-out; the split did not decide it.
 
-**Do:** restate SC-29 as a statement about the delta — "Q-0006 introduces no dependency beyond those
-already present on `main`" — and assert that `pkg.scripts.test` invokes the discovering runner rather
-than that it mentions `smoke.js`.
+There is a second edge. The DECISIONS entry "Contracts are executable: ajv in the toolchain" says
+`checkAgainstSchema()` in `adapters/` is "deliberately **separate from**" the contract validator
+and "stays minimal: that one guards vendor output and must tolerate variance between CLIs, while a
+contract that bends is not a contract." Tightening it to enforce a contract clause inverts that
+sentence. Three ways out, and this is a maintainer's call, not a developer agent's:
 
-### B4 — SC-31 and the frozen contract state mutually exclusive retry semantics
+1. Add `spike/src/adapters/index.js` to `Q0006-runtime` and accept the decision drift, with a new
+   DECISIONS entry naming the old one — the docs-and-decisions rule requires that, not a silent
+   override.
+2. Move the verdict/findings check into `engine.js` where `runStep` already calls
+   `checkAgainstSchema` (`engine.js:186`), leave `adapters/index.js` minimal, and retarget the
+   test's import. This honours the decision, and `Q0006-runtime` already owns `engine.js` — but it
+   needs an erratum, because the test currently binds the clause to the adapter function.
+3. Use `spike/src/contracts.js`, which exists precisely to execute a JSON Schema and is the
+   decision's own answer to "how does a contract become a failing test". Also needs an erratum.
 
-`contracts/Q-0006/review-runtime.contract.md:56-59`:
+Option 2 or 3 is right on the merits. Whichever is chosen, it needs to be written down before the
+fan-out starts, because both tasks otherwise stall on an unauthorised edit.
 
-> `advance` continues toward `reviewed`; `retry` sets only `iterations.review` to
-> `max_iterations - 1` (persisted value `2` for the shipped limit), then regresses to the configured
-> target. The next accepted rejection increments to `3` and is the one additional regression
-> traversal; a following rejection re-presents the gate at `4`.
+### M1 — AC-21's shipped-file half has no failing test, so it can ship unimplemented
 
-SC-31 requires the persisted value to be exactly `3`, with the gate-triggered regression itself as
-the one authorised traversal and the next rejection landing at `4`.
+`harness/flows/development.yaml` reads `input: { backlog: [solution/solution.md], … }` today.
+AC-21 requires `review/verdict.md` beside it, and `tasks.yaml` puts that file under
+`Q0006-runtime`'s ownership — so this is Q-0006's own obligation, not Q-0033's.
 
-These differ in more than the number. The contract's model grants **two** further traversals after
-`retry` (the immediate regression, then the count-3 regression); SC-31's grants **one**. AC-18 says
-`retry` *"authorises exactly one more traversal"* — so SC-31 matches the requirement and the frozen
-contract does not. Round 1 read this as an undecided numbering dispute; on re-reading, the
-requirement does adjudicate it, and the contract is the artifact that is wrong.
+The AC-20/AC-21/AC-27 group proves only that the engine *can* read an optional backlog file: it
+writes its own `development.yaml` fixture at `q0006-engine.js:204` with
+`backlog: [review/verdict.md]` already present, then asserts the verdict text reaches the prompt.
+That is a true statement about `readFiles`, which already works — hence the green group — and
+says nothing about the shipped flow. Nothing in the suite would notice if the shipped file were
+never touched, and the reason this criterion exists is that developers cannot act on a review
+they never see.
 
-Meanwhile SC-36 asserts `contracts/Q-0006/**` is byte-identical to the contracts commit, and all four
-task descriptions in `solution/tasks.yaml` carry "Do not edit `contracts/Q-0006/**`". Development is
-being asked to satisfy two mutually exclusive statements with no legal path to green.
+The scenario is complicit: "When `development.yaml`'s fan-out step runs" permits the fixture
+reading. Two one-line fixes, and both belong to this ticket:
 
-**Do:** amend the contract explicitly — a further solutioning round, or a dated erratum committed to
-the ticket folder and referenced by the contract — rather than letting a test overrule a frozen
-artifact silently. A contract that a test can quietly outvote is not a contract.
+- AC-21's Given should name **the shipped `harness/flows/development.yaml` and its template
+  copy**, and require them byte-identical, as AC-1 does for `review.yaml`.
+- The group should parse the shipped file and assert `review/verdict.md` in
+  `steps[0].step.input.backlog` — which will fail today, as a red assertion should.
 
-## Majors
+### M2 — the frozen-contract guard cannot fail
 
-### M1 — SC-32's implementing test asserts the opposite of SC-32
+`q0006-engine.js:239` resolves the base as `git log -1 --format=%H -- contracts/Q-0006`, then
+asserts `git diff <base>..HEAD -- contracts/Q-0006` is empty. `git log -1 -- <path>` returns the
+**most recent** commit touching that path. If a task illegally edits a contract, that edit becomes
+the base and the range is empty by construction. The check passes in both worlds.
 
-The `EC-02/03/04` test answers `['advance','abort']` at the exhaustion gate and asserts
-`stage === 'green'` with exit status 2 — that is, `advance` did not advance. SC-32 requires the run
-to "proceed toward `reviewed`", and `review-runtime.contract.md:56` agrees. Separately, SC-32's stated
-Then — a later return to review presents exhaustion immediately, with no fresh three-round budget —
-is never exercised by the test that claims it.
+Round 3's B1 asked for a real revision range and got one — the range is real, it is just
+self-selecting, so the tautology survived the fix. `assert.match(contractsBase, /^[0-9a-f]{40}$/)`
+proves resolution, not independence. Pin the sealing commit instead: `git merge-base HEAD
+harness/Q-0006/contracts`, or the contracts commit recorded in the ticket. Then an illegal edit
+shows up as a non-empty diff, which is the point.
 
-**Do:** split SC-32 from SC-37; assert `reviewed` after the closing gate, and give SC-32 its own run
-that re-enters review with the counter already at 4.
+This is a guard rather than a criterion, so it does not block — but it is currently the only thing
+standing between a developer agent and a quietly edited contract, and it is not standing.
 
-### M2 — SC-36's implementing test can never fail
+### N1 — `import YAML from 'yaml'` at `q0006-engine.js:10` is unused
 
-```js
-const diff = execSync('git diff -- contracts/Q-0006', { cwd: repo, encoding: 'utf8' });
-assert.equal(diff, '');
-```
+Harmless, and it does incidentally prove the dependency resolves. Still dead code in the one file
+whose AC-29 is about dependency hygiene. Drop it, or use it for M1's parse of the shipped
+`development.yaml`.
 
-An unstaged working-tree diff with no revision range, which is empty on any committed branch. The
-same applies to the accompanying unranged `git diff --check`. SC-36 says "compared to the contracts
-commit". As written this is a guaranteed green tick that asserts nothing — and it is the check
-standing between a development task and a rewritten contract, which is what makes B4 dangerous rather
-than merely inconsistent.
+### N2 — EDGE-15 has no group label
 
-**Do:** `git diff <contracts-base>..HEAD -- contracts/Q-0006` and `git diff --check <base>...HEAD`.
+Its engine half is asserted at `q0006-engine.js:134`
+(`parallel.every((s) => !s.worktree && !s.instructions)`), inside the AC-4/AC-6/AC-8/AC-9 group;
+its "guidance lives in the role file" half is Q-0033's. Add `EDGE-15` to that group's id so the
+report shows the coverage that already exists, or say in the scenario that it is discharged there
+— the same treatment AC-3 just received.
 
-### M3 — AC-16's exactness is never executed
+---
 
-SC-16's test covers only the lint half — `undefined`, `'three'`, `0`, `-1` all throw. The first half
-of the scenario, three consecutive `changes-requested` rounds reaching 1, 2, 3 before the gate, has no
-assertion anywhere: the SC-17/18/19 test pre-seeds `iterations.review = 3`, so rounds 1–3 never
-happen and an off-by-one in the increment passes silently. "The bound is exact" is the criterion; its
-exactness is the one part not tested.
+## Checked and deliberately not flagged
 
-**Do:** drive three real rejection rounds and assert the counter at each step.
+- **EDGE-1's persisted `3`.** Correct. `solution/errata.md` E-1 supersedes
+  `review-runtime.contract.md`'s `max_iterations - 1`, the DECISIONS entry of the same date
+  confirms it against `handleFail`/`runGate`, and the smoke suite already proves the engine
+  behaviour. Round 2's B4 is closed properly — by an erratum, not by a test outvoting a contract.
+- **Pre-seeding in the exhaustion groups.** `iterations.review = 3` at `q0006-engine.js:165` and
+  `:177` is fine. Round 3's objection was to pre-seeding *the bound* (AC-16), which now runs three
+  real rejection rounds. Pre-seeding the *precondition* of an exhaustion test is not the same
+  thing.
+- **AC-22's five outcomes.** All exercised: `regressed` and `completed` in the AC-13 and AC-4
+  groups, `exhausted` at `:169`, `aborted` at `:184`, `failed` at `:194`. Round 3's M3 is closed.
+- **AC-27's approval assertion.** Now checks `reread(f).meta.stage === 'reviewed'` (`:138`), not
+  merely that artifacts exist. Round 3's M1 is closed.
+- **EDGE-12's second half.** `:171` asserts exactly one non-exhausted entry for the same run
+  carries a non-zero cost. Round 3's N3 is closed.
+- **AC-29's dependency check.** Now a delta against `git show main:spike/package.json` rather than
+  a fixed expected set. Round 3's M4 is closed. It compares `dependencies` only, which is the
+  right scope for what the AC promises.
+- **Ticket size.** Not re-litigated. The split already happened, E-2 records it, and the two
+  remaining tasks are the right size.
 
-### M4 — Four scenarios are backed by greps over YAML rather than by runtime assertions
+## What has to happen before `harness run development Q-0006`
 
-These will read green in a repaired red run and prove nothing about the implementation:
+B1 and B2 are maintainer decisions and neither is expensive — a role file and a one-paragraph
+erratum. Both would surface within the first agent's first write, and a developer agent
+instructed to "stop and report it rather than reaching across the boundary" will do exactly that,
+burning a wave to discover something already known here. M1 is a one-line scenario amendment plus
+one assertion and can ride along with them.
 
-| Scenario | The scenario says | The test actually does |
-|---|---|---|
-| SC-10 | the engine materialises the diff **into the prompt** | greps `runs.log` for `truncat` and the range string; `buildPrompt` is imported and never called |
-| SC-07 | the **verdict document** lists findings grouped by severity with `file:line` | regex-matches the flow's `instructions` block; no `review/round-N/verdict.md` is ever read |
-| SC-20/21 | second development run's worktrees contain the merged files; a conflict warning names the task | greps `development.yaml` for two strings — no run, no worktree, no merge |
-| SC-27 | "a rework development run reaching green again"; "`green → reviewed` on approval" | no test for either; SC-08/09's passing run checks round files, never the final stage |
-
-SC-10 and SC-20 carry the ticket's actual risk — whether reviewers see a diff at all, and whether the
-loop can close. Both are currently asserted by grep over a YAML file. Static assertions are the right
-tool for SC-01 through SC-06; they are the wrong tool here.
-
-### M5 — SC-33 has no test, and the nearest candidate does not cover it
-
-No test cites SC-33. The SC-10/11/12 test greps `runs.log` for
-`main...harness/T-0001/integration`, which proves the final string but not SC-33's claim: that
-`{base}` is substituted *before* the range is validated against git and before any other
-interpolation, so the literal `{base}...` can never reach git.
-
-**Do:** assert the ordering directly, or fold SC-33 into SC-12b, where the ref-validation path
-already runs.
-
-## Nits
-
-- **N1** — AC-8's "`{iter}` keeps its current meaning, so no shipped flow changes behaviour" still
-  has no scenario of its own; it leans on SC-29's blanket "everything stays green". (Carried.)
-- **N2** — SC-30 is asserted by regex over all five documents concatenated into one string, so a
-  substring matching anywhere satisfies it. It cannot distinguish §3.4 from §5.5, which is precisely
-  what the scenario asks it to check.
-- **N3** — The EC-20 test asserts `exhaustible.length >= 4`. With `review.yaml` the real count is 5,
-  so the assertion tolerates one shipped flow silently losing its bound. Prefer
-  `assert.equal(exhaustible.length, files.length)`. (Carried from round 1's N4.)
-
-## What would make this approvable
-
-1. Rebase the tests branch onto `main`, install dependencies in the integration worktree, re-run, and
-   attach a red report whose every failure is an `AssertionError` citing an `SC-` id (B1).
-2. Retitle the test file from `EC-*` to the `SC-31`…`SC-42` ids so a failure is traceable (B2).
-3. Restate SC-29 as a delta against `main` and fix its assertions (B3).
-4. Resolve retry semantics against the frozen contract, **in the contract** (B4).
-5. Give SC-10, SC-16, SC-20 and SC-27 runtime assertions rather than YAML greps (M3, M4), and
-   range-scope the two `git diff` checks (M2).
-
-Items 1–4 are gating: until they are done the suite is unsatisfiable as a set and the red phase is
-unproven. Item 5 is what makes the green phase mean something.
-
-Coverage itself is not the problem, and has not been the problem in either round. Both rounds have
-failed on the same file — the one that was supposed to prove the tests run.
+The red phase itself is sound and I am willing to be on call for it.
