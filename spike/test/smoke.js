@@ -175,14 +175,51 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(offenders.length === 0, `no shipped template pins a codex model name (${offenders.join(', ') || 'none'})`);
 }
 
+// `retry` at an exhaustion gate authorises EXACTLY one more traversal, and only for that loop.
+// The retry's own goto is the grace traversal, so the next failure re-presents the gate
+// (DECISIONS 2026-08-22, correcting an off-by-one caught by the Q-0006 reviewer).
+{
+  const id = run(['ticket', 'new', 'Retry semantics']).stdout.match(/T-\d{4}/)[0];
+  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
+  const at = (rel) => path.join(tmp, 'backlog', dir, rel);
+  // Pre-seed an unrelated counter: a review retry must not refund a ticket's qa budget.
+  const before = fs.readFileSync(at('ticket.md'), 'utf8').replace('iterations: {}', 'iterations:\n  qa-final.unrelated: 2');
+  fs.writeFileSync(at('ticket.md'), before);
+
+  // Answer both gates up front: retry, then refuse the next one. Assertions read files rather
+  // than captured stdout — a busy-wait blocks this process's event loop, so 'data' never fires.
+  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
+    { cwd: tmp, stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' } });
+  // Answer the first gate only, and leave stdin open: the second gate must still be waiting when
+  // the grace traversal is done. SIGINT then ends it, persisting counters via the handler above.
+  child.stdin.write('retry\n');
+  const deadline = Date.now() + 25000;
+  const log = () => (fs.existsSync(at('runs.log')) ? fs.readFileSync(at('runs.log'), 'utf8') : '');
+  const count = (re) => (log().match(re) ?? []).length;
+  while (Date.now() < deadline && count(/step=head-of-product/g) < 3) execSync('sleep 0.2');
+  child.kill('SIGINT');
+  while (Date.now() < deadline && !/ interrupted /.test(log())) execSync('sleep 0.2');
+  child.kill('SIGKILL');
+
+  const runsLog = log();
+  // hof runs once, loops once (its whole budget), hits the gate; retry buys exactly one more and
+  // the gate returns. A fourth traversal would mean retry handed back the whole budget.
+  const traversals = (runsLog.match(/step=head-of-product/g) ?? []).length;
+  assert(traversals === 3, `retry grants exactly one more traversal, no more (saw ${traversals}, expected 3)`);
+  assert(/gate=retry counter=requirements\.head-of-product set=1/.test(runsLog), 'the retry grant is recorded in runs.log');
+  const after = fs.readFileSync(at('ticket.md'), 'utf8');
+  assert(/requirements\.head-of-product: 2/.test(after), 'the retried loop ends one past its limit, not reset to zero');
+  assert(/qa-final\.unrelated: 2/.test(after), 'a retry does not refund an unrelated loop’s budget');
+}
+
 // Interrupting a run at a gate must record the outcome and persist counters. Otherwise Ctrl-C is
 // an undocumented way to hand back the iteration budget and retry forever (found by Q-0004).
 {
-  run(['ticket', 'new', 'Interrupted at a gate']);
-  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith('T-0004'));
+  const id = run(['ticket', 'new', 'Interrupted at a gate']).stdout.match(/T-\d{4}/)[0];
+  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
   const at = (rel) => path.join(tmp, 'backlog', dir, rel);
   // No --auto, so it stops at the flow's closing gate and waits on stdin.
-  const child = spawn('node', [bin, 'run', 'requirements', 'T-0004', '--adapter', 'mock'], { cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'], { cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
   const deadline = Date.now() + 20000;
   const waitFor = (test) => {
     while (Date.now() < deadline) {

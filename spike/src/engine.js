@@ -244,7 +244,11 @@ function handleFail(step, ctx) {
     return { goto: f.goto };
   }
   ctx.ui.warn(`${step.id}: loop exhausted (${f.max_iterations}) → human gate`);
-  return runGate({ gate: 'human', reason: `loop exhausted at ${step.id}; choose: advance (accept as is), retry (one more ${f.goto}), abort` , retryTarget: f.goto }, ctx);
+  return runGate({
+    gate: 'human',
+    reason: `loop exhausted at ${step.id} (${counter} = ${n}, limit ${f.max_iterations}); choose: advance (accept as is), retry (exactly one more ${f.goto}), abort`,
+    retryTarget: f.goto, retryCounter: counter, retryMax: f.max_iterations,
+  }, ctx);
 }
 
 async function runGate(step, ctx) {
@@ -254,7 +258,16 @@ async function runGate(step, ctx) {
   const answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=${kind} answer=${answer}`);
   if (answer === 'advance') return null;
-  if (answer === 'retry' && step.retryTarget) { ctx.counters = {}; return { goto: step.retryTarget }; }
+  if (answer === 'retry' && step.retryTarget) {
+    // Exactly one more traversal, and only for this loop. Setting the counter to max_iterations
+    // makes the retry's own goto the grace traversal: the next failure increments past the limit
+    // and re-presents this gate. Clearing every counter (the old behaviour) refunded unrelated
+    // loops a ticket had already spent — a qa budget restored by a review retry — and granted
+    // max_iterations+1 further traversals rather than one. See Q-0004 / DECISIONS 2026-08-22.
+    if (step.retryCounter != null) ctx.counters[step.retryCounter] = step.retryMax;
+    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=retry counter=${step.retryCounter} set=${step.retryMax} (one further traversal authorised)`);
+    return { goto: step.retryTarget };
+  }
   return { abort: true };
 }
 
