@@ -1,0 +1,1 @@
+Run the docs-reviewer agent over docs/ (all numbered docs, DECISIONS.md, GLOSSARY.md) and report its findings. If there are blockers, propose the fixes as a diff but do not apply them without confirmation.

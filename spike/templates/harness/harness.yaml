@@ -1,0 +1,16 @@
+# Harness project config (spike). Truth lives in harness/; vendor files are compiled later.
+backlog:
+  layout: in-repo
+  path: backlog
+adapters:
+  claude:
+    bin: claude
+    # extraArgs: ["--allowedTools", "Read", "Bash(git diff *)"]
+  codex:
+    bin: codex
+    # extraArgs: ["--full-auto"]
+budget:
+  per_run_usd: 10
+  per_ticket_usd: 60
+commands:
+  test: npm test          # used by integrate steps with run_tests: true

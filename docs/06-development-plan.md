@@ -1,0 +1,152 @@
+# Quorum — Development Plan
+
+*Status: v1 plan, 2026-08-22. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+
+## How to read this
+
+- **M0–M1** retire the two unknowns (real CLIs, real repo) with the spike code.
+- **M2** turns the spike into the product's core and makes Quorum develop itself.
+- **M3–M5** add the daemon, the UI and the compiler — the visible product.
+- **M6** is the launch: README, heyruud.com post, cold-clone test passed by someone else.
+
+Every milestone: definition of done, the tickets to create in `backlog/`, and the questions it must answer. Estimates assume one person working evenings/weekends; halve them for full-time.
+
+---
+
+## M0 — Real adapters on a real repo (≈ 1 week)
+
+**Goal:** the four adapter-contract questions answered with evidence, `requirements` and `solutioning` run end to end on real Claude Code + Codex CLI on one of your SaaS repos.
+
+**Done when**
+- `quorum adapters` reports both CLIs ✓ and refuses when an API key is in the environment.
+- One real ticket goes `draft → requirements → solutioned` with real models; the ticket folder and `runs.log` are committed as the first fixture.
+- `docs/03-adapter-contract.md` has the "verified" column filled in for each flag and JSONL field.
+- Cost per stage recorded in DECISIONS.md.
+
+**Tickets**
+- Q-0001 Run requirements flow on a real repo; fix adapter flags that differ from docs.
+- Q-0002 Run solutioning flow; judge whether Claude's `revise` improves Codex's second draft (write the verdict in the ticket).
+- Q-0003 Decide Codex cost reporting (tokens only vs priced) — decision entry.
+
+**Risk it retires:** structured output on subscription CLIs. If this fails, everything else is moot; the fallback is the trailing-JSON extraction already in the adapter.
+
+---
+
+## M1 — Red → green on a real repo (≈ 1 week)
+
+**Goal:** `qa-red` and `development` with fan-out and integrate on real code.
+
+**Done when**
+- Contracts emitted by the architect are concrete enough that QA's tests compile and fail on assertions (red proven by `integrate --expect fail`).
+- Two roles on two vendors fan out into worktrees, integrate, and reach green within 3 iterations.
+- The review flow (`review.yaml`, Claude + Codex panel → verdict → backward edge to development) exists and runs once.
+
+**Tickets**
+- Q-0004 qa-red on the M0 ticket; tune the automation-qa role until red is "for the right reason".
+- Q-0005 development fan-out; record merge-conflict rate and iterations to green.
+- Q-0006 Implement `review.yaml` + cross-flow backward edge (`goto: flow:development` regresses stage).
+- Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters.
+
+**Risk it retires:** the contracts-before-tests mechanism and multi-vendor worktree integration.
+
+---
+
+## M2 — `packages/core` in TypeScript, Quorum develops Quorum (≈ 2 weeks)
+
+**Goal:** the spike becomes the product core; from here every feature is a ticket run through the flows.
+
+**Done when**
+- Monorepo scaffold per `04-architecture.md` (pnpm, Turborepo, TS strict, Vitest, ESLint).
+- `packages/core` ports engine/backlog/fanout/git/adapters with zod schemas for flow, ticket, role, step output; public API as documented.
+- The 30-check smoke test passes as a Vitest suite; CI runs it on every push.
+- `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
+- `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.
+
+**Tickets**
+- Q-0008 Monorepo scaffold + CI.
+- Q-0009 Port core to TypeScript with schemas (one ticket per module is fine).
+- Q-0010 CLI package; `npx quorum` entry.
+- Q-0011 Run history on disk: `.quorum/runs/<id>/` with events.jsonl per step, cost roll-up.
+- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven flows.
+
+---
+
+## M3 — Daemon + mission control (≈ 3 weeks)
+
+**Goal:** the hero screens exist and are driven by real runs.
+
+**Done when**
+- `packages/server`: start/stop runs, stream events over WebSocket, answer gates.
+- `apps/web`: projects home, backlog board, mission control (parallel trace columns, cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions, override with reason), run history.
+- `quorum open` starts daemon + browser; CLI and UI can both answer the same gate.
+- Resumable runs after daemon restart.
+
+**Tickets**
+- Q-0013 Server package with REST + WS; event schema in `shared`.
+- Q-0014 Web app shell, theme, routing, WS client.
+- Q-0015 Mission control screen.
+- Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
+- Q-0017 Backlog board + ticket page (folder rendered as tabs).
+- Q-0018 Run history + trace drill-down.
+- Q-0019 Resume interrupted runs.
+
+---
+
+## M4 — Editors + step chat (≈ 2 weeks)
+
+**Goal:** the Studio is an editor over the harness, not just a runner.
+
+**Done when**
+- Flow editor: form generated from the flow schema, YAML preview, lint errors inline, templates drawer.
+- Harness editor: markdown editing of context files and roles, with the compiler status panel (M5 fills it).
+- Step chat for interactive steps (PM clarifying questions, gate conversations); requirements stage can run interactively.
+- "Open this worktree in editor/terminal" one-click.
+
+**Tickets:** Q-0020 flow editor · Q-0021 harness editor · Q-0022 interactive step type + step chat · Q-0023 open-in-editor.
+
+---
+
+## M5 — Harness compiler (≈ 2 weeks)
+
+**Goal:** the second headline feature: write rules once, every CLI obeys.
+
+**Done when**
+- `quorum compile` generates `CLAUDE.md` (with `@harness/` imports), `AGENTS.md`, `GEMINI.md` as thin linked/inlined files with generated headers.
+- Drift detection surfaces in the harness editor and on the projects home.
+- Native pass-through sections for `.claude/agents`, skills, commands; roles can map to Claude subagents.
+- Adapter runs set the generated files so the agents actually read them (verified on a real run).
+
+**Tickets:** Q-0024 compiler core · Q-0025 drift detection · Q-0026 pass-through sections · Q-0027 verify agents obey compiled rules (real run).
+
+---
+
+## M6 — Launch (≈ 2 weeks)
+
+**Goal:** pass the cold-clone test with someone who isn't you; publish.
+
+**Done when**
+- README is the only document a stranger needs: install, login check, init, first ticket, first gate, first merged branch, in under 30 minutes — timed by two outside testers.
+- `npm publish` as `quorum` (or `@heyruud/quorum`), GitHub repo public with roadmap (Gemini adapter as "good first issue", desktop shell, canvas, evals, CI mode).
+- heyruud.com: launch post (the story: why multi-vendor + gates, what the spike found), docs entry page linking to the repo, one demo recording of mission control on a real ticket.
+- Social plan for Bluesky/X/LinkedIn queued.
+
+**Tickets:** Q-0028 README rewrite + cold-clone timing · Q-0029 publish pipeline + versioning · Q-0030 launch post · Q-0031 demo recording · Q-0032 social campaign.
+
+---
+
+## Working agreements
+
+- Ticket ids are `Q-nnnn`; the backlog is `backlog/` in this repo; from M2 every ticket runs through the flows (dogfood is the test suite).
+- Every milestone ends with a DECISIONS.md entry: what was learned, what changed.
+- Anything product-specific discovered while dogfooding on feedmind/flextann goes into *that* repo's `harness/`, never into Quorum.
+- Cost is tracked per ticket from M0; a budget line lands in `harness.yaml` before M3.
+- The cold-clone test is re-run at the end of M3 and M5, not only at M6.
+
+## Sequence at a glance
+
+```
+M0 adapters ─▶ M1 red/green ─▶ M2 core+cli ─▶ M3 daemon+UI ─▶ M4 editors ─▶ M5 compiler ─▶ M6 launch
+ 1 wk           1 wk            2 wk            3 wk            2 wk          2 wk           2 wk
+```
+
+Roughly three months part-time. If M0 or M1 surprises you, stop and rethink before M2 — that's what they're for.

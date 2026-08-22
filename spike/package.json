@@ -1,0 +1,13 @@
+{
+  "name": "quorum (spike)",
+  "version": "0.0.1",
+  "description": "Spike: stage-chained, multi-vendor SDLC flows on subscription-authed CLI agents, backlog as files in git.",
+  "type": "module",
+  "bin": { "harness": "bin/harness.js" },
+  "scripts": {
+    "test": "node test/smoke.js",
+    "lint": "node bin/harness.js lint"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": { "yaml": "^2.5.0" }
+}

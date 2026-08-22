@@ -1,0 +1,1 @@
+Show the current milestone from docs/06-development-plan.md: its goal, definition of done, and the status of each of its tickets by scanning backlog/ (stage per ticket, or "not created"). Then list the single next action.
