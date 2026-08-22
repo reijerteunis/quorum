@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Q-0006/ticket-review-state",
+  "title": "Additive review state in ticket.md frontmatter",
+  "type": "object",
+  "required": ["stage", "iterations", "history"],
+  "properties": {
+    "stage": {
+      "enum": ["draft", "requirements", "solutioned", "red", "green", "reviewed", "qa-passed", "deployed", "blocked", "abandoned"]
+    },
+    "iterations": {
+      "type": "object",
+      "properties": { "review": { "type": "integer", "minimum": 0 } },
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["run", "flow", "status", "stage_before", "stage_after", "at", "cost"],
+        "properties": {
+          "run": { "type": "integer", "minimum": 1 },
+          "flow": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["completed", "regressed", "exhausted", "aborted", "failed"] },
+          "stage_before": { "type": "string" },
+          "stage_after": { "type": "string" },
+          "at": { "type": "string", "format": "date-time" },
+          "cost": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
+
