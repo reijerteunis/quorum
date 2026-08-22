@@ -239,6 +239,63 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
 }
 
+// A dropped connection is not a verdict. Losing a paid step to a minute of bad wifi is what
+// killed Q-0006 run 7 — the network went away mid-response and took a $0.35 step with it.
+{
+  const { withRetry, transientError } = await import('../src/adapters/index.js');
+
+  const retryable = [
+    ['API Error: Connection closed mid-response. The response above may be incomplete.', /closed mid-response/],
+    ['Error: socket hang up', /hung up/],
+    ['FetchError: request failed, reason: ECONNRESET', /network error/],
+    ['529 overloaded_error: Overloaded', /overload/],
+    ['429 rate_limit_error', /rate limit/],
+  ];
+  for (const [msg, expected] of retryable) {
+    const d = transientError(msg);
+    assert(d !== null && expected.test(d), `worth retrying: ${msg.slice(0, 40)}`);
+  }
+  // Deterministic failures must NOT be retried — the same answer costs the same money again.
+  for (const msg of [
+    'ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only',
+    "codex: model \"gpt-5\" is not available on a ChatGPT subscription",
+    'claude failed (exit 1, error_max_turns): reached the turn limit',
+    'Invalid schema for response_format: additionalProperties is required',
+  ]) {
+    assert(transientError(msg) === null, `not worth retrying: ${msg.slice(0, 44)}`);
+  }
+
+  // The wrapper: fails twice with a transient error, then succeeds. Costs accumulate across
+  // attempts, because every attempt was billed.
+  let calls = 0;
+  const flaky = {
+    vendor: 'test',
+    async run() {
+      calls += 1;
+      if (calls < 3) { const e = new Error('API Error: Connection closed mid-response'); e.usage = { input_tokens: 10, output_tokens: 1, cost_usd: 0.1 }; throw e; }
+      return { vendor: 'test', output: { ok: true }, raw: '', usage: { input_tokens: 10, output_tokens: 1, cost_usd: 0.1 }, session: null, ms: 1 };
+    },
+  };
+  const events = [];
+  const res = await withRetry(flaky, { attempts: 3, baseDelayMs: 1 }).run({ onEvent: (e) => events.push(e) });
+  assert(calls === 3 && res.output.ok === true, 'a transient failure is retried until it succeeds');
+  assert(Math.abs(res.usage.cost_usd - 0.3) < 1e-9, 'the retried step reports what all its attempts cost');
+  assert(events.filter((e) => e.type === 'retry').length === 2, 'each retry is announced rather than sitting silent');
+
+  // Give up eventually, and say so.
+  let tries = 0;
+  const dead = { vendor: 'test', async run() { tries += 1; throw new Error('Error: socket hang up'); } };
+  let caught = null;
+  try { await withRetry(dead, { attempts: 3, baseDelayMs: 1 }).run({}); } catch (e) { caught = e; }
+  assert(tries === 3 && /gave up after 3 attempts/.test(caught.message), 'retries are bounded and the give-up is explicit');
+
+  // A deterministic failure is not retried even once.
+  let authTries = 0;
+  const badLogin = { vendor: 'test', async run() { authTries += 1; throw new Error('401 Unauthorized'); } };
+  try { await withRetry(badLogin, { attempts: 3, baseDelayMs: 1 }).run({}); } catch { /* expected */ }
+  assert(authTries === 1, 'a deterministic failure is not retried');
+}
+
 // `expect: fail` must not accept a suite that never started. A worktree has no node_modules, so
 // without this a missing dependency proves "red" on every ticket, forever (found by Q-0004).
 {
@@ -263,6 +320,23 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   for (const out of realRed) {
     assert(environmentFailure(out) === null, `a genuine assertion failure is still red: ${out.split('\n')[0].slice(0, 44)}`);
   }
+
+  // A suite is entitled to print these signatures. This very block does, and matching a test's
+  // own pass message rejected a real red phase on Q-0006 run 6 — the detector failed on the
+  // output of the tests written to prove it works.
+  const inResultLines = [
+    "✓ a broken environment is not a red phase: Error: Cannot find package 'yaml' imported from /x/bin.js",
+    "\x1b[32m✓\x1b[0m handled: Cannot find module './nope.js'",
+    'ok 4 - reports ERR_MODULE_NOT_FOUND',
+    "1) rejects SyntaxError: Unexpected token '||'",
+  ];
+  for (const line of inResultLines) {
+    assert(environmentFailure(`✓ setup\n${line}\n✓ done`) === null,
+      `a signature quoted inside a test result is not an environment failure: ${line.replace(/\x1b\[[0-9;]*m/g, '').slice(0, 40)}`);
+  }
+  // But the same signature on its own line — an actual crash — must still be caught.
+  assert(environmentFailure("✓ setup\nnode:internal/modules/esm/resolve\nError: Cannot find package 'yaml' imported from /x/bin.js") !== null,
+    'an unhandled crash is still an environment failure even after some checks passed');
 }
 
 // qa-red proves a red phase by writing NEW test files. A runner that does not discover them

@@ -27,7 +27,79 @@ const registry = { claude: claudeAdapter, codex: codexAdapter, mock: mockAdapter
 export function getAdapter(name, config = {}) {
   const a = registry[name];
   if (!a) throw new Error(`unknown adapter "${name}" (known: ${Object.keys(registry).join(', ')})`);
-  return a(config[name] ?? {});
+  const cfg = config[name] ?? {};
+  return withRetry(a(cfg), cfg.retry);
+}
+
+// A dropped connection is not a verdict. These are failures of the network between here and the
+// vendor, not of the work — retrying is what a human would do, and losing a $4 step to a minute
+// of bad wifi is the kind of thing that makes a tool untrustworthy. See Q-0004.
+const TRANSIENT = [
+  [/connection closed/i, 'the connection closed mid-response'],
+  [/connection error/i, 'a connection error'],
+  [/socket hang up/i, 'the socket hung up'],
+  [/\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE)\b/, 'a network error'],
+  [/fetch failed/i, 'the request could not be sent'],
+  // Specific before generic: "429 rate_limit_error" is a rate limit, not an anonymous 5xx.
+  [/rate.?limit/i, 'a rate limit'],
+  [/overloaded/i, 'the vendor reporting overload'],
+  [/\b(429|500|502|503|504|529)\b/, 'a server error'],
+  [/temporarily unavailable/i, 'the vendor being temporarily unavailable'],
+  [/stream (was )?interrupted/i, 'the stream being interrupted'],
+  [/timed? ?out/i, 'a timeout'],
+];
+
+// Returns a description when the failure looks worth retrying, else null. Deterministic failures
+// — a bad login, an unavailable model, an invalid schema, an exhausted turn budget — return null:
+// retrying those just spends the budget again to reach the same answer.
+export function transientError(text = '') {
+  if (authError('x', text)) return null;          // auth and model availability never self-heal
+  for (const [re, describe] of TRANSIENT) if (re.test(text)) return describe;
+  return null;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Wraps any adapter — including a contributor's — so the retry policy lives in one place.
+// Defaults sized against the failure that prompted this: a home connection gone for about a
+// minute. 5s + 10s + 20s + 40s spans 75s of downtime. The cost of being wrong is asymmetric — a
+// genuinely dead network wastes 75s, while giving up too early wastes a step that cost dollars
+// and ten minutes. Override per adapter with `adapters.<vendor>.retry` in harness.yaml.
+export function withRetry(adapter, { attempts = 5, baseDelayMs = 5000, maxDelayMs = 60000 } = {}) {
+  return {
+    ...adapter,
+    async run(opts) {
+      const spent = { input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+      const add = (u) => {
+        if (!u) return;
+        spent.input_tokens += u.input_tokens ?? 0;
+        spent.output_tokens += u.output_tokens ?? 0;
+        spent.cost_usd += u.cost_usd ?? 0;
+      };
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const res = await adapter.run(opts);
+          if (attempt > 1) {
+            // Earlier attempts were billed too; a run's cost must include what the retries cost.
+            add(res.usage);
+            return { ...res, usage: { ...res.usage, input_tokens: spent.input_tokens, output_tokens: spent.output_tokens, cost_usd: res.usage?.cost_usd == null && spent.cost_usd === 0 ? null : spent.cost_usd }, attempts: attempt };
+          }
+          return res;
+        } catch (e) {
+          add(e.usage);
+          const why = transientError(e.message);
+          if (!why || attempt >= attempts) {
+            if (spent.cost_usd || spent.input_tokens) e.usage = { ...spent, cost_usd: spent.cost_usd || null };
+            if (why) e.message = `${e.message} (gave up after ${attempt} attempts)`;
+            throw e;
+          }
+          const delayMs = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+          opts.onEvent?.({ type: 'retry', vendor: adapter.vendor, attempt, of: attempts, delayMs, reason: why, message: String(e.message).slice(0, 160) });
+          await sleep(delayMs);
+        }
+      }
+    },
+  };
 }
 
 // A CLI can be installed, report a version, and still be unable to talk to its vendor because
