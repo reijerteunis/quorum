@@ -56,7 +56,7 @@
         "role": { "type": ["string", "null"] },
         "adapter": { "type": ["string", "null"] },
         "model": { "type": ["string", "null"] },
-        "branch": { "anyOf": [{ "$ref": "#/$defs/relative_path" }, { "type": "null" }] },
+        "branch": { "type": ["string", "null"], "minLength": 1 },
         "worktree": { "anyOf": [{ "$ref": "#/$defs/relative_path" }, { "type": "null" }] },
         "started_at": { "type": "string", "format": "date-time" },
         "duration_ms": { "type": ["integer", "null"], "minimum": 0 },

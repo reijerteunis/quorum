@@ -19,6 +19,11 @@ Unknown values are `null`, not zero. Retry aggregation preserves all five measur
 `retry` event for every retry. The final aggregate is emitted once as `usage`; it is the usage
 copied into the manifest occurrence and counted once in the roll-up.
 
+`input_tokens` is the vendor's total reported input and already contains reported cached-read
+and cache-write input where the vendor includes those values. `cached_input_tokens` and
+`cache_write_input_tokens` are informational subsets; readers must not add them to
+`input_tokens`. `output_tokens` includes reported reasoning-output tokens.
+
 ## Writer lifecycle
 
 - Before a non-dry run can spawn anything, create `.quorum/runs/<ticket-id>-<n>/` exclusively,
@@ -28,6 +33,10 @@ copied into the manifest occurrence and counted once in the roll-up.
 - Allocate an occurrence synchronously at step-attempt start. Its directory is
   `steps/<zero-padded-seq>-<sanitised-step-id>`; replace `/` and `:` with `-`. Allocation order,
   not completion order, defines the sequence and makes parallel allocation collision-free.
+- A flow gate with no explicit id has `step_id: gate-<kind>`, where `<kind>` is its `gate`
+  value (for example `gate-human`). If more than one such gate starts in a run, the occurrence
+  sequence still makes its directory unique. The engine-synthesised traversal-limit gate has
+  `step_id: <failing-step-id>-exhausted-gate`.
 - Open one append stream per `events.jsonl`. Serialize writes for that occurrence. Each complete
   UTF-8 JSON serialization plus newline is one append; event `seq` starts at 1 with no gaps.
   History append failures warn and disable further history writes for the affected artifact but
@@ -37,12 +46,19 @@ copied into the manifest occurrence and counted once in the roll-up.
   have `output.txt` only when the script, integration, or gate produced textual output. Persist
   argv only in `step_started.data.argv`; there is no `spawn` event. Never persist an environment
   object or environment value.
-- Serialize manifest updates through one promise queue. Write a complete same-directory temporary
+- Serialize ordinary manifest updates through one promise queue. Write a complete same-directory temporary
   file, fsync/close it, then rename it over `manifest.json`. Update after every terminal occurrence
   and at run termination. Store project-relative paths only.
-- Signal handlers finalize the active occurrence where applicable and the run as `interrupted`.
-  Run terminal status uses the existing engine outcome. A billed throw copies its full error and
+- Signal handlers stop accepting new queued updates, synchronously write/fsync/close and rename a
+  complete snapshot that finalizes active occurrences and the run as `interrupted`, and only then
+  exit. The synchronous snapshot is built from current in-memory state and supersedes any queued
+  or in-flight older snapshot; its rename is the final manifest replacement.
+  Run terminal status uses the existing engine outcome.
+A billed throw copies its full error and
   usage before propagation. Every started occurrence remains represented.
+
+`attempts` is the total number of adapter invocations for the occurrence, including the first;
+it is `1` for a clean success and increments once per retry. Non-adapter occurrences use `0`.
 
 ## Status and gate mapping
 
@@ -57,8 +73,10 @@ or SIGTERM terminates every active occurrence and the run as `interrupted`.
 
 ## Roll-up algorithm
 
-Group terminal adapter occurrences by `usage.vendor`; exclude script, integrate, and gate
-occurrences. For each vendor, `step_count` counts occurrences and `unpriced_steps` counts usage
+Group terminal adapter occurrences by `usage.vendor`; exclude script, integrate, gate, and
+adapter occurrences whose `usage` is null. A null-usage occurrence was not reported as billed
+and creates no vendor entry; the detail view still shows it, but it is not an unpriced step.
+For each vendor, `step_count` counts occurrences and `unpriced_steps` counts usage
 objects whose `cost_usd` is null. Sum each numeric measure over reported values only; if no
 occurrence reported that measure, the roll-up field is null. This makes an entirely unpriced
 vendor's `cost_usd` null. Never produce a cross-vendor monetary total. The manifest roll-up must

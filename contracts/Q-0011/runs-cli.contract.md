@@ -35,9 +35,19 @@ schema, it additionally applies the stream invariant: the first sequence is 1 an
 subsequent sequence is exactly one greater. The schema's top-level type enum produces a named
 unknown-type failure without reporting the failures of every other event shape.
 
+The command parses and compiles the schema once per invocation and reuses that same schema object
+for every JSONL line and every input file. It must not re-register the same `$id` with Ajv.
+
 When validating a Q-0011 manifest, it additionally checks invariants JSON Schema cannot express:
 unique occurrence directories; status/time consistency; adapter/usage consistency; distinct
 vendors in `rollup`; roll-up equality with the manifest occurrences; and `cost_usd: null` when no
 occurrence for that vendor reported cost. These semantic checks use schema `$id`, not a filename,
 so copied contracts behave identically. Any parse, schema, or semantic error exits 1; all inputs
 valid exits 0.
+
+Status/time consistency means `running` requires null `ended_at` and null `duration_ms`, while
+every terminal run status requires non-null `ended_at` and `duration_ms`; a running occurrence
+requires null `duration_ms`, while every terminal occurrence requires a non-null duration.
+Adapter/usage consistency means non-adapter occurrences require null `adapter`, `model`, and
+`usage`; adapter occurrences require a non-null `adapter` but may have null `model` and may have
+null `usage` when failure occurred before any usage was reported.
