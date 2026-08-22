@@ -4,25 +4,25 @@ tasks:
     title: Add deterministic schema-valid mock verdict controls
     description: >
       Own spike/src/adapters/mock.js only. Add MOCK_ALWAYS_PASS, preserve
-      MOCK_ALWAYS_FAIL and fallback call-count behavior, reject both switches together,
-      and emit severity/file-line findings for verdict schemas. Do not edit tests or
-      contracts/Q-0006/**.
+      MOCK_ALWAYS_FAIL and fallback call-count behavior, reject both switches
+      together, and emit severity/file-line findings for verdict schemas. Do not
+      edit tests or contracts/Q-0006/**.
     contracts:
       - contracts/Q-0006/mock-adapter-switches.contract.md
       - contracts/Q-0006/review-artifacts.schema.json
     depends_on: []
-
   - id: Q0006-runtime
     role: backend
     title: Implement review execution, persistence, gates, and rework
     description: >
       Own spike/src/engine.js, spike/src/backlog.js, spike/src/git.js,
-      spike/src/fanout.js, harness/flows/development.yaml, and its template copy.
-      Implement variables, diff materialisation, derived regression, exact retry and
-      exhaustion semantics, dependency-free verdict/findings validation for all adapters,
-      atomic panel failure, history and cost behavior, worktree synchronization, optional
-      verdict input, and CLI-facing regression result fields. Do not edit tests,
-      configuration assets, or contracts/Q-0006/**.
+      spike/src/fanout.js, harness/flows/development.yaml, and its template
+      copy. Implement variables, diff materialisation, derived regression, exact
+      retry and exhaustion semantics, dependency-free verdict/findings
+      validation for all adapters, atomic panel failure, history and cost
+      behavior, worktree synchronization, optional verdict input, and CLI-facing
+      regression result fields. Do not edit tests, configuration assets, or
+      contracts/Q-0006/**.
     contracts:
       - contracts/Q-0006/review-runtime.contract.md
       - contracts/Q-0006/review-artifacts.schema.json
@@ -30,46 +30,3 @@ tasks:
       - contracts/Q-0006/review-flow.contract.yaml
     depends_on:
       - Q0006-mock-switch
-
-  - id: Q0006-cli-lint
-    role: backend
-    title: Add configuration, explicit gate input, and shared pre-execution lint
-    description: >
-      Own spike/bin/harness.js, the lint portion of spike/src/engine.js, any new
-      spike/src/lint.js, harness/harness.yaml, and
-      spike/templates/harness/harness.yaml. Implement repo defaults, safe init branch
-      discovery, repeatable --gate-answer flags, non-TTY errors, run-time preflight from
-      pristine flow files on disk before adapter overrides, terminating chain validation,
-      bound/counter checks, panel validation, and correct board cost behavior. This task
-      follows runtime so shared engine edits are serial. Do not edit tests or
-      contracts/Q-0006/**.
-    contracts:
-      - contracts/Q-0006/review-lint.contract.md
-      - contracts/Q-0006/review-runtime.contract.md
-      - contracts/Q-0006/review-flow.contract.yaml
-      - contracts/Q-0006/ticket-review-state.schema.json
-    depends_on:
-      - Q0006-runtime
-
-  - id: Q0006-assets-docs
-    role: backend
-    title: Ship review assets and align product documentation
-    description: >
-      Own harness/flows/review.yaml and its template copy,
-      harness/roles/code-reviewer.md and its template copy, README.md,
-      docs/02-sdlc-pipeline-spec.md, docs/06-development-plan.md,
-      docs/GLOSSARY.md, docs/DECISIONS.md, and the body only of
-      backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md; the engine owns
-      ticket frontmatter. Do not edit harness.yaml, development.yaml, developer roles,
-      tests, contracts/Q-0006/**, or create real-CLI evidence. Ship byte-identical
-      designated assets and document the derived regression rule, three-dot diff, round
-      variable, counter spelling, exhaustion behavior across all shipped flows, README
-      command, glossary update, ticket-body correction, and M1 completion condition.
-    contracts:
-      - contracts/Q-0006/review-flow.contract.yaml
-      - contracts/Q-0006/code-reviewer-role.contract.md
-      - contracts/Q-0006/review-artifacts.schema.json
-      - contracts/Q-0006/review-runtime.contract.md
-      - contracts/Q-0006/review-lint.contract.md
-    depends_on:
-      - Q0006-cli-lint

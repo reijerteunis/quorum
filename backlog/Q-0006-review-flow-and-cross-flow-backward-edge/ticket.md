@@ -1,6 +1,6 @@
 ---
 id: Q-0006
-title: Review flow with cross-flow backward edge
+title: Review flow — engine, counters and the backward edge
 stage: solutioned
 owner: ruud
 repos: []
@@ -35,3 +35,17 @@ regress the ticket's stage from `green` to `solutioned`, bounded by `max_iterati
 counter persisted on the ticket and a human gate when it is exhausted. It is the first place
 where the loop the review stage exists for meets the safety rule that no loop may run
 unbounded on a user's subscription. Belongs to M1 in docs/06-development-plan.md.
+
+**Split 2026-08-22, before development.** This ticket carried 30 acceptance criteria and hit its
+iteration bound at every stage; the ticket-size decision of the same date says a requirement that
+large is split rather than carried forward. Q-0006 now owns the **engine half** — everything
+under `spike/src/`: the `{round}` variable and round numbering, diff materialisation into the
+prompt, derived regression across the flow boundary, counter persistence, retry and exhaustion
+semantics, rework worktree sync, audit and failure containment, and the mock switches the tests
+need. The **surface half** — the CLI, lint rules, config keys, the shipped `review.yaml` and
+`code-reviewer` role, README and docs — moved to Q-0033, which depends on this one.
+
+The requirement, solution and contracts in this folder still describe both halves and are not
+re-cut: they are the shared design, and Q-0033 consumes them as input. What changed is
+`solution/tasks.yaml`, which now fans out only the two engine tasks; the pre-split file is kept
+beside it as `tasks-before-split.yaml`. Recorded as E-2 in `solution/errata.md`.
