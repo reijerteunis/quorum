@@ -239,6 +239,41 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
 }
 
+// architecture.md's role table is the fan-out write contract, and it says frontmatter and prose
+// "must agree so tooling can validate them". Nothing validated it, so developer-tooling.md existed
+// on disk while being invisible to the architect, and every Q-0033 task went to backend by
+// default — a single-vendor fan-out where the whole point is two (Q-0011, 2026-08-23).
+{
+  const repo = path.join(root, '..');
+  const arch = path.join(repo, 'harness', 'architecture.md');
+  if (fs.existsSync(arch)) {                       // repo-consistency check; skipped in a fixture
+    const rows = [...fs.readFileSync(arch, 'utf8').matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
+      .filter(([, role]) => !['role'].includes(role));
+    assert(rows.length >= 2, `the role table has rows (found ${rows.length})`);
+
+    for (const [, role, vendor, dirs] of rows) {
+      const file = path.join(repo, 'harness', 'roles', `developer-${role}.md`);
+      assert(fs.existsSync(file), `role table row "${role}" has a role file`);
+      const text = fs.readFileSync(file, 'utf8');
+      assert(new RegExp(`^adapter:\\s*${vendor}$`, 'm').test(text), `developer-${role} runs on the vendor the table names (${vendor})`);
+
+      const declared = (text.match(/^paths:\s*\[(.+)\]$/m) ?? [])[1];
+      assert(declared, `developer-${role} declares paths in frontmatter`);
+      const tabled = dirs.split(',').map((d) => d.replace(/`/g, '').trim().replace(/\/$/, '')).sort();
+      const front = declared.split(',').map((d) => d.trim().replace(/\/$/, '')).sort();
+      assert(JSON.stringify(front) === JSON.stringify(tabled),
+        `developer-${role} frontmatter matches the table (${front.join()} vs ${tabled.join()})`);
+      // The engine never reads `paths`; the allow-list only reaches an agent through the prose.
+      for (const dir of front) {
+        assert(text.includes(dir), `developer-${role} prose names its allowed path ${dir}`);
+      }
+    }
+    // Two live roles on two vendors, or a fan-out can never be multi-vendor.
+    const vendors = new Set(rows.map(([, , v]) => v));
+    assert(vendors.size >= 2, `the role table spans more than one vendor (${[...vendors].join()})`);
+  }
+}
+
 // A dropped connection is not a verdict. Losing a paid step to a minute of bad wifi is what
 // killed Q-0006 run 7 — the network went away mid-response and took a $0.35 step with it.
 {
