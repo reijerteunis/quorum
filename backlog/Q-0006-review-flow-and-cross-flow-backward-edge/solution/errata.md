@@ -30,3 +30,30 @@ Both are fixed; the contract's intent is now what the engine does.
 
 **Scenario impact:** the scenario asserting persisted `3` is correct as written and needs no
 change. Any test asserting `2` is wrong.
+
+## E-2 — 2026-08-22 — the ticket is split; this solution now serves two tickets
+
+**Amends:** `solution/tasks.yaml` (scope only — no contract clause changes).
+
+**Change:** `tasks.yaml` fans out only `Q0006-mock-switch` and `Q0006-runtime`. `Q0006-cli-lint`
+and `Q0006-assets-docs` move to **Q-0033**, which consumes this folder's `requirements/merged.md`,
+`solution/solution.md` and `contracts/Q-0006/**` unchanged. The pre-split file is preserved as
+`solution/tasks-before-split.yaml`. Ownership boundaries in the task descriptions are unchanged,
+which is what makes the split clean: the four tasks already declared disjoint file ownership, so
+cutting between the second and the third moves whole files, not fragments.
+
+**Why:** a human decision at the architect gate, not an agent's. 30 acceptance criteria hit the
+iteration bound at every stage — requirements looped once, solutioning exhausted twice and needed
+an out-of-band architect pass, qa-red exhausted once — and two reviewers on two vendors produced
+four or five blockers per round without converging. See the DECISIONS entry "Ticket size is the
+dominant cost driver", 2026-08-22.
+
+**What this does not change:** no contract is re-cut, no acceptance criterion is dropped, and the
+severity of nothing is downgraded. Every criterion is still owned by one of the two tickets —
+those touching `spike/src/**` by Q-0006, those touching `spike/bin/**`, `harness/**`, `docs/**`
+and `README.md` by Q-0033. A criterion served by both (AC-12's base-ref config is read by the
+CLI and enforced by the engine) is owned by the ticket that owns the file where it is enforced,
+with the other ticket depending on it.
+
+**Consequence for qa-red:** the tests already written cover both halves. The scenarios and tests
+for the surface half are Q-0033's to carry; Q-0006's red phase covers the engine half only.
