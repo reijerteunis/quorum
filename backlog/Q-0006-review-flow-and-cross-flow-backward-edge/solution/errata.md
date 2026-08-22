@@ -57,3 +57,18 @@ with the other ticket depending on it.
 
 **Consequence for qa-red:** the tests already written cover both halves. The scenarios and tests
 for the surface half are Q-0033's to carry; Q-0006's red phase covers the engine half only.
+
+## E-3 — 2026-08-22 — the runtime task owns `spike/src/adapters/index.js`
+
+**Amends:** `solution/tasks.yaml`, `Q0006-runtime` ownership (scope only — no contract clause changes).
+
+**Change:** `Q0006-runtime` additionally owns `spike/src/adapters/index.js`.
+
+**Why:** the red suite asserts that `checkAgainstSchema` enforces the verdict/findings couplings
+the contracts require, and no task owned that file. A compliant agent would have stopped and
+reported a blocker; a non-compliant one would have written outside its allow-list. Either way the
+ticket could not reach green. See the DECISIONS entry "Step-output validation is Quorum's
+contract with its own agents", which settles the question the reviewer asked to have decided.
+
+**Boundary unchanged otherwise:** `Q0006-mock-switch` still owns `spike/src/adapters/mock.js` and
+nothing else, so the two tasks remain file-disjoint.
