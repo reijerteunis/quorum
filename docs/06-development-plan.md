@@ -2,6 +2,8 @@
 
 *Status: v1 plan, 2026-08-22. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
+*M0 closed 2026-08-22 — see the DECISIONS entry. Two of its findings change M1 before it starts: contracts need something in the repo that can execute them, and Q-0006's task breakdown cannot demonstrate M1's two-roles-on-two-vendors done-when.*
+
 ## How to read this
 
 - **M0–M1** retire the two unknowns (real CLIs, real repo) with the spike code.
@@ -13,7 +15,7 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 
 ---
 
-## M0 — Real adapters on a real repo (≈ 1 week)
+## M0 — Real adapters on a real repo (≈ 1 week) — ✅ closed 2026-08-22
 
 **Goal:** the four adapter-contract questions answered with evidence, `requirements` and `solutioning` run end to end on real Claude Code + Codex CLI on one of your SaaS repos.
 
