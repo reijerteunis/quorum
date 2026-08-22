@@ -1,14 +1,19 @@
 ---
 id: Q-0006
 title: Review flow with cross-flow backward edge
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0006/integration
 priority: p2
 created: 2026-08-22
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    at: 2026-08-22T16:51:48.368Z
+    cost: 4.146
 ---
 The seven-stage SDLC has no review stage yet: a ticket reaching `green` has passing tests but
 nobody has read the diff. This ticket adds `review.yaml` — a panel of reviewers on different
