@@ -1,7 +1,9 @@
 # Adapter contract (spike v0)
 
 *Status: 2026-08-22 — Q-0001 probe filled in the verification table, dropped `--max-turns`
-from the Claude invocation, and fixed the BYOS guard to run before the CLI check.*
+from the Claude invocation, and fixed the BYOS guard to run before the CLI check. Every flag
+both adapters pass is now verified against the installed CLIs; only the two real-run questions
+(Claude's structured output for a large document, Codex's JSONL field names) remain open.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -77,14 +79,17 @@ codex exec --json --output-schema schema.json -o last.txt -C <cwd> \
 
 Both take the prompt on stdin. Override any flag via `harness.yaml → adapters.<vendor>.extraArgs`.
 
-Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220):
+Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220 and codex-cli 0.149.0):
 
 | Flag / field | Status |
 | --- | --- |
 | `claude --json-schema`, `--output-format`, `--permission-mode`, `--add-dir` | **verified present** in `--help` |
 | `claude --max-turns` | **verified absent** — removed from the adapter; see the `maxTurns` note above |
+| `codex exec --json --output-schema -o -C --sandbox --skip-git-repo-check --ephemeral -m --add-dir` | **verified present** — every flag the adapter passes, including `--add-dir`, which this doc previously called out as doubtful |
+| `codex` prompt on stdin via trailing `-` | **verified** — documented behaviour of the `[PROMPT]` argument |
+| Both CLIs logged in on a subscription (`claude --version`, `codex login status` → "Logged in using ChatGPT") | **verified** |
 | `claude` structured output actually returned for a 2–4 KB document | unverified — needs a real run |
-| `codex --add-dir`, `--ephemeral`, and the JSONL usage/session field names | unverified — CLI not installed on the probe machine; the adapter tolerates their absence |
+| `codex` JSONL usage/session field names | unverified — needs a real run; the adapter tolerates their absence |
 
 ## What to verify on day 1 (the real spike questions)
 

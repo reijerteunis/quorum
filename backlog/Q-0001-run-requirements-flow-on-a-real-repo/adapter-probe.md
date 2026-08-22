@@ -55,6 +55,31 @@ answer M0's real question — whether `--json-schema` returns a 2–4 KB markdow
 string field without truncating or escaping badly — which needs a real run. The milestone's
 headline risk is still open, just not blocked by a missing flag.
 
+## Re-probe after installing Codex — same day
+
+Installed via `brew install codex` (cask 0.149.0, linked to `/opt/homebrew/bin/codex`) rather
+than `npm i -g @openai/codex`: node here is managed by mise, so an npm global would live inside
+`~/.local/share/mise/installs/node/24.15.0` and disappear on the next node upgrade. Homebrew's
+bin is already on PATH and survives that.
+
+```
+✓ claude: 2.1.220 (Claude Code)
+✓ codex: codex-cli 0.149.0
+```
+
+**M0's first done-criterion is met**: both CLIs report ✓, and both refuse when an API key is in
+the environment.
+
+`codex login status` → "Logged in using ChatGPT", confirming the subscription auth path with no
+API key involved. And every flag the codex adapter passes is verified present on 0.149.0 —
+`exec --json --output-schema -o -C --sandbox --skip-git-repo-check --ephemeral -m --add-dir` —
+including `--add-dir`, which `docs/03-adapter-contract.md` had singled out as doubtful. The
+trailing `-` for stdin is documented behaviour of the `[PROMPT]` argument.
+
+That closes every flag question in M0 without a single token spent on a model. What remains is
+only answerable by a real run: whether Claude's `--json-schema` returns a 2–4 KB markdown
+document intact, and what Codex's JSONL stream calls its usage and session fields.
+
 ## Next
 
-Install / PATH the Codex CLI, re-probe, then run the requirements flow for real.
+Run the requirements flow for real, on a chosen SaaS repo.
