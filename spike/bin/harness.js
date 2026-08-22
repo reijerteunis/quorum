@@ -5,7 +5,7 @@
 //   harness board                           kanban of tickets by stage
 //   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock]
 //   harness lint                            lint all flows
-//   harness adapters                        check CLIs are installed + logged in, no API keys
+//   harness adapters [--probe] [--json]     CLIs installed + no API keys; --probe also proves login
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError } from '../src/engine.js';
-import { getAdapter } from '../src/adapters/index.js';
+import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -109,11 +109,23 @@ async function main() {
       process.exit(bad ? 1 : 0);
     }
     case 'adapters': {
-      const { config } = loadProject();
+      const { config, repoDir } = loadProject();
+      const report = [];
       for (const name of ['claude', 'codex']) {
-        try { const v = await getAdapter(name, config.adapters).check(); console.log(c.green('✓') + ` ${name}: ${v}`); }
-        catch (e) { console.log(c.red('✗') + ` ${name}: ${e.message}`); }
+        const adapter = getAdapter(name, config.adapters);
+        let version = null;
+        try { version = await adapter.check(); console.log(c.green('✓') + ` ${name}: ${version}`); }
+        catch (e) { console.log(c.red('✗') + ` ${name}: ${e.message}`); report.push({ adapter: name, installed: false, error: e.message }); continue; }
+
+        if (!flags.probe) { report.push({ adapter: name, installed: true, version, login: 'unverified' }); continue; }
+        // check() only proves the binary exists. Only a real request proves the subscription answers.
+        const p = await probeAdapter(adapter, { cwd: repoDir });
+        if (p.ok) console.log('  ' + c.green('✓') + c.dim(` login verified — round-trip ${p.ms}ms${p.cost_usd != null ? `, $${p.cost_usd.toFixed(4)}` : ''}${p.tokens ? `, ${p.tokens} tokens` : ''}`));
+        else console.log('  ' + c.red('✗') + ` ${c.bold('login not usable')}: ${p.error}`);
+        report.push({ adapter: name, installed: true, version, login: p.ok ? 'verified' : 'failed', ...p });
       }
+      if (!flags.probe) console.log(c.dim('· presence only — logins NOT verified; run `harness adapters --probe` before a real run'));
+      if (flags.json) console.log(JSON.stringify({ probed: Boolean(flags.probe), adapters: report }, null, 2));
       return;
     }
     case 'run': {

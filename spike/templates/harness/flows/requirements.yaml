@@ -13,7 +13,6 @@ steps:
     - id: pm-codex
       role: product-manager
       adapter: codex
-      model: gpt-5
       input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
       output: { write: requirements/candidate-codex.md }
 

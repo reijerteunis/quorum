@@ -6,7 +6,6 @@ steps:
   - id: architect
     role: principal-architect
     adapter: codex
-    model: gpt-5
     worktree: true
     branch: "harness/{id}/contracts"
     input: { backlog: [requirements/merged.md, solution/review.md], harness: [architecture.md, rules.md], repo: true }
@@ -36,7 +35,6 @@ steps:
   - id: finalize
     role: principal-architect
     adapter: codex
-    model: gpt-5
     input: { backlog: [solution/draft.md, solution/review.md] }
     output: { write: solution/solution.md }
     instructions: Produce the final solution document, incorporating the review. Keep the Contracts and Tasks sections verbatim unless the review changed them.
@@ -44,7 +42,6 @@ steps:
   - id: tasks
     role: principal-architect
     adapter: codex
-    model: gpt-5
     input: { backlog: [solution/solution.md] }
     output: { write: solution/tasks.yaml }
     instructions: >

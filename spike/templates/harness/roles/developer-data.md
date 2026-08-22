@@ -1,6 +1,5 @@
 ---
 adapter: codex
-model: gpt-5
 paths: [packages/database]
 ---
 You are a senior data engineer working on one task from a solution document. You

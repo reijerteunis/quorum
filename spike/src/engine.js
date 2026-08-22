@@ -69,6 +69,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
 
   const steps = flow.steps;
   let i = 0;
+  try {
   while (i < steps.length) {
     const step = steps[i];
     const res = await runStep(step, ctx);
@@ -87,13 +88,31 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     if (res?.abort) return finish(ctx, ticket.meta.stage, 'aborted');
     i += 1;
   }
+  } catch (e) {
+    // A failed run is part of the ticket's history: record it before it propagates, so runs.log
+    // never shows a run that started and then simply stopped existing. See Q-0001.
+    finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
+    throw e;
+  }
   return finish(ctx, flow.produces, 'completed');
 }
 
 async function runStep(step, ctx) {
   if (step.parallel) {
-    const results = await Promise.all(step.parallel.map((s) => runAgentStep(s, ctx)));
-    return results.find((r) => r?.goto || r?.abort) ?? null;
+    // allSettled, not all: a sibling that fails must not discard work the others already paid
+    // for. Each runAgentStep persists its own output, so waiting lets the survivors land and a
+    // retry only re-runs what actually failed. See Q-0001.
+    const settled = await Promise.allSettled(step.parallel.map((s) => runAgentStep(s, ctx)));
+    const failed = settled.map((r, i) => [r, step.parallel[i]]).filter(([r]) => r.status === 'rejected');
+    if (failed.length) {
+      const survivors = step.parallel.filter((_, i) => settled[i].status === 'fulfilled').map((s) => s.id);
+      const detail = failed.map(([r, s]) => `${s.id}: ${r.reason?.message ?? r.reason}`).join('\n  - ');
+      throw new FlowError(
+        `${failed.length} of ${settled.length} parallel step(s) failed:\n  - ${detail}` +
+        (survivors.length ? `\n  kept: ${survivors.join(', ')} (already written to the ticket; a re-run will overwrite them)` : ''),
+      );
+    }
+    return settled.map((r) => r.value).find((r) => r?.goto || r?.abort) ?? null;
   }
   if (step.gate) return runGate(step, ctx);
   if (step.type === 'script') return runScript(step, ctx);
@@ -107,7 +126,7 @@ async function runAgentStep(step, ctx, extra = {}) {
   ctx = { ...ctx, vars: { ...ctx.vars, ...(extra.vars ?? {}) } };
   const role = loadRole(step.role, ctx.harnessDir);
   const adapterName = ctx.config.adapterOverride ?? step.adapter ?? role.meta.adapter ?? 'claude';
-  const model = step.model ?? role.meta.model;
+  const model = resolveModel(step, role, adapterName);
   const adapter = getAdapter(adapterName, ctx.config.adapters);
   const schema = schemaFor(step);
   let cwd = ctx.repoDir;
@@ -206,7 +225,7 @@ async function runScript(step, ctx) {
   }
 }
 
-function finish(ctx, stage, status) {
+function finish(ctx, stage, status, note) {
   const { ticket, backlog } = ctx;
   const from = ticket.meta.stage;
   ticket.meta.iterations = ctx.counters;
@@ -215,9 +234,20 @@ function finish(ctx, stage, status) {
     ticket.meta.history = [...(ticket.meta.history ?? []), { stage, run: ctx.runId, flow: ctx.flow.name, at: new Date().toISOString(), cost: round(ctx.stats.cost) }];
   }
   backlog.write(ticket);
-  backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}`);
+  backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   ctx.ui.info(`run #${ctx.runId} ${status}: ${from} → ${ticket.meta.stage}   cost $${round(ctx.stats.cost)}  tokens ${ctx.stats.tokens}`);
   return { status, stage: ticket.meta.stage, cost: ctx.stats.cost, runId: ctx.runId };
+}
+
+// A role's default model belongs to the role's own vendor. Inheriting it across adapters sends
+// e.g. "opus" to codex, which fails or silently degrades. The step always wins; a role default is
+// inherited only when the vendor matches; otherwise let the CLI pick a model its login supports.
+// See Q-0001.
+export function resolveModel(step, role, adapterName) {
+  if (step.model) return step.model;
+  const roleAdapter = role.meta?.adapter;
+  if (roleAdapter && roleAdapter !== adapterName) return undefined;
+  return role.meta?.model;
 }
 
 // ---------- prompt + schema ----------

@@ -17,7 +17,6 @@ steps:
   - id: write-tests
     role: automation-qa
     adapter: codex
-    model: gpt-5
     worktree: true
     branch: "harness/{id}/tests"
     base: "harness/{id}/integration"

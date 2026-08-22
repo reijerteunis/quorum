@@ -15,6 +15,9 @@
 // (claude --json-schema, codex --output-schema) is the primary path; the fallback
 // is extractJson() on the final message: last ```json fence or last {...} block.
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { mockAdapter } from './mock.js';
@@ -25,6 +28,54 @@ export function getAdapter(name, config = {}) {
   const a = registry[name];
   if (!a) throw new Error(`unknown adapter "${name}" (known: ${Object.keys(registry).join(', ')})`);
   return a(config[name] ?? {});
+}
+
+// A CLI can be installed, report a version, and still be unable to talk to its vendor because
+// the subscription login expired. The CLIs bury that in a wall of stack traces, so translate it
+// into the one sentence that tells the user what to do. See Q-0001.
+const AUTH_PATTERNS = [
+  /refresh token/i, /log ?out and (sign|log) ?in again/i, /401 Unauthorized/i,
+  /not logged in/i, /please run\s+\/?login/i, /authentication (failed|required)/i,
+  /invalid api key/i, /oauth token (has )?expired/i, /session (has )?expired/i,
+];
+
+const RELOGIN = { claude: 'claude  (then /login)', codex: 'codex logout && codex login' };
+
+// Returns a clear one-line message when `text` looks like an auth failure, else null.
+export function authError(vendor, text = '') {
+  // A model the subscription cannot use reads like a generic 400. Name the real problem, since
+  // the fix is to change the flow or the CLI config, not to log in again. See Q-0001.
+  const m = text.match(/The '([^']+)' model is not supported when using (\w+) with a ([\w ]+) account/i);
+  if (m) return `${vendor}: model "${m[1]}" is not available on a ${m[3]} subscription — remove the model from the flow step (and from ~/.codex/config.toml) to let the CLI pick one its own login supports`;
+  if (!AUTH_PATTERNS.some((re) => re.test(text))) return null;
+  return `${vendor} login expired or missing — run: ${RELOGIN[vendor] ?? `${vendor} login`}`;
+}
+
+// A real authenticated round-trip: the smallest possible paid request. check() only proves the
+// binary exists; this proves the subscription actually answers. Used by `harness adapters --probe`.
+// additionalProperties:false and every property in `required` are mandatory for OpenAI strict
+// structured outputs — codex rejects anything else. schemaFor() already obeys this; so must we.
+const PROBE_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false };
+const PROBE_PROMPT = 'Reply with exactly this JSON and nothing else: {"ok": true}. Do not use any tools.';
+
+export async function probeAdapter(adapter, { cwd, model } = {}) {
+  const t0 = Date.now();
+  // Deliberately an empty directory: run it in the project and the CLI loads CLAUDE.md, rules and
+  // whatever else the repo carries, which turned a hello-world round-trip into $0.39. See Q-0001.
+  const sandbox = cwd ?? fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-probe-'));
+  const disposable = !cwd;
+  try {
+    const res = await adapter.run({ prompt: PROBE_PROMPT, schema: PROBE_SCHEMA, model, cwd: sandbox, extraDirs: [], allowWrite: false });
+    const problems = checkAgainstSchema(res.output, PROBE_SCHEMA);
+    if (problems.length) return { ok: false, vendor: adapter.vendor, ms: Date.now() - t0, error: `structured output invalid (${problems.join('; ')})`, raw: (res.raw ?? '').slice(0, 400) };
+    return { ok: true, vendor: adapter.vendor, ms: Date.now() - t0, cost_usd: res.usage.cost_usd ?? null, tokens: (res.usage.input_tokens ?? 0) + (res.usage.output_tokens ?? 0), session: res.session };
+  } catch (e) {
+    // Normalise here too, not only inside the built-in adapters: a contributor's adapter should
+    // not have to remember to translate its vendor's auth noise.
+    return { ok: false, vendor: adapter.vendor, ms: Date.now() - t0, error: authError(adapter.vendor, e.message) ?? e.message };
+  } finally {
+    if (disposable) fs.rmSync(sandbox, { recursive: true, force: true });
+  }
 }
 
 export function extractJson(text) {

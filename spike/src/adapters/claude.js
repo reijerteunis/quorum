@@ -1,6 +1,6 @@
 // Claude Code adapter: `claude -p` on the user's subscription login. Never an API key.
 import { spawn } from 'node:child_process';
-import { extractJson } from './index.js';
+import { extractJson, authError } from './index.js';
 
 export function claudeAdapter(cfg = {}) {
   const bin = cfg.bin ?? 'claude';
@@ -30,7 +30,10 @@ export function claudeAdapter(cfg = {}) {
       const t0 = Date.now();
       onEvent?.({ type: 'spawn', vendor: 'claude', cmd: `${bin} ${args.map(q).join(' ')}` });
       const r = await exec(bin, args, { cwd, stdin: prompt, onLine: (l) => onEvent?.({ type: 'stdout', line: l }) });
-      if (r.code !== 0) throw new Error(`claude exited ${r.code}: ${r.stderr.slice(-2000)}`);
+      if (r.code !== 0) {
+        const auth = authError('claude', r.stderr + r.stdout);
+        throw new Error(auth ?? `claude exited ${r.code}: ${r.stderr.slice(-2000)}`);
+      }
       let env;
       try { env = JSON.parse(r.stdout); } catch { env = null; }
       const raw = env?.result ?? r.stdout;
@@ -38,7 +41,9 @@ export function claudeAdapter(cfg = {}) {
       return {
         vendor: 'claude', output, raw,
         usage: {
-          input_tokens: env?.usage?.input_tokens ?? null,
+          // input_tokens excludes cache traffic, which is most of a real prompt: a probe that
+          // cost $0.39 reported 65 tokens. Count the cache fields or every roll-up is fiction.
+          input_tokens: env?.usage ? (env.usage.input_tokens ?? 0) + (env.usage.cache_creation_input_tokens ?? 0) + (env.usage.cache_read_input_tokens ?? 0) : null,
           output_tokens: env?.usage?.output_tokens ?? null,
           cost_usd: env?.total_cost_usd ?? null,
         },

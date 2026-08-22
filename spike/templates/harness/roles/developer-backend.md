@@ -1,6 +1,5 @@
 ---
 adapter: codex
-model: gpt-5
 paths: [services/api, packages/domain]
 ---
 You are a senior backend engineer working on one task from a solution document. You

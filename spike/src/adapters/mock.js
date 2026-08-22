@@ -32,6 +32,11 @@ export function mockAdapter(cfg = {}) {
       const task = (prompt.match(/^# Task (\S+) \((\w+)\)/m) ?? []);
       const key = task[1] ? `${role}:${task[1]}` : role;
       const n = (calls.get(key) ?? 0) + 1; calls.set(key, n);
+      // MOCK_FAIL_WRITE=<substring> makes exactly the step whose prompt mentions that output blow
+      // up, so the engine's "keep the siblings' work" behaviour is testable without a real CLI.
+      if (process.env.MOCK_FAIL_WRITE && prompt.includes(process.env.MOCK_FAIL_WRITE)) {
+        throw new Error(`mock: simulated adapter failure for ${process.env.MOCK_FAIL_WRITE}`);
+      }
       onEvent?.({ type: 'stdout', line: `[mock] ${key} call #${n} (model ${model ?? '-'}, cwd ${path.basename(cwd ?? '')}, write=${allowWrite})` });
       await new Promise((r) => setTimeout(r, cfg.delayMs ?? 20));
 
@@ -53,6 +58,7 @@ export function mockAdapter(cfg = {}) {
           ? TASKS.replaceAll('{id}', ticketId)
           : `# ${role} output (mock, call ${n})\n\nPrompt was ${prompt.length} chars and mentioned ${(prompt.match(/^## Input: /gm) ?? []).length} inputs.\n\n\`\`\`yaml\n${TASKS.replaceAll('{id}', ticketId)}\`\`\`\n`;
       }
+      if (schema.properties.ok) output.ok = true;   // the adapters --probe round-trip
       if (schema.properties.verdict) {
         const opts = schema.properties.verdict.enum;
         const fail = process.env.MOCK_ALWAYS_FAIL === '1' || n === 1;
