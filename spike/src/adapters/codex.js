@@ -10,9 +10,10 @@ export function codexAdapter(cfg = {}) {
   return {
     vendor: 'codex',
     async check() {
+      // BYOS guard first: a missing CLI must not mask an API key in the environment.
+      if (process.env.CODEX_API_KEY || process.env.OPENAI_API_KEY) throw new Error('CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Harness runs on subscription OAuth only');
       const r = await exec(bin, ['--version'], { cwd: process.cwd() });
       if (r.code !== 0) throw new Error(`codex CLI not runnable: ${r.stderr || r.stdout}`);
-      if (process.env.CODEX_API_KEY || process.env.OPENAI_API_KEY) throw new Error('CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Harness runs on subscription OAuth only');
       return r.stdout.trim();
     },
     async run({ prompt, schema, model, cwd, extraDirs = [], allowWrite = false, onEvent }) {

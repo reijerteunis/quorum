@@ -7,18 +7,21 @@ export function claudeAdapter(cfg = {}) {
   return {
     vendor: 'claude',
     async check() {
+      // Guard the BYOS rule first: an API key in the environment would silently bypass subscription
+      // auth, and that is true whether or not the CLI is installed — a missing CLI must not mask it.
+      if (process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only');
       const r = await exec(bin, ['--version'], { cwd: process.cwd() });
       if (r.code !== 0) throw new Error(`claude CLI not runnable: ${r.stderr || r.stdout}`);
-      // Guard the BYOS rule: an API key in the environment would silently bypass subscription auth.
-      if (process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only');
       return r.stdout.trim();
     },
-    async run({ prompt, schema, model, cwd, extraDirs = [], maxTurns = 40, allowWrite = false, onEvent }) {
+    // maxTurns is part of the common adapter contract but Claude Code has no turn-budget flag
+    // (verified against 2.1.220, 2026-08-22) — accepted and ignored here, like the codex adapter.
+    async run({ prompt, schema, model, cwd, extraDirs = [], maxTurns, allowWrite = false, onEvent }) {
+      void maxTurns;
       const args = [
         '-p',
         '--output-format', 'json',
         '--json-schema', JSON.stringify(schema),
-        '--max-turns', String(maxTurns),
         '--permission-mode', allowWrite ? 'acceptEdits' : 'plan',
         ...(model ? ['--model', model] : []),
         ...extraDirs.flatMap((d) => ['--add-dir', d]),

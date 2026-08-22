@@ -73,4 +73,14 @@ r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto'], { MOCK
 assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a human gate');
 
 assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
+
+// BYOS guard: an API key in the environment is refused *before* the CLI is probed, so a CLI that
+// is missing on this machine cannot mask the key (found by the Q-0001 probe, 2026-08-22).
+{
+  const keys = { ANTHROPIC_API_KEY: 'sk-smoke', OPENAI_API_KEY: 'sk-smoke', CODEX_API_KEY: 'sk-smoke' };
+  const out = run(['adapters'], keys).stdout;
+  assert(/claude: ANTHROPIC_API_KEY is set/.test(out), 'claude adapter refuses an API key regardless of CLI presence');
+  assert(/codex: CODEX_API_KEY\/OPENAI_API_KEY is set/.test(out), 'codex adapter refuses an API key regardless of CLI presence');
+}
+
 console.log('\nall good — ' + tmp);

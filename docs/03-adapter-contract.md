@@ -1,5 +1,8 @@
 # Adapter contract (spike v0)
 
+*Status: 2026-08-22 — Q-0001 probe filled in the verification table, dropped `--max-turns`
+from the Claude invocation, and fixed the BYOS guard to run before the CLI check.*
+
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
 sees one shape.
@@ -16,7 +19,8 @@ await adapter.run({
   cwd,                    // repo dir, or the step's worktree when the step writes code
   extraDirs,              // dirs the agent may read (ticket folder, harness/)
   allowWrite,             // true only for worktree steps
-  maxTurns,               // agentic turn budget
+  maxTurns,               // agentic turn budget — accepted by every adapter, honoured only where
+                          // the CLI has an equivalent flag (neither claude nor codex does today)
   onEvent,                // ({type:'spawn'|'stdout', ...}) streaming trace
 }) -> {
   output,                 // object matching schema   ← the "structured tail"
@@ -51,12 +55,16 @@ first enum value of `verdict` means pass.
 `CODEX_API_KEY` is set. The CLIs would silently prefer the key over the subscription
 login, which breaks the product's one hard promise.
 
+The key check runs **before** the CLI is probed. The guard is about the environment, not
+about the CLI, so a CLI that is missing on this machine must not mask a key that is set —
+otherwise `adapters` reports "not installed" and the user never learns the real problem.
+
 ## Exact invocations used by this spike
 
 Claude Code:
 
 ```
-claude -p --output-format json --json-schema '<schema>' --max-turns N \
+claude -p --output-format json --json-schema '<schema>' \
   --permission-mode acceptEdits|plan --model <alias> --add-dir <ticket> --add-dir <harness>
 ```
 
@@ -67,9 +75,16 @@ codex exec --json --output-schema schema.json -o last.txt -C <cwd> \
   --sandbox workspace-write|read-only --skip-git-repo-check --ephemeral -m <model> -
 ```
 
-Both take the prompt on stdin. Flags are from the vendors' CLI references as of
-2026-08; treat `--add-dir` on Codex and the JSONL usage field names as **unverified** —
-the adapters tolerate their absence. Override any flag via `harness.yaml → adapters.<vendor>.extraArgs`.
+Both take the prompt on stdin. Override any flag via `harness.yaml → adapters.<vendor>.extraArgs`.
+
+Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220):
+
+| Flag / field | Status |
+| --- | --- |
+| `claude --json-schema`, `--output-format`, `--permission-mode`, `--add-dir` | **verified present** in `--help` |
+| `claude --max-turns` | **verified absent** — removed from the adapter; see the `maxTurns` note above |
+| `claude` structured output actually returned for a 2–4 KB document | unverified — needs a real run |
+| `codex --add-dir`, `--ephemeral`, and the JSONL usage/session field names | unverified — CLI not installed on the probe machine; the adapter tolerates their absence |
 
 ## What to verify on day 1 (the real spike questions)
 
