@@ -35,7 +35,13 @@
           },
           {
             "title": "Q-0006 terminal event",
-            "required": ["stage", "run", "flow", "status", "stage_before", "stage_after", "at", "cost"]
+            "required": ["stage", "run", "flow", "status", "stage_before", "stage_after", "at", "cost"],
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "exhausted" } } },
+                "then": { "properties": { "cost": { "const": 0 } } }
+              }
+            ]
           }
         ]
       }

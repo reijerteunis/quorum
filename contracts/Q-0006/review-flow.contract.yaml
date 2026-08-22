@@ -13,21 +13,22 @@ steps:
         input:
           backlog: [requirements/merged.md, solution/solution.md]
           diff: "{base}...harness/{id}/integration"
-        output: {write: "review/round-{round}/claude.md"}
+        output: {writes: ["review/round-{round}/claude.md"]}
       - id: review-codex
         role: code-reviewer
         adapter: codex
         input:
           backlog: [requirements/merged.md, solution/solution.md]
           diff: "{base}...harness/{id}/integration"
-        output: {write: "review/round-{round}/codex.md"}
+        output: {writes: ["review/round-{round}/codex.md"]}
 
   - id: verdict
     role: code-reviewer
     adapter: claude
     input:
       backlog:
-        - "review/round-{round}/*.md"
+        - "review/round-{round}/claude.md"
+        - "review/round-{round}/codex.md"
         - requirements/merged.md
         - solution/solution.md
     output:

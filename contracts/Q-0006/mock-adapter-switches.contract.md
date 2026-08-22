@@ -9,3 +9,6 @@
 
 The controls affect only steps whose output schema contains `verdict`. They do not alter
 adapter failures, document generation, task fan-out, or production engine routing.
+For such schemas, every mock `changes-requested` finding uses the artifact contract form,
+for example `major: src/mock.ts:1 (mock) placeholder finding`; forced and fallback
+verdicts therefore validate against `review-artifacts.schema.json`.
