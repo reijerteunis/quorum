@@ -45,6 +45,18 @@ them only where its own description assigns those files explicitly and names why
 solutioned before this table gained its `tooling` row do exactly that, and remain valid.
 Tasks must still assign each concrete file to exactly one owner.
 
+**Tasks are small, and their ownership is complete.** A task touches one coherent file set and
+is describable in a sentence. Between them, a solution's tasks must own every file the red suite
+requires changed — a file no task owns cannot be fixed by anyone, and the development loop will
+spend its whole iteration budget discovering that. Ownership reaches an agent only through the
+task `description`; an `owns:` list is read by nothing. Tasks that share files are a sign the cut
+is wrong. Independent tasks declare `depends_on: []` and run in one wave, which is where a
+two-vendor fan-out comes from.
+
+`spike/test/**` belongs to qa-red, and every development task is told not to modify tests. A
+scenario that can only be satisfied by editing a test file is therefore unsatisfiable, and is a
+finding for the scenario gate rather than a red test.
+
 Template sharing is explicit, not directory-wide. All files under `harness/flows/` and
 the `harness/roles/code-reviewer.md` role are byte-shared with their paths under
 `spike/templates/harness/`. Repository configuration and context (`harness.yaml`,
