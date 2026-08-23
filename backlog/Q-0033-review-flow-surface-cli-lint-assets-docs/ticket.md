@@ -51,6 +51,30 @@ history:
     stage_after: red
     at: 2026-08-23T15:52:33.759Z
     cost: 0
+  - stage: solutioned
+    run: 5
+    flow: qa-red
+    status: failed
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:02:53.635Z
+    cost: 2.187
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:59:54.836Z
+    cost: 0
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T19:11:23.602Z
+    cost: 10.626
 ---
 The second half of the review flow, split out of Q-0006 on 2026-08-22 because thirty acceptance
 criteria in one ticket hit the iteration bound at every stage. Q-0006 builds the engine — round
