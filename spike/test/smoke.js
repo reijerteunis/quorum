@@ -14,7 +14,11 @@ const run = (args, env = {}) => {
   process.stdout.write(r.stdout); if (r.stderr) process.stderr.write(r.stderr);
   return r;
 };
-const assert = (cond, msg) => { if (!cond) { console.error('✗ ' + msg); process.exit(1); } console.log('✓ ' + msg); };
+let smokeFailures = 0;
+const assert = (cond, msg) => {
+  if (!cond) { smokeFailures++; console.error('✗ ' + msg); return false; }
+  console.log('✓ ' + msg); return true;
+};
 
 execSync('git init -q && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init', { cwd: tmp });
 assert(run(['init']).status === 0, 'init');
@@ -606,4 +610,9 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(resolveModel({ model: 'x' }, role, 'codex') === 'x', 'an explicit step model always wins');
 }
 
-console.log('\nall good — ' + tmp);
+if (smokeFailures) {
+  console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
+  process.exitCode = 1;
+} else {
+  console.log('\nall good — ' + tmp);
+}

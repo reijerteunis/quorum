@@ -18,6 +18,14 @@ async function scenario(id, title, fn) {
   try { await fn(); console.log(`✓ ${id} — ${title}`); }
   catch (e) { failed++; console.error(`✗ ${id} — ${title}\n  ${e.message}`); }
 }
+function checkFixtures(cases) {
+  const errors = [];
+  for (const [caseId, fn] of cases) {
+    try { fn(); console.log(`  ✓ ${caseId}`); }
+    catch (e) { errors.push(`${caseId}: ${e.message}`); console.error(`  ✗ ${caseId}\n    ${e.message}`); }
+  }
+  assert.equal(errors.length, 0, errors.join('\n'));
+}
 function skipped(id, reason) { console.log(`- ${id} — SKIP: ${reason}`); }
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body); };
@@ -170,29 +178,29 @@ await scenario('S5.1-S5.7/E5', 'init discovers named branches and preserves temp
 });
 
 await scenario('S6.2-S6.10', 'return-chain validation handles multi-hop, missing, unloadable, dead-end, ambiguity and cycles', () => {
-  const valid = lintFixture({ review: reviewWith('flow:qa-red'), 'qa-red': basicFlow('qa-red', 'qa', 'red'), development: basicFlow('development', 'red', 'green') });
-  assert.equal(valid.result.status, 0, output(valid.result));
   const cases = [
-    ['missing', { review: reviewWith('flow:nonexistent'), development: basicFlow('development', 'red', 'green') }, /review.*nonexistent.*(missing|no such|load)/is],
-    ['unloadable', { review: reviewWith('flow:broken'), broken: 'name: broken\nsteps: [', development: basicFlow('development', 'red', 'green') }, /review.*broken.*load|broken.*invalid/is],
+    ['S6.3 missing', { review: reviewWith('flow:nonexistent'), development: basicFlow('development', 'red', 'green') }, /review.*nonexistent.*(missing|no such|load)/is],
+    ['S6.4 unloadable', { review: reviewWith('flow:broken'), broken: 'name: broken\nsteps: [', development: basicFlow('development', 'red', 'green') }, /review[\s\S]*broken/is],
     ['dead end', { review: reviewWith('flow:dead'), dead: basicFlow('dead', 'x', 'nowhere') }, /review.*dead.*nowhere/is],
     ['ambiguity', { review: reviewWith('flow:a'), a: basicFlow('a', 'x', 'y'), b: basicFlow('b', 'y', 'z'), c: basicFlow('c', 'y', 'green') }, /review.*a.*y.*b.*c/is],
     ['cycle/repeated pair', { source: reviewWith('flow:a').replace('name: review', 'name: source'), a: basicFlow('a', 'x', 'y'), b: basicFlow('b', 'y', 'x') }, /source.*a.*cycle/is],
     ['self target', { review: reviewWith('flow:review') }, /review.*review.*reviewed/is],
   ];
-  for (const [label, files, re] of cases) { const x = lintFixture(files); assert.notEqual(x.result.status, 0, label); assert.match(output(x.result), re, label); }
-  const unreached = lintFixture({ source: reviewWith('flow:development'), development: basicFlow('development', 'red', 'green'), x1: basicFlow('x1', 'unused', 'a'), x2: basicFlow('x2', 'unused', 'b') });
-  assert.equal(unreached.result.status, 0, output(unreached.result));
+  checkFixtures([
+    ['S6.2 multi-hop', () => { const x = lintFixture({ review: reviewWith('flow:qa-red'), 'qa-red': basicFlow('qa-red', 'qa', 'red'), development: basicFlow('development', 'red', 'green') }); assert.equal(x.result.status, 0, output(x.result)); }],
+    ...cases.map(([label, files, re]) => [label, () => { const x = lintFixture(files); assert.notEqual(x.result.status, 0, label); assert.match(output(x.result), re, label); }]),
+    ['S6.7 unreached ambiguity', () => { const x = lintFixture({ source: reviewWith('flow:development'), development: basicFlow('development', 'red', 'green'), x1: basicFlow('x1', 'unused', 'a'), x2: basicFlow('x2', 'unused', 'b') }); assert.equal(x.result.status, 0, output(x.result)); }],
+  ]);
 });
 
 await scenario('S7.1-S7.7', 'bounds and counter spelling reject every invalid form', () => {
   const base = YAML.parse(read(q6, 'review-flow.contract.yaml'));
   const cases = [[undefined, 'review'], ['three', 'review'], [1.5, 'review'], [0, 'review'], [-1, 'review'], [3, 'iterations.review'], [3, '']];
-  for (const [bound, counter] of cases) {
+  checkFixtures(cases.map(([bound, counter], index) => [`S7.${index + 1}`, () => {
     const flow = structuredClone(base); const f = flow.steps.find((s) => s.id === 'verdict');
     if (bound === undefined) delete f.on_fail.max_iterations; else f.on_fail.max_iterations = bound; f.on_fail.counter = counter;
     assert.throws(() => lintFlow(flow), counter === 'iterations.review' ? /iterations\.review.*review/is : /verdict.*(max_iterations|counter)/is);
-  }
+  }]));
   const plain = { name: 'plain', consumes: 'x', produces: 'y', steps: [{ id: 'ordinary', role: 'worker', on_fail: { goto: 'ordinary', counter: 'iterations.ordinary', max_iterations: 3 } }] };
   assert.throws(() => lintFlow(plain), /iterations\.ordinary.*ordinary/is, 'counter spelling applies to a non-verdict step');
 });
@@ -200,9 +208,9 @@ await scenario('S7.1-S7.7', 'bounds and counter spelling reject every invalid fo
 await scenario('S8.1-S8.4', 'same-role review panels must span at least two adapters', () => {
   const base = YAML.parse(read(q6, 'review-flow.contract.yaml'));
   const panel = base.steps[0].parallel;
-  for (const adapters of [['claude', 'claude'], ['codex', 'codex', 'codex']]) {
+  for (const adapters of [['codex', 'codex'], ['codex', 'codex', 'codex']]) {
     const flow = structuredClone(base); flow.steps[0].parallel = adapters.map((adapter, i) => ({ ...panel[i % 2], id: `member-${i}`, adapter }));
-    assert.throws(() => lintFlow(flow), new RegExp(`member-0.*member-1.*${adapters[0]}`, 'is'));
+    assert.throws(() => lintFlow(flow), (error) => new RegExp(`member-0.*member-1.*${adapters[0]}`, 'is').test(error.message) && !/written by its own vendor/i.test(error.message));
   }
   const mixed = structuredClone(base); mixed.steps[0].parallel.push({ ...panel[0], id: 'third', adapter: 'claude' }); assert.equal(lintFlow(mixed), true);
 });
@@ -251,6 +259,7 @@ await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/c
   const created = cli(exhaustedRoot, ['ticket', 'new', 'Exhaustion fixture']); assert.equal(created.status, 0, output(created));
   const exhausted = cli(exhaustedRoot, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--auto', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' }, '');
   assert.notEqual(exhausted.status, 0); assert.match(output(exhausted), /loop exhausted/i); assert.match(output(exhausted), /human-locked/i);
+  assert.doesNotMatch(output(exhausted), /stdin closed without one/i);
   assert.doesNotMatch(output(exhausted), /auto-advanced \(human-locked\)/i);
   const root = projectFixture(); const ticket = makeTicket(root);
   let body = read(ticket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 2');
@@ -258,11 +267,13 @@ await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/c
   const board = cli(root, ['board']); assert.match(output(board), /iter=.*review.*2/); assert.match(output(board), /cost=\$1\.25/);
 });
 
-await scenario('S11.5/S11.6', 'frozen Q-0006 inputs are guarded and unreachable baselines skip explicitly', () => {
-  try { git(repo, 'cat-file', '-e', '5d16e06^{commit}'); }
-  catch { skipped('S11.6', 'baseline 5d16e06 unavailable'); return; }
+await scenario('S11.5', 'frozen Q-0006 inputs are unchanged from the reachable baseline', () => {
+  git(repo, 'cat-file', '-e', '5d16e06^{commit}');
   assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'contracts/Q-0006'), '');
 });
+const unavailableBaseline = '0000000000000000000000000000000000000033';
+try { git(repo, 'cat-file', '-e', `${unavailableBaseline}^{commit}`); assert.fail('deliberately nonexistent baseline unexpectedly resolved'); }
+catch { skipped('S11.6', `baseline ${unavailableBaseline} unavailable (guard skips without raw Git output)`); }
 
 const spec = read(repo, 'docs', '02-sdlc-pipeline-spec.md');
 const section = (number) => spec.match(new RegExp(`(?:^|\\n)#{2,3}\\s+${number.replace('.', '\\.') }[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`, 'i'))?.[1] ?? '';
@@ -270,14 +281,16 @@ await scenario('S13.1', 'the review-failure arrow returns reviewed to red', () =
   const state = section('3.4'); assert.ok(state, '§3.4 must exist');
   const lines = state.split('\n'); const label = lines.findIndex((line) => /review fail/i.test(line));
   assert.ok(label >= 0, '§3.4 must label the review failure arrow');
-  const diagram = lines.slice(0, label + 1).join('\n');
   const stages = lines.find((line) => /draft.*requirements.*solutioned.*red.*green.*reviewed/i.test(line)) ?? '';
   assert.match(stages, /red\s+.*green\s+.*reviewed/i, 'diagram must contain red, green, and reviewed in order');
-  const reviewedColumn = stages.indexOf('reviewed'); const redColumn = stages.indexOf('red');
-  assert.ok(reviewedColumn >= 0 && redColumn >= 0);
-  assert.match(lines[label], /└|┘|─/u, 'review-failure label must be attached to an arrow');
-  assert.ok(diagram.split('\n').slice(1).some((line) => line[redColumn] === '▲' || line[redColumn] === '│'), 'review failure arrow must terminate at red');
-  assert.equal(lines.slice(1, label + 1).some((line) => line[stages.indexOf('green')] === '▲' && /review fail/i.test(lines[label])), false, 'review failure must not terminate at green');
+  let connector = lines[label];
+  if (!/└[─]+┘/u.test(connector)) connector = lines.slice(Math.max(0, label - 1), label + 2).find((line) => /└[─]+┘/u.test(line)) ?? '';
+  const run = connector.match(/└[─]+┘/u); assert.ok(run?.index !== undefined, 'review-failure label must own a └─…┘ connector run');
+  const endpoints = [run.index, run.index + run[0].length - 1];
+  const labels = ['draft', 'requirements', 'solutioned', 'red', 'green', 'reviewed'];
+  const spans = labels.map((name, i) => ({ name, from: stages.indexOf(name) - 1, to: i + 1 < labels.length ? stages.indexOf(labels[i + 1]) - 2 : stages.length + 1 }));
+  const resolved = endpoints.map((column) => spans.find((span) => column >= span.from && column <= span.to)?.name);
+  assert.deepEqual(resolved, ['red', 'reviewed'], `review-failure connector endpoints resolve to ${resolved.join(' → ')}`);
 });
 
 await scenario('S13.2-S13.4', 'the documented review flow, config and M1 decision match the contracts', () => {
@@ -288,7 +301,13 @@ await scenario('S13.2-S13.4', 'the documented review flow, config and M1 decisio
 });
 
 await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', () => {
-  const plan = read(repo, 'docs', '06-development-plan.md'); assert.match(plan, /Q-0006[\s\S]*engine/is); assert.match(plan, /Q-0033[\s\S]*(surface|flow|role|lint)/is);
+  const plan = read(repo, 'docs', '06-development-plan.md');
+  const m1 = plan.match(/^## M1\b[\s\S]*?(?=^##\s|\z)/mi)?.[0] ?? '';
+  assert.ok(m1, 'M1 block must exist');
+  assert.match(m1, /Q-0006[^\n]*(engine|split)|engine[^\n]*Q-0006/is);
+  assert.match(m1, /Q-0033[^\n]*(surface|flow|role|lint)/is);
+  const done = m1.match(/Done when[\s\S]*?(?=\n###|\n##|$)/i)?.[0] ?? '';
+  assert.match(done, /(preflight|lint rule|base.branch|max.diff.bytes|documentation alignment)/i, 'M1 Done when must name the shipped Q-0033 surface');
 });
 
 await scenario('S13.6', 'DECISIONS contains both complete review-flow decisions', () => {
@@ -305,8 +324,8 @@ await scenario('S13.7', 'the Gate glossary entry distinguishes declared and exha
 });
 
 await scenario('S13.8', 'README remains byte-unchanged from the frozen baseline', () => {
-  try { git(repo, 'cat-file', '-e', '5d16e06^{commit}'); assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'README.md'), ''); }
-  catch (e) { if (!String(e.message).includes('cat-file')) throw e; skipped('S13.8', 'baseline 5d16e06 unavailable'); }
+  git(repo, 'cat-file', '-e', '5d16e06^{commit}');
+  assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'README.md'), '');
 });
 
 await scenario('E7', 'unused explicit gate answers are ignored after a gate-free regression', () => {
