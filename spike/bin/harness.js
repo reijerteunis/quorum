@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
-import { loadFlow, loadFlowByName, runFlow, FlowError } from '../src/engine.js';
+import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 import { validateFile } from '../src/contracts.js';
 
@@ -133,76 +133,22 @@ function currentBranch(dir) {
 }
 
 // Whole-directory flow validation, shared by `lint` and the `run` preflight so the two report
-// the identical diagnostic for the identical defect. Per-file structural and bound/counter/panel
-// checks already happen inside loadFlow → lintFlow; this adds the one thing a single flow cannot
-// check about itself — whether its `goto: flow:<target>` edges actually return to a stage this
-// flow consumes. See contracts/Q-0006/review-lint.contract.md and Q-0033.
+// the identical diagnostic for the identical defect. The actual walk (target resolution, return
+// chains, dead ends, ambiguity, cycles) lives once in src/lint.js's lintFlowDirectory; this only
+// renders its per-file records into the CLI's colorized report. See
+// contracts/Q-0006/review-lint.contract.md and Q-0033.
 function lintDirectory(flowsDir) {
-  const files = fs.readdirSync(flowsDir).filter((f) => f.endsWith('.yaml')).sort();
-  const byFile = new Map(files.map((f) => [f, { flow: null, errors: [] }]));
-  const flows = new Map();
-  for (const file of files) {
-    const rec = byFile.get(file);
-    try {
-      const flow = loadFlow(path.join(flowsDir, file));
-      rec.flow = flow;
-      if (flow.name) flows.set(flow.name, flow);
-    } catch (e) {
-      rec.errors.push(String(e?.message ?? e));
-    }
-  }
-  const consumersByStage = new Map();
-  for (const flow of flows.values()) {
-    const list = consumersByStage.get(flow.consumes) ?? [];
-    list.push(flow);
-    consumersByStage.set(flow.consumes, list);
-  }
-  for (const file of files) {
-    const rec = byFile.get(file);
-    if (!rec.flow) continue;
-    const flow = rec.flow;
-    const steps = flow.steps.flatMap((s) => (s.parallel ? s.parallel : [s]));
-    for (const step of steps) {
-      const goto = step.on_fail?.goto;
-      if (!goto || !String(goto).startsWith('flow:')) continue;
-      const targetName = String(goto).slice('flow:'.length);
-      const target = flows.get(targetName);
-      const label = `${flow.name} (${step.id ?? 'step'}): goto flow:${targetName}`;
-      if (!target) { rec.errors.push(`${label} — target flow "${targetName}" not found or failed to load`); continue; }
-      let current = target;
-      let stage = current.produces;
-      const visited = new Set();
-      // A visited (flow, stage) pair terminates the walk: without it a cross-flow cycle hangs
-      // lint forever instead of failing it.
-      for (;;) {
-        if (stage === flow.consumes) break;
-        const key = `${current.name} ${stage}`;
-        if (visited.has(key)) {
-          const implicated = [...new Set([...visited].map((k) => k.split(' ')[0])), current.name];
-          rec.errors.push(`${label} — return chain cycles at stage "${stage}" (back to flow "${current.name}"); implicated flows: ${implicated.join(', ')}`);
-          break;
-        }
-        visited.add(key);
-        const consumers = consumersByStage.get(stage) ?? [];
-        // Ambiguity and dead ends are only evaluated for a stage this walk actually reaches —
-        // unrelated branching elsewhere in the directory stays legal.
-        if (!consumers.length) { rec.errors.push(`${label} — return chain dead-ends at stage "${stage}"; no flow consumes it`); break; }
-        if (consumers.length > 1) { rec.errors.push(`${label} — return chain is ambiguous at stage "${stage}": ${consumers.map((c2) => c2.name).join(', ')} all consume it`); break; }
-        current = consumers[0];
-        stage = current.produces;
-      }
-    }
-  }
-  const report = files.map((file) => {
-    const rec = byFile.get(file);
-    if (!rec.errors.length) return c.green('✓') + ' ' + file;
-    const bullets = rec.errors.flatMap((err) => {
+  const records = lintFlowDirectory(flowsDir);
+  const report = records.map((record) => {
+    const filename = path.basename(record.file);
+    if (!record.problems.length) return c.green('✓') + ' ' + filename;
+    const bullets = record.problems.flatMap((err) => {
       const parts = String(err).split('\n').map((l) => l.trim()).filter(Boolean);
       return parts.length > 1 && /invalid:$/.test(parts[0]) ? parts.slice(1) : parts;
     });
-    return c.red('✗') + ' ' + file + '\n' + bullets.map((l) => `  - ${l.replace(/^-+\s*/, '')}`).join('\n');
+    return c.red('✗') + ' ' + filename + '\n' + bullets.map((l) => `  - ${l.replace(/^-+\s*/, '')}`).join('\n');
   });
-  return { ok: files.every((file) => !byFile.get(file).errors.length), report };
+  return { ok: records.every((record) => !record.problems.length), report };
 }
 
 function printReport(report) { for (const line of report) console.log(line); }
