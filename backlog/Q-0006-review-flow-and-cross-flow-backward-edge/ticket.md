@@ -1,7 +1,7 @@
 ---
 id: Q-0006
 title: Review flow — engine, counters and the backward edge
-stage: red
+stage: green
 owner: ruud
 repos: []
 branch: harness/Q-0006/integration
@@ -53,6 +53,14 @@ history:
     stage_before: red
     stage_after: red
     at: 2026-08-23T23:31:00.423Z
+    cost: 0
+  - stage: green
+    run: 12
+    flow: development
+    status: completed
+    stage_before: red
+    stage_after: green
+    at: 2026-08-23T23:45:50.678Z
     cost: 0
 ---
 The seven-stage SDLC has no review stage yet: a ticket reaching `green` has passing tests but
