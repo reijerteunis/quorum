@@ -389,21 +389,19 @@ await scenario('E7', 'unused explicit gate answers are ignored after a gate-free
 skipped('S12.1', 'manual: requires authenticated Claude and Codex subscription evidence');
 skipped('E2', 'forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet');
 
-const e8MergeBase = git(repo, 'merge-base', 'main', 'HEAD');
-const e8Paths = git(repo, 'diff', '--name-only', e8MergeBase, 'HEAD').split('\n').filter(Boolean);
-const e8ProductionPaths = e8Paths.filter((file) => !/^(contracts\/Q-0033\/|spike\/test\/)/.test(file));
-console.log(`# E8 merge-base ${e8MergeBase}; paths: ${e8Paths.join(', ')}`);
-if (e8ProductionPaths.length) {
-  skipped('E8', `development has landed, diff now includes production paths: ${e8ProductionPaths.join(', ')}`);
-} else await scenario('E8', 'the integration diff contains the QA-owned contract and test contribution', () => {
-  for (const expected of [
-    'contracts/Q-0033/cli-review-surface.contract.md',
-    'contracts/Q-0033/documentation-and-evidence.contract.md',
-    'contracts/Q-0033/review-surface-assets.contract.md',
-    'spike/test/q0033-surface.js',
-    'spike/test/smoke.js',
-  ]) assert.ok(e8Paths.includes(expected), `qa-red contribution missing from diff: ${expected}`);
-});
+// E8 is evidence, not a test. Branch composition is true only during the red phase: once this
+// ticket merges to main the merge-base diff is empty, so any assertion about its contents becomes
+// permanently false and would block every later ticket's integrate --expect pass. prove-red records
+// the same facts as `Evidence:` lines in qa/red-integration.md. Removed by hand, 2026-08-23; see
+// solution/errata.md E-4 and the DECISIONS entry "a red test is a permanent acceptance test".
+try {
+  const mb = git(repo, 'merge-base', 'HEAD', 'HEAD~1');
+  const paths = git(repo, 'diff', '--name-only', mb, 'HEAD').split('\n').filter(Boolean);
+  console.log(`# E8 evidence — merge-base ${mb}; paths: ${paths.join(', ') || '(none)'}`);
+} catch {
+  console.log('# E8 evidence — merge-base unavailable in this checkout');
+}
+
 
 // E9 is already permanently covered by smoke.js's five truncation assertions.
 skipped('E9', "already covered by smoke.js's five truncation assertions");
