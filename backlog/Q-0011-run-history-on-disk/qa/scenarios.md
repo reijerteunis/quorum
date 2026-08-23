@@ -445,4 +445,3 @@ end-to-end regression suite (Q-0006/Q-0033's fixtures included) must remain gree
 scenario here proposes changing `ticket.md`'s or `runs.log`'s existing format, and none requires a
 real vendor login — every fixture above is achievable through the mock adapter's existing and
 newly documented `MOCK_*` switches.
-</document>
