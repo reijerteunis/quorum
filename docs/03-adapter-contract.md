@@ -32,11 +32,18 @@ await adapter.run({
 }) -> {
   output,                 // object matching schema   ← the "structured tail"
   raw,                    // final message as text
-  usage: { input_tokens, output_tokens, cost_usd },   // null where the CLI doesn't report it
+  usage: { vendor, input_tokens, output_tokens, cached_input_tokens,
+           cache_write_input_tokens, cost_usd },     // null where the CLI doesn't report it
   session,                // vendor session id or null
   vendor, ms,
 }
 ```
+
+The result's `vendor` is a per-call billing declaration. A billed thrown error may carry the
+same `vendor`, full `usage`, and `attempts`; the retry wrapper accumulates all five measures and
+exposes the actual invocation count on success and failure. Only when a call omits its vendor
+does the wrapper use `adapter.vendor`. Cache fields are subsets of input, not values to add to it.
+Unknown measures stay `null`.
 
 ## The structured tail
 

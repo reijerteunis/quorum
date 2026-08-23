@@ -56,8 +56,11 @@ export function claudeAdapter(cfg = {}) {
 function usageOf(env) {
   const u = env?.usage;
   return {
+    vendor: 'claude',
     input_tokens: u ? (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) : null,
     output_tokens: u?.output_tokens ?? null,
+    cached_input_tokens: u?.cache_read_input_tokens ?? null,
+    cache_write_input_tokens: u?.cache_creation_input_tokens ?? null,
     cost_usd: env?.total_cost_usd ?? null,
   };
 }

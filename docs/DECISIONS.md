@@ -203,3 +203,19 @@ The corollary for the cold-clone test: a newcomer's first ticket must be small, 
 **Why:** The original comment on `checkAgainstSchema` reads "Not a full validator on purpose", and that rationale was vendor tolerance. It conflated two things. A vendor may legitimately wrap its answer in ways we cannot predict — that is `extractJson`'s problem. But once parsed, the object either matches the schema Quorum wrote or it does not, and accepting `verdict: "approve"` alongside a list of blockers is not tolerance, it is a routing bug: the engine advances a ticket on a verdict its own findings contradict.
 
 Found by the Q-0006 reviewer, which noted that no task owned the file the red tests needed and that approving them "narrows the DECISIONS position that checkAgainstSchema stays minimal — decide it explicitly". Round 2 approved the scenarios without the ownership question being settled, because task ownership is a solutioning artifact and the scenario gate does not look at it. **A gate only catches what it is pointed at** — worth remembering when adding gates.
+
+## Product-level schema annotations select semantic validation — 2026-08-23
+**Decision:** After ordinary JSON Schema validation, `harness validate` may select a named
+product-level semantic pass through `x-quorum-contract`. The first recognised value is
+`run-manifest-v1`, whose pass checks lifecycle and occurrence invariants and exactly recomputes
+the per-vendor roll-up. Missing or unknown annotations explicitly report that semantic checks
+were skipped; they never imply run-manifest validation. The parser and JSON Schema behaviour
+remain generic, and no JSONL/event-stream capability is introduced by Q-0011.
+**Alternatives considered:** Encode every invariant in JSON Schema — rejected because exact
+grouped roll-up recomputation, including the distinction between an unreported `null` and a
+reported zero, is not structural validation. Select checks by schema filename or `$id` — rejected
+because both couple behaviour to storage location or ticket-specific identity rather than a
+versioned product contract.
+**Why:** A manifest can be structurally valid while disagreeing with its persisted occurrence
+usage. An explicit annotation makes the extra executable contract reviewable and lets generic
+schemas retain their existing behaviour.

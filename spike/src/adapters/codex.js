@@ -51,7 +51,7 @@ export function codexAdapter(cfg = {}) {
       const t0 = Date.now();
       onEvent?.({ type: 'spawn', vendor: 'codex', cmd: `${bin} ${args.join(' ')}` });
       // Codex reports no cost, only tokens (verified 0.149.0, Q-0001).
-      const usage = { input_tokens: null, output_tokens: null, cost_usd: null, cached_input_tokens: null };
+      const usage = { vendor: 'codex', input_tokens: null, output_tokens: null, cost_usd: null, cached_input_tokens: null, cache_write_input_tokens: null };
       let session = null;
       const errors = [];   // codex puts failures on stdout as JSONL, not on stderr
       const r = await exec(bin, args, {

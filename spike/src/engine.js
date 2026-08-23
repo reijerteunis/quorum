@@ -6,7 +6,7 @@ import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
-import { ensureWorktree } from './git.js';
+import { ensureWorktree, ensureExcluded } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, IntegrationError } from './fanout.js';
 
 export class FlowError extends Error {}
@@ -81,18 +81,32 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
   };
-  ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
-  backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
-
   // Ctrl-C at a gate used to leave no terminal line in runs.log and no persisted counters, so an
   // interrupted run silently handed its iteration budget back — an undocumented way to buy
   // unlimited retries, which defeats the bound the design rests on. See Q-0004.
   const onSignal = (sig) => {
-    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
+    try {
+      for (const occurrence of ctx.activeOccurrences ?? []) terminalOccurrence(ctx, occurrence, 'interrupted', { error: { category: 'interrupted', message: `received ${sig}` } });
+      finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`);
+    } catch { /* nothing left to save */ }
     process.exit(130);
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
+  // A terminal gate may be represented by a promise whose UI owns no libuv handle. Keep the
+  // process alive so cooperative signals can finalise the manifest instead of Node abandoning a
+  // still-running top-level await with an honest-but-unhelpful `running` record.
+  const signalKeeper = setInterval(() => {}, 60000);
+  try {
+    ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
+    backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
+    if (!dry) initialiseRunHistory(ctx);
+  } catch (e) {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    clearInterval(signalKeeper);
+    throw e;
+  }
 
   const steps = flow.steps;
   let i = 0;
@@ -121,11 +135,15 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   } catch (e) {
     // A failed run is part of the ticket's history: record it before it propagates, so runs.log
     // never shows a run that started and then simply stopped existing. See Q-0001.
+    for (const occurrence of ctx.activeOccurrences ?? []) {
+      terminalOccurrence(ctx, occurrence, 'failed', { error: { category: occurrence.kind === 'integrate' ? 'integrate' : occurrence.kind === 'script' ? 'script' : 'unknown', message: String(e.message ?? e) } });
+    }
     finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
     throw e;
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    clearInterval(signalKeeper);
   }
   return finish(ctx, flow.produces, 'completed');
 }
@@ -188,8 +206,11 @@ async function runAgentStep(step, ctx, extra = {}) {
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
 
+  if (ctx.dry) { ui.step(step.id, `${adapterName}${model ? '/' + model : ''} role=${step.role ?? '-'}`); ui.info(`${step.id}: dry run — prompt ${prompt.length} chars, schema ${Object.keys(schema.properties).join(',')}`); return null; }
+
+  const occurrence = allocateOccurrence(ctx, step, 'adapter', { role: step.role ?? null, adapter: adapterName, model: model ?? null, branch, worktree: cwd === ctx.repoDir ? null : relative(ctx.repoDir, cwd) });
+  persistArtifact(ctx, occurrence, 'prompt.txt', prompt);
   ui.step(step.id, `${adapterName}${model ? '/' + model : ''} role=${step.role ?? '-'}`);
-  if (ctx.dry) { ui.info(`${step.id}: dry run — prompt ${prompt.length} chars, schema ${Object.keys(schema.properties).join(',')}`); return null; }
 
   let res;
   try {
@@ -205,6 +226,8 @@ async function runAgentStep(step, ctx, extra = {}) {
     // the roll-up understate exactly where accuracy matters most — one failed review step hid
     // $4.54 of a $10.25 run. Bill it, log it, then let it propagate. See Q-0002.
     countUsage(ctx, e.usage);
+    if (e.raw != null) persistArtifact(ctx, occurrence, 'output.txt', e.raw);
+    terminalOccurrence(ctx, occurrence, 'failed', { attempts: e.attempts ?? 1, usage: normaliseUsage(e.usage, e.vendor ?? adapter.vendor), error: errorOf(e, adapterName) });
     backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${adapterName} model=${model ?? '-'} FAILED cost=${e.usage?.cost_usd ?? '?'} error=${JSON.stringify(String(e.message).split('\n')[0].slice(0, 200))}`);
     throw e;
   }
@@ -212,9 +235,12 @@ async function runAgentStep(step, ctx, extra = {}) {
 
   const problems = checkAgainstSchema(res.output, schema);
   if (problems.length) {
+    persistArtifact(ctx, occurrence, 'output.txt', res.raw ?? '');
     const dump = backlog.writeFile(ticket, `.harness/${step.id}-${Date.now()}.raw.txt`, res.raw ?? '');
+    terminalOccurrence(ctx, occurrence, 'failed', { attempts: res.attempts ?? 1, usage: normaliseUsage(res.usage, res.vendor ?? adapter.vendor), error: { category: 'structured_output', message: `${step.id}: structured output invalid (${problems.join('; ')})` } });
     throw new FlowError(`${step.id}: structured output invalid (${problems.join('; ')}). Raw saved to ${dump}`);
   }
+  persistArtifact(ctx, occurrence, 'output.txt', res.raw ?? '');
 
   // Persist outputs declaratively.
   for (const rel of writesOf(step)) {
@@ -237,6 +263,7 @@ async function runAgentStep(step, ctx, extra = {}) {
   // A vendor that reports no cost is unpriced, not free. Rounding null to $0.000 states a price
   // Quorum does not know — see the tokens-only decision, 2026-08-22.
   ui.done(step.id, `${res.output.verdict ? 'verdict=' + res.output.verdict + ' ' : ''}${formatCost(res.usage)} ${res.ms}ms`);
+  terminalOccurrence(ctx, occurrence, 'completed', { attempts: res.attempts ?? 1, verdict: res.output.verdict ?? null, usage: normaliseUsage(res.usage, res.vendor ?? adapter.vendor) });
 
   // Verdict routing: first enum value = pass; anything else = fail → on_fail.
   if (step.output?.verdict) {
@@ -257,6 +284,110 @@ export function mergeFailure(m) {
   const line = String(m?.error ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
   return line ? `git: ${line}` : 'git reported no reason';
 }
+
+function initialiseRunHistory(ctx) {
+  const started = new Date();
+  const runId = `${ctx.ticket.meta.id}-${ctx.runId}`;
+  const runDir = path.join(ctx.repoDir, '.quorum', 'runs', runId);
+  fs.mkdirSync(path.dirname(runDir), { recursive: true });
+  fs.mkdirSync(runDir, { recursive: false });
+  fs.mkdirSync(path.join(runDir, 'steps'));
+  ctx.history = {
+    dir: runDir, started: started.getTime(), sequence: 0,
+    manifest: {
+      schema_version: 1, run_id: runId, ticket_id: ctx.ticket.meta.id,
+      ticket_path: relative(ctx.repoDir, path.join(ctx.ticket.dir, 'ticket.md')),
+      flow: ctx.flow.name, flow_file: relative(ctx.repoDir, ctx.flow.file),
+      stage: { before: ctx.ticket.meta.stage, after: null }, started_at: started.toISOString(),
+      ended_at: null, duration_ms: null, status: 'running', steps: [], rollup: [],
+    },
+  };
+  ctx.activeOccurrences = new Set();
+  ensureExcluded(ctx.repoDir, '.quorum/');
+  replaceManifest(ctx);
+}
+
+function allocateOccurrence(ctx, step, kind, fields = {}) {
+  const seq = ++ctx.history.sequence;
+  const safeId = String(step.id).replace(/[/:]/g, '-');
+  const occurrenceDir = `steps/${String(seq).padStart(3, '0')}-${safeId}`;
+  fs.mkdirSync(path.join(ctx.history.dir, occurrenceDir));
+  const occurrence = {
+    step_id: String(step.id), occurrence_dir: occurrenceDir, kind,
+    role: fields.role ?? null, adapter: fields.adapter ?? null, model: fields.model ?? null,
+    branch: fields.branch ?? null, worktree: fields.worktree ?? null,
+    started_at: new Date().toISOString(), duration_ms: null, attempts: 0, status: 'running',
+    verdict: null, error: null, usage: null, _started: Date.now(),
+  };
+  ctx.history.manifest.steps.push(occurrence);
+  ctx.activeOccurrences.add(occurrence);
+  return occurrence;
+}
+
+function terminalOccurrence(ctx, occurrence, status, fields = {}) {
+  if (!ctx.activeOccurrences.has(occurrence)) return;
+  Object.assign(occurrence, fields, { status, duration_ms: Math.max(0, Date.now() - occurrence._started) });
+  delete occurrence._started;
+  ctx.activeOccurrences.delete(occurrence);
+  ctx.history.manifest.rollup = rollup(ctx.history.manifest.steps);
+  replaceManifest(ctx);
+}
+
+function persistArtifact(ctx, occurrence, name, text) {
+  const target = path.join(ctx.history.dir, occurrence.occurrence_dir, name);
+  try { fs.writeFileSync(target, String(text)); }
+  catch (e) { ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`); }
+}
+
+function replaceManifest(ctx) {
+  const target = path.join(ctx.history.dir, 'manifest.json');
+  const temporary = `${target}.tmp`;
+  let fd;
+  try {
+    fd = fs.openSync(temporary, 'w');
+    fs.writeFileSync(fd, `${JSON.stringify(ctx.history.manifest, null, 2)}\n`);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd); fd = undefined;
+    fs.renameSync(temporary, target);
+  } catch (e) {
+    if (fd != null) try { fs.closeSync(fd); } catch { /* best effort */ }
+    ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`);
+  }
+}
+
+function normaliseUsage(usage, fallbackVendor) {
+  if (!usage) return null;
+  return {
+    vendor: usage.vendor ?? fallbackVendor,
+    input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null,
+    cached_input_tokens: usage.cached_input_tokens ?? null,
+    cache_write_input_tokens: usage.cache_write_input_tokens ?? null,
+    cost_usd: usage.cost_usd ?? null,
+  };
+}
+
+function rollup(steps) {
+  const rows = new Map();
+  const measures = ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cost_usd'];
+  for (const { usage } of steps) {
+    if (!usage) continue;
+    const row = rows.get(usage.vendor) ?? { vendor: usage.vendor, step_count: 0, unpriced_steps: 0, ...Object.fromEntries(measures.map((k) => [k, null])) };
+    row.step_count += 1;
+    if (usage.cost_usd == null) row.unpriced_steps += 1;
+    for (const key of measures) if (usage[key] != null) row[key] = (row[key] ?? 0) + usage[key];
+    rows.set(usage.vendor, row);
+  }
+  return [...rows.values()];
+}
+
+function errorOf(error, adapterName) {
+  const message = String(error.message ?? error);
+  const category = authErrorCategory(adapterName, message) ? 'auth' : transientErrorCategory(message) ? 'transient' : 'adapter';
+  return { category, message: message || 'adapter failed' };
+}
+function authErrorCategory(vendor, message) { return message.includes('login expired or missing') || /authentication|not logged in|API_KEY is set/i.test(message); }
+function transientErrorCategory(message) { return /connection|socket|ECONN|ETIMEDOUT|rate.?limit|overload|\b(429|5\d\d)\b|timed? ?out/i.test(message); }
+function relative(root, target) { return path.relative(root, target).split(path.sep).join('/'); }
 
 function countUsage(ctx, usage) {
   if (!usage) return;
@@ -317,14 +448,20 @@ async function runScript(step, ctx) {
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
+  const occurrence = allocateOccurrence(ctx, step, 'script');
   try {
     const out = execSync(cmd, { cwd: ctx.repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    persistArtifact(ctx, occurrence, 'output.txt', out);
     if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), out);
+    terminalOccurrence(ctx, occurrence, 'completed');
     ctx.ui.done(step.id, 'exit 0');
     return null;
   } catch (e) {
+    const output = String(e.stdout ?? '') + String(e.stderr ?? '');
+    persistArtifact(ctx, occurrence, 'output.txt', output);
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script exited ${e.status ?? 'unknown'}` } });
     ctx.ui.warn(`${step.id}: exit ${e.status}`);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), (e.stdout ?? '') + (e.stderr ?? ''));
+    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), output);
     return step.on_fail ? handleFail(step, ctx) : { abort: true };
   }
 }
@@ -335,6 +472,15 @@ function finish(ctx, stage, status, note, fields = {}) {
   ticket.meta.iterations = ctx.counters;
   if (status === 'completed' || status === 'regressed') {
     ticket.meta.stage = stage;
+  }
+  if (ctx.history) {
+    const ended = new Date();
+    Object.assign(ctx.history.manifest, {
+      status, ended_at: ended.toISOString(), duration_ms: Math.max(0, ended.getTime() - ctx.history.started),
+      stage: { before: ctx.history.manifest.stage.before, after: ticket.meta.stage },
+      rollup: rollup(ctx.history.manifest.steps),
+    });
+    replaceManifest(ctx);
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
   backlog.write(ticket);
@@ -508,6 +654,7 @@ async function runIntegrate(step, ctx) {
   const into = interpolate(step.into ?? ticket.meta.branch, ctx.vars);
   ui.step(step.id, `integrate → ${into}`);
   if (ctx.dry) return null;
+  const occurrence = allocateOccurrence(ctx, step, 'integrate');
   const dir = ticketWorktree(ctx.repoDir, into);
   // Branch list: explicit, or a glob resolved against fan-out results / existing branches.
   const pattern = interpolate(step.branches, ctx.vars);
@@ -562,13 +709,16 @@ async function runIntegrate(step, ctx) {
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
   for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
+  persistArtifact(ctx, occurrence, 'output.txt', out);
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather
   // than burning the step's iteration budget on it.
   if (envError) {
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'integrate', message: `${step.id}: ${envError}` } });
     throw new FlowError(`${step.id}: ${envError}. The report is on disk, but it is not evidence of anything — fix the environment (commands.install in harness.yaml) and re-run.`);
   }
   if (conflicts.length || !testsOk) {
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'integrate', message: conflicts.length ? `${step.id}: integration conflicts: ${conflicts.join(', ')}` : `${step.id}: tests did not meet expectation` } });
     ctx.lastIntegration = notes.join('\n') + '\n\n' + out.slice(-3000);
     // Failing set: conflicted tasks; if tests failed without conflicts, every fanned task (the agents get the test output).
     const byBranch = new Map((ctx.fanned ?? []).map((f) => [f.branch, f.task]));
@@ -577,6 +727,7 @@ async function runIntegrate(step, ctx) {
     return handleFail(step, ctx);
   }
   ui.done(step.id, `${branches.length} branch(es) on ${into}${cmd ? ', tests ' + (step.expect === 'fail' ? 'red as expected' : 'green') : ''}`);
+  terminalOccurrence(ctx, occurrence, 'completed');
   ctx.failingTasks = null;
   return null;
 }
