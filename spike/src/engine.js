@@ -428,7 +428,7 @@ function reviewRound(ticket) {
   return (completed.length ? Math.max(...completed) : 0) + 1;
 }
 
-function materialiseDiff(step, ctx) {
+export function materialiseDiff(step, ctx) {
   const range = interpolate(step.input.diff, ctx.vars);
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
   const integration = `harness/${ctx.ticket.meta.id}/integration`;
@@ -436,6 +436,20 @@ function materialiseDiff(step, ctx) {
   if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
   if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
+  // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
+  // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
+  // have acted on; the panel only produced findings because the agents read the working tree
+  // instead of the evidence handed to them. Diagnose the overwhelmingly likely cause rather than
+  // reporting emptiness: a branch already merged into base has nothing left to show.
+  if (!stat.trim()) {
+    const merged = (() => {
+      try { execFileSync('git', ['merge-base', '--is-ancestor', integration, base], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
+      catch { return false; }
+    })();
+    throw new FlowError(merged
+      ? `${step.id}: \`${range}\` is empty because ${integration} is already merged into ${base} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
+      : `${step.id}: \`${range}\` is empty — no commits to review. Check input.diff in the flow and that the ticket's work was committed to ${integration}.`);
+  }
   const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
   const limit = ctx.config.repo?.max_diff_bytes ?? 200000;
   let bytes = full; let truncated = bytes.length > limit;

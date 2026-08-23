@@ -626,6 +626,37 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(resolveModel({ model: 'x' }, role, 'codex') === 'x', 'an explicit step model always wins');
 }
 
+// An empty diff range is a failure, not a review. Q-0006's first review paid two vendors to read
+// zero bytes and returned a verdict; the range was empty because the branch was already merged.
+{
+  const { materialiseDiff } = await import('../src/engine.js');
+  const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-diff-'));
+  const g = (cmd) => execSync(`git -c user.email=a@b -c user.name=t ${cmd}`, { cwd: gitRepo, encoding: 'utf8' });
+  g('init -q -b main');
+  fs.writeFileSync(path.join(gitRepo, 'a.txt'), 'one\n');
+  g('add -A'); g('commit -q -m base');
+  g('checkout -q -b harness/T-9/integration');
+  fs.writeFileSync(path.join(gitRepo, 'a.txt'), 'one\ntwo\n');
+  g('add -A'); g('commit -q -m work');
+
+  const ctx = {
+    repoDir: gitRepo, config: { repo: { base_branch: 'main' } }, vars: {},
+    ticket: { meta: { id: 'T-9' } }, backlog: { log: () => {} }, runId: 1,
+  };
+  const step = { id: 'review-claude', input: { diff: 'main...harness/T-9/integration' } };
+
+  const withCommits = materialiseDiff(step, ctx);
+  assert(/\+two/.test(withCommits), 'a range with commits yields the patch');
+
+  g('checkout -q main'); g('merge -q --no-ff -m merged harness/T-9/integration');
+  let err = null;
+  try { materialiseDiff(step, ctx); } catch (e) { err = e; }
+  assert(err !== null, 'an empty diff range throws instead of reviewing nothing');
+  assert(/already merged/.test(err?.message ?? ''), 'the error names the cause: the branch is already merged');
+  assert(/main/.test(err?.message ?? '') && /T-9/.test(err?.message ?? ''), 'the error names both refs');
+  fs.rmSync(gitRepo, { recursive: true, force: true });
+}
+
 if (smokeFailures) {
   console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
   process.exitCode = 1;
