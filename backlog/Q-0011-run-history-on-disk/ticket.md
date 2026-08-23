@@ -8,7 +8,7 @@ branch: harness/Q-0011/integration
 priority: p1
 created: 2026-08-22
 iterations:
-  solutioning.architecture-review: 3
+  solutioning.architecture-review: 2
 history:
   - stage: requirements
     run: 1
@@ -58,6 +58,14 @@ history:
     stage_after: requirements
     at: 2026-08-23T00:55:04.306Z
     cost: 10.216
+  - stage: requirements
+    run: 4
+    flow: architect-only
+    status: completed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-23T00:59:06.177Z
+    cost: 0
 ---
 Everything a run knows today dies with the terminal it printed to. `runs.log` keeps one line per
 step and the ticket keeps a cost per run, but the traces, the prompts, the per-vendor token

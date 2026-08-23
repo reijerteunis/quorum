@@ -2,14 +2,15 @@
 
 ## Status
 
-Revision 7, addressing every finding in `solution/review.md`.
+Final revision, closing the four directives in `solution/review.md`.
 
 The 2026-08-23 scope cut is authoritative: Q-0011 persists a manifest plus per-attempt prompt and output files. It does not persist an event stream and does not add JSONL validation.
 
-The two requirement errata are normative:
+The three requirement errata are normative:
 
 - E-1: only occurrences with non-null usage participate in the roll-up.
 - E-2: schemas annotated `x-quorum-contract: run-manifest-v1` receive contract-specific semantic validation after JSON Schema validation.
+- E-3: gate interruption marks the run interrupted and creates no occurrence.
 
 ## Chosen approach
 
@@ -175,52 +176,65 @@ Each live criterion has exactly one owner.
 The repository’s live `tooling` role is used for the CLI task because `harness/architecture.md` assigns `spike/bin/` and `spike/test/` to it; the generic three-role vocabulary in the stage output contract predates that repository-specific role. Using `backend` for the CLI would collapse the required two-vendor fan-out and contradict the repository’s current write contract.
 
 ```yaml
-- id: q0011-engine-writer
-  role: backend
-  title: Persist atomic run manifests, attempt artifacts, usage and per-vendor roll-ups
-  contracts:
-    - contracts/Q-0011/run-manifest.schema.json
-    - contracts/Q-0011/run-history-writer.contract.md
-    - contracts/Q-0011/mock-adapter-run-history.contract.md
-  depends_on: []
-  owns:
-    - spike/src/**
-    - docs/03-adapter-contract.md
-    - docs/04-architecture.md
-    - docs/GLOSSARY.md
-    - docs/DECISIONS.md
-    - backlog/Q-0011-run-history-on-disk/ticket.md
-  acceptance_criteria:
-    - AC-1
-    - AC-2
-    - AC-3
-    - AC-4
-    - AC-5
-    - AC-8
-    - AC-9
-    - AC-10
-    - AC-11
+tasks:
+  - id: q0011-engine-writer
+    role: backend
+    title: Persist atomic run manifests, attempt artifacts, usage and per-vendor roll-ups
+    description: >
+      Own spike/src/**, docs/03-adapter-contract.md, docs/04-architecture.md,
+      docs/GLOSSARY.md, and docs/DECISIONS.md. Implement the engine writer against the
+      referenced frozen contracts. Do not edit contracts/Q-0011/**, spike/bin/**,
+      spike/test/**, or backlog/Q-0011-run-history-on-disk/ticket.md; spike/test/** belongs
+      to qa-red.
+    contracts:
+      - contracts/Q-0011/run-manifest.schema.json
+      - contracts/Q-0011/run-history-writer.contract.md
+      - contracts/Q-0011/mock-adapter-run-history.contract.md
+    depends_on: []
+    owns:
+      - spike/src/**
+      - docs/03-adapter-contract.md
+      - docs/04-architecture.md
+      - docs/GLOSSARY.md
+      - docs/DECISIONS.md
+    acceptance_criteria:
+      - AC-1
+      - AC-2
+      - AC-3
+      - AC-4
+      - AC-5
+      - AC-8
+      - AC-9
+      - AC-10
+      - AC-11
 
-- id: q0011-cli-reader-validator
-  role: tooling
-  title: Implement harness runs and executable manifest semantic validation
-  contracts:
-    - contracts/Q-0011/run-manifest.schema.json
-    - contracts/Q-0011/run-history-writer.contract.md
-    - contracts/Q-0011/runs-cli.contract.md
-    - contracts/Q-0011/mock-adapter-run-history.contract.md
-  depends_on:
-    - q0011-engine-writer
-  owns:
-    - spike/bin/harness.js
-    - spike/test/q0011-*.js
-  acceptance_criteria:
-    - AC-12
-    - AC-13
-    - AC-14
+  - id: q0011-cli-reader-validator
+    role: tooling
+    title: Implement harness runs and executable manifest semantic validation
+    description: >
+      Own spike/bin/harness.js. Implement the CLI reader and semantic validator against the
+      referenced frozen contracts. Do not edit contracts/Q-0011/**, spike/src/**, or
+      spike/test/**; spike/test/** belongs to qa-red.
+    contracts:
+      - contracts/Q-0011/run-manifest.schema.json
+      - contracts/Q-0011/run-history-writer.contract.md
+      - contracts/Q-0011/runs-cli.contract.md
+      - contracts/Q-0011/mock-adapter-run-history.contract.md
+    depends_on: []
+    owns:
+      - spike/bin/harness.js
+    acceptance_criteria:
+      - AC-12
+      - AC-13
+      - AC-14
 ```
 
-The dependency is contractual and test-facing: the contracts land before fan-out, so CLI implementation can proceed independently, while its real-artifact integration assertions run once the writer is available. The owned source files remain disjoint.
+Both tasks run in the same fan-out wave. The contracts land before fan-out, and the `integrate` step owns cross-task real-artifact assertions after both branches merge. The owned source files remain disjoint.
+
+## Open questions
+
+- The run-id/ticket-id join invariant is not added to semantic validation in Q-0011; the accepted N-1 finding is deferred to a later contract revision.
+- Run-directory size will be measured on the first real run and recorded by the architect; the accepted N-2 finding does not change this implementation.
 
 ## Verification
 
@@ -251,7 +265,7 @@ Repository commands remain those configured in `harness.yaml`; no dependency or 
 ## Review findings resolved
 
 - **B-1:** The writer now takes vendor provenance from `result.vendor` or `error.vendor`, with static `adapter.vendor` only as fallback. The mock profile explicitly sets both per-call success and failure declarations.
-- **B-2:** `ticket.md` removes the event-file and event-schema promises and points QA and development to the scope cut and normative errata. The backend task owns the edit.
+- **B-2:** `ticket.md` already removes the event-file and event-schema promises; no implementation task owns or edits it.
 - **M-3:** The CLI contract defines the ticket-filter pattern as `^[A-Z]+-[0-9]{4}$`.
 - **M-4:** `exhausted` is schema-reserved but never emitted by Q-0011; the existing ticket-history event does not terminate a run.
 - **M-5:** `docs/03-adapter-contract.md` is owned by the backend task and will document the expanded usage/result/error boundary.

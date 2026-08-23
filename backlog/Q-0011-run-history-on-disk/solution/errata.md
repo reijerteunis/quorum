@@ -43,3 +43,19 @@ capability is more honest than claiming the required mutation is structurally de
 
 **Scenario impact:** QA validates a real mock-run artifact and proves the token-only roll-up
 mutation fails with the vendor and `cost_usd` field named. Generic schema validation is unchanged.
+
+## E-3 — 2026-08-23 — gate interruption is recorded at run level only
+
+**Supersedes:** `requirements/merged.md` AC-10, the sentence “A step interrupted at a gate appears
+as `interrupted`.”
+
+**Replacement:** Occurrence-level `interrupted` applies only when an adapter, script, or integrate
+occurrence is in flight. An interrupt received while the run is at a gate marks the run
+`interrupted` and creates no occurrence, because gates allocate no occurrence under AC-4.
+
+**Why:** After the scope cut, a gate cannot carry an occurrence status. Recording the interrupt on
+the run preserves the terminal outcome without inventing a gate directory or shifting occurrence
+numbering.
+
+**Scenario impact:** QA covers interruption during in-flight adapter, script, and integrate work
+at occurrence level, and interruption at a gate at run level with no gate occurrence.
