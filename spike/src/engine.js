@@ -49,6 +49,22 @@ export function lintFlow(flow) {
       }
     }
   }
+  // A bounded loop that never shows its verdict to the step it returns to cannot converge: that
+  // step regenerates its output from the same inputs, and the reviewer objects to the same things.
+  // qa-red shipped exactly this way and spent $4.45 re-reviewing a file nothing had changed —
+  // write-tests committed nothing because it had no idea what was wrong. See Q-0011.
+  for (const s of steps) {
+    const target = s.on_fail?.goto;
+    if (!target || String(target).startsWith('flow:')) continue;   // cross-flow edges regress a stage
+    const written = writesOf(s);
+    if (!written.length) continue;
+    const dest = steps.find((t) => t.id === target);
+    if (!dest || dest.fan_out) continue;   // fan_out receives the integration result from the engine
+    const receives = dest.input?.backlog ?? [];
+    if (!written.some((w) => receives.some((inp) => globMatch(inp, w)))) {
+      problems.push(`${s.id}: loops back to "${target}", which never receives ${written.join(', ')} — the loop cannot converge`);
+    }
+  }
   if (!flow.consumes || !flow.produces) problems.push('flow needs consumes/produces');
   const gates = steps.filter((s) => s.gate);
   if (flow.produces === 'deployed' && !gates.some((g) => g.gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');
