@@ -27,6 +27,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
+    diffInputs: new Map(),
   };
   // What the ticket branch looked like before this run touched it, so a run that does not
   // complete can put it back. See Q-0033.
@@ -38,7 +39,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // interrupted run silently handed its iteration budget back — an undocumented way to buy
   // unlimited retries, which defeats the bound the design rests on. See Q-0004.
   const onSignal = (sig) => {
-    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
+    try { finish(ctx, ticket.meta.stage, 'aborted', `received ${sig}`); } catch { /* nothing left to save */ }
     process.exit(130);
   };
   process.once('SIGINT', onSignal);
@@ -47,6 +48,14 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   const steps = flow.steps;
   let i = 0;
   try {
+  // Diff-bearing flows have a run-level safety preflight. Preparing every distinct range here
+  // means a preceding agent can never be billed before a bad ref (or empty review range) is
+  // discovered, and every panel member receives the exact same bytes. It remains inside the run
+  // try block so a failed preflight receives the same terminal audit record as every other error.
+  for (const step of flattenSteps(flow.steps).filter((candidate) => candidate.input?.diff)) {
+    const range = interpolate(step.input.diff, ctx.vars);
+    if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(step, ctx));
+  }
   while (i < steps.length) {
     const step = steps[i];
     const res = await runStep(step, ctx);
@@ -58,7 +67,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
         ui.warn(`backward edge → ${target}: ticket regresses to stage "${targetFlow.consumes}"`);
         return finish(ctx, targetFlow.consumes, 'regressed', null, {
           targetFlow: targetFlow.name, stageBefore: ticket.meta.stage, stageAfter: targetFlow.consumes,
-          count: ctx.counters.review, limit: res.limit, remaining: Math.max(0, (res.limit ?? 0) - (ctx.counters.review ?? 0)),
+          counter: res.counter,
+          count: ctx.counters[res.counter], limit: res.limit,
+          remaining: Math.max(0, (res.limit ?? 0) - (ctx.counters[res.counter] ?? 0)),
         });
       }
       i = steps.findIndex((s) => s.id === target || (s.parallel && s.parallel.some((p) => p.id === target)));
@@ -258,7 +269,7 @@ function handleFail(step, ctx) {
   ctx.counters[counter] = n;
   if (n <= f.max_iterations) {
     ctx.ui.warn(`${step.id}: iteration ${n}/${f.max_iterations} → goto ${f.goto}`);
-    return { goto: f.goto, limit: f.max_iterations };
+    return { goto: f.goto, counter, limit: f.max_iterations };
   }
   ctx.ui.warn(`${step.id}: loop exhausted (${f.max_iterations}) → human gate`);
   recordEvent(ctx, ctx.ticket.meta.stage, 'exhausted', 0);
@@ -284,7 +295,7 @@ async function runGate(step, ctx) {
     // max_iterations+1 further traversals rather than one. See Q-0004 / DECISIONS 2026-08-22.
     if (step.retryCounter != null) ctx.counters[step.retryCounter] = step.retryMax;
     ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=retry counter=${step.retryCounter} set=${step.retryMax} (one further traversal authorised)`);
-    return { goto: step.retryTarget, limit: step.retryMax };
+    return { goto: step.retryTarget, counter: step.retryCounter, limit: step.retryMax };
   }
   return { abort: true };
 }
@@ -364,7 +375,10 @@ export function schemaFor(step) {
   if (writesOf(step).length) { props.document = { type: 'string', description: 'The full markdown document to be written to the backlog.' }; required.push('document'); }
   if (step.output?.verdict) {
     props.verdict = { type: 'string', enum: String(step.output.verdict).split('|') };
-    props.findings = { type: 'array', items: { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
+    const items = props.verdict.enum.includes('changes-requested')
+      ? { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }
+      : { type: 'string' };
+    props.findings = { type: 'array', items, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
     required.push('verdict', 'findings');
   }
   return { type: 'object', properties: props, required, additionalProperties: false };
@@ -384,7 +398,10 @@ export function buildPrompt(step, role, ctx) {
     for (const { rel, text } of backlog.readFiles(ticket, interpolate(b, ctx.vars))) parts.push(`\n## Input: backlog/${ticket.folder}/${rel}\n\n${text.trim()}`);
   }
   if (step.input?.repo) parts.push(`\n## Repository\n\nYou are running inside the repository at your working directory. Inspect it as needed.${step.worktree ? ' You MAY write files; this is an isolated worktree on its own branch.' : ' Do NOT modify files.'}`);
-  if (step.input?.diff) parts.push(materialiseDiff(step, ctx));
+  if (step.input?.diff) {
+    const range = interpolate(step.input.diff, ctx.vars);
+    parts.push(ctx.diffInputs?.get(range) ?? materialiseDiff(step, ctx));
+  }
   if (step.instructions) parts.push(`\n# Task\n\n${step.instructions.trim()}`);
   const outs = writesOf(step).map((w) => interpolate(w, ctx.vars));
   parts.push(`\n# Output contract\n\nRespond ONLY with a JSON object matching the provided schema.${outs.length ? ` Put the complete markdown document in "document" (it will be saved as ${outs.join(', ')}).` : ''}${step.output?.verdict ? ` Set "verdict" to one of: ${step.output.verdict}. The first option means pass.` : ''}`);
@@ -435,6 +452,8 @@ export function materialiseDiff(step, ctx) {
   const hasRef = (ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; } catch { return false; } };
   if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
   if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
+  const expectedRange = `${base}...${integration}`;
+  if (range !== expectedRange) throw new FlowError(`${step.id}: input.diff must resolve to ${expectedRange}, got ${range}`);
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
   // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
   // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
@@ -455,11 +474,21 @@ export function materialiseDiff(step, ctx) {
   let bytes = full; let truncated = bytes.length > limit;
   if (truncated) {
     bytes = bytes.subarray(0, limit);
-    while (bytes.length && Buffer.from(bytes.toString('utf8')).compare(bytes) !== 0) bytes = bytes.subarray(0, -1);
-    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} diff truncated range=${range} limit=${limit}`);
+    bytes = trimIncompleteUtf8Suffix(bytes);
+    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} diff truncated range=${range} limit=${limit} kept=${bytes.length}`);
   }
-  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${limit} UTF-8 bytes.` : '';
+  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${bytes.length} UTF-8 bytes (configured limit ${limit}).` : '';
   return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+}
+
+function trimIncompleteUtf8Suffix(bytes) {
+  if (!bytes.length) return bytes;
+  let lead = bytes.length - 1;
+  while (lead >= 0 && (bytes[lead] & 0xc0) === 0x80) lead -= 1;
+  if (lead < 0) return bytes;
+  const first = bytes[lead];
+  const width = first < 0x80 ? 1 : first >= 0xc2 && first <= 0xdf ? 2 : first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 1;
+  return bytes.length - lead < width ? bytes.subarray(0, lead) : bytes;
 }
 const round = (n) => Math.round(n * 1000) / 1000;
 
