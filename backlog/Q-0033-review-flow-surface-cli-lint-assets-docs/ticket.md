@@ -10,6 +10,7 @@ created: 2026-08-22
 depends_on: Q-0006
 iterations:
   solutioning.architecture-review: 1
+  development.integrate: 4
 history:
   - stage: requirements
     run: 1
@@ -35,6 +36,22 @@ history:
     stage_after: red
     at: 2026-08-23T15:23:56.436Z
     cost: 4.721
+  - stage: red
+    run: 4
+    flow: development
+    status: exhausted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T15:40:34.554Z
+    cost: 0
+  - stage: red
+    run: 4
+    flow: development
+    status: aborted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T15:52:33.759Z
+    cost: 0
 ---
 The second half of the review flow, split out of Q-0006 on 2026-08-22 because thirty acceptance
 criteria in one ticket hit the iteration bound at every stage. Q-0006 builds the engine — round
