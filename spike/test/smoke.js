@@ -298,6 +298,22 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
 }
 
+// The red/green report is what the reviewer judges, and it used to be the last 8000 characters of
+// output — which cuts off the head. On Q-0033 seven of nineteen failing groups had no line at all,
+// so the gate was asked to judge a report with its beginning missing.
+{
+  const { testReport } = await import('../src/engine.js');
+  const big = ['✓ first check', ...Array.from({ length: 900 }, (_, i) => `  noise line ${i} ${'x'.repeat(60)}`), '✗ last check'].join('\n');
+  const r = testReport('npm test', big);
+  assert(r.includes('✓ first check'), 'a result line at the very start survives truncation');
+  assert(r.includes('✗ last check'), 'a result line at the very end survives truncation');
+  assert(/characters of output omitted from the middle/.test(r), 'the cut is in the middle and says so');
+  assert(r.includes('`npm test`'), 'the report names the command it ran');
+
+  const none = testReport('sh -c true', 'no results here\njust prose\n');
+  assert(/No lines in the output looked like test results/.test(none), 'output with no result lines says so rather than looking empty');
+}
+
 // A run that does not complete must leave the ticket branch as it found it. integrate merges task
 // branches before anyone knows the outcome; an aborted run used to leave those merges behind, so
 // the next qa-red measured red against a tree that already held the implementation and reported

@@ -54,3 +54,35 @@ scenario is qa-red's work, so this returns to qa-red rather than being handed to
 scenario whose only possible fix lies outside every task's ownership is a finding for the
 scenario gate, not a red test. S3.2/S3.3 was the same shape and is resolved differently — by
 giving `spike/src/adapters/mock.js` an owner, because that file is legitimately development's.
+
+## E-3 — 2026-08-23 — Q0033-mock dropped, README struck, and one review finding rejected
+
+**Amends:** `solution/tasks.yaml` (scope only). Two corrections to E-1's re-cut, both mine, and one
+finding declined.
+
+**`Q0033-mock` is dropped.** I added it in E-1 because S3.2/S3.3 was failing and no task owned
+`spike/src/adapters/mock.js`. On a clean base that scenario passes without touching the file: the
+frozen `mock-adapter-switches.contract.md` already guarantees the finding shape, and both stage
+transitions are proved against `mock.js` unchanged. The task would have dispatched an agent
+against nothing to do — which is the mirror of the gap E-1 was written to close, and just as
+wasteful.
+
+**The README clause is struck from `Q0033-docs`.** It told the task to "give the README the one new
+command" while a scenario asserts `README.md` is byte-unchanged and the merged requirement assigns
+the rewrite to Q-0028 in M6. A task instructed to do the one thing that fails its own red test.
+`README.md` is out of the task's ownership entirely, and the description now says to leave it alone
+and why.
+
+**Declined: the finding that `spike/test/smoke.js` and `q0033-surface.js` contradict each other.**
+The review of 2026-08-23 called them "the same command" and asked for the smoke assertion to be
+deleted. They are not the same command:
+
+- `smoke.js` runs `… --auto` with no `--gate-answer` and asserts the run reports `stdin closed
+  without one`.
+- `q0033-surface.js` runs `… --auto --gate-answer abort` and asserts it does not.
+
+Both are correct and one implementation satisfies both: answer the gate when told, error when not.
+Deleting the smoke assertion would have removed a correct regression test for behaviour this
+ticket is about to change. Recorded rather than silently ignored, because this reviewer has been
+right about everything else on this ticket and the next reader deserves to know why one finding
+was not acted on.

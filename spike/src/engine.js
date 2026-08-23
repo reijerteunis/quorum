@@ -264,6 +264,25 @@ export function mergeFailure(m) {
 // commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
 function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
+// The report used to be the last 8000 characters of output, which cuts off the head: on a large
+// suite seven of nineteen failing groups had no line at all, and the reviewer judging the red
+// phase never saw them. Keep every result line — they are what the report is for — and truncate
+// only the payload in the middle, saying so where the cut is. See Q-0033.
+const RESULT_LINE = /^\s*(?:\x1b\[[0-9;]*m)*\s*(?:[✓✗×√]|(?:not )?ok\s|#\s|\d+\)\s|(?:PASS|FAIL|SKIP)\b)/;
+
+export function testReport(cmd, out, { maxBytes = 24000 } = {}) {
+  const lines = String(out ?? '').split('\n');
+  const results = lines.filter((l) => RESULT_LINE.test(l));
+  const body = String(out ?? '');
+  const kept = body.length <= maxBytes
+    ? body
+    : `${body.slice(0, maxBytes / 2)}\n\n… ${body.length - maxBytes} characters of output omitted from the middle …\n\n${body.slice(-maxBytes / 2)}`;
+  const roster = results.length
+    ? `\n## Every result line\n\n\`\`\`\n${results.join('\n')}\n\`\`\`\n`
+    : '\n_No lines in the output looked like test results._\n';
+  return `# Test output\n\n\`${cmd}\`\n${roster}\n## Output\n\n\`\`\`\n${kept}\n\`\`\`\n`;
+}
+
 function countUsage(ctx, usage) {
   if (!usage) return;
   // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
@@ -596,7 +615,7 @@ async function runIntegrate(step, ctx) {
     notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${envError ? 'INVALID' : testsOk ? 'OK' : 'NOT OK'}`);
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
-  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
+  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? testReport(cmd, out) : notes.join('\n'));
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather
   // than burning the step's iteration budget on it.
