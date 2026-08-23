@@ -10,7 +10,7 @@ created: 2026-08-22
 iterations:
   solutioning.architecture-review: 3
   qa-red.scenario-review: 1
-  development.integrate: 2
+  development.integrate: 0
   review: 1
 history:
   - stage: requirements
