@@ -158,9 +158,16 @@ async function runAgentStep(step, ctx, extra = {}) {
     // it already existed, not only on fan-out retries, or the agent works against yesterday's
     // tree and appears to revert whatever landed since. See Q-0004.
     if (existed || extra.syncBase) {
-      const m = mergeInto(cwd, stepBase);
-      if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
-      else ui.warn(`${step.id}: could not sync base: ${m.conflicts.join(',')}`);
+      if (!branchExists(ctx.repoDir, stepBase)) {
+        // Normal on a ticket's first pass: the integration branch is created by the first
+        // integrate step, so before that there is nothing to sync to. Not a failure, and not a
+        // warning — it used to print one with an empty reason after the colon.
+        ui.info(`${step.id}: base ${stepBase} does not exist yet — nothing to sync`);
+      } else {
+        const m = mergeInto(cwd, stepBase);
+        if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
+        else ui.warn(`${step.id}: could not sync to ${stepBase} — ${mergeFailure(m)}`);
+      }
     }
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
@@ -224,6 +231,15 @@ async function runAgentStep(step, ctx, extra = {}) {
     }
   }
   return null;
+}
+
+// A merge can fail without conflicting — a missing ref, a dirty tree, a git that simply refuses.
+// Reporting only `conflicts` printed "could not sync base:" with nothing after the colon, which
+// says a failure happened and withholds the one thing the reader needs. See Q-0011.
+export function mergeFailure(m) {
+  if (m?.conflicts?.length) return `conflicts: ${m.conflicts.join(', ')}`;
+  const line = String(m?.error ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
+  return line ? `git: ${line}` : 'git reported no reason';
 }
 
 function countUsage(ctx, usage) {
@@ -492,14 +508,14 @@ async function runIntegrate(step, ctx) {
   const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
   if (base && base !== into && branchExists(ctx.repoDir, base)) {
     const m = mergeInto(dir, base);
-    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'CONFLICT syncing base'} ${base}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
+    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'could not sync base'} ${base}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     if (!m.ok) conflicts.push(base);
   }
   for (const b of branches) {
     const m = mergeInto(dir, b);
-    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'CONFLICT'} ${b}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
+    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'FAILED'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     if (!m.ok) conflicts.push(b);
   }
   let testsOk = true; let out = ''; let envError = null;

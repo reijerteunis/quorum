@@ -47,6 +47,7 @@ assert(/head-of-product: 1/.test(ticket()), 'backward edge counter persisted (ne
 
 // Solutioning: architect in worktree, reviewer revise→approve loop, finalize
 r = run(['run', 'solutioning', 'T-0001', '--adapter', 'mock', '--auto']);
+const solutioningOut = r.stdout;   // reused far below for the base-sync reporting checks
 assert(r.status === 0, 'solutioning flow completes');
 assert(r.stdout.includes('iteration 1/2 → goto architect'), 'review loop bounced back to architect once');
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'solution/solution.md')), 'solution.md written');
@@ -237,6 +238,25 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
   assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
+}
+
+// "could not sync base:" with nothing after the colon reported a failure and withheld the reason.
+// Two causes: a merge that fails without conflicting, and a base branch that does not exist yet —
+// which is normal on a ticket's first pass and not a failure at all (Q-0011).
+{
+  const { mergeFailure } = await import('../src/engine.js');
+  assert(/conflicts: a\.md, b\.md/.test(mergeFailure({ conflicts: ['a.md', 'b.md'] })), 'conflicts are listed when there are any');
+  assert(/git: fatal: invalid reference/.test(mergeFailure({ conflicts: [], error: '\nfatal: invalid reference: main\n' })), "git's own words are used when nothing conflicted");
+  assert(mergeFailure({ conflicts: [] }) === 'git reported no reason', 'a failure with no reason says so instead of trailing off');
+  assert(mergeFailure(undefined) === 'git reported no reason', 'a missing result does not crash the reporter');
+
+  // End to end: solutioning loops the architect, so its second round syncs to the ticket branch
+  // that the first integrate step has not created yet — the exact case that printed the empty
+  // warning on every Q-0011 run.
+  const sol = solutioningOut;
+  assert(/does not exist yet — nothing to sync/.test(sol), 'a base branch that does not exist yet is stated, not warned about');
+  assert(!/could not sync/.test(sol), 'no sync warning is raised when there was nothing to sync');
+  assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
 }
 
 // A worktree is a full checkout, so backlog/ sits in every step's working directory. An agent
