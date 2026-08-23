@@ -14,7 +14,11 @@ const run = (args, env = {}) => {
   process.stdout.write(r.stdout); if (r.stderr) process.stderr.write(r.stderr);
   return r;
 };
-const assert = (cond, msg) => { if (!cond) { console.error('✗ ' + msg); process.exit(1); } console.log('✓ ' + msg); };
+let smokeFailures = 0;
+const assert = (cond, msg) => {
+  if (!cond) { smokeFailures++; console.error('✗ ' + msg); return false; }
+  console.log('✓ ' + msg); return true;
+};
 
 execSync('git init -q && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init', { cwd: tmp });
 assert(run(['init']).status === 0, 'init');
@@ -193,20 +197,12 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const before = fs.readFileSync(at('ticket.md'), 'utf8').replace('iterations: {}', 'iterations:\n  qa-final.unrelated: 2');
   fs.writeFileSync(at('ticket.md'), before);
 
-  // Answer both gates up front: retry, then refuse the next one. Assertions read files rather
-  // than captured stdout — a busy-wait blocks this process's event loop, so 'data' never fires.
-  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
-    { cwd: tmp, stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' } });
-  // Answer the first gate only, and leave stdin open: the second gate must still be waiting when
-  // the grace traversal is done. SIGINT then ends it, persisting counters via the handler above.
-  child.stdin.write('retry\n');
-  const deadline = Date.now() + 25000;
+  // Answer the first gate explicitly. With no second answer available, a non-interactive run
+  // must terminate itself when the gate is presented again.
+  const child = spawnSync('node', [bin, 'run', 'requirements', id, '--adapter', 'mock', '--gate-answer', 'retry'],
+    { cwd: tmp, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' }, timeout: 25000 });
+  assert(child.status !== 0, 'the unanswered second exhaustion gate exits non-zero');
   const log = () => (fs.existsSync(at('runs.log')) ? fs.readFileSync(at('runs.log'), 'utf8') : '');
-  const count = (re) => (log().match(re) ?? []).length;
-  while (Date.now() < deadline && count(/step=head-of-product/g) < 3) execSync('sleep 0.2');
-  child.kill('SIGINT');
-  while (Date.now() < deadline && !/ interrupted /.test(log())) execSync('sleep 0.2');
-  child.kill('SIGKILL');
 
   const runsLog = log();
   // hof runs once, loops once (its whole budget), hits the gate; retry buys exactly one more and
@@ -219,31 +215,22 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/qa-final\.unrelated: 2/.test(after), 'a retry does not refund an unrelated loop’s budget');
 }
 
-// Interrupting a run at a gate must record the outcome and persist counters. Otherwise Ctrl-C is
-// an undocumented way to hand back the iteration budget and retry forever (found by Q-0004).
+// A non-interactive unanswered gate must record a terminal outcome and preserve counters. AC10
+// makes the old pipe-and-SIGINT mechanism unreachable because a pipe is never a TTY.
 {
   const id = run(['ticket', 'new', 'Interrupted at a gate']).stdout.match(/T-\d{4}/)[0];
   const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
   const at = (rel) => path.join(tmp, 'backlog', dir, rel);
-  // No --auto, so it stops at the flow's closing gate and waits on stdin.
-  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'], { cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
-  const deadline = Date.now() + 20000;
-  const waitFor = (test) => {
-    while (Date.now() < deadline) {
-      if (fs.existsSync(at('runs.log')) && test(fs.readFileSync(at('runs.log'), 'utf8'))) return true;
-      execSync('sleep 0.2');
-    }
-    return false;
-  };
-  const reached = waitFor((log) => /step=head-of-product/.test(log));
-  assert(reached, 'the interrupt fixture reaches the gate');
-  child.kill('SIGINT');
-  const recorded = waitFor((log) => / interrupted /.test(log));
-  child.kill('SIGKILL');   // belt and braces; the process should already be gone
-  assert(recorded, 'an interrupted run is recorded in runs.log');
+  const before = fs.readFileSync(at('ticket.md'), 'utf8');
+  const child = spawnSync('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
+    { cwd: tmp, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 20000 });
+  assert(child.status !== 0, 'an unanswered non-TTY gate terminates the run');
+  const runs = fs.readFileSync(at('runs.log'), 'utf8');
+  assert(/ (failed|aborted) /.test(runs), 'an unanswered gate records a terminal outcome in runs.log');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
-  assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
-  assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
+  assert(ticket4.includes('stage: draft'), 'an unanswered gate does not advance the stage');
+  const counter = (text) => text.match(/requirements\.head-of-product: (\d+)/)?.[1] ?? '0';
+  assert(Number(counter(ticket4)) >= Number(counter(before)), 'an unanswered gate does not refund its iteration counter');
 }
 
 // A bounded loop that never shows its verdict to the step it returns to cannot converge. qa-red
@@ -639,4 +626,9 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(resolveModel({ model: 'x' }, role, 'codex') === 'x', 'an explicit step model always wins');
 }
 
-console.log('\nall good — ' + tmp);
+if (smokeFailures) {
+  console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
+  process.exitCode = 1;
+} else {
+  console.log('\nall good — ' + tmp);
+}
