@@ -83,6 +83,19 @@ export function commitAll(dir, message, onDiscard) {
   return staged.split('\n');
 }
 
+// A run that does not complete must leave the ticket branch as it found it. integrate merges task
+// branches before anyone knows whether the run will succeed, and an exhausted or aborted run used
+// to leave those merges behind permanently — so the next stage measured its red phase against a
+// tree that already contained the implementation. Nothing is lost by rolling back: each task's work
+// stays on its own branch. See Q-0033.
+export function branchHead(repo, branch) { return safe(() => git(['rev-parse', branch], repo)); }
+
+export function resetBranchTo(repo, branch, sha) {
+  const dir = path.join(repo, '.harness', 'worktrees', branch.replace(/\//g, '__'));
+  if (fs.existsSync(dir)) { git(['reset', '--hard', sha], dir); safe(() => git(['clean', '-qfd'], dir)); }
+  else git(['branch', '-f', branch, sha], repo);
+}
+
 // Merge `branch` into the checked-out branch of `dir`. Returns {ok, conflicts[]}.
 export function mergeInto(dir, branch) {
   try {
