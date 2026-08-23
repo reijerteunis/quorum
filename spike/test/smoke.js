@@ -282,7 +282,12 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
     fs.writeFileSync(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
 
     const dropped = [];
-    const files = commitAll(wt, 'test: agent edits [T-0001]', (d) => dropped.push(...d));
+    // The message is an agent's step summary — untrusted text on a command line. Backticks in one
+    // crashed a real run (Q-0011); $(…) would have been executed rather than committed.
+    const nasty = 'write-tests: Created `spike/test/q0011.js` $(touch /tmp/quorum-pwned) "quoted" \\backslash [Q-0011]';
+    const files = commitAll(wt, nasty, (d) => dropped.push(...d));
+    assert(!fs.existsSync('/tmp/quorum-pwned'), 'a commit message never reaches a shell');
+    assert(execSync('git log -1 --pretty=%s', { cwd: wt, encoding: 'utf8' }).trim() === nasty, 'the message is committed verbatim, backticks and all');
 
     assert(dropped.length >= 2, `backlog edits are reported, not silently dropped (${dropped.length})`);
     assert(fs.readFileSync(ticketInWt, 'utf8') === before, 'an agent cannot rewrite engine-owned ticket state from a worktree');
