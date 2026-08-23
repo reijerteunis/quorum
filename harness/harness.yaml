@@ -26,6 +26,7 @@ commands:
   timeout_ms: 900000
   # Used by integrate steps with run_tests: true. Until packages/core lands (M2) the runnable
   # code is the spike, so the suite is the spike's mock-adapter smoke test.
+  # Install dependencies in the integration worktree before running tests.
   # Run in the integration worktree before `test`. A worktree is a fresh checkout with no
   # node_modules; without this the suite dies on a missing dependency and `expect: fail` reads
   # that as proof of red.
