@@ -43,12 +43,13 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 
 ## M1 — Red → green on a real repo (≈ 1 week)
 
-**Goal:** `qa-red` and `development` with fan-out and integrate on real code.
+**Goal:** `qa-red` and `development` with fan-out and integrate on real code, followed by the bounded review engine and its shipped human-facing surface.
 
 **Done when**
 - Contracts emitted by the architect are concrete enough that QA's tests compile and fail on assertions (red proven by `integrate --expect fail`).
 - Two roles on two vendors fan out into worktrees, integrate, and reach green within 3 iterations.
-- The review flow (`review.yaml`, Claude + Codex panel → verdict → backward edge to development) exists and runs once.
+- Q-0006's review engine provides round numbering, diff materialisation, bounded cross-flow regression, retry/exhaustion semantics, rework sync, audit, and failure containment.
+- Q-0033's review surface ships `review.yaml` and `code-reviewer`, repository defaults and init behavior, whole-directory lint/run preflight, explicit gate answers, and matching documentation; the flow runs once with a Claude + Codex panel and a derived backward edge to development's consumed stage.
 
 **Tickets**
 - Q-0004 qa-red on the M0 ticket. *(Done 2026-08-22 — the role needed no tuning; six engine defects did. See the DECISIONS entry "Red for the right reason is an engine property".)*

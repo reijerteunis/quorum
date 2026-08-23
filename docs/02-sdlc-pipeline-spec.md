@@ -91,10 +91,11 @@ subscriptions, proration and the patient-facing side.
 
 ```
 draft ──▶ requirements ──▶ solutioned ──▶ red ──▶ green ──▶ reviewed ──▶ qa-passed ──▶ deployed
-                                          ▲        │  ▲        │            │
-                                          │        │  └────────┘ (review fail, ≤3)
-                                          │        └────────────────────────┘ (qa: dev issue, ≤2)
-                                          └─────────────────────────────────┘ (qa: design issue, ≤1)
+                                         └─────────────────┘ (review fail: rejection targets development's `red`, ≤3)
+                               ▲                               │
+                               └────────────────────────────────┘ (qa: dev issue, ≤2)
+                    ▲                                          │
+                    └──────────────────────────────────────────┘ (qa: design issue, ≤1)
 ```
 
 Plus `blocked` (human parked it) and `abandoned` from any stage. A flow may only start on a ticket whose `stage` equals the flow's `consumes`. The Studio's backlog board is a kanban over this field.
@@ -223,13 +224,11 @@ steps:
   - id: scenarios
     role: automation-qa
     adapter: claude
-    model: sonnet
     input: { backlog: [requirements/merged.md, solution/solution.md, solution/contracts/] }
     output: { write: qa/scenarios.md }
   - id: write-tests
     role: automation-qa
     adapter: codex
-    model: gpt-5
     worktree: true
     branch: "harness/T-{id}/tests"
     input: { backlog: [qa/scenarios.md, solution/contracts/], repo: true }
@@ -244,7 +243,6 @@ steps:
     on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
   - id: scenario-review
     adapter: claude
-    model: opus
     input: { backlog: [requirements/merged.md, qa/scenarios.md], branch: "harness/T-{id}/tests" }
     output: { verdict: approve|revise }
     on_fail: { goto: scenarios, max_iterations: 1, on_exhausted: gate }
@@ -298,37 +296,49 @@ consumes: green
 produces: reviewed
 steps:
   - parallel:
-    - id: reviewer-claude
-      role: code-reviewer
-      adapter: claude
-      model: opus
-      input: { diff: "harness/T-{id}..main", backlog: [requirements/merged.md, solution/solution.md], harness: [rules.md] }
-      output: { write: "review/round-{iter}/claude.md", findings: true }
-    - id: reviewer-codex
-      role: code-reviewer
-      adapter: codex
-      model: gpt-5
-      input: { diff: "harness/T-{id}..main", backlog: [requirements/merged.md, solution/solution.md], harness: [rules.md] }
-      output: { write: "review/round-{iter}/codex.md", findings: true }
+      - id: review-claude
+        role: code-reviewer
+        adapter: claude
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/claude.md"]}
+      - id: review-codex
+        role: code-reviewer
+        adapter: codex
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/codex.md"]}
 
   - id: verdict
-    type: judge
+    role: code-reviewer
     adapter: claude
-    model: opus
-    input: { findings: [reviewer-claude, reviewer-codex] }
-    output: { write: "review/round-{iter}/verdict.md", verdict: approve|changes-requested, tasks: true }
+    input:
+      backlog:
+        - "review/round-{round}/claude.md"
+        - "review/round-{round}/codex.md"
+        - requirements/merged.md
+        - solution/solution.md
+    output:
+      writes: ["review/round-{round}/verdict.md", review/verdict.md]
+      verdict: approve|changes-requested
     instructions: >
-      Deduplicate findings, drop nits, keep blockers and majors. If any blocker
-      remains, emit a tasks list (same schema as tasks.yaml) for the fix round.
+      Deduplicate the panel findings. Preserve file:line references and group surviving
+      findings as blocker, major, or nit. Approve exactly when no blocker or major
+      survives; nits alone approve. Findings must be empty on approve and non-empty on
+      changes-requested. Judge the reviews, not the code diff.
     on_fail:
       goto: flow:development              # cross-flow backward edge
-      with: { tasks: "review/round-{iter}/verdict.md#tasks" }
-      counter: iterations.review
+      counter: review
       max_iterations: 3
       on_exhausted: gate
   - gate: human
+    reason: Review verdict is approve; accept or abort handover to final QA
 cross_vendor: required
 ```
+
+`{base}` resolves from `repo.base_branch` in `harness/harness.yaml` and defaults to `main` when omitted. The engine materialises the three-dot diff from that configured base to `harness/{id}/integration` and truncates its patch at `repo.max_diff_bytes`, whose default is `200000` bytes. When the fourth rejection exceeds the three permitted regressions, the engine presents an exhaustion gate without changing the stage. That gate requires an explicit `advance`, `retry`, or `abort`; `--auto` cannot bypass it.
 
 ### 5.6 `qa-final.yaml` — Final QA decides dev / solution / pass
 
@@ -412,7 +422,7 @@ Per-flow and per-ticket budget in `harness.yaml` (`budget: { per_run_usd: 10, pe
 
 ## 10. Open questions
 
-1. Should `review` feed fixes back as a full `development` run or as a lighter `fix` flow (single agent, no fan-out)? Proposal: start with full development scoped to `failing-tasks-only`; add `fix.yaml` if cost proves it.
+1. M1 ships no lighter `fix` flow. A review rejection targets the full `development` flow, whose declared `consumes: red` stage is the derived regression target.
 2. Script steps are on the v1 roadmap but `qa-red`, `qa-final` and `deploy` need them. Pulling `type: script` into v1 is the cheapest way to unblock this spec.
 3. Does the `central` backlog layout make the cold-clone test worse? Default stays `in-repo`; `central` is opt-in.
 4. Codex CLI's headless output is less structured than Claude Code's stream-json; the `findings: true` / `verdict:` outputs assume the adapter can extract a trailing JSON block. Spec the "structured tail" convention in the adapter contract.
