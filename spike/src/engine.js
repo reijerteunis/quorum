@@ -283,6 +283,11 @@ export function testReport(cmd, out, { maxBytes = 24000 } = {}) {
   return `# Test output\n\n\`${cmd}\`\n${roster}\n## Output\n\n\`\`\`\n${kept}\n\`\`\`\n`;
 }
 
+function safeMergeBase(repo, a, b) {
+  try { return execFileSync('git', ['merge-base', a, b], { cwd: repo, encoding: 'utf8' }).trim(); }
+  catch { return null; }
+}
+
 function countUsage(ctx, usage) {
   if (!usage) return;
   // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
@@ -555,6 +560,20 @@ async function runIntegrate(step, ctx) {
   else branches = [pattern];
   branches = branches.filter((b) => branchExists(ctx.repoDir, b));
   const notes = [`# Integration — run ${ctx.runId}, iteration ${ctx.vars.iter}`, '', `Target: \`${into}\``, ''];
+  // Evidence about this run, recorded once so a scenario never has to assert it. A fact true only
+  // during the red phase is not an acceptance test: QA smuggled branch-cleanliness into an
+  // assertion because there was nowhere else to put it, and that test could never go green.
+  // See the "a red test is a permanent acceptance test" decision, 2026-08-23.
+  {
+    const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+    const head = branchHead(ctx.repoDir, into);
+    notes.push(`Evidence: \`${into}\` at ${head ? head.slice(0, 7) : '(new)'}, base \`${base}\`.`);
+    for (const b of (Array.isArray(step.branches) ? step.branches.map((x) => interpolate(x, ctx.vars)) : [])) {
+      const mb = safeMergeBase(ctx.repoDir, into, b);
+      if (mb) notes.push(`Evidence: \`${b}\` diverges from \`${into}\` at ${mb.slice(0, 7)}.`);
+    }
+    notes.push('');
+  }
   const conflicts = [];
   // Catch the ticket branch up with the repository's base branch first. A ticket open for more
   // than a day otherwise integrates against the base it was cut from, and work landed on the base
