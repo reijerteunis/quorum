@@ -10,22 +10,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 import { validateFile } from '../src/contracts.js';
+import { validateFlowDirectory } from '../src/lint.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const flags = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
-  if (args[i].startsWith('--')) { const k = args[i].slice(2); const v = args[i + 1] && !args[i + 1].startsWith('--') ? args[++i] : true; flags[k] = v; }
+  if (args[i].startsWith('--')) {
+    const k = args[i].slice(2); const v = args[i + 1] && !args[i + 1].startsWith('--') ? args[++i] : true;
+    if (k === 'gate-answer') flags[k] = [...(flags[k] ?? []), v]; else flags[k] = v;
+  }
   else positional.push(args[i]);
 }
 const [cmd, ...rest] = positional;
+const gateAnswers = [...(flags['gate-answer'] ?? [])];
 
 const c = { dim: (s) => `\x1b[2m${s}\x1b[0m`, bold: (s) => `\x1b[1m${s}\x1b[0m`, amber: (s) => `\x1b[33m${s}\x1b[0m`, green: (s) => `\x1b[32m${s}\x1b[0m`, red: (s) => `\x1b[31m${s}\x1b[0m`, teal: (s) => `\x1b[36m${s}\x1b[0m` };
 
@@ -61,6 +67,14 @@ const ui = {
     console.log('\n' + c.amber('■ GATE') + ` (${kind}) ${reason}`);
     console.log(c.dim(`  inspect: ${ticketDir}`));
     const opts = retry ? 'advance / retry / abort' : 'advance / abort';
+    if (gateAnswers.length) {
+      const raw = gateAnswers.shift();
+      const answer = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+      const allowed = retry ? ['advance', 'retry', 'abort'] : ['advance', 'abort'];
+      if (!allowed.includes(answer)) throw new FlowError(`gate (${kind}) "${reason}" received invalid --gate-answer "${typeof raw === 'string' ? raw.trim() : ''}" — expected ${opts}`);
+      return answer;
+    }
+    if (!process.stdin.isTTY) throw new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} or run interactively`);
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
     // handler never runs and the interrupted run leaves no record. See Q-0004.
@@ -96,6 +110,15 @@ async function main() {
       if (fs.existsSync(dst)) die(`${dst} already exists`);
       fs.cpSync(path.join(here, '..', 'templates', 'harness'), dst, { recursive: true });
       fs.mkdirSync(path.join(dir, 'backlog'), { recursive: true });
+      try {
+        const branch = execFileSync('git', ['branch', '--show-current'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (branch) {
+          const configFile = path.join(dst, 'harness.yaml');
+          const text = fs.readFileSync(configFile, 'utf8');
+          const scalar = YAML.stringify(branch).trim();
+          fs.writeFileSync(configFile, text.replace(/^(\s*base_branch:\s*)\S+(\s*)$/m, `$1${scalar}$2`));
+        }
+      } catch { /* Branch discovery is best-effort; the template default remains valid. */ }
       console.log(c.green('✓') + ` harness/ and backlog/ created in ${dir}\n  next: harness adapters · harness ticket new "…" · harness run requirements T-0001`);
       return;
     }
@@ -130,12 +153,11 @@ async function main() {
     }
     case 'lint': {
       const { harnessDir } = loadProject();
-      const dir = path.join(harnessDir, 'flows');
-      let bad = 0;
-      for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.yaml'))) {
-        try { loadFlow(path.join(dir, f)); console.log(c.green('✓') + ' ' + f); } catch (e) { bad++; console.log(c.red('✗') + ' ' + f + '\n  ' + e.message.split('\n').slice(1).join('\n  ')); }
-      }
-      process.exit(bad ? 1 : 0);
+      try {
+        const flows = validateFlowDirectory(harnessDir);
+        for (const flow of flows) console.log(c.green('✓') + ' ' + path.basename(flow.file));
+      } catch (e) { if (e instanceof FlowError) die(e.message); throw e; }
+      return;
     }
     case 'adapters': {
       const { config, repoDir } = loadProject();
@@ -176,7 +198,10 @@ async function main() {
       const [flowName, ticketId] = rest;
       if (!flowName || !ticketId) die('usage: harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--verbose]');
       const proj = loadProject();
-      const flow = loadFlowByName(flowName, proj.harnessDir);
+      let flows;
+      try { flows = validateFlowDirectory(proj.harnessDir); } catch (e) { if (e instanceof FlowError) die(e.message); throw e; }
+      const flow = flows.find((candidate) => candidate.name === flowName);
+      if (!flow) die(`flow "${flowName}" not found`);
       if (flags.adapter) { overrideAdapters(flow, flags.adapter); proj.config.adapterOverride = flags.adapter; }
       const ticket = proj.backlog.read(ticketId);
       try {

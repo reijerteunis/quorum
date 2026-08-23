@@ -28,7 +28,14 @@ export function lintFlow(flow) {
     if (s.on_fail) {
       if (!s.on_fail.goto) problems.push(`${s.id}: on_fail without goto`);
       else if (!String(s.on_fail.goto).startsWith('flow:') && !ids.includes(s.on_fail.goto)) problems.push(`${s.id}: goto target "${s.on_fail.goto}" not found`);
-      if (!Number.isInteger(s.on_fail.max_iterations)) problems.push(`${s.id}: on_fail needs integer max_iterations`);
+      if (!Number.isInteger(s.on_fail.max_iterations) || s.on_fail.max_iterations <= 0) problems.push(`${s.id}: on_fail.max_iterations must be an integer greater than zero`);
+      const counter = s.on_fail.counter;
+      // Counters are part of bounded cross-flow regression. Legacy in-flow retries derive their
+      // counter from the step id and intentionally have no author-declared counter field.
+      if (String(s.on_fail.goto ?? '').startsWith('flow:') || counter != null) {
+        if (typeof counter !== 'string' || !counter.trim()) problems.push(`${s.id}: on_fail.counter must be a non-empty unprefixed key`);
+        else if (counter.includes('.')) problems.push(`${s.id}: on_fail.counter "${counter}" must be unprefixed${counter === 'iterations.review' ? '; use "review"' : ''}`);
+      }
       if (s.on_fail.on_exhausted !== 'gate') problems.push(`${s.id}: on_exhausted must be "gate"`);
     }
     if (s.output?.verdict && !s.on_fail && !s.route) problems.push(`${s.id}: has a verdict but no on_fail/route — verdicts must go somewhere`);
@@ -36,6 +43,19 @@ export function lintFlow(flow) {
     if (s.type === 'integrate' && !s.branches) problems.push(`${s.id}: integrate needs branches`);
   }
   if (flow.cross_vendor === 'required') {
+    for (const group of flow.steps.filter((s) => Array.isArray(s.parallel))) {
+      const byRole = new Map();
+      for (const member of group.parallel) {
+        if (!member.role) continue;
+        const members = byRole.get(member.role) ?? [];
+        members.push(member); byRole.set(member.role, members);
+      }
+      for (const members of byRole.values()) {
+        if (members.length < 2) continue;
+        const adapters = new Set(members.map((s) => s.adapter));
+        if (adapters.size < 2) problems.push(`parallel members ${members.map((s) => s.id).join(', ')} share adapter "${members[0].adapter}" — cross_vendor: required`);
+      }
+    }
     // producer map: backlog path -> adapter that writes it
     const producer = {};
     for (const s of steps) for (const w of writesOf(s)) producer[w] = s.adapter;
