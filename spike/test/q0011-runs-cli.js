@@ -30,6 +30,12 @@ scenario('AC-12/EDGE-10/EDGE-11', 'lists, filters, warns, and applies the specif
   const r = cli(root, ['runs']); assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /bad/);
   for (const id of ['Q-0011-2', 'Q-0011-10', 'Q-0012-1']) assert.match(r.stdout, new RegExp(id));
   assert.ok(r.stdout.indexOf('Q-0012-1') < r.stdout.indexOf('Q-0011-10')); assert.ok(r.stdout.indexOf('Q-0011-10') < r.stdout.indexOf('Q-0011-2'));
+  // AC-12 is principally an accounting display contract, not just a selection contract.
+  assert.match(r.stdout, /claude[^\n]*(?:cost=)?\$1(?:\.00)?[^\n]*(?:tokens=)?120/i);
+  assert.match(r.stdout, /codex[^\n]*cost=n\/a[^\n]*(?:tokens=)?120/i);
+  assert.match(r.stdout, /claude[^\n]*unpriced_steps=0/i);
+  assert.match(r.stdout, /codex[^\n]*unpriced_steps=1/i);
+  assert.doesNotMatch(r.stdout, /(?:combined|total)[^\n]*\$/i, 'must not render a cross-vendor money total');
   const filtered = cli(root, ['runs', 'Q-0011']); assert.doesNotMatch(filtered.stdout, /Q-0012-1/);
   assert.equal(cli(root, ['runs', 'Q-9999']).status, 0); assert.notEqual(cli(root, ['runs', 'q-0011']).status, 0); assert.notEqual(cli(root, ['runs', 'Q-11']).status, 0);
 });
@@ -57,7 +63,11 @@ scenario('AC-13/EDGE-20', 'detail exposes every attempt including usage-null fai
 
 scenario('AC-13/EDGE-12', '--json is one ANSI-free document for list, detail, warning, and error modes', () => {
   const root = fixture(); const m = manifest('Q-0011-1', 'Q-0011'); m.status = 'running'; m.ended_at = null; m.duration_ms = null; put(root, m); write(path.join(root, '.quorum/runs/bad/manifest.json'), 'no');
-  for (const args of [['runs', '--json'], ['runs', 'Q-0011-1', '--json']]) { const r = cli(root, args); assert.doesNotMatch(r.stdout, /\x1b\[/); const value = JSON.parse(r.stdout); assert.ok(value); }
+  for (const args of [['runs', '--json'], ['runs', 'Q-0011-1', '--json']]) {
+    const r = cli(root, args); assert.doesNotMatch(r.stdout, /\x1b\[/);
+    assert.doesNotThrow(() => JSON.parse(r.stdout), `stdout must be one JSON document, got: ${r.stdout.slice(0, 120)}`);
+    assert.ok(JSON.parse(r.stdout));
+  }
   const r = cli(root, ['runs', 'not-a-run', '--json']); assert.notEqual(r.status, 0); if (r.stdout.trim()) JSON.parse(r.stdout);
 });
 
