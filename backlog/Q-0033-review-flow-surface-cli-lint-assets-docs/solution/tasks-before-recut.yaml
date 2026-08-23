@@ -1,0 +1,52 @@
+tasks:
+  - id: Q0033-cli-lint-config
+    role: backend
+    title: Implement config init shared preflight lint and explicit gate answers
+    description: >
+      Own spike/bin/harness.js, the lint portion of spike/src/engine.js, any new
+      spike/src/lint.js, harness/harness.yaml, and
+      spike/templates/harness/harness.yaml. Implement optional repo defaults,
+      comment-preserving safe init branch discovery including nameable unborn HEAD,
+      repeatable --gate-answer only, non-TTY gate errors, whole-directory run preflight
+      from pristine flow files before adapter overrides, terminating return-chain
+      validation, bound and counter checks, cross-vendor panel validation, and board
+      compatibility. Do not edit tests, shipped review flow or role assets, documentation,
+      contracts/Q-0006/**, or create real-CLI evidence.
+    contracts:
+      - contracts/Q-0033/cli-review-surface.contract.md
+      - contracts/Q-0033/documentation-and-evidence.contract.md
+      - contracts/Q-0006/review-lint.contract.md
+      - contracts/Q-0006/review-runtime.contract.md
+      - contracts/Q-0006/review-flow.contract.yaml
+      - contracts/Q-0006/ticket-review-state.schema.json
+      - contracts/Q-0006/mock-adapter-switches.contract.md
+      - backlog/Q-0006-review-flow-and-cross-flow-backward-edge/solution/errata.md
+    depends_on: []
+
+  - id: Q0033-assets-docs
+    role: backend
+    title: Ship review assets and align product documentation
+    description: >
+      Own harness/flows/review.yaml and spike/templates/harness/flows/review.yaml,
+      harness/roles/code-reviewer.md and
+      spike/templates/harness/roles/code-reviewer.md,
+      docs/02-sdlc-pipeline-spec.md, docs/06-development-plan.md,
+      docs/GLOSSARY.md, and docs/DECISIONS.md. Ship byte-identical designated assets
+      matching the frozen contracts and document the derived regression rule, three-dot
+      diff, round variable, counter spelling, configured base and size limit, exhaustion
+      behavior, split M1 ownership, gate vocabulary, and no lighter M1 fix flow. Do not
+      edit README.md, harness.yaml, development.yaml, developer roles, tests,
+      contracts/Q-0006/**, or create real-CLI evidence.
+    contracts:
+      - contracts/Q-0033/review-surface-assets.contract.md
+      - contracts/Q-0033/documentation-and-evidence.contract.md
+      - contracts/Q-0033/cli-review-surface.contract.md
+      - contracts/Q-0006/review-flow.contract.yaml
+      - contracts/Q-0006/code-reviewer-role.contract.md
+      - contracts/Q-0006/review-artifacts.schema.json
+      - contracts/Q-0006/review-runtime.contract.md
+      - contracts/Q-0006/review-lint.contract.md
+      - contracts/Q-0006/mock-adapter-switches.contract.md
+      - backlog/Q-0006-review-flow-and-cross-flow-backward-edge/solution/errata.md
+    depends_on:
+      - Q0033-cli-lint-config
