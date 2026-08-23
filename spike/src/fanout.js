@@ -95,12 +95,19 @@ export function mergeInto(dir, branch) {
   }
 }
 
-export function runCommand(cmd, cwd) {
+// A project's own test command runs here, and a hung one used to hang the whole flow forever with
+// no output: Q-0011's integrate sat on a blocked suite for 24 minutes and would still be sitting
+// there. A timeout is not a nicety — an orchestrator that can wait indefinitely cannot be trusted
+// to run unattended. stdin is /dev/null so a command that prompts fails fast instead of waiting.
+export function runCommand(cmd, cwd, { timeoutMs = 15 * 60_000 } = {}) {
   try {
-    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
-    return { code: 0, out };
+    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: process.env, timeout: timeoutMs, killSignal: 'SIGKILL' });
+    return { code: 0, out, timedOut: false };
   } catch (e) {
-    return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? '') };
+    // execSync reports a timeout as a kill, not a status; without this it looks like an ordinary
+    // non-zero exit, which `expect: fail` would happily bank as proof of red.
+    const timedOut = e.killed === true || e.signal === 'SIGKILL' || e.code === 'ETIMEDOUT';
+    return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? ''), timedOut, timeoutMs };
   }
 }
 

@@ -80,10 +80,16 @@ assert(!fs.existsSync(path.join(tmp, 'src')), 'user working tree still untouched
 assert(fs.existsSync(path.join(tmp, '.harness/worktrees/harness__T-0001__integration/.installed')),
   'integrate runs commands.install in the integration worktree before the tests');
 
-// Exhausted loop lands on a gate; --auto advances it
+// An exhausted loop lands on a human-locked gate that --auto may NOT walk through. This check
+// used to assert the opposite and passed only because closed stdin resolved as '' → advance —
+// two bugs cancelling out. Removing the defaulting turned it into a 24-minute hang (Q-0011).
 r = run(['ticket', 'new', 'Second ticket']);
 r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' });
-assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a human gate');
+assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a gate');
+assert(r.stdout.includes('human-locked'), '--auto does not bypass the exhaustion gate');
+assert(r.status !== 0, 'a gate with no answer available fails the run');
+assert(/stdin closed without one/.test(r.stdout + r.stderr), 'the run says which gate it could not answer, instead of hanging or assuming');
+assert(!/gate: auto-advanced \(human-locked\)/.test(r.stdout), 'a human-locked gate is never auto-advanced');
 
 assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
 

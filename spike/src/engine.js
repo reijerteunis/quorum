@@ -258,6 +258,9 @@ export function mergeFailure(m) {
   return line ? `git: ${line}` : 'git reported no reason';
 }
 
+// commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
+function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
+
 function countUsage(ctx, usage) {
   if (!usage) return;
   // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
@@ -313,20 +316,20 @@ async function runGate(step, ctx) {
 }
 
 async function runScript(step, ctx) {
-  const { execSync } = await import('node:child_process');
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
-  try {
-    const out = execSync(cmd, { cwd: ctx.repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), out);
-    ctx.ui.done(step.id, 'exit 0');
-    return null;
-  } catch (e) {
-    ctx.ui.warn(`${step.id}: exit ${e.status}`);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), (e.stdout ?? '') + (e.stderr ?? ''));
-    return step.on_fail ? handleFail(step, ctx) : { abort: true };
+  // Through runCommand for the timeout: a script step runs a project's own command and can hang
+  // exactly as a test suite can. See Q-0011.
+  const r = runCommand(cmd, ctx.repoDir, { timeoutMs: cmdTimeout(ctx) });
+  if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), r.out);
+  if (r.code === 0) { ctx.ui.done(step.id, 'exit 0'); return null; }
+  if (r.timedOut) {
+    // Looping back cannot fix a command that never finishes, and its non-zero exit is not a result.
+    throw new FlowError(`${step.id}: script did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed — that is not a result, fix the command or raise commands.timeout_ms`);
   }
+  ctx.ui.warn(`${step.id}: exit ${r.code}`);
+  return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
 function finish(ctx, stage, status, note, fields = {}) {
@@ -540,16 +543,19 @@ async function runIntegrate(step, ctx) {
   // missing dependency, which `expect: fail` happily reads as proof of red. See Q-0004.
   const install = cmd ? ctx.config.commands?.install : null;
   if (install && !conflicts.length) {
-    const r = runCommand(install, dir);
+    const r = runCommand(install, dir, { timeoutMs: cmdTimeout(ctx) });
     notes.push('', `Install: \`${install}\` → exit ${r.code}`);
     ui[r.code === 0 ? 'info' : 'warn'](`${step.id}: install exit ${r.code}`);
     if (r.code !== 0) { envError = `install failed (\`${install}\` exited ${r.code})`; out = r.out; }
   }
   if (cmd && !conflicts.length && !envError) {
-    const r = runCommand(cmd, dir);
+    const r = runCommand(cmd, dir, { timeoutMs: cmdTimeout(ctx) });
     out = r.out;
     const expect = step.expect ?? 'pass';
-    const broken = environmentFailure(out);
+    // A command killed for running too long proves nothing — least of all a red phase.
+    const broken = r.timedOut
+      ? `the test command did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed`
+      : environmentFailure(out);
     if (broken) {
       // Non-zero because the suite could not start is not a red phase. Accepting it would let a
       // missing dependency satisfy `expect: fail` on every ticket, forever.
