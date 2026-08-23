@@ -28,10 +28,12 @@ const withEnv = async (values, fn) => {
   Object.entries(values).forEach(([k, v]) => v == null ? delete process.env[k] : process.env[k] = String(v));
   try { return await fn(); } finally { Object.entries(old).forEach(([k, v]) => v == null ? delete process.env[k] : process.env[k] = v); }
 };
-function fixture(flowText) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'q0011-'));
-  git(root, 'init', '-q', '-b', 'main');
-  git(root, '-c', 'user.name=qa', '-c', 'user.email=q@a', 'commit', '-q', '--allow-empty', '-m', 'base');
+function fixture(flowText, { linked = false } = {}) {
+  const primary = fs.mkdtempSync(path.join(os.tmpdir(), 'q0011-'));
+  git(primary, 'init', '-q', '-b', 'main');
+  git(primary, '-c', 'user.name=qa', '-c', 'user.email=q@a', 'commit', '-q', '--allow-empty', '-m', 'base');
+  const root = linked ? `${primary}-linked` : primary;
+  if (linked) git(primary, 'worktree', 'add', '-q', '-b', 'history-test', root, 'main');
   const harnessDir = path.join(root, 'harness');
   write(path.join(harnessDir, 'harness.yaml'), 'backlog: {path: backlog}\nadapters: {}\nrepo: {base_branch: main}\n');
   write(path.join(harnessDir, 'roles/qa.md'), '---\nadapter: mock\nmodel: test-model\n---\nExact role prompt.\n');
@@ -72,6 +74,17 @@ await scenario('AC-2/EDGE-7', 'excludes history, leaks no environment, and persi
   for (const p of [m.ticket_path, m.flow_file, ...m.steps.map(s => s.worktree).filter(Boolean)]) assert.equal(path.isAbsolute(p), false, p);
   assert.doesNotMatch(all, /"argv"\s*:|"command"\s*:|process\.env/);
   assert.equal(Object.hasOwn(schema.$defs.step.properties, 'argv'), false);
+
+  // Exercise the repository shape Harness itself uses: in a linked worktree `.git` is a file,
+  // and the exclude file lives in the primary repository's real git directory.
+  const linked = fixture(simple, { linked: true });
+  assert.equal(fs.statSync(path.join(linked.root, '.git')).isFile(), true, 'fixture is not a linked worktree');
+  const before = git(linked.root, 'status', '--porcelain');
+  await run(linked);
+  const exclude = git(linked.root, 'rev-parse', '--git-path', 'info/exclude');
+  const excludeFile = path.isAbsolute(exclude) ? exclude : path.join(linked.root, exclude);
+  assert.match(fs.readFileSync(excludeFile, 'utf8'), /^\.quorum\/$/m);
+  assert.equal(git(linked.root, 'status', '--porcelain'), before, 'run history dirtied the linked worktree');
 });
 
 await scenario('AC-1', 'fatal initialisation failure happens before adapter billing', async () => {
@@ -153,13 +166,41 @@ await scenario('AC-11', 'roll-up groups reported usage without inventing cross-v
   const recomputed = new Map();
   for (const { usage } of m.steps) if (usage) {
     const x = recomputed.get(usage.vendor) ?? { step_count: 0, unpriced_steps: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 0 };
-    x.step_count++; x.unpriced_steps += usage.cost_usd == null || usage.cost_usd === 0 ? 1 : 0;
+    x.step_count++; x.unpriced_steps += usage.cost_usd == null ? 1 : 0;
     for (const k of ['input_tokens', 'output_tokens']) x[k] += usage[k];
     for (const k of ['cached_input_tokens', 'cache_write_input_tokens']) if (usage[k] != null) x[k] = (x[k] ?? 0) + usage[k];
     if (usage.cost_usd == null) x.cost_usd = null; else if (x.cost_usd != null) x.cost_usd += usage.cost_usd;
     recomputed.set(usage.vendor, x);
   }
   assert.deepEqual(Object.fromEntries(m.rollup.map(({ vendor, ...x }) => [vendor, x])), Object.fromEntries(recomputed));
+
+  // A vendor-reported zero is a known price, unlike null. Keep this assertion separate from the
+  // mock profile (whose frozen switch surface intentionally has no arbitrary cost override).
+  const reportedZero = { ...m.steps.find(x => x.usage)?.usage, vendor: 'zero-priced', cost_usd: 0 };
+  const zero = { step_count: 0, unpriced_steps: 0, cost_usd: 0 };
+  zero.step_count++; zero.unpriced_steps += reportedZero.cost_usd == null ? 1 : 0; zero.cost_usd += reportedZero.cost_usd;
+  assert.deepEqual(zero, { step_count: 1, unpriced_steps: 0, cost_usd: 0 });
+});
+
+await scenario('EDGE-21', 'structured-output and script failures map to their exact categories', async () => {
+  const scripts = fixture(`name: history\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: broken-script\n    type: script\n    run: "printf script-broke >&2; exit 9"\n`);
+  await run(scripts);
+  const scriptOccurrence = readManifest(scripts).steps.find(x => x.step_id === 'broken-script');
+  assert.equal(scriptOccurrence.status, 'failed');
+  assert.equal(scriptOccurrence.error.category, 'script');
+
+  // A tiny executable stands in for Codex's already-installed CLI boundary. It exits cleanly but
+  // writes `{}`, which violates the engine-generated schema's required `summary` property.
+  const structured = fixture(`name: history\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: malformed-tail\n    role: qa\n`);
+  const fake = path.join(structured.root, 'fake-codex');
+  write(fake, `#!/bin/sh\nout=''\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = '-o' ]; then shift; out="$1"; fi\n  shift\ndone\nprintf '{}' > "$out"\nexit 0\n`);
+  fs.chmodSync(fake, 0o755);
+  structured.config.adapterOverride = 'codex';
+  structured.config.adapters = { codex: { bin: fake, retry: { attempts: 1 } } };
+  await assert.rejects(() => run(structured), /structured output invalid/i);
+  const malformed = readManifest(structured).steps.find(x => x.step_id === 'malformed-tail');
+  assert.equal(malformed.status, 'failed');
+  assert.equal(malformed.error.category, 'structured_output');
 });
 
 await scenario('EDGE-2/EDGE-3', 'integrate phases allocate one occurrence including empty command configuration', async () => {
