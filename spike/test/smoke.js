@@ -193,20 +193,12 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const before = fs.readFileSync(at('ticket.md'), 'utf8').replace('iterations: {}', 'iterations:\n  qa-final.unrelated: 2');
   fs.writeFileSync(at('ticket.md'), before);
 
-  // Answer both gates up front: retry, then refuse the next one. Assertions read files rather
-  // than captured stdout — a busy-wait blocks this process's event loop, so 'data' never fires.
-  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
-    { cwd: tmp, stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' } });
-  // Answer the first gate only, and leave stdin open: the second gate must still be waiting when
-  // the grace traversal is done. SIGINT then ends it, persisting counters via the handler above.
-  child.stdin.write('retry\n');
-  const deadline = Date.now() + 25000;
+  // Non-interactive gates are answered explicitly. The first gate consumes retry; with no
+  // second answer available, the process exits by itself when the gate is presented again.
+  const child = spawnSync('node', [bin, 'run', 'requirements', id, '--adapter', 'mock', '--gate-answer', 'retry'],
+    { cwd: tmp, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' }, timeout: 25000 });
+  assert(child.status !== 0, 'the unanswered second exhaustion gate exits non-zero');
   const log = () => (fs.existsSync(at('runs.log')) ? fs.readFileSync(at('runs.log'), 'utf8') : '');
-  const count = (re) => (log().match(re) ?? []).length;
-  while (Date.now() < deadline && count(/step=head-of-product/g) < 3) execSync('sleep 0.2');
-  child.kill('SIGINT');
-  while (Date.now() < deadline && !/ interrupted /.test(log())) execSync('sleep 0.2');
-  child.kill('SIGKILL');
 
   const runsLog = log();
   // hof runs once, loops once (its whole budget), hits the gate; retry buys exactly one more and

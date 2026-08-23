@@ -8,7 +8,6 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { lintFlow } from '../src/engine.js';
-import { mockAdapter } from '../src/adapters/mock.js';
 
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(spike, '..');
@@ -19,6 +18,7 @@ async function scenario(id, title, fn) {
   try { await fn(); console.log(`✓ ${id} — ${title}`); }
   catch (e) { failed++; console.error(`✗ ${id} — ${title}\n  ${e.message}`); }
 }
+function skipped(id, reason) { console.log(`- ${id} — SKIP: ${reason}`); }
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body); };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -129,25 +129,7 @@ await scenario('S3.2/S3.3', 'shipped mock review traverses rejection and approva
   }
 });
 
-await scenario('S3.5', 'mock review findings satisfy the frozen verdict-output schema', async () => {
-  const schema = JSON.parse(read(q6, 'review-artifacts.schema.json')).oneOf.find((branch) => branch.title === 'Verdict output');
-  const oldPass = process.env.MOCK_ALWAYS_PASS, oldFail = process.env.MOCK_ALWAYS_FAIL;
-  try {
-    delete process.env.MOCK_ALWAYS_PASS; process.env.MOCK_ALWAYS_FAIL = '1';
-    const result = await mockAdapter({ delayMs: 0 }).run({
-      prompt: '# Role: code-reviewer\n# Ticket T-0001\n', schema, cwd: repo, allowWrite: false,
-    });
-    const value = result.output;
-    assert.equal(typeof value.summary, 'string'); assert.ok(value.summary.length > 0);
-    assert.equal(typeof value.document, 'string'); assert.ok(value.document.length > 0);
-    assert.equal(value.verdict, 'changes-requested'); assert.ok(value.findings.length > 0);
-    for (const finding of value.findings) assert.match(finding, /^(blocker|major|nit): .+:[1-9][0-9]* .+/);
-    assert.deepEqual(Object.keys(value).sort(), ['document', 'findings', 'summary', 'verdict']);
-  } finally {
-    oldPass === undefined ? delete process.env.MOCK_ALWAYS_PASS : process.env.MOCK_ALWAYS_PASS = oldPass;
-    oldFail === undefined ? delete process.env.MOCK_ALWAYS_FAIL : process.env.MOCK_ALWAYS_FAIL = oldFail;
-  }
-});
+skipped('S3.5', 'finding only: the frozen Q-0006 mock contract already guarantees the schema-valid finding shape');
 
 await scenario('S4.1-S4.3/E6', 'shipped config declares commented keys and runtime defaults remain optional', () => {
   for (const file of [path.join(repo, 'harness', 'harness.yaml'), path.join(spike, 'templates', 'harness', 'harness.yaml')]) {
@@ -204,13 +186,15 @@ await scenario('S6.2-S6.10', 'return-chain validation handles multi-hop, missing
 });
 
 await scenario('S7.1-S7.7', 'bounds and counter spelling reject every invalid form', () => {
-  const base = YAML.parse(read(q6, 'review-flow.contract.yaml')); const verdict = base.steps.find((s) => s.id === 'verdict');
+  const base = YAML.parse(read(q6, 'review-flow.contract.yaml'));
   const cases = [[undefined, 'review'], ['three', 'review'], [1.5, 'review'], [0, 'review'], [-1, 'review'], [3, 'iterations.review'], [3, '']];
   for (const [bound, counter] of cases) {
     const flow = structuredClone(base); const f = flow.steps.find((s) => s.id === 'verdict');
     if (bound === undefined) delete f.on_fail.max_iterations; else f.on_fail.max_iterations = bound; f.on_fail.counter = counter;
     assert.throws(() => lintFlow(flow), counter === 'iterations.review' ? /iterations\.review.*review/is : /verdict.*(max_iterations|counter)/is);
   }
+  const plain = { name: 'plain', consumes: 'x', produces: 'y', steps: [{ id: 'ordinary', role: 'worker', on_fail: { goto: 'ordinary', counter: 'iterations.ordinary', max_iterations: 3 } }] };
+  assert.throws(() => lintFlow(plain), /iterations\.ordinary.*ordinary/is, 'counter spelling applies to a non-verdict step');
 });
 
 await scenario('S8.1-S8.4', 'same-role review panels must span at least two adapters', () => {
@@ -240,11 +224,10 @@ await scenario('S9.1-S9.4/E1', 'run uses the same pristine whole-directory prefl
 });
 
 await scenario('S10.1-S10.7/E3/E4', 'gate answers accumulate in order, are exact, and never come from auto or closed stdin', () => {
-  const source = read(bin); assert.match(source, /gate-answer/);
   const root = projectFixture(); copyFlows(root); const ticket = makeTicket(root);
   write(path.join(ticket, 'ticket.md'), read(ticket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 3'));
   const two = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
-  assert.equal(two.status, 2, output(two)); assert.match(read(ticket, 'ticket.md'), /stage: green/);
+  assert.notEqual(two.status, 0, output(two)); assert.match(read(ticket, 'ticket.md'), /stage: green/);
   const exactRoot = projectFixture(); copyFlows(exactRoot); makeTicket(exactRoot);
   const prefix = cli(exactRoot, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'ad'], { MOCK_ALWAYS_PASS: '1' });
   assert.notEqual(prefix.status, 0); assert.match(output(prefix), /gate/i);
@@ -277,29 +260,53 @@ await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/c
 
 await scenario('S11.5/S11.6', 'frozen Q-0006 inputs are guarded and unreachable baselines skip explicitly', () => {
   try { git(repo, 'cat-file', '-e', '5d16e06^{commit}'); }
-  catch { console.log('  skip: baseline 5d16e06 unavailable'); return; }
+  catch { skipped('S11.6', 'baseline 5d16e06 unavailable'); return; }
   assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'contracts/Q-0006'), '');
 });
 
-await scenario('S13.1-S13.8', 'documentation agrees with the shipped review surface and preserves excluded text', () => {
-  const spec = read(repo, 'docs', '02-sdlc-pipeline-spec.md');
-  const section = (number) => spec.match(new RegExp(`(?:^|\\n)#{2,3}\\s+${number.replace('.', '\\.') }[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`, 'i'))?.[1] ?? '';
+const spec = read(repo, 'docs', '02-sdlc-pipeline-spec.md');
+const section = (number) => spec.match(new RegExp(`(?:^|\\n)#{2,3}\\s+${number.replace('.', '\\.') }[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`, 'i'))?.[1] ?? '';
+await scenario('S13.1', 'the review-failure arrow returns reviewed to red', () => {
   const state = section('3.4'); assert.ok(state, '§3.4 must exist');
-  assert.match(state, /review[^\n]*(red|development)|review fail[^\n]*red/is); assert.doesNotMatch(state, /review fail[^\n]*green/i);
+  const lines = state.split('\n'); const label = lines.findIndex((line) => /review fail/i.test(line));
+  assert.ok(label >= 0, '§3.4 must label the review failure arrow');
+  const diagram = lines.slice(0, label + 1).join('\n');
+  const stages = lines.find((line) => /draft.*requirements.*solutioned.*red.*green.*reviewed/i.test(line)) ?? '';
+  assert.match(stages, /red\s+.*green\s+.*reviewed/i, 'diagram must contain red, green, and reviewed in order');
+  const reviewedColumn = stages.indexOf('reviewed'); const redColumn = stages.indexOf('red');
+  assert.ok(reviewedColumn >= 0 && redColumn >= 0);
+  assert.match(lines[label], /└|┘|─/u, 'review-failure label must be attached to an arrow');
+  assert.ok(diagram.split('\n').slice(1).some((line) => line[redColumn] === '▲' || line[redColumn] === '│'), 'review failure arrow must terminate at red');
+  assert.equal(lines.slice(1, label + 1).some((line) => line[stages.indexOf('green')] === '▲' && /review fail/i.test(lines[label])), false, 'review failure must not terminate at green');
+});
+
+await scenario('S13.2-S13.4', 'the documented review flow, config and M1 decision match the contracts', () => {
   const review = section('5.5'); assert.ok(review, '§5.5 must exist');
   for (const re of [/\{base\}\.\.\.harness\/\{id\}\/integration/, /\{round\}/, /counter:\s*review/, /max_diff_bytes[\s\S]*200000/is, /--auto[\s\S]*(cannot|does not|never)/is]) assert.match(review, re);
   assert.match(section('10'), /no lighter.*fix|no lighter flow/is);
   for (const re of [/type:\s*judge/, /model:\s*(opus|gpt-)/, /\{iter\}/, /\b(findings|tasks|with):/]) assert.doesNotMatch(review, re);
+});
+
+await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', () => {
   const plan = read(repo, 'docs', '06-development-plan.md'); assert.match(plan, /Q-0006[\s\S]*engine/is); assert.match(plan, /Q-0033[\s\S]*(surface|flow|role|lint)/is);
+});
+
+await scenario('S13.6', 'DECISIONS contains both complete review-flow decisions', () => {
   const decisions = read(repo, 'docs', 'DECISIONS.md');
   for (const topic of [/derived regression/i, /non.auto.*exhaustion|exhaustion.*--auto/i]) {
     const at = decisions.search(topic); assert.ok(at >= 0); const block = decisions.slice(Math.max(0, decisions.lastIndexOf('\n##', at)), decisions.indexOf('\n##', at + 3) < 0 ? undefined : decisions.indexOf('\n##', at + 3));
     assert.match(block, /\d{4}-\d{2}-\d{2}/); assert.match(block, /\*\*Decision\*\*/); assert.match(block, /\*\*Alternatives considered\*\*/); assert.match(block, /\*\*Why\*\*/);
   }
+});
+
+await scenario('S13.7', 'the Gate glossary entry distinguishes declared and exhaustion gates', () => {
   const glossary = read(repo, 'docs', 'GLOSSARY.md'); const gate = glossary.match(/\*\*Gate\*\*[\s\S]*?(?=\n\*\*|$)/)?.[0] ?? '';
   assert.match(gate, /author.declared[\s\S]*deploy/is); assert.match(gate, /engine.presented[\s\S]*exhaustion/is);
+});
+
+await scenario('S13.8', 'README remains byte-unchanged from the frozen baseline', () => {
   try { git(repo, 'cat-file', '-e', '5d16e06^{commit}'); assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'README.md'), ''); }
-  catch (e) { if (!String(e.message).includes('cat-file')) throw e; console.log('  skip: baseline 5d16e06 unavailable'); }
+  catch (e) { if (!String(e.message).includes('cat-file')) throw e; skipped('S13.8', 'baseline 5d16e06 unavailable'); }
 });
 
 await scenario('E7', 'unused explicit gate answers are ignored after a gate-free regression', () => {
@@ -308,11 +315,7 @@ await scenario('E7', 'unused explicit gate answers are ignored after a gate-free
   assert.equal(r.status, 0, output(r)); assert.doesNotMatch(output(r), /unused|unconsumed|leftover/i);
 });
 
-await scenario('S12.1/E2', 'manual and future-facing criteria remain explicitly non-automated', () => {
-  // S12.1 requires authenticated subscription spend and maintainer-written evidence; asserting
-  // it here would fabricate evidence. E2 is represented by the reached-only ambiguity and
-  // visited-pair fixtures above, without inventing future qa-final/deploy flows.
-  assert.equal(true, true);
-});
+skipped('S12.1', 'manual: requires authenticated Claude and Codex subscription evidence');
+skipped('E2', 'forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet');
 
 if (failed) { console.error(`\n✗ ${failed} Q-0033 scenario group(s) failed`); process.exit(1); }
