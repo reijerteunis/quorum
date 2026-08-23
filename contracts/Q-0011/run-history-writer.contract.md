@@ -15,9 +15,12 @@ against `run-events.schema.json`. Engine and readers never parse vendor-native t
 usage, verdict, retries, or roll-up.
 
 Each adapter result and thrown billed error carries the complete usage shape from the schema.
-Unknown values are `null`, not zero. Retry aggregation preserves all five measures and emits a
-`retry` event for every retry. The final aggregate is emitted once as `usage`; it is the usage
-copied into the manifest occurrence and counted once in the roll-up.
+Unknown values are `null`, not zero. Inner adapters never emit `usage` payloads: the retry
+wrapper aggregates all attempts, emits a `retry` event for every retry, and, after aggregation,
+emits exactly one final `usage` payload from `res.usage` or a billed thrown error's accumulated
+usage. It emits no `usage` payload when the occurrence reported no usage. The engine copies that
+same aggregate into the manifest occurrence and counts it once in the roll-up. AC-11
+recomputation is defined over these emitted final `usage` events.
 
 `input_tokens` is the vendor's total reported input and already contains reported cached-read
 and cache-write input where the vendor includes those values. `cached_input_tokens` and
@@ -31,8 +34,10 @@ and cache-write input where the vendor includes those values. `cached_input_toke
   atomically write the initial manifest. Existing or uncreatable directories are fatal before
   billing. Dry runs do none of these writes.
 - Allocate an occurrence synchronously at step-attempt start. Its directory is
-  `steps/<zero-padded-seq>-<sanitised-step-id>`; replace `/` and `:` with `-`. Allocation order,
-  not completion order, defines the sequence and makes parallel allocation collision-free.
+  `steps/<zero-padded-seq>-<sanitised-step-id>`; the sequence is left-padded with zeroes to four
+  digits and grows naturally to five or more digits after 9999, and `/` and `:` are replaced
+  with `-`. Allocation order, not completion order, defines the sequence and makes parallel
+  allocation collision-free.
 - A flow gate with no explicit id has `step_id: gate-<kind>`, where `<kind>` is its `gate`
   value (for example `gate-human`). If more than one such gate starts in a run, the occurrence
   sequence still makes its directory unique. The engine-synthesised traversal-limit gate has
@@ -71,11 +76,19 @@ then makes the run `aborted`. A backward-edge declaration terminates that adapte
 `regressed`. The occurrence that reaches its traversal limit terminates as `exhausted`. Ctrl-C
 or SIGTERM terminates every active occurrence and the run as `interrupted`.
 
+Error categories are fixed across manifest and terminal events. Adapter authentication failures
+identified by `authError()` are `auth`; retryable failures identified by `transientError()` are
+`transient`; `FlowError` from invalid structured output is `structured_output`; all other
+adapter failures are `adapter`; script-step failures are `script`; integration-step failures are
+`integrate`; Ctrl-C and SIGTERM failures are `interrupted`; and `unknown` is the explicit
+fallback only when an older or uncategorised engine path supplies no more precise category.
+
 ## Roll-up algorithm
 
 Group terminal adapter occurrences by `usage.vendor`; exclude script, integrate, gate, and
 adapter occurrences whose `usage` is null. A null-usage occurrence was not reported as billed
 and creates no vendor entry; the detail view still shows it, but it is not an unpriced step.
+This is the narrow AC-11 amendment recorded in the ticket's `solution/errata.md` E-1.
 For each vendor, `step_count` counts occurrences and `unpriced_steps` counts usage
 objects whose `cost_usd` is null. Sum each numeric measure over reported values only; if no
 occurrence reported that measure, the roll-up field is null. This makes an entirely unpriced

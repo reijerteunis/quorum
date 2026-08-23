@@ -185,7 +185,8 @@
         },
         "ts": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "pattern": "Z$"
         },
         "seq": {
           "type": "integer",
@@ -261,8 +262,16 @@
       "type": "object",
       "properties": {
         "category": {
-          "type": "string",
-          "minLength": 1
+          "enum": [
+            "auth",
+            "transient",
+            "structured_output",
+            "adapter",
+            "script",
+            "integrate",
+            "interrupted",
+            "unknown"
+          ]
         },
         "message": {
           "type": "string",
@@ -429,6 +438,12 @@
         "reason": {
           "type": "string",
           "minLength": 1
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -436,7 +451,8 @@
         "attempt",
         "max_attempts",
         "delay_ms",
-        "reason"
+        "reason",
+        "message"
       ],
       "additionalProperties": false
     },

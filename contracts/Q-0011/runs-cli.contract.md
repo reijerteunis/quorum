@@ -1,7 +1,9 @@
 # `harness runs` reader and validator contract
 
-The reader is implemented in `spike/bin/harness.js` and reads only beneath the selected
-`.quorum/runs/<run-id>/` directory. It does not repair, rewrite, or infer terminal state.
+The reader is implemented in `spike/bin/harness.js`. It obtains `repoDir` through the existing
+`findProject()`/`loadProject()` path and locates the runs root at `<repoDir>/.quorum/runs/`, so
+invocation from a project subdirectory sees the same history. After selection it reads only
+beneath `.quorum/runs/<run-id>/`. It does not repair, rewrite, or infer terminal state.
 
 ## Selection and output
 
@@ -14,6 +16,8 @@ The reader is implemented in `spike/bin/harness.js` and reads only beneath the s
   Always include each vendor's unpriced-step count and never print a combined monetary total.
 - Detail orders occurrences by the numeric prefix in `occurrence_dir` and includes every field
   required by AC-13 plus the relative occurrence path.
+- The live renderer consumes typed event `data`; it prints nullable `retry.data.message` beneath
+  the retry summary when present, preserving the existing explanation for a quiet backoff.
 - `--json` emits exactly one JSON document and no ANSI or preceding human output. It returns the
   manifest-derived list/detail plus `incomplete` and `warnings`; event contents are not inlined.
 - A missing runs root is an empty success. Unknown exact run ids fail. A malformed sibling is
@@ -51,3 +55,7 @@ requires null `duration_ms`, while every terminal occurrence requires a non-null
 Adapter/usage consistency means non-adapter occurrences require null `adapter`, `model`, and
 `usage`; adapter occurrences require a non-null `adapter` but may have null `model` and may have
 null `usage` when failure occurred before any usage was reported.
+
+Roll-up equality excludes null-usage adapter occurrences, as specified by the writer contract
+and the ticket's `solution/errata.md` E-1. It groups only non-null occurrence usage, which is the
+same set represented by final `usage` events.

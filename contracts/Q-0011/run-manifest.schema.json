@@ -16,8 +16,8 @@
       "required": ["before", "after"],
       "additionalProperties": false
     },
-    "started_at": { "type": "string", "format": "date-time" },
-    "ended_at": { "type": ["string", "null"], "format": "date-time" },
+    "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "ended_at": { "type": ["string", "null"], "format": "date-time", "pattern": "Z$" },
     "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
     "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted"] },
     "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
@@ -43,7 +43,10 @@
     },
     "error": {
       "type": "object",
-      "properties": { "category": { "type": "string", "minLength": 1 }, "message": { "type": "string", "minLength": 1 } },
+      "properties": {
+        "category": { "enum": ["auth", "transient", "structured_output", "adapter", "script", "integrate", "interrupted", "unknown"] },
+        "message": { "type": "string", "minLength": 1 }
+      },
       "required": ["category", "message"],
       "additionalProperties": false
     },
@@ -51,14 +54,14 @@
       "type": "object",
       "properties": {
         "step_id": { "type": "string", "minLength": 1 },
-        "occurrence_dir": { "type": "string", "pattern": "^steps/[0-9]+-[^/:]+$" },
+        "occurrence_dir": { "type": "string", "pattern": "^steps/[0-9]{4,}-[^/:]+$" },
         "kind": { "enum": ["adapter", "script", "integrate", "gate"] },
         "role": { "type": ["string", "null"] },
         "adapter": { "type": ["string", "null"] },
         "model": { "type": ["string", "null"] },
         "branch": { "type": ["string", "null"], "minLength": 1 },
         "worktree": { "anyOf": [{ "$ref": "#/$defs/relative_path" }, { "type": "null" }] },
-        "started_at": { "type": "string", "format": "date-time" },
+        "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
         "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
         "attempts": { "type": "integer", "minimum": 0 },
         "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted"] },
