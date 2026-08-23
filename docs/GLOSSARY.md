@@ -37,3 +37,6 @@
 **Cross-vendor rule**: `cross_vendor: required` — a lint guaranteeing the reviewer/judge of an artifact runs on a different adapter than its writer.
 
 **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).
+
+**Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
+prompts and outputs, errors, usage, and per-vendor roll-up.
