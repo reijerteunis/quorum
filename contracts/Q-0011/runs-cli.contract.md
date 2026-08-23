@@ -7,7 +7,8 @@ run directory. It never repairs or infers persisted state.
 ## Selection and ordering
 
 - `harness runs` lists all readable manifests. An exact existing directory `<run-id>` wins and
-  selects detail. Otherwise a positional value matching the repository's ticket-id syntax is a
+  selects detail. Otherwise a positional value matching the ticket-id pattern `^[A-Z]+-[0-9]{4}$`
+  is a
   `ticket_id` filter using manifests only; zero matches is an empty list and exit zero, whether
   the ticket has never run or does not exist elsewhere. Any value that is neither an existing run
   directory nor syntactically a ticket id is an unknown-run error. The reader never consults

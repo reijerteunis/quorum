@@ -10,13 +10,21 @@ event stream. Adapter `onEvent` callbacks remain live-rendering input only.
   `ensureExcluded(repoDir, '.quorum/')` from `spike/src/git.js`, and atomically write the initial
   `manifest.json`. An existing or uncreatable run directory is fatal before billing. Dry runs
   create no run-history artifact.
+- `ensureExcluded` resolves the repository's real Git directory, including linked worktrees where
+  `.git` is a file. If `.quorum/` cannot be added to the applicable `info/exclude`, it emits an
+  explicit warning naming the unresolved or unwritable path; it never returns silently. This is
+  non-fatal after the run directory has been initialised, and the test asserts both the warning
+  and unchanged `git status` for the supported normal and linked-worktree cases.
 - Persist only project-relative paths. Persist argv when a command record needs it, but never an
   environment object. Tests seed sentinel environment values and assert those values, and the
   switch names themselves, do not occur in artifacts; fixture values intentionally represented
   as domain data (for example `MOCK_VENDOR` becoming `usage.vendor`) are not forbidden.
-- Replace `manifest.json` through one engine-owned queue: write a complete same-directory
-  temporary file, fsync and close it, then rename it over the manifest. Update after each terminal
-  occurrence and at run termination. Two parallel completions must both survive.
+- Replace `manifest.json` synchronously on the engine event loop: `writeFileSync` a complete
+  same-directory temporary file, `fsyncSync` and `closeSync` it, then `renameSync` it over the
+  manifest. Mutate one in-memory snapshot and perform each replacement before accepting the next
+  completion; this is the engine-owned serial queue. Update after each terminal occurrence and at
+  run termination. Two parallel completions must both survive, and the signal path uses the same
+  synchronous replacement rather than racing a second writer over the temporary path.
 - On Ctrl-C or SIGTERM, stop new updates, mark active occurrences and the run `interrupted`, make
   the complete atomic replacement synchronously in the signal-finalisation path, and only then
   exit. The handler must not start unawaited asynchronous I/O before `process.exit`. A SIGKILL may
@@ -52,19 +60,24 @@ including retries: it is `1` for a first-try success and the actual invocation c
 failure after retries; script and integrate use zero. The retry wrapper exposes that count on both
 its result and thrown error instead of leaving it only in error prose.
 
-Built-in adapters and their wrapper return one common usage shape. On success and billed failure,
-the wrapper stamps `usage.vendor` from the selected adapter's own `adapter.vendor` declaration;
-this is the same self-declared provenance exposed by a successful result, not an inference from an
-adapter routing name. A billed throw copies its full error and accumulated usage before
-propagation. `vendor`, `cached_input_tokens`, and `cache_write_input_tokens` survive accumulation
-and the success/error wrapper paths. Unknown measures are null, never zero or inferred. Input
-totals already include vendor-reported cache components; readers do not add them again. Output
-includes vendor-reported reasoning tokens.
+Built-in adapters and their wrapper return one common usage shape. On success the wrapper stamps
+`usage.vendor` from the adapter's per-call `result.vendor`; on a billed failure it uses the
+equivalent `error.vendor`. Only when that call declares no vendor does it fall back to the
+adapter object's static `adapter.vendor`. This remains adapter self-declaration and is never
+inferred from an adapter routing name. A billed throw copies its full error, per-call vendor, and
+accumulated usage before propagation. `vendor`, `cached_input_tokens`, and
+`cache_write_input_tokens` survive accumulation and the success/error wrapper paths. Unknown
+measures are null, never zero or inferred. Input totals already include vendor-reported cache
+components; readers do not add them again. Output includes vendor-reported reasoning tokens.
 
 ## Status and errors
 
-Occurrences begin `running` and end with the existing engine outcome: `completed`, `failed`,
-`aborted`, `regressed`, `exhausted`, or `interrupted`. The run uses the same terminal vocabulary.
+Occurrences begin `running` and may end `completed`, `failed`, `aborted`, `regressed`, or
+`interrupted`. Runs use those outcomes too. `exhausted` remains reserved in the version-1 schema
+for compatibility with the engine's outcome vocabulary, but Q-0011 never writes it to a manifest:
+the existing `recordEvent(..., 'exhausted', ...)` records ticket history and execution continues
+to a gate, after which the run ends with its actual terminal outcome. QA must not require an
+`exhausted` manifest fixture.
 Error categories map explicitly: adapter authentication to `auth`, retryable adapter failure to
 `transient`, invalid structured output to `structured_output`, other adapter failures to
 `adapter`, script and integrate failures to their same-named categories, signals to
