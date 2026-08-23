@@ -6,9 +6,12 @@ run directory. It never repairs or infers persisted state.
 
 ## Selection and ordering
 
-- `harness runs` lists all readable manifests. `harness runs <ticket-id>` filters by exact
-  `ticket_id`; an exact existing directory `<run-id>` wins over ticket filtering and selects
-  detail. Any other positional value is an unknown-run error.
+- `harness runs` lists all readable manifests. An exact existing directory `<run-id>` wins and
+  selects detail. Otherwise a positional value matching the repository's ticket-id syntax is a
+  `ticket_id` filter using manifests only; zero matches is an empty list and exit zero, whether
+  the ticket has never run or does not exist elsewhere. Any value that is neither an existing run
+  directory nor syntactically a ticket id is an unknown-run error. The reader never consults
+  `backlog/` to distinguish a typo from a ticket with no history.
 - List order is `started_at` descending, then `run_id` ascending as a deterministic tiebreaker.
   Do not sort lexically by run number.
 - A missing runs root prints the empty state and exits zero. A malformed sibling is named, valid
@@ -46,4 +49,3 @@ misleading run-manifest green tick. The annotation's checks catch the AC-14 muta
 token-only run's `manifest.json` roll-up `cost_usd` is changed from null to zero: recomputation
 from its occurrence usage expects null and reports that vendor and field. Occurrence
 `usage.cost_usd: 0` remains legal when the vendor actually reported zero.
-
