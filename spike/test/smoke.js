@@ -88,7 +88,7 @@ assert(fs.existsSync(path.join(tmp, '.harness/worktrees/harness__T-0001__integra
 // used to assert the opposite and passed only because closed stdin resolved as '' → advance —
 // two bugs cancelling out. Removing the defaulting turned it into a 24-minute hang (Q-0011).
 r = run(['ticket', 'new', 'Second ticket']);
-r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
+r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' });
 assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a gate');
 assert(r.stdout.includes('human-locked'), '--auto does not bypass the exhaustion gate');
 assert(r.status !== 0, 'a gate with no answer available fails the run');

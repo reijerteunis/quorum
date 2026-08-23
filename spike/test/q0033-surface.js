@@ -14,19 +14,20 @@ const repo = path.resolve(spike, '..');
 const bin = path.join(spike, 'bin', 'harness.js');
 const q6 = path.join(repo, 'contracts', 'Q-0006');
 let failed = 0;
+const results = [];
 async function scenario(id, title, fn) {
-  try { await fn(); console.log(`✓ ${id} — ${title}`); }
-  catch (e) { failed++; console.error(`✗ ${id} — ${title}\n  ${e.message}`); }
+  try { await fn(); results.push(['✓', id, title]); console.log(`✓ ${id} — ${title}`); }
+  catch (e) { failed++; results.push(['✗', id, title]); console.error(`✗ ${id} — ${title}\n  ${String(e.message).split('\n')[0]}`); }
 }
 function checkFixtures(cases) {
   const errors = [];
   for (const [caseId, fn] of cases) {
-    try { fn(); console.log(`  ✓ ${caseId}`); }
-    catch (e) { errors.push(`${caseId}: ${e.message}`); console.error(`  ✗ ${caseId}\n    ${e.message}`); }
+    try { fn(); results.push(['✓', caseId, 'fixture']); console.log(`  ✓ ${caseId}`); }
+    catch (e) { results.push(['✗', caseId, 'fixture']); errors.push(`${caseId}: ${e.message}`); console.error(`  ✗ ${caseId}\n    ${e.message}`); }
   }
   assert.equal(errors.length, 0, errors.join('\n'));
 }
-function skipped(id, reason) { console.log(`- ${id} — SKIP: ${reason}`); }
+function skipped(id, reason) { results.push(['SKIP', id, reason]); console.log(`SKIP ${id}: ${reason}`); }
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body); };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -81,6 +82,12 @@ function makeTicket(root, stage = 'green') {
   write(path.join(root, 'change.txt'), 'review me\n'); git(root, 'add', 'change.txt');
   git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '-m', 'ticket'); git(root, 'checkout', '-q', 'main');
   return ticket;
+}
+function makeDraftTicket(root, title = 'Gate fixture') {
+  const r = cli(root, ['ticket', 'new', title]);
+  assert.equal(r.status, 0, output(r));
+  const dir = fs.readdirSync(path.join(root, 'backlog')).find((x) => x.startsWith('T-0001'));
+  return path.join(root, 'backlog', dir);
 }
 
 await scenario('S1.1/S1.2/S1.4', 'review flow matches its fixture and all shipped flow peers are byte-identical', () => {
@@ -208,49 +215,82 @@ await scenario('S7.1-S7.7', 'bounds and counter spelling reject every invalid fo
 await scenario('S8.1-S8.4', 'same-role review panels must span at least two adapters', () => {
   const base = YAML.parse(read(q6, 'review-flow.contract.yaml'));
   const panel = base.steps[0].parallel;
-  for (const adapters of [['codex', 'codex'], ['codex', 'codex', 'codex']]) {
-    const flow = structuredClone(base); flow.steps[0].parallel = adapters.map((adapter, i) => ({ ...panel[i % 2], id: `member-${i}`, adapter }));
-    assert.throws(() => lintFlow(flow), (error) => new RegExp(`member-0.*member-1.*${adapters[0]}`, 'is').test(error.message) && !/written by its own vendor/i.test(error.message));
-  }
-  const mixed = structuredClone(base); mixed.steps[0].parallel.push({ ...panel[0], id: 'third', adapter: 'claude' }); assert.equal(lintFlow(mixed), true);
+  checkFixtures([
+    ['S8.1 two-member single vendor', () => {
+      const flow = structuredClone(base); flow.steps[0].parallel = panel.map((step, i) => ({ ...step, id: `member-${i}`, adapter: 'codex' }));
+      assert.throws(() => lintFlow(flow), (error) => /member-0.*member-1.*codex/is.test(error.message) && !/written by its own vendor/i.test(error.message));
+    }],
+    ['S8.2 shipped panel', () => assert.equal(lintFlow(structuredClone(base)), true)],
+    ['S8.3 three-member single vendor', () => {
+      const flow = structuredClone(base); flow.steps[0].parallel = [0, 1, 2].map((i) => ({ ...panel[i % 2], id: `member-${i}`, adapter: 'codex' }));
+      assert.throws(() => lintFlow(flow), (error) => /member-0.*member-1.*member-2.*codex/is.test(error.message) && !/written by its own vendor/i.test(error.message));
+    }],
+    ['S8.4 mixed three-member panel', () => {
+      const flow = structuredClone(base); flow.steps[0].parallel.push({ ...panel[0], id: 'third', adapter: 'claude' }); assert.equal(lintFlow(flow), true);
+    }],
+  ]);
 });
 
 await scenario('S9.1-S9.4/E1', 'run uses the same pristine whole-directory preflight before overrides and side effects', () => {
-  const root = projectFixture(); copyFlows(root); const ticket = makeTicket(root);
+  const root = projectFixture(); copyFlows(root); const ticket = makeDraftTicket(root);
   write(path.join(root, 'harness', 'flows', 'bad.yaml'), 'name: bad\nconsumes: x\nproduces: y\nsteps:\n  - id: bad\n    on_fail: {goto: "flow:missing", counter: bad, max_iterations: 3, on_exhausted: gate}\n');
-  const lint = cli(root, ['lint']); const run = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock'], { MOCK_ALWAYS_PASS: '1' });
+  const lint = cli(root, ['lint']); const run = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock'], { MOCK_ALWAYS_PASS: '1' });
   assert.notEqual(lint.status, 0); assert.notEqual(run.status, 0); assert.match(output(lint), /missing/); assert.match(output(run), /missing/);
   assert.equal(diagnostic(lint), diagnostic(run));
   assert.equal(fs.existsSync(path.join(ticket, 'runs.log')), false, 'preflight wrote runs.log');
-  assert.deepEqual(fs.readdirSync(ticket).filter((name) => /^review$/.test(name)), [], 'preflight wrote review artifacts');
+  assert.deepEqual(fs.readdirSync(ticket).filter((name) => /^requirements$/.test(name)), [], 'preflight wrote requirement artifacts');
   assert.doesNotMatch(read(ticket, 'ticket.md'), /iterations:\s*\n\s+\S/);
-  const valid = projectFixture(); copyFlows(valid); makeTicket(valid);
-  const ok = cli(valid, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance'], { MOCK_ALWAYS_PASS: '1' });
+  const valid = projectFixture(); copyFlows(valid); makeDraftTicket(valid);
+  const ok = cli(valid, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_PASS: '1' });
   assert.equal(ok.status, 0, output(ok));
   const multi = lintFixture({ a: reviewWith('flow:missing'), b: reviewWith('flow:development', 'max_iterations: 0').replace('name: review', 'name: b'), development: basicFlow('development', 'red', 'green') });
   assert.match(output(multi.result), /missing/); assert.match(output(multi.result), /max_iterations/);
 });
 
 await scenario('S10.1-S10.7/E3/E4', 'gate answers accumulate in order, are exact, and never come from auto or closed stdin', () => {
-  const root = projectFixture(); copyFlows(root); const ticket = makeTicket(root);
-  write(path.join(ticket, 'ticket.md'), read(ticket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 3'));
-  const two = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
-  assert.notEqual(two.status, 0, output(two)); assert.match(read(ticket, 'ticket.md'), /stage: green/);
-  const exactRoot = projectFixture(); copyFlows(exactRoot); makeTicket(exactRoot);
-  const prefix = cli(exactRoot, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'ad'], { MOCK_ALWAYS_PASS: '1' });
-  assert.notEqual(prefix.status, 0); assert.match(output(prefix), /gate/i);
-  const noAnswerRoot = projectFixture(); copyFlows(noAnswerRoot); makeTicket(noAnswerRoot);
-  const none = cli(noAnswerRoot, ['run', 'review', 'T-0001', '--adapter', 'mock'], { MOCK_ALWAYS_PASS: '1' }, '');
-  assert.notEqual(none.status, 0); assert.match(output(none), /gate.*(answer|stdin)/is);
-  const autoRoot = projectFixture(); copyFlows(autoRoot); const autoTicket = makeTicket(autoRoot);
-  write(path.join(autoTicket, 'ticket.md'), read(autoTicket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 3'));
-  const auto = cli(autoRoot, ['run', 'review', 'T-0001', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' }, '');
-  assert.notEqual(auto.status, 0); assert.match(output(auto), /human-locked|loop exhausted/i);
-  const retry = cli(autoRoot, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'retry', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
-  assert.match(read(autoTicket, 'ticket.md'), /review: 3/); assert.match(read(autoTicket, 'runs.log'), /gate=retry.*counter=review.*set=3/);
-  // Parser scoping: repeating adapter remains last-wins (claude is attempted, not mock).
-  const other = cli(exactRoot, ['run', 'review', 'T-0001', '--adapter', 'mock', '--adapter', 'claude', '--gate-answer', 'advance'], { MOCK_ALWAYS_PASS: '1' });
-  assert.doesNotMatch(output(other), /single.vendor.*mock/i);
+  checkFixtures([
+    ['S10.1/S10.2 ordered answers', () => {
+      const root = projectFixture(); const ticket = makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
+      assert.notEqual(r.status, 0, output(r));
+      const log = read(ticket, 'runs.log');
+      assert.match(log, /exhausted stage=draft→draft cost=0[\s\S]*gate=human-locked answer=advance[\s\S]*gate=human answer=abort[\s\S]*aborted stage=draft→draft cost=/);
+      assert.match(read(ticket, 'ticket.md'), /stage: draft/);
+    }],
+    ['S10.3 exact explicit answer', () => {
+      const root = projectFixture(); makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--gate-answer', 'ad'], { MOCK_ALWAYS_PASS: '1' });
+      assert.notEqual(r.status, 0); assert.match(output(r), /gate/i);
+    }],
+    ['S10.4 non-TTY has no default', () => {
+      const root = projectFixture(); makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock'], { MOCK_ALWAYS_PASS: '1' }, 'advance\n');
+      assert.notEqual(r.status, 0); assert.match(output(r), /gate.*(answer|stdin)/is);
+    }],
+    ['S10.6 auto cannot answer exhaustion', () => {
+      const root = projectFixture(); makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' }, '');
+      assert.notEqual(r.status, 0); assert.match(output(r), /human-locked|loop exhausted/i);
+    }],
+    ['S10.7 review retry persists the limit', () => {
+      const shipped = path.join(repo, 'harness', 'flows', 'review.yaml');
+      assert.equal(fs.existsSync(shipped), true, 'review.yaml must ship before S10.7 can run');
+      const root = projectFixture(); copyFlows(root); const ticket = makeTicket(root);
+      write(path.join(ticket, 'ticket.md'), read(ticket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 3'));
+      cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'retry', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
+      assert.match(read(ticket, 'ticket.md'), /review: 3/); assert.match(read(ticket, 'runs.log'), /gate=retry.*counter=review.*set=3/);
+    }],
+    ['E3 other repeated flags stay last-wins', () => {
+      const root = projectFixture(); makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'doesnotexist', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_PASS: '1' });
+      assert.equal(r.status, 0, output(r)); assert.match(output(r), /mock/);
+    }],
+    ['E4 explicit exhaustion answer avoids stdin rejection', () => {
+      const root = projectFixture(); makeDraftTicket(root);
+      const r = cli(root, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' });
+      assert.doesNotMatch(output(r), /stdin closed without one/i);
+    }],
+  ]);
 });
 
 await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/cost compatibility are pinned', () => {
@@ -302,7 +342,9 @@ await scenario('S13.2-S13.4', 'the documented review flow, config and M1 decisio
 
 await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', () => {
   const plan = read(repo, 'docs', '06-development-plan.md');
-  const m1 = plan.match(/^## M1\b[\s\S]*?(?=^##\s|\z)/mi)?.[0] ?? '';
+  const lines = plan.split('\n'); const start = lines.findIndex((line) => /^## M1\b/i.test(line));
+  const end = lines.findIndex((line, index) => index > start && line.startsWith('## '));
+  const m1 = start < 0 ? '' : lines.slice(start, end < 0 ? undefined : end).join('\n');
   assert.ok(m1, 'M1 block must exist');
   assert.match(m1, /Q-0006[^\n]*(engine|split)|engine[^\n]*Q-0006/is);
   assert.match(m1, /Q-0033[^\n]*(surface|flow|role|lint)/is);
@@ -312,8 +354,8 @@ await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', 
 
 await scenario('S13.6', 'DECISIONS contains both complete review-flow decisions', () => {
   const decisions = read(repo, 'docs', 'DECISIONS.md');
-  for (const topic of [/derived regression/i, /non.auto.*exhaustion|exhaustion.*--auto/i]) {
-    const at = decisions.search(topic); assert.ok(at >= 0); const block = decisions.slice(Math.max(0, decisions.lastIndexOf('\n##', at)), decisions.indexOf('\n##', at + 3) < 0 ? undefined : decisions.indexOf('\n##', at + 3));
+  for (const [label, topic] of [['derived-regression-target', /derived regression/i], ['non-auto-exhaustion-gate', /non.auto.*exhaustion|exhaustion.*--auto/i]]) {
+    const at = decisions.search(topic); assert.ok(at >= 0, `DECISIONS.md is missing the ${label} entry`); const block = decisions.slice(Math.max(0, decisions.lastIndexOf('\n##', at)), decisions.indexOf('\n##', at + 3) < 0 ? undefined : decisions.indexOf('\n##', at + 3));
     assert.match(block, /\d{4}-\d{2}-\d{2}/); assert.match(block, /\*\*Decision\*\*/); assert.match(block, /\*\*Alternatives considered\*\*/); assert.match(block, /\*\*Why\*\*/);
   }
 });
@@ -336,5 +378,21 @@ await scenario('E7', 'unused explicit gate answers are ignored after a gate-free
 
 skipped('S12.1', 'manual: requires authenticated Claude and Codex subscription evidence');
 skipped('E2', 'forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet');
+
+await scenario('E8', 'the red branch contains only contracts and QA-owned test changes', () => {
+  const mergeBase = git(repo, 'merge-base', 'main', 'HEAD');
+  const paths = git(repo, 'diff', '--name-only', mergeBase, 'HEAD').split('\n').filter(Boolean);
+  const allowed = /^(contracts\/Q-0033\/|spike\/test\/)/;
+  assert.deepEqual(paths.filter((file) => !allowed.test(file)), [], `unexpected paths since ${mergeBase}: ${paths.join(', ')}`);
+  console.log(`# E8 merge-base ${mergeBase}; paths: ${paths.join(', ')}`);
+});
+
+// E9 is intentionally not encoded as a red test here. The current engine still writes
+// out.slice(-8000), while no Q-0033 task owns testReport in spike/src/engine.js. Encoding the
+// check would create a red that no development task is authorised to close.
+skipped('E9', 'OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.js');
+
+console.log('\nEvery result line');
+for (const [mark, id, title] of results) console.log(`${mark} ${id} ${title}`);
 
 if (failed) { console.error(`\n✗ ${failed} Q-0033 scenario group(s) failed`); process.exit(1); }
