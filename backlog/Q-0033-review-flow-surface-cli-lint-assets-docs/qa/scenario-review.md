@@ -1,95 +1,178 @@
-# Scenario review — Q-0033
+*Architecture reviewer, round 2 run 6. Ticket Q-0033, stage `solutioned`. Reviewing `qa/scenarios.md` and `qa/red-report.md` against `requirements/merged.md`, `solution/tasks.yaml`, `solution/errata.md` (E-1, E-2), `contracts/Q-0033/*`, and the frozen `contracts/Q-0006/*` at baseline `5d16e06`. Traced against the actual branches and files, not against the documents alone.*
 
-*architecture-reviewer, qa-red gate. Reviewed: `qa/scenarios.md`, `qa/red-report.md`, `qa/red-integration.md`, and the tests they describe (`spike/test/q0033-surface.js` on `harness/Q-0033/tests`, 267 lines, 16 scenario groups). Checked against `requirements/merged.md`, `solution/tasks.yaml`, `contracts/Q-0033/*`, the frozen `contracts/Q-0006/*` at baseline `5d16e06`, and the code on `main` at `1a1c9cf`.*
-
-**Verdict: approve.** Every acceptance criterion has at least one scenario, and the suite fails on assertions, not on compile errors. The observations in §4 are advisory and do not block development.
+**Verdict: revise.**
 
 ---
 
-## 1. Coverage — every acceptance criterion has a scenario
+## 1. What the gate asks, and where this round stands
 
-| AC | Scenarios | Test group | Red today? |
-| --- | --- | --- | --- |
-| 1 shipped `review.yaml` | S1.1–S1.4 | `S1.1/S1.2/S1.4`, `S1.3/…` | ✗ `harness/flows/review.yaml must ship` |
-| 2 shipped `code-reviewer.md` | S2.1–S2.5 | `S2.1-S2.5` | ✗ `harness/roles/code-reviewer.md must ship` |
-| 3 only fields the engine has | S3.1–S3.4 | `S3.1`, `S3.2/S3.3`, `S1.3/…` | ✗ `review.yaml must ship` |
-| 4 config declares the review keys | S4.1–S4.3, E6 | `S4.1-S4.3/E6` | ✗ `max_diff_bytes` absent from both configs |
-| 5 `init` discovers the base branch | S5.1–S5.7, E5 | `S5.1-S5.7/E5` | ✗ `base_branch` stays `main` on a `master` repo |
-| 6 cross-flow targets and return chain | S6.1–S6.10, E2 | `S6.2-S6.10`, `S1.3/…` | ✗ six named negative fixtures all lint clean today |
-| 7 bounds and counter spelling | S7.1–S7.8 | `S7.1-S7.7`, `S1.3/…` | ✗ `Missing expected exception` (`max_iterations: 0`) |
-| 8 single-vendor panel | S8.1–S8.5 | `S8.1-S8.4`, `S1.3/…` | ✗ no message naming the members and the shared adapter |
-| 9 `run` preflights from disk | S9.1–S9.4, E1 | `S9.1-S9.4/E1` | ✗ `lint` exits 0 on the unresolvable-target fixture |
-| 10 gate answers | S10.1–S10.7, E3, E4 | `S10.1-S10.7/E3/E4` | ✗ `--gate-answer` appears nowhere in `bin/harness.js` |
-| 11 suite stays green | S11.1–S11.6 | `S11.1-S11.4`, `S11.5/S11.6` | ✗ (migration) / ✓ (frozen-contract guard) |
-| 12 real-CLI evidence | S12.1 | `S12.1/E2` | ✓ no-op — manual by requirement |
-| 13 docs agree | S13.1–S13.8 | `S13.1-S13.8` | ✗ `§5.5` still shows `{iter}` and pinned models |
+Two questions decide this gate: does every acceptance criterion have at least one scenario, and does the red report show the suite failing on assertions rather than compile errors.
 
-No criterion is uncovered. AC12 is the only one without an executable assertion, which is what the requirement demands ("no automated test asserts it") and what `scenarios.md` tags `manual`; the test group that carries it says so in a comment rather than fabricating evidence. That is the right call.
+**Coverage passes, with one gap.** Twelve of thirteen criteria have executable scenarios; AC11 does not (§4). The three criteria with no runnable assertion — S3.5, S12.1, E2 — are each logged as `- SKIP` with a reason rather than an unqualified `✓`, which is exactly what the previous round asked for and what makes this report readable at all.
 
-The mapping is honest in both directions: every scenario id in `scenarios.md` (S1.1–S13.8, E1–E6) appears in a group label, and the group labels do not claim criteria the code does not touch — with the two narrow exceptions noted in §4.4.
+**No compile failures.** All three test files load and execute. `q0033-surface.js` imports `lintFlow` from `../src/engine.js`, which resolves on `main` as well as on the branch, so the file would still run against a clean base. Nothing here is red because it failed to parse.
 
-## 2. The red phase fails on assertions, not on compile errors
+**Red is not proven.** This is the blocker, and it is the same blocker as round 1.
 
-`red-report.md` as saved is not sufficient evidence on its own: it begins mid-string, inside one assertion message that dumps most of `docs/02-sdlc-pipeline-spec.md` (`… 9593 more characters`), and the thirteen other failure diagnostics have been truncated away. What survives is the harness summary:
+---
+
+## 2. Blocker — the suite is green on every new scenario, because it was measured against the implementation
+
+`qa/red-report.md:81` opens the `q0033-surface.js` section. Counting what follows: **21 ✓, 3 SKIP, 0 ✗.** Not one new scenario is red. The only failing assertion in the entire report is in `smoke.js` (§3), and `qa/red-integration.md` records `npm test --prefix spike → exit 1 (expected fail) → OK` on the strength of it.
+
+The cause is that `harness/Q-0033/integration` was never reset. It still carries the development merges from the aborted run 4:
 
 ```
-✗ 14 Q-0033 scenario group(s) failed
-✗ q0033-surface.js exited 1
-✗ 1 of 3 test file(s) failed
+$ git diff --name-status main harness/Q-0033/integration
+A  contracts/Q-0033/cli-review-surface.contract.md
+A  contracts/Q-0033/documentation-and-evidence.contract.md
+A  contracts/Q-0033/review-surface-assets.contract.md
+M  docs/02-sdlc-pipeline-spec.md      M  docs/06-development-plan.md
+M  docs/DECISIONS.md                  M  docs/GLOSSARY.md
+A  harness/flows/review.yaml          A  harness/roles/code-reviewer.md
+M  harness/harness.yaml
+M  spike/bin/harness.js               M  spike/src/engine.js
+A  spike/src/lint.js
+A  spike/templates/harness/flows/review.yaml
+M  spike/templates/harness/harness.yaml
+A  spike/templates/harness/roles/code-reviewer.md
+A  spike/test/q0033-surface.js        M  spike/test/smoke.js
 ```
 
-Those lines are themselves meaningful — the per-group counter is printed only after all sixteen groups have run, which is impossible if the module failed to load — but they do not show *why* each group failed. So I re-ran the file from `harness/Q-0033/tests` against `main`'s working tree. Result: 14 failures, 2 passes, first failing assertion per group:
+Everything above the two test files is implementation this ticket has not yet developed. On `main`: `harness/flows/review.yaml`, `harness/roles/code-reviewer.md`, `spike/src/lint.js` and both template copies **do not exist**; `harness/harness.yaml` has **no** `repo.max_diff_bytes`; and `--gate-answer` appears **nowhere** in `spike/bin/harness.js`. Against that base, S1.1 fails on a missing file, S2.1 fails on a missing file, S4.1 fails on a missing key, S9.x and S10.x fail on an unknown flag, S13.x fail on unwritten docs. Every one of them passes on the branch as measured, for the single reason that the code they test is already merged into it.
 
-- `S1.1/S1.2/S1.4` — `harness/flows/review.yaml must ship`
-- `S1.3/S3.4/S6.1/S7.8/S8.2/S8.5` — no `✓ review.yaml` in `harness lint` output
-- `S2.1-S2.5` — `harness/roles/code-reviewer.md must ship`
-- `S3.1` — `review.yaml must ship`
-- `S3.2/S3.3` — `review.yaml must be copied`
-- `S4.1-S4.3/E6` — `Expected values to be strictly equal` (`max_diff_bytes`)
-- `S5.1-S5.7/E5` — `Expected values to be strictly equal` (`base_branch` on a `master` repo)
-- `S6.2-S6.10` — the `missing` fixture lints clean
-- `S7.1-S7.7` — `Missing expected exception`
-- `S8.1-S8.4` — no `/member-0.*member-1.*claude/` in the message
-- `S9.1-S9.4/E1` — `Expected "actual" to be strictly unequal to: 0`
-- `S10.1-S10.7/E3/E4` — no `/gate-answer/` in `bin/harness.js`
-- `S11.1-S11.4` — `smoke.js` does not yet pass `--gate-answer abort`
-- `S13.1-S13.8` — `§5.5` lacks `{base}...harness/{id}/integration`
+`qa/scenarios.md:5` names this precondition in its own preamble — *"`harness/Q-0033/integration` must be reset to `main` + `contracts/Q-0033/` before red is re-proven"* — and it was not done. Two consecutive rounds have now measured red against a branch containing the answer.
 
-Every one is an `assert` on a missing artifact or missing behaviour. No `SyntaxError`, no unresolved import, no `TypeError` from a mis-shaped fixture. `lintFlow` is exported (`spike/src/engine.js:22`) so the file loads; the two other suites (`smoke.js`, `q0006-engine.js`) stay green, so nothing regressed. `red-integration.md` confirms the same shape from the engine's side: base synced, tests branch merged, `install` run in the worktree, `npm test` exit 1 against `expect: fail`.
+### The reset is bigger than last round diagnosed
 
-The two passing groups are non-falsifiable by design and correctly so: `S11.5/S11.6` is a frozen-input guard that must pass, and `S12.1/E2` is the manual-criterion placeholder. Red is therefore 14 of 14 implementable groups.
+Resetting the integration branch alone would **not** have worked, and this is the part worth carrying forward. `harness/Q-0033/tests` — the branch `prove-red` merges in — carries the identical sixteen implementation files:
 
-## 3. What I checked that holds up
+```
+$ git diff --name-only main harness/Q-0033/tests | grep -v '^spike/test/'
+contracts/Q-0033/*.contract.md   docs/{02,06,DECISIONS,GLOSSARY}
+harness/flows/review.yaml        harness/roles/code-reviewer.md
+harness/harness.yaml             spike/bin/harness.js
+spike/src/engine.js              spike/src/lint.js
+spike/templates/harness/...
+```
 
-Four things could have made this red unsatisfiable — a test that cannot go green without changing the engine, which every task in `tasks.yaml` forbids. None of them bite:
+`harness/Q-0033/tests` was cut from the contaminated integration branch (`cbdcc9d`, `528c7f0`, `8cedc2b` are all merges of integration into tests). A clean integration branch would re-import the whole implementation the moment `prove-red` merged tests into it, and the report would come back green again.
 
-- **Exit codes.** `S10.1` expects `2` on abort and `S3.2` expects `0` on regression. `bin/harness.js:184` is `process.exit(r.status === 'aborted' ? 2 : 0)`. Both match; no engine change implied.
-- **Unit fixtures against the frozen contract.** `S7`/`S8` build flows from `contracts/Q-0006/review-flow.contract.yaml` and index `steps[0].parallel` and the `verdict` step. Both exist with that shape, and `lintFlow` returns `true` on success (`engine.js:73`), which `S8.4`'s `assert.equal(lintFlow(mixed), true)` relies on. The three-member fixture duplicates an `output.writes` path; no lint rule forbids that today, so it will not trip the wrong rule.
-- **The `§5.5` slice.** `S13.2`'s `doesNotMatch` assertions run against a 1400-character slice that anchors on the real heading at `docs/02-sdlc-pipeline-spec.md:293` and stops at the next `#`. It contains `model: opus` today, so the assertion is genuinely red and correctly scoped rather than accidentally matching a table of contents.
-- **The frozen-contract guard.** `S11.5` diffs `contracts/Q-0006/` against baseline `5d16e06` and passes. That is the right anchor.
+**Both branches must be re-cut**, from `main` plus `contracts/Q-0033/` only, with `harness/Q-0033/tests` carrying exactly two files: `spike/test/q0033-surface.js` and the `spike/test/smoke.js` edits. Before re-proving, the check to run is:
 
-One premise in the requirement is already stale, in the development team's favour: the empty-answer default AC10 says this ticket removes was removed by Q-0011 (`bin/harness.js:72–83`, with the reasoning in the comment there). `S10.5` and half of `S10.4` are therefore properties of `main` today; the new work is `--gate-answer` accumulation (`bin/harness.js:25` is last-wins) and the `smoke.js` migration, both of which are red. Nothing to change in the scenarios — the assertions still hold — but development should not go looking for a defaulting bug that is no longer there.
+```
+git diff --name-only main harness/Q-0033/tests
+# must list only: contracts/Q-0033/*, spike/test/q0033-surface.js, spike/test/smoke.js
+```
 
-## 4. Non-blocking observations
+Until that command returns that list, the red report says nothing about redness — it says the implementation is present.
 
-Advisory. None of these justifies another qa-red round; fold what is cheap into development and leave the rest for the review stage.
+---
 
-**4.1 The saved red report loses thirteen of fourteen diagnostics.** `assert.match(spec, re)` over a 30 KB document prints the whole document, and whatever captured `red-report.md` kept only the tail. The consequence is that the artifact of record for this ticket's red phase cannot be used to check red-for-the-right-reason — I had to re-run the suite to review it. The cheapest fix is in the test, not the capture: assert against a slice, or supply the third `message` argument to `assert.match` so the failure prints a sentence instead of the file.
+## 3. Blocker — the one failing assertion is red for the wrong reason
 
-**4.2 `S13.1` cannot fail.** The assertion is `assert.match(spec, /review[\s\S]*red|changes.requested[\s\S]*development/is)`. The first alternative matches `docs/02-sdlc-pipeline-spec.md` as it stands today — I confirmed it returns `true` on `main`. The state diagram in `§3.4` still draws review rejection back to `green`, and this assertion will not notice when it is fixed or if it is not. The scenario is right; the assertion needs to look at the `§3.4` block the way `S13.2` looks at `§5.5`.
+`qa/red-report.md:111`:
 
-**4.3 The README guard cannot fail either.** `S13.8` runs `git diff --name-only HEAD -- README.md`, which compares the working tree to `HEAD`. On a branch where the task has committed its work — which is how every fan-out task ends — that is empty whether or not `README.md` changed. `S11.5` two groups above shows the correct pattern: diff against the baseline commit `5d16e06`.
+```
+✗ an interrupted run is recorded in runs.log
+✗ smoke.js exited 1
+```
 
-**4.4 Two scenarios are claimed by a group label but not exercised.** `S5.5` (a HEAD Git cannot name) and `E5` (the discovery subprocess itself failing, as opposed to reporting no branch) appear in the `S5.1-S5.7/E5` label, but the body covers S5.1, S5.2, S5.3, S5.4, S5.6 and S5.7 and substitutes a comment — "the same observable fallback contract" — for the two failure paths. That is a reasonable engineering judgement, but the label overstates it. Either exercise them (`GIT_DIR` pointed at a non-repo is enough to make the subprocess fail for real) or narrow the label.
+This is `spike/test/smoke.js`'s interrupt-at-a-gate test, and it is **byte-identical between `main` and the branch** — this round changed only the retry-semantics block at `:193-212`. It spawns the run with `stdio: ['pipe', 'pipe', 'pipe']`, waits for it to block at the closing `gate: human`, sends `SIGINT`, and asserts an ` interrupted ` line reaches `runs.log`.
 
-**4.5 `S4.2`/`S4.3` are pinned as source greps, not behaviour.** The group asserts `/base_branch\s*\?\?\s*['"]main['"]/` and `/max_diff_bytes\s*\?\?\s*200000/` against the text of `spike/src/engine.js`. Both already match `main` (`engine.js:82`, `:447`, `:454`), so they prove nothing about resolution and would break on a refactor that changed the spelling while keeping the behaviour. The scenario asks for a config *without* the keys to resolve to `main`/`200000`; the honest version of that is a fixture project whose `harness.yaml` omits `repo:` entirely, run through `harness run --dry` or `lint`. The comment in the test acknowledges the compromise, so this is a known trade rather than an oversight.
+AC10 as implemented on the branch makes that impossible. `spike/bin/harness.js:77` now reads:
 
-**4.6 Two assertions are weaker than their scenarios.** `S9.1` demands "zero `adapter.run` calls" and the test proves only that `runs.log` was never created — a strictly weaker claim, though a passing one is hard to imagine without the other. `S9.3` demands the *same diagnostic text* from `lint` and from `run`, and the test asserts only that both outputs contain `missing`. Comparing the two captured strings for equality costs one line and is what the criterion actually says.
+```js
+if (!process.stdin.isTTY) throw new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer …`);
+```
 
-**4.7 `S3.2` silently contracts that unconsumed gate answers are not an error.** It passes `--gate-answer abort` on a run that regresses without reaching a gate. Nothing in the requirement says what happens to a leftover answer; this test decides, by construction, that it is ignored. That is a defensible default — the alternative would make encounter-order answers brittle — but it is a design decision arriving through a fixture rather than through the criteria. Worth one sentence in whatever docs describe the flag.
+and it fires **before** `readline` is created. A pipe is not a TTY, so the run no longer waits — it throws the moment the gate is presented, records `failed`, and exits. `SIGINT` arrives at a process that is already gone, ` interrupted ` is never written, and the 20-second `waitFor` times out. The preceding assertion, `✓ the interrupt fixture reaches the gate`, confirms the run got that far and then did not stop.
 
-**4.8 The `unloadable` fixture depends on message ordering.** `S6.4` matches `/review.*broken.*load|broken.*invalid/is` against the whole `harness lint` output. `broken.yaml` sorts before `review.yaml` in `readdir`, so the per-file lint lines alone will not satisfy the first alternative; the match will come from the whole-directory diagnostic naming the source flow before the target. That is exactly what criterion 6 requires, so the fixture is fine — but development should know the ordering is load-bearing and not reorder the diagnostic to lead with the target.
+So the sole evidence of red in this round is a pre-existing test broken by the ticket's own design, in a file no development task may touch. That is red for the wrong reason twice over: it proves nothing about the new scenarios, and it is precisely the shape that ended run 4 — a failure in `spike/test/**` that every task is forbidden to fix, which the DECISIONS entry of 2026-08-23 exists to catch *at this gate*.
 
-## 5. Scope
+---
 
-No scenario requires a change under `spike/src/engine.js`'s runtime or `spike/src/adapters/**`, which the ticket's non-goals reserve for Q-0006. Every red assertion resolves to `harness/`, `spike/templates/harness/`, `spike/bin/harness.js`, `lintFlow` (which criteria 6–8 explicitly open), `spike/test/smoke.js`, or `docs/`. `contracts/Q-0006/` is read-only in the tests and guarded by `S11.5`. `spike/package.json` already carries both `test` and `lint` scripts, so `S11.1` needs no packaging work.
+## 4. Blocker — AC11 has no scenario for the third piped-stdin site
+
+`qa/scenarios.md` enumerates two piped-stdin gate sites in `smoke.js`: S11.2 (`:82-85`, exhaustion) and S11.7 (`:185-220`, retry semantics). The interrupt test at roughly `:215-245` is a **third**, it is broken by the same AC10 rule, and no scenario covers it. `qa/scenarios.md:445`'s S11.1 asserts the opposite — *"the full suite passes end to end"* — which is now false by construction.
+
+It is also not fixable the way the other two were. S11.2 and S11.7 were mechanical: stop piping, pass `--gate-answer`. This test's entire purpose is that **nobody answers** and the process is interrupted while waiting. Supplying an answer deletes the scenario.
+
+Three ways out, and the choice is a judgement this document must make rather than leave to `write-tests`:
+
+- **Restate the property, keep the invariant.** Q-0004's actual finding was that Ctrl-C at a gate "wrote no outcome and no counters, silently refunding the iteration budget". Under AC10 a non-TTY run that reaches an unanswered gate now *terminates by itself*, and the property worth pinning is unchanged: it records a terminal outcome and persists its counters instead of refunding them. Assert `failed`/`aborted` in `runs.log` plus the persisted `requirements.head-of-product` counter, and drop the `SIGINT` mechanism — which AC10 has made unreachable on a pipe. **This is my recommendation.** It costs one thing, and the document must say so out loud: SIGINT-at-a-gate stops being covered by the suite. The invariant still holds for a human at a real terminal; only the test for it goes.
+- **Allocate a pty.** Preserves the exact coverage, needs `node-pty` (a new dependency, which AC11 forbids) or `script -q`, whose flags differ between BSD and GNU and so breaks portability. Reject.
+- **Interrupt during a step instead of at a gate.** Keeps SIGINT covered, but mock steps complete in ~20ms, so the fixture would be a race. Reject unless a deliberate delay switch is added to `mock.js` — which is exactly the `Q0033-mock` scope S3.5 correctly argued should be dropped.
+
+Whichever is chosen, `spike/test/**` is qa-red's own artifact: this is qa-red's edit to make in the next round, not a task's, and S11.1's wording must change with it.
+
+---
+
+## 5. Major — the per-scenario reporting rule is stated but not implemented
+
+`qa/scenarios.md:14` restates the rule the previous review's §3.5 raised: *"Report per scenario, or accumulate failures within a group and print all of them — never let one failing assertion inside a `scenario()` group hide whether its siblings passed."*
+
+The harness is unchanged:
+
+```js
+async function scenario(id, title, fn) {
+  try { await fn(); console.log(`✓ ${id} — ${title}`); }
+  catch (e) { failed++; console.error(`✗ ${id} — ${title}\n  ${e.message}`); }
+}
+```
+
+One `try`/`catch` per group; the first throw abandons the rest. **21 groups carry roughly 60 scenario IDs.** `S6.2-S6.10` runs seven negative fixtures in a loop behind one label. `S10.1-S10.7/E3/E4` drives eight independent CLI invocations behind one. `S5.1-S5.7/E5` covers eight. When the branch is finally clean and these go red — as most of them should — the report will print one line per group naming one message, and no reader will be able to tell whether the other six fixtures in that group were red for the right reason or never ran.
+
+That matters more in the next round than it did in this one. This round's report is unreadable because everything passed; next round's will be unreadable because everything fails and each group reports a single arbitrary first failure. Collect failures inside the group and print them all, or split the groups.
+
+---
+
+## 6. Nit — S13.1's arrow check is brittle in a way that will read as a docs bug
+
+`S13.1` asserts on column arithmetic over ASCII box-drawing: it finds the `review fail` label line, computes `stages.indexOf('red')`, and requires some line to carry `▲` or `│` at that exact character offset. It is a genuine improvement on the previous single-line regex, and it does close the gap the last review named. But it will fail on a diagram that is correct and merely re-spaced by a character, and the failure message — `review failure arrow must terminate at red` — will point the reader at the arrow rather than at the whitespace. Worth a tolerance of ±1 column, or an assertion that the arrow's column falls between the `red` and `green` labels rather than exactly on `red`.
+
+---
+
+## 7. What is right, and should survive the next round
+
+Not much of the substance needs redoing, and it is worth being explicit about that so the next round does not re-litigate settled work.
+
+- **S3.5 is handled correctly.** Rewriting the `Q0033-mock` scenario as a finding rather than fabricating an assertion against `mock.js`'s current source is the right call, and the recommendation to drop `Q0033-mock` from `tasks.yaml` still stands — S3.2 and S3.3 prove both stage transitions with no change to the file.
+- **The three unassertable items log as `- SKIP`.** S3.5, S12.1 and E2 print a reason instead of a checkmark. That was the previous review's §4 and it is fixed.
+- **S11.7 is a real find.** The retry-semantics rewrite at `smoke.js:193-212` is correct: `--gate-answer retry` for the first gate, no answer for the second, `spawnSync` with a timeout, and all four original assertions preserved. Against a clean `main` it is genuinely red — `--gate-answer` does not exist there, so the flag is ignored, the gate errors on closed stdin, and `traversals` is 2 rather than 3.
+- **S9.3's exact-equality diagnostic** (`assert.equal(diagnostic(lint), diagnostic(run))` after stripping ANSI and the leading `✗`) is the right strengthening of "both contain `missing`".
+- **S7's non-verdict fixture** — the `plain` flow with an ordinary step's `on_fail` — closes the scope-narrowing the previous review flagged in §5.
+- **S13.8 and S11.5 both anchor to `5d16e06`** rather than `HEAD`, with an explicit skip when the baseline is unreachable.
+
+---
+
+## 8. Coverage map as verified
+
+| AC | Scenarios | Executable | Status |
+|---|---|---|---|
+| 1 | S1.1–S1.4 | yes | covered |
+| 2 | S2.1–S2.5 | yes | covered |
+| 3 | S3.1–S3.4 (+S3.5 finding) | yes | covered |
+| 4 | S4.1–S4.3 | yes | covered |
+| 5 | S5.1–S5.7 | yes | covered |
+| 6 | S6.1–S6.10 | yes | covered |
+| 7 | S7.1–S7.8 | yes | covered |
+| 8 | S8.1–S8.5 | yes | covered |
+| 9 | S9.1–S9.4 | yes | covered |
+| 10 | S10.1–S10.7 | yes | covered |
+| 11 | S11.1–S11.7 | partial | **gap — §4** |
+| 12 | S12.1 | manual by design | covered |
+| 13 | S13.1–S13.8 | yes | covered |
+
+No criterion is unscenarioed outright; AC11's set is incomplete.
+
+---
+
+## 9. What the next round must do
+
+1. **Re-cut both branches.** `harness/Q-0033/tests` from `main` + `contracts/Q-0033/`, carrying only `spike/test/q0033-surface.js` and the `spike/test/smoke.js` edits; `harness/Q-0033/integration` likewise. Verify with `git diff --name-only main harness/Q-0033/tests` before running `prove-red`, and paste that output into `qa/red-integration.md` as evidence — the report should prove its own base is clean rather than asking a reader to trust it.
+2. **Resolve the interrupt test** per §4, and amend S11.1 to match. State in the scenarios document which of the three options was taken and what coverage it costs.
+3. **Make the group harness accumulate**, so the next report — which will be almost entirely red — says which scenarios are red and why.
+4. Optionally, loosen S13.1's column arithmetic.
+
+Nothing in §7 needs re-deriving. The scenario content is sound; the round fails on the branch it was measured against and on one uncovered site in a file only qa-red may touch.

@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
-import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, IntegrationError } from './fanout.js';
+import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError } from './fanout.js';
 
 export class FlowError extends Error {}
 
@@ -81,6 +81,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
   };
+  // What the ticket branch looked like before this run touched it, so a run that does not
+  // complete can put it back. See Q-0033.
+  ctx.branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
 
@@ -340,6 +343,19 @@ function finish(ctx, stage, status, note, fields = {}) {
     ticket.meta.stage = stage;
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
+  // A run that did not complete leaves the ticket branch as it found it. integrate merges task
+  // branches before anyone knows the outcome, and an exhausted or aborted run used to leave those
+  // merges behind for good — so the next qa-red measured its red phase against a tree that already
+  // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
+  // task's work stays on its own branch. See Q-0033.
+  if (!['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
+    const now = branchHead(ctx.repoDir, ticket.meta.branch);
+    if (now && now !== ctx.branchHeadAtStart) {
+      resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
+      ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
+      backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+    }
+  }
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
