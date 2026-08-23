@@ -10,7 +10,6 @@ created: 2026-08-22
 depends_on: Q-0006
 iterations:
   solutioning.architecture-review: 1
-  development.integrate: 4
 history:
   - stage: requirements
     run: 1
