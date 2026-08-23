@@ -5,7 +5,7 @@
 ## Every result line
 
 ```
-[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r
+[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg
 ✓ init
 [32m✓[0m development.yaml
 [32m✓[0m qa-red.yaml
@@ -250,14 +250,15 @@ SKIP S3.5: finding only: the frozen Q-0006 mock contract already guarantees the 
   ✓ S10.3 exact explicit answer
   ✓ S10.6 auto cannot answer exhaustion
   ✓ E3 other repeated flags stay last-wins
+SKIP S10.5: requires an interactive TTY to prove empty-line rejection and re-prompting
 ✓ S11.5 — frozen Q-0006 inputs are unchanged from the reachable baseline
 SKIP S11.6: baseline 0000000000000000000000000000000000000033 unavailable (guard skips without raw Git output)
 ✓ S13.8 — README remains byte-unchanged from the frozen baseline
 SKIP S12.1: manual: requires authenticated Claude and Codex subscription evidence
 SKIP E2: forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet
-# E8 merge-base ce262889e1717e72c63ebef52cdd2fe58f84cd49; paths: contracts/Q-0033/cli-review-surface.contract.md, contracts/Q-0033/documentation-and-evidence.contract.md, contracts/Q-0033/review-surface-assets.contract.md, spike/test/q0033-surface.js, spike/test/smoke.js
-✓ E8 — the red branch contains only contracts and QA-owned test changes
-SKIP E9: OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.js
+# E8 merge-base 8bc60d0028018813f8027754a3ce3edf81b478ef; paths: contracts/Q-0033/cli-review-surface.contract.md, contracts/Q-0033/documentation-and-evidence.contract.md, contracts/Q-0033/review-surface-assets.contract.md, spike/test/q0033-surface.js, spike/test/smoke.js
+✓ E8 — the integration diff contains the QA-owned contract and test contribution
+SKIP E9: already covered by smoke.js's five truncation assertions
 ✗ S1.1/S1.2/S1.4 review flow matches its fixture and all shipped flow peers are byte-identical
 ✗ S1.3/S3.4/S6.1/S7.8/S8.2/S8.5 the complete shipped flow directory lints clean
 ✗ S2.1-S2.5 the designated reviewer role alone is shared and obeys its persona contract
@@ -269,10 +270,10 @@ SKIP S3.5 finding only: the frozen Q-0006 mock contract already guarantees the s
 ✓ S6.2 multi-hop fixture
 ✗ S6.3 missing fixture
 ✗ S6.4 unloadable fixture
-✗ dead end fixture
-✗ ambiguity fixture
-✗ cycle/repeated pair fixture
-✗ self target fixture
+✗ S6.5 dead end fixture
+✗ S6.6 ambiguity fixture
+✗ S6.8/S6.10 cycle/repeated pair fixture
+✗ S6.9 self target fixture
 ✓ S6.7 unreached ambiguity fixture
 ✗ S6.2-S6.10 return-chain validation handles multi-hop, missing, unloadable, dead-end, ambiguity and cycles
 ✓ S7.1 fixture
@@ -297,6 +298,7 @@ SKIP S3.5 finding only: the frozen Q-0006 mock contract already guarantees the s
 ✓ E3 other repeated flags stay last-wins fixture
 ✗ E4 explicit exhaustion answer avoids stdin rejection fixture
 ✗ S10.1-S10.7/E3/E4 gate answers accumulate in order, are exact, and never come from auto or closed stdin
+SKIP S10.5 requires an interactive TTY to prove empty-line rejection and re-prompting
 ✗ S11.1-S11.4 suite wiring, explicit gates, and board counter/cost compatibility are pinned
 ✓ S11.5 frozen Q-0006 inputs are unchanged from the reachable baseline
 SKIP S11.6 baseline 0000000000000000000000000000000000000033 unavailable (guard skips without raw Git output)
@@ -309,8 +311,8 @@ SKIP S11.6 baseline 0000000000000000000000000000000000000033 unavailable (guard 
 ✗ E7 unused explicit gate answers are ignored after a gate-free regression
 SKIP S12.1 manual: requires authenticated Claude and Codex subscription evidence
 SKIP E2 forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet
-✓ E8 the red branch contains only contracts and QA-owned test changes
-SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.js
+✓ E8 the integration diff contains the QA-owned contract and test contribution
+SKIP E9 already covered by smoke.js's five truncation assertions
 [31m✗ [0mticket T-0001 is at stage "draft", flow "solutioning" consumes "requirements"
 [31m✗ [0mgate (human-locked) "loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort" needs an answer and stdin closed without one — run it interactively, or answer it on stdin
 [31m✗ [0m1 of 2 parallel step(s) failed:
@@ -328,10 +330,10 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 ✗ S5.1-S5.7/E5 — init discovers named branches and preserves template formatting while Git failures fall back
   ✗ S6.3 missing
   ✗ S6.4 unloadable
-  ✗ dead end
-  ✗ ambiguity
-  ✗ cycle/repeated pair
-  ✗ self target
+  ✗ S6.5 dead end
+  ✗ S6.6 ambiguity
+  ✗ S6.8/S6.10 cycle/repeated pair
+  ✗ S6.9 self target
 ✗ S6.2-S6.10 — return-chain validation handles multi-hop, missing, unloadable, dead-end, ambiguity and cycles
   ✗ S7.4
   ✗ S7.5
@@ -354,7 +356,6 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 ✗ S13.6 — DECISIONS contains both complete review-flow decisions
 ✗ S13.7 — the Gate glossary entry distinguishes declared and exhaustion gates
 ✗ E7 — unused explicit gate answers are ignored after a gate-free regression
-  ✗ Error: ENOENT: no such file or directory, open '/private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/q0033-MQNef3/harness/flows/review.yaml'
 ✗ 19 Q-0033 scenario group(s) failed
 ✗ q0033-surface.js exited 1
 ✗ 2 of 3 test file(s) failed
@@ -369,7 +370,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 
 
 ──── smoke.js ────
-[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r
+[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg
   next: harness adapters · harness ticket new "…" · harness run requirements T-0001
 ✓ init
 [32m✓[0m development.yaml
@@ -404,7 +405,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 ✓ stage advanced to requirements
 ✓ backward edge counter persisted (needs-input → retry once)
 [2m·[0m run #2  flow=solutioning  ticket=T-0001  requirements → solutioned
-[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
+[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
 [36m▸[0m [1marchitect[0m [2mmock role=principal-architect[0m
 [2m·[0m architect: wrote solution/draft.md
 [2m·[0m architect: 1 file(s) committed on harness/T-0001/contracts
@@ -414,7 +415,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [32m✓[0m [1marchitecture-review[0m [2mverdict=revise cost=$0.010 20ms[0m
 [33m![0m architecture-review: revise — major: src/mock.ts:1 (mock) placeholder finding
 [33m![0m architecture-review: iteration 1/2 → goto architect
-[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
+[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
 [2m·[0m architect: base harness/T-0001/integration does not exist yet — nothing to sync
 [36m▸[0m [1marchitect[0m [2mmock role=principal-architect[0m
 [2m·[0m architect: wrote solution/draft.md
@@ -433,7 +434,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [36m▸[0m [1mmerge-contracts[0m [2mintegrate → harness/T-0001/integration[0m
 [2m·[0m merge-contracts: merged harness/T-0001/contracts
 [32m✓[0m [1mmerge-contracts[0m [2m1 branch(es) on harness/T-0001/integration[0m
-[2m·[0m run #2 completed: requirements → solutioned   cost $0.06  tokens 6867
+[2m·[0m run #2 completed: requirements → solutioned   cost $0.06  tokens 7165
 ✓ solutioning flow completes
 ✓ review loop bounced back to architect once
 ✓ solution.md written
@@ -446,7 +447,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [36m▸[0m [1mscenarios[0m [2mmock/sonnet role=automation-qa[0m
 [2m·[0m scenarios: wrote qa/scenarios.md
 [32m✓[0m [1mscenarios[0m [2mcost=$0.010 20ms[0m
-[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
+[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
 [36m▸[0m [1mwrite-tests[0m [2mmock role=automation-qa[0m
 [2m·[0m write-tests: 1 file(s) committed on harness/T-0001/tests
 [32m✓[0m [1mwrite-tests[0m [2mcost=$0.010 20ms[0m
@@ -463,7 +464,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [36m▸[0m [1mscenarios[0m [2mmock/sonnet role=automation-qa[0m
 [2m·[0m scenarios: wrote qa/scenarios.md
 [32m✓[0m [1mscenarios[0m [2mcost=$0.010 20ms[0m
-[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
+[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
 [2m·[0m write-tests: synced to harness/T-0001/integration
 [36m▸[0m [1mwrite-tests[0m [2mmock role=automation-qa[0m
 [2m·[0m write-tests: no file changes on harness/T-0001/tests
@@ -477,20 +478,20 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [2m·[0m scenario-review: wrote qa/scenario-review.md
 [32m✓[0m [1mscenario-review[0m [2mverdict=approve cost=$0.010 20ms[0m
 [2m·[0m gate: auto-advanced (human)
-[2m·[0m run #3 completed: solutioned → red   cost $0.06  tokens 5824
+[2m·[0m run #3 completed: solutioned → red   cost $0.06  tokens 6866
 ✓ qa-red flow completes
 ✓ suite proven red on the ticket branch
 ✓ stage advanced to red
 [2m·[0m run #4  flow=development  ticket=T-0001  red → green
 [2m·[0m developers: 2 task(s) in 2 wave(s)
 [2m·[0m developers: wave 1: T-0001.1(backend)
-[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
+[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
 [2m·[0m dev:T-0001.1: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.1[0m [2mmock role=developer-backend[0m
 [2m·[0m dev:T-0001.1: 1 file(s) committed on harness/T-0001/T-0001.1
 [32m✓[0m [1mdev:T-0001.1[0m [2mcost=$0.010 20ms[0m
 [2m·[0m developers: wave 2: T-0001.2(frontend)
-[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
+[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
 [2m·[0m dev:T-0001.2: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.2[0m [2mmock/sonnet role=developer-frontend[0m
 [2m·[0m dev:T-0001.2: no file changes on harness/T-0001/T-0001.2
@@ -504,13 +505,13 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [33m![0m developers: scoped to failing tasks: T-0001.1, T-0001.2
 [2m·[0m developers: 2 task(s) in 2 wave(s)
 [2m·[0m developers: wave 1: T-0001.1(backend)
-[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
+[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
 [2m·[0m dev:T-0001.1: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.1[0m [2mmock role=developer-backend[0m
 [2m·[0m dev:T-0001.1: 1 file(s) committed on harness/T-0001/T-0001.1
 [32m✓[0m [1mdev:T-0001.1[0m [2mcost=$0.010 20ms[0m
 [2m·[0m developers: wave 2: T-0001.2(frontend)
-[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
+[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
 [2m·[0m dev:T-0001.2: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.2[0m [2mmock/sonnet role=developer-frontend[0m
 [2m·[0m dev:T-0001.2: 1 file(s) committed on harness/T-0001/T-0001.2
@@ -522,7 +523,7 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [2m·[0m integrate: tests exit 0, expected pass
 [32m✓[0m [1mintegrate[0m [2m2 branch(es) on harness/T-0001/integration, tests green[0m
 [2m·[0m gate: auto-advanced (human)
-[2m·[0m run #4 completed: red → green   cost $0.04  tokens 4429
+[2m·[0m run #4 completed: red → green   cost $0.04  tokens 4461
 ✓ development flow completes
 ✓ tasks fanned out in dependency waves
 ✓ failed integration re-ran fan-out scoped to failing tasks
@@ -551,32 +552,27 @@ SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.j
 [33m![0m head-of-product: loop exhausted (1) → human gate
 
 [33m■ GATE[0m (human-locked) loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort
-[2m  inspect: /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-IbVg3r/backlog/T-0002-second-ticket[0m
+[2m  inspect: /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-wDDaDg/backlog/T-0002-second-ticket[0m
   advance / retry / abort > [2m·[0m run #1 failed: draft → draft   cost $0.04  tokens 3863
 ✓ exhausted loop reaches a gate
 ✓ --auto does not bypa
 
-… 13568 characters of output omitted from the middle …
+… 13696 characters of output omitted from the middle …
 
-es the schema-valid finding shape
-  ✓ S6.2 multi-hop
-  ✓ S6.7 unreached ambiguity
-  ✓ S7.1
-  ✓ S7.2
-  ✓ S7.3
-  ✓ S8.2 shipped panel
+nel
   ✓ S8.4 mixed three-member panel
   ✓ S10.3 exact explicit answer
   ✓ S10.6 auto cannot answer exhaustion
   ✓ E3 other repeated flags stay last-wins
+SKIP S10.5: requires an interactive TTY to prove empty-line rejection and re-prompting
 ✓ S11.5 — frozen Q-0006 inputs are unchanged from the reachable baseline
 SKIP S11.6: baseline 0000000000000000000000000000000000000033 unavailable (guard skips without raw Git output)
 ✓ S13.8 — README remains byte-unchanged from the frozen baseline
 SKIP S12.1: manual: requires authenticated Claude and Codex subscription evidence
 SKIP E2: forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet
-# E8 merge-base ce262889e1717e72c63ebef52cdd2fe58f84cd49; paths: contracts/Q-0033/cli-review-surface.contract.md, contracts/Q-0033/documentation-and-evidence.contract.md, contracts/Q-0033/review-surface-assets.contract.md, spike/test/q0033-surface.js, spike/test/smoke.js
-✓ E8 — the red branch contains only contracts and QA-owned test changes
-SKIP E9: OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.js
+# E8 merge-base 8bc60d0028018813f8027754a3ce3edf81b478ef; paths: contracts/Q-0033/cli-review-surface.contract.md, contracts/Q-0033/documentation-and-evidence.contract.md, contracts/Q-0033/review-surface-assets.contract.md, spike/test/q0033-surface.js, spike/test/smoke.js
+✓ E8 — the integration diff contains the QA-owned contract and test contribution
+SKIP E9: already covered by smoke.js's five truncation assertions
 
 Every result line
 ✗ S1.1/S1.2/S1.4 review flow matches its fixture and all shipped flow peers are byte-identical
@@ -590,10 +586,10 @@ SKIP S3.5 finding only: the frozen Q-0006 mock contract already guarantees the s
 ✓ S6.2 multi-hop fixture
 ✗ S6.3 missing fixture
 ✗ S6.4 unloadable fixture
-✗ dead end fixture
-✗ ambiguity fixture
-✗ cycle/repeated pair fixture
-✗ self target fixture
+✗ S6.5 dead end fixture
+✗ S6.6 ambiguity fixture
+✗ S6.8/S6.10 cycle/repeated pair fixture
+✗ S6.9 self target fixture
 ✓ S6.7 unreached ambiguity fixture
 ✗ S6.2-S6.10 return-chain validation handles multi-hop, missing, unloadable, dead-end, ambiguity and cycles
 ✓ S7.1 fixture
@@ -618,6 +614,7 @@ SKIP S3.5 finding only: the frozen Q-0006 mock contract already guarantees the s
 ✓ E3 other repeated flags stay last-wins fixture
 ✗ E4 explicit exhaustion answer avoids stdin rejection fixture
 ✗ S10.1-S10.7/E3/E4 gate answers accumulate in order, are exact, and never come from auto or closed stdin
+SKIP S10.5 requires an interactive TTY to prove empty-line rejection and re-prompting
 ✗ S11.1-S11.4 suite wiring, explicit gates, and board counter/cost compatibility are pinned
 ✓ S11.5 frozen Q-0006 inputs are unchanged from the reachable baseline
 SKIP S11.6 baseline 0000000000000000000000000000000000000033 unavailable (guard skips without raw Git output)
@@ -630,8 +627,8 @@ SKIP S11.6 baseline 0000000000000000000000000000000000000033 unavailable (guard 
 ✗ E7 unused explicit gate answers are ignored after a gate-free regression
 SKIP S12.1 manual: requires authenticated Claude and Codex subscription evidence
 SKIP E2 forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet
-✓ E8 the red branch contains only contracts and QA-owned test changes
-SKIP E9 OWNERSHIP FINDING: testReport is tail-only in unowned spike/src/engine.js
+✓ E8 the integration diff contains the QA-owned contract and test contribution
+SKIP E9 already covered by smoke.js's five truncation assertions
 [31m✗ [0mticket T-0001 is at stage "draft", flow "solutioning" consumes "requirements"
 [31m✗ [0mgate (human-locked) "loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort" needs an answer and stdin closed without one — run it interactively, or answer it on stdin
 [31m✗ [0m1 of 2 parallel step(s) failed:
@@ -664,14 +661,14 @@ Preparing worktree (checking out 'harness/T-0001/task-a')
     S6.3 missing
   ✗ S6.4 unloadable
     S6.4 unloadable
-  ✗ dead end
-    dead end
-  ✗ ambiguity
-    ambiguity
-  ✗ cycle/repeated pair
-    cycle/repeated pair
-  ✗ self target
-    self target
+  ✗ S6.5 dead end
+    S6.5 dead end
+  ✗ S6.6 ambiguity
+    S6.6 ambiguity
+  ✗ S6.8/S6.10 cycle/repeated pair
+    S6.8/S6.10 cycle/repeated pair
+  ✗ S6.9 self target
+    S6.9 self target
 ✗ S6.2-S6.10 — return-chain validation handles multi-hop, missing, unloadable, dead-end, ambiguity and cycles
   S6.3 missing: S6.3 missing
   ✗ S7.4
@@ -695,13 +692,13 @@ Preparing worktree (checking out 'harness/T-0001/task-a')
   ✗ S10.1/S10.2 ordered answers
     The input did not match the regular expression /exhausted stage=draft→draft cost=0[\s\S]*gate=human-locked answer=advance[\s\S]*gate=human answer=abort[\s\S]*aborted stage=draft→draft cost=/. Input:
 
-'2026-08-23T20:19:22.502Z run=1 flow=requirements start stage=draft\n' +
-  '2026-08-23T20:19:22.526Z run=1 step=pm-claude vendor=mock model=opus verdict=- cost=0.01 ms=20\n' +
-  '2026-08-23T20:19:22.527Z run=1 step=pm-codex vendor=mock model=- verdict=- cost=0.01 ms=20\n' +
-  '2026-08-23T20:19:22.550Z run=1 step=head-of-product vendor=mock model=opus verdict=needs-input cost=0.01 ms=20\n' +
-  '2026-08-23T20:19:22.573Z run=1 step=head-of-product vendor=mock model=opus verdict=needs-input cost=0.01 ms=20\n' +
-  '2026-08-23T20:19:22.574Z run=1 exhausted stage=draft→draft cost=0\n' +
-  '2026-08-23T20:19:22.576Z run=1 failed stage=draft→draft cost=0.04 tokens=3857 error="gate (human-locked) \\"loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort\\" needs an answer and"\n'
+'2026-08-23T21:26:58.938Z run=1 flow=requirements start stage=draft\n' +
+  '2026-08-23T21:26:58.961Z run=1 step=pm-claude vendor=mock model=opus verdict=- cost=0.01 ms=20\n' +
+  '2026-08-23T21:26:58.961Z run=1 step=pm-codex vendor=mock model=- verdict=- cost=0.01 ms=20\n' +
+  '2026-08-23T21:26:58.983Z run=1 step=head-of-product vendor=mock model=opus verdict=needs-input cost=0.01 ms=20\n' +
+  '2026-08-23T21:26:59.005Z run=1 step=head-of-product vendor=mock model=opus verdict=needs-input cost=0.01 ms=20\n' +
+  '2026-08-23T21:26:59.006Z run=1 exhausted stage=draft→draft cost=0\n' +
+  '2026-08-23T21:26:59.008Z run=1 failed stage=draft→draft cost=0.04 tokens=3857 error="gate (human-locked) \\"loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort\\" needs an answer and"\n'
 
   ✗ S10.4 non-TTY has no default
     Expected "actual" to be strictly unequal to: 0
@@ -732,7 +729,7 @@ false !== true
   '! head-of-product: loop exhausted (1) → human gate\n' +
   '\n' +
   '■ GATE (human-locked) loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort\n' +
-  '  inspect: /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/q0033-ph212c/backlog/T-0001-gate-fixture\n' +
+  '  inspect: /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/q0033-IaShzb/backlog/T-0001-gate-fixture\n' +
   '  advance / retry / abort > · run #1 failed: draft → draft   cost $0.04  tokens 3857\n' +
   '✗ gate (human-locked) "loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort" needs an answer and stdin closed without one — run it interactively, or answer it on stdin\n'
 
@@ -751,7 +748,7 @@ false !== true
 ✗ S13.7 — the Gate glossary entry distinguishes declared and exhaustion gates
   The input did not match the regular expression /author.declared[\s\S]*deploy/is. Input:
 ✗ E7 — unused explicit gate answers are ignored after a gate-free regression
-  ✗ Error: ENOENT: no such file or directory, open '/private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/q0033-MQNef3/harness/flows/review.yaml'
+  review.yaml must ship before E7 can run
 
 ✗ 19 Q-0033 scenario group(s) failed
 ✗ q0033-surface.js exited 1

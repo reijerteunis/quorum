@@ -86,3 +86,31 @@ Deleting the smoke assertion would have removed a correct regression test for be
 ticket is about to change. Recorded rather than silently ignored, because this reviewer has been
 right about everything else on this ticket and the next reader deserves to know why one finding
 was not acted on.
+
+## E-4 — 2026-08-23 — E8 removed by hand; engine.js must keep re-exporting lintFlow
+
+**Amends:** `spike/test/q0033-surface.js` (by the maintainer, not by a flow), and `Q0033-lint`'s
+obligations.
+
+**E8 is evidence, not a test.** It asserted that the integration branch's diff since merge-base
+contains only contracts and tests. That is true during the red phase and false forever after: once
+this ticket merges to `main` the merge-base diff is empty, the "development has landed" skip never
+fires, and the positive assertion fails permanently — blocking every later ticket's
+`integrate --expect pass`. Its top-level `git merge-base main HEAD` also ran at import time and
+crashed the whole file wherever `main` is not a local ref.
+
+Replaced with a `console.log` of the same facts. `prove-red` now writes the branch, its base and
+each merged branch's merge-base into `qa/red-integration.md` as `Evidence:` lines, which is where a
+scenario should read them from.
+
+**Edited by hand after six qa-red attempts and roughly $54.** Four reviews in a row named this
+assertion; two `scenarios` rounds failed to remove it, one of them softening it with a skip that
+does not fire in the case that matters. `spike/test/**` is qa-red's artifact against *agents* — the
+maintainer owns it, and paying an agent another $7 to delete three lines is not a defensible use
+of the loop.
+
+**`Q0033-lint` must keep `lintFlow` and `FlowError` exported from `spike/src/engine.js`.** The task
+moves the flow rules into `spike/src/lint.js`, but both `q0033-surface.js` and `smoke.js` import
+`lintFlow` from `engine.js`, and no contract requires the export to survive. Removing it kills both
+suites at link time — a crash the development loop cannot diagnose and no task may fix, since the
+tests are qa-red's. `engine.js` re-exports from `lint.js`; the tests are not touched.
