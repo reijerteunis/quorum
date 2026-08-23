@@ -240,6 +240,39 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
 }
 
+// A bounded loop that never shows its verdict to the step it returns to cannot converge. qa-red
+// shipped that way: scenario-review looped to scenarios, neither step received the review, and a
+// round cost $4.45 re-reviewing a file write-tests had not changed because it never knew why (Q-0011).
+{
+  const { lintFlow, FlowError } = await import('../src/engine.js');
+  const blind = {
+    name: 'blind', consumes: 'a', produces: 'b',
+    steps: [
+      { id: 'author', role: 'r', adapter: 'claude', input: { backlog: ['spec.md'] }, output: { write: 'draft.md' } },
+      { id: 'judge', role: 'r', adapter: 'codex', input: { backlog: ['draft.md'] }, output: { write: 'review.md', verdict: 'ok|no' },
+        on_fail: { goto: 'author', max_iterations: 2, on_exhausted: 'gate' } },
+    ],
+  };
+  let err = null;
+  try { lintFlow(blind); } catch (e) { err = e; }
+  assert(err instanceof FlowError && /loop cannot converge/.test(err.message), 'a loop that hides its verdict from the step it returns to fails lint');
+  assert(/never receives review\.md/.test(err.message), 'the lint names the artifact that never arrives');
+
+  blind.steps[0].input.backlog.push('review.md');
+  assert(lintFlow(blind) === true, 'feeding the verdict back makes the loop lintable');
+
+  // A fan-out target is exempt: the engine hands it the integration result directly.
+  const fanned = {
+    name: 'fanned', consumes: 'a', produces: 'b',
+    steps: [
+      { id: 'devs', fan_out: { from: 'tasks.yaml' }, step: { id: 'x', role: 'r' } },
+      { id: 'integrate', type: 'integrate', branches: ['b'], output: { writes: ['report.md'] },
+        on_fail: { goto: 'devs', max_iterations: 2, on_exhausted: 'gate' } },
+    ],
+  };
+  assert(lintFlow(fanned) === true, 'a fan-out target is exempt — the engine feeds it the result');
+}
+
 // "could not sync base:" with nothing after the colon reported a failure and withheld the reason.
 // Two causes: a merge that fails without conflicting, and a base branch that does not exist yet —
 // which is normal on a ticket's first pass and not a failure at all (Q-0011).
