@@ -68,36 +68,20 @@ tasks:
       - contracts/Q-0006/review-artifacts.schema.json
     depends_on: []
 
-  - id: Q0033-mock
-    role: backend
-    title: Mock verdicts for an end-to-end review run
-    description: >
-      Own spike/src/adapters/mock.js and nothing else. The shipped review flow must be runnable
-      end to end under --adapter mock along both paths: a rejection that regresses the ticket and
-      an approval that reaches reviewed. Give the code-reviewer role deterministic verdicts under
-      the existing MOCK_ALWAYS_PASS and MOCK_ALWAYS_FAIL switches, and emit findings in the
-      severity and file:line form the artifacts schema requires, so a produced verdict validates
-      rather than merely parsing. Preserve every existing switch and its current behaviour. Do
-      not edit spike/bin/**, spike/test/**, harness/** or docs/**.
-    contracts:
-      - contracts/Q-0006/mock-adapter-switches.contract.md
-      - contracts/Q-0006/review-artifacts.schema.json
-      - contracts/Q-0006/review-flow.contract.yaml
-    depends_on: []
-
   - id: Q0033-docs
     role: backend
     title: Make the documentation agree with the shipped flow
     description: >
-      Own docs/02-sdlc-pipeline-spec.md, docs/06-development-plan.md, docs/GLOSSARY.md,
-      docs/DECISIONS.md and README.md, and nothing else. Correct §3.4's state diagram to the
+      Own docs/02-sdlc-pipeline-spec.md, docs/06-development-plan.md, docs/GLOSSARY.md and
+      docs/DECISIONS.md, and nothing else. Correct §3.4's state diagram to the
       derived regression target and rewrite §5.5 as the flow actually ships: the three-dot diff
       range in the right direction, {round} rather than {iter}, an unprefixed counter, no
       type: judge and no findings:/tasks:/with:, and no pinned vendor model names — §5.3 still
       shows model: gpt-5, which the 2026-08-22 decision bans. Add the DECISIONS entries the
       solution names, give GLOSSARY's Gate entry the distinction between an author-declared
-      human-locked gate and the exhaustion gate the engine presents, and give the README the one
-      new command. Do not edit spike/**, harness/** or anything under contracts/.
+      human-locked gate and the exhaustion gate the engine presents. Leave README.md byte-unchanged
+      — its rewrite belongs to Q-0028 in M6, and a scenario asserts it is untouched. Do not edit
+      spike/**, harness/** or anything under contracts/.
     contracts:
       - contracts/Q-0033/documentation-and-evidence.contract.md
       - contracts/Q-0006/review-runtime.contract.md

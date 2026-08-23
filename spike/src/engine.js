@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
-import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, IntegrationError } from './fanout.js';
+import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError } from './fanout.js';
 
 export class FlowError extends Error {}
 
@@ -81,6 +81,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
   };
+  // What the ticket branch looked like before this run touched it, so a run that does not
+  // complete can put it back. See Q-0033.
+  ctx.branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
 
@@ -261,6 +264,30 @@ export function mergeFailure(m) {
 // commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
 function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
+// The report used to be the last 8000 characters of output, which cuts off the head: on a large
+// suite seven of nineteen failing groups had no line at all, and the reviewer judging the red
+// phase never saw them. Keep every result line — they are what the report is for — and truncate
+// only the payload in the middle, saying so where the cut is. See Q-0033.
+const RESULT_LINE = /^\s*(?:\x1b\[[0-9;]*m)*\s*(?:[✓✗×√]|(?:not )?ok\s|#\s|\d+\)\s|(?:PASS|FAIL|SKIP)\b)/;
+
+export function testReport(cmd, out, { maxBytes = 24000 } = {}) {
+  const lines = String(out ?? '').split('\n');
+  const results = lines.filter((l) => RESULT_LINE.test(l));
+  const body = String(out ?? '');
+  const kept = body.length <= maxBytes
+    ? body
+    : `${body.slice(0, maxBytes / 2)}\n\n… ${body.length - maxBytes} characters of output omitted from the middle …\n\n${body.slice(-maxBytes / 2)}`;
+  const roster = results.length
+    ? `\n## Every result line\n\n\`\`\`\n${results.join('\n')}\n\`\`\`\n`
+    : '\n_No lines in the output looked like test results._\n';
+  return `# Test output\n\n\`${cmd}\`\n${roster}\n## Output\n\n\`\`\`\n${kept}\n\`\`\`\n`;
+}
+
+function safeMergeBase(repo, a, b) {
+  try { return execFileSync('git', ['merge-base', a, b], { cwd: repo, encoding: 'utf8' }).trim(); }
+  catch { return null; }
+}
+
 function countUsage(ctx, usage) {
   if (!usage) return;
   // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
@@ -340,6 +367,19 @@ function finish(ctx, stage, status, note, fields = {}) {
     ticket.meta.stage = stage;
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
+  // A run that did not complete leaves the ticket branch as it found it. integrate merges task
+  // branches before anyone knows the outcome, and an exhausted or aborted run used to leave those
+  // merges behind for good — so the next qa-red measured its red phase against a tree that already
+  // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
+  // task's work stays on its own branch. See Q-0033.
+  if (!['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
+    const now = branchHead(ctx.repoDir, ticket.meta.branch);
+    if (now && now !== ctx.branchHeadAtStart) {
+      resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
+      ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
+      backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+    }
+  }
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
@@ -520,6 +560,20 @@ async function runIntegrate(step, ctx) {
   else branches = [pattern];
   branches = branches.filter((b) => branchExists(ctx.repoDir, b));
   const notes = [`# Integration — run ${ctx.runId}, iteration ${ctx.vars.iter}`, '', `Target: \`${into}\``, ''];
+  // Evidence about this run, recorded once so a scenario never has to assert it. A fact true only
+  // during the red phase is not an acceptance test: QA smuggled branch-cleanliness into an
+  // assertion because there was nowhere else to put it, and that test could never go green.
+  // See the "a red test is a permanent acceptance test" decision, 2026-08-23.
+  {
+    const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+    const head = branchHead(ctx.repoDir, into);
+    notes.push(`Evidence: \`${into}\` at ${head ? head.slice(0, 7) : '(new)'}, base \`${base}\`.`);
+    for (const b of (Array.isArray(step.branches) ? step.branches.map((x) => interpolate(x, ctx.vars)) : [])) {
+      const mb = safeMergeBase(ctx.repoDir, into, b);
+      if (mb) notes.push(`Evidence: \`${b}\` diverges from \`${into}\` at ${mb.slice(0, 7)}.`);
+    }
+    notes.push('');
+  }
   const conflicts = [];
   // Catch the ticket branch up with the repository's base branch first. A ticket open for more
   // than a day otherwise integrates against the base it was cut from, and work landed on the base
@@ -580,7 +634,7 @@ async function runIntegrate(step, ctx) {
     notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${envError ? 'INVALID' : testsOk ? 'OK' : 'NOT OK'}`);
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
-  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
+  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? testReport(cmd, out) : notes.join('\n'));
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather
   // than burning the step's iteration budget on it.

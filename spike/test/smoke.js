@@ -298,6 +298,55 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
 }
 
+// The red/green report is what the reviewer judges, and it used to be the last 8000 characters of
+// output — which cuts off the head. On Q-0033 seven of nineteen failing groups had no line at all,
+// so the gate was asked to judge a report with its beginning missing.
+{
+  const { testReport } = await import('../src/engine.js');
+  const big = ['✓ first check', ...Array.from({ length: 900 }, (_, i) => `  noise line ${i} ${'x'.repeat(60)}`), '✗ last check'].join('\n');
+  const r = testReport('npm test', big);
+  assert(r.includes('✓ first check'), 'a result line at the very start survives truncation');
+  assert(r.includes('✗ last check'), 'a result line at the very end survives truncation');
+  assert(/characters of output omitted from the middle/.test(r), 'the cut is in the middle and says so');
+  assert(r.includes('`npm test`'), 'the report names the command it ran');
+
+  const none = testReport('sh -c true', 'no results here\njust prose\n');
+  assert(/No lines in the output looked like test results/.test(none), 'output with no result lines says so rather than looking empty');
+}
+
+// A run that does not complete must leave the ticket branch as it found it. integrate merges task
+// branches before anyone knows the outcome; an aborted run used to leave those merges behind, so
+// the next qa-red measured red against a tree that already held the implementation and reported
+// nothing red at all (Q-0033).
+{
+  const id = run(['ticket', 'new', 'Abandoned merge']).stdout.match(/T-\d{4}/)[0];
+  const branch = `harness/${id}/integration`;
+  const cur = execSync('git rev-parse --abbrev-ref HEAD', { cwd: tmp, encoding: 'utf8' }).trim();
+
+  // A ticket branch with one commit, and a side branch carrying "implementation".
+  execSync(`git checkout -q -b ${branch} && echo base > carried.txt && git add carried.txt && git -c user.email=a@b -c user.name=t commit -q -m base`, { cwd: tmp });
+  execSync(`git checkout -q -b ${branch}-side && echo impl > impl.txt && git add impl.txt && git -c user.email=a@b -c user.name=t commit -q -m impl`, { cwd: tmp });
+  execSync(`git checkout -q ${cur}`, { cwd: tmp });
+  const before = execSync(`git rev-parse ${branch}`, { cwd: tmp, encoding: 'utf8' }).trim();
+
+  // integrate merges the side branch, then a failing test with no on_fail aborts the run.
+  fs.writeFileSync(path.join(tmp, 'harness/flows/abandon.yaml'), `name: abandon\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: integrate\n    type: integrate\n    branches: ["${branch}-side"]\n    into: "${branch}"\n    run_tests: "sh -c 'exit 1'"\n    expect: pass\n    output: { writes: [dev/integration.md] }\n`);
+
+  const ab = run(['run', 'abandon', id, '--adapter', 'mock', '--auto']);
+  const after = execSync(`git rev-parse ${branch}`, { cwd: tmp, encoding: 'utf8' }).trim();
+
+  assert(ab.status !== 0, 'a failing integrate with no on_fail aborts the run');
+  assert(after === before, 'an aborted run leaves the ticket branch exactly as it found it');
+  assert(!execSync(`git ls-tree -r --name-only ${branch}`, { cwd: tmp, encoding: 'utf8' }).includes('impl.txt'),
+    'the abandoned merge is gone, so the next red phase measures against a clean base');
+  assert(execSync(`git ls-tree -r --name-only ${branch}-side`, { cwd: tmp, encoding: 'utf8' }).includes('impl.txt'),
+    'the work itself survives on its own branch — nothing is lost by rolling back');
+  assert(/rolled-back branch=/.test(fs.readFileSync(path.join(tmp, 'backlog', fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id)), 'runs.log'), 'utf8')),
+    'the rollback is recorded in runs.log');
+
+  fs.rmSync(path.join(tmp, 'harness/flows/abandon.yaml'));
+}
+
 // A base-sync conflict cannot be fixed by re-running the developers — their worktrees branch from
 // the ticket branch, where nothing is wrong. Q-0011 burned all three iterations and $8.63 learning
 // that, because integrate routed it into on_fail like any test failure.

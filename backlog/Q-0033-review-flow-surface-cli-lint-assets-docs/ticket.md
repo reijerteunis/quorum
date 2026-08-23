@@ -10,6 +10,7 @@ created: 2026-08-22
 depends_on: Q-0006
 iterations:
   solutioning.architecture-review: 1
+  qa-red.scenario-review: 3
 history:
   - stage: requirements
     run: 1
@@ -50,6 +51,54 @@ history:
     stage_before: red
     stage_after: red
     at: 2026-08-23T15:52:33.759Z
+    cost: 0
+  - stage: solutioned
+    run: 5
+    flow: qa-red
+    status: failed
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:02:53.635Z
+    cost: 2.187
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:59:54.836Z
+    cost: 0
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T19:11:23.602Z
+    cost: 10.626
+  - stage: solutioned
+    run: 7
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T19:56:21.620Z
+    cost: 0
+  - stage: solutioned
+    run: 7
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T20:00:23.259Z
+    cost: 10.964
+  - stage: solutioned
+    run: 8
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T20:29:40.260Z
     cost: 0
 ---
 The second half of the review flow, split out of Q-0006 on 2026-08-22 because thirty acceptance
