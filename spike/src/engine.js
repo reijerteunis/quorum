@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
+import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
@@ -62,7 +63,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
-    vars: { id: ticket.meta.id, iter: 1 },
+    vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
   };
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
@@ -89,7 +90,10 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
         // Cross-flow backward edge: regress the ticket's stage; the target flow picks it up next.
         const targetFlow = loadFlowByName(target.slice(5), harnessDir);
         ui.warn(`backward edge → ${target}: ticket regresses to stage "${targetFlow.consumes}"`);
-        return finish(ctx, targetFlow.consumes, 'regressed');
+        return finish(ctx, targetFlow.consumes, 'regressed', null, {
+          targetFlow: targetFlow.name, stageBefore: ticket.meta.stage, stageAfter: targetFlow.consumes,
+          count: ctx.counters.review, limit: res.limit, remaining: Math.max(0, (res.limit ?? 0) - (ctx.counters.review ?? 0)),
+        });
       }
       i = steps.findIndex((s) => s.id === target || (s.parallel && s.parallel.some((p) => p.id === target)));
       ctx.vars.iter += 1;
@@ -241,11 +245,12 @@ function handleFail(step, ctx) {
   ctx.counters[counter] = n;
   if (n <= f.max_iterations) {
     ctx.ui.warn(`${step.id}: iteration ${n}/${f.max_iterations} → goto ${f.goto}`);
-    return { goto: f.goto };
+    return { goto: f.goto, limit: f.max_iterations };
   }
   ctx.ui.warn(`${step.id}: loop exhausted (${f.max_iterations}) → human gate`);
+  recordEvent(ctx, ctx.ticket.meta.stage, 'exhausted', 0);
   return runGate({
-    gate: 'human',
+    gate: 'human-locked',
     reason: `loop exhausted at ${step.id} (${counter} = ${n}, limit ${f.max_iterations}); choose: advance (accept as is), retry (exactly one more ${f.goto}), abort`,
     retryTarget: f.goto, retryCounter: counter, retryMax: f.max_iterations,
   }, ctx);
@@ -266,7 +271,7 @@ async function runGate(step, ctx) {
     // max_iterations+1 further traversals rather than one. See Q-0004 / DECISIONS 2026-08-22.
     if (step.retryCounter != null) ctx.counters[step.retryCounter] = step.retryMax;
     ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=retry counter=${step.retryCounter} set=${step.retryMax} (one further traversal authorised)`);
-    return { goto: step.retryTarget };
+    return { goto: step.retryTarget, limit: step.retryMax };
   }
   return { abort: true };
 }
@@ -288,19 +293,30 @@ async function runScript(step, ctx) {
   }
 }
 
-function finish(ctx, stage, status, note) {
+function finish(ctx, stage, status, note, fields = {}) {
   const { ticket, backlog } = ctx;
   const from = ticket.meta.stage;
   ticket.meta.iterations = ctx.counters;
   if (status === 'completed' || status === 'regressed') {
     ticket.meta.stage = stage;
-    ticket.meta.history = [...(ticket.meta.history ?? []), { stage, run: ctx.runId, flow: ctx.flow.name, at: new Date().toISOString(), cost: round(ctx.stats.cost) }];
   }
+  ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
   ctx.ui.info(`run #${ctx.runId} ${status}: ${from} → ${ticket.meta.stage}   cost $${round(ctx.stats.cost)}  tokens ${ctx.stats.tokens}${partial}`);
-  return { status, stage: ticket.meta.stage, cost: ctx.stats.cost, runId: ctx.runId };
+  return { status, stage: ticket.meta.stage, cost: ctx.stats.cost, runId: ctx.runId, ...fields };
+}
+
+function outcome(ctx, before, after, status, cost) {
+  return { stage: after, run: ctx.runId, flow: ctx.flow.name, status, stage_before: before, stage_after: after, at: new Date().toISOString(), cost };
+}
+
+function recordEvent(ctx, stage, status, cost) {
+  ctx.ticket.meta.iterations = ctx.counters;
+  ctx.ticket.meta.history = [...(ctx.ticket.meta.history ?? []), outcome(ctx, stage, stage, status, cost)];
+  ctx.backlog.write(ctx.ticket);
+  ctx.backlog.log(ctx.ticket, `run=${ctx.runId} ${status} stage=${stage}→${stage} cost=${cost}`);
 }
 
 // A role's default model belongs to the role's own vendor. Inheriting it across adapters sends
@@ -322,7 +338,7 @@ export function schemaFor(step) {
   if (writesOf(step).length) { props.document = { type: 'string', description: 'The full markdown document to be written to the backlog.' }; required.push('document'); }
   if (step.output?.verdict) {
     props.verdict = { type: 'string', enum: String(step.output.verdict).split('|') };
-    props.findings = { type: 'array', items: { type: 'string' }, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
+    props.findings = { type: 'array', items: { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
     required.push('verdict', 'findings');
   }
   return { type: 'object', properties: props, required, additionalProperties: false };
@@ -342,7 +358,7 @@ export function buildPrompt(step, role, ctx) {
     for (const { rel, text } of backlog.readFiles(ticket, interpolate(b, ctx.vars))) parts.push(`\n## Input: backlog/${ticket.folder}/${rel}\n\n${text.trim()}`);
   }
   if (step.input?.repo) parts.push(`\n## Repository\n\nYou are running inside the repository at your working directory. Inspect it as needed.${step.worktree ? ' You MAY write files; this is an isolated worktree on its own branch.' : ' Do NOT modify files.'}`);
-  if (step.input?.diff) parts.push(`\n## Diff to review\n\nRun \`git diff ${interpolate(step.input.diff, ctx.vars)}\` in the repository and review that change.`);
+  if (step.input?.diff) parts.push(materialiseDiff(step, ctx));
   if (step.instructions) parts.push(`\n# Task\n\n${step.instructions.trim()}`);
   const outs = writesOf(step).map((w) => interpolate(w, ctx.vars));
   parts.push(`\n# Output contract\n\nRespond ONLY with a JSON object matching the provided schema.${outs.length ? ` Put the complete markdown document in "document" (it will be saved as ${outs.join(', ')}).` : ''}${step.output?.verdict ? ` Set "verdict" to one of: ${step.output.verdict}. The first option means pass.` : ''}`);
@@ -378,6 +394,34 @@ function nextRunId(ticket) {
   }
   return Math.max(fromHistory, fromLog) + 1;
 }
+function reviewRound(ticket) {
+  const dir = path.join(ticket.dir, 'review');
+  if (!fs.existsSync(dir)) return 1;
+  const completed = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory())
+    .map((d) => d.name.match(/^round-(\d+)$/)?.[1]).filter(Boolean).map(Number)
+    .filter((n) => fs.existsSync(path.join(dir, `round-${n}`, 'verdict.md')));
+  return (completed.length ? Math.max(...completed) : 0) + 1;
+}
+
+function materialiseDiff(step, ctx) {
+  const range = interpolate(step.input.diff, ctx.vars);
+  const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
+  const integration = `harness/${ctx.ticket.meta.id}/integration`;
+  const hasRef = (ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; } catch { return false; } };
+  if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
+  if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
+  const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
+  const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
+  const limit = ctx.config.repo?.max_diff_bytes ?? 200000;
+  let bytes = full; let truncated = bytes.length > limit;
+  if (truncated) {
+    bytes = bytes.subarray(0, limit);
+    while (bytes.length && Buffer.from(bytes.toString('utf8')).compare(bytes) !== 0) bytes = bytes.subarray(0, -1);
+    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} diff truncated range=${range} limit=${limit}`);
+  }
+  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${limit} UTF-8 bytes.` : '';
+  return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+}
 const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------
@@ -408,7 +452,7 @@ async function runFanOut(step, ctx) {
       const branch = interpolate(tpl.branch ?? 'harness/{id}/{task.id}', { ...ctx.vars, ...vars });
       ctx.fanned.push({ task: task.id, branch, role: task.role });
       return runAgentStep(tpl, ctx, {
-        vars, syncBase: ctx.vars.iter > 1 || w > 0,
+        vars, syncBase: true,
         promptSuffix: (cwd) => taskPromptSection(task, cwd) + (ctx.lastIntegration ? `\n\n## Previous integration result\n\n${ctx.lastIntegration.slice(0, 4000)}` : ''),
       });
     }));

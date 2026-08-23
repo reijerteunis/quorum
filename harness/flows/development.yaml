@@ -11,7 +11,7 @@ steps:
       model: "{role.model}"
       branch: "harness/{id}/{task.id}"
       base: "harness/{id}/integration"
-      input: { backlog: [solution/solution.md], harness: [rules.md, architecture.md], repo: true }
+      input: { backlog: [solution/solution.md, review/verdict.md], harness: [rules.md, architecture.md], repo: true }
       instructions: >
         Implement ONLY your task so that the tests covering it pass. Do not modify tests.
         Do not touch files outside your role's allowed paths. Commit nothing — the harness
