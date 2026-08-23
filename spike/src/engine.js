@@ -8,68 +8,15 @@ import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError } from './fanout.js';
+import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
-export class FlowError extends Error {}
+export { FlowError, lintFlow, lintFlowDirectory, validateFlowDirectory } from './lint.js';
 
 export function loadFlow(file) {
   const flow = YAML.parse(fs.readFileSync(file, 'utf8'));
   flow.file = file;
   lintFlow(flow);
   return flow;
-}
-
-// Static lint: ids unique, goto targets exist, every backward edge bounded, cross-vendor rule.
-export function lintFlow(flow) {
-  const problems = [];
-  const steps = flattenSteps(flow.steps);
-  const ids = steps.filter((s) => s.id).map((s) => s.id);
-  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) problems.push(`duplicate step id "${id}"`); });
-  for (const s of steps) {
-    if (s.on_fail) {
-      if (!s.on_fail.goto) problems.push(`${s.id}: on_fail without goto`);
-      else if (!String(s.on_fail.goto).startsWith('flow:') && !ids.includes(s.on_fail.goto)) problems.push(`${s.id}: goto target "${s.on_fail.goto}" not found`);
-      if (!Number.isInteger(s.on_fail.max_iterations)) problems.push(`${s.id}: on_fail needs integer max_iterations`);
-      if (s.on_fail.on_exhausted !== 'gate') problems.push(`${s.id}: on_exhausted must be "gate"`);
-    }
-    if (s.output?.verdict && !s.on_fail && !s.route) problems.push(`${s.id}: has a verdict but no on_fail/route — verdicts must go somewhere`);
-    if (s.fan_out && !s.step) problems.push(`${s.id}: fan_out needs a step template`);
-    if (s.type === 'integrate' && !s.branches) problems.push(`${s.id}: integrate needs branches`);
-  }
-  if (flow.cross_vendor === 'required') {
-    // producer map: backlog path -> adapter that writes it
-    const producer = {};
-    for (const s of steps) for (const w of writesOf(s)) producer[w] = s.adapter;
-    // Rule: a reviewing/judging step must see at least one input written by another vendor.
-    // Single-writer review → writer ≠ reviewer. Judge over N candidates → fine if candidates span vendors.
-    for (const s of steps) {
-      if (!s.output?.verdict) continue;
-      const reviewed = (s.input?.backlog ?? []).flatMap((inp) => Object.keys(producer).filter((p) => globMatch(inp, p)));
-      if (reviewed.length && reviewed.every((p) => producer[p] === s.adapter)) {
-        problems.push(`${s.id}: every input it judges (${reviewed.join(', ')}) was written by its own vendor (${s.adapter}) — cross_vendor: required`);
-      }
-    }
-  }
-  // A bounded loop that never shows its verdict to the step it returns to cannot converge: that
-  // step regenerates its output from the same inputs, and the reviewer objects to the same things.
-  // qa-red shipped exactly this way and spent $4.45 re-reviewing a file nothing had changed —
-  // write-tests committed nothing because it had no idea what was wrong. See Q-0011.
-  for (const s of steps) {
-    const target = s.on_fail?.goto;
-    if (!target || String(target).startsWith('flow:')) continue;   // cross-flow edges regress a stage
-    const written = writesOf(s);
-    if (!written.length) continue;
-    const dest = steps.find((t) => t.id === target);
-    if (!dest || dest.fan_out) continue;   // fan_out receives the integration result from the engine
-    const receives = dest.input?.backlog ?? [];
-    if (!written.some((w) => receives.some((inp) => globMatch(inp, w)))) {
-      problems.push(`${s.id}: loops back to "${target}", which never receives ${written.join(', ')} — the loop cannot converge`);
-    }
-  }
-  if (!flow.consumes || !flow.produces) problems.push('flow needs consumes/produces');
-  const gates = steps.filter((s) => s.gate);
-  if (flow.produces === 'deployed' && !gates.some((g) => g.gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');
-  if (problems.length) throw new FlowError(`flow ${flow.name ?? flow.file} invalid:\n  - ${problems.join('\n  - ')}`);
-  return true;
 }
 
 export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false }) {
@@ -457,10 +404,9 @@ export function loadFlowByName(name, harnessDir) {
   return loadFlow(path.join(harnessDir, 'flows', `${name}.yaml`));
 }
 
-export function flattenSteps(steps) { return steps.flatMap((s) => (s.parallel ? s.parallel : [s])); }
+export { flattenSteps } from './lint.js';
 export function writesOf(step) { const o = step.output ?? {}; return [...(o.write ? [o.write] : []), ...(o.writes ?? [])]; }
 export function interpolate(s, vars) { return String(s).replace(/\{([\w.]+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`)); }
-function globMatch(pattern, p) { return new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(p) || (pattern.endsWith('/') && p.startsWith(pattern)); }
 // History only gains an entry when a run completes or regresses, so deriving the id from it alone
 // hands a failed run's number to the next one and the audit trail cannot tell them apart.
 // runs.log is the append-only record of every attempt, successful or not. See Q-0001.
