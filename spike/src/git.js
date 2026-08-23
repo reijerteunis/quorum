@@ -1,9 +1,11 @@
 // Worktree per writing step. Never touches the user's working tree.
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const git = (args, cwd) => execSync(`git ${args}`, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+// argv, never a shell. Branch names are built from ticket and task ids, and task ids come from a
+// tasks.yaml an agent wrote — so they are untrusted input reaching a command line. See Q-0011.
+const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 export function ensureWorktree(repoDir, branch, base) {
   const root = path.join(repoDir, '.harness', 'worktrees');
@@ -11,20 +13,20 @@ export function ensureWorktree(repoDir, branch, base) {
   if (fs.existsSync(dir)) return dir;
   fs.mkdirSync(root, { recursive: true });
   ensureExcluded(repoDir, '.harness/');
-  const branchExists = safe(() => git(`rev-parse --verify --quiet refs/heads/${branch}`, repoDir));
+  const branchExists = safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], repoDir));
   if (branchExists) {
-    git(`worktree add "${dir}" ${branch}`, repoDir);
+    git(['worktree', 'add', dir, branch], repoDir);
   } else {
-    const baseExists = base && safe(() => git(`rev-parse --verify --quiet refs/heads/${base}`, repoDir));
-    git(`worktree add -b ${branch} "${dir}" ${baseExists ? base : 'HEAD'}`, repoDir);
+    const baseExists = base && safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${base}`], repoDir));
+    git(['worktree', 'add', '-b', branch, dir, baseExists ? base : 'HEAD'], repoDir);
   }
   return dir;
 }
 
 export function removeWorktree(repoDir, branch, { deleteBranch = false } = {}) {
   const dir = path.join(repoDir, '.harness', 'worktrees', branch.replace(/\//g, '__'));
-  if (fs.existsSync(dir)) git(`worktree remove --force "${dir}"`, repoDir);
-  if (deleteBranch) safe(() => git(`branch -D ${branch}`, repoDir));
+  if (fs.existsSync(dir)) git(['worktree', 'remove', '--force', dir], repoDir);
+  if (deleteBranch) safe(() => git(['branch', '-D', branch], repoDir));
 }
 
 function ensureExcluded(repoDir, pattern) {

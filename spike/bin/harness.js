@@ -3,18 +3,20 @@
 //   harness init [dir]                      copy templates into <dir>/harness and create backlog/
 //   harness ticket new "<title>" [--intent "..."] [--owner name]
 //   harness board                           kanban of tickets by stage
-//   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock]
-//   harness lint                            lint all flows
+//   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--gate-answer advance|retry|abort]
+//   harness lint                            lint the whole flow directory (structure + cross-flow edges)
 //   harness adapters [--probe] [--json]     CLIs installed + no API keys; --probe also proves login
 //   harness validate <schema.json> <file…>  check artifacts against a contract; exit 1 on failure
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
-import { loadFlow, loadFlowByName, runFlow, FlowError } from '../src/engine.js';
+import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
+import { IntegrationError } from '../src/fanout.js';
 import { validateFile } from '../src/contracts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,10 +24,20 @@ const args = process.argv.slice(2);
 const flags = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
-  if (args[i].startsWith('--')) { const k = args[i].slice(2); const v = args[i + 1] && !args[i + 1].startsWith('--') ? args[++i] : true; flags[k] = v; }
+  if (args[i].startsWith('--')) {
+    const k = args[i].slice(2);
+    const v = args[i + 1] && !args[i + 1].startsWith('--') ? args[++i] : true;
+    // Only --gate-answer accumulates: a non-interactive run may cross several gates in one
+    // invocation and each needs its own answer, in order. Every other flag stays last-wins,
+    // which is what the rest of the CLI (and its existing consumers) already expect. See Q-0033.
+    if (k === 'gate-answer') flags[k] = [...(flags[k] ?? []), v];
+    else flags[k] = v;
+  }
   else positional.push(args[i]);
 }
 const [cmd, ...rest] = positional;
+// Consumed one per gate, in the order they were passed on the command line.
+const gateAnswers = [...(flags['gate-answer'] ?? [])];
 
 const c = { dim: (s) => `\x1b[2m${s}\x1b[0m`, bold: (s) => `\x1b[1m${s}\x1b[0m`, amber: (s) => `\x1b[33m${s}\x1b[0m`, green: (s) => `\x1b[32m${s}\x1b[0m`, red: (s) => `\x1b[31m${s}\x1b[0m`, teal: (s) => `\x1b[36m${s}\x1b[0m` };
 
@@ -61,18 +73,86 @@ const ui = {
     console.log('\n' + c.amber('■ GATE') + ` (${kind}) ${reason}`);
     console.log(c.dim(`  inspect: ${ticketDir}`));
     const opts = retry ? 'advance / retry / abort' : 'advance / abort';
+    const allowed = retry ? ['advance', 'retry', 'abort'] : ['advance', 'abort'];
+    // A scripted gate answer is exact and consumed once, in order — no prefixes, no falling
+    // through to the next queued answer. A gate is never silently invented, so an answer that
+    // is not valid for THIS gate is an error, not a skip. See Q-0033.
+    if (gateAnswers.length) {
+      const raw = gateAnswers.shift();
+      const answer = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+      if (!allowed.includes(answer)) {
+        throw new FlowError(`gate (${kind}) "${reason}" received --gate-answer "${typeof raw === 'string' ? raw.trim() : String(raw)}" — expected exactly one of: ${opts} (no abbreviations)`);
+      }
+      console.log(c.dim(`  ${opts} > ${answer}  (from --gate-answer)`));
+      return answer;
+    }
+    // Explicit answers are exhausted. A non-interactive run has nowhere left to get a decision
+    // from, so it stops here rather than reading whatever happens to be sitting on stdin (which
+    // used to resolve as an accidental answer, or as '' → advance) or hanging forever. See
+    // Q-0011 / Q-0033.
+    if (!process.stdin.isTTY) {
+      throw new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} (repeatable, consumed in order), or run interactively`);
+    }
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
     // handler never runs and the interrupted run leaves no record. See Q-0004.
     rl.on('SIGINT', () => { rl.close(); process.kill(process.pid, 'SIGINT'); });
-    const answer = await new Promise((r) => rl.question(`  ${opts} > `, r));
+    // A gate is a decision, so it is never defaulted and never waits forever. Closed stdin used to
+    // resolve as '' → advance, which is how a human-locked gate got walked through by a suite that
+    // supplied no input; and once that defaulting was removed the same gate blocked a run for 24
+    // minutes with no output. Both are errors now, and both say which gate. See Q-0011.
+    const answer = await new Promise((resolve, reject) => {
+      let answered = false;
+      rl.question(`  ${opts} > `, (a) => { answered = true; resolve(a); });
+      rl.on('close', () => {
+        if (!answered) reject(new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — run it interactively, or answer it on stdin`));
+      });
+    });
     rl.close();
     const a = answer.trim().toLowerCase();
-    return a.startsWith('a') && a !== 'abort' ? 'advance' : a.startsWith('r') ? 'retry' : a === 'abort' ? 'abort' : a === '' ? 'advance' : 'abort';
+    if (!a) throw new FlowError(`gate (${kind}) "${reason}" was given an empty answer — say advance, retry or abort; a gate is never assumed`);
+    if (a.startsWith('ad')) return 'advance';
+    if (a.startsWith('r') && retry) return 'retry';
+    if (a.startsWith('ab')) return 'abort';
+    throw new FlowError(`gate (${kind}) "${reason}" did not understand "${answer.trim()}" — expected ${opts}`);
   },
 };
 
 function die(m) { console.error(c.red('✗ ') + m); process.exit(1); }
+
+// `git branch --show-current` names the current branch even on an unborn HEAD (a fresh
+// `git init -b <name>` before the first commit), and prints an empty string — not an error —
+// for detached HEAD. Both are "cannot name a branch" outcomes for our purposes, so both fall
+// through to the caller's default. Outside a repository, or with a broken GIT_DIR, the command
+// itself fails; stderr is never surfaced, so a stranger's first `harness init` never prints a
+// raw `fatal:` line. See Q-0033.
+function currentBranch(dir) {
+  try {
+    const name = execFileSync('git', ['branch', '--show-current'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return name || null;
+  } catch { return null; }
+}
+
+// Whole-directory flow validation, shared by `lint` and the `run` preflight so the two report
+// the identical diagnostic for the identical defect. The actual walk (target resolution, return
+// chains, dead ends, ambiguity, cycles) lives once in src/lint.js's lintFlowDirectory; this only
+// renders its per-file records into the CLI's colorized report. See
+// contracts/Q-0006/review-lint.contract.md and Q-0033.
+function lintDirectory(flowsDir) {
+  const records = lintFlowDirectory(flowsDir);
+  const report = records.map((record) => {
+    const filename = path.basename(record.file);
+    if (!record.problems.length) return c.green('✓') + ' ' + filename;
+    const bullets = record.problems.flatMap((err) => {
+      const parts = String(err).split('\n').map((l) => l.trim()).filter(Boolean);
+      return parts.length > 1 && /invalid:$/.test(parts[0]) ? parts.slice(1) : parts;
+    });
+    return c.red('✗') + ' ' + filename + '\n' + bullets.map((l) => `  - ${l.replace(/^-+\s*/, '')}`).join('\n');
+  });
+  return { ok: records.every((record) => !record.problems.length), report };
+}
+
+function printReport(report) { for (const line of report) console.log(line); }
 
 async function main() {
   switch (cmd) {
@@ -82,6 +162,20 @@ async function main() {
       if (fs.existsSync(dst)) die(`${dst} already exists`);
       fs.cpSync(path.join(here, '..', 'templates', 'harness'), dst, { recursive: true });
       fs.mkdirSync(path.join(dir, 'backlog'), { recursive: true });
+      // Best-effort: a nameable branch (including a fresh, unborn `git init -b <name>`) replaces
+      // the template's default. Anything else — no repo, detached HEAD, a branch Git cannot name
+      // — leaves the template's `main` untouched. Never fails init either way. See Q-0033.
+      const branch = currentBranch(dir);
+      if (branch) {
+        const configFile = path.join(dst, 'harness.yaml');
+        try {
+          // parseDocument + setIn + toString edits only the one scalar and keeps every comment
+          // and the rest of the file's formatting intact — a parse/stringify round trip would not.
+          const doc = YAML.parseDocument(fs.readFileSync(configFile, 'utf8'));
+          doc.setIn(['repo', 'base_branch'], branch);
+          fs.writeFileSync(configFile, doc.toString());
+        } catch { /* best-effort: the template's default base_branch remains valid */ }
+      }
       console.log(c.green('✓') + ` harness/ and backlog/ created in ${dir}\n  next: harness adapters · harness ticket new "…" · harness run requirements T-0001`);
       return;
     }
@@ -116,12 +210,9 @@ async function main() {
     }
     case 'lint': {
       const { harnessDir } = loadProject();
-      const dir = path.join(harnessDir, 'flows');
-      let bad = 0;
-      for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.yaml'))) {
-        try { loadFlow(path.join(dir, f)); console.log(c.green('✓') + ' ' + f); } catch (e) { bad++; console.log(c.red('✗') + ' ' + f + '\n  ' + e.message.split('\n').slice(1).join('\n  ')); }
-      }
-      process.exit(bad ? 1 : 0);
+      const { ok, report } = lintDirectory(path.join(harnessDir, 'flows'));
+      printReport(report);
+      process.exit(ok ? 0 : 1);
     }
     case 'adapters': {
       const { config, repoDir } = loadProject();
@@ -160,15 +251,21 @@ async function main() {
     }
     case 'run': {
       const [flowName, ticketId] = rest;
-      if (!flowName || !ticketId) die('usage: harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--verbose]');
+      if (!flowName || !ticketId) die('usage: harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--verbose] [--gate-answer advance|retry|abort]');
       const proj = loadProject();
+      // Reads the flow files fresh from disk, before the ticket is loaded, before anything is
+      // written, and before `--adapter mock` rewrites any step's adapter in memory — a directory
+      // that declares a legitimate cross-vendor panel must not appear single-vendor because
+      // execution later overrides every step to the same adapter. See Q-0033.
+      const { ok, report } = lintDirectory(path.join(proj.harnessDir, 'flows'));
+      if (!ok) { printReport(report); process.exit(1); }
       const flow = loadFlowByName(flowName, proj.harnessDir);
       if (flags.adapter) { overrideAdapters(flow, flags.adapter); proj.config.adapterOverride = flags.adapter; }
       const ticket = proj.backlog.read(ticketId);
       try {
         const r = await runFlow({ flow, ticket, ...proj, ui, auto: Boolean(flags.auto), dry: Boolean(flags.dry) });
         process.exit(r.status === 'aborted' ? 2 : 0);
-      } catch (e) { if (e instanceof FlowError) die(e.message); throw e; }
+      } catch (e) { if (e instanceof FlowError || e instanceof IntegrationError) die(e.message); throw e; }
     }
     default:
       console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 9).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));

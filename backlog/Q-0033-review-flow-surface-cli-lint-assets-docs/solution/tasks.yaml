@@ -1,0 +1,89 @@
+tasks:
+  - id: Q0033-cli
+    role: tooling
+    title: Gate answers, init's repo defaults, and the run-time preflight
+    description: >
+      Own spike/bin/harness.js and nothing else. Add a repeatable --gate-answer consumed in
+      order; a gate with no answer available on a non-TTY is an error naming the gate, never a
+      default and never a wait. Make `harness init` write the repo block into the copied
+      harness.yaml with its comments preserved, discovering the current branch safely including
+      a nameable unborn HEAD and falling back to main when git cannot name one. Invoke the
+      directory lint from `harness run` before any adapter is spawned, reading the flow files
+      from disk rather than the in-memory objects, which `--adapter mock` has already rewritten.
+      Do not edit spike/src/**, harness/**, docs/** or anything under spike/test/**.
+    contracts:
+      - contracts/Q-0033/cli-review-surface.contract.md
+      - contracts/Q-0006/review-runtime.contract.md
+      - contracts/Q-0006/ticket-review-state.schema.json
+      - backlog/Q-0006-review-flow-and-cross-flow-backward-edge/solution/errata.md
+    depends_on: []
+
+  - id: Q0033-lint
+    role: backend
+    title: Extract the flow lint and add the review rules
+    description: >
+      Own spike/src/lint.js (new) and the lint portion of spike/src/engine.js, and nothing else.
+      Move the flow rules out of the engine into their own module, then add the review rules:
+      reject a missing, non-integer, zero or negative max_iterations naming the step and field;
+      reject a counter spelled with an `iterations.` prefix and give the corrected spelling;
+      resolve every `goto: flow:<name>` and walk the chain, failing when it never returns to
+      this flow's consumes and naming both flows and the stage where it dies; and in a flow with
+      cross_vendor: required, reject a parallel group whose steps share one role but not two
+      adapters. Do not edit spike/bin/**, harness/**, docs/** or spike/test/**.
+    contracts:
+      - contracts/Q-0006/review-lint.contract.md
+      - contracts/Q-0006/review-flow.contract.yaml
+      - contracts/Q-0033/cli-review-surface.contract.md
+    depends_on: []
+
+  - id: Q0033-config
+    role: backend
+    title: The repo config block, in both places
+    description: >
+      Own harness/harness.yaml and spike/templates/harness/harness.yaml, and nothing else. Add
+      the repo block — base_branch and max_diff_bytes — each with a one-line comment saying what
+      it is for, and keep every existing comment in both files intact. The template describes an
+      adopter's project and must not acquire Quorum's own paths or branch names. Do not edit
+      spike/**, docs/** or any flow or role file.
+    contracts:
+      - contracts/Q-0033/cli-review-surface.contract.md
+      - contracts/Q-0006/review-runtime.contract.md
+    depends_on: []
+
+  - id: Q0033-assets
+    role: backend
+    title: Ship review.yaml and the code-reviewer role
+    description: >
+      Own harness/flows/review.yaml, spike/templates/harness/flows/review.yaml,
+      harness/roles/code-reviewer.md and spike/templates/harness/roles/code-reviewer.md, and
+      nothing else. Ship the review flow and its role, byte-identical between the repository and
+      the template copies, matching contracts/Q-0006/review-flow.contract.yaml when both are
+      parsed and compared. The flow uses only step fields the engine has, passes `harness lint`,
+      and its panel spans two adapters. The role declares an adapter whenever it declares a
+      model, and pins no vendor model name. Do not edit spike/**, docs/** or harness.yaml.
+    contracts:
+      - contracts/Q-0033/review-surface-assets.contract.md
+      - contracts/Q-0006/review-flow.contract.yaml
+      - contracts/Q-0006/code-reviewer-role.contract.md
+      - contracts/Q-0006/review-artifacts.schema.json
+    depends_on: []
+
+  - id: Q0033-docs
+    role: backend
+    title: Make the documentation agree with the shipped flow
+    description: >
+      Own docs/02-sdlc-pipeline-spec.md, docs/06-development-plan.md, docs/GLOSSARY.md and
+      docs/DECISIONS.md, and nothing else. Correct §3.4's state diagram to the
+      derived regression target and rewrite §5.5 as the flow actually ships: the three-dot diff
+      range in the right direction, {round} rather than {iter}, an unprefixed counter, no
+      type: judge and no findings:/tasks:/with:, and no pinned vendor model names — §5.3 still
+      shows model: gpt-5, which the 2026-08-22 decision bans. Add the DECISIONS entries the
+      solution names, give GLOSSARY's Gate entry the distinction between an author-declared
+      human-locked gate and the exhaustion gate the engine presents. Leave README.md byte-unchanged
+      — its rewrite belongs to Q-0028 in M6, and a scenario asserts it is untouched. Do not edit
+      spike/**, harness/** or anything under contracts/.
+    contracts:
+      - contracts/Q-0033/documentation-and-evidence.contract.md
+      - contracts/Q-0006/review-runtime.contract.md
+      - contracts/Q-0006/review-lint.contract.md
+    depends_on: []

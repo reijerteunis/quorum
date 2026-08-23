@@ -7,53 +7,16 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
-import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, IntegrationError } from './fanout.js';
+import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
+import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
-export class FlowError extends Error {}
+export { FlowError, lintFlow, lintFlowDirectory, validateFlowDirectory } from './lint.js';
 
 export function loadFlow(file) {
   const flow = YAML.parse(fs.readFileSync(file, 'utf8'));
   flow.file = file;
   lintFlow(flow);
   return flow;
-}
-
-// Static lint: ids unique, goto targets exist, every backward edge bounded, cross-vendor rule.
-export function lintFlow(flow) {
-  const problems = [];
-  const steps = flattenSteps(flow.steps);
-  const ids = steps.filter((s) => s.id).map((s) => s.id);
-  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) problems.push(`duplicate step id "${id}"`); });
-  for (const s of steps) {
-    if (s.on_fail) {
-      if (!s.on_fail.goto) problems.push(`${s.id}: on_fail without goto`);
-      else if (!String(s.on_fail.goto).startsWith('flow:') && !ids.includes(s.on_fail.goto)) problems.push(`${s.id}: goto target "${s.on_fail.goto}" not found`);
-      if (!Number.isInteger(s.on_fail.max_iterations)) problems.push(`${s.id}: on_fail needs integer max_iterations`);
-      if (s.on_fail.on_exhausted !== 'gate') problems.push(`${s.id}: on_exhausted must be "gate"`);
-    }
-    if (s.output?.verdict && !s.on_fail && !s.route) problems.push(`${s.id}: has a verdict but no on_fail/route — verdicts must go somewhere`);
-    if (s.fan_out && !s.step) problems.push(`${s.id}: fan_out needs a step template`);
-    if (s.type === 'integrate' && !s.branches) problems.push(`${s.id}: integrate needs branches`);
-  }
-  if (flow.cross_vendor === 'required') {
-    // producer map: backlog path -> adapter that writes it
-    const producer = {};
-    for (const s of steps) for (const w of writesOf(s)) producer[w] = s.adapter;
-    // Rule: a reviewing/judging step must see at least one input written by another vendor.
-    // Single-writer review → writer ≠ reviewer. Judge over N candidates → fine if candidates span vendors.
-    for (const s of steps) {
-      if (!s.output?.verdict) continue;
-      const reviewed = (s.input?.backlog ?? []).flatMap((inp) => Object.keys(producer).filter((p) => globMatch(inp, p)));
-      if (reviewed.length && reviewed.every((p) => producer[p] === s.adapter)) {
-        problems.push(`${s.id}: every input it judges (${reviewed.join(', ')}) was written by its own vendor (${s.adapter}) — cross_vendor: required`);
-      }
-    }
-  }
-  if (!flow.consumes || !flow.produces) problems.push('flow needs consumes/produces');
-  const gates = steps.filter((s) => s.gate);
-  if (flow.produces === 'deployed' && !gates.some((g) => g.gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');
-  if (problems.length) throw new FlowError(`flow ${flow.name ?? flow.file} invalid:\n  - ${problems.join('\n  - ')}`);
-  return true;
 }
 
 export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false }) {
@@ -65,6 +28,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
   };
+  // What the ticket branch looked like before this run touched it, so a run that does not
+  // complete can put it back. See Q-0033.
+  ctx.branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
   ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
   backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
 
@@ -158,9 +124,16 @@ async function runAgentStep(step, ctx, extra = {}) {
     // it already existed, not only on fan-out retries, or the agent works against yesterday's
     // tree and appears to revert whatever landed since. See Q-0004.
     if (existed || extra.syncBase) {
-      const m = mergeInto(cwd, stepBase);
-      if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
-      else ui.warn(`${step.id}: could not sync base: ${m.conflicts.join(',')}`);
+      if (!branchExists(ctx.repoDir, stepBase)) {
+        // Normal on a ticket's first pass: the integration branch is created by the first
+        // integrate step, so before that there is nothing to sync to. Not a failure, and not a
+        // warning — it used to print one with an empty reason after the colon.
+        ui.info(`${step.id}: base ${stepBase} does not exist yet — nothing to sync`);
+      } else {
+        const m = mergeInto(cwd, stepBase);
+        if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
+        else ui.warn(`${step.id}: could not sync to ${stepBase} — ${mergeFailure(m)}`);
+      }
     }
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
@@ -203,7 +176,11 @@ async function runAgentStep(step, ctx, extra = {}) {
     backlog.writeFile(ticket, vPath, JSON.stringify({ verdict: res.output.verdict, findings: res.output.findings ?? [], summary: res.output.summary }, null, 2));
   }
   if (branch) {
-    const files = commitAll(cwd, `${step.id}: ${res.output.summary?.slice(0, 60) ?? 'agent changes'} [${ticket.meta.id}]`);
+    const files = commitAll(
+      cwd,
+      `${step.id}: ${res.output.summary?.slice(0, 60) ?? 'agent changes'} [${ticket.meta.id}]`,
+      (dropped) => ui.warn(`${step.id}: discarded ${dropped.length} edit(s) under backlog/ — the engine owns ticket state, not the agent: ${dropped.slice(0, 4).join(', ')}${dropped.length > 4 ? ', …' : ''}`),
+    );
     ui.info(`${step.id}: ${files ? files.length + ' file(s) committed on ' + branch : 'no file changes on ' + branch}`);
   }
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${res.vendor} model=${model ?? '-'} verdict=${res.output.verdict ?? '-'} cost=${res.usage.cost_usd ?? '?'} ms=${res.ms}`);
@@ -220,6 +197,42 @@ async function runAgentStep(step, ctx, extra = {}) {
     }
   }
   return null;
+}
+
+// A merge can fail without conflicting — a missing ref, a dirty tree, a git that simply refuses.
+// Reporting only `conflicts` printed "could not sync base:" with nothing after the colon, which
+// says a failure happened and withholds the one thing the reader needs. See Q-0011.
+export function mergeFailure(m) {
+  if (m?.conflicts?.length) return `conflicts: ${m.conflicts.join(', ')}`;
+  const line = String(m?.error ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
+  return line ? `git: ${line}` : 'git reported no reason';
+}
+
+// commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
+function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
+
+// The report used to be the last 8000 characters of output, which cuts off the head: on a large
+// suite seven of nineteen failing groups had no line at all, and the reviewer judging the red
+// phase never saw them. Keep every result line — they are what the report is for — and truncate
+// only the payload in the middle, saying so where the cut is. See Q-0033.
+const RESULT_LINE = /^\s*(?:\x1b\[[0-9;]*m)*\s*(?:[✓✗×√]|(?:not )?ok\s|#\s|\d+\)\s|(?:PASS|FAIL|SKIP)\b)/;
+
+export function testReport(cmd, out, { maxBytes = 24000 } = {}) {
+  const lines = String(out ?? '').split('\n');
+  const results = lines.filter((l) => RESULT_LINE.test(l));
+  const body = String(out ?? '');
+  const kept = body.length <= maxBytes
+    ? body
+    : `${body.slice(0, maxBytes / 2)}\n\n… ${body.length - maxBytes} characters of output omitted from the middle …\n\n${body.slice(-maxBytes / 2)}`;
+  const roster = results.length
+    ? `\n## Every result line\n\n\`\`\`\n${results.join('\n')}\n\`\`\`\n`
+    : '\n_No lines in the output looked like test results._\n';
+  return `# Test output\n\n\`${cmd}\`\n${roster}\n## Output\n\n\`\`\`\n${kept}\n\`\`\`\n`;
+}
+
+function safeMergeBase(repo, a, b) {
+  try { return execFileSync('git', ['merge-base', a, b], { cwd: repo, encoding: 'utf8' }).trim(); }
+  catch { return null; }
 }
 
 function countUsage(ctx, usage) {
@@ -277,20 +290,20 @@ async function runGate(step, ctx) {
 }
 
 async function runScript(step, ctx) {
-  const { execSync } = await import('node:child_process');
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
-  try {
-    const out = execSync(cmd, { cwd: ctx.repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), out);
-    ctx.ui.done(step.id, 'exit 0');
-    return null;
-  } catch (e) {
-    ctx.ui.warn(`${step.id}: exit ${e.status}`);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), (e.stdout ?? '') + (e.stderr ?? ''));
-    return step.on_fail ? handleFail(step, ctx) : { abort: true };
+  // Through runCommand for the timeout: a script step runs a project's own command and can hang
+  // exactly as a test suite can. See Q-0011.
+  const r = runCommand(cmd, ctx.repoDir, { timeoutMs: cmdTimeout(ctx) });
+  if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), r.out);
+  if (r.code === 0) { ctx.ui.done(step.id, 'exit 0'); return null; }
+  if (r.timedOut) {
+    // Looping back cannot fix a command that never finishes, and its non-zero exit is not a result.
+    throw new FlowError(`${step.id}: script did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed — that is not a result, fix the command or raise commands.timeout_ms`);
   }
+  ctx.ui.warn(`${step.id}: exit ${r.code}`);
+  return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
 function finish(ctx, stage, status, note, fields = {}) {
@@ -301,6 +314,19 @@ function finish(ctx, stage, status, note, fields = {}) {
     ticket.meta.stage = stage;
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
+  // A run that did not complete leaves the ticket branch as it found it. integrate merges task
+  // branches before anyone knows the outcome, and an exhausted or aborted run used to leave those
+  // merges behind for good — so the next qa-red measured its red phase against a tree that already
+  // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
+  // task's work stays on its own branch. See Q-0033.
+  if (!['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
+    const now = branchHead(ctx.repoDir, ticket.meta.branch);
+    if (now && now !== ctx.branchHeadAtStart) {
+      resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
+      ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
+      backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+    }
+  }
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
@@ -378,10 +404,9 @@ export function loadFlowByName(name, harnessDir) {
   return loadFlow(path.join(harnessDir, 'flows', `${name}.yaml`));
 }
 
-export function flattenSteps(steps) { return steps.flatMap((s) => (s.parallel ? s.parallel : [s])); }
+export { flattenSteps } from './lint.js';
 export function writesOf(step) { const o = step.output ?? {}; return [...(o.write ? [o.write] : []), ...(o.writes ?? [])]; }
 export function interpolate(s, vars) { return String(s).replace(/\{([\w.]+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`)); }
-function globMatch(pattern, p) { return new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(p) || (pattern.endsWith('/') && p.startsWith(pattern)); }
 // History only gains an entry when a run completes or regresses, so deriving the id from it alone
 // hands a failed run's number to the next one and the audit trail cannot tell them apart.
 // runs.log is the append-only record of every attempt, successful or not. See Q-0001.
@@ -403,7 +428,7 @@ function reviewRound(ticket) {
   return (completed.length ? Math.max(...completed) : 0) + 1;
 }
 
-function materialiseDiff(step, ctx) {
+export function materialiseDiff(step, ctx) {
   const range = interpolate(step.input.diff, ctx.vars);
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
   const integration = `harness/${ctx.ticket.meta.id}/integration`;
@@ -411,6 +436,20 @@ function materialiseDiff(step, ctx) {
   if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
   if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
+  // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
+  // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
+  // have acted on; the panel only produced findings because the agents read the working tree
+  // instead of the evidence handed to them. Diagnose the overwhelmingly likely cause rather than
+  // reporting emptiness: a branch already merged into base has nothing left to show.
+  if (!stat.trim()) {
+    const merged = (() => {
+      try { execFileSync('git', ['merge-base', '--is-ancestor', integration, base], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
+      catch { return false; }
+    })();
+    throw new FlowError(merged
+      ? `${step.id}: \`${range}\` is empty because ${integration} is already merged into ${base} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
+      : `${step.id}: \`${range}\` is empty — no commits to review. Check input.diff in the flow and that the ticket's work was committed to ${integration}.`);
+  }
   const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
   const limit = ctx.config.repo?.max_diff_bytes ?? 200000;
   let bytes = full; let truncated = bytes.length > limit;
@@ -426,14 +465,36 @@ const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------
 
+// Catch the ticket branch up with the repository's base BEFORE cutting task worktrees from it.
+// The worktrees sync to the ticket branch, and integrate syncs the ticket branch to base — so
+// with the sync only at the end, every agent works against a base that moves underneath it and
+// anything landing on base mid-run surfaces as a conflict nobody in the loop can repair. Q-0006's
+// run 11 lost its runtime task that way: engine.js changed on main between fan-out and integrate.
+export function syncBaseIntoTicketBranch(step, ctx) {
+  const { ui } = ctx;
+  const into = interpolate(step.step?.base ?? ctx.ticket.meta.branch, ctx.vars);
+  const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+  if (!base || base === into) return { skipped: 'base is the ticket branch' };
+  // Normal on a ticket's first pass: the integration branch is created by the first integrate.
+  if (!branchExists(ctx.repoDir, into)) return { skipped: `${into} does not exist yet` };
+  if (!branchExists(ctx.repoDir, base)) return { skipped: `${base} does not exist` };
+  const m = mergeInto(ticketWorktree(ctx.repoDir, into), base);
+  if (m.ok) { ui?.info?.(`${step.id}: ${into} synced to ${base} before fan-out`); return { ok: true }; }
+  // Same reasoning as integrate's base conflict: the agents sync to the ticket branch, where
+  // nothing is wrong, so they correctly change nothing and the conflict returns unchanged. Stop
+  // and name the work rather than spending the iteration budget rediscovering it.
+  throw new FlowError(`${step.id}: cannot sync ${into} to ${base} before fan-out — ${mergeFailure(m)}. Resolve it in a worktree on ${into}, commit, and re-run; no agent in this loop can repair a base conflict.`);
+}
+
 async function runFanOut(step, ctx) {
   const { ui, ticket } = ctx;
   let tasks = loadTasks(ticket);
   if (step.fan_out.scope === 'failing-tasks-only' && ctx.failingTasks?.size) {
-    tasks = tasks.filter((t) => ctx.failingTasks.has(t.id));
+    tasks = scopeToFailing(tasks, ctx.failingTasks);
     ui.warn(`${step.id}: scoped to failing tasks: ${tasks.map((t) => t.id).join(', ')}`);
   }
   if (!tasks.length) throw new FlowError(`${step.id}: no tasks to fan out`);
+  if (!ctx.dry) syncBaseIntoTicketBranch(step, ctx);
   const plan = step.fan_out.respect === 'depends_on' ? waves(tasks) : [tasks];
   ui.info(`${step.id}: ${tasks.length} task(s) in ${plan.length} wave(s)`);
   ctx.fanned = ctx.fanned ?? [];
@@ -481,6 +542,20 @@ async function runIntegrate(step, ctx) {
   else branches = [pattern];
   branches = branches.filter((b) => branchExists(ctx.repoDir, b));
   const notes = [`# Integration — run ${ctx.runId}, iteration ${ctx.vars.iter}`, '', `Target: \`${into}\``, ''];
+  // Evidence about this run, recorded once so a scenario never has to assert it. A fact true only
+  // during the red phase is not an acceptance test: QA smuggled branch-cleanliness into an
+  // assertion because there was nowhere else to put it, and that test could never go green.
+  // See the "a red test is a permanent acceptance test" decision, 2026-08-23.
+  {
+    const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+    const head = branchHead(ctx.repoDir, into);
+    notes.push(`Evidence: \`${into}\` at ${head ? head.slice(0, 7) : '(new)'}, base \`${base}\`.`);
+    for (const b of (Array.isArray(step.branches) ? step.branches.map((x) => interpolate(x, ctx.vars)) : [])) {
+      const mb = safeMergeBase(ctx.repoDir, into, b);
+      if (mb) notes.push(`Evidence: \`${b}\` diverges from \`${into}\` at ${mb.slice(0, 7)}.`);
+    }
+    notes.push('');
+  }
   const conflicts = [];
   // Catch the ticket branch up with the repository's base branch first. A ticket open for more
   // than a day otherwise integrates against the base it was cut from, and work landed on the base
@@ -488,14 +563,27 @@ async function runIntegrate(step, ctx) {
   const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
   if (base && base !== into && branchExists(ctx.repoDir, base)) {
     const m = mergeInto(dir, base);
-    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'CONFLICT syncing base'} ${base}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
-    if (!m.ok) conflicts.push(base);
+    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'could not sync base'} ${base}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    if (!m.ok) {
+      // A base conflict is between the ticket branch and the base — not between the task branches,
+      // and not something another developer round can repair: the task worktrees sync to the
+      // ticket branch, where nothing is wrong, so the agents correctly change nothing and the
+      // conflict returns unchanged. Q-0011 spent its whole budget and $8.63 discovering that three
+      // times. Stop and name the work a human has to do. See Q-0011.
+      for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), notes.join('\n'));
+      backlog.log(ticket, `run=${ctx.runId} step=${step.id} base-conflict base=${base} files=${m.conflicts.join(',') || '?'}`);
+      throw new FlowError(
+        `${step.id}: cannot sync ${into} with ${base} — ${mergeFailure(m)}.\n` +
+        `  This is a conflict between the ticket branch and ${base}, so re-running the developers cannot fix it:\n` +
+        `  their worktrees branch from ${into}, where nothing is wrong. Merge ${base} into ${into} yourself, then re-run.`,
+      );
+    }
   }
   for (const b of branches) {
     const m = mergeInto(dir, b);
-    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'CONFLICT'} ${b}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
+    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'FAILED'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     if (!m.ok) conflicts.push(b);
   }
   let testsOk = true; let out = ''; let envError = null;
@@ -504,16 +592,19 @@ async function runIntegrate(step, ctx) {
   // missing dependency, which `expect: fail` happily reads as proof of red. See Q-0004.
   const install = cmd ? ctx.config.commands?.install : null;
   if (install && !conflicts.length) {
-    const r = runCommand(install, dir);
+    const r = runCommand(install, dir, { timeoutMs: cmdTimeout(ctx) });
     notes.push('', `Install: \`${install}\` → exit ${r.code}`);
     ui[r.code === 0 ? 'info' : 'warn'](`${step.id}: install exit ${r.code}`);
     if (r.code !== 0) { envError = `install failed (\`${install}\` exited ${r.code})`; out = r.out; }
   }
   if (cmd && !conflicts.length && !envError) {
-    const r = runCommand(cmd, dir);
+    const r = runCommand(cmd, dir, { timeoutMs: cmdTimeout(ctx) });
     out = r.out;
     const expect = step.expect ?? 'pass';
-    const broken = environmentFailure(out);
+    // A command killed for running too long proves nothing — least of all a red phase.
+    const broken = r.timedOut
+      ? `the test command did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed`
+      : environmentFailure(out);
     if (broken) {
       // Non-zero because the suite could not start is not a red phase. Accepting it would let a
       // missing dependency satisfy `expect: fail` on every ticket, forever.
@@ -525,7 +616,7 @@ async function runIntegrate(step, ctx) {
     notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${envError ? 'INVALID' : testsOk ? 'OK' : 'NOT OK'}`);
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
-  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
+  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? testReport(cmd, out) : notes.join('\n'));
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather
   // than burning the step's iteration budget on it.

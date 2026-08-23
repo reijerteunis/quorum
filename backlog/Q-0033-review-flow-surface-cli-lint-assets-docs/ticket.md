@@ -1,15 +1,138 @@
 ---
 id: Q-0033
 title: Review flow surface — CLI, lint, config, shipped assets and docs
-stage: draft
+stage: green
 owner: ruud
 repos: []
 branch: harness/Q-0033/integration
 priority: p2
 created: 2026-08-22
 depends_on: Q-0006
-iterations: {}
-history: []
+iterations:
+  solutioning.architecture-review: 1
+  qa-red.scenario-review: 4
+  development.integrate: 2
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-22T22:21:48.757Z
+    cost: 4.485
+  - stage: solutioned
+    run: 2
+    flow: solutioning
+    status: completed
+    stage_before: requirements
+    stage_after: solutioned
+    at: 2026-08-22T22:50:12.672Z
+    cost: 6.232
+  - stage: red
+    run: 3
+    flow: qa-red
+    status: completed
+    stage_before: solutioned
+    stage_after: red
+    at: 2026-08-23T15:23:56.436Z
+    cost: 4.721
+  - stage: red
+    run: 4
+    flow: development
+    status: exhausted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T15:40:34.554Z
+    cost: 0
+  - stage: red
+    run: 4
+    flow: development
+    status: aborted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T15:52:33.759Z
+    cost: 0
+  - stage: solutioned
+    run: 5
+    flow: qa-red
+    status: failed
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:02:53.635Z
+    cost: 2.187
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T18:59:54.836Z
+    cost: 0
+  - stage: solutioned
+    run: 6
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T19:11:23.602Z
+    cost: 10.626
+  - stage: solutioned
+    run: 7
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T19:56:21.620Z
+    cost: 0
+  - stage: solutioned
+    run: 7
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T20:00:23.259Z
+    cost: 10.964
+  - stage: solutioned
+    run: 8
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T20:29:40.260Z
+    cost: 0
+  - stage: solutioned
+    run: 8
+    flow: qa-red
+    status: aborted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T21:19:48.120Z
+    cost: 7.473
+  - stage: solutioned
+    run: 9
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-23T21:37:55.402Z
+    cost: 0
+  - stage: red
+    run: 9
+    flow: qa-red
+    status: completed
+    stage_before: solutioned
+    stage_after: red
+    at: 2026-08-23T21:52:51.801Z
+    cost: 4.909
+  - stage: green
+    run: 10
+    flow: development
+    status: completed
+    stage_before: red
+    stage_after: green
+    at: 2026-08-23T22:46:02.174Z
+    cost: 14.462
 ---
 The second half of the review flow, split out of Q-0006 on 2026-08-22 because thirty acceptance
 criteria in one ticket hit the iteration bound at every stage. Q-0006 builds the engine — round
