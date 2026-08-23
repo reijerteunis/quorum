@@ -153,20 +153,17 @@ steps:
     - id: pm-claude
       role: product-manager
       adapter: claude
-      model: opus
       input: { backlog: [ticket.md], harness: [rules.md, architecture.md, product-context.md] }
       output: { write: requirements/candidate-claude.md }
     - id: pm-codex
       role: product-manager
       adapter: codex
-      model: gpt-5
       input: { backlog: [ticket.md], harness: [rules.md, architecture.md, product-context.md] }
       output: { write: requirements/candidate-codex.md }
 
   - id: head-of-product
     role: head-of-product
     adapter: claude
-    model: opus
     input: { backlog: [ticket.md, requirements/candidate-*.md] }
     output: { write: requirements/merged.md }
     instructions: >
@@ -188,7 +185,6 @@ steps:
   - id: architect
     role: principal-architect
     adapter: codex
-    model: gpt-5
     worktree: true                       # may read the repo, may write contracts/
     input: { backlog: [requirements/merged.md], harness: [architecture.md, rules.md], repo: true }
     output:
@@ -201,13 +197,11 @@ steps:
   - id: architecture-review
     role: architecture-reviewer
     adapter: claude
-    model: opus
     input: { backlog: [requirements/merged.md, solution/draft.md, solution/contracts/, solution/tasks.yaml], repo: true }
     output: { write: solution/review.md, verdict: approve|revise }
     on_fail: { goto: architect, max_iterations: 2, on_exhausted: gate }
   - id: finalize
     adapter: codex
-    model: gpt-5
     input: { backlog: [solution/draft.md, solution/review.md] }
     output: { write: solution/solution.md }
   - gate: human        # architect owner approves; contracts are committed to the ticket branch
@@ -261,8 +255,7 @@ steps:
     fan_out: { from: solution/tasks.yaml, by: role, respect: depends_on }
     step:
       role: "developer-{role}"           # harness/roles/developer-backend.md etc.
-      adapter: "{role.adapter}"           # per-role adapter/model from harness/roles
-      model: "{role.model}"
+      adapter: "{role.adapter}"           # per-role adapter from harness/roles
       worktree: true
       branch: "harness/T-{id}/{task.id}"
       base: "harness/T-{id}/integration"              # includes contracts + red tests
@@ -273,7 +266,6 @@ steps:
   - id: integrate
     type: integrate
     adapter: claude
-    model: sonnet
     branches: "harness/T-{id}/*"
     into: "harness/T-{id}/integration"
     run_tests: true
@@ -286,7 +278,7 @@ steps:
   - gate: human        # optional in practice; flip to auto once trusted
 ```
 
-Roles example `harness/roles/developer-frontend.md` frontmatter: `adapter: claude, model: sonnet, paths: [apps/web/**]`; `developer-backend.md`: `adapter: codex, model: gpt-5, paths: [apps/api/**]`. Mixing vendors across roles is how you get genuine multi-model development.
+Roles example `harness/roles/developer-frontend.md` frontmatter: `adapter: claude, paths: [apps/web/**]`; `developer-backend.md`: `adapter: codex, paths: [apps/api/**]`. Mixing vendors across roles is how you get genuine multi-model development without pinning model names that may not be available through an adopter's subscription.
 
 ### 5.5 `review.yaml` — Claude + Codex panel, loops to development
 
@@ -354,7 +346,6 @@ steps:
   - id: exploratory
     role: automation-qa
     adapter: codex
-    model: gpt-5
     worktree: true
     input: { backlog: [requirements/merged.md, qa/scenarios.md], repo: true }
     instructions: >
@@ -364,7 +355,6 @@ steps:
     output: { append: qa/final-report.md, verdict: pass|dev|solution }
   - id: second-opinion
     adapter: claude
-    model: opus
     input: { backlog: [qa/final-report.md, requirements/merged.md, solution/solution.md] }
     output: { verdict: confirm|override, append: qa/final-report.md }
   - route:
@@ -384,7 +374,6 @@ produces: deployed
 steps:
   - id: release-notes
     adapter: claude
-    model: sonnet
     input: { backlog: [requirements/merged.md, solution/solution.md], diff: "harness/T-{id}..main" }
     output: { write: deploy/release-notes.md }
   - id: open-pr
