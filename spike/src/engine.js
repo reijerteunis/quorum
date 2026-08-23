@@ -289,6 +289,10 @@ function initialiseRunHistory(ctx) {
   const started = new Date();
   const runId = `${ctx.ticket.meta.id}-${ctx.runId}`;
   const runDir = path.join(ctx.repoDir, '.quorum', 'runs', runId);
+  const lastOutcome = ctx.ticket.meta.history?.at(-1);
+  if (lastOutcome?.stage_after && lastOutcome.stage_after !== ctx.ticket.meta.stage) {
+    throw new FlowError(`run directory allocation refused: ticket stage conflicts with existing run history (${lastOutcome.stage_after} != ${ctx.ticket.meta.stage})`);
+  }
   fs.mkdirSync(path.dirname(runDir), { recursive: true });
   fs.mkdirSync(runDir, { recursive: false });
   fs.mkdirSync(path.join(runDir, 'steps'));
@@ -304,7 +308,7 @@ function initialiseRunHistory(ctx) {
   };
   ctx.activeOccurrences = new Set();
   ensureExcluded(ctx.repoDir, '.quorum/');
-  replaceManifest(ctx);
+  replaceManifest(ctx, { fatal: true });
 }
 
 function allocateOccurrence(ctx, step, kind, fields = {}) {
@@ -339,7 +343,7 @@ function persistArtifact(ctx, occurrence, name, text) {
   catch (e) { ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`); }
 }
 
-function replaceManifest(ctx) {
+function replaceManifest(ctx, { fatal = false } = {}) {
   const target = path.join(ctx.history.dir, 'manifest.json');
   const temporary = `${target}.tmp`;
   let fd;
@@ -351,6 +355,7 @@ function replaceManifest(ctx) {
     fs.renameSync(temporary, target);
   } catch (e) {
     if (fd != null) try { fs.closeSync(fd); } catch { /* best effort */ }
+    if (fatal) throw new FlowError(`could not initialise run history at ${target}: ${e.message}`);
     ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`);
   }
 }
