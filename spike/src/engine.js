@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree } from './git.js';
-import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError } from './fanout.js';
+import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
 import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
 export { FlowError, lintFlow, lintFlowDirectory, validateFlowDirectory } from './lint.js';
@@ -469,7 +469,7 @@ async function runFanOut(step, ctx) {
   const { ui, ticket } = ctx;
   let tasks = loadTasks(ticket);
   if (step.fan_out.scope === 'failing-tasks-only' && ctx.failingTasks?.size) {
-    tasks = tasks.filter((t) => ctx.failingTasks.has(t.id));
+    tasks = scopeToFailing(tasks, ctx.failingTasks);
     ui.warn(`${step.id}: scoped to failing tasks: ${tasks.map((t) => t.id).join(', ')}`);
   }
   if (!tasks.length) throw new FlowError(`${step.id}: no tasks to fan out`);

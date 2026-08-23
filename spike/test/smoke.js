@@ -657,6 +657,27 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   fs.rmSync(gitRepo, { recursive: true, force: true });
 }
 
+// A scoped retry must not inherit dependencies on tasks it is not running. Q-0006 run 11 crashed
+// here: a conflict scoped the retry to one task whose depends_on named an already-merged sibling.
+{
+  const { waves, scopeToFailing } = await import('../src/fanout.js');
+  const all = [{ id: 'a', depends_on: [] }, { id: 'b', depends_on: ['a'] }];
+  assert(waves(all).length === 2, 'unscoped tasks still wave by depends_on');
+
+  let crashed = false;
+  try { waves([all[1]]); } catch { crashed = true; }
+  assert(crashed, 'waves() alone still rejects a depends_on it cannot resolve');
+
+  const scoped = scopeToFailing(all, new Set(['b']));
+  assert(scoped.length === 1 && scoped[0].id === 'b', 'scoping keeps only the failing task');
+  assert(scoped[0].depends_on.length === 0, 'a dependency on a merged sibling is dropped, not carried');
+  assert(waves(scoped).length === 1, 'the scoped retry runs in one wave instead of crashing');
+  assert(all[1].depends_on.length === 1, 'scoping does not mutate the loaded tasks');
+
+  const both = scopeToFailing(all, new Set(['a', 'b']));
+  assert(waves(both).length === 2, 'a dependency inside the scope is preserved');
+}
+
 if (smokeFailures) {
   console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
   process.exitCode = 1;

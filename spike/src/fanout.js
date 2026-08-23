@@ -22,6 +22,15 @@ export function loadTasks(ticket) {
   return YAML.parse(m).tasks ?? [];
 }
 
+// Narrow a fan-out to the tasks that still fail. A depends_on naming a task outside the scope is
+// already satisfied — that task succeeded and its branch is merged — so it is dropped rather than
+// left for waves() to report as an unresolvable cycle. Q-0006's run 11 crashed on exactly that.
+export function scopeToFailing(tasks, failing) {
+  const kept = tasks.filter((t) => failing.has(t.id));
+  const ids = new Set(kept.map((t) => t.id));
+  return kept.map((t) => ({ ...t, depends_on: (t.depends_on ?? []).filter((d) => ids.has(d)) }));
+}
+
 // Group tasks into waves: a task runs once all its depends_on are in earlier waves.
 export function waves(tasks) {
   const done = new Set(); const out = [];

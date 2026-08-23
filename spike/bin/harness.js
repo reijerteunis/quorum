@@ -16,6 +16,7 @@ import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
+import { IntegrationError } from '../src/fanout.js';
 import { validateFile } from '../src/contracts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -264,7 +265,7 @@ async function main() {
       try {
         const r = await runFlow({ flow, ticket, ...proj, ui, auto: Boolean(flags.auto), dry: Boolean(flags.dry) });
         process.exit(r.status === 'aborted' ? 2 : 0);
-      } catch (e) { if (e instanceof FlowError) die(e.message); throw e; }
+      } catch (e) { if (e instanceof FlowError || e instanceof IntegrationError) die(e.message); throw e; }
     }
     default:
       console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 9).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
