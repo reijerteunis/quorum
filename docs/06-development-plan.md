@@ -48,13 +48,19 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 **Done when**
 - Contracts emitted by the architect are concrete enough that QA's tests compile and fail on assertions (red proven by `integrate --expect fail`).
 - Two roles on two vendors fan out into worktrees, integrate, and reach green within 3 iterations.
-- The review flow (`review.yaml`, Claude + Codex panel → verdict → backward edge to development) exists and runs once.
+- The Q-0006 review engine and Q-0033 shipped surface are complete: `review.yaml` and
+  `code-reviewer` exist in repository and adopter templates, CLI/config/lint expose the
+  flow safely, the Claude + Codex panel reaches a verdict, and its derived backward edge
+  to development runs once.
 
 **Tickets**
 - Q-0004 qa-red on the M0 ticket. *(Done 2026-08-22 — the role needed no tuning; six engine defects did. See the DECISIONS entry "Red for the right reason is an engine property".)*
 - Q-0005 development fan-out; record merge-conflict rate and iterations to green.
-- Q-0006 Implement `review.yaml` + cross-flow backward edge (`goto: flow:development` regresses stage). *(Split 2026-08-22: Q-0006 is the engine half, Q-0033 the CLI/lint/assets/docs half. 30 criteria in one ticket hit the bound at every stage.)*
-- Q-0033 Review flow surface — CLI, lint, config, shipped assets and docs. Depends on Q-0006.
+- Q-0006 Review engine: round/diff materialisation, derived cross-flow regression,
+  counters, retry/exhaustion, rework sync, audit, and failure containment. *(Split
+  2026-08-22 after 30 criteria hit the bound at every stage.)*
+- Q-0033 Review surface: CLI, lint, config, shipped `review.yaml` and `code-reviewer`
+  assets, and aligned docs. Depends on Q-0006.
 - Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters.
 
 **Risk it retires:** the contracts-before-tests mechanism and multi-vendor worktree integration.
