@@ -36,4 +36,8 @@
 
 **Cross-vendor rule**: `cross_vendor: required` — a lint guaranteeing the reviewer/judge of an artifact runs on a different adapter than its writer.
 
+**Panel**: A parallel group of reviewing or judging steps over the same input, spanning more than one
+adapter. The review flow's Claude + Codex reviewers are a panel; `cross_vendor: required` is satisfied
+by the panel spanning vendors, not by writer ≠ reviewer.
+
 **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).

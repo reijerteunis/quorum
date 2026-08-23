@@ -1,10 +1,10 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-22. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-24 — M1 closed. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
-**Q-0011 run history on disk**, pulled forward from M2, because Q-0006's four serial single-role
+**Q-0011 run history on disk**, pulled forward from M2, because Q-0006's serial single-role
 tasks cannot demonstrate "two roles on two vendors". Q-0006 still ships in M1 as the review flow
 itself — it is the wrong vehicle for the fan-out demo, not the wrong feature. M1's `development`
 fan-out therefore runs on Q-0011, with the new repo-local `developer-tooling` role (claude) beside
@@ -41,24 +41,32 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 
 ---
 
-## M1 — Red → green on a real repo (≈ 1 week)
+## M1 — Red → green on a real repo (≈ 1 week) — ✅ closed 2026-08-24
 
 **Goal:** `qa-red` and `development` with fan-out and integrate on real code, followed by the bounded review engine and its shipped human-facing surface.
 
 **Done when**
-- Contracts emitted by the architect are concrete enough that QA's tests compile and fail on assertions (red proven by `integrate --expect fail`).
+- Contracts emitted by the architect are concrete enough that QA's tests compile and fail on assertions (red proven by a `type: integrate` step with `expect: fail`).
 - Two roles on two vendors fan out into worktrees, integrate, and reach green within 3 iterations.
 - Q-0006's review engine provides round numbering, diff materialisation, bounded cross-flow regression, retry/exhaustion semantics, rework sync, audit, and failure containment.
 - Q-0033's review surface ships `review.yaml` and `code-reviewer`, repository defaults and init behavior, whole-directory lint/run preflight, explicit gate answers, and matching documentation; the flow runs once with a Claude + Codex panel and a derived backward edge to development's consumed stage.
 
 **Tickets**
 - Q-0004 qa-red on the M0 ticket. *(Done 2026-08-22 — the role needed no tuning; six engine defects did. See the DECISIONS entry "Red for the right reason is an engine property".)*
-- Q-0005 development fan-out; record merge-conflict rate and iterations to green.
+- Q-0005 development fan-out; record merge-conflict rate and iterations to green. *(Never created as a ticket — the work was done inside Q-0011 and Q-0033 and is recorded there.)*
+- Q-0011 Run history on disk *(pulled forward from M2; green 2026-08-23 — M1's first two-vendor fan-out)*.
 - Q-0006 Implement `review.yaml` + cross-flow backward edge (`goto: flow:development` regresses stage). *(Split 2026-08-22: Q-0006 is the engine half, Q-0033 the CLI/lint/assets/docs half. 30 criteria in one ticket hit the bound at every stage.)*
 - Q-0033 Review flow surface — CLI, lint, config, shipped assets and docs. Depends on Q-0006.
-- Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters.
+- Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters. *(Never created — `scope: failing-tasks-only` shipped with the fan-out and is exercised by Q-0033.)*
 
 **Risk it retires:** the contracts-before-tests mechanism and multi-vendor worktree integration.
+
+*Closed 2026-08-24 — see the DECISIONS entry. All four criteria met: red proven on three tickets,
+a five-task two-vendor fan-out green in three iterations, and the review flow run end to end with
+its backward edge regressing a ticket. Q-0005 and Q-0007 were never created as tickets: the fan-out
+and targeted-retry work they describe was done inside Q-0011 and Q-0033 and is recorded there.
+Five items are carried into M2, of which two — no lock on a ticket, and a review backward edge with
+no red phase — should be settled before M3's daemon makes concurrent runs ordinary.*
 
 ---
 
@@ -77,7 +85,7 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 - Q-0008 Monorepo scaffold + CI.
 - Q-0009 Port core to TypeScript with schemas (one ticket per module is fine).
 - Q-0010 CLI package; `npx quorum` entry.
-- Q-0011 Run history on disk: `.quorum/runs/<id>/` with events.jsonl per step, cost roll-up.
+- ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
 - Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven flows.
 
 ---
