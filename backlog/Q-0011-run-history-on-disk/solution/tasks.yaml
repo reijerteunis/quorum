@@ -1,0 +1,32 @@
+tasks:
+  - id: q0011-engine-writer
+    role: backend
+    title: Persist atomic run manifests, attempt artifacts, usage and per-vendor roll-ups
+    description: >
+      Own spike/src/**, docs/03-adapter-contract.md, docs/04-architecture.md,
+      docs/GLOSSARY.md, and docs/DECISIONS.md. Implement the engine writer against the
+      referenced frozen contracts. Document the expanded adapter usage/result/error boundary,
+      the .quorum/runs/ layout, the run-history glossary term, and the annotation-driven
+      semantic-validation decision. Do not edit contracts/Q-0011/**, spike/bin/**,
+      spike/test/**, or backlog/Q-0011-run-history-on-disk/ticket.md; spike/test/** belongs
+      to qa-red.
+    contracts:
+      - contracts/Q-0011/run-manifest.schema.json
+      - contracts/Q-0011/run-history-writer.contract.md
+      - contracts/Q-0011/mock-adapter-run-history.contract.md
+      - backlog/Q-0011-run-history-on-disk/solution/errata.md
+    depends_on: []
+  - id: q0011-cli-reader-validator
+    role: tooling
+    title: Implement harness runs and executable manifest semantic validation
+    description: >
+      Own spike/bin/harness.js. Implement the CLI reader and semantic validator against the
+      referenced frozen contracts. Do not edit contracts/Q-0011/**, spike/src/**, or
+      spike/test/**; spike/test/** belongs to qa-red.
+    contracts:
+      - contracts/Q-0011/run-manifest.schema.json
+      - contracts/Q-0011/run-history-writer.contract.md
+      - contracts/Q-0011/runs-cli.contract.md
+      - contracts/Q-0011/mock-adapter-run-history.contract.md
+      - backlog/Q-0011-run-history-on-disk/solution/errata.md
+    depends_on: []

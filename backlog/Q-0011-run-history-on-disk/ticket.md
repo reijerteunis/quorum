@@ -66,6 +66,14 @@ history:
     stage_after: requirements
     at: 2026-08-23T00:59:06.177Z
     cost: 0
+  - stage: requirements
+    run: 5
+    flow: solutioning
+    status: aborted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-23T01:18:15.146Z
+    cost: 3.624
 ---
 Everything a run knows today dies with the terminal it printed to. `runs.log` keeps one line per
 step and the ticket keeps a cost per run, but the traces, the prompts, the per-vendor token
