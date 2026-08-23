@@ -1,248 +1,261 @@
 # Q-0011 — Run history on disk with per-vendor roll-up
 
-*Solution, revision 4. Contracts branch: `harness/Q-0011/contracts`.*
+## Status
+
+Revision 7, addressing every finding in `solution/review.md`.
+
+The 2026-08-23 scope cut is authoritative: Q-0011 persists a manifest plus per-attempt prompt and output files. It does not persist an event stream and does not add JSONL validation.
+
+The two requirement errata are normative:
+
+- E-1: only occurrences with non-null usage participate in the roll-up.
+- E-2: schemas annotated `x-quorum-contract: run-manifest-v1` receive contract-specific semantic validation after JSON Schema validation.
 
 ## Chosen approach
 
-Implement a file-backed run-history writer in the engine and a read-only presentation layer in the CLI, separated by committed contracts.
+### Files are the persistence boundary
 
-Before a non-dry run can spawn work, the engine exclusively creates `.quorum/runs/<ticket-id>-<n>/`, excludes `.quorum/` through `.git/info/exclude`, and atomically writes the initial `manifest.json`. Each step attempt receives a chronologically allocated directory containing append-only events and, where applicable, the exact prompt and output.
+A non-dry run exclusively creates `.quorum/runs/<ticket-id>-<n>/` before any adapter or command can be billed. It writes:
 
 ```text
 .quorum/runs/<ticket-id>-<n>/
 ├── manifest.json
 └── steps/
-    └── <four-digit-seq>-<sanitised-step-id>/
-        ├── events.jsonl
-        ├── prompt.txt       # adapter occurrences only
-        └── output.txt       # when textual output exists
+    └── <seq>-<sanitised-step-id>/
+        ├── prompt.txt      # adapter attempts only
+        └── output.txt
 ```
 
-The occurrence sequence is padded to four digits (`0001`) and grows naturally beyond four digits after `9999`. `/` and `:` in step ids become `-`. Allocation occurs synchronously in start order, so retries, backward edges and parallel fan-out cannot overwrite one another.
+The engine owns all writes. The CLI reads manifests without repairing or inferring persisted state. Existing `ticket.md` history and `runs.log` formats remain unchanged.
 
-Adapters translate vendor-native output into vendor-neutral `{type, data}` payloads. They do not construct persisted envelopes. The occurrence writer serially stamps `schema_version`, a UTC timestamp ending in `Z`, and a contiguous per-occurrence `seq`.
+### One versioned manifest is the source of truth
 
-Inner adapters return usage but never emit `usage` events. The retry wrapper is the first layer with the complete aggregate across attempts, so it emits exactly one final `usage` event when the successful result or billed thrown error contains usage. It emits no usage event when no usage was reported. The same aggregate is copied into the manifest occurrence and counted once in the roll-up.
+`manifest.json` contains run identity, lifecycle state, occurrence records, usage, errors, and the per-vendor roll-up. Keeping the roll-up in the manifest gives readers one atomic snapshot and avoids disagreement between independently replaced files.
 
-The manifest is both the run snapshot and the per-vendor roll-up. Ordinary replacements pass through one engine-owned queue and use a complete same-directory temporary file, fsync/close and rename. Signal finalisation uses the synchronous equivalent before exit and supersedes queued older snapshots. There is no separate roll-up file.
+The manifest starts with `status: running`. After every terminal occurrence and at run termination, the engine mutates one in-memory snapshot and replaces the file synchronously using a complete same-directory temporary file, `fsync`, close, and rename. JavaScript event-loop execution serialises parallel completions. Signal finalisation uses the same synchronous path, so it cannot race an asynchronous writer over a shared temporary file.
 
-The CLI resolves the project through the existing `findProject()` and `loadProject()` path and reads `<repoDir>/.quorum/runs/`. After selecting a run, it reads only inside that run directory. `harness runs` supplies list and detail views without repairing or inferring state. `harness validate` treats JSONL as independently validated JSON documents and applies Q-0011 stream invariants only when the schema `$id` identifies the Q-0011 event schema.
+A `SIGKILL` or power loss may leave a valid `running` manifest. Readers label it incomplete and never repair it.
 
-No dependency is added. The design uses the existing Node.js filesystem APIs, Ajv validator, adapter callback, git exclusion helper and CLI entry point.
+### Occurrences represent work that actually runs
 
-## Usage and roll-up semantics
+An occurrence is allocated synchronously immediately before an adapter spawn or script/integrate execution. Gates and fan-out parents allocate none. Each materialised fan-out task, retrying traversal, or backward-edge revisit gets a fresh directory.
 
-Usage preserves exactly what the vendor reported. Every measure is a non-negative number or `null`; missing values are never changed to zero or estimated.
+Sequence numbers begin at `001`, sort in start order, continue beyond `999`, and never truncate. `/` and `:` in step ids become `-`.
 
-`input_tokens` is the vendor-reported total input. Cached-read and cache-write fields are informational subsets and are not added to it. `output_tokens` includes reported reasoning-output tokens.
+Adapter attempts persist the exact assembled prompt before spawn and the final or raw-invalid output when available. Script and integrate occurrences have no prompt and always have an output file, even when empty. Text is unbounded in Q-0011; no silent truncation is permitted.
 
-The roll-up groups final non-null occurrence usage by `usage.vendor`:
+### Adapter usage is vendor-neutral and per call
 
-- `step_count` counts included adapter occurrences once each.
-- `unpriced_steps` counts included usage objects whose `cost_usd` is null.
-- Each numeric measure is summed over reported values only and is null when no included occurrence reported it.
-- A token-only vendor therefore has `cost_usd: null`, never zero.
-- Script, integrate and gate occurrences do not create vendor entries.
-- No cross-vendor monetary total is produced.
+Adapters and the retry wrapper expose one usage shape:
 
-An adapter occurrence that fails before reporting usage remains visible in manifest detail with `usage: null`, but emits no usage event and creates no roll-up entry. This narrowly supersedes AC-11’s phrase “per vendor that ran an adapter step” and is recorded as E-1 in `solution/errata.md`, referenced from `ticket.md`. It preserves the stronger invariant that every roll-up row can be reproduced exactly from persisted final usage events without inferring a billing vendor from routing metadata.
-
-## Status, errors and interruption
-
-Occurrences begin `running`. `step_completed` terminates them as `completed`, `aborted`, `regressed` or `exhausted`; `step_failed` terminates them as `failed` or `interrupted`.
-
-A gate answer is a successful gate occurrence whose answer is stored as its verdict. An `abort` answer then makes the run `aborted`. A backward-edge declaration makes its adapter occurrence `regressed`. An occurrence reaching its traversal limit is `exhausted`. Ctrl-C and `SIGTERM` make active occurrences and the run `interrupted`.
-
-Error categories are executable enums shared by the manifest and event schemas:
-
-| Category | Producing path |
-| --- | --- |
-| `auth` | Adapter failure identified by `authError()` |
-| `transient` | Retryable adapter failure identified by `transientError()` |
-| `structured_output` | `FlowError` caused by invalid structured output |
-| `adapter` | Other adapter failure |
-| `script` | Script-step failure |
-| `integrate` | Integration-step failure |
-| `interrupted` | Ctrl-C or `SIGTERM` |
-| `unknown` | Explicit fallback for an older or otherwise uncategorised path |
-
-Retry events retain both their reason class and nullable vendor message. The live renderer continues printing the message when present.
-
-## Persistence guarantees
-
-- The initial run directory and manifest exist before any adapter, script, integration or gate is spawned.
-- Existing or uncreatable run directories are fatal before billing; dry runs write nothing.
-- Events are appended as complete UTF-8 JSON objects followed by newlines.
-- Event sequence numbers start at one and have no gaps within an occurrence.
-- Prompts and outputs are stored byte-for-byte and are not redacted.
-- Spawn records persist argv only; environment objects and values are never persisted.
-- Persisted paths are relative to the project root.
-- Manifest updates are complete atomic replacements serialised by the engine.
-- History append failures warn and disable further writes for the affected artifact without cancelling already-billed work.
-- A billed throw preserves its full error and accumulated usage before propagation.
-- Text and output remain unbounded. A future bound would require measured evidence, a UTF-8 rule and an explicit truncation event.
-
-## Contracts
-
-The following files exist under `contracts/Q-0011/` and are frozen inputs to QA and development:
-
-| Contract | Kind | Purpose |
-| --- | --- | --- |
-| `contracts/Q-0011/run-events.schema.json` | JSON Schema 2020-12 | Strict event envelope and per-type data shapes, UTC timestamps, usage, retry messages and error-category enum. |
-| `contracts/Q-0011/run-manifest.schema.json` | JSON Schema 2020-12 | Strict manifest, four-or-more-digit occurrence paths, UTC timestamps, occurrences, usage, errors and per-vendor roll-up. |
-| `contracts/Q-0011/run-history-writer.contract.md` | Behavioural interface | Adapter/retry boundary, usage emission, occurrence allocation, lifecycle, atomic writes, interruption, error mapping and roll-up algorithm. |
-| `contracts/Q-0011/mock-adapter-run-history.contract.md` | Deterministic test interface | Mock controls for multiple vendors, token-only usage, cache fields and preservation-only raw events. |
-| `contracts/Q-0011/runs-cli.contract.md` | CLI interface | Project-root resolution, selection, list/detail/JSON output, incompleteness, renderer behaviour and JSONL/manifest validation. |
-
-No migration skeleton is created because the requirement explicitly prohibits fabricating history from `runs.log`, `ticket.md` or terminal output.
-
-The schemas use `additionalProperties: false` on the manifest, event envelope and per-type payloads. `schema_version` is the compatibility escape hatch. Cross-document and stream invariants that JSON Schema cannot express are specified in the behavioural contracts and enforced by `harness validate` when the loaded schema has the corresponding Q-0011 `$id`.
-
-## Reader and validator behaviour
-
-`harness runs` distinguishes an exact existing run id from a ticket filter. Exact run-id matches win. Lists are most-recent-first and show each vendor separately, including cost or `n/a`, token counts and unpriced-step count, with no combined monetary total.
-
-Detail orders occurrences using the numeric occurrence prefix and shows adapter, model, status, start, duration, verdict, usage, error and relative occurrence path.
-
-A run is incomplete when it remains `running`, lacks a terminal time, references a missing events file, or contains malformed, truncated, schema-invalid or non-contiguous events. Complete preceding events may be shown, but the affected path is named and no repair or inferred terminal state is written.
-
-`--json` emits one ANSI-free JSON document and references event files by path rather than inlining them.
-
-For JSONL validation, the schema is parsed and compiled once per invocation and the same object is reused for all lines and files. Non-blank lines are parsed and validated independently, with errors reported as `<file>:<line>`. The contiguous sequence invariant applies only to the Q-0011 event schema `$id`.
-
-Manifest semantic validation additionally checks:
-
-- run and occurrence status/time consistency;
-- adapter/model/usage consistency;
-- unique occurrence directories and roll-up vendors;
-- roll-up equality with non-null occurrence usage and emitted final usage events;
-- null vendor cost when no included occurrence reported cost.
-
-## Verification ownership
-
-QA-red exclusively owns `spike/test/q0011-*.js`. Development tasks modify production and documentation files only. QA exercises existing entry points and real files under `.quorum/runs/`; it does not import a new internal run-history module.
-
-Coverage includes directory collisions, dry runs, exclusion, relative paths, environment-value absence, atomic parallel updates, signal finalisation, contiguous events, truncation, repeated and parallel occurrences, colon sanitisation, exact prompt/output bytes, billed failures, fail-before-usage exclusion, terminal status mappings, priced and token-only vendors, raw-event independence, retry aggregation, reader modes, malformed siblings, incomplete artifacts and all AC-14 validation failures.
-
-The first successful mock-adapter end-to-end run is the measurement point for directory size. QA records `du -sk .quorum/runs/<run-id>` as evidence without introducing retention or compression behaviour.
-
-## Sequencing and ownership
-
-The contracts branch lands before QA-red and development fan-out. Q-0033 must land before Q-0011 development because it overlaps `spike/bin/harness.js`, `docs/GLOSSARY.md` and `docs/DECISIONS.md`; Q-0011 rebases before fan-out.
-
-Production ownership remains disjoint:
-
-- backend/codex owns `spike/src/**` and the named documentation files;
-- tooling/claude owns `spike/bin/harness.js`;
-- QA owns `spike/test/q0011-*.js` before both development tasks begin.
-
-The generic task-role wording omits `tooling`, but the repository’s canonical architecture and executable `developer-tooling` role define it as the live Claude-owned CLI role. Substituting `frontend` would violate allowed paths; substituting `backend` would collapse the required multi-vendor seam.
-
-## Tasks
-
-```yaml
-tasks:
-  - id: q0011-engine-writer
-    role: backend
-    title: Persist vendor-neutral run history and per-vendor roll-ups
-    contracts:
-      - contracts/Q-0011/run-events.schema.json
-      - contracts/Q-0011/run-manifest.schema.json
-      - contracts/Q-0011/run-history-writer.contract.md
-      - contracts/Q-0011/mock-adapter-run-history.contract.md
-    depends_on: []
-
-  - id: q0011-cli-reader-validator
-    role: tooling
-    title: Add run-history inspection and executable JSONL validation
-    contracts:
-      - contracts/Q-0011/run-events.schema.json
-      - contracts/Q-0011/run-manifest.schema.json
-      - contracts/Q-0011/runs-cli.contract.md
-    depends_on: []
+```text
+vendor
+input_tokens
+output_tokens
+cached_input_tokens
+cache_write_input_tokens
+cost_usd
 ```
 
-`q0011-engine-writer` owns `spike/src/**`, `docs/03-adapter-contract.md`, `docs/04-architecture.md`, `docs/GLOSSARY.md` and `docs/DECISIONS.md`. It must not modify `spike/bin` or `spike/test`.
+Unknown measures are `null`, never inferred or changed to zero. Input totals already include vendor-reported cache components, and output totals preserve reported reasoning tokens.
 
-`q0011-cli-reader-validator` owns `spike/bin/harness.js`, including the live renderer migration. It must not modify `spike/src` or `spike/test`.
+The vendor comes from the adapter’s per-call declaration: `result.vendor` on success or `error.vendor` on a billed failure. The static `adapter.vendor` is only a fallback when the call declares none. The engine never derives billing provenance from an adapter routing name.
 
-The tasks intentionally have no dependency on each other. Their shared prerequisites are the landed contracts, QA-red artifacts and the Q-0033 rebase.
+The mock adapter’s role-keyed profile sets the per-call vendor on success and billed failure. This makes one real mock run capable of producing separate priced and token-only vendor rows without invoking a real CLI.
 
-## Acceptance-criteria mapping
+### Roll-up is reproducible from persisted usage
 
-| Acceptance criteria | Owner | Contracts |
-| --- | --- | --- |
-| AC-1–AC-6 | `q0011-engine-writer` | writer, manifest and event contracts |
-| AC-7 | writer plus CLI renderer migration | event, writer, mock and CLI contracts |
-| AC-8–AC-11 | `q0011-engine-writer` | manifest, event, writer and mock contracts; erratum E-1 |
-| AC-12–AC-13 | `q0011-cli-reader-validator` | CLI, manifest and event contracts |
-| AC-14 | `q0011-cli-reader-validator` | both schemas and CLI contract |
+Occurrences with `usage: null` remain visible in detail but create no vendor row. For each vendor represented by non-null usage:
+
+- `step_count` counts each occurrence once;
+- `unpriced_steps` counts occurrences whose `cost_usd` is null;
+- each token or cost measure sums reported values only;
+- a measure is null when no included occurrence reported it.
+
+There is no cross-vendor money total. Script, integrate, gate, and fan-out-parent activity creates no vendor row. Nothing is written back to existing ticket accounting.
+
+### Exhaustion remains reserved but is not emitted
+
+The version-1 schema retains `exhausted` in its status enums as a compatibility escape hatch for the engine vocabulary. Q-0011 does not write it to a manifest. The existing exhaustion event updates ticket history and execution continues to a gate; the manifest ultimately records the actual terminal outcome such as `aborted`, `regressed`, or `completed`. QA must not require an exhausted manifest fixture.
+
+### Git exclusion is explicit
+
+The writer resolves the repository’s real Git directory, including linked worktrees where `.git` is a file, and adds `.quorum/` to the applicable `info/exclude`. Failure to resolve or update that file produces a warning naming the path and never returns silently. Supported normal and linked-worktree cases must leave `git status` unchanged.
+
+### Reader remains a CLI-owned implementation
+
+`harness runs` is implemented in `spike/bin/harness.js`; no reusable reader is added to `spike/src`.
+
+Selection is deterministic:
+
+- an exact existing run-directory name selects detail;
+- otherwise `^[A-Z]+-[0-9]{4}$` selects a ticket filter;
+- a syntactically valid ticket with no runs returns an empty list and exit 0;
+- any other unknown value is an unknown-run error and exits non-zero.
+
+Lists sort by `started_at` descending and then `run_id` ascending. Malformed siblings are named without hiding valid runs, and make the final exit non-zero.
+
+Human output keeps vendors separate and states unpriced steps. JSON mode emits exactly one JSON document without ANSI output.
+
+### Validation combines structure and semantics
+
+The existing JSON/YAML parser remains unchanged. JSON Schema 2020-12 checks structure, required fields, additional properties, timestamps, relative paths, enums, and non-negative measures.
+
+When a schema carries `x-quorum-contract: run-manifest-v1`, `harness validate` additionally checks occurrence uniqueness, lifecycle consistency, occurrence-kind nullability, unique vendors, and exact roll-up recomputation. This catches a token-only roll-up mutated from `null` to `0`, which JSON Schema alone cannot distinguish from a genuinely reported zero.
+
+An absent or unknown annotation prints an explicit semantic-check-skipped notice.
 
 ## Rejected alternatives
 
-### Persist vendor-native JSONL
+### Persisting `events.jsonl`
 
-Rejected because every reader would branch on adapter identity, freezing current Claude and Codex formats into the M2 and M3 interface.
+Rejected by the scope cut. The earlier event model mixed unstable occurrence ordering, deletable raw records, and adapter-only data. A trace contract should be designed with its eventual renderer in M3.
 
-### Have inner adapters emit usage events
+### A separate `rollup.json`
 
-Rejected because an inner adapter knows only one retry attempt. Only the retry wrapper has the final aggregate required for one-event-per-occurrence accounting.
+Rejected because two atomic files can still describe different snapshots. Embedding the roll-up in the manifest gives readers one consistency boundary and one schema.
 
-### Emit an empty usage event when no usage was reported
+### Deriving vendor from adapter routing
 
-Rejected because the schema requires a vendor and the engine would have to infer one from routing metadata. That would make recomputation disagree with the manifest or fabricate accounting data.
+Rejected because an adapter name is routing metadata, not necessarily billing provenance. Per-call adapter declarations support deterministic multi-vendor tests and future adapters without teaching the engine vendor-specific rules.
 
-### Count null-usage failures as unpriced
+### Pricing token-only vendors
 
-Rejected and recorded as requirement erratum E-1. “No accounting report” is different from “usage reported without a price”; only the latter increments `unpriced_steps`.
+Rejected by the tokens-only decision. No rate table, inferred price, user-supplied rate, or blended total is introduced.
 
-### Have adapters emit complete persisted envelopes
+### Asynchronous manifest writes with a shared temporary path
 
-Rejected because adapters do not know run occurrence, timestamp policy or sequence allocation. The occurrence writer stamps envelopes at append time.
+Rejected because signal finalisation could race an in-flight write or rename. Small synchronous local JSON replacements are predictable and make serialization explicit.
 
-### Separate `rollup.json`
+### A reusable reader under `spike/src`
 
-Rejected because it creates a second atomic document and a manifest-versus-roll-up inconsistency state.
+Rejected because it would create an unnecessary cross-role dependency for code scheduled to be replaced during the M2 TypeScript port. The current CLI can use the already exported contract helpers.
 
-### Reusable reader under `spike/src/`
+### Looking in `backlog/` to identify ticket filters
 
-Rejected because the current consumer is one CLI command, M2 will replace the spike, and it would create an unnecessary cross-role production dependency.
+Rejected because history reading must remain confined to `.quorum/runs/` after selection. A documented syntax gives deterministic empty-list versus unknown-run behavior.
 
-### Hand-built multi-vendor fixtures
+### Repairing incomplete manifests
 
-Rejected because AC-14 requires validation against real engine artifacts. Contracted mock controls generate those artifacts through the actual engine path.
+Rejected because the reader cannot safely infer why execution stopped. It reports incompleteness and names the manifest.
 
-### Asynchronous signal finalisation
+### Changing `ticket.md` history or `runs.log`
 
-Rejected because `process.exit` does not drain pending promises. A synchronous temporary-file replacement bounds the interrupt path.
+Rejected because their formats are frozen by concurrent work. The run-directory naming rule supplies the join without creating merge conflicts or double-counting cost.
 
-### Compile the schema for every JSONL line
+### Retention, resumption, UI, and trace rendering
 
-Rejected because repeated `$id` registration can fail in Ajv and compilation per line is unnecessary.
+Rejected as separable later work. This ticket establishes the durable record and human CLI only.
 
-### Generic sequence validation for all JSONL
+## Contracts
 
-Rejected because other JSONL contracts need not contain `seq`. The invariant is keyed to the Q-0011 event schema `$id`.
+All contracts are committed under `contracts/Q-0011/` before QA or development fan-out.
 
-### Bound or silently truncate text
+| Contract | Kind | Purpose |
+| --- | --- | --- |
+| `contracts/Q-0011/run-manifest.schema.json` | JSON Schema 2020-12 | Executable version-1 manifest structure, strict fields, statuses, occurrences, usage, errors, and vendor roll-ups. |
+| `contracts/Q-0011/run-history-writer.contract.md` | Engine interface and persistence contract | Run initialization, exclusion, synchronous atomic replacement, occurrence allocation, files, status mapping, per-call vendor propagation, and roll-up algorithm. |
+| `contracts/Q-0011/mock-adapter-run-history.contract.md` | Test-adapter stub contract | Deterministic priced/token-only profiles, cache usage, per-call vendor declarations, billed failure, and retry-attempt fixtures. |
+| `contracts/Q-0011/runs-cli.contract.md` | CLI and semantic-validator contract | Selection grammar, ordering, human/JSON output, incomplete-run behavior, malformed siblings, and annotation-driven semantic checks. |
 
-Rejected because there is no measured need or safe truncation contract. A later bound requires an explicit event and UTF-8-safe rule.
+No migration skeleton is created: existing history is not migrated or fabricated.
 
-### Change `ticket.md`, `runs.log`, worktree naming or add migration
+## Acceptance-criteria ownership
 
-Rejected as explicitly out of scope and conflict-prone. Run-directory naming supplies the required join without rewriting existing formats.
+| Criteria | Owner |
+| --- | --- |
+| AC-1–AC-5, AC-8–AC-11 | `q0011-engine-writer` |
+| AC-12–AC-14 | `q0011-cli-reader-validator` |
+| AC-6, AC-7 | Removed by scope cut; no implementation task |
 
-## Review disposition
+Each live criterion has exactly one owner.
 
-Every round-three finding is addressed:
+## Tasks
 
-- **B6:** `run-history-writer.contract.md` now assigns final usage emission to the retry wrapper after aggregation and prohibits inner adapters from emitting usage payloads.
-- **B7:** a usage event is emitted if and only if the result or billed throw reported usage; recomputation is defined over those final events.
-- **M11:** both schemas now use the same error-category enum, and the writer contract maps every engine path to a category.
-- **M12:** retry data now carries required nullable `message`, and the CLI contract preserves renderer output for it.
-- **M13:** occurrence prefixes are four digits and grow naturally after `9999`; the manifest schema requires four or more digits.
-- **M14:** null-usage exclusion is recorded as dated erratum E-1, explicitly superseding the named AC-11 phrase and referenced from `ticket.md`.
-- **N9:** manifest and event timestamps require RFC 3339 `date-time` values ending in `Z`.
-- **N10:** the CLI contract locates `.quorum/runs/` from the resolved `repoDir`, including when invoked from a subdirectory.
+The repository’s live `tooling` role is used for the CLI task because `harness/architecture.md` assigns `spike/bin/` and `spike/test/` to it; the generic three-role vocabulary in the stage output contract predates that repository-specific role. Using `backend` for the CLI would collapse the required two-vendor fan-out and contradict the repository’s current write contract.
 
-All previously accepted round-one and round-two corrections remain in force.
+```yaml
+- id: q0011-engine-writer
+  role: backend
+  title: Persist atomic run manifests, attempt artifacts, usage and per-vendor roll-ups
+  contracts:
+    - contracts/Q-0011/run-manifest.schema.json
+    - contracts/Q-0011/run-history-writer.contract.md
+    - contracts/Q-0011/mock-adapter-run-history.contract.md
+  depends_on: []
+  owns:
+    - spike/src/**
+    - docs/03-adapter-contract.md
+    - docs/04-architecture.md
+    - docs/GLOSSARY.md
+    - docs/DECISIONS.md
+    - backlog/Q-0011-run-history-on-disk/ticket.md
+  acceptance_criteria:
+    - AC-1
+    - AC-2
+    - AC-3
+    - AC-4
+    - AC-5
+    - AC-8
+    - AC-9
+    - AC-10
+    - AC-11
+
+- id: q0011-cli-reader-validator
+  role: tooling
+  title: Implement harness runs and executable manifest semantic validation
+  contracts:
+    - contracts/Q-0011/run-manifest.schema.json
+    - contracts/Q-0011/run-history-writer.contract.md
+    - contracts/Q-0011/runs-cli.contract.md
+    - contracts/Q-0011/mock-adapter-run-history.contract.md
+  depends_on:
+    - q0011-engine-writer
+  owns:
+    - spike/bin/harness.js
+    - spike/test/q0011-*.js
+  acceptance_criteria:
+    - AC-12
+    - AC-13
+    - AC-14
+```
+
+The dependency is contractual and test-facing: the contracts land before fan-out, so CLI implementation can proceed independently, while its real-artifact integration assertions run once the writer is available. The owned source files remain disjoint.
+
+## Verification
+
+The regression suite must cover:
+
+- refusal before spawn when the run directory exists or cannot be created;
+- no artifacts for dry runs;
+- normal repositories and linked worktrees remaining clean;
+- explicit exclusion warnings instead of silent failure;
+- sentinel environment values and switch names absent from persisted files;
+- atomic readable manifests and two parallel completions without lost records;
+- synchronous Ctrl-C/SIGTERM finalisation as interrupted;
+- backward-edge repeat directories and a fan-out id containing `:`;
+- gates and fan-out parents allocating no occurrence;
+- exact prompt and output bytes, including raw invalid structured output;
+- successful and billed-failure usage with actual retry attempts;
+- distinct priced and token-only vendors from role-keyed mock profiles;
+- null-usage failures visible in detail but absent from roll-up;
+- exact roll-up recomputation with no cross-vendor total;
+- list, ticket-filter, detail, incomplete, malformed-sibling, unknown-id, and JSON-only CLI behavior;
+- real-artifact schema validation success;
+- failures for missing required fields, negative tokens, extra properties, and a token-only roll-up mutated from null to zero;
+- explicit skipped-semantic-check notices for absent or unknown annotations;
+- the existing mock-adapter end-to-end regression suite remaining green.
+
+Repository commands remain those configured in `harness.yaml`; no dependency or test-runner discovery change is required.
+
+## Review findings resolved
+
+- **B-1:** The writer now takes vendor provenance from `result.vendor` or `error.vendor`, with static `adapter.vendor` only as fallback. The mock profile explicitly sets both per-call success and failure declarations.
+- **B-2:** `ticket.md` removes the event-file and event-schema promises and points QA and development to the scope cut and normative errata. The backend task owns the edit.
+- **M-3:** The CLI contract defines the ticket-filter pattern as `^[A-Z]+-[0-9]{4}$`.
+- **M-4:** `exhausted` is schema-reserved but never emitted by Q-0011; the existing ticket-history event does not terminate a run.
+- **M-5:** `docs/03-adapter-contract.md` is owned by the backend task and will document the expanded usage/result/error boundary.
+- **N-6:** All manifest replacements, including signal finalisation, use the same synchronous write/fsync/close/rename path.
+- **N-7:** Git-directory resolution covers linked worktrees, and exclusion failure emits a named warning rather than returning silently.
+
+The review’s settled decisions remain unchanged: two disjoint implementation surfaces, no event stream, roll-up inside the manifest, annotation-driven semantic validation, no fan-out-parent occurrence, one occurrence for commandless integrate, unbounded prompt/output text, deterministic list ordering, and the reader remaining in `spike/bin`.

@@ -7,7 +7,8 @@ repos: []
 branch: harness/Q-0011/integration
 priority: p1
 created: 2026-08-22
-iterations: {}
+iterations:
+  solutioning.architecture-review: 3
 history:
   - stage: requirements
     run: 1
@@ -41,13 +42,30 @@ history:
     stage_after: requirements
     at: 2026-08-23T00:14:05.733Z
     cost: 13.908
+  - stage: requirements
+    run: 3
+    flow: solutioning
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-23T00:52:33.963Z
+    cost: 0
+  - stage: requirements
+    run: 3
+    flow: solutioning
+    status: aborted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-23T00:55:04.306Z
+    cost: 10.216
 ---
 Everything a run knows today dies with the terminal it printed to. `runs.log` keeps one line per
 step and the ticket keeps a cost per run, but the traces, the prompts, the per-vendor token
 counts and the reason a step failed are gone the moment the process exits — which is why the
 $4.54 lost in the Q-0006 crash could not be recovered, and why nobody can answer "what did this
 ticket actually cost, per vendor" without reading a scrollback. This ticket puts a run's history
-on disk under `.quorum/runs/<id>/`: an events file per step, a manifest describing the run, and a
+on disk under `.quorum/runs/<id>/`: a manifest describing the run, the prompt and output of every
+step attempt, and a
 roll-up that reports money where a vendor reports money and tokens where it does not, per the
 tokens-only decision. It splits cleanly along a boundary this repository has not yet exercised —
 the engine writes the history, the CLI reads it back for a human — which is why it is M1's
