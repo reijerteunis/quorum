@@ -74,7 +74,7 @@ const ui = {
       if (!allowed.includes(answer)) throw new FlowError(`gate (${kind}) "${reason}" received invalid --gate-answer "${typeof raw === 'string' ? raw.trim() : ''}" — expected ${opts}`);
       return answer;
     }
-    if (!process.stdin.isTTY) throw new FlowError(`gate (${kind}) "${reason}" needs an answer — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} or run interactively`);
+    if (!process.stdin.isTTY) throw new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} or run interactively`);
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
     // handler never runs and the interrupted run leaves no record. See Q-0004.
