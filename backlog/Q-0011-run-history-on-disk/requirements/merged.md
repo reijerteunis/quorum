@@ -2,6 +2,30 @@
 
 *Merged requirement (head-of-product). Ticket Q-0011, stage draft → requirements. M1.*
 
+
+## Scope cut — 2026-08-23
+
+Solutioning was aborted after four review rounds without converging (blockers 3, 2, 2, 4; $13.91
+in reviews). The rounds were not finding sloppiness, they were finding collisions between this
+requirement's own rules: contiguous per-occurrence `seq` against deletable `raw` events, a
+required `step_started` carrying `argv` that only exists inside the adapters, and occurrence
+numbering that shifts depending on whether a gate was auto-advanced. Every one of those lives in
+the event stream.
+
+So the event stream is cut. **Removed:** AC-6 and AC-7 in full — `events.jsonl`, the typed
+envelope, `seq` contiguity, the `raw`-deletion test, and `harness validate`'s JSONL support.
+**Kept:** the run directory, the manifest, `prompt.txt` and `output.txt` per attempt, usage that
+estimates nothing, the per-vendor roll-up, and `harness runs`. **Resolved rather than deferred:**
+AC-4 now says gates allocate no directory, which was the fourth blocker.
+
+Twelve live criteria, from fourteen. AC numbers are unchanged so the reviews and the contracts on
+`harness/Q-0011/contracts` still refer to the same things.
+
+A trace stream is real product value and belongs to whichever ticket M3's mission control needs
+one for — where a renderer will say what shape it must be, rather than a schema guessing in
+advance. This ticket's job is the record and the money, and its other job is being M1's two-role,
+two-vendor fan-out, which its task breakdown already satisfies.
+
 ## Problem
 
 A run's history exists only in the terminal that printed it. The durable record is one line per step in the ticket's `runs.log` and one cost figure per run in `ticket.md`'s `history`. Everything else is discarded when the process exits: the assembled prompt, the agent's final output, the token counts, the worktree and branch the step ran in, the adapter retries, and — on a failure — everything past the first 200 characters of the error message (`spike/src/engine.js:185`).
@@ -46,13 +70,13 @@ Two further picks, where the candidates differed:
 
 **AC-3 — The manifest is written at start, replaced atomically, and distinguishes every terminal outcome.** `manifest.json` exists from run start with a `schema_version`, the run id, ticket id, ticket-folder path, flow name and flow-file path, the stage consumed, start time, and `status: "running"`. It is replaced when each step reaches a terminal state and when the run ends, so a manifest read mid-run describes everything finished so far. `status` covers `running`, `completed`, `failed`, `aborted`, `regressed`, `exhausted` and `interrupted`; a run killed with Ctrl-C or `SIGTERM` ends `interrupted`, never `running` and never `completed`. Every replacement writes a complete temporary file in the same directory and renames it over the previous one, so a concurrent reader sees the old valid document or the new one, never partial JSON. Updates from parallel steps are serialised by the engine; a regression test with two parallel mock steps proves no step's record is lost. Timestamps are UTC RFC 3339.
 
-**AC-4 — Every step attempt gets its own directory.** Step records live at `steps/<seq>-<step-id>/`, `seq` zero-padded and incrementing once per attempt in start order, with `/` and `:` in the step id replaced by `-`. A flow that traverses a backward edge and runs a step a second time produces two directories and neither overwrites the other. A fan-out produces one directory per task per wave, and parallel occurrences have distinct directories. A test uses a fan-out step id containing `:` (e.g. `dev:Q0011-cli`) to prove the sanitising.
+**AC-4 — Every step attempt that runs something gets its own directory.** Step records live at `steps/<seq>-<step-id>/`, `seq` zero-padded to three digits and incrementing once per attempt in start order, with `/` and `:` in the step id replaced by `-`. A directory is allocated only for an attempt that spawns an adapter or runs a command; gates allocate none, whether answered, auto-advanced or skipped by `--dry`, so gate behaviour never shifts the numbering of what follows. A flow that traverses a backward edge and runs a step a second time produces two directories and neither overwrites the other. A fan-out produces one directory per task per wave, and parallel occurrences have distinct directories. A test uses a fan-out step id containing `:` (e.g. `dev:Q0011-cli`) to prove the sanitising.
 
-**AC-5 — Each step directory records what was sent and what came back.** It contains `prompt.txt` (the exact assembled prompt, byte for byte), `output.txt` (the agent's final message as text, or the raw text that failed validation, whichever the step produced) and `events.jsonl`. A step that never reached an adapter — script, integrate, gate — has `events.jsonl` and no `prompt.txt`. Prompts are never written to `runs.log` or `ticket.md`.
+**AC-5 — Each step directory records what was sent and what came back.** It contains `prompt.txt` (the exact assembled prompt, byte for byte) and `output.txt` (the agent's final message as text, or the raw text that failed validation, whichever the step produced). A step that never reached an adapter — script, integrate — has `output.txt` and no `prompt.txt`. Prompts are never written to `runs.log` or `ticket.md`.
 
-**AC-6 — `events.jsonl` is append-only and one line is one event.** Each non-blank line is one complete UTF-8 JSON object carrying `schema_version`, `ts`, `seq`, `type` and `data`. `seq` starts at 1 and increases by exactly 1 within an occurrence. Lines are appended as the event occurs, so `tail -f` on a live run shows progress, and a truncated final line — process killed mid-write — leaves every earlier line independently parseable.
+**AC-6 — Removed by the scope cut of 2026-08-23.** The append-only `events.jsonl` stream moves to its own ticket. Numbering is left in place so the four review rounds and the contracts on `harness/Q-0011/contracts` keep referring to the same criteria.
 
-**AC-7 — The trace is vendor-neutral above the adapter layer.** Adapters map their native output into typed events before calling `onEvent`; the types cover at least `step_started`, `text`, `tool`, `verdict`, `usage`, `retry`, `step_completed` and `step_failed`. A reader can render the full step timeline and compute the whole roll-up from typed events alone. An adapter may additionally record output it cannot classify as a `raw` event so nothing is lost, but no downstream consumer may need to parse one: the test asserts that the timeline and the roll-up are unchanged when every `raw` event is deleted. Vendor and model appear as event *data*, never as a differently shaped event, and neither the engine nor the CLI branches on adapter name.
+**AC-7 — Removed by the scope cut of 2026-08-23.** Vendor-neutral typed events move with AC-6. The vendor-neutrality that this ticket still needs is carried by AC-9: `usage` is the same shape for every adapter, and neither the manifest nor the CLI branches on adapter name.
 
 **AC-8 — The manifest step record carries the fields `runs.log` drops.** For each attempt: step id, occurrence directory, role, adapter, model or `null`, branch and worktree path where one was used, start time, duration in ms, adapter retry attempts, terminal status, verdict where the step declared one, error message and category where it failed, and its usage object.
 
@@ -64,9 +88,9 @@ Two further picks, where the candidates differed:
 
 **AC-12 — `harness runs [<ticket-id>]` lists runs.** With no argument it lists every run under `.quorum/runs/`, most recent first; with a ticket id, that ticket's runs. Each line shows run id, ticket, flow, stage transition, status, duration and the per-vendor roll-up — money for vendors that report it, token counts for those that do not, `n/a` where a cost is unknown, vendors listed separately with no combined total, and a statement of how many steps were unpriced. A missing `.quorum/runs/` prints an empty-state message and exits 0. One malformed run directory does not hide its valid siblings: readable runs are listed, the malformed one is named, and the command exits non-zero.
 
-**AC-13 — `harness runs <run-id>` shows one run, and reports incompleteness rather than repairing it.** The detail view lists each attempt in order with adapter, model, status, start and duration, verdict, usage, error where it failed, and the path of its step directory so a human can open the prompt or the events. It reads only files inside the selected run directory. An unknown run id gives a clear error and a non-zero exit. When the manifest says `running`, has no terminal time, references a missing events file, or ends in a truncated line, the run is labelled incomplete and the affected file is named; complete preceding events may still be shown, but the command never silently repairs a file, never omits the warning and never reports a terminal result it inferred. `--json` writes a single JSON document as the whole of stdout with no ANSI codes, exits non-zero on an unknown id, and references event files by path rather than inlining their contents.
+**AC-13 — `harness runs <run-id>` shows one run, and reports incompleteness rather than repairing it.** The detail view lists each attempt in order with adapter, model, status, start and duration, verdict, usage, error where it failed, and the path of its step directory so a human can open the prompt or the output. It reads only files inside the selected run directory. An unknown run id gives a clear error and a non-zero exit. When the manifest says `running` or has no terminal time — a run killed before it could finalise — the run is labelled incomplete and the manifest is named; the command never silently repairs a file, never omits the warning and never reports a terminal result it inferred. `--json` writes a single JSON document as the whole of stdout with no ANSI codes and exits non-zero on an unknown id.
 
-**AC-14 — The contracts are executable against real run artifacts.** `contracts/Q-0011/run-manifest.schema.json` and `contracts/Q-0011/run-events.schema.json` are JSON Schema 2020-12 documents with `additionalProperties: false` on the manifest and on the event envelope (per-type `data` shapes declared by the schema; `schema_version` is the escape hatch for later additive change). `harness validate` gains JSONL support: given a `.jsonl` data file it validates every non-blank line independently against the schema and reports `<file>:<line>` for each violation — implementable entirely in `spike/bin/harness.js` on the existing `validate(schema, data)` export from `spike/src/contracts.js`, so no engine file is touched. After an end-to-end mock-adapter run, validating the produced `manifest.json` and a produced `events.jsonl` exits 0; validating artifacts with a required field removed, with `cost_usd: 0` for a vendor that reported none, with a `seq` gap, with a negative token count, with an unknown event type, and with an unexpected extra field each exit 1 with a named error.
+**AC-14 — The contract is executable against real run artifacts.** `contracts/Q-0011/run-manifest.schema.json` is a JSON Schema 2020-12 document with `additionalProperties: false`, and `schema_version` is the escape hatch for later additive change. `harness validate` needs no new capability: the manifest is a single JSON document and the existing command already validates one. After an end-to-end mock-adapter run, validating the produced `manifest.json` exits 0; validating manifests with a required field removed, with `cost_usd: 0` for a vendor that reported none, with a negative token count, and with an unexpected extra field each exit 1 with a named error.
 
 ## Non-goals
 

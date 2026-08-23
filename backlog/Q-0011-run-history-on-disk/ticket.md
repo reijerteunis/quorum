@@ -7,8 +7,7 @@ repos: []
 branch: harness/Q-0011/integration
 priority: p1
 created: 2026-08-22
-iterations:
-  solutioning.architecture-review: 3
+iterations: {}
 history:
   - stage: requirements
     run: 1
