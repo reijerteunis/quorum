@@ -93,10 +93,6 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
-  // A terminal gate may be represented by a promise whose UI owns no libuv handle. Keep the
-  // process alive so cooperative signals can finalise the manifest instead of Node abandoning a
-  // still-running top-level await with an honest-but-unhelpful `running` record.
-  const signalKeeper = setInterval(() => {}, 60000);
   try {
     ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
     backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
@@ -104,7 +100,6 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   } catch (e) {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
-    clearInterval(signalKeeper);
     throw e;
   }
 
@@ -143,7 +138,6 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
-    clearInterval(signalKeeper);
   }
   return finish(ctx, flow.produces, 'completed');
 }
@@ -289,11 +283,17 @@ function initialiseRunHistory(ctx) {
   const started = new Date();
   const runId = `${ctx.ticket.meta.id}-${ctx.runId}`;
   const runDir = path.join(ctx.repoDir, '.quorum', 'runs', runId);
-  const lastOutcome = ctx.ticket.meta.history?.at(-1);
-  if (lastOutcome?.stage_after && lastOutcome.stage_after !== ctx.ticket.meta.stage) {
-    throw new FlowError(`run directory allocation refused: ticket stage conflicts with existing run history (${lastOutcome.stage_after} != ${ctx.ticket.meta.stage})`);
+  const historyRoot = path.dirname(runDir);
+  // Once this writer has persisted history, do not let a stale in-memory ticket snapshot fork a
+  // second timeline. Compare with the ticket file, rather than old outcome entries: backward
+  // edges legitimately make a current stage differ from the preceding outcome's stage_after.
+  const persistedStage = fs.existsSync(historyRoot)
+    ? parseFrontmatter(fs.readFileSync(path.join(ctx.ticket.dir, 'ticket.md'), 'utf8')).meta.stage
+    : null;
+  if (persistedStage && persistedStage !== ctx.ticket.meta.stage) {
+    throw new FlowError(`run directory allocation refused: ticket stage conflicts with persisted run history (${persistedStage} != ${ctx.ticket.meta.stage})`);
   }
-  fs.mkdirSync(path.dirname(runDir), { recursive: true });
+  fs.mkdirSync(historyRoot, { recursive: true });
   fs.mkdirSync(runDir, { recursive: false });
   fs.mkdirSync(path.join(runDir, 'steps'));
   ctx.history = {
@@ -432,7 +432,16 @@ async function runGate(step, ctx) {
   const kind = step.gate;
   if (kind === 'auto' || (ctx.auto && kind !== 'human-locked')) { ctx.ui.info(`gate: auto-advanced (${kind})`); return null; }
   if (ctx.dry) { ctx.ui.info(`gate (${kind}): would pause here`); return null; }
-  const answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
+  // A custom UI can represent a gate with a promise that owns no libuv handle. Give a signal a
+  // short window to reach the synchronous finaliser, while still allowing an EOF-backed CLI gate
+  // to terminate naturally instead of keeping a non-interactive process alive forever.
+  const signalWindow = setTimeout(() => {}, 1000);
+  let answer;
+  try {
+    answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
+  } finally {
+    clearTimeout(signalWindow);
+  }
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=${kind} answer=${answer}`);
   if (answer === 'advance') return null;
   if (answer === 'retry' && step.retryTarget) {
