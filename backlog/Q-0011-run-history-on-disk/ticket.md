@@ -9,7 +9,6 @@ priority: p1
 created: 2026-08-22
 iterations:
   solutioning.architecture-review: 2
-  qa-red.scenario-review: 2
 history:
   - stage: requirements
     run: 1
