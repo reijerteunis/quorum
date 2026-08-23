@@ -393,6 +393,8 @@ function errorOf(error, adapterName) {
 function authErrorCategory(vendor, message) { return message.includes('login expired or missing') || /authentication|not logged in|API_KEY is set/i.test(message); }
 function transientErrorCategory(message) { return /connection|socket|ECONN|ETIMEDOUT|rate.?limit|overload|\b(429|5\d\d)\b|timed? ?out/i.test(message); }
 function relative(root, target) { return path.relative(root, target).split(path.sep).join('/'); }
+// commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
+function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
 function countUsage(ctx, usage) {
   if (!usage) return;
@@ -458,26 +460,28 @@ async function runGate(step, ctx) {
 }
 
 async function runScript(step, ctx) {
-  const { execSync } = await import('node:child_process');
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
+  // Both sides of this merge were needed: the ticket records the occurrence, main enforces the
+  // timeout. A script step runs a project's own command and can hang exactly as a suite can.
   const occurrence = allocateOccurrence(ctx, step, 'script');
-  try {
-    const out = execSync(cmd, { cwd: ctx.repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    persistArtifact(ctx, occurrence, 'output.txt', out);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), out);
+  const r = runCommand(cmd, ctx.repoDir, { timeoutMs: cmdTimeout(ctx) });
+  persistArtifact(ctx, occurrence, 'output.txt', r.out);
+  if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), r.out);
+  if (r.code === 0) {
     terminalOccurrence(ctx, occurrence, 'completed');
     ctx.ui.done(step.id, 'exit 0');
     return null;
-  } catch (e) {
-    const output = String(e.stdout ?? '') + String(e.stderr ?? '');
-    persistArtifact(ctx, occurrence, 'output.txt', output);
-    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script exited ${e.status ?? 'unknown'}` } });
-    ctx.ui.warn(`${step.id}: exit ${e.status}`);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), output);
-    return step.on_fail ? handleFail(step, ctx) : { abort: true };
   }
+  if (r.timedOut) {
+    // Looping back cannot fix a command that never finishes, and its non-zero exit is not a result.
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script timed out` } });
+    throw new FlowError(`${step.id}: script did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed — that is not a result, fix the command or raise commands.timeout_ms`);
+  }
+  terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script exited ${r.code}` } });
+  ctx.ui.warn(`${step.id}: exit ${r.code}`);
+  return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
 function finish(ctx, stage, status, note, fields = {}) {
@@ -687,7 +691,20 @@ async function runIntegrate(step, ctx) {
     const m = mergeInto(dir, base);
     notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'could not sync base'} ${base}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
-    if (!m.ok) conflicts.push(base);
+    if (!m.ok) {
+      // A base conflict is between the ticket branch and the base — not between the task branches,
+      // and not something another developer round can repair: the task worktrees sync to the
+      // ticket branch, where nothing is wrong, so the agents correctly change nothing and the
+      // conflict returns unchanged. Q-0011 spent its whole budget and $8.63 discovering that three
+      // times. Stop and name the work a human has to do. See Q-0011.
+      for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), notes.join('\n'));
+      backlog.log(ticket, `run=${ctx.runId} step=${step.id} base-conflict base=${base} files=${m.conflicts.join(',') || '?'}`);
+      throw new FlowError(
+        `${step.id}: cannot sync ${into} with ${base} — ${mergeFailure(m)}.\n` +
+        `  This is a conflict between the ticket branch and ${base}, so re-running the developers cannot fix it:\n` +
+        `  their worktrees branch from ${into}, where nothing is wrong. Merge ${base} into ${into} yourself, then re-run.`,
+      );
+    }
   }
   for (const b of branches) {
     const m = mergeInto(dir, b);
@@ -701,16 +718,19 @@ async function runIntegrate(step, ctx) {
   // missing dependency, which `expect: fail` happily reads as proof of red. See Q-0004.
   const install = cmd ? ctx.config.commands?.install : null;
   if (install && !conflicts.length) {
-    const r = runCommand(install, dir);
+    const r = runCommand(install, dir, { timeoutMs: cmdTimeout(ctx) });
     notes.push('', `Install: \`${install}\` → exit ${r.code}`);
     ui[r.code === 0 ? 'info' : 'warn'](`${step.id}: install exit ${r.code}`);
     if (r.code !== 0) { envError = `install failed (\`${install}\` exited ${r.code})`; out = r.out; }
   }
   if (cmd && !conflicts.length && !envError) {
-    const r = runCommand(cmd, dir);
+    const r = runCommand(cmd, dir, { timeoutMs: cmdTimeout(ctx) });
     out = r.out;
     const expect = step.expect ?? 'pass';
-    const broken = environmentFailure(out);
+    // A command killed for running too long proves nothing — least of all a red phase.
+    const broken = r.timedOut
+      ? `the test command did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed`
+      : environmentFailure(out);
     if (broken) {
       // Non-zero because the suite could not start is not a red phase. Accepting it would let a
       // missing dependency satisfy `expect: fail` on every ticket, forever.

@@ -66,10 +66,24 @@ const ui = {
     // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
     // handler never runs and the interrupted run leaves no record. See Q-0004.
     rl.on('SIGINT', () => { rl.close(); process.kill(process.pid, 'SIGINT'); });
-    const answer = await new Promise((r) => rl.question(`  ${opts} > `, r));
+    // A gate is a decision, so it is never defaulted and never waits forever. Closed stdin used to
+    // resolve as '' → advance, which is how a human-locked gate got walked through by a suite that
+    // supplied no input; and once that defaulting was removed the same gate blocked a run for 24
+    // minutes with no output. Both are errors now, and both say which gate. See Q-0011.
+    const answer = await new Promise((resolve, reject) => {
+      let answered = false;
+      rl.question(`  ${opts} > `, (a) => { answered = true; resolve(a); });
+      rl.on('close', () => {
+        if (!answered) reject(new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — run it interactively, or answer it on stdin`));
+      });
+    });
     rl.close();
     const a = answer.trim().toLowerCase();
-    return a.startsWith('a') && a !== 'abort' ? 'advance' : a.startsWith('r') ? 'retry' : a === 'abort' ? 'abort' : a === '' ? 'advance' : 'abort';
+    if (!a) throw new FlowError(`gate (${kind}) "${reason}" was given an empty answer — say advance, retry or abort; a gate is never assumed`);
+    if (a.startsWith('ad')) return 'advance';
+    if (a.startsWith('r') && retry) return 'retry';
+    if (a.startsWith('ab')) return 'abort';
+    throw new FlowError(`gate (${kind}) "${reason}" did not understand "${answer.trim()}" — expected ${opts}`);
   },
 };
 
