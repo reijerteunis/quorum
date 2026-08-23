@@ -47,6 +47,7 @@ assert(/head-of-product: 1/.test(ticket()), 'backward edge counter persisted (ne
 
 // Solutioning: architect in worktree, reviewer revise→approve loop, finalize
 r = run(['run', 'solutioning', 'T-0001', '--adapter', 'mock', '--auto']);
+const solutioningOut = r.stdout;   // reused far below for the base-sync reporting checks
 assert(r.status === 0, 'solutioning flow completes');
 assert(r.stdout.includes('iteration 1/2 → goto architect'), 'review loop bounced back to architect once');
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'solution/solution.md')), 'solution.md written');
@@ -79,10 +80,16 @@ assert(!fs.existsSync(path.join(tmp, 'src')), 'user working tree still untouched
 assert(fs.existsSync(path.join(tmp, '.harness/worktrees/harness__T-0001__integration/.installed')),
   'integrate runs commands.install in the integration worktree before the tests');
 
-// Exhausted loop lands on a gate; --auto advances it
+// An exhausted loop lands on a human-locked gate that --auto may NOT walk through. This check
+// used to assert the opposite and passed only because closed stdin resolved as '' → advance —
+// two bugs cancelling out. Removing the defaulting turned it into a 24-minute hang (Q-0011).
 r = run(['ticket', 'new', 'Second ticket']);
 r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' });
-assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a human gate');
+assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a gate');
+assert(r.stdout.includes('human-locked'), '--auto does not bypass the exhaustion gate');
+assert(r.status !== 0, 'a gate with no answer available fails the run');
+assert(/stdin closed without one/.test(r.stdout + r.stderr), 'the run says which gate it could not answer, instead of hanging or assuming');
+assert(!/gate: auto-advanced \(human-locked\)/.test(r.stdout), 'a human-locked gate is never auto-advanced');
 
 assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
 
@@ -237,6 +244,167 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
   assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
+}
+
+// A bounded loop that never shows its verdict to the step it returns to cannot converge. qa-red
+// shipped that way: scenario-review looped to scenarios, neither step received the review, and a
+// round cost $4.45 re-reviewing a file write-tests had not changed because it never knew why (Q-0011).
+{
+  const { lintFlow, FlowError } = await import('../src/engine.js');
+  const blind = {
+    name: 'blind', consumes: 'a', produces: 'b',
+    steps: [
+      { id: 'author', role: 'r', adapter: 'claude', input: { backlog: ['spec.md'] }, output: { write: 'draft.md' } },
+      { id: 'judge', role: 'r', adapter: 'codex', input: { backlog: ['draft.md'] }, output: { write: 'review.md', verdict: 'ok|no' },
+        on_fail: { goto: 'author', max_iterations: 2, on_exhausted: 'gate' } },
+    ],
+  };
+  let err = null;
+  try { lintFlow(blind); } catch (e) { err = e; }
+  assert(err instanceof FlowError && /loop cannot converge/.test(err.message), 'a loop that hides its verdict from the step it returns to fails lint');
+  assert(/never receives review\.md/.test(err.message), 'the lint names the artifact that never arrives');
+
+  blind.steps[0].input.backlog.push('review.md');
+  assert(lintFlow(blind) === true, 'feeding the verdict back makes the loop lintable');
+
+  // A fan-out target is exempt: the engine hands it the integration result directly.
+  const fanned = {
+    name: 'fanned', consumes: 'a', produces: 'b',
+    steps: [
+      { id: 'devs', fan_out: { from: 'tasks.yaml' }, step: { id: 'x', role: 'r' } },
+      { id: 'integrate', type: 'integrate', branches: ['b'], output: { writes: ['report.md'] },
+        on_fail: { goto: 'devs', max_iterations: 2, on_exhausted: 'gate' } },
+    ],
+  };
+  assert(lintFlow(fanned) === true, 'a fan-out target is exempt — the engine feeds it the result');
+}
+
+// "could not sync base:" with nothing after the colon reported a failure and withheld the reason.
+// Two causes: a merge that fails without conflicting, and a base branch that does not exist yet —
+// which is normal on a ticket's first pass and not a failure at all (Q-0011).
+{
+  const { mergeFailure } = await import('../src/engine.js');
+  assert(/conflicts: a\.md, b\.md/.test(mergeFailure({ conflicts: ['a.md', 'b.md'] })), 'conflicts are listed when there are any');
+  assert(/git: fatal: invalid reference/.test(mergeFailure({ conflicts: [], error: '\nfatal: invalid reference: main\n' })), "git's own words are used when nothing conflicted");
+  assert(mergeFailure({ conflicts: [] }) === 'git reported no reason', 'a failure with no reason says so instead of trailing off');
+  assert(mergeFailure(undefined) === 'git reported no reason', 'a missing result does not crash the reporter');
+
+  // End to end: solutioning loops the architect, so its second round syncs to the ticket branch
+  // that the first integrate step has not created yet — the exact case that printed the empty
+  // warning on every Q-0011 run.
+  const sol = solutioningOut;
+  assert(/does not exist yet — nothing to sync/.test(sol), 'a base branch that does not exist yet is stated, not warned about');
+  assert(!/could not sync/.test(sol), 'no sync warning is raised when there was nothing to sync');
+  assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
+}
+
+// A base-sync conflict cannot be fixed by re-running the developers — their worktrees branch from
+// the ticket branch, where nothing is wrong. Q-0011 burned all three iterations and $8.63 learning
+// that, because integrate routed it into on_fail like any test failure.
+{
+  const id = run(['ticket', 'new', 'Base conflict']).stdout.match(/T-\d{4}/)[0];
+  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
+  const at = (rel) => path.join(tmp, 'backlog', dir, rel);
+
+  // Put the ticket branch and the base branch in genuine conflict over one file.
+  const branch = `harness/${id}/integration`;
+  const cur = execSync('git rev-parse --abbrev-ref HEAD', { cwd: tmp, encoding: 'utf8' }).trim();
+  execSync(`git checkout -q -b ${branch} && echo ticket-side > clash.txt && git add clash.txt && git -c user.email=a@b -c user.name=t commit -q -m ticket`, { cwd: tmp });
+  execSync(`git checkout -q ${cur} && echo base-side > clash.txt && git add clash.txt && git -c user.email=a@b -c user.name=t commit -q -m base`, { cwd: tmp });
+
+  const hy = path.join(tmp, 'harness/harness.yaml');
+  const savedCfg = fs.readFileSync(hy, 'utf8');
+  fs.writeFileSync(hy, savedCfg.replace(/base_branch: .*/, `base_branch: ${cur}`));
+
+  // input.backlog carries its own report so the convergence lint is satisfied — this fixture is
+  // about the base conflict, not about a blind loop.
+  fs.writeFileSync(path.join(tmp, 'harness/flows/base-clash.yaml'), `name: base-clash\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: integrate\n    type: integrate\n    branches: ["${branch}"]\n    into: "${branch}"\n    input: { backlog: [dev/integration.md] }\n    output: { writes: [dev/integration.md] }\n    on_fail: { goto: integrate, max_iterations: 3, on_exhausted: gate }\n`);
+
+  const bc = run(['run', 'base-clash', id, '--adapter', 'mock', '--auto']);
+  assert(bc.status !== 0, 'a base-sync conflict fails the run');
+  assert(/cannot sync .* with /.test(bc.stdout + bc.stderr), 'the failure names the two branches that disagree');
+  assert(/re-running the developers cannot fix it/.test(bc.stdout + bc.stderr), 'it says why looping would not help');
+  assert(!/iteration 1\/3/.test(bc.stdout), 'a base conflict does not consume the iteration budget');
+  assert(/base-conflict base=/.test(fs.readFileSync(at('runs.log'), 'utf8')), 'the base conflict is distinguishable in runs.log');
+
+  fs.writeFileSync(hy, savedCfg);
+  fs.rmSync(path.join(tmp, 'harness/flows/base-clash.yaml'));
+  execSync(`git checkout -q ${cur} -- clash.txt || true`, { cwd: tmp });
+}
+
+// A worktree is a full checkout, so backlog/ sits in every step's working directory. An agent
+// editing a ticket there can rewrite engine-owned state — stage, counters, history, cost — and
+// commit it to a branch that later merges back. Q-0011's architect reset iterations to {} and
+// deleted three history entries; a merge conflict caught it, which is luck, not design.
+{
+  const { commitAll } = await import('../src/fanout.js');
+  const wt = path.join(tmp, '.harness/worktrees/harness__T-0001__contracts');
+  if (fs.existsSync(wt)) {
+    // Set up the real-world shape: a ticket tracked on the branch, as it is in a live repo.
+    const dir = path.join(wt, 'backlog', td);
+    fs.mkdirSync(dir, { recursive: true });
+    const ticketInWt = path.join(dir, 'ticket.md');
+    const before = '---\nid: T-0001\nstage: solutioned\niterations:\n  solutioning.review: 2\n---\nintent\n';
+    fs.writeFileSync(ticketInWt, before);
+    execSync(`git add -A -- backlog && git -c user.email=a@b -c user.name=t commit -q -m setup`, { cwd: wt });
+
+    // Now an agent rewrites engine-owned frontmatter and drops a stray file beside it.
+    fs.writeFileSync(ticketInWt, before.replace('stage: solutioned', 'stage: deployed').replace('  solutioning.review: 2\n', ''));
+    fs.writeFileSync(path.join(dir, 'sneaked.md'), 'written by an agent\n');
+    fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
+
+    const dropped = [];
+    // The message is an agent's step summary — untrusted text on a command line. Backticks in one
+    // crashed a real run (Q-0011); $(…) would have been executed rather than committed.
+    const nasty = 'write-tests: Created `spike/test/q0011.js` $(touch /tmp/quorum-pwned) "quoted" \\backslash [Q-0011]';
+    const files = commitAll(wt, nasty, (d) => dropped.push(...d));
+    assert(!fs.existsSync('/tmp/quorum-pwned'), 'a commit message never reaches a shell');
+    assert(execSync('git log -1 --pretty=%s', { cwd: wt, encoding: 'utf8' }).trim() === nasty, 'the message is committed verbatim, backticks and all');
+
+    assert(dropped.length >= 2, `backlog edits are reported, not silently dropped (${dropped.length})`);
+    assert(fs.readFileSync(ticketInWt, 'utf8') === before, 'an agent cannot rewrite engine-owned ticket state from a worktree');
+    assert(!fs.existsSync(path.join(wt, 'backlog', td, 'sneaked.md')), 'a file an agent adds under backlog/ is removed, not committed');
+    assert((files ?? []).every((f) => !f.startsWith('backlog/')), 'nothing under backlog/ is committed from a worktree');
+    assert((files ?? []).some((f) => f.endsWith('legit.ts')), 'work outside backlog/ still commits normally');
+    // A left-behind dirty backlog would break the next merge, so the worktree must come back clean.
+    assert(!execSync('git status --porcelain -- backlog', { cwd: wt, encoding: 'utf8' }).trim(), 'the worktree is left clean under backlog/');
+  }
+}
+
+// architecture.md's role table is the fan-out write contract, and it says frontmatter and prose
+// "must agree so tooling can validate them". Nothing validated it, so developer-tooling.md existed
+// on disk while being invisible to the architect, and every Q-0033 task went to backend by
+// default — a single-vendor fan-out where the whole point is two (Q-0011, 2026-08-23).
+{
+  const repo = path.join(root, '..');
+  const arch = path.join(repo, 'harness', 'architecture.md');
+  if (fs.existsSync(arch)) {                       // repo-consistency check; skipped in a fixture
+    const rows = [...fs.readFileSync(arch, 'utf8').matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
+      .filter(([, role]) => !['role'].includes(role));
+    assert(rows.length >= 2, `the role table has rows (found ${rows.length})`);
+
+    for (const [, role, vendor, dirs] of rows) {
+      const file = path.join(repo, 'harness', 'roles', `developer-${role}.md`);
+      assert(fs.existsSync(file), `role table row "${role}" has a role file`);
+      const text = fs.readFileSync(file, 'utf8');
+      assert(new RegExp(`^adapter:\\s*${vendor}$`, 'm').test(text), `developer-${role} runs on the vendor the table names (${vendor})`);
+
+      const declared = (text.match(/^paths:\s*\[(.+)\]$/m) ?? [])[1];
+      assert(declared, `developer-${role} declares paths in frontmatter`);
+      const tabled = dirs.split(',').map((d) => d.replace(/`/g, '').trim().replace(/\/$/, '')).sort();
+      const front = declared.split(',').map((d) => d.trim().replace(/\/$/, '')).sort();
+      assert(JSON.stringify(front) === JSON.stringify(tabled),
+        `developer-${role} frontmatter matches the table (${front.join()} vs ${tabled.join()})`);
+      // The engine never reads `paths`; the allow-list only reaches an agent through the prose.
+      for (const dir of front) {
+        assert(text.includes(dir), `developer-${role} prose names its allowed path ${dir}`);
+      }
+    }
+    // Two live roles on two vendors, or a fan-out can never be multi-vendor.
+    const vendors = new Set(rows.map(([, , v]) => v));
+    assert(vendors.size >= 2, `the role table spans more than one vendor (${[...vendors].join()})`);
+  }
 }
 
 // A dropped connection is not a verdict. Losing a paid step to a minute of bad wifi is what

@@ -49,6 +49,22 @@ export function lintFlow(flow) {
       }
     }
   }
+  // A bounded loop that never shows its verdict to the step it returns to cannot converge: that
+  // step regenerates its output from the same inputs, and the reviewer objects to the same things.
+  // qa-red shipped exactly this way and spent $4.45 re-reviewing a file nothing had changed —
+  // write-tests committed nothing because it had no idea what was wrong. See Q-0011.
+  for (const s of steps) {
+    const target = s.on_fail?.goto;
+    if (!target || String(target).startsWith('flow:')) continue;   // cross-flow edges regress a stage
+    const written = writesOf(s);
+    if (!written.length) continue;
+    const dest = steps.find((t) => t.id === target);
+    if (!dest || dest.fan_out) continue;   // fan_out receives the integration result from the engine
+    const receives = dest.input?.backlog ?? [];
+    if (!written.some((w) => receives.some((inp) => globMatch(inp, w)))) {
+      problems.push(`${s.id}: loops back to "${target}", which never receives ${written.join(', ')} — the loop cannot converge`);
+    }
+  }
   if (!flow.consumes || !flow.produces) problems.push('flow needs consumes/produces');
   const gates = steps.filter((s) => s.gate);
   if (flow.produces === 'deployed' && !gates.some((g) => g.gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');
@@ -158,9 +174,16 @@ async function runAgentStep(step, ctx, extra = {}) {
     // it already existed, not only on fan-out retries, or the agent works against yesterday's
     // tree and appears to revert whatever landed since. See Q-0004.
     if (existed || extra.syncBase) {
-      const m = mergeInto(cwd, stepBase);
-      if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
-      else ui.warn(`${step.id}: could not sync base: ${m.conflicts.join(',')}`);
+      if (!branchExists(ctx.repoDir, stepBase)) {
+        // Normal on a ticket's first pass: the integration branch is created by the first
+        // integrate step, so before that there is nothing to sync to. Not a failure, and not a
+        // warning — it used to print one with an empty reason after the colon.
+        ui.info(`${step.id}: base ${stepBase} does not exist yet — nothing to sync`);
+      } else {
+        const m = mergeInto(cwd, stepBase);
+        if (m.ok) ui.info(`${step.id}: synced to ${stepBase}`);
+        else ui.warn(`${step.id}: could not sync to ${stepBase} — ${mergeFailure(m)}`);
+      }
     }
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
@@ -203,7 +226,11 @@ async function runAgentStep(step, ctx, extra = {}) {
     backlog.writeFile(ticket, vPath, JSON.stringify({ verdict: res.output.verdict, findings: res.output.findings ?? [], summary: res.output.summary }, null, 2));
   }
   if (branch) {
-    const files = commitAll(cwd, `${step.id}: ${res.output.summary?.slice(0, 60) ?? 'agent changes'} [${ticket.meta.id}]`);
+    const files = commitAll(
+      cwd,
+      `${step.id}: ${res.output.summary?.slice(0, 60) ?? 'agent changes'} [${ticket.meta.id}]`,
+      (dropped) => ui.warn(`${step.id}: discarded ${dropped.length} edit(s) under backlog/ — the engine owns ticket state, not the agent: ${dropped.slice(0, 4).join(', ')}${dropped.length > 4 ? ', …' : ''}`),
+    );
     ui.info(`${step.id}: ${files ? files.length + ' file(s) committed on ' + branch : 'no file changes on ' + branch}`);
   }
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${res.vendor} model=${model ?? '-'} verdict=${res.output.verdict ?? '-'} cost=${res.usage.cost_usd ?? '?'} ms=${res.ms}`);
@@ -221,6 +248,18 @@ async function runAgentStep(step, ctx, extra = {}) {
   }
   return null;
 }
+
+// A merge can fail without conflicting — a missing ref, a dirty tree, a git that simply refuses.
+// Reporting only `conflicts` printed "could not sync base:" with nothing after the colon, which
+// says a failure happened and withholds the one thing the reader needs. See Q-0011.
+export function mergeFailure(m) {
+  if (m?.conflicts?.length) return `conflicts: ${m.conflicts.join(', ')}`;
+  const line = String(m?.error ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
+  return line ? `git: ${line}` : 'git reported no reason';
+}
+
+// commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
+function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
 function countUsage(ctx, usage) {
   if (!usage) return;
@@ -277,20 +316,20 @@ async function runGate(step, ctx) {
 }
 
 async function runScript(step, ctx) {
-  const { execSync } = await import('node:child_process');
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
-  try {
-    const out = execSync(cmd, { cwd: ctx.repoDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), out);
-    ctx.ui.done(step.id, 'exit 0');
-    return null;
-  } catch (e) {
-    ctx.ui.warn(`${step.id}: exit ${e.status}`);
-    if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), (e.stdout ?? '') + (e.stderr ?? ''));
-    return step.on_fail ? handleFail(step, ctx) : { abort: true };
+  // Through runCommand for the timeout: a script step runs a project's own command and can hang
+  // exactly as a test suite can. See Q-0011.
+  const r = runCommand(cmd, ctx.repoDir, { timeoutMs: cmdTimeout(ctx) });
+  if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), r.out);
+  if (r.code === 0) { ctx.ui.done(step.id, 'exit 0'); return null; }
+  if (r.timedOut) {
+    // Looping back cannot fix a command that never finishes, and its non-zero exit is not a result.
+    throw new FlowError(`${step.id}: script did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed — that is not a result, fix the command or raise commands.timeout_ms`);
   }
+  ctx.ui.warn(`${step.id}: exit ${r.code}`);
+  return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
 function finish(ctx, stage, status, note, fields = {}) {
@@ -488,14 +527,27 @@ async function runIntegrate(step, ctx) {
   const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
   if (base && base !== into && branchExists(ctx.repoDir, base)) {
     const m = mergeInto(dir, base);
-    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'CONFLICT syncing base'} ${base}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
-    if (!m.ok) conflicts.push(base);
+    notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'could not sync base'} ${base}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    if (!m.ok) {
+      // A base conflict is between the ticket branch and the base — not between the task branches,
+      // and not something another developer round can repair: the task worktrees sync to the
+      // ticket branch, where nothing is wrong, so the agents correctly change nothing and the
+      // conflict returns unchanged. Q-0011 spent its whole budget and $8.63 discovering that three
+      // times. Stop and name the work a human has to do. See Q-0011.
+      for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), notes.join('\n'));
+      backlog.log(ticket, `run=${ctx.runId} step=${step.id} base-conflict base=${base} files=${m.conflicts.join(',') || '?'}`);
+      throw new FlowError(
+        `${step.id}: cannot sync ${into} with ${base} — ${mergeFailure(m)}.\n` +
+        `  This is a conflict between the ticket branch and ${base}, so re-running the developers cannot fix it:\n` +
+        `  their worktrees branch from ${into}, where nothing is wrong. Merge ${base} into ${into} yourself, then re-run.`,
+      );
+    }
   }
   for (const b of branches) {
     const m = mergeInto(dir, b);
-    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — conflicts: ' + m.conflicts.join(', ')}`);
-    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'CONFLICT'} ${b}${m.ok ? '' : ' (' + m.conflicts.join(', ') + ')'}`);
+    notes.push(`- ${m.ok ? '✓' : '✗'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
+    ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'merged' : 'FAILED'} ${b}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     if (!m.ok) conflicts.push(b);
   }
   let testsOk = true; let out = ''; let envError = null;
@@ -504,16 +556,19 @@ async function runIntegrate(step, ctx) {
   // missing dependency, which `expect: fail` happily reads as proof of red. See Q-0004.
   const install = cmd ? ctx.config.commands?.install : null;
   if (install && !conflicts.length) {
-    const r = runCommand(install, dir);
+    const r = runCommand(install, dir, { timeoutMs: cmdTimeout(ctx) });
     notes.push('', `Install: \`${install}\` → exit ${r.code}`);
     ui[r.code === 0 ? 'info' : 'warn'](`${step.id}: install exit ${r.code}`);
     if (r.code !== 0) { envError = `install failed (\`${install}\` exited ${r.code})`; out = r.out; }
   }
   if (cmd && !conflicts.length && !envError) {
-    const r = runCommand(cmd, dir);
+    const r = runCommand(cmd, dir, { timeoutMs: cmdTimeout(ctx) });
     out = r.out;
     const expect = step.expect ?? 'pass';
-    const broken = environmentFailure(out);
+    // A command killed for running too long proves nothing — least of all a red phase.
+    const broken = r.timedOut
+      ? `the test command did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed`
+      : environmentFailure(out);
     if (broken) {
       // Non-zero because the suite could not start is not a red phase. Accepting it would let a
       // missing dependency satisfy `expect: fail` on every ticket, forever.

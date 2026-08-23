@@ -2,7 +2,7 @@
 // integrate: merge branches into the ticket branch in a worktree and run the test command.
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import YAML from 'yaml';
 import { ensureWorktree } from './git.js';
 
@@ -52,37 +52,62 @@ export function taskPromptSection(task, worktreeDir) {
 
 // ---------- git helpers ----------
 
-const git = (args, cwd) => execSync(`git ${args}`, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+// argv, never a shell. A step summary written by an agent becomes a commit message, so this is
+// untrusted text on a command line: backticks in one crashed a run, and `$(…)` would have been
+// executed rather than committed. Branch names carry agent-authored task ids for the same reason.
+// See Q-0011.
+const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const safe = (fn) => { try { return fn(); } catch { return null; } };
 
-export function branchExists(repo, b) { return Boolean(safe(() => git(`rev-parse --verify --quiet refs/heads/${b}`, repo))); }
+export function branchExists(repo, b) { return Boolean(safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${b}`], repo))); }
 
-export function commitAll(dir, message) {
-  git('add -A', dir);
-  const staged = git('diff --cached --name-only', dir);
+// The engine owns everything under backlog/: a ticket's stage, counters, history and cost, and the
+// per-stage artifacts it writes itself into the main worktree. A worktree is a full checkout, so
+// backlog/ is sitting there in every step's working directory — and an agent's edit to it is never
+// authoritative. Q-0011's architect rewrote a ticket's frontmatter on its branch, resetting
+// `iterations` to {} and deleting three history entries with their costs; only a merge conflict
+// caught it, which is luck rather than design. Discard those edits and restore the worktree, so a
+// dirty backlog cannot block the next merge either. Reported through onDiscard, never silently.
+export function commitAll(dir, message, onDiscard) {
+  const dirty = (safe(() => git(['status', '--porcelain', '--', 'backlog'], dir)) ?? '')
+    .split('\n').map((l) => l.slice(3).trim()).filter(Boolean);
+  if (dirty.length) {
+    safe(() => git(['checkout', '--', 'backlog'], dir));   // revert tracked edits
+    safe(() => git(['clean', '-qfd', '--', 'backlog'], dir)); // drop files the agent added
+    onDiscard?.(dirty);
+  }
+  git(['add', '-A'], dir);
+  const staged = git(['diff', '--cached', '--name-only'], dir);
   if (!staged) return null;
-  git(`-c user.email=harness@local -c user.name=harness commit -q -m "${message.replace(/"/g, "'")}"`, dir);
+  git(['-c', 'user.email=harness@local', '-c', 'user.name=harness', 'commit', '-q', '-m', message], dir);
   return staged.split('\n');
 }
 
 // Merge `branch` into the checked-out branch of `dir`. Returns {ok, conflicts[]}.
 export function mergeInto(dir, branch) {
   try {
-    git(`-c user.email=harness@local -c user.name=harness merge --no-ff --no-edit ${branch}`, dir);
+    git(['-c', 'user.email=harness@local', '-c', 'user.name=harness', 'merge', '--no-ff', '--no-edit', branch], dir);
     return { ok: true, conflicts: [] };
   } catch (e) {
-    const conflicts = (safe(() => git('diff --name-only --diff-filter=U', dir)) ?? '').split('\n').filter(Boolean);
-    safe(() => git('merge --abort', dir));
+    const conflicts = (safe(() => git(['diff', '--name-only', '--diff-filter=U'], dir)) ?? '').split('\n').filter(Boolean);
+    safe(() => git(['merge', '--abort'], dir));
     return { ok: false, conflicts, error: String(e.stderr ?? e.message).slice(-500) };
   }
 }
 
-export function runCommand(cmd, cwd) {
+// A project's own test command runs here, and a hung one used to hang the whole flow forever with
+// no output: Q-0011's integrate sat on a blocked suite for 24 minutes and would still be sitting
+// there. A timeout is not a nicety — an orchestrator that can wait indefinitely cannot be trusted
+// to run unattended. stdin is /dev/null so a command that prompts fails fast instead of waiting.
+export function runCommand(cmd, cwd, { timeoutMs = 15 * 60_000 } = {}) {
   try {
-    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
-    return { code: 0, out };
+    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: process.env, timeout: timeoutMs, killSignal: 'SIGKILL' });
+    return { code: 0, out, timedOut: false };
   } catch (e) {
-    return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? '') };
+    // execSync reports a timeout as a kill, not a status; without this it looks like an ordinary
+    // non-zero exit, which `expect: fail` would happily bank as proof of red.
+    const timedOut = e.killed === true || e.signal === 'SIGKILL' || e.code === 'ETIMEDOUT';
+    return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? ''), timedOut, timeoutMs };
   }
 }
 

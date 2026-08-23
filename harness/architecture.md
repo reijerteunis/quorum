@@ -22,14 +22,28 @@ This table is the repository's current fan-out write contract. The engine does n
 `paths` frontmatter; enforcement reaches an agent through the allowed-path prose in the
 role body. Frontmatter and prose must nevertheless agree so tooling can validate them.
 
-| role | directories it may write | typical contracts |
-| --- | --- | --- |
-| backend | `spike/`, `harness/`, `docs/`, `backlog/` | CLI/engine behaviour, YAML flows and roles, Markdown documentation |
-| frontend | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
-| data | `packages/database` | persistence schemas and migrations |
+| role | vendor | directories it may write | typical contracts |
+| --- | --- | --- | --- |
+| backend | codex | `spike/src/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
+| tooling | claude | `spike/bin/`, `spike/test/` | argument parsing, terminal output, exit codes, the regression suite |
+| frontend | claude | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
+| data | codex | `packages/database` | persistence schemas and migrations |
 
-The backend breadth is intentional while M1's runnable product is the spike and its
-file-backed project assets. Tasks must still assign each concrete file to one owner.
+`frontend` and `data` are inert in this repository until `apps/` and `packages/` exist
+(M2 onward). `backend` and `tooling` are the two live roles, and they are deliberately on
+**different vendors** — that is what makes a fan-out multi-vendor rather than merely parallel.
+
+**Split by surface when the work allows it.** A ticket touching both engine internals and
+the command line should become at least two tasks, one per role, rather than one `backend`
+task spanning both. A single-role fan-out is parallelism without a second opinion: it runs
+one vendor's judgement across the whole change, which is the thing this project exists to
+avoid. Where a ticket genuinely cannot be divided that way, say so in the solution rather
+than defaulting to `backend`.
+
+`spike/bin/` and `spike/test/` belong to `tooling` by default. A `backend` task may write
+them only where its own description assigns those files explicitly and names why — tasks
+solutioned before this table gained its `tooling` row do exactly that, and remain valid.
+Tasks must still assign each concrete file to exactly one owner.
 
 Template sharing is explicit, not directory-wide. All files under `harness/flows/` and
 the `harness/roles/code-reviewer.md` role are byte-shared with their paths under
