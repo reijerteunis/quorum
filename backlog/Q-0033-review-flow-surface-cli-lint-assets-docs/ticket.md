@@ -1,7 +1,7 @@
 ---
 id: Q-0033
 title: Review flow surface — CLI, lint, config, shipped assets and docs
-stage: red
+stage: solutioned
 owner: ruud
 repos: []
 branch: harness/Q-0033/integration
