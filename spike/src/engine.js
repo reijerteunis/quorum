@@ -465,6 +465,27 @@ const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------
 
+// Catch the ticket branch up with the repository's base BEFORE cutting task worktrees from it.
+// The worktrees sync to the ticket branch, and integrate syncs the ticket branch to base — so
+// with the sync only at the end, every agent works against a base that moves underneath it and
+// anything landing on base mid-run surfaces as a conflict nobody in the loop can repair. Q-0006's
+// run 11 lost its runtime task that way: engine.js changed on main between fan-out and integrate.
+export function syncBaseIntoTicketBranch(step, ctx) {
+  const { ui } = ctx;
+  const into = interpolate(step.step?.base ?? ctx.ticket.meta.branch, ctx.vars);
+  const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+  if (!base || base === into) return { skipped: 'base is the ticket branch' };
+  // Normal on a ticket's first pass: the integration branch is created by the first integrate.
+  if (!branchExists(ctx.repoDir, into)) return { skipped: `${into} does not exist yet` };
+  if (!branchExists(ctx.repoDir, base)) return { skipped: `${base} does not exist` };
+  const m = mergeInto(ticketWorktree(ctx.repoDir, into), base);
+  if (m.ok) { ui?.info?.(`${step.id}: ${into} synced to ${base} before fan-out`); return { ok: true }; }
+  // Same reasoning as integrate's base conflict: the agents sync to the ticket branch, where
+  // nothing is wrong, so they correctly change nothing and the conflict returns unchanged. Stop
+  // and name the work rather than spending the iteration budget rediscovering it.
+  throw new FlowError(`${step.id}: cannot sync ${into} to ${base} before fan-out — ${mergeFailure(m)}. Resolve it in a worktree on ${into}, commit, and re-run; no agent in this loop can repair a base conflict.`);
+}
+
 async function runFanOut(step, ctx) {
   const { ui, ticket } = ctx;
   let tasks = loadTasks(ticket);
@@ -473,6 +494,7 @@ async function runFanOut(step, ctx) {
     ui.warn(`${step.id}: scoped to failing tasks: ${tasks.map((t) => t.id).join(', ')}`);
   }
   if (!tasks.length) throw new FlowError(`${step.id}: no tasks to fan out`);
+  if (!ctx.dry) syncBaseIntoTicketBranch(step, ctx);
   const plan = step.fan_out.respect === 'depends_on' ? waves(tasks) : [tasks];
   ui.info(`${step.id}: ${tasks.length} task(s) in ${plan.length} wave(s)`);
   ctx.fanned = ctx.fanned ?? [];

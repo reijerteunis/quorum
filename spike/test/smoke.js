@@ -678,6 +678,49 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(waves(both).length === 2, 'a dependency inside the scope is preserved');
 }
 
+// The ticket branch catches up with base BEFORE task worktrees are cut from it. With the sync
+// only at integrate time, agents work against a base that moves under them — Q-0006 run 11 lost
+// its runtime task to a conflict on a file that changed on main mid-run.
+{
+  const { syncBaseIntoTicketBranch } = await import('../src/engine.js');
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-basesync-'));
+  const g = (cmd, cwd = r) => execSync(`git -c user.email=a@b -c user.name=t ${cmd}`, { cwd, encoding: 'utf8' });
+  g('init -q -b main');
+  fs.writeFileSync(path.join(r, 'shared.txt'), 'base\n');
+  g('add -A'); g('commit -q -m base');
+  g('branch harness/T-1/integration');
+  // Base moves after the ticket branch was cut — the situation that produced the conflict.
+  fs.writeFileSync(path.join(r, 'landed.txt'), 'landed on main\n');
+  g('add -A'); g('commit -q -m "landed on main"');
+
+  const ctx = { repoDir: r, config: { repo: { base_branch: 'main' } }, vars: {}, ui: { info: () => {} },
+                ticket: { meta: { id: 'T-1', branch: 'harness/T-1/integration' } } };
+  const step = { id: 'developers', step: { base: 'harness/T-1/integration' } };
+
+  assert(syncBaseIntoTicketBranch(step, ctx).ok === true, 'the ticket branch syncs to base before fan-out');
+  const files = g('ls-tree --name-only harness/T-1/integration').split('\n');
+  assert(files.includes('landed.txt'), 'work landed on base is present before any worktree is cut');
+
+  // A first pass has no integration branch yet; that is normal, not a failure.
+  const fresh = { ...ctx, ticket: { meta: { id: 'T-2', branch: 'harness/T-2/integration' } } };
+  assert(/does not exist yet/.test(syncBaseIntoTicketBranch({ ...step, step: {} }, fresh).skipped ?? ''),
+    'a ticket with no integration branch yet is skipped, not failed');
+
+  // A genuine base conflict stops the run instead of feeding an unrepairable loop. The ticket-side
+  // edit is made in the worktree the sync created: git will not let the same branch be checked out
+  // twice, which is the whole reason worktrees exist.
+  const wt = path.join(r, '.harness', 'worktrees', 'harness__T-1__integration');
+  fs.writeFileSync(path.join(wt, 'shared.txt'), 'ticket side\n');
+  g('add -A', wt); g('commit -q -m "ticket edit"', wt);
+  fs.writeFileSync(path.join(r, 'shared.txt'), 'base side\n');
+  g('add -A'); g('commit -q -m "base edit"');
+  let err = null;
+  try { syncBaseIntoTicketBranch(step, ctx); } catch (e) { err = e; }
+  assert(err !== null, 'a base conflict before fan-out throws instead of spawning agents');
+  assert(/no agent in this loop can repair/.test(err?.message ?? ''), 'and it says a human must resolve it');
+  fs.rmSync(r, { recursive: true, force: true });
+}
+
 if (smokeFailures) {
   console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
   process.exitCode = 1;
