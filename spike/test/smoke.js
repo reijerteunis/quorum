@@ -239,6 +239,41 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
 }
 
+// A worktree is a full checkout, so backlog/ sits in every step's working directory. An agent
+// editing a ticket there can rewrite engine-owned state — stage, counters, history, cost — and
+// commit it to a branch that later merges back. Q-0011's architect reset iterations to {} and
+// deleted three history entries; a merge conflict caught it, which is luck, not design.
+{
+  const { commitAll } = await import('../src/fanout.js');
+  const wt = path.join(tmp, '.harness/worktrees/harness__T-0001__contracts');
+  if (fs.existsSync(wt)) {
+    // Set up the real-world shape: a ticket tracked on the branch, as it is in a live repo.
+    const dir = path.join(wt, 'backlog', td);
+    fs.mkdirSync(dir, { recursive: true });
+    const ticketInWt = path.join(dir, 'ticket.md');
+    const before = '---\nid: T-0001\nstage: solutioned\niterations:\n  solutioning.review: 2\n---\nintent\n';
+    fs.writeFileSync(ticketInWt, before);
+    execSync(`git add -A -- backlog && git -c user.email=a@b -c user.name=t commit -q -m setup`, { cwd: wt });
+
+    // Now an agent rewrites engine-owned frontmatter and drops a stray file beside it.
+    fs.writeFileSync(ticketInWt, before.replace('stage: solutioned', 'stage: deployed').replace('  solutioning.review: 2\n', ''));
+    fs.writeFileSync(path.join(dir, 'sneaked.md'), 'written by an agent\n');
+    fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
+
+    const dropped = [];
+    const files = commitAll(wt, 'test: agent edits [T-0001]', (d) => dropped.push(...d));
+
+    assert(dropped.length >= 2, `backlog edits are reported, not silently dropped (${dropped.length})`);
+    assert(fs.readFileSync(ticketInWt, 'utf8') === before, 'an agent cannot rewrite engine-owned ticket state from a worktree');
+    assert(!fs.existsSync(path.join(wt, 'backlog', td, 'sneaked.md')), 'a file an agent adds under backlog/ is removed, not committed');
+    assert((files ?? []).every((f) => !f.startsWith('backlog/')), 'nothing under backlog/ is committed from a worktree');
+    assert((files ?? []).some((f) => f.endsWith('legit.ts')), 'work outside backlog/ still commits normally');
+    // A left-behind dirty backlog would break the next merge, so the worktree must come back clean.
+    assert(!execSync('git status --porcelain -- backlog', { cwd: wt, encoding: 'utf8' }).trim(), 'the worktree is left clean under backlog/');
+  }
+}
+
 // architecture.md's role table is the fan-out write contract, and it says frontmatter and prose
 // "must agree so tooling can validate them". Nothing validated it, so developer-tooling.md existed
 // on disk while being invisible to the architect, and every Q-0033 task went to backend by
