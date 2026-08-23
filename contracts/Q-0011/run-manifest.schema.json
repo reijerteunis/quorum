@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quorum.local/contracts/Q-0011/run-manifest.schema.json",
-  "title": "Q-0011 run manifest",
+  "$id": "https://quorum.local/contracts/run-manifest-v1.schema.json",
+  "x-quorum-contract": "run-manifest-v1",
+  "title": "Quorum run manifest version 1",
   "type": "object",
   "properties": {
     "schema_version": { "const": 1 },
@@ -54,8 +55,8 @@
       "type": "object",
       "properties": {
         "step_id": { "type": "string", "minLength": 1 },
-        "occurrence_dir": { "type": "string", "pattern": "^steps/[0-9]{4,}-[^/:]+$" },
-        "kind": { "enum": ["adapter", "script", "integrate", "gate"] },
+        "occurrence_dir": { "type": "string", "pattern": "^steps/[0-9]{3,}-[^/:]+$" },
+        "kind": { "enum": ["adapter", "script", "integrate"] },
         "role": { "type": ["string", "null"] },
         "adapter": { "type": ["string", "null"] },
         "model": { "type": ["string", "null"] },

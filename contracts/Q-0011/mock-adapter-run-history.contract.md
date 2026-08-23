@@ -1,8 +1,9 @@
 # Mock-adapter run-history contract
 
 Q-0011 tests exercise real engine output without a vendor login. These deterministic environment
-switches extend the existing mock adapter; their values control fixture data and are never copied
-into run-history artifacts.
+switches extend the existing mock adapter. Switch names and environment representation are never
+copied into run-history artifacts. Values intentionally emitted as domain data may be copied: in
+particular `HARNESS_MOCK_VENDOR` becomes `usage.vendor`, which is required for multi-vendor tests.
 
 - `HARNESS_MOCK_VENDOR`, when non-empty, is the emitted usage vendor; default is `mock`.
 - `HARNESS_MOCK_TOKEN_ONLY=1` makes `cost_usd` null; otherwise existing mock cost behaviour remains.
@@ -13,12 +14,10 @@ into run-history artifacts.
   `vendor`, `token_only`, `cached_input_tokens`, and `cache_write_input_tokens` for matching steps.
   This is the deterministic lever for producing priced and token-only vendors in one real run;
   malformed profiles fail explicitly.
-- Every mock-backed occurrence produces the normal typed lifecycle, text, verdict/retry where
-  configured, final aggregate usage, and terminal events. As for every built-in adapter, the
-  inner mock returns usage but does not emit a `usage` payload; the retry wrapper emits the one
-  final aggregate event. The mock also emits at least one `raw` event containing preservation-only
-  text, so deleting all raw lines proves they are not required.
-- The engine receives only the resulting vendor-neutral events, never the switches or profile.
+- Every mock-backed occurrence returns normal text, structured output, and aggregate usage through
+  the existing adapter result/error boundary. Live `onEvent` behaviour is unchanged and is never
+  persisted by Q-0011.
+- The engine receives only the resulting values, never an environment object or switch name.
 
 The mock reports cached fields as subsets of `input_tokens` and never adds them again when forming
 that total. Existing Q-0006 mock switches retain their meanings.

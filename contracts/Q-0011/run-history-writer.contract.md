@@ -1,102 +1,69 @@
 # Run-history writer contract
 
-This behavioural contract complements the two JSON Schemas. The schemas define individual
-documents and event lines; the invariants below are cross-file or state-transition rules and
-therefore cannot be expressed by JSON Schema alone.
+This contract defines the engine-owned persistence boundary for Q-0011. There is no persisted
+event stream. Adapter `onEvent` callbacks remain live-rendering input only.
 
-## Adapter boundary
+## Run lifecycle
 
-`adapter.run(options)` retains its current result shape and receives `options.onEvent(payload)`.
-Built-in adapters translate native output into `{ type, data }` payloads before calling it; an
-adapter never supplies run metadata. The occurrence writer stamps `schema_version`, UTC `ts`,
-and the next contiguous `seq` while serialising the append, producing an envelope that validates
-against `run-events.schema.json`. Engine and readers never parse vendor-native text.
-`raw` is preservation-only: removing all `raw` lines cannot change a timeline's terminal state,
-usage, verdict, retries, or roll-up.
+- Before a non-dry run spawns an adapter or executes a script/integrate command, exclusively
+  create `.quorum/runs/<ticket-id>-<n>/`, create `steps/`, export and call
+  `ensureExcluded(repoDir, '.quorum/')` from `spike/src/git.js`, and atomically write the initial
+  `manifest.json`. An existing or uncreatable run directory is fatal before billing. Dry runs
+  create no run-history artifact.
+- Persist only project-relative paths. Persist argv when a command record needs it, but never an
+  environment object. Tests seed sentinel environment values and assert those values, and the
+  switch names themselves, do not occur in artifacts; fixture values intentionally represented
+  as domain data (for example `HARNESS_MOCK_VENDOR` becoming `usage.vendor`) are not forbidden.
+- Replace `manifest.json` through one engine-owned queue: write a complete same-directory
+  temporary file, fsync and close it, then rename it over the manifest. Update after each terminal
+  occurrence and at run termination. Two parallel completions must both survive.
+- On Ctrl-C or SIGTERM, stop new updates, mark active occurrences and the run `interrupted`, make
+  the complete atomic replacement, then exit. A SIGKILL may leave `running`; readers report that
+  as incomplete and never repair it.
+- Failure after initialisation to persist prompt, output, or a manifest update warns with the
+  affected path and continues already-billed work. The in-memory snapshot remains authoritative
+  for a later replacement attempt.
 
-Each adapter result and thrown billed error carries the complete usage shape from the schema.
-Unknown values are `null`, not zero. Inner adapters never emit `usage` payloads: the retry
-wrapper aggregates all attempts, emits a `retry` event for every retry, and, after aggregation,
-emits exactly one final `usage` payload from `res.usage` or a billed thrown error's accumulated
-usage. It emits no `usage` payload when the occurrence reported no usage. The engine copies that
-same aggregate into the manifest occurrence and counts it once in the roll-up. AC-11
-recomputation is defined over these emitted final `usage` events.
+## Occurrences and files
 
-`input_tokens` is the vendor's total reported input and already contains reported cached-read
-and cache-write input where the vendor includes those values. `cached_input_tokens` and
-`cache_write_input_tokens` are informational subsets; readers must not add them to
-`input_tokens`. `output_tokens` includes reported reasoning-output tokens.
+Allocate an occurrence synchronously, in start order, only when an adapter is about to spawn or a
+script/integrate command is about to execute. Its directory is
+`steps/<three-digit-seq>-<sanitised-step-id>`; sequence begins `001`, continues past `999` without
+truncation, and `/` and `:` become `-`.
 
-## Writer lifecycle
+Gates allocate no occurrence in any mode. A fan-out parent also allocates no occurrence because it
+only schedules work; each materialised fan-out task that calls the adapter receives its own
+`kind: adapter` occurrence using the interpolated task step id. Backward traversal and later
+fan-out waves allocate fresh occurrences and never overwrite earlier attempts.
 
-- Before a non-dry run can spawn anything, create `.quorum/runs/<ticket-id>-<n>/` exclusively,
-  add `.quorum/` to `.git/info/exclude` through the existing git helper, create `steps/`, and
-  atomically write the initial manifest. Existing or uncreatable directories are fatal before
-  billing. Dry runs do none of these writes.
-- Allocate an occurrence synchronously at step-attempt start. Its directory is
-  `steps/<zero-padded-seq>-<sanitised-step-id>`; the sequence is left-padded with zeroes to four
-  digits and grows naturally to five or more digits after 9999, and `/` and `:` are replaced
-  with `-`. Allocation order, not completion order, defines the sequence and makes parallel
-  allocation collision-free.
-- A flow gate with no explicit id has `step_id: gate-<kind>`, where `<kind>` is its `gate`
-  value (for example `gate-human`). If more than one such gate starts in a run, the occurrence
-  sequence still makes its directory unique. The engine-synthesised traversal-limit gate has
-  `step_id: <failing-step-id>-exhausted-gate`.
-- Open one append stream per `events.jsonl`. Serialize writes for that occurrence. Each complete
-  UTF-8 JSON serialization plus newline is one append; event `seq` starts at 1 with no gaps.
-  History append failures warn and disable further history writes for the affected artifact but
-  do not cancel already-billed work.
-- Write exact prompt bytes before adapter spawn and exact final/raw validation-failure text when
-  available. Non-adapter occurrences always have `events.jsonl`, never have `prompt.txt`, and
-  have `output.txt` only when the script, integration, or gate produced textual output. Persist
-  argv only in `step_started.data.argv`; there is no `spawn` event. Never persist an environment
-  object or environment value.
-- Serialize ordinary manifest updates through one promise queue. Write a complete same-directory temporary
-  file, fsync/close it, then rename it over `manifest.json`. Update after every terminal occurrence
-  and at run termination. Store project-relative paths only.
-- Signal handlers stop accepting new queued updates, synchronously write/fsync/close and rename a
-  complete snapshot that finalizes active occurrences and the run as `interrupted`, and only then
-  exit. The synchronous snapshot is built from current in-memory state and supersedes any queued
-  or in-flight older snapshot; its rename is the final manifest replacement.
-  Run terminal status uses the existing engine outcome.
-A billed throw copies its full error and
-  usage before propagation. Every started occurrence remains represented.
+Adapter occurrences write exact assembled prompt bytes to `prompt.txt` before spawn and write the
+final agent message, or raw structured-output failure text, to `output.txt` when produced. Script
+and integrate occurrences have no `prompt.txt` and always receive `output.txt`, including captured
+stdout/stderr or an empty file when the command produces no text. Text is unbounded in Q-0011;
+silent truncation is rejected.
 
-`attempts` is the total number of adapter invocations for the occurrence, including the first;
-it is `1` for a clean success and increments once per retry. Non-adapter occurrences use `0`.
+Each manifest occurrence contains the schema fields. `attempts` counts adapter invocations,
+including retries; script and integrate use zero. A billed throw copies its full error and
+accumulated usage before propagation. Built-in adapters and their wrapper return one common usage
+shape; `cached_input_tokens` and `cache_write_input_tokens` survive the wrapper. Unknown measures
+are null, never zero or inferred. Input totals already include vendor-reported cache components;
+readers do not add them again. Output includes vendor-reported reasoning tokens.
 
-## Status and gate mapping
+## Status and errors
 
-Manifest occurrences begin `running`. `step_completed` terminates them as `completed`,
-`aborted`, `regressed`, or `exhausted`; `step_failed` terminates them as `failed` or
-`interrupted`. Run status has the same terminal vocabulary plus `running`, but is a flow outcome,
-not a copy of the last occurrence. A gate answer (`advance`, `retry`, or `abort`) is a successful
-gate occurrence: its occurrence status is `completed` and its answer is the `verdict`; `abort`
-then makes the run `aborted`. A backward-edge declaration terminates that adapter occurrence as
-`regressed`. The occurrence that reaches its traversal limit terminates as `exhausted`. Ctrl-C
-or SIGTERM terminates every active occurrence and the run as `interrupted`.
-
-Error categories are fixed across manifest and terminal events. Adapter authentication failures
-identified by `authError()` are `auth`; retryable failures identified by `transientError()` are
-`transient`; `FlowError` from invalid structured output is `structured_output`; all other
-adapter failures are `adapter`; script-step failures are `script`; integration-step failures are
-`integrate`; Ctrl-C and SIGTERM failures are `interrupted`; and `unknown` is the explicit
-fallback only when an older or uncategorised engine path supplies no more precise category.
+Occurrences begin `running` and end with the existing engine outcome: `completed`, `failed`,
+`aborted`, `regressed`, `exhausted`, or `interrupted`. The run uses the same terminal vocabulary.
+Error categories map explicitly: adapter authentication to `auth`, retryable adapter failure to
+`transient`, invalid structured output to `structured_output`, other adapter failures to
+`adapter`, script and integrate failures to their same-named categories, signals to
+`interrupted`, and otherwise `unknown`.
 
 ## Roll-up algorithm
 
-Group terminal adapter occurrences by `usage.vendor`; exclude script, integrate, gate, and
-adapter occurrences whose `usage` is null. A null-usage occurrence was not reported as billed
-and creates no vendor entry; the detail view still shows it, but it is not an unpriced step.
-This is the narrow AC-11 amendment recorded in the ticket's `solution/errata.md` E-1.
-For each vendor, `step_count` counts occurrences and `unpriced_steps` counts usage
-objects whose `cost_usd` is null. Sum each numeric measure over reported values only; if no
-occurrence reported that measure, the roll-up field is null. This makes an entirely unpriced
-vendor's `cost_usd` null. Never produce a cross-vendor monetary total. The manifest roll-up must
-equal a fresh grouping of the occurrences' final `usage` events.
+Group occurrences with non-null usage by `usage.vendor`. Script and integrate occurrences and
+adapter occurrences with no reported usage create no vendor row. For each vendor, `step_count`
+counts included occurrences once and `unpriced_steps` counts usage objects whose `cost_usd` is
+null. Sum each measure over reported values only; if none reported a measure, the result is null.
+Thus a wholly token-only vendor has `cost_usd: null`. Never calculate a cross-vendor monetary
+total and never write this accounting back to `ticket.md` or `runs.log`.
 
-## Prompt-size decision
-
-Text events and output files are unbounded in Q-0011. Silent truncation would defeat diagnosis;
-introducing a safe bound requires a new explicit truncation event and measured evidence. The
-existing 200 KB materialised-diff cap still bounds that prompt component.

@@ -1,61 +1,49 @@
-# `harness runs` reader and validator contract
+# `harness runs` reader and manifest validator contract
 
-The reader is implemented in `spike/bin/harness.js`. It obtains `repoDir` through the existing
-`findProject()`/`loadProject()` path and locates the runs root at `<repoDir>/.quorum/runs/`, so
-invocation from a project subdirectory sees the same history. After selection it reads only
-beneath `.quorum/runs/<run-id>/`. It does not repair, rewrite, or infer terminal state.
+The reader lives entirely in `spike/bin/harness.js`. It resolves the repository through the
+existing project-loading path and reads `.quorum/runs/`; after selecting a run it reads only that
+run directory. It never repairs or infers persisted state.
 
-## Selection and output
+## Selection and ordering
 
-- `harness runs` lists valid manifests most-recent-first; `harness runs <ticket-id>` filters by
-  exact `ticket_id`; `harness runs <run-id>` selects the exact directory name. Because both forms
-  occupy one positional argument, exact existing run-id match wins; otherwise a value matching a
-  known ticket id is a filter, and an unknown value is an unknown-run error.
-- List lines contain run id, ticket, flow, `before -> after`, status, duration, and one separately
-  labelled vendor summary. Report money when non-null; otherwise report tokens and `cost=n/a`.
-  Always include each vendor's unpriced-step count and never print a combined monetary total.
-- Detail orders occurrences by the numeric prefix in `occurrence_dir` and includes every field
-  required by AC-13 plus the relative occurrence path.
-- The live renderer consumes typed event `data`; it prints nullable `retry.data.message` beneath
-  the retry summary when present, preserving the existing explanation for a quiet backoff.
-- `--json` emits exactly one JSON document and no ANSI or preceding human output. It returns the
-  manifest-derived list/detail plus `incomplete` and `warnings`; event contents are not inlined.
-- A missing runs root is an empty success. Unknown exact run ids fail. A malformed sibling is
-  named without hiding valid manifests and makes the command fail after rendering those results.
+- `harness runs` lists all readable manifests. `harness runs <ticket-id>` filters by exact
+  `ticket_id`; an exact existing directory `<run-id>` wins over ticket filtering and selects
+  detail. Any other positional value is an unknown-run error.
+- List order is `started_at` descending, then `run_id` ascending as a deterministic tiebreaker.
+  Do not sort lexically by run number.
+- A missing runs root prints the empty state and exits zero. A malformed sibling is named, valid
+  siblings are still rendered, and the final exit is non-zero.
 
-## Incomplete artifacts
+## Human and JSON output
 
-A run is incomplete when its status is `running`, it lacks a terminal time, an occurrence lacks
-`events.jsonl`, or an events file has malformed JSON (including a truncated last line), a schema
-violation, or non-contiguous `seq`. Name every affected relative path. Valid preceding lines may
-be read; no warning may be suppressed and no terminal result may be inferred.
+List rows show run id, ticket, flow, stage `before -> after`, status, duration, and separately
+labelled vendor summaries. A vendor with cost shows money and tokens; one without cost shows
+`cost=n/a` and tokens. Every summary states `unpriced_steps`; there is no combined money total.
 
-## Executable validation
+Detail orders attempts by the numeric occurrence prefix and shows adapter, model, status, start,
+duration, verdict, usage, error, and the project-relative step-directory path. A manifest is
+labelled incomplete, with its path named, when status is `running` or `ended_at` is null. No other
+file is required for completeness.
 
-`harness validate <schema> <file...>` keeps JSON/YAML behavior. For a `.jsonl` input it ignores
-blank lines, parses and validates every other line independently, and reports all failures as
-`<file>:<line>: <schema error>`. When, and only when, the loaded schema `$id` is the Q-0011 event
-schema, it additionally applies the stream invariant: the first sequence is 1 and every
-subsequent sequence is exactly one greater. The schema's top-level type enum produces a named
-unknown-type failure without reporting the failures of every other event shape.
+`--json` emits one JSON document as all stdout, without ANSI. It contains the selected list or
+manifest-derived detail plus warnings and `incomplete`; unknown ids exit non-zero.
 
-The command parses and compiles the schema once per invocation and reuses that same schema object
-for every JSONL line and every input file. It must not re-register the same `$id` with Ajv.
+## Executable manifest validation
 
-When validating a Q-0011 manifest, it additionally checks invariants JSON Schema cannot express:
-unique occurrence directories; status/time consistency; adapter/usage consistency; distinct
-vendors in `rollup`; roll-up equality with the manifest occurrences; and `cost_usd: null` when no
-occurrence for that vendor reported cost. These semantic checks use schema `$id`, not a filename,
-so copied contracts behave identically. Any parse, schema, or semantic error exits 1; all inputs
-valid exits 0.
+Existing JSON/YAML `harness validate` parsing is unchanged. JSONL support is not added. JSON
+Schema validates document structure. Semantic checks use the schema annotation
+`x-quorum-contract: run-manifest-v1`, not a ticket-specific `$id` or filename, and check:
 
-Status/time consistency means `running` requires null `ended_at` and null `duration_ms`, while
-every terminal run status requires non-null `ended_at` and `duration_ms`; a running occurrence
-requires null `duration_ms`, while every terminal occurrence requires a non-null duration.
-Adapter/usage consistency means non-adapter occurrences require null `adapter`, `model`, and
-`usage`; adapter occurrences require a non-null `adapter` but may have null `model` and may have
-null `usage` when failure occurred before any usage was reported.
+- unique occurrence directories and unique roll-up vendors;
+- running/terminal timestamp and duration consistency;
+- adapter versus script/integrate nullability;
+- roll-up equality after grouping every non-null occurrence usage exactly as the writer contract
+  specifies.
 
-Roll-up equality excludes null-usage adapter occurrences, as specified by the writer contract
-and the ticket's `solution/errata.md` E-1. It groups only non-null occurrence usage, which is the
-same set represented by final `usage` events.
+If the annotation is absent or unrecognised, print an explicit notice that run-manifest semantic
+checks were skipped; a structurally valid generic JSON document may still pass, but never with a
+misleading run-manifest green tick. The annotation's checks catch the AC-14 mutation where a real
+token-only run's `manifest.json` roll-up `cost_usd` is changed from null to zero: recomputation
+from its occurrence usage expects null and reports that vendor and field. Occurrence
+`usage.cost_usd: 0` remains legal when the vendor actually reported zero.
+
