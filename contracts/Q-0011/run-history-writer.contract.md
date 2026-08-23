@@ -15,8 +15,8 @@ event stream. Adapter `onEvent` callbacks remain live-rendering input only.
   explicit warning naming the unresolved or unwritable path; it never returns silently. This is
   non-fatal after the run directory has been initialised, and the test asserts both the warning
   and unchanged `git status` for the supported normal and linked-worktree cases.
-- Persist only project-relative paths. Persist argv when a command record needs it, but never an
-  environment object. Tests seed sentinel environment values and assert those values, and the
+- Persist only project-relative paths. Never persist an environment object. Tests seed sentinel
+  environment values and assert those values, and the
   switch names themselves, do not occur in artifacts; fixture values intentionally represented
   as domain data (for example `MOCK_VENDOR` becoming `usage.vendor`) are not forbidden.
 - Replace `manifest.json` synchronously on the engine event loop: `writeFileSync` a complete
