@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { lintFlow } from '../src/engine.js';
+import { mockAdapter } from '../src/adapters/mock.js';
 
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(spike, '..');
@@ -25,6 +26,7 @@ const cli = (cwd, args, env = {}, input = undefined) => spawnSync(process.execPa
   cwd, encoding: 'utf8', input, env: { ...process.env, ...env }, timeout: 20000,
 });
 const output = (r) => `${r.stdout ?? ''}${r.stderr ?? ''}`.replace(/\x1b\[[0-9;]*m/g, '');
+const diagnostic = (r) => output(r).trim().replace(/^[✗x]\s*/u, '').trim();
 
 function initFixture({ branch = 'main', commit = true, gitRepo = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'q0033-'));
@@ -123,7 +125,27 @@ await scenario('S3.2/S3.3', 'shipped mock review traverses rejection and approva
     assert.equal(r.status, status, output(r));
     const body = read(ticket, 'ticket.md'); assert.match(body, new RegExp(`stage: ${stage}`));
     if (flag === 'MOCK_ALWAYS_FAIL') assert.match(output(r), /changes-requested|development|red/i);
-    else assert.match(read(ticket, 'review', 'verdict.md'), /approve/i);
+    else { assert.match(output(r), /approve/i); assert.equal(fs.existsSync(path.join(ticket, 'review', 'verdict.md')), true); }
+  }
+});
+
+await scenario('S3.5', 'mock review findings satisfy the frozen verdict-output schema', async () => {
+  const schema = JSON.parse(read(q6, 'review-artifacts.schema.json')).oneOf.find((branch) => branch.title === 'Verdict output');
+  const oldPass = process.env.MOCK_ALWAYS_PASS, oldFail = process.env.MOCK_ALWAYS_FAIL;
+  try {
+    delete process.env.MOCK_ALWAYS_PASS; process.env.MOCK_ALWAYS_FAIL = '1';
+    const result = await mockAdapter({ delayMs: 0 }).run({
+      prompt: '# Role: code-reviewer\n# Ticket T-0001\n', schema, cwd: repo, allowWrite: false,
+    });
+    const value = result.output;
+    assert.equal(typeof value.summary, 'string'); assert.ok(value.summary.length > 0);
+    assert.equal(typeof value.document, 'string'); assert.ok(value.document.length > 0);
+    assert.equal(value.verdict, 'changes-requested'); assert.ok(value.findings.length > 0);
+    for (const finding of value.findings) assert.match(finding, /^(blocker|major|nit): .+:[1-9][0-9]* .+/);
+    assert.deepEqual(Object.keys(value).sort(), ['document', 'findings', 'summary', 'verdict']);
+  } finally {
+    oldPass === undefined ? delete process.env.MOCK_ALWAYS_PASS : process.env.MOCK_ALWAYS_PASS = oldPass;
+    oldFail === undefined ? delete process.env.MOCK_ALWAYS_FAIL : process.env.MOCK_ALWAYS_FAIL = oldFail;
   }
 });
 
@@ -132,10 +154,16 @@ await scenario('S4.1-S4.3/E6', 'shipped config declares commented keys and runti
     const text = read(file), config = YAML.parse(text); assert.equal(config.repo.base_branch, 'main'); assert.equal(config.repo.max_diff_bytes, 200000);
     assert.match(text, /#.*base branch/i); assert.match(text, /#.*(diff|byte|size)/i);
   }
-  // Public engine defaults are exercised by constructing prompts/runs in Q-0006; here the
-  // compatibility contract is pinned at the configuration boundary without inventing an API.
-  const source = read(spike, 'src', 'engine.js');
-  assert.match(source, /base_branch\s*\?\?\s*['"]main['"]/); assert.match(source, /max_diff_bytes\s*\?\?\s*200000/);
+  for (const explicitDevelop of [false, true]) {
+    const root = projectFixture(); copyFlows(root);
+    const configFile = path.join(root, 'harness', 'harness.yaml');
+    const config = YAML.parse(read(configFile));
+    if (explicitDevelop) { git(root, 'branch', 'develop'); config.repo = { base_branch: 'develop' }; }
+    else delete config.repo;
+    write(configFile, YAML.stringify(config)); makeTicket(root);
+    const r = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance'], { MOCK_ALWAYS_PASS: '1' });
+    assert.equal(r.status, 0, output(r));
+  }
 });
 
 await scenario('S5.1-S5.7/E5', 'init discovers named branches and preserves template formatting while Git failures fall back', () => {
@@ -150,7 +178,12 @@ await scenario('S5.1-S5.7/E5', 'init discovers named branches and preserves temp
   const detached = initFixture(); git(detached.root, 'checkout', '-q', '--detach', 'HEAD');
   fs.rmSync(path.join(detached.root, 'harness'), { recursive: true }); fs.rmSync(path.join(detached.root, 'backlog'), { recursive: true });
   const d = cli(detached.root, ['init']); assert.equal(d.status, 0, output(d)); assert.equal(YAML.parse(read(detached.root, 'harness', 'harness.yaml')).repo.base_branch, 'main');
-  // Unnameable/mid-operation and subprocess failures have the same observable fallback contract.
+  assert.equal(git(detached.root, 'branch', '--show-current'), '', 'fixture must exercise successful Git with empty stdout');
+  const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'q0033-badgit-'));
+  const badGit = cli(broken, ['init'], { GIT_DIR: path.join(broken, 'not-a-repository') });
+  assert.equal(badGit.status, 0, output(badGit));
+  assert.equal(YAML.parse(read(broken, 'harness', 'harness.yaml')).repo.base_branch, 'main');
+  assert.doesNotMatch(output(badGit), /fatal:|not a git repository/i);
   assert.doesNotMatch(output(plain.result), /fatal:|not a git repository/i);
 });
 
@@ -195,7 +228,10 @@ await scenario('S9.1-S9.4/E1', 'run uses the same pristine whole-directory prefl
   write(path.join(root, 'harness', 'flows', 'bad.yaml'), 'name: bad\nconsumes: x\nproduces: y\nsteps:\n  - id: bad\n    on_fail: {goto: "flow:missing", counter: bad, max_iterations: 3, on_exhausted: gate}\n');
   const lint = cli(root, ['lint']); const run = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock'], { MOCK_ALWAYS_PASS: '1' });
   assert.notEqual(lint.status, 0); assert.notEqual(run.status, 0); assert.match(output(lint), /missing/); assert.match(output(run), /missing/);
+  assert.equal(diagnostic(lint), diagnostic(run));
   assert.equal(fs.existsSync(path.join(ticket, 'runs.log')), false, 'preflight wrote runs.log');
+  assert.deepEqual(fs.readdirSync(ticket).filter((name) => /^review$/.test(name)), [], 'preflight wrote review artifacts');
+  assert.doesNotMatch(read(ticket, 'ticket.md'), /iterations:\s*\n\s+\S/);
   const valid = projectFixture(); copyFlows(valid); makeTicket(valid);
   const ok = cli(valid, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance'], { MOCK_ALWAYS_PASS: '1' });
   assert.equal(ok.status, 0, output(ok));
@@ -228,7 +264,11 @@ await scenario('S10.1-S10.7/E3/E4', 'gate answers accumulate in order, are exact
 
 await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/cost compatibility are pinned', () => {
   const pkg = JSON.parse(read(spike, 'package.json')); assert.equal(pkg.scripts.test, 'node test/run.js'); assert.ok(pkg.scripts.lint);
-  assert.match(read(spike, 'test', 'smoke.js'), /--gate-answer['"],?\s*['"]abort/);
+  const exhaustedRoot = projectFixture();
+  const created = cli(exhaustedRoot, ['ticket', 'new', 'Exhaustion fixture']); assert.equal(created.status, 0, output(created));
+  const exhausted = cli(exhaustedRoot, ['run', 'requirements', 'T-0001', '--adapter', 'mock', '--auto', '--gate-answer', 'abort'], { MOCK_ALWAYS_FAIL: '1' }, '');
+  assert.notEqual(exhausted.status, 0); assert.match(output(exhausted), /loop exhausted/i); assert.match(output(exhausted), /human-locked/i);
+  assert.doesNotMatch(output(exhausted), /auto-advanced \(human-locked\)/i);
   const root = projectFixture(); const ticket = makeTicket(root);
   let body = read(ticket, 'ticket.md').replace('iterations: {}', 'iterations:\n  review: 2');
   body = body.replace('history: []', 'history:\n  - {run: 1, status: exhausted, cost: 0}\n  - {run: 1, status: aborted, cost: 1.25}'); write(path.join(ticket, 'ticket.md'), body);
@@ -243,9 +283,13 @@ await scenario('S11.5/S11.6', 'frozen Q-0006 inputs are guarded and unreachable 
 
 await scenario('S13.1-S13.8', 'documentation agrees with the shipped review surface and preserves excluded text', () => {
   const spec = read(repo, 'docs', '02-sdlc-pipeline-spec.md');
-  assert.match(spec, /review[\s\S]*red|changes.requested[\s\S]*development/is);
-  for (const re of [/\{base\}\.\.\.harness\/\{id\}\/integration/, /\{round\}/, /counter:\s*review/, /max_diff_bytes[\s\S]*200000/is, /--auto[\s\S]*(cannot|does not|never)/is, /no lighter.*fix|no lighter flow/is]) assert.match(spec, re);
-  for (const re of [/type:\s*judge/, /model:\s*(opus|gpt-)/, /\{iter\}/]) assert.doesNotMatch(spec.match(/§?\s*5\.5[\s\S]*?(?=\n#|\n##\s+5\.6|$)/)?.[0] ?? spec, re);
+  const section = (number) => spec.match(new RegExp(`(?:^|\\n)#{2,3}\\s+${number.replace('.', '\\.') }[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`, 'i'))?.[1] ?? '';
+  const state = section('3.4'); assert.ok(state, '§3.4 must exist');
+  assert.match(state, /review[^\n]*(red|development)|review fail[^\n]*red/is); assert.doesNotMatch(state, /review fail[^\n]*green/i);
+  const review = section('5.5'); assert.ok(review, '§5.5 must exist');
+  for (const re of [/\{base\}\.\.\.harness\/\{id\}\/integration/, /\{round\}/, /counter:\s*review/, /max_diff_bytes[\s\S]*200000/is, /--auto[\s\S]*(cannot|does not|never)/is]) assert.match(review, re);
+  assert.match(section('10'), /no lighter.*fix|no lighter flow/is);
+  for (const re of [/type:\s*judge/, /model:\s*(opus|gpt-)/, /\{iter\}/, /\b(findings|tasks|with):/]) assert.doesNotMatch(review, re);
   const plan = read(repo, 'docs', '06-development-plan.md'); assert.match(plan, /Q-0006[\s\S]*engine/is); assert.match(plan, /Q-0033[\s\S]*(surface|flow|role|lint)/is);
   const decisions = read(repo, 'docs', 'DECISIONS.md');
   for (const topic of [/derived regression/i, /non.auto.*exhaustion|exhaustion.*--auto/i]) {
@@ -254,7 +298,14 @@ await scenario('S13.1-S13.8', 'documentation agrees with the shipped review surf
   }
   const glossary = read(repo, 'docs', 'GLOSSARY.md'); const gate = glossary.match(/\*\*Gate\*\*[\s\S]*?(?=\n\*\*|$)/)?.[0] ?? '';
   assert.match(gate, /author.declared[\s\S]*deploy/is); assert.match(gate, /engine.presented[\s\S]*exhaustion/is);
-  assert.equal(git(repo, 'diff', '--name-only', 'HEAD', '--', 'README.md'), '');
+  try { git(repo, 'cat-file', '-e', '5d16e06^{commit}'); assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'README.md'), ''); }
+  catch (e) { if (!String(e.message).includes('cat-file')) throw e; console.log('  skip: baseline 5d16e06 unavailable'); }
+});
+
+await scenario('E7', 'unused explicit gate answers are ignored after a gate-free regression', () => {
+  const root = projectFixture(); copyFlows(root); makeTicket(root);
+  const r = cli(root, ['run', 'review', 'T-0001', '--adapter', 'mock', '--gate-answer', 'advance'], { MOCK_ALWAYS_FAIL: '1' });
+  assert.equal(r.status, 0, output(r)); assert.doesNotMatch(output(r), /unused|unconsumed|leftover/i);
 });
 
 await scenario('S12.1/E2', 'manual and future-facing criteria remain explicitly non-automated', () => {
