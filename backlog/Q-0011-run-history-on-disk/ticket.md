@@ -10,7 +10,7 @@ created: 2026-08-22
 iterations:
   solutioning.architecture-review: 2
   qa-red.scenario-review: 1
-  development.integrate: 1
+  development.integrate: 4
 history:
   - stage: requirements
     run: 1
@@ -124,6 +124,22 @@ history:
     stage_after: red
     at: 2026-08-23T13:43:42.509Z
     cost: 4.745
+  - stage: red
+    run: 10
+    flow: development
+    status: exhausted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T14:30:00.355Z
+    cost: 0
+  - stage: red
+    run: 10
+    flow: development
+    status: aborted
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T14:35:17.193Z
+    cost: 8.628
 ---
 Everything a run knows today dies with the terminal it printed to. `runs.log` keeps one line per
 step and the ticket keeps a cost per run, but the traces, the prompts, the per-vendor token

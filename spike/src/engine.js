@@ -529,7 +529,20 @@ async function runIntegrate(step, ctx) {
     const m = mergeInto(dir, base);
     notes.push(`- ${m.ok ? '✓' : '✗'} base \`${base}\`${m.ok ? '' : ' — ' + mergeFailure(m)}`);
     ui[m.ok ? 'info' : 'warn'](`${step.id}: ${m.ok ? 'synced base' : 'could not sync base'} ${base}${m.ok ? '' : ' — ' + mergeFailure(m)}`);
-    if (!m.ok) conflicts.push(base);
+    if (!m.ok) {
+      // A base conflict is between the ticket branch and the base — not between the task branches,
+      // and not something another developer round can repair: the task worktrees sync to the
+      // ticket branch, where nothing is wrong, so the agents correctly change nothing and the
+      // conflict returns unchanged. Q-0011 spent its whole budget and $8.63 discovering that three
+      // times. Stop and name the work a human has to do. See Q-0011.
+      for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), notes.join('\n'));
+      backlog.log(ticket, `run=${ctx.runId} step=${step.id} base-conflict base=${base} files=${m.conflicts.join(',') || '?'}`);
+      throw new FlowError(
+        `${step.id}: cannot sync ${into} with ${base} — ${mergeFailure(m)}.\n` +
+        `  This is a conflict between the ticket branch and ${base}, so re-running the developers cannot fix it:\n` +
+        `  their worktrees branch from ${into}, where nothing is wrong. Merge ${base} into ${into} yourself, then re-run.`,
+      );
+    }
   }
   for (const b of branches) {
     const m = mergeInto(dir, b);

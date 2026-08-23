@@ -298,6 +298,40 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
 }
 
+// A base-sync conflict cannot be fixed by re-running the developers — their worktrees branch from
+// the ticket branch, where nothing is wrong. Q-0011 burned all three iterations and $8.63 learning
+// that, because integrate routed it into on_fail like any test failure.
+{
+  const id = run(['ticket', 'new', 'Base conflict']).stdout.match(/T-\d{4}/)[0];
+  const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
+  const at = (rel) => path.join(tmp, 'backlog', dir, rel);
+
+  // Put the ticket branch and the base branch in genuine conflict over one file.
+  const branch = `harness/${id}/integration`;
+  const cur = execSync('git rev-parse --abbrev-ref HEAD', { cwd: tmp, encoding: 'utf8' }).trim();
+  execSync(`git checkout -q -b ${branch} && echo ticket-side > clash.txt && git add clash.txt && git -c user.email=a@b -c user.name=t commit -q -m ticket`, { cwd: tmp });
+  execSync(`git checkout -q ${cur} && echo base-side > clash.txt && git add clash.txt && git -c user.email=a@b -c user.name=t commit -q -m base`, { cwd: tmp });
+
+  const hy = path.join(tmp, 'harness/harness.yaml');
+  const savedCfg = fs.readFileSync(hy, 'utf8');
+  fs.writeFileSync(hy, savedCfg.replace(/base_branch: .*/, `base_branch: ${cur}`));
+
+  // input.backlog carries its own report so the convergence lint is satisfied — this fixture is
+  // about the base conflict, not about a blind loop.
+  fs.writeFileSync(path.join(tmp, 'harness/flows/base-clash.yaml'), `name: base-clash\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: integrate\n    type: integrate\n    branches: ["${branch}"]\n    into: "${branch}"\n    input: { backlog: [dev/integration.md] }\n    output: { writes: [dev/integration.md] }\n    on_fail: { goto: integrate, max_iterations: 3, on_exhausted: gate }\n`);
+
+  const bc = run(['run', 'base-clash', id, '--adapter', 'mock', '--auto']);
+  assert(bc.status !== 0, 'a base-sync conflict fails the run');
+  assert(/cannot sync .* with /.test(bc.stdout + bc.stderr), 'the failure names the two branches that disagree');
+  assert(/re-running the developers cannot fix it/.test(bc.stdout + bc.stderr), 'it says why looping would not help');
+  assert(!/iteration 1\/3/.test(bc.stdout), 'a base conflict does not consume the iteration budget');
+  assert(/base-conflict base=/.test(fs.readFileSync(at('runs.log'), 'utf8')), 'the base conflict is distinguishable in runs.log');
+
+  fs.writeFileSync(hy, savedCfg);
+  fs.rmSync(path.join(tmp, 'harness/flows/base-clash.yaml'));
+  execSync(`git checkout -q ${cur} -- clash.txt || true`, { cwd: tmp });
+}
+
 // A worktree is a full checkout, so backlog/ sits in every step's working directory. An agent
 // editing a ticket there can rewrite engine-owned state — stage, counters, history, cost — and
 // commit it to a branch that later merges back. Q-0011's architect reset iterations to {} and
