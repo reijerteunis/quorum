@@ -133,7 +133,7 @@ tasks:
 | `fan_out: tasks.yaml by role` | Dynamic parallelism: N tasks → N worktrees |
 | `integrate` step | Merge N task branches onto the ticket branch, run tests |
 | `cross_vendor: required` lint | Writer/reviewer vendor separation |
-| `gate: human-locked` | Gate that cannot be set to auto (deploy) |
+| `gate: human-locked` | Gate that cannot be set to auto (deploy, and engine-presented loop exhaustion) |
 
 Everything else reuses v1 primitives: `adapter`, `model`, `worktree: true`, `parallel`, `judge`, `gate`.
 
@@ -296,39 +296,61 @@ Roles example `harness/roles/developer-frontend.md` frontmatter: `adapter: claud
 name: review
 consumes: green
 produces: reviewed
+cross_vendor: required
 steps:
   - parallel:
-    - id: reviewer-claude
-      role: code-reviewer
-      adapter: claude
-      model: opus
-      input: { diff: "harness/T-{id}..main", backlog: [requirements/merged.md, solution/solution.md], harness: [rules.md] }
-      output: { write: "review/round-{iter}/claude.md", findings: true }
-    - id: reviewer-codex
-      role: code-reviewer
-      adapter: codex
-      model: gpt-5
-      input: { diff: "harness/T-{id}..main", backlog: [requirements/merged.md, solution/solution.md], harness: [rules.md] }
-      output: { write: "review/round-{iter}/codex.md", findings: true }
+      - id: review-claude
+        role: code-reviewer
+        adapter: claude
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/claude.md"]}
+      - id: review-codex
+        role: code-reviewer
+        adapter: codex
+        input:
+          backlog: [requirements/merged.md, solution/solution.md]
+          diff: "{base}...harness/{id}/integration"
+        output: {writes: ["review/round-{round}/codex.md"]}
 
   - id: verdict
-    type: judge
+    role: code-reviewer
     adapter: claude
-    model: opus
-    input: { findings: [reviewer-claude, reviewer-codex] }
-    output: { write: "review/round-{iter}/verdict.md", verdict: approve|changes-requested, tasks: true }
+    input:
+      backlog:
+        - "review/round-{round}/claude.md"
+        - "review/round-{round}/codex.md"
+        - requirements/merged.md
+        - solution/solution.md
+    output:
+      writes: ["review/round-{round}/verdict.md", review/verdict.md]
+      verdict: approve|changes-requested
     instructions: >
-      Deduplicate findings, drop nits, keep blockers and majors. If any blocker
-      remains, emit a tasks list (same schema as tasks.yaml) for the fix round.
+      Deduplicate the panel findings. Preserve file:line references and group surviving
+      findings as blocker, major, or nit. Approve exactly when no blocker or major
+      survives; nits alone approve. Findings must be empty on approve and non-empty on
+      changes-requested. Judge the reviews, not the code diff.
     on_fail:
-      goto: flow:development              # cross-flow backward edge
-      with: { tasks: "review/round-{iter}/verdict.md#tasks" }
-      counter: iterations.review
+      goto: flow:development
+      counter: review
       max_iterations: 3
       on_exhausted: gate
   - gate: human
-cross_vendor: required
+    reason: Review verdict is approve; accept or abort handover to final QA
 ```
+
+`{base}` is `repo.base_branch` from `harness/harness.yaml` (default `main`), and the
+three-dot range compares its merge base with `harness/{id}/integration`. `{round}` is
+the next numbered review directory. Diff patches are capped by
+`repo.max_diff_bytes` (default `200000` bytes) and carry an explicit truncation notice.
+The unprefixed `counter: review` persists as `iterations.review` on the ticket.
+
+On rejection, the target flow is resolved and the ticket regresses to that flow's
+`consumes` stage (`red` for the shipped `development` flow); the target flow is not run
+immediately. Three ordinary regressions are allowed. The next rejection presents an
+engine `human-locked` exhaustion gate with explicit `advance`, `retry`, or `abort`
+answers. `--auto` cannot bypass it, and `retry` authorises exactly one more regression.
 
 ### 5.6 `qa-final.yaml` — Final QA decides dev / solution / pass
 
@@ -412,7 +434,7 @@ Per-flow and per-ticket budget in `harness.yaml` (`budget: { per_run_usd: 10, pe
 
 ## 10. Open questions
 
-1. Should `review` feed fixes back as a full `development` run or as a lighter `fix` flow (single agent, no fan-out)? Proposal: start with full development scoped to `failing-tasks-only`; add `fix.yaml` if cost proves it.
+1. Review rejection returns to the full `development` flow, scoped there to `failing-tasks-only`. M1 ships no lighter `fix` flow; evidence from a later milestone may justify adding one.
 2. Script steps are on the v1 roadmap but `qa-red`, `qa-final` and `deploy` need them. Pulling `type: script` into v1 is the cheapest way to unblock this spec.
 3. Does the `central` backlog layout make the cold-clone test worse? Default stays `in-repo`; `central` is opt-in.
 4. Codex CLI's headless output is less structured than Claude Code's stream-json; the `findings: true` / `verdict:` outputs assume the adapter can extract a trailing JSON block. Spec the "structured tail" convention in the adapter contract.

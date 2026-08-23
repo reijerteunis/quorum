@@ -10,7 +10,7 @@
 
 **Canonical harness**: The single per-project source of truth (`harness/` folder): rules, architecture context, command prompts, flow files. Compiled by the Studio into vendor dialects (CLAUDE.md, AGENTS.md, GEMINI.md); vendor-unique features pass through in marked native sections.
 
-**Gate**: The checkpoint between flow steps. Human-gated by default (user sees verdict + diffs + reasoning, then advances/re-runs/overrides); can be set to `auto` per gate in the flow file.
+**Gate**: The checkpoint between flow steps. Human-gated by default (user sees verdict + diffs + reasoning, then advances/re-runs/overrides); can be set to `auto` per gate in the flow file. An author-declared `human-locked` deploy gate cannot be overridden. When a bounded loop exhausts, the engine presents an exhaustion gate of the same `human-locked` kind; it requires an explicit `advance`, `retry`, or `abort` answer and `--auto` cannot bypass it.
 
 **Flow**: A declarative, git-versioned file in the harness describing one orchestration: ordered steps, which adapter+model runs each step, what each step receives, and the gates between steps. Example: "grill → 2 competing coders → judge → reviewer panel". Since 2026-08-21 a flow also declares the backlog stage it `consumes` and `produces`.
 
