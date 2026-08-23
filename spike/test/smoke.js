@@ -47,6 +47,7 @@ assert(/head-of-product: 1/.test(ticket()), 'backward edge counter persisted (ne
 
 // Solutioning: architect in worktree, reviewer revise→approve loop, finalize
 r = run(['run', 'solutioning', 'T-0001', '--adapter', 'mock', '--auto']);
+const solutioningOut = r.stdout;   // reused far below for the base-sync reporting checks
 assert(r.status === 0, 'solutioning flow completes');
 assert(r.stdout.includes('iteration 1/2 → goto architect'), 'review loop bounced back to architect once');
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'solution/solution.md')), 'solution.md written');
@@ -237,6 +238,60 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
   assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
   assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
+}
+
+// "could not sync base:" with nothing after the colon reported a failure and withheld the reason.
+// Two causes: a merge that fails without conflicting, and a base branch that does not exist yet —
+// which is normal on a ticket's first pass and not a failure at all (Q-0011).
+{
+  const { mergeFailure } = await import('../src/engine.js');
+  assert(/conflicts: a\.md, b\.md/.test(mergeFailure({ conflicts: ['a.md', 'b.md'] })), 'conflicts are listed when there are any');
+  assert(/git: fatal: invalid reference/.test(mergeFailure({ conflicts: [], error: '\nfatal: invalid reference: main\n' })), "git's own words are used when nothing conflicted");
+  assert(mergeFailure({ conflicts: [] }) === 'git reported no reason', 'a failure with no reason says so instead of trailing off');
+  assert(mergeFailure(undefined) === 'git reported no reason', 'a missing result does not crash the reporter');
+
+  // End to end: solutioning loops the architect, so its second round syncs to the ticket branch
+  // that the first integrate step has not created yet — the exact case that printed the empty
+  // warning on every Q-0011 run.
+  const sol = solutioningOut;
+  assert(/does not exist yet — nothing to sync/.test(sol), 'a base branch that does not exist yet is stated, not warned about');
+  assert(!/could not sync/.test(sol), 'no sync warning is raised when there was nothing to sync');
+  assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
+}
+
+// A worktree is a full checkout, so backlog/ sits in every step's working directory. An agent
+// editing a ticket there can rewrite engine-owned state — stage, counters, history, cost — and
+// commit it to a branch that later merges back. Q-0011's architect reset iterations to {} and
+// deleted three history entries; a merge conflict caught it, which is luck, not design.
+{
+  const { commitAll } = await import('../src/fanout.js');
+  const wt = path.join(tmp, '.harness/worktrees/harness__T-0001__contracts');
+  if (fs.existsSync(wt)) {
+    // Set up the real-world shape: a ticket tracked on the branch, as it is in a live repo.
+    const dir = path.join(wt, 'backlog', td);
+    fs.mkdirSync(dir, { recursive: true });
+    const ticketInWt = path.join(dir, 'ticket.md');
+    const before = '---\nid: T-0001\nstage: solutioned\niterations:\n  solutioning.review: 2\n---\nintent\n';
+    fs.writeFileSync(ticketInWt, before);
+    execSync(`git add -A -- backlog && git -c user.email=a@b -c user.name=t commit -q -m setup`, { cwd: wt });
+
+    // Now an agent rewrites engine-owned frontmatter and drops a stray file beside it.
+    fs.writeFileSync(ticketInWt, before.replace('stage: solutioned', 'stage: deployed').replace('  solutioning.review: 2\n', ''));
+    fs.writeFileSync(path.join(dir, 'sneaked.md'), 'written by an agent\n');
+    fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
+
+    const dropped = [];
+    const files = commitAll(wt, 'test: agent edits [T-0001]', (d) => dropped.push(...d));
+
+    assert(dropped.length >= 2, `backlog edits are reported, not silently dropped (${dropped.length})`);
+    assert(fs.readFileSync(ticketInWt, 'utf8') === before, 'an agent cannot rewrite engine-owned ticket state from a worktree');
+    assert(!fs.existsSync(path.join(wt, 'backlog', td, 'sneaked.md')), 'a file an agent adds under backlog/ is removed, not committed');
+    assert((files ?? []).every((f) => !f.startsWith('backlog/')), 'nothing under backlog/ is committed from a worktree');
+    assert((files ?? []).some((f) => f.endsWith('legit.ts')), 'work outside backlog/ still commits normally');
+    // A left-behind dirty backlog would break the next merge, so the worktree must come back clean.
+    assert(!execSync('git status --porcelain -- backlog', { cwd: wt, encoding: 'utf8' }).trim(), 'the worktree is left clean under backlog/');
+  }
 }
 
 // architecture.md's role table is the fan-out write contract, and it says frontmatter and prose

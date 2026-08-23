@@ -1,7 +1,7 @@
 ---
 id: Q-0011
 title: Run history on disk with per-vendor roll-up
-stage: requirements
+stage: solutioned
 owner: ruud
 repos: []
 branch: harness/Q-0011/integration
@@ -74,6 +74,14 @@ history:
     stage_after: requirements
     at: 2026-08-23T01:18:15.146Z
     cost: 3.624
+  - stage: solutioned
+    run: 5
+    flow: solutioning
+    status: completed
+    stage_before: requirements
+    stage_after: solutioned
+    at: 2026-08-23T01:20:54.000Z
+    cost: 0
 ---
 Everything a run knows today dies with the terminal it printed to. `runs.log` keeps one line per
 step and the ticket keeps a cost per run, but the traces, the prompts, the per-vendor token

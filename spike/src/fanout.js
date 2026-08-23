@@ -57,7 +57,21 @@ const safe = (fn) => { try { return fn(); } catch { return null; } };
 
 export function branchExists(repo, b) { return Boolean(safe(() => git(`rev-parse --verify --quiet refs/heads/${b}`, repo))); }
 
-export function commitAll(dir, message) {
+// The engine owns everything under backlog/: a ticket's stage, counters, history and cost, and the
+// per-stage artifacts it writes itself into the main worktree. A worktree is a full checkout, so
+// backlog/ is sitting there in every step's working directory — and an agent's edit to it is never
+// authoritative. Q-0011's architect rewrote a ticket's frontmatter on its branch, resetting
+// `iterations` to {} and deleting three history entries with their costs; only a merge conflict
+// caught it, which is luck rather than design. Discard those edits and restore the worktree, so a
+// dirty backlog cannot block the next merge either. Reported through onDiscard, never silently.
+export function commitAll(dir, message, onDiscard) {
+  const dirty = (safe(() => git('status --porcelain -- backlog', dir)) ?? '')
+    .split('\n').map((l) => l.slice(3).trim()).filter(Boolean);
+  if (dirty.length) {
+    safe(() => git('checkout -- backlog', dir));   // revert tracked edits
+    safe(() => git('clean -qfd -- backlog', dir)); // drop files the agent added
+    onDiscard?.(dirty);
+  }
   git('add -A', dir);
   const staged = git('diff --cached --name-only', dir);
   if (!staged) return null;
