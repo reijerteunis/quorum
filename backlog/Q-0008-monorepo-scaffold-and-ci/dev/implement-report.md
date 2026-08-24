@@ -1,253 +1,232 @@
-# Q-0008 — implementation report (chore, iteration 3)
+# Q-0008 — implementation report
 
-*Revision round. Iterations 1 and 2 raised one finding, identically worded both times. This round tested the fix the reviewer proposed, found it does not work, and reverted. **No file changed this round** — the worktree is byte-identical to the commit under review. What is new is the evidence, below, which narrows the finding to a single decision the owner has to take at the gate.*
-
----
-
-## 1. The open finding: `engines.node: ">=22"` versus the toolchain
-
-**The finding is correct.** Root `package.json` declares `engines: { "node": ">=22" }`. The shipped tree does not support all of that range:
-
-| package | engines | excludes |
-| --- | --- | --- |
-| `eslint@10.9.0` | `^20.19.0 \|\| ^22.13.0 \|\| >=24` | 22.0 – 22.12 |
-| `eslint-visitor-keys@5.0.1` | `^20.19.0 \|\| ^22.13.0 \|\| >=24` | 22.0 – 22.12 |
-| `vite@8.2.2` (+ 15 `@rolldown/binding-*`) | `^20.19.0 \|\| >=22.12.0` | 22.0 – 22.11 |
-
-Effective floor: **Node 22.13.0**. Declared floor: **22.0.0**.
-
-Iteration 2 named two resolutions: *"either raise the declared minimum to `>=22.13.0` or select maintained dependencies that support the full declared range"*, prefaced by *"Resolve the requirements conflict, then …"*. I took the second one first, because it is the one that needs no authorisation.
-
-### 1.1 I built the downgrade. It does not remove the floor.
-
-Set `eslint: ^9.39.5` and `vite: ^6.4.3`, regenerated `pnpm-lock.yaml` with the pinned pnpm 10.31.0, and ran everything:
-
-```
-pnpm lint       → Tasks: 7 successful, 7 total
-pnpm typecheck  → Tasks: 7 successful, 7 total
-pnpm test       → Tasks: 7 successful, 7 total
-```
-
-Green — and still broken, for four separate reasons.
-
-**(a) The 22.13 floor survives, because it is not ESLint's.** In the downgraded lockfile:
-
-```yaml
-'@typescript-eslint/visitor-keys@8.67.0':
-  dependencies:
-    '@typescript-eslint/types': 8.67.0
-    eslint-visitor-keys: 5.0.1        # engines: ^20.19.0 || ^22.13.0 || >=24
-```
-
-`eslint-visitor-keys@5.0.1` is a **direct dependency of `@typescript-eslint/visitor-keys`**, not a peer and not ESLint's. It is present in *both* lockfiles — I diffed them. And `typescript-eslint` is the package **criterion 4 requires by name**: it is the sole supplier of `@typescript-eslint/no-explicit-any` and `@typescript-eslint/ban-ts-comment`, the two rules criterion 4 exists to enforce. There is no version of criterion 4 without it, and therefore no dependency selection that satisfies criterion 4 and Node 22.0 simultaneously.
-
-**(b) It raises the floor on CI's own platform.** Vite 6 uses Rollup where Vite 8 uses Rolldown, and Rollup 4.62.5 carries:
-
-```yaml
-'@napi-rs/lzma-linux-x64-gnu@1.5.1':
-  engines: {node: ^22.20 || ^24.12 || >=25}
-  cpu: [x64]   os: [linux]   libc: [glibc]
-```
-
-That is `linux-x64-gnu` — the platform `ubuntu-latest` runs. It is an optional dependency, so the practical effect is a skip-or-warn rather than a hard failure, but the declared floor on the runner goes from 22.13 to **22.20**. It is absent from the shipped lockfile (`grep -c "napi-rs/lzma"` → `0`). The downgrade adds a constraint instead of removing one.
-
-**(c) It ships a linter that is out of support.** pnpm prints it on install:
-
-```
-WARN deprecated eslint@9.39.5: This version is no longer supported.
-     Please see https://eslint.org/version-support for other options.
-```
-
-A scaffold's defaults propagate into every ticket after it. Pinning an EOL major as the repository's linter is a worse standing cost than the gap it was meant to close.
-
-**(d) It adds an install warning for every contributor.** Vite 6 pulls `esbuild@0.25.12`, whose postinstall pnpm 10 blocks by default:
-
-```
-Ignored build scripts: esbuild@0.25.12.
-Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
-```
-
-Silencing it means adding `onlyBuiltDependencies` or `ignoredBuiltDependencies` to `pnpm-workspace.yaml` — deciding, on the maintainer's behalf, whether a dependency may run arbitrary code at install time. Criterion 1 says `pnpm-workspace.yaml` lists exactly `packages/*` and `apps/*`, and that is not a decision a scaffold should take unasked.
-
-**I reverted.** `package.json` and `pnpm-lock.yaml` are restored; regenerating the lockfile from the restored `package.json` produced a byte-identical file, which incidentally re-verifies criterion 1's last clause — the committed lockfile is reproducible under the pinned pnpm.
-
-### 1.2 What is left, and why it is not mine
-
-Path (a) is closed by criterion 4. That leaves the reviewer's path (b): **a requirements change**. Criterion 1 states the value verbatim —
-
-> `engines: { "node": ">=22" }`
-
-— and the Risks section reinforces it: *"`engines` must be `">=22"`, never `"22.x"`"*. My role's instruction is that the merged requirement's acceptance criteria are the whole specification, and that I stop and report rather than choose where it does not cover a case. The reviewer agrees the authority sits elsewhere: *"obtain a requirements change before raising the repository's minimum Node version."* So I have not raised it.
-
-**The amendment I recommend, for the owner at the gate.** Change criterion 1's `engines` to `">=22.13.0"`, and nothing else.
-
-- It matches the measured floor exactly.
-- It **preserves the Risks section's stated rationale**. That rationale is *"never `"22.x"`, or the scaffold refuses to install on the machine that built it"* — the objection is to excluding Node 24, and the maintainer runs v24.15.0. `">=22.13.0"` does not exclude Node 24. The literal string changes; the reason behind it is honoured.
-- `.nvmrc` stays `22`, which is already correct: `actions/setup-node`'s `node-version-file` resolves `22` to the latest 22.x, currently well above 22.13.
-- It costs one line and no dependency churn.
-
-The alternative — accept the deprecated-ESLint tree from §1.1 to serve Node 22.0–22.12 — buys a range nobody in this project uses and does not even deliver it, since the floor stays at 22.13 regardless.
-
-**Severity note, so the gate can size this.** No `.npmrc` exists, so `engine-strict` is off and pnpm's default behaviour on an `engines` mismatch is a warning, not a refusal. The defect is that the repository advertises support it does not have — a documentation-grade dishonesty in a machine-readable field, which is worth fixing and is not currently breaking any install.
+*`developer-generalist`, chore flow. Revision round: the scaffold was built in the previous run and is carried on this branch; the requirement has since been amended (`requirements/errata.md`). This report covers the whole branch diff, because that is what the reviewer reads beside it, and marks clearly which parts changed **this** round.*
 
 ---
 
-## 2. Two further requirement defects found while verifying
+## 1. What this round changed
 
-Neither was raised in iterations 1 or 2. Both are the requirement's, not the diff's, and both are for the owner.
+Three review iterations produced exactly one finding, restated unchanged each time: the declared `engines.node` range is wider than the locked toolchain supports. The requirement was amended for it on 2026-08-24 (`requirements/errata.md` §1; criterion 1 now reads `">=22.13.0"`). Two files changed.
 
-**Criterion 7's verify command contradicts criterion 7's prose.** The prose says the workflow *"defines no environment variable whose name contains `KEY` or `TOKEN`"* — satisfied, and strongly: the workflow has **no `env:` block at all** (`grep -n "env:" .github/workflows/ci.yml` → nothing) and no `secrets.` reference (`grep -c 'secrets\.'` → `0`). But the stated verification is `grep -iE '(KEY|TOKEN)' .github/workflows/ci.yml` *prints nothing*, and it prints two lines:
+### `package.json` — `engines.node` from `">=22"` to `">=22.13.0"`
 
-```
-23:          key: turbo-${{ runner.os }}-${{ github.sha }}
-24:          restore-keys: turbo-${{ runner.os }}-
-```
+The finding is real and the amendment is the right resolution. The alternative the reviewer offered first — "select maintained dependencies that support the full declared range" — is closed, and the errata records why: `eslint-visitor-keys@5.0.1` declares `^20.19.0 || ^22.13.0 || >=24`, and it is a direct dependency of `@typescript-eslint/visitor-keys`. Criterion 4 names `typescript-eslint` as the sole supplier of `no-explicit-any` and `ban-ts-comment` — the two rules that criterion exists to enforce — so there is no dependency set satisfying criterion 4 and Node 22.0 at once. `vite@8.2.2` and its Rolldown bindings add `>=22.12.0` independently.
 
-Those are `actions/cache`'s required inputs — and the same criterion mandates `actions/cache` (*"with `.turbo` restored between runs by `actions/cache`"*). The criterion requires a step that makes its own check fail; the input is named `key` by GitHub and cannot be renamed. A reviewer running the command literally will see a red check on a workflow that is clean. Suggested narrowing, which expresses the BYOS intent and passes: `grep -n "env:" .github/workflows/ci.yml` and `grep -c 'secrets\.'`.
+The Risks entry's stated reason survives intact: its objection was to `"22.x"` excluding Node 24, and `">=22.13.0"` still admits Node 24, which is what the maintainer runs (v24.15.0). The string changed; the reason did not.
 
-**Criterion 8's `harness/harness.yaml` edit is already on `main`.** It landed in `b389dbe` (*"feat(backlog): Q-0008 requirements approved; integrate now gates both suites"*), the requirements-approval commit, so `harness/harness.yaml` is **absent from this branch's `git diff --name-only main...HEAD`** even though criterion 10 lists it as an expected changed path. It is not a gap — the file on `main` already carries both keys criterion 8 asks for:
+`pnpm-lock.yaml` did **not** need regenerating — `engines` is not recorded in a v9 lockfile, and `pnpm install --frozen-lockfile` reports *"Lockfile is up to date"* after the edit.
 
-```yaml
-install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
-test:    npm test --prefix spike && pnpm turbo run test
-```
+### `.gitignore` — `.turbo` to `.turbo/`, `coverage` to `coverage/`
 
-Criterion 10's reviewer runs the changed-path check *first, before opening any file*; this is the one entry that will look missing and is not.
+Criterion 6 specifies these two entries with trailing slashes, and every existing directory entry in the file (`node_modules/`, `.quorum/`, `.harness/`, `dist/`) uses that form. The previous round wrote them without. Both forms pass the criterion's verification, so this is literal conformance and consistency with the file's own style rather than a defect fix — flagged here so it is not read as unrequested churn. The slash also narrows each pattern to a directory, which is what both entries name.
+
+**Nothing else changed this round.** The changed-path set is byte-for-byte the same list as before, which is criterion 10's whole point.
 
 ---
 
-## 3. Changes this round
+## 2. The branch, file by file
 
-**None.** `git status --short` is empty and `git diff --stat HEAD` is empty. The eslint-9/vite-6 experiment of §1.1 was built, measured and reverted in full.
+### Workspace root
 
----
-
-## 4. File-by-file inventory of the change under review
-
-Unchanged from the reviewed commit; restated so the reviewer can read this beside the diff without re-deriving it.
-
-### Root
-
-| file | what it does |
+| File | What it is |
 | --- | --- |
-| `package.json` | `private`, `type: module`, `packageManager: pnpm@10.31.0`, `engines.node: ">=22"`, three scripts each delegating to `turbo run <task>`. **No `bin` field** — that is Q-0010's. Six devDependencies, all root-level. |
-| `pnpm-workspace.yaml` | Exactly `packages/*` and `apps/*`. `spike` is neither listed nor glob-matched. |
-| `pnpm-lock.yaml` | Generated by the pinned pnpm 10.31.0; reproducible — regenerating it this round produced a byte-identical file. |
-| `.nvmrc` | `22`. Single source of the CI Node version via `node-version-file`. |
-| `tsconfig.base.json` | The only file with `compilerOptions`. See §5. |
-| `eslint.config.js` | The only ESLint config in the repository. Flat config over `packages/**/*.ts` and `apps/**/*.ts`; ignores `node_modules`, `dist`, `.turbo`, `coverage`, `spike/**`. Two rules, both from `harness/rules.md`. Type-aware linting deliberately off. |
-| `turbo.json` | `lint`, `typecheck`, `test`, each with `outputs: []`. `inputs` left at the default on purpose. No `build` task. `globalDependencies` names the four shared root files so a change to any of them busts the cache. |
-| `vitest.shared.js` | The one Vitest config: `include: ['src/**/*.test.ts']`. |
-| `.gitignore` | Adds `.turbo`, `coverage`, `*.tsbuildinfo` beside the existing six entries. |
+| `package.json` | `private: true`, `type: module`, `packageManager: "pnpm@10.31.0"`, `engines.node: ">=22.13.0"`. Three scripts, each delegating: `lint`/`typecheck`/`test` to `turbo run <task>`. **No `bin` field** — the binary is Q-0010's. |
+| `pnpm-workspace.yaml` | Exactly `packages/*` and `apps/*`. `spike` is neither listed nor matched by a glob. |
+| `pnpm-lock.yaml` | `lockfileVersion: '9.0'`, written by the pinned pnpm 10.31.0. |
+| `.nvmrc` | `22`. The single Node pin; CI reads it through `node-version-file` rather than repeating a version. |
+| `tsconfig.base.json` | The only file in the repository with `compilerOptions` (see §3). |
+| `eslint.config.js` | The only ESLint configuration in the repository (see §4). |
+| `turbo.json` | Three tasks, explicit empty `outputs`, default `inputs`, no `build` task (see §5). |
+| `vitest.shared.js` | The one Vitest configuration; each package re-exports it in one line. |
+| `.gitignore` | Gains `.turbo/`, `coverage/` and `*.tsbuildinfo` beside the six existing entries. |
+| `.github/workflows/ci.yml` | Two jobs (see §6). |
 
-*One deviation from the requirement's literal text, stated rather than left for the reviewer to find:* criterion 6 writes the additions as `.turbo/` and `coverage/` with trailing slashes; the file uses the slashless form. A trailing slash restricts a pattern to directories, and `git check-ignore coverage` is evaluated against a path that does not exist on a clean clone — so the slashless form is what reliably satisfies criterion 6's own verification. `git status --ignored --short` confirms every `.turbo/` is excluded.
+### The seven packages
 
-### Packages — `core`, `server`, `cli`, `compiler`, `templates`, `shared`, and `apps/web`
+`packages/core`, `packages/server`, `packages/cli`, `packages/compiler`, `packages/templates`, `packages/shared`, `apps/web` — exactly the seven boundaries `docs/04-architecture.md` draws, and no eighth registered directory. Each is identical in shape:
 
-Seven, each identical in shape and each empty on purpose:
+- `package.json` — `private: true`, name `@quorum/<dir>`, `type: module`, the three scripts (`eslint .`, `tsc --noEmit`, `vitest run`). **No `dependencies` key in any of them**; the first runtime dependency to appear here is a port that started early.
+- `tsconfig.json` — one key, `"extends": "../../tsconfig.base.json"`. No `compilerOptions`.
+- `src/index.ts` — one line, `export const name = '@quorum/<dir>';`. Seven lines across all seven packages, against criterion 2's ceiling of fifty.
+- `src/index.test.ts` — one Vitest test asserting that constant.
+- `vitest.config.js` — `export { default } from '../../vitest.shared.js';`, the re-export criterion 5 permits, so a package runs on its own without diverging from the shared config.
 
-- `package.json` — `private`, `@quorum/<dir>`, `type: module`, the three scripts. `test` is `vitest run`, never bare `vitest`. **No `dependencies` key in any of the seven.**
-- `tsconfig.json` — one key: `"extends": "../../tsconfig.base.json"`. No package re-declares or weakens a compiler option.
-- `vitest.config.js` — `export { default } from '../../vitest.shared.js';` (one line).
-- `src/index.ts` — one line, `export const name = '@quorum/<dir>';`. Seven files, seven lines total.
-- `src/index.test.ts` — asserts that constant.
+`apps/web` additionally has `vite.config.ts` — `defineConfig({})` and nothing else. No React, no router, no theme, no build target. That is M3 and Q-0014.
 
-`apps/web` additionally has `vite.config.ts`: `import { defineConfig } from 'vite'; export default defineConfig({});` — two lines. No React, router, theme or build decision. `packages/templates` ships no harness assets; `spike/templates/harness/**` is untouched.
-
-### CI — `.github/workflows/ci.yml`
-
-Two jobs on `push` and `pull_request`.
-
-- **`workspace`** — checkout, `pnpm/action-setup` (version from root `packageManager`), `setup-node` with `node-version-file: .nvmrc` and `cache: pnpm`, `pnpm install --frozen-lockfile`, `actions/cache` over `.turbo`, then `pnpm lint`, `pnpm typecheck`, `pnpm test` as three separate steps so a failure names which task failed.
-- **`spike`** — checkout, same Node, **`git config --global user.email`/`user.name`**, then `npm ci` and `npm test` in `spike/`. The git identity is load-bearing: the suite drives the engine, which commits worktrees with the ambient identity, and a bare runner has none.
-
-No `env:` block, no `secrets.`, no release, publish, deploy or dependency-update automation. No matrix.
+`packages/templates` ships **no** harness assets. `spike/templates/harness/**` stays where it is until Q-0009 moves it.
 
 ### `docs/04-architecture.md`
 
-Status line only — one line, bumped with today's date and what changed, per the docs rule.
+Status line only, bumped to record that the scaffold now exists, dated 2026-08-24, naming Q-0008 and stating that the seven boundaries drawn below it are now real directories, empty on purpose until Q-0009. No structural edit to the document.
 
 ---
 
-## 5. Compiler options and dependencies, with reasons
+## 3. TypeScript: the choices criterion 3 asks me to state
 
-Criterion 3 requires `module` and `moduleResolution` stated with a reason here; criterion 9 requires a one-line justification per new devDependency.
+`tsconfig.base.json` is the single source, and nothing re-declares or weakens it.
 
-**`tsconfig.base.json`:**
-
-- `"module": "nodenext"` and `"moduleResolution": "nodenext"` — the workspace targets Node ≥ 22 running native ESM, and `nodenext` is the only pair that models Node's real resolver: it enforces the `.js` extension on relative ESM imports (which is why the placeholder tests import `'./index.js'`) and honours `exports` maps and the `"type": "module"` boundary. Anything else lets code typecheck here and fail at runtime under Node, and Q-0009 is about to port a real Node program into these packages.
-- `"strict": true` — criterion 3, and `harness/rules.md`.
-- `"target": "es2023"` — the language level Node 22 implements without downlevelling. Stated because criterion 3 asks for any additional flag to carry a reason.
-- `"skipLibCheck": true` — typechecks this repository's source, not its dependencies' shipped `.d.ts` files. Without it `pnpm typecheck` reports errors no one here can fix.
-
-**devDependencies:**
-
-- `turbo` — the task graph and cache criteria 5 and 6 specify.
-- `typescript` — `tsc --noEmit` is the `typecheck` task.
-- `vitest` — the runner criterion 5 names.
-- `eslint` — the linter criterion 4 names.
-- `typescript-eslint` — supplies the parser and both rules criterion 4 requires; nothing else provides `no-explicit-any` or `ban-ts-comment`. *(This is the package that sets the Node 22.13 floor — see §1.1.)*
-- `vite` — needed twice over: `apps/web/vite.config.ts` imports `defineConfig` from it, and it is Vitest's peer, so it is in the tree regardless.
-
-All six are root-level. pnpm does not hoist, but `pnpm run` puts the workspace root's `node_modules/.bin` on PATH alongside the package's own, so each package's `eslint .` / `tsc --noEmit` / `vitest run` resolves — confirmed by running `pnpm --filter @quorum/core test` from a workspace with no per-package devDependencies. `docs/04-architecture.md` already names pnpm, Turborepo, TypeScript strict, Node ≥ 22, Vitest, ESLint and Vite, so none of the six needs its own DECISIONS entry.
-
----
-
-## 6. Verification — every criterion, run in this worktree
-
-| # | check | result |
+| Option | Value | Reason |
 | --- | --- | --- |
-| 1 | `pnpm install --frozen-lockfile` | `Lockfile is up to date, resolution step is skipped` |
-| 1 | `pnpm ls -r --depth -1` | root + 7 packages, all `(PRIVATE)`, no `spike` |
-| 1 | lockfile reproducible under pinned pnpm | regenerated → byte-identical |
-| 2 | `pnpm test` | 7 suites, 7 passed |
-| 2 | workspace count | 8 entries (root + 7) |
-| 2 | `grep -rn "spike" packages apps` | nothing |
-| 2 | `grep -l '"dependencies"' …/package.json` | nothing |
-| 2 | `wc -l` over the seven `src/index.ts` | **7** lines total (ceiling 50) |
-| 3 | `pnpm typecheck` | `Tasks: 7 successful, 7 total` |
-| 3 | no package re-declares compiler options | each `tsconfig.json` has only `extends` |
-| 3 | **negative:** `const n: number = "x";` in `packages/core/src/index.ts` | `error TS2322: Type 'string' is not assignable to type 'number'` → exit 2 · **reverted** |
-| 4 | `git ls-files \| grep -i eslint` | one path: `eslint.config.js` |
-| 4 | `pnpm lint` | `Tasks: 7 successful, 7 total` |
-| 4 | **negative:** `const x: any = 1;` in `packages/shared/src/index.ts` | `@typescript-eslint/no-explicit-any` → exit 1 · **reverted** |
-| 4 | **negative:** bare `// @ts-ignore` | `@typescript-eslint/ban-ts-comment: Include a description…` → exit 1 · **reverted** |
-| 5 | `pnpm test` returns to the prompt | ~1.1 s, no watcher |
-| 5 | `pnpm --filter @quorum/core test` | `Test Files 1 passed (1)` |
-| 6 | `pnpm test && pnpm test` | second run `Cached: 7 cached, 7 total · 9ms >>> FULL TURBO` |
-| 6 | `.turbo` ignored | `git status --ignored --short` lists every `.turbo/` as `!!` |
-| 6 | `grep -c '"build"' turbo.json` | `0` |
-| 7 | `grep -c 'secrets\.' .github/workflows/ci.yml` | `0` |
-| 7 | `grep -n "env:" .github/workflows/ci.yml` | nothing — no environment variable is defined at all |
-| 7 | `grep -iE '(KEY\|TOKEN)'` | **2 lines** — `actions/cache`'s `key:`/`restore-keys:`; see §2 |
-| 8 | `git diff --name-only main...HEAD -- spike/` | nothing |
-| 9 | `head -5 docs/04-architecture.md` | status line bumped, dated 2026-08-24 |
-| 9 | `git diff main...HEAD -- README.md CLAUDE.md docs/DECISIONS.md` | nothing |
-| 10 | `git diff --name-only main...HEAD` | 47 paths, all within the permitted set |
+| `strict` | `true` | The requirement, and `harness/rules.md`. |
+| `module` | `nodenext` | Quorum is a Node ≥ 22 ESM program that reads and writes files and spawns vendor CLIs. `nodenext` is the only setting that models Node's actual ESM/CJS resolution, so the compiler enforces the extension-bearing specifiers Node requires at runtime instead of accepting bundler-shaped imports that would fail on execution. |
+| `moduleResolution` | `nodenext` | Forced by `module: nodenext`, and correct for the same reason. |
+| `target` | `es2023` | Node 22 implements ES2023 fully; a lower target would downlevel output for a runtime that does not need it. |
+| `skipLibCheck` | `true` | Not a relaxation on our own code — it skips type-checking `.d.ts` files inside dependencies, whose errors we cannot fix and which are not evidence about this repository. It keeps `typecheck` proportional to the code that is ours. |
 
-### Two checks I could not run here, stated rather than glossed
+**No additional strictness flags** (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and friends) were added. There is no code to hold to them yet; turning one on later against seven one-line files is free, whereas turning on one that Q-0009's port cannot satisfy would be a decision taken on that ticket's behalf — the thing this role is told not to do. Flagged as Q-0009's call.
 
-- **`npm test --prefix spike`.** `spike/node_modules` does not exist in this worktree and installing it needs the network, which this sandbox denies. The spike is nonetheless **provably untouched** — `git diff main...HEAD -- spike/` is empty — so its result is whatever it is on `main`, and CI's `spike` job installs and runs it. This is also where the spike's `engines: ">=20"` first meets Node 22; per the requirement, surfacing that is the correct outcome and fixing it is not this ticket's business.
-- **`gh run list --branch harness/Q-0008/integration`.** The branch is unpushed, so no run exists. Criterion 7 anticipates this: the reviewer runs each `run:` line locally instead and the gate records that it did. The `workspace` job's four commands are the four rows above; the `spike` job's are the two blocked here.
+**Verified, not asserted:** appending `const n: number = "x";` to `packages/core/src/index.ts` makes `pnpm typecheck` exit non-zero with `src/index.ts(2,7): error TS2322: Type 'string' is not assignable to type 'number'.` and `Failed: @quorum/core#typecheck`. Reverted; the subsequent full run returns `FULL TURBO` on all three tasks, which is itself proof the revert was byte-exact — a changed input could not hit the cache.
 
 ---
 
-## 7. For the owner, at the gate
+## 4. ESLint
 
-Criterion 9 routes two edits to you because my role covers neither.
+`eslint.config.js` is the only ESLint configuration in the repository — `git ls-files | grep -i eslint` prints one path. Flat config. It applies to `packages/**/*.ts` and `apps/**/*.ts`, and ignores `node_modules`, `dist`, `.turbo`, `coverage` and `spike/**`.
 
-**(a) CLAUDE.md.** *"Until M2 lands, the runnable code is the spike in `spike/`"* is now false. It should say the workspace exists and is empty; that the spike remains the regression suite until Q-0009; and that **the repository now has two commands called "lint"** — `pnpm lint` lints TypeScript in `packages/**` and `apps/**`, while flows are still linted by `node spike/bin/harness.js lint`. That collision is worth one sentence before it costs someone an afternoon. `CLAUDE.md` is not in `developer-generalist`'s path list, so I have not touched it.
+It sets exactly the two rules `harness/rules.md` states and nothing has ever enforced:
 
-**(b) A `docs/DECISIONS.md` entry.** *The spike stays outside the workspace, on npm, run as its own CI job and its own half of the repository's test command, until Q-0009 retires it.* Alternatives: make it a workspace package (its runner is not Vitest, its `lint` script is the flow linter, and `--frozen-lockfile` would then govern a lockfile npm wrote) or leave it out of CI entirely (a green badge over seven placeholder assertions, while the only real suite goes unrun). My role forbids appending to DECISIONS.md.
+- `@typescript-eslint/no-explicit-any: 'error'`
+- `@typescript-eslint/ban-ts-comment`, with `ts-ignore` and `ts-expect-error` both set to `allow-with-description`
 
-**(c) The Node floor — the decision that unblocks this gate.** §1 in one line: amend criterion 1's `engines` to `">=22.13.0"`, or accept a deprecated ESLint that does not fix it anyway.
+Type-aware linting is **off**, per the criterion: `tsc` owns types, ESLint owns style, and a type-aware pass doubles CI time for packages that are currently one line each. Q-0009 may turn it on if it earns it.
 
-**(d) Criterion 7's verify command.** §2 — narrow it, or the mechanical check reports red on a clean workflow.
+**Both rules verified firing:**
 
-Open questions 1, 2, 4 and 5 in the merged requirement were decided there and I followed them as written: `@quorum/*` private scope, both suites in `commands.test`, no correction of the plan's stale "30-check" figure, and `packages/templates` as a TypeScript package for now.
+- `const x: any = 1;` in `packages/shared/src/index.ts` — `pnpm lint` exits non-zero, `Failed: @quorum/shared#lint`.
+- An undescribed `// @ts-ignore` — `error  Include a description after the "@ts-ignore" directive to explain why the @ts-ignore is necessary … @typescript-eslint/ban-ts-comment`, exit 1.
+
+Both reverted.
 
 ---
 
-## 8. Deliberately left alone
+## 5. Turbo and Vitest
 
-No `build` task, no emitted output. No publish, release, changesets, versioning or `CHANGELOG.md`. No Dockerfile, renovate, dependabot, husky or lint-staged. No `verify:scaffold` or any other bespoke script — a check this ticket writes cannot be the evidence this ticket is right. No Node or OS matrix, no coverage thresholds, no type-aware lint, no remote turbo cache, no Playwright, no adapter probe in CI. No React, Tailwind, router or state management in `apps/web`. No harness assets moved into `packages/templates`. Not one function, schema or test ported from `spike/**`. No inter-package dependency, no shared type, no event format. No `README.md` rewrite. No flow, role, context file, ticket, glossary term or development-plan entry touched. No `backlog/` file written and nothing appended to `docs/DECISIONS.md`. Nothing committed — the harness commits this worktree.
+`turbo.json` declares `lint`, `typecheck` and `test`. Each carries an explicit `outputs: []` — none of the three emits anything, so a cache hit means the task genuinely had nothing to do rather than that its output was restored. `inputs` are left at the default deliberately: narrowing them is how a cache reports success for a task that never saw the changed file. `globalDependencies` lists `tsconfig.base.json`, `eslint.config.js`, `vitest.shared.js` and `.nvmrc`, so editing a root config invalidates every package instead of silently hitting cache.
+
+**No `build` task ships** — `grep -c '"build"' turbo.json` prints `0`. Nothing emits yet; Q-0009 adds it with the first package that does. No remote cache, no account, no signing secret.
+
+Every package's `test` script is `vitest run`, never bare `vitest`. Bare `vitest` watches, and `harness.yaml`'s `commands.timeout_ms` is 900000 — a watching suite would burn fifteen minutes and then report as a timeout rather than as a mistake, in CI and at `integrate` alike.
+
+**Verified:** `pnpm test` gives 7 tasks successful of 7 total, sub-second, and returns to the prompt. A second consecutive run gives `Tasks: 7 successful … Cached: 7 cached, 7 total … >>> FULL TURBO`. `pnpm --filter @quorum/core test` gives `Test Files 1 passed (1)` — one suite, not seven.
+
+---
+
+## 6. CI
+
+`.github/workflows/ci.yml`, triggering on `push` and `pull_request`, two jobs on `ubuntu-latest`:
+
+**`workspace`** — checkout, `pnpm/action-setup` (pnpm taken from the root `packageManager` field), `actions/setup-node` with `node-version-file: .nvmrc` so the Node pin lives in one place, `pnpm install --frozen-lockfile`, `actions/cache` restoring `.turbo` between runs, then `pnpm lint`, `pnpm typecheck` and `pnpm test` as three separate steps so a failure names which task failed.
+
+**`spike`** — checkout, the same Node version from `.nvmrc`, then a git identity, then `npm ci` and `npm test` with `working-directory: spike`. The identity step is not optional: the suite drives the engine, which commits worktrees with the *ambient* identity, and a bare runner has none — the first commit would fail before a single check ran. Running the spike on Node 22 also surfaces whatever its `engines: ">=20"` currently permits; surfacing it is the correct outcome, and fixing it is not this ticket's business.
+
+Without this second job the badge would mean "seven placeholder tests pass" while claiming to mean "the tests pass". Until Q-0009 ports it, the spike suite is the only regression evidence this repository has.
+
+**BYOS verified:** `grep -c 'secrets\.' .github/workflows/ci.yml` prints `0`, and `grep -n 'env:' .github/workflows/ci.yml` prints nothing — the workflow declares no `env:` block at all, so there is no environment variable named for a credential. This is the check as amended by `requirements/errata.md` §2; the original `grep -iE '(KEY|TOKEN)'` matched `actions/cache`'s required `key:` input, which the same criterion mandates.
+
+No release, publish, deploy or dependency-update automation. No matrix.
+
+---
+
+## 7. The spike, and the harness command
+
+`git diff --name-only main...HEAD -- spike/` prints **nothing**. Not one file under `spike/` is changed. It stays outside the pnpm workspace, outside ESLint's scope and outside turbo's task graph, and keeps npm with its own `package-lock.json`.
+
+`harness/harness.yaml` already carries both keys criterion 8 asks for:
+
+    install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
+    test:    npm test --prefix spike && pnpm turbo run test
+
+**Their absence from the branch diff is correct, not a gap**, and `requirements/errata.md` §3 explains why: they landed on `main` in `b389dbe`, the requirements-approval commit, deliberately and before this run started. `bin/harness.js:56` parses `harness.yaml` once at run start, so an implementer editing it mid-run could not affect its own `integrate` step; landing it on `main` first also keeps this worktree from conflicting on those lines. The reviewer should not read criterion 10's mention of `harness/harness.yaml` as a missing path here.
+
+---
+
+## 8. Verification log
+
+Run in this worktree, from the amended state, after every negative test was reverted.
+
+| Check | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | `Lockfile is up to date` · `Already up to date` · exit 0 |
+| `pnpm ls -r --depth -1` | root `quorum` plus seven `@quorum/*`, all `(PRIVATE)`, no `spike` |
+| `pnpm lint` | 7 successful, 7 total |
+| `pnpm typecheck` | 7 successful, 7 total |
+| `pnpm test` | 7 successful, 7 total, sub-second, no watch |
+| `pnpm test` (repeat) | 7 cached, 7 total, `>>> FULL TURBO` |
+| `pnpm --filter @quorum/core test` | 1 test file, 1 test |
+| type error, then `pnpm typecheck` | exit 2, `TS2322`, `Failed: @quorum/core#typecheck` — reverted |
+| `any`, then `pnpm lint` | exit 1, `no-explicit-any`, `Failed: @quorum/shared#lint` — reverted |
+| undescribed `@ts-ignore`, then lint | exit 1, `ban-ts-comment` — reverted |
+| `grep -rn "spike" packages apps --include="*.ts" --include="*.json"` | no output |
+| `grep -l '"dependencies"' <all seven package.json>` | no output |
+| `wc -l <all seven src/index.ts>` | `7 total`, against a ceiling of 50 |
+| `grep -n 'compilerOptions' <all seven tsconfig.json>` | no output |
+| `git ls-files | grep -i eslint` | `eslint.config.js` — one path |
+| `grep -c '"build"' turbo.json` | `0` |
+| `grep -c 'secrets\.' .github/workflows/ci.yml` | `0` |
+| `grep -n 'env:' .github/workflows/ci.yml` | no output |
+| `git status --short` with `.turbo/` and `node_modules/` present | only the two intended edits; both new ignore patterns bite |
+| `git diff --name-only main...HEAD -- spike/` | no output |
+| `git diff --name-only main...HEAD -- README.md CLAUDE.md docs/DECISIONS.md` | no output |
+| `git diff --name-only main...HEAD` | exactly criterion 10's list — see §11 |
+
+**On the "pnpm does not hoist" risk.** It is closed, and by mechanism rather than by luck: no package declares a devDependency, and every package's scripts nonetheless resolve `eslint`, `tsc` and `vitest`, because resolution walks up from `packages/<x>/` to the workspace root's `node_modules`, where pnpm installs root devDependencies directly. All seven packages ran all three tasks. `apps/web`'s `tsc --noEmit` type-checks `vite.config.ts` and resolves `vite`'s types the same way.
+
+---
+
+## 9. Two things I could not close — reported, not improvised around
+
+**(a) I could not execute the spike suite in this worktree.** The sandbox this run executes in denies `npm install` and `npm ci`, and denies reads outside the worktree, so `spike/node_modules` cannot be populated. `npm test --prefix spike` therefore fails here with `ERR_MODULE_NOT_FOUND` on a missing dependency — an environment fact, not a repository one. What *is* established: `spike/` is byte-identical to `main`, so its greenness is exactly `main`'s, and the CI `spike` job is what proves it on Node 22. **The reviewer should run `npm install --prefix spike --no-audit --no-fund --silent && npm test --prefix spike` and record the result.** Criterion 8 asks for that check and I am reporting the gap rather than claiming it.
+
+**(b) Criterion 2's `wc -l` check does not test its own intent.** The criterion says `pnpm ls -r --depth -1 | wc -l` prints `8`. It prints **`15`** — pnpm separates entries with blank lines, so eight entries occupy fifteen lines. The substance is satisfied (root plus seven packages, no eighth registered workspace, none of them `spike`); the command is simply not a test of it, and a reviewer running it literally would report a red check against a correct scaffold. This is the same shape as `requirements/errata.md` §2, where criterion 7's `KEY|TOKEN` grep matched the `key:` input the same criterion mandates. The command that tests the intent is `pnpm ls -r --depth -1 | grep -c .`, which prints `8`. **This wants an errata entry at the gate; I have not edited the requirement, which is not mine to edit.**
+
+---
+
+## 10. For the owner at the gate — criterion 9's two items
+
+Both fall outside this role's write authority: `harness/roles/developer-generalist.md` forbids appending to `docs/DECISIONS.md`, and `CLAUDE.md` is not in its path list. Naming them here is what the criterion asks of me.
+
+**(a) `CLAUDE.md` carries a sentence this ticket makes false.** It reads:
+
+> *"Until M2 lands, the runnable code is the spike in `spike/` (plain Node ESM)."*
+
+The workspace now exists. A replacement needs three facts: that the workspace exists and is deliberately empty; that the spike remains the regression suite until Q-0009 retires it; and that this repository now has **two commands called "lint"** — `pnpm lint` lints TypeScript under `packages/**` and `apps/**`, while flows are still linted by `node spike/bin/harness.js lint`. The last one is a trap worth one explicit sentence, because the two share a name and a repository and overlap in neither scope nor implementation.
+
+**(b) One decision entry for `docs/DECISIONS.md`:** *the spike stays outside the pnpm workspace, on npm, and is run as its own CI job and its own half of the repository's test command, until Q-0009 retires it.* The alternatives it should name: making the spike a workspace package — rejected, because its runner is not Vitest, its `lint` script is the flow linter rather than ESLint, and `--frozen-lockfile` would then govern a lockfile npm wrote; and not running it in CI at all — rejected, because it is the only regression evidence M1 produced, and a green badge that skips it means "the scaffold parses" while claiming to mean "the tests pass".
+
+No other dependency needs a decision entry: `docs/04-architecture.md` already names pnpm, Turborepo, TypeScript strict, Node ≥ 22, Vitest, ESLint and Vite.
+
+### devDependency justifications
+
+All six are root-only, and all six are named by `docs/04-architecture.md`.
+
+| Package | Version | One line |
+| --- | --- | --- |
+| `turbo` | `^2.10.11` | The task graph and cache the ticket specifies. |
+| `typescript` | `^5.9.3` | `tsc --noEmit` is the `typecheck` task. |
+| `eslint` | `^10.9.0` | The lint pass. |
+| `typescript-eslint` | `^8.67.0` | Supplies the TypeScript parser and the two rules criterion 4 enforces; nothing else provides `no-explicit-any` or `ban-ts-comment`. |
+| `vitest` | `^4.1.11` | The test runner the spike's suite becomes in Q-0009. |
+| `vite` | `^8.2.2` | Required by `apps/web/vite.config.ts`; the placeholder, not a build decision. |
+
+---
+
+## 11. Deliberately left alone
+
+Everything in the ticket's non-goals, and specifically:
+
+- **No publish, release, versioning or changesets machinery.** No `CHANGELOG.md`, no npm name reservation. Q-0010 and M6 own that.
+- **No engine code.** Not one function from `spike/src/**` moved. No zod schema (Q-0009). The spike's smoke suite was not copied into a workspace package.
+- **No `build` task**, no emitted output, no `dist` anywhere.
+- **No bespoke verification script.** No `verify:scaffold`, no `verify:ci`. Every criterion above is checked by a stock command; a script written by this change could not be the evidence this change is correct.
+- **No `apps/web` beyond the Vite placeholder** — no React, Tailwind, theme, routing or state management.
+- **No harness assets in `packages/templates`.** `spike/templates/harness/**` untouched.
+- **No commit hooks**, no husky, no lint-staged. CI is the enforcement point.
+- **No Node or OS matrix**, no coverage thresholds, no type-aware lint, no remote turbo cache, no Playwright, no adapter probe in CI, no real-CLI CI run.
+- **No inter-package imports, APIs, event formats or runtime dependencies.** No package depends on another; the workspace graph is deliberately flat and empty.
+- **No `.npmrc`.** Criterion 10's path list does not include one, so none was created — which is also why `engine-strict` is off and the `engines` field warns rather than refuses. `requirements/errata.md` §1 records that as the reason this round's finding was worth fixing but was never breaking.
+- **No flow, role, context file, ticket format, glossary term or development-plan edit.** The only `harness/` change this ticket needed was already on `main` (§7).
+- **No `README.md`, `CLAUDE.md` or `docs/DECISIONS.md` edit** — §10 routes the last two to the owner at the gate.
+- **No `backlog/` file written**, per the role.
+- **Nothing committed.** The harness commits this worktree.
+
+`git diff --name-only main...HEAD` is exactly `.github/workflows/ci.yml`, `.gitignore`, `.nvmrc`, `apps/web/**` (five files), `docs/04-architecture.md`, `eslint.config.js`, `package.json`, `packages/**` (thirty files), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `turbo.json` and `vitest.shared.js` — forty-six paths, nothing extra, with `harness/harness.yaml` accounted for in §7 and this ticket's folder written by the harness rather than by me.

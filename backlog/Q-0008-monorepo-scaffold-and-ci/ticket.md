@@ -1,7 +1,7 @@
 ---
 id: Q-0008
 title: Monorepo scaffold and CI
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0008/integration
@@ -34,6 +34,14 @@ history:
     stage_after: requirements
     at: 2026-08-24T01:06:50.553Z
     cost: 17.66
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T07:30:23.416Z
+    cost: 4.373
 ---
 Everything Quorum runs today is plain Node ESM in `spike/`, with two dependencies and a
 hand-rolled test runner, and CLAUDE.md's instruction not to extend it past M0/M1 needs is now
