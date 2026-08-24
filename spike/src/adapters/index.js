@@ -69,27 +69,39 @@ export function withRetry(adapter, { attempts = 5, baseDelayMs = 5000, maxDelayM
   return {
     ...adapter,
     async run(opts) {
-      const spent = { input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+      const measures = ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cost_usd'];
+      const spent = Object.fromEntries(measures.map((k) => [k, null]));
+      let declaredVendor = null;
       const add = (u) => {
         if (!u) return;
-        spent.input_tokens += u.input_tokens ?? 0;
-        spent.output_tokens += u.output_tokens ?? 0;
-        spent.cost_usd += u.cost_usd ?? 0;
+        declaredVendor = u.vendor ?? declaredVendor;
+        for (const k of measures) if (u[k] != null) spent[k] = (spent[k] ?? 0) + u[k];
       };
       for (let attempt = 1; ; attempt++) {
         try {
           const res = await adapter.run(opts);
-          if (attempt > 1) {
-            // Earlier attempts were billed too; a run's cost must include what the retries cost.
-            add(res.usage);
-            return { ...res, usage: { ...res.usage, input_tokens: spent.input_tokens, output_tokens: spent.output_tokens, cost_usd: res.usage?.cost_usd == null && spent.cost_usd === 0 ? null : spent.cost_usd }, attempts: attempt };
-          }
-          return res;
+          add(res.usage);
+          const vendor = res.vendor ?? res.usage?.vendor ?? adapter.vendor;
+          // An adapter that reported nothing must not acquire a usage object here. The wrapper used
+          // to emit `{ vendor, ...spent }` unconditionally, so an all-null spend still produced a
+          // usage record, and rollup() counts any non-null usage as an occurrence — inventing a
+          // vendor row with step_count 1 and unpriced_steps 1 for a call nobody measured. The writer
+          // contract says an occurrence with no reported usage creates no row, and AC-12 has the CLI
+          // state those counts out loud, so the fabrication surfaced as a number a reader would
+          // trust. The error path below already gates on `measures.some(...)`; mirror it.
+          // See Q-0034; found by Q-0011 review round 2.
+          const measured = measures.some((k) => spent[k] != null);
+          return { ...res, vendor, usage: measured ? { vendor, ...spent } : null, attempts: attempt };
         } catch (e) {
           add(e.usage);
+          declaredVendor = e.vendor ?? declaredVendor;
           const why = transientError(e.message);
           if (!why || attempt >= attempts) {
-            if (spent.cost_usd || spent.input_tokens) e.usage = { ...spent, cost_usd: spent.cost_usd || null };
+            if (measures.some((k) => spent[k] != null)) {
+              e.vendor = declaredVendor ?? adapter.vendor;
+              e.usage = { vendor: e.vendor, ...spent };
+            }
+            e.attempts = attempt;
             if (why) e.message = `${e.message} (gave up after ${attempt} attempts)`;
             throw e;
           }

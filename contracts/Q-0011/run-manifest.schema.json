@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quorum.local/contracts/run-manifest-v1.schema.json",
+  "x-quorum-contract": "run-manifest-v1",
+  "title": "Quorum run manifest version 1",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*-[1-9][0-9]*$" },
+    "ticket_id": { "type": "string", "minLength": 1 },
+    "ticket_path": { "$ref": "#/$defs/relative_path" },
+    "flow": { "type": "string", "minLength": 1 },
+    "flow_file": { "$ref": "#/$defs/relative_path" },
+    "stage": {
+      "type": "object",
+      "properties": { "before": { "type": "string", "minLength": 1 }, "after": { "type": ["string", "null"] } },
+      "required": ["before", "after"],
+      "additionalProperties": false
+    },
+    "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "ended_at": { "type": ["string", "null"], "format": "date-time", "pattern": "Z$" },
+    "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted"] },
+    "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+    "rollup": { "type": "array", "items": { "$ref": "#/$defs/vendor_rollup" } }
+  },
+  "required": ["schema_version", "run_id", "ticket_id", "ticket_path", "flow", "flow_file", "stage", "started_at", "ended_at", "duration_ms", "status", "steps", "rollup"],
+  "additionalProperties": false,
+  "$defs": {
+    "relative_path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/]).+" },
+    "nullable_number": { "type": ["number", "null"], "minimum": 0 },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "vendor": { "type": "string", "minLength": 1 },
+        "input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "output_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cached_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cache_write_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cost_usd": { "$ref": "#/$defs/nullable_number" }
+      },
+      "required": ["vendor", "input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens", "cost_usd"],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": { "enum": ["auth", "transient", "structured_output", "adapter", "script", "integrate", "interrupted", "unknown"] },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "required": ["category", "message"],
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "step_id": { "type": "string", "minLength": 1 },
+        "occurrence_dir": { "type": "string", "pattern": "^steps/[0-9]{3,}-[^/:]+$" },
+        "kind": { "enum": ["adapter", "script", "integrate"] },
+        "role": { "type": ["string", "null"] },
+        "adapter": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"], "minLength": 1 },
+        "worktree": { "anyOf": [{ "$ref": "#/$defs/relative_path" }, { "type": "null" }] },
+        "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted"] },
+        "verdict": { "type": ["string", "null"] },
+        "error": { "anyOf": [{ "$ref": "#/$defs/error" }, { "type": "null" }] },
+        "usage": { "anyOf": [{ "$ref": "#/$defs/usage" }, { "type": "null" }] }
+      },
+      "required": ["step_id", "occurrence_dir", "kind", "role", "adapter", "model", "branch", "worktree", "started_at", "duration_ms", "attempts", "status", "verdict", "error", "usage"],
+      "additionalProperties": false
+    },
+    "vendor_rollup": {
+      "type": "object",
+      "properties": {
+        "vendor": { "type": "string", "minLength": 1 },
+        "step_count": { "type": "integer", "minimum": 1 },
+        "unpriced_steps": { "type": "integer", "minimum": 0 },
+        "input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "output_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cached_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cache_write_input_tokens": { "$ref": "#/$defs/nullable_number" },
+        "cost_usd": { "$ref": "#/$defs/nullable_number" }
+      },
+      "required": ["vendor", "step_count", "unpriced_steps", "input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens", "cost_usd"],
+      "additionalProperties": false
+    }
+  }
+}

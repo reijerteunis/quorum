@@ -204,6 +204,22 @@ The corollary for the cold-clone test: a newcomer's first ticket must be small, 
 
 Found by the Q-0006 reviewer, which noted that no task owned the file the red tests needed and that approving them "narrows the DECISIONS position that checkAgainstSchema stays minimal — decide it explicitly". Round 2 approved the scenarios without the ownership question being settled, because task ownership is a solutioning artifact and the scenario gate does not look at it. **A gate only catches what it is pointed at** — worth remembering when adding gates.
 
+## Product-level schema annotations select semantic validation — 2026-08-23
+**Decision:** After ordinary JSON Schema validation, `harness validate` may select a named
+product-level semantic pass through `x-quorum-contract`. The first recognised value is
+`run-manifest-v1`, whose pass checks lifecycle and occurrence invariants and exactly recomputes
+the per-vendor roll-up. Missing or unknown annotations explicitly report that semantic checks
+were skipped; they never imply run-manifest validation. The parser and JSON Schema behaviour
+remain generic, and no JSONL/event-stream capability is introduced by Q-0011.
+**Alternatives considered:** Encode every invariant in JSON Schema — rejected because exact
+grouped roll-up recomputation, including the distinction between an unreported `null` and a
+reported zero, is not structural validation. Select checks by schema filename or `$id` — rejected
+because both couple behaviour to storage location or ticket-specific identity rather than a
+versioned product contract.
+**Why:** A manifest can be structurally valid while disagreeing with its persisted occurrence
+usage. An explicit annotation makes the extra executable contract reviewable and lets generic
+schemas retain their existing behaviour.
+
 ## Every file a red test requires must be owned by exactly one task — 2026-08-23
 **Decision:** A solution's `tasks.yaml` must cover, between its tasks, every file the red suite requires changed. A scenario whose only possible fix lies in a file no task owns is not a valid red test and must be rejected at the qa-red gate, not discovered by a development loop. Two consequences are binding: the architect states file ownership in each task's `description` (the only field the fan-out actually forwards), and the `automation-qa` role may not write a scenario that requires editing `spike/test/**` or any other file the development tasks are forbidden to touch — a test that development may not change can only be satisfied by qa-red itself.
 **Alternatives considered:** (a) Let the development loop discover it — that is what happens today and it cannot work: the agents correctly report "my assigned scenarios pass, I have no changes to make", the integrate step fails on someone else's file, and the loop burns its whole budget. Q-0033 spent three iterations and 40 minutes this way; Q-0006 spent a solutioning round on the same thing. (b) Give every developer role write access to everything — removes the boundary that makes parallel fan-out safe, and invites two vendors to edit the same file in the same wave.

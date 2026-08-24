@@ -28,16 +28,39 @@ export function mockAdapter(cfg = {}) {
     async check() { return 'mock 0.0.1'; },
     async run({ prompt, schema, model, cwd, allowWrite, onEvent }) {
       const role = (prompt.match(/^# Role: (.+)$/m) ?? [])[1] ?? 'agent';
+      const profile = mockProfile(role);
+      const vendor = profile.vendor ?? nonempty(process.env.MOCK_VENDOR) ?? 'mock';
+      const cached = numericSwitch('MOCK_CACHED_INPUT_TOKENS', profile.cached_input_tokens);
+      const cacheWrite = numericSwitch('MOCK_CACHE_WRITE_INPUT_TOKENS', profile.cache_write_input_tokens);
+      // mock-adapter-run-history.contract.md: "The mock reports cached fields as subsets of
+      // input_tokens and never adds them again when forming that total." input_tokens was computed
+      // independently of the two switches, so setting a cache field produced a manifest where the
+      // subset was larger than its superset — and the engine therefore could not emit realistic
+      // cache-bearing history at all, which is why the cache invariant could only be tested against
+      // a hand-written fixture. Fold them in, exactly as adapters/claude.js does with the real
+      // vendor's fields. See Q-0034; found by Q-0011 review round 2.
+      const uncachedInput = prompt.length / 4 | 0;
+      const usage = { vendor, input_tokens: uncachedInput + (cached ?? 0) + (cacheWrite ?? 0), output_tokens: 200, cached_input_tokens: cached, cache_write_input_tokens: cacheWrite, cost_usd: profile.token_only || process.env.MOCK_TOKEN_ONLY === '1' ? null : 0.01 };
       const ticketId = (prompt.match(/^# Ticket (T-\d+)/m) ?? [])[1] ?? 'T-0000';
       const task = (prompt.match(/^# Task (\S+) \((\w+)\)/m) ?? []);
-      const key = task[1] ? `${role}:${task[1]}` : role;
+      // `scope` used to prefix the call key, split on `.quorum/worktrees/` — a path git.js has never
+      // written; worktrees live under `.harness/worktrees/` (branch layout decision, 2026-08-21).
+      // The split therefore never matched, so `scope` was the whole absolute cwd: the call counter
+      // silently became per-worktree instead of per-run, and the absolute path reached
+      // output.summary, output.txt, ticket artifacts and commit subjects, against AC-2's ban on
+      // persisted absolute paths. Dropped rather than repointed — the task/kind discriminator is
+      // what distinguishes calls, and a machine-specific path never belonged in a key whose value
+      // gets persisted. See Q-0034; found by Q-0011 review round 2.
+      const kind = schema.properties.verdict ? 'verdict' : 'plain';
+      const key = task[1] ? `${role}:${task[1]}` : `${role}:${kind}`;
       const n = (calls.get(key) ?? 0) + 1; calls.set(key, n);
       // MOCK_FAIL_WRITE=<substring> makes exactly the step whose prompt mentions that output blow
       // up, so the engine's "keep the siblings' work" behaviour is testable without a real CLI.
       if (process.env.MOCK_FAIL_WRITE && prompt.includes(process.env.MOCK_FAIL_WRITE)) {
         // Bill it like a real vendor would: the request was made and charged before it failed.
         const e = new Error(`mock: simulated adapter failure for ${process.env.MOCK_FAIL_WRITE}`);
-        e.usage = { input_tokens: 100, output_tokens: 10, cost_usd: 0.07 };
+        e.vendor = vendor;
+        e.usage = { ...usage, input_tokens: 100, output_tokens: 10, cost_usd: profile.token_only || process.env.MOCK_TOKEN_ONLY === '1' ? null : 0.07 };
         throw e;
       }
       onEvent?.({ type: 'stdout', line: `[mock] ${key} call #${n} (model ${model ?? '-'}, cwd ${path.basename(cwd ?? '')}, write=${allowWrite})` });
@@ -75,7 +98,28 @@ export function mockAdapter(cfg = {}) {
           'major: src/mock.ts:1 (mock) placeholder finding',
         ] : [];
       }
-      return { vendor: 'mock', output, raw: JSON.stringify(output), usage: { input_tokens: prompt.length / 4 | 0, output_tokens: 200, cost_usd: 0.01 }, session: null, ms: 20 };
+      return { vendor, output, raw: JSON.stringify(output), usage, session: null, ms: 20 };
     },
   };
+}
+
+function nonempty(value) { return typeof value === 'string' && value.length ? value : null; }
+function numericSwitch(name, override) {
+  const raw = override ?? process.env[name];
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) throw new Error(`${name} must be a non-negative number`);
+  return n;
+}
+function mockProfile(role) {
+  const raw = process.env.MOCK_RUN_HISTORY_PROFILES;
+  if (!raw) return {};
+  let profiles;
+  try { profiles = JSON.parse(raw); } catch (e) { throw new Error(`MOCK_RUN_HISTORY_PROFILES is invalid JSON: ${e.message}`); }
+  if (!profiles || Array.isArray(profiles) || typeof profiles !== 'object') throw new Error('MOCK_RUN_HISTORY_PROFILES must be an object');
+  const profile = profiles[role] ?? {};
+  if (!profile || Array.isArray(profile) || typeof profile !== 'object') throw new Error(`mock profile for ${role} must be an object`);
+  numericSwitch(`mock profile ${role} cached_input_tokens`, profile.cached_input_tokens);
+  numericSwitch(`mock profile ${role} cache_write_input_tokens`, profile.cache_write_input_tokens);
+  return profile;
 }

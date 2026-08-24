@@ -7,6 +7,7 @@
 //   harness lint                            lint the whole flow directory (structure + cross-flow edges)
 //   harness adapters [--probe] [--json]     CLIs installed + no API keys; --probe also proves login
 //   harness validate <schema.json> <file…>  check artifacts against a contract; exit 1 on failure
+//   harness runs [ticket|run-id] [--json]   run history: list, filter by ticket, or show one run
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -16,8 +17,8 @@ import YAML from 'yaml';
 import { Backlog, STAGES } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
+import { validateFile, readData } from '../src/contracts.js';
 import { IntegrationError } from '../src/fanout.js';
-import { validateFile } from '../src/contracts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -120,6 +121,237 @@ const ui = {
 
 function die(m) { console.error(c.red('✗ ') + m); process.exit(1); }
 
+// --- Q-0011 run history: reader ----------------------------------------
+// Reads .quorum/runs/ back for a human. Never repairs or infers persisted state — see
+// contracts/Q-0011/runs-cli.contract.md. Deliberately not in spike/src: the reader is scheduled
+// to be replaced during the M2 TypeScript port and would otherwise be a cross-role dependency.
+
+const TICKET_ID_PATTERN = /^[A-Z]+-[0-9]{4}$/;
+const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
+
+// Resolves symlinks and returns null when the path does not exist or cannot be resolved. Used for
+// confinement checks, where a lexical comparison is not enough. See Q-0034.
+function realPath(p) { try { return fs.realpathSync(p); } catch { return null; } }
+
+// Parsing is not validity. A manifest of `{}` parses, so it used to render as a run with every
+// field blank, and a type mismatch deeper in could throw during formatting and take the whole
+// listing — including its valid siblings — down with it. The listing needs only enough shape to
+// sort and render; full conformance is `harness validate`'s job against the contract schema.
+// See Q-0034; found by Q-0011 review round 2.
+function manifestShapeError(m) {
+  if (m === null || typeof m !== 'object' || Array.isArray(m)) return 'manifest.json is not an object';
+  const missing = ['run_id', 'ticket_id', 'status'].filter((k) => typeof m[k] !== 'string');
+  if (missing.length) return `manifest.json is missing or mistyped: ${missing.join(', ')}`;
+  if (!Array.isArray(m.steps)) return 'manifest.json steps is not an array';
+  if (!Array.isArray(m.rollup)) return 'manifest.json rollup is not an array';
+  return null;
+}
+
+function readRunsDir(runsRoot) {
+  if (!fs.existsSync(runsRoot)) return { runs: [], warnings: [] };
+  const entries = fs.readdirSync(runsRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
+  const runs = [];
+  const warnings = [];
+  for (const entry of entries) {
+    const runId = entry.name;
+    const manifestPath = path.join(runsRoot, runId, 'manifest.json');
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const shape = manifestShapeError(manifest);
+      if (shape) warnings.push({ runId, message: shape });
+      else runs.push({ runId, manifestPath, manifest });
+    } catch (e) {
+      warnings.push({ runId, message: e.code === 'ENOENT' ? 'missing manifest.json' : `malformed manifest.json (${e.message})` });
+    }
+  }
+  return { runs, warnings };
+}
+
+function sortRuns(runs) {
+  return [...runs].sort((a, b) => {
+    const sa = a.manifest.started_at ?? '';
+    const sb = b.manifest.started_at ?? '';
+    if (sa !== sb) return sa < sb ? 1 : -1; // started_at descending
+    const ra = a.manifest.run_id ?? a.runId;
+    const rb = b.manifest.run_id ?? b.runId;
+    return ra < rb ? -1 : ra > rb ? 1 : 0; // run_id ascending, plain string order
+  });
+}
+
+function isIncomplete(manifest) { return manifest.status === 'running' || manifest.ended_at == null; }
+
+function occurrenceSeq(occurrenceDir) {
+  const m = /^steps\/(\d+)-/.exec(occurrenceDir ?? '');
+  return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+// Input totals already include EVERY vendor-reported cache component, cache-write as well as
+// cache-read: adapters/claude.js folds both cache_creation_input_tokens and cache_read_input_tokens
+// into input_tokens. Adding cache_write_input_tokens back here counted it twice — roughly a 35%
+// overstatement on the M0 figures, in the one number Q-0011 exists to report. The previous comment
+// asserted cache-write was "a genuinely separate spend" and was simply wrong about the mapping.
+// run-history-writer.contract.md settles it verbatim: "Input totals already include vendor-reported
+// cache components; readers do not add them again." The cache fields stay on the row as a
+// breakdown for anyone who wants the split; they are not summands. See Q-0034.
+function vendorTokenTotal(row) {
+  const parts = [row.input_tokens, row.output_tokens].filter((v) => v != null);
+  return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
+}
+
+// Three decimals, matching formatCost everywhere else in the product. At two, a real $0.004 step
+// renders as $0.00 and becomes indistinguishable from a vendor that reported zero — the same
+// confusion the tokens-only decision bans at $0.000, reached one digit earlier. See Q-0034.
+const formatMoney = (v) => (v == null ? 'n/a' : `$${v.toFixed(3)}`);
+const formatTokens = (v) => (v == null ? 'n/a' : String(v));
+
+// Never a combined cross-vendor total — the tokens-only decision means one blended number would
+// be fiction the moment a token-only vendor is in the mix.
+function formatVendorSummary(row) {
+  return `${row.vendor}: cost=${formatMoney(row.cost_usd)} tokens=${formatTokens(vendorTokenTotal(row))} unpriced_steps=${row.unpriced_steps}`;
+}
+
+function statusLabel(status) {
+  const paint = status === 'completed' ? c.green : status === 'running' ? c.amber : c.dim;
+  return paint(status);
+}
+
+function runHeaderLine(m) {
+  const stage = `${m.stage?.before ?? '?'} -> ${m.stage?.after ?? '?'}`;
+  const duration = m.duration_ms == null ? 'duration=n/a' : `duration=${(m.duration_ms / 1000).toFixed(1)}s`;
+  return `${c.bold(m.run_id)} ${c.dim(m.ticket_id)} ${m.flow} ${c.dim(stage)} ${statusLabel(m.status)} ${c.dim(duration)}`;
+}
+
+function printRunsListHuman(runs, warnings) {
+  if (!runs.length) console.log(c.dim('· no runs found'));
+  for (const { manifest: m } of runs) {
+    console.log(runHeaderLine(m) + (isIncomplete(m) ? ' ' + c.amber('(incomplete)') : ''));
+    for (const v of m.rollup ?? []) console.log('  ' + c.dim(formatVendorSummary(v)));
+  }
+  for (const w of warnings) console.log(c.amber('!') + ` ${w.runId}: ${w.message}`);
+}
+
+function runsListJSON(runs, warnings) {
+  return {
+    mode: 'list',
+    runs: runs.map(({ manifest: m }) => ({
+      run_id: m.run_id, ticket_id: m.ticket_id, flow: m.flow, stage: m.stage, status: m.status,
+      started_at: m.started_at, ended_at: m.ended_at, duration_ms: m.duration_ms,
+      incomplete: isIncomplete(m), rollup: m.rollup ?? [],
+    })),
+    warnings: warnings.map((w) => `${w.runId}: ${w.message}`),
+  };
+}
+
+function printRunDetailHuman(runId, manifest, manifestPath, repoDir) {
+  console.log(runHeaderLine(manifest));
+  if (isIncomplete(manifest)) console.log(c.amber('! incomplete') + c.dim(` — ${path.relative(repoDir, manifestPath)}`));
+  const steps = [...(manifest.steps ?? [])].sort((a, b) => occurrenceSeq(a.occurrence_dir) - occurrenceSeq(b.occurrence_dir));
+  for (const s of steps) {
+    const rel = path.join('.quorum', 'runs', runId, s.occurrence_dir).split(path.sep).join('/');
+    console.log('  ' + c.teal(s.step_id) + ' ' + c.dim(rel));
+    console.log('    ' + [
+      `kind=${s.kind}`, `adapter=${s.adapter ?? 'n/a'}`, `model=${s.model ?? 'n/a'}`, statusLabel(s.status),
+      `started_at=${s.started_at}`, `duration_ms=${s.duration_ms ?? 'n/a'}`, `attempts=${s.attempts}`, `verdict=${s.verdict ?? 'n/a'}`,
+    ].join(' '));
+    console.log('    usage: ' + (s.usage ? formatVendorSummary({ ...s.usage, unpriced_steps: s.usage.cost_usd == null ? 1 : 0 }) : 'n/a'));
+    if (s.error) console.log('    error: ' + `${s.error.category}: ${s.error.message}`);
+  }
+}
+
+function runDetailJSON(manifest, manifestPath, repoDir) {
+  return { mode: 'detail', run: manifest, incomplete: isIncomplete(manifest), manifest_path: path.relative(repoDir, manifestPath), warnings: [] };
+}
+
+// --- Q-0011 run-manifest semantic validation ----------------------------
+// Structural JSON Schema cannot tell a genuinely reported zero cost from an unpriced vendor's
+// roll-up mutated null -> 0 (errata E-2). Recomputing the roll-up from occurrence usage can.
+
+function computeManifestRollup(steps) {
+  const groups = new Map();
+  for (const s of steps ?? []) {
+    if (!s.usage) continue;
+    const vendor = s.usage.vendor;
+    if (!groups.has(vendor)) groups.set(vendor, []);
+    groups.get(vendor).push(s.usage);
+  }
+  const sum = (usages, key) => {
+    const vals = usages.map((u) => u[key]).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  };
+  const rows = new Map();
+  for (const [vendor, usages] of groups) {
+    rows.set(vendor, {
+      vendor,
+      step_count: usages.length,
+      unpriced_steps: usages.filter((u) => u.cost_usd == null).length,
+      input_tokens: sum(usages, 'input_tokens'),
+      output_tokens: sum(usages, 'output_tokens'),
+      cached_input_tokens: sum(usages, 'cached_input_tokens'),
+      cache_write_input_tokens: sum(usages, 'cache_write_input_tokens'),
+      cost_usd: sum(usages, 'cost_usd'),
+    });
+  }
+  return rows;
+}
+
+function checkRunManifestSemantics(data) {
+  const errors = [];
+
+  const seenDirs = new Set();
+  for (const s of data.steps ?? []) {
+    if (seenDirs.has(s.occurrence_dir)) errors.push(`steps: duplicate occurrence_dir "${s.occurrence_dir}"`);
+    seenDirs.add(s.occurrence_dir);
+  }
+
+  const seenVendors = new Set();
+  for (const r of data.rollup ?? []) {
+    if (seenVendors.has(r.vendor)) errors.push(`rollup: duplicate vendor "${r.vendor}"`);
+    seenVendors.add(r.vendor);
+  }
+
+  const terminal = TERMINAL_STATUSES.includes(data.status);
+  if (terminal && (data.ended_at == null || data.duration_ms == null)) {
+    errors.push(`run: terminal status "${data.status}" requires non-null ended_at and duration_ms`);
+  }
+  if (data.status === 'running' && (data.ended_at != null || data.duration_ms != null)) {
+    errors.push('run: status "running" requires null ended_at and duration_ms');
+  }
+  if (data.started_at && data.ended_at && data.duration_ms != null) {
+    const computed = Date.parse(data.ended_at) - Date.parse(data.started_at);
+    if (computed !== data.duration_ms) errors.push(`run: duration_ms ${data.duration_ms} does not match ended_at - started_at (${computed})`);
+  }
+
+  for (const s of data.steps ?? []) {
+    if (s.kind === 'adapter') {
+      if (s.adapter == null) errors.push(`steps[${s.step_id}]: kind "adapter" requires non-null adapter`);
+    } else {
+      if (s.adapter != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null adapter, got "${s.adapter}"`);
+      if (s.model != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null model`);
+      if (s.usage != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null usage`);
+    }
+    const stepTerminal = TERMINAL_STATUSES.includes(s.status);
+    if (stepTerminal && s.duration_ms == null) errors.push(`steps[${s.step_id}]: terminal status "${s.status}" requires non-null duration_ms`);
+    if (s.status === 'running' && s.duration_ms != null) errors.push(`steps[${s.step_id}]: status "running" requires null duration_ms`);
+  }
+
+  const computedRollup = computeManifestRollup(data.steps);
+  const persistedByVendor = new Map((data.rollup ?? []).map((r) => [r.vendor, r]));
+  const fields = ['step_count', 'unpriced_steps', 'input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cost_usd'];
+  for (const [vendor, computed] of computedRollup) {
+    const persisted = persistedByVendor.get(vendor);
+    if (!persisted) { errors.push(`rollup: missing row for vendor "${vendor}" (occurrences report usage but rollup has no entry)`); continue; }
+    for (const field of fields) {
+      if (persisted[field] !== computed[field]) {
+        errors.push(`rollup: vendor "${vendor}" field "${field}" is ${JSON.stringify(persisted[field])}, recomputed from occurrence usage is ${JSON.stringify(computed[field])}`);
+      }
+    }
+  }
+  for (const vendor of persistedByVendor.keys()) {
+    if (!computedRollup.has(vendor)) errors.push(`rollup: vendor "${vendor}" has a row but no occurrence reported its usage`);
+  }
+
+  return errors;
+}
 // `git branch --show-current` names the current branch even on an unborn HEAD (a fresh
 // `git init -b <name>` before the first commit), and prints an empty string — not an error —
 // for detached HEAD. Both are "cannot name a branch" outcomes for our purposes, so both fall
@@ -239,15 +471,101 @@ async function main() {
       // prose in a review. Exits non-zero on the first invalid file.
       const [schemaFile, ...dataFiles] = rest;
       if (!schemaFile || !dataFiles.length) die('usage: harness validate <schema.json> <file…>');
+      let schemaObj;
+      try { schemaObj = readData(schemaFile); } catch (e) { die(`cannot read schema ${schemaFile}: ${e.message}`); }
+      // Annotation-driven, not filename/$id-driven — see the "contracts are executable" decision
+      // and contracts/Q-0011/runs-cli.contract.md. An absent/unrecognised annotation still runs
+      // structural validation; it just never earns a run-manifest-specific green tick.
+      const isRunManifestContract = schemaObj['x-quorum-contract'] === 'run-manifest-v1';
       let bad = 0;
       for (const f of dataFiles) {
         let r;
         try { r = validateFile(schemaFile, f); }
         catch (e) { console.log(c.red('✗') + ` ${f}: ${e.message}`); bad += 1; continue; }
+        if (!isRunManifestContract) {
+          console.log(c.dim('·') + ` ${f}: run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)`);
+        } else if (r.ok) {
+          let data;
+          try { data = readData(f); } catch (e) { console.log(c.red('✗') + ` ${f}: ${e.message}`); bad += 1; continue; }
+          const semanticErrors = checkRunManifestSemantics(data);
+          if (semanticErrors.length) r = { ok: false, errors: semanticErrors, schema: r.schema, data: r.data };
+        }
         if (r.ok) console.log(c.green('✓') + ` ${f} matches ${r.schema}`);
         else { bad += 1; console.log(c.red('✗') + ` ${f} violates ${r.schema}:\n    ${r.errors.join('\n    ')}`); }
       }
       process.exit(bad ? 1 : 0);
+    }
+    case 'runs': {
+      const { repoDir } = loadProject();
+      const runsRoot = path.join(repoDir, '.quorum', 'runs');
+      const token = rest[0];
+      const jsonMode = Boolean(flags.json);
+      // readRunsDir parses EVERY sibling manifest. Detail mode needs exactly one run directory, and
+      // AC-13 requires reading only the selected run — calling this up front coupled a single-run
+      // request to the health and size of its siblings, which is a real cost on a repository with a
+      // year of history. Read lazily, in the two branches that genuinely list. See Q-0034.
+      const listRuns = () => readRunsDir(runsRoot);
+
+      if (token) {
+        // A run id names a directory *directly inside* .quorum/runs and nothing else. Joining the
+        // raw token let "..", a leading "/" or an absolute path walk out of the runs root: any
+        // directory on the filesystem containing a manifest.json was accepted as a run, and --json
+        // then echoed the parsed document to stdout. Require a single path segment and prove the
+        // resolved parent IS the runs root before reading anything. See Q-0034 / AC-13.
+        // Lexical confinement is necessary and NOT sufficient: path.resolve does no filesystem
+        // work, and statSync follows links, so a single-segment symlink inside .quorum/runs/ passes
+        // every string test and still reads a manifest anywhere on disk. Resolve both sides for
+        // real and compare the results. See Q-0034 / AC-13; the lexical-only version was found by
+        // Q-0011 review round 2.
+        const realRoot = realPath(runsRoot);
+        const exactDir = path.resolve(path.resolve(runsRoot), token);
+        const realDir = realPath(exactDir);
+        const confined = token === path.basename(token)
+          && !['', '.', '..'].includes(token)
+          && realRoot != null && realDir != null
+          && path.dirname(realDir) === realRoot;
+        if (confined && fs.existsSync(realDir) && fs.statSync(realDir).isDirectory()) {
+          const manifestPath = path.join(realDir, 'manifest.json');
+          let manifest;
+          try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
+          catch (e) {
+            const message = `run "${token}": malformed manifest.json (${e.message})`;
+            if (jsonMode) console.log(JSON.stringify({ error: message }));
+            else console.error(c.red('✗ ') + message);
+            process.exitCode = 1;
+            return;
+          }
+          if (jsonMode) console.log(JSON.stringify(runDetailJSON(manifest, manifestPath, repoDir)));
+          else printRunDetailHuman(token, manifest, manifestPath, repoDir);
+          return;
+        }
+        if (TICKET_ID_PATTERN.test(token)) {
+          // A syntactically valid ticket id with zero matches exits 0; rendered warnings are a
+          // separate question. runs-cli.contract.md states both rules and did not say which governs
+          // when both apply, which is why the implementation and its test read it one way and both
+          // round-2 panellists read it the other. Settled by erratum E-4
+          // (backlog/Q-0011-…/solution/errata.md, 2026-08-24) in favour of store health: warnings
+          // force a non-zero exit whatever the selection matched. See Q-0034.
+          const { runs: allRuns, warnings } = listRuns();
+          const filtered = sortRuns(allRuns.filter((r) => r.manifest.ticket_id === token));
+          if (jsonMode) console.log(JSON.stringify(runsListJSON(filtered, warnings)));
+          else printRunsListHuman(filtered, warnings);
+          if (warnings.length) process.exitCode = 1;
+          return;
+        }
+        const message = `unknown run or ticket: ${token}`;
+        if (jsonMode) console.log(JSON.stringify({ error: message }));
+        else console.error(c.red('✗ ') + message);
+        process.exitCode = 1;
+        return;
+      }
+
+      const { runs: allRuns, warnings } = listRuns();
+      const sorted = sortRuns(allRuns);
+      if (jsonMode) console.log(JSON.stringify(runsListJSON(sorted, warnings)));
+      else printRunsListHuman(sorted, warnings);
+      if (warnings.length) process.exitCode = 1;
+      return;
     }
     case 'run': {
       const [flowName, ticketId] = rest;
@@ -268,7 +586,7 @@ async function main() {
       } catch (e) { if (e instanceof FlowError || e instanceof IntegrationError) die(e.message); throw e; }
     }
     default:
-      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 9).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 10).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   }
 }
 

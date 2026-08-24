@@ -5,8 +5,8 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
-import { getAdapter, checkAgainstSchema } from './adapters/index.js';
-import { ensureWorktree } from './git.js';
+import { getAdapter, checkAgainstSchema, authError, transientError } from './adapters/index.js';
+import { ensureWorktree, ensureExcluded } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
 import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
@@ -48,18 +48,37 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // What the ticket branch looked like before this run touched it, so a run that does not
   // complete can put it back. See Q-0033.
   ctx.branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
-  ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
-  backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
-
+  // The run's own `start` line and its runs.log entry are emitted inside the try below, not here:
+  // Q-0011 moved them so that a failure during initialiseRunHistory still receives a terminal
+  // record. Merging main's copies back in at this point would print and log every run twice.
   // Ctrl-C at a gate used to leave no terminal line in runs.log and no persisted counters, so an
   // interrupted run silently handed its iteration budget back — an undocumented way to buy
   // unlimited retries, which defeats the bound the design rests on. See Q-0004.
   const onSignal = (sig) => {
-    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
+    try {
+      for (const occurrence of ctx.activeOccurrences ?? []) terminalOccurrence(ctx, occurrence, 'interrupted', { error: { category: 'interrupted', message: `received ${sig}` } });
+      finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`);
+    } catch { /* nothing left to save */ }
     process.exit(130);
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
+  try {
+    ui.info(`run #${ctx.runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}`);
+    backlog.log(ticket, `run=${ctx.runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
+    if (!dry) initialiseRunHistory(ctx);
+  } catch (e) {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    // The `start` line is already in runs.log by the time anything here can throw, so this needs a
+    // terminal line too — otherwise the log shows a run that started and then simply stopped
+    // existing, which is the exact gap Q-0004 closed for interrupts and which the AC-1 collision
+    // refusal re-opened the moment it started throwing from here. finish() reads no run-history
+    // state, so it is safe even when initialiseRunHistory is what failed.
+    // See Q-0034; found by Q-0011 review round 2.
+    finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
+    throw e;
+  }
 
   const steps = flow.steps;
   let i = 0;
@@ -98,6 +117,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   } catch (e) {
     // A failed run is part of the ticket's history: record it before it propagates, so runs.log
     // never shows a run that started and then simply stopped existing. See Q-0001.
+    for (const occurrence of ctx.activeOccurrences ?? []) {
+      terminalOccurrence(ctx, occurrence, 'failed', { error: { category: occurrence.kind === 'integrate' ? 'integrate' : occurrence.kind === 'script' ? 'script' : 'unknown', message: String(e.message ?? e) } });
+    }
     finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
     throw e;
   } finally {
@@ -165,8 +187,11 @@ async function runAgentStep(step, ctx, extra = {}) {
   }
   const prompt = buildPrompt(step, role, ctx) + (extra.promptSuffix?.(cwd) ?? '');
 
+  if (ctx.dry) { ui.step(step.id, `${adapterName}${model ? '/' + model : ''} role=${step.role ?? '-'}`); ui.info(`${step.id}: dry run — prompt ${prompt.length} chars, schema ${Object.keys(schema.properties).join(',')}`); return null; }
+
+  const occurrence = allocateOccurrence(ctx, step, 'adapter', { role: step.role ?? null, adapter: adapterName, model: model ?? null, branch, worktree: cwd === ctx.repoDir ? null : relative(ctx.repoDir, cwd) });
+  persistArtifact(ctx, occurrence, 'prompt.txt', prompt);
   ui.step(step.id, `${adapterName}${model ? '/' + model : ''} role=${step.role ?? '-'}`);
-  if (ctx.dry) { ui.info(`${step.id}: dry run — prompt ${prompt.length} chars, schema ${Object.keys(schema.properties).join(',')}`); return null; }
 
   let res;
   try {
@@ -182,16 +207,33 @@ async function runAgentStep(step, ctx, extra = {}) {
     // the roll-up understate exactly where accuracy matters most — one failed review step hid
     // $4.54 of a $10.25 run. Bill it, log it, then let it propagate. See Q-0002.
     countUsage(ctx, e.usage);
+    // Always write output.txt, empty when the vendor produced no text. AC-5 and the writer contract
+    // require the file to exist for every occurrence; behind `if (e.raw != null)` the most useful
+    // case — a failure with nothing to show — was the one that left an empty directory, so a reader
+    // could not tell "no output" from "history not written". See Q-0034.
+    persistArtifact(ctx, occurrence, 'output.txt', e.raw ?? '');
+    terminalOccurrence(ctx, occurrence, 'failed', { attempts: e.attempts ?? 1, usage: normaliseUsage(e.usage, e.vendor ?? adapter.vendor), error: errorOf(e, adapterName) });
     backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${adapterName} model=${model ?? '-'} FAILED cost=${e.usage?.cost_usd ?? '?'} error=${JSON.stringify(String(e.message).split('\n')[0].slice(0, 200))}`);
     throw e;
   }
   countUsage(ctx, res.usage);
+  // Stamp billed usage onto the occurrence the moment the vendor returns. Everything below can
+  // still throw — the schema check, the artifact writes, the verdict file, an unguarded commitAll —
+  // and until this line only terminalOccurrence recorded usage, so a failure anywhere in that
+  // stretch filed a call the vendor had already charged as `usage: null` and dropped it from the
+  // roll-up. That is the same class as the failed-step billing defect M0 fixed, one layer up.
+  // See Q-0034; found by Q-0011 review round 2.
+  occurrence.attempts = res.attempts ?? 1;
+  occurrence.usage = normaliseUsage(res.usage, res.vendor ?? adapter.vendor);
 
   const problems = checkAgainstSchema(res.output, schema);
   if (problems.length) {
+    persistArtifact(ctx, occurrence, 'output.txt', res.raw ?? '');
     const dump = backlog.writeFile(ticket, `.harness/${step.id}-${Date.now()}.raw.txt`, res.raw ?? '');
+    terminalOccurrence(ctx, occurrence, 'failed', { attempts: res.attempts ?? 1, usage: normaliseUsage(res.usage, res.vendor ?? adapter.vendor), error: { category: 'structured_output', message: `${step.id}: structured output invalid (${problems.join('; ')})` } });
     throw new FlowError(`${step.id}: structured output invalid (${problems.join('; ')}). Raw saved to ${dump}`);
   }
+  persistArtifact(ctx, occurrence, 'output.txt', res.raw ?? '');
 
   // Persist outputs declaratively.
   for (const rel of writesOf(step)) {
@@ -214,6 +256,7 @@ async function runAgentStep(step, ctx, extra = {}) {
   // A vendor that reports no cost is unpriced, not free. Rounding null to $0.000 states a price
   // Quorum does not know — see the tokens-only decision, 2026-08-22.
   ui.done(step.id, `${res.output.verdict ? 'verdict=' + res.output.verdict + ' ' : ''}${formatCost(res.usage)} ${res.ms}ms`);
+  terminalOccurrence(ctx, occurrence, 'completed', { attempts: res.attempts ?? 1, verdict: res.output.verdict ?? null, usage: normaliseUsage(res.usage, res.vendor ?? adapter.vendor) });
 
   // Verdict routing: first enum value = pass; anything else = fail → on_fail.
   if (step.output?.verdict) {
@@ -235,6 +278,177 @@ export function mergeFailure(m) {
   return line ? `git: ${line}` : 'git reported no reason';
 }
 
+function initialiseRunHistory(ctx) {
+  const started = new Date();
+  const runId = `${ctx.ticket.meta.id}-${ctx.runId}`;
+  const runDir = path.join(ctx.repoDir, '.quorum', 'runs', runId);
+  const historyRoot = path.dirname(runDir);
+  // Guard one: a stale in-memory ticket snapshot must not fork a second timeline once this writer
+  // has persisted history. Compare with the ticket file rather than old outcome entries, because
+  // backward edges legitimately make a current stage differ from the preceding outcome's
+  // stage_after. This is NOT the run-directory collision refusal below — it is a narrower,
+  // separate check that happens to fire first, and conflating the two is what let AC-1 look
+  // implemented when it was not. See Q-0034.
+  const persistedStage = fs.existsSync(historyRoot)
+    ? parseFrontmatter(fs.readFileSync(path.join(ctx.ticket.dir, 'ticket.md'), 'utf8')).meta.stage
+    : null;
+  if (persistedStage && persistedStage !== ctx.ticket.meta.stage) {
+    throw new FlowError(`run directory allocation refused: ticket stage conflicts with persisted run history (${persistedStage} != ${ctx.ticket.meta.stage})`);
+  }
+  fs.mkdirSync(historyRoot, { recursive: true });
+  // Guard two, and the one AC-1 actually asks for: the run directory must not already exist.
+  // `recursive: false` was already doing the detection; nothing translated the errno, so a genuine
+  // collision surfaced as a raw EEXIST stack trace from bin/harness.js instead of a refusal a
+  // reader can act on. Two runs holding one ticket is a real state — M1 saw it twice — and it must
+  // stop the run by name. See Q-0034.
+  try {
+    fs.mkdirSync(runDir, { recursive: false });
+  } catch (e) {
+    if (e.code === 'EEXIST') {
+      // State only what is provable. An earlier draft of this message said "another run may be in
+      // flight", which the round-2 review showed is not how ids are allocated: nextRunId reads the
+      // `start` line, written before this directory is created, so a genuinely concurrent run takes
+      // the next id rather than colliding. What is left is a directory outliving its log line, or a
+      // sub-second race — and this guard does not make the engine safe for concurrent runs, which
+      // remains an open M1 item. See Q-0034.
+      throw new FlowError(`run directory allocation refused: ${relative(ctx.repoDir, runDir)} already exists. Run ids are allocated from runs.log, so a directory without a matching log line usually means an interrupted run whose runs.log was truncated or restored from an older copy — or a second run started within the same second. Move or delete that directory to re-use the id.`);
+    }
+    throw new FlowError(`run directory allocation refused: could not create ${relative(ctx.repoDir, runDir)} (${e.message})`);
+  }
+  fs.mkdirSync(path.join(runDir, 'steps'));
+  ctx.history = {
+    dir: runDir, started: started.getTime(), sequence: 0,
+    manifest: {
+      schema_version: 1, run_id: runId, ticket_id: ctx.ticket.meta.id,
+      ticket_path: relative(ctx.repoDir, path.join(ctx.ticket.dir, 'ticket.md')),
+      flow: ctx.flow.name, flow_file: relative(ctx.repoDir, ctx.flow.file),
+      stage: { before: ctx.ticket.meta.stage, after: null }, started_at: started.toISOString(),
+      ended_at: null, duration_ms: null, status: 'running', steps: [], rollup: [],
+    },
+  };
+  ctx.activeOccurrences = new Set();
+  ensureExcluded(ctx.repoDir, '.quorum/');
+  replaceManifest(ctx, { fatal: true });
+}
+
+// Monotonic start time per occurrence, deliberately NOT a field on the occurrence itself. Every
+// occurrence lives in ctx.history.manifest.steps, and replaceManifest() serialises that whole array
+// on each terminal occurrence — so a bookkeeping field stamped on a *still-running* occurrence is
+// written into manifest.json and violates run-manifest.schema.json's additionalProperties: false.
+// It hid because terminalOccurrence deleted the field just before its own write; any other step's
+// write (a parallel sibling finishing first) or a kill in that window persisted it, the latter
+// permanently. A side table cannot leak into JSON.stringify at all. See Q-0034.
+const occurrenceStart = new WeakMap();
+
+function allocateOccurrence(ctx, step, kind, fields = {}) {
+  const seq = ++ctx.history.sequence;
+  const safeId = String(step.id).replace(/[/:]/g, '-');
+  const occurrenceDir = `steps/${String(seq).padStart(3, '0')}-${safeId}`;
+  fs.mkdirSync(path.join(ctx.history.dir, occurrenceDir));
+  const occurrence = {
+    step_id: String(step.id), occurrence_dir: occurrenceDir, kind,
+    role: fields.role ?? null, adapter: fields.adapter ?? null, model: fields.model ?? null,
+    branch: fields.branch ?? null, worktree: fields.worktree ?? null,
+    started_at: new Date().toISOString(), duration_ms: null, attempts: 0, status: 'running',
+    verdict: null, error: null, usage: null,
+  };
+  occurrenceStart.set(occurrence, Date.now());
+  ctx.history.manifest.steps.push(occurrence);
+  ctx.activeOccurrences.add(occurrence);
+  return occurrence;
+}
+
+function terminalOccurrence(ctx, occurrence, status, fields = {}) {
+  if (!ctx.activeOccurrences.has(occurrence)) return;
+  const started = occurrenceStart.get(occurrence);
+  Object.assign(occurrence, fields, {
+    status,
+    duration_ms: started == null ? 0 : Math.max(0, Date.now() - started),
+  });
+  ctx.activeOccurrences.delete(occurrence);
+  // AC-5 and the writer contract require output.txt for every occurrence, empty if there was no
+  // text. Every writer of it sat behind something that could throw first — the adapter path behind
+  // `if (e.raw != null)`, and the integrate path at the very end, with the base-sync throw in
+  // between, which is the most common integrate failure. terminalOccurrence is the one funnel every
+  // outcome passes through, including runFlow's catch and the signal handler, so guaranteeing it
+  // here needs no future step type to remember. Guarded like persistArtifact: a broken history
+  // directory warns and never discards a step the vendor already billed. See Q-0034.
+  const outputPath = path.join(ctx.history.dir, occurrence.occurrence_dir, 'output.txt');
+  if (!fs.existsSync(outputPath)) {
+    try { fs.writeFileSync(outputPath, ''); }
+    catch (e) { ctx.ui.warn(`could not persist run history at ${outputPath}: ${e.message}`); }
+  }
+  ctx.history.manifest.rollup = rollup(ctx.history.manifest.steps);
+  replaceManifest(ctx);
+}
+
+function persistArtifact(ctx, occurrence, name, text) {
+  const target = path.join(ctx.history.dir, occurrence.occurrence_dir, name);
+  try { fs.writeFileSync(target, String(text)); }
+  catch (e) { ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`); }
+}
+
+function replaceManifest(ctx, { fatal = false } = {}) {
+  const target = path.join(ctx.history.dir, 'manifest.json');
+  const temporary = `${target}.tmp`;
+  let fd;
+  try {
+    fd = fs.openSync(temporary, 'w');
+    fs.writeFileSync(fd, `${JSON.stringify(ctx.history.manifest, null, 2)}\n`);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd); fd = undefined;
+    fs.renameSync(temporary, target);
+  } catch (e) {
+    if (fd != null) try { fs.closeSync(fd); } catch { /* best effort */ }
+    if (fatal) throw new FlowError(`could not initialise run history at ${target}: ${e.message}`);
+    ctx.ui.warn(`could not persist run history at ${target}: ${e.message}`);
+  }
+}
+
+function normaliseUsage(usage, fallbackVendor) {
+  if (!usage) return null;
+  return {
+    vendor: usage.vendor ?? fallbackVendor,
+    input_tokens: usage.input_tokens ?? null, output_tokens: usage.output_tokens ?? null,
+    cached_input_tokens: usage.cached_input_tokens ?? null,
+    cache_write_input_tokens: usage.cache_write_input_tokens ?? null,
+    cost_usd: usage.cost_usd ?? null,
+  };
+}
+
+function rollup(steps) {
+  const rows = new Map();
+  const measures = ['input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cost_usd'];
+  for (const { usage } of steps) {
+    if (!usage) continue;
+    const row = rows.get(usage.vendor) ?? { vendor: usage.vendor, step_count: 0, unpriced_steps: 0, ...Object.fromEntries(measures.map((k) => [k, null])) };
+    row.step_count += 1;
+    if (usage.cost_usd == null) row.unpriced_steps += 1;
+    for (const key of measures) if (usage[key] != null) row[key] = (row[key] ?? 0) + usage[key];
+    rows.set(usage.vendor, row);
+  }
+  return [...rows.values()];
+}
+
+// authError() has already rewritten a vendor's auth noise into one actionable sentence by the time
+// a failure reaches here, and its own output does not match the raw vendor patterns it was built
+// from. Recognise both: the vendor's original wording via the contract layer, and the rewritten
+// forms via this pattern.
+const AUTH_REWRITTEN = /login expired or missing|is not available on a .+ subscription|API_KEY is set/i;
+
+// Classification lives in the adapter contract layer (authError/transientError in adapters/index.js),
+// where vendor error shapes are already normalised and where a contributor's adapter inherits it for
+// free. Re-implementing it here had already drifted three ways: the ChatGPT "model is not supported"
+// sentence was filed as `adapter` when authError recognises it; ENOTFOUND, EAI_AGAIN, EPIPE, "fetch
+// failed" and "stream interrupted" were absent; and `\b5\d\d\b` called any message containing a
+// three-digit number transient — a token count was enough. See Q-0034; found by review round 2.
+function errorOf(error, adapterName) {
+  const message = String(error.message ?? error);
+  const isAuth = AUTH_REWRITTEN.test(message) || authError(adapterName, message) != null;
+  const category = isAuth ? 'auth' : transientError(message) != null ? 'transient' : 'adapter';
+  return { category, message: message || 'adapter failed' };
+}
+function relative(root, target) { return path.relative(root, target).split(path.sep).join('/'); }
 // commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
 function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
@@ -300,7 +514,23 @@ async function runGate(step, ctx) {
   const kind = step.gate;
   if (kind === 'auto' || (ctx.auto && kind !== 'human-locked')) { ctx.ui.info(`gate: auto-advanced (${kind})`); return null; }
   if (ctx.dry) { ctx.ui.info(`gate (${kind}): would pause here`); return null; }
-  const answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
+  // A custom UI can represent a gate with a promise that owns no libuv handle. Give a signal a
+  // short window to reach the synchronous finaliser, while still allowing an EOF-backed CLI gate
+  // to terminate naturally instead of keeping a non-interactive process alive forever.
+  //
+  // Known limitation, kept deliberately rather than silently (Q-0011 review round 2). Neither
+  // shipped gate path needs this: a TTY gate owns a readline handle, and a non-interactive gate
+  // throws before awaiting. So in practice it keeps only a test fixture alive, and after the second
+  // elapses the loop can drain and the process exit 0 with the manifest still reading "running".
+  // Removing it belongs with giving that fixture a promise owning its own handle, which means
+  // editing spike/test/** — qa-red's artifact, frozen by AC-4. Tracked, not resolved.
+  const signalWindow = setTimeout(() => {}, 1000);
+  let answer;
+  try {
+    answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
+  } finally {
+    clearTimeout(signalWindow);
+  }
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=${kind} answer=${answer}`);
   if (answer === 'advance') return null;
   if (answer === 'retry' && step.retryTarget) {
@@ -320,15 +550,23 @@ async function runScript(step, ctx) {
   const cmd = interpolate(step.run, ctx.vars);
   ctx.ui.step(step.id, `script: ${cmd}`);
   if (ctx.dry) return null;
-  // Through runCommand for the timeout: a script step runs a project's own command and can hang
-  // exactly as a test suite can. See Q-0011.
+  // Both sides of this merge were needed: the ticket records the occurrence, main enforces the
+  // timeout. A script step runs a project's own command and can hang exactly as a suite can.
+  const occurrence = allocateOccurrence(ctx, step, 'script');
   const r = runCommand(cmd, ctx.repoDir, { timeoutMs: cmdTimeout(ctx) });
+  persistArtifact(ctx, occurrence, 'output.txt', r.out);
   if (step.output?.write) ctx.backlog.writeFile(ctx.ticket, interpolate(step.output.write, ctx.vars), r.out);
-  if (r.code === 0) { ctx.ui.done(step.id, 'exit 0'); return null; }
+  if (r.code === 0) {
+    terminalOccurrence(ctx, occurrence, 'completed');
+    ctx.ui.done(step.id, 'exit 0');
+    return null;
+  }
   if (r.timedOut) {
     // Looping back cannot fix a command that never finishes, and its non-zero exit is not a result.
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script timed out` } });
     throw new FlowError(`${step.id}: script did not finish within ${Math.round((r.timeoutMs ?? 0) / 60000)} minutes and was killed — that is not a result, fix the command or raise commands.timeout_ms`);
   }
+  terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'script', message: `${step.id}: script exited ${r.code}` } });
   ctx.ui.warn(`${step.id}: exit ${r.code}`);
   return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
@@ -339,6 +577,15 @@ function finish(ctx, stage, status, note, fields = {}) {
   ticket.meta.iterations = ctx.counters;
   if (status === 'completed' || status === 'regressed') {
     ticket.meta.stage = stage;
+  }
+  if (ctx.history) {
+    const ended = new Date();
+    Object.assign(ctx.history.manifest, {
+      status, ended_at: ended.toISOString(), duration_ms: Math.max(0, ended.getTime() - ctx.history.started),
+      stage: { before: ctx.history.manifest.stage.before, after: ticket.meta.stage },
+      rollup: rollup(ctx.history.manifest.steps),
+    });
+    replaceManifest(ctx);
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
   // A run that did not complete leaves the ticket branch as it found it. integrate merges task
@@ -578,6 +825,7 @@ async function runIntegrate(step, ctx) {
   const into = interpolate(step.into ?? ticket.meta.branch, ctx.vars);
   ui.step(step.id, `integrate → ${into}`);
   if (ctx.dry) return null;
+  const occurrence = allocateOccurrence(ctx, step, 'integrate');
   const dir = ticketWorktree(ctx.repoDir, into);
   // Branch list: explicit, or a glob resolved against fan-out results / existing branches.
   const pattern = interpolate(step.branches, ctx.vars);
@@ -662,13 +910,16 @@ async function runIntegrate(step, ctx) {
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
   for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? testReport(cmd, out) : notes.join('\n'));
+  persistArtifact(ctx, occurrence, 'output.txt', out);
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather
   // than burning the step's iteration budget on it.
   if (envError) {
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'integrate', message: `${step.id}: ${envError}` } });
     throw new FlowError(`${step.id}: ${envError}. The report is on disk, but it is not evidence of anything — fix the environment (commands.install in harness.yaml) and re-run.`);
   }
   if (conflicts.length || !testsOk) {
+    terminalOccurrence(ctx, occurrence, 'failed', { error: { category: 'integrate', message: conflicts.length ? `${step.id}: integration conflicts: ${conflicts.join(', ')}` : `${step.id}: tests did not meet expectation` } });
     ctx.lastIntegration = notes.join('\n') + '\n\n' + out.slice(-3000);
     // Failing set: conflicted tasks; if tests failed without conflicts, every fanned task (the agents get the test output).
     const byBranch = new Map((ctx.fanned ?? []).map((f) => [f.branch, f.task]));
@@ -677,6 +928,7 @@ async function runIntegrate(step, ctx) {
     return handleFail(step, ctx);
   }
   ui.done(step.id, `${branches.length} branch(es) on ${into}${cmd ? ', tests ' + (step.expect === 'fail' ? 'red as expected' : 'green') : ''}`);
+  terminalOccurrence(ctx, occurrence, 'completed');
   ctx.failingTasks = null;
   return null;
 }

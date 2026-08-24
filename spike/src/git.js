@@ -29,11 +29,18 @@ export function removeWorktree(repoDir, branch, { deleteBranch = false } = {}) {
   if (deleteBranch) safe(() => git(['branch', '-D', branch], repoDir));
 }
 
-function ensureExcluded(repoDir, pattern) {
-  const f = path.join(repoDir, '.git', 'info', 'exclude');
-  if (!fs.existsSync(path.dirname(f))) return;
-  const cur = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
-  if (!cur.split('\n').includes(pattern)) fs.appendFileSync(f, `${cur.endsWith('\n') || !cur ? '' : '\n'}${pattern}\n`);
+export function ensureExcluded(repoDir, pattern) {
+  let f;
+  try {
+    const resolved = git(['rev-parse', '--git-path', 'info/exclude'], repoDir);
+    f = path.isAbsolute(resolved) ? resolved : path.resolve(repoDir, resolved);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    const cur = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    if (!cur.split('\n').includes(pattern)) fs.appendFileSync(f, `${cur.endsWith('\n') || !cur ? '' : '\n'}${pattern}\n`);
+  } catch (e) {
+    const target = f ?? path.join(repoDir, '.git', 'info', 'exclude');
+    console.warn(`warning: could not add ${pattern} to ${target}: ${e.message}`);
+  }
 }
 
 const safe = (fn) => { try { return fn(); } catch { return null; } };

@@ -180,3 +180,14 @@ what M1's definition of done asks the fan-out to demonstrate. It should also pro
 contract the repository can execute end to end, now that `harness validate` exists: an events
 schema that qa-red can fail a real artifact against. Belongs to M1 in
 docs/06-development-plan.md, pulled forward from M2.
+
+**Amendments.** Four errata are in effect: `solution/errata.md` E-1 to E-3 (agreed during
+solutioning, 2026-08-23) and E-4 (2026-08-24), which settles a contradiction between two exit-code
+clauses in `contracts/Q-0011/runs-cli.contract.md` in favour of store health. Where an erratum and
+the clause it names disagree, the erratum wins for that clause only.
+
+**Review.** Landed under Q-0034 rather than by its own development flow. Round 1 (run #12,
+2026-08-24) returned four blockers, all closed; round 2 (run #13) returned zero blockers and
+fourteen majors, thirteen closed — the exception is the `runGate` one-second timer, documented in
+place as a known limitation because removing it requires editing a frozen qa-red fixture. Nine nits
+remain open. Reviews are in `review/round-1/` and `review/round-2/`.

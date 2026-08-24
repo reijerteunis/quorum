@@ -59,6 +59,15 @@ React + Vite, Tailwind, dark "ground control" theme from the design prompt. Scre
 - `web`: Playwright against the daemon with the mock adapter.
 - Quorum develops itself with itself from M2: every feature ticket goes through the backlog and the flows.
 
+## Run history on disk
+
+The spike persists every non-dry run beneath `.quorum/runs/<ticket-id>-<n>/`. Its atomically
+replaced `manifest.json` is the source of truth for lifecycle, adapter/script/integrate
+occurrences, vendor-neutral usage, errors, and per-vendor roll-ups. Adapter occurrences retain
+their exact `prompt.txt` and final or raw-invalid `output.txt`; script and integrate occurrences
+retain `output.txt`. Gates and fan-out parents do not allocate occurrences. There is no persisted
+event stream in this version, and incomplete `running` manifests are reported rather than repaired.
+
 ## Non-goals for v1 (so nobody builds them by accident)
 
 Multi-user, remote daemon, cloud sync, any API-key path, a plugin marketplace, visual node canvas, eval suites, Windows support beyond WSL.
