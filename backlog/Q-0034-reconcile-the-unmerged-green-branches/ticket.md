@@ -1,7 +1,7 @@
 ---
 id: Q-0034
 title: Reconcile the unmerged green branches (Q-0006, Q-0011)
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0034/integration
