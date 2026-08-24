@@ -19,10 +19,26 @@ export function loadFlow(file) {
   return flow;
 }
 
+// A dry run previews a flow; it must not change anything a real run would change. Every step
+// already guarded ctx.dry, but the run's own bookkeeping did not, so --dry logged a start line,
+// advanced the ticket's stage and appended a "completed" history entry having invoked no agent and
+// written no artifact — the preview left the ticket looking like the flow had run, which then
+// refused the real run because the stage it had consumed was gone. Guarding the individual call
+// sites would leave every future writer to remember; making the database itself read-only cannot
+// be forgotten. See Q-0034.
+function readOnlyBacklog(backlog) {
+  const view = Object.create(backlog);   // inherits every reader; only the writers are stubbed
+  view.write = () => {};
+  view.writeFile = () => {};
+  view.log = () => {};
+  return view;
+}
+
 export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false }) {
   if (ticket.meta.stage !== flow.consumes) {
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);
   }
+  if (dry) backlog = readOnlyBacklog(backlog);
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
@@ -319,7 +335,7 @@ function finish(ctx, stage, status, note, fields = {}) {
   // merges behind for good — so the next qa-red measured its red phase against a tree that already
   // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
   // task's work stays on its own branch. See Q-0033.
-  if (!['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
+  if (!ctx.dry && !['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
     const now = branchHead(ctx.repoDir, ticket.meta.branch);
     if (now && now !== ctx.branchHeadAtStart) {
       resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
