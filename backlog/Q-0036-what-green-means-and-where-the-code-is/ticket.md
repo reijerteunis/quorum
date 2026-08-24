@@ -1,14 +1,38 @@
 ---
 id: Q-0036
 title: What `green` means, and where the code is
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0036/integration
 priority: p2
 created: 2026-08-24
 iterations: {}
-history: []
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: failed
+    stage_before: draft
+    stage_after: draft
+    at: 2026-08-24T20:39:24.980Z
+    cost: 1.644
+  - stage: draft
+    run: 2
+    flow: requirements
+    status: failed
+    stage_before: draft
+    stage_after: draft
+    at: 2026-08-24T21:01:31.664Z
+    cost: 3.673
+  - stage: requirements
+    run: 3
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-24T21:17:58.586Z
+    cost: 4.634
 ---
 `harness board` renders the same word for work that shipped and work that exists on one laptop.
 Q-0006, Q-0011 and Q-0033 all read `green`; only Q-0033 is on `main`. Nothing in the stage list, in

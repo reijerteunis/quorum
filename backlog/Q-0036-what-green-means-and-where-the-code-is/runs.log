@@ -1,0 +1,15 @@
+2026-08-24T20:36:41.222Z run=1 flow=requirements start stage=draft
+2026-08-24T20:37:53.054Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=71814
+2026-08-24T20:39:24.975Z run=1 step=pm-claude vendor=claude model=opus FAILED cost=1.6442685 error="claude login expired or missing — run: claude  (then /login)"
+2026-08-24T20:39:24.985Z run=1 failed stage=draft→draft cost=1.644 tokens=932079 error="1 of 2 parallel step(s) failed:"
+2026-08-24T20:51:58.146Z run=2 flow=requirements start stage=draft
+2026-08-24T20:52:54.952Z run=2 step=pm-codex vendor=codex model=- verdict=- cost=? ms=56788
+2026-08-24T20:57:10.539Z run=2 step=pm-claude vendor=claude model=opus verdict=- cost=2.0432129999999997 ms=312378
+2026-08-24T21:01:31.648Z run=2 step=head-of-product vendor=claude model=opus verdict=ready cost=1.6300549999999998 ms=261097
+2026-08-24T21:01:31.667Z run=2 failed stage=draft→draft cost=3.673 tokens=1658199 error="gate (human) \"PM owner approves requirements/merged.md\" needs an answer and stdin closed without one — pass --gate-answer advance|abort (repeatable, consumed in order), or run interactively"
+2026-08-24T21:04:41.491Z run=3 flow=requirements start stage=draft
+2026-08-24T21:06:11.265Z run=3 step=pm-codex vendor=codex model=- verdict=- cost=? ms=89754
+2026-08-24T21:10:18.891Z run=3 step=pm-claude vendor=claude model=opus verdict=- cost=2.017886 ms=337382
+2026-08-24T21:17:58.565Z run=3 step=head-of-product vendor=claude model=opus verdict=ready cost=2.6162374999999995 ms=459662
+2026-08-24T21:17:58.580Z run=3 gate=human answer=advance
+2026-08-24T21:17:58.589Z run=3 completed stage=draft→requirements cost=4.634 tokens=2249422
