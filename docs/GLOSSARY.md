@@ -41,3 +41,9 @@ adapter. The review flow's Claude + Codex reviewers are a panel; `cross_vendor: 
 by the panel spanning vendors, not by writer ≠ reviewer.
 
 **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).
+
+**Chore flow**: The short route for machinery and configuration tickets — requirements → one implementer
+in a worktree → cross-vendor review with a bounded revise loop → integrate → human gate. Consumes
+`requirements`, produces `reviewed`, skipping solutioning and qa-red because a scaffold has no
+behaviour a test could fail on before it exists. Not a lighter SDLC; a different one, for work that
+changes what the repository *is* rather than what it *does*.
