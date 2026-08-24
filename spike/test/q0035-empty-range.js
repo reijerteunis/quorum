@@ -340,8 +340,12 @@ function adapterCalls(root, ticketId) {
       .filter((s) => s.kind === 'adapter').map((s) => s.step_id);
   });
 }
+// runFlow records the flow's own file in the run manifest, and loadFlow is what normally sets it.
+// These fixtures build the flow object directly, so they have to supply it too — the same thing
+// q0034-chore-preflight.js's C3 does for the same reason.
+const onDisk = (f, flow) => ({ ...flow, file: path.join(f.harnessDir, 'flows', `${flow.name}.yaml`) });
 const run = (f, flow) => runFlow({
-  flow, ticket: f.backlog.read(f.ticket.meta.id), backlog: f.backlog, harnessDir: f.harnessDir,
+  flow: onDisk(f, flow), ticket: f.backlog.read(f.ticket.meta.id), backlog: f.backlog, harnessDir: f.harnessDir,
   repoDir: f.root, config: { repo: { base_branch: 'main' } }, ui: silent, auto: true,
 }).then(() => null, (e) => e);
 
@@ -392,7 +396,9 @@ await scenario('E10', 'AC-8 — a bad range over pre-existing refs fails with ze
   // work, so the first range materialises successfully and only the second one is bad.
   const mixed = fixture();
   write(path.join(mixed.root, 'work.txt'), 'real work\n');
-  git(mixed.root, 'add', '-A'); commit(mixed.root, 'work');
+  // Stage the one file, not -A: the fixture's backlog/ and harness/ are untracked, and committing
+  // them here would put them inside the commit the reset below discards — which deletes the ticket.
+  git(mixed.root, 'add', 'work.txt'); commit(mixed.root, 'work');
   git(mixed.root, 'branch', mixed.ticket.meta.branch);
   git(mixed.root, 'reset', '-q', '--hard', 'HEAD~1');            // main back to base; the branch is ahead
   assert.notEqual(git(mixed.root, 'diff', '--stat', `main...${mixed.ticket.meta.branch}`), '', 'the first range must be valid');
@@ -422,6 +428,11 @@ await scenario('E11', 'AC-9 — a deferred range fails before the adapter that w
   assert.ok(err.message.includes('harness/{id}/integration...harness/{id}/implement'), 'names the range as written');
   assert.ok(err.message.includes('"implement"'), `names the step that owed the endpoint: ${err.message}`);
   assert.doesNotMatch(err.message, FORBIDDEN);
+  // AC-9's purpose clause: the reader must come away knowing the implementer committed nothing.
+  // A branch this run created moments ago never *became* contained, so the remedy may not send
+  // them off to review it earlier — that is advice about a state that never arose.
+  assert.match(err.message, /Remedy: check that step "implement" committed its work/, err.message);
+  assert.doesNotMatch(err.message, /before it becomes contained/, 'a deferred endpoint did not become contained; it started that way');
 });
 
 await scenario('E12', 'AC-9 — the --dry placeholder for a deferred range is unchanged', async () => {
@@ -429,7 +440,7 @@ await scenario('E12', 'AC-9 — the --dry placeholder for a deferred range is un
   git(f.root, 'branch', f.ticket.meta.branch, 'main');
   const before = fs.readFileSync(path.join(f.ticket.dir, 'ticket.md'), 'utf8');
   const res = await runFlow({
-    flow: flowWith('harness/{id}/integration...harness/{id}/implement'),
+    flow: onDisk(f, flowWith('harness/{id}/integration...harness/{id}/implement')),
     ticket: f.backlog.read(f.ticket.meta.id), backlog: f.backlog, harnessDir: f.harnessDir,
     repoDir: f.root, config: { repo: { base_branch: 'main' } }, ui: silent, dry: true,
   });

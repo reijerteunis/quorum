@@ -841,7 +841,12 @@ function emptyRangeFailure({ step, written, range, left, right, sha, deferred, c
     : `check that the ticket's work was committed to ${right}`;
   const [diagnosis, remedy] = check.state === 'contained'
     ? [`${right} is contained in ${left}, so the range spans no commits. That is a relationship between the two commits above, not a record of how it came about.`,
-       `review ${right} before it becomes contained in ${left}`]
+       // "Review it before it becomes contained" is the right next move only when the endpoint
+       // pre-dates the run. For a range this run deferred, the endpoint was created moments ago by
+       // a step of this very flow, so it never *became* contained — it started that way, because
+       // that step committed nothing. Sending the reader to review earlier would be advice about a
+       // state that never arose, which is the misdirection AC-9 exists to prevent. See Q-0035.
+       deferred ? committed : `review ${right} before it becomes contained in ${left}`]
     : check.state === 'indeterminate'
       ? [`git could not answer whether ${right} is contained in ${left}, so this failure reports the emptiness and claims nothing further.`,
          `re-run the check above and fix whatever stopped git answering`]
