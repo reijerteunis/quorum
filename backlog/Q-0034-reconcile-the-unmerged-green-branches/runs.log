@@ -1,0 +1,7 @@
+2026-08-24T18:18:37.403Z run=1 flow=requirements start stage=draft
+2026-08-24T18:20:23.459Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=106050
+2026-08-24T18:26:01.545Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=2.724205 ms=444140
+2026-08-24T18:31:29.590Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=1.8842214999999998 ms=328043
+2026-08-24T18:39:02.997Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=2.5792370000000004 ms=453405
+2026-08-24T18:39:03.001Z run=1 exhausted stage=draft→draft cost=0
+2026-08-24T18:39:03.003Z run=1 failed stage=draft→draft cost=7.188 tokens=3622422 error="gate (human-locked) \"loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance (accept as is), retry (exactly one more head-of-product), abort\" needs an answer and"
