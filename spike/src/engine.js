@@ -5,7 +5,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
-import { getAdapter, checkAgainstSchema } from './adapters/index.js';
+import { getAdapter, checkAgainstSchema, authError, transientError } from './adapters/index.js';
 import { ensureWorktree, ensureExcluded } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
 import { FlowError, lintFlow, flattenSteps } from './lint.js';
@@ -70,6 +70,13 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   } catch (e) {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    // The `start` line is already in runs.log by the time anything here can throw, so this needs a
+    // terminal line too — otherwise the log shows a run that started and then simply stopped
+    // existing, which is the exact gap Q-0004 closed for interrupts and which the AC-1 collision
+    // refusal re-opened the moment it started throwing from here. finish() reads no run-history
+    // state, so it is safe even when initialiseRunHistory is what failed.
+    // See Q-0034; found by Q-0011 review round 2.
+    finish(ctx, ticket.meta.stage, 'failed', String(e.message ?? e).split('\n')[0].slice(0, 200));
     throw e;
   }
 
@@ -200,12 +207,24 @@ async function runAgentStep(step, ctx, extra = {}) {
     // the roll-up understate exactly where accuracy matters most — one failed review step hid
     // $4.54 of a $10.25 run. Bill it, log it, then let it propagate. See Q-0002.
     countUsage(ctx, e.usage);
-    if (e.raw != null) persistArtifact(ctx, occurrence, 'output.txt', e.raw);
+    // Always write output.txt, empty when the vendor produced no text. AC-5 and the writer contract
+    // require the file to exist for every occurrence; behind `if (e.raw != null)` the most useful
+    // case — a failure with nothing to show — was the one that left an empty directory, so a reader
+    // could not tell "no output" from "history not written". See Q-0034.
+    persistArtifact(ctx, occurrence, 'output.txt', e.raw ?? '');
     terminalOccurrence(ctx, occurrence, 'failed', { attempts: e.attempts ?? 1, usage: normaliseUsage(e.usage, e.vendor ?? adapter.vendor), error: errorOf(e, adapterName) });
     backlog.log(ticket, `run=${ctx.runId} step=${step.id} vendor=${adapterName} model=${model ?? '-'} FAILED cost=${e.usage?.cost_usd ?? '?'} error=${JSON.stringify(String(e.message).split('\n')[0].slice(0, 200))}`);
     throw e;
   }
   countUsage(ctx, res.usage);
+  // Stamp billed usage onto the occurrence the moment the vendor returns. Everything below can
+  // still throw — the schema check, the artifact writes, the verdict file, an unguarded commitAll —
+  // and until this line only terminalOccurrence recorded usage, so a failure anywhere in that
+  // stretch filed a call the vendor had already charged as `usage: null` and dropped it from the
+  // roll-up. That is the same class as the failed-step billing defect M0 fixed, one layer up.
+  // See Q-0034; found by Q-0011 review round 2.
+  occurrence.attempts = res.attempts ?? 1;
+  occurrence.usage = normaliseUsage(res.usage, res.vendor ?? adapter.vendor);
 
   const problems = checkAgainstSchema(res.output, schema);
   if (problems.length) {
@@ -286,7 +305,13 @@ function initialiseRunHistory(ctx) {
     fs.mkdirSync(runDir, { recursive: false });
   } catch (e) {
     if (e.code === 'EEXIST') {
-      throw new FlowError(`run directory allocation refused: ${relative(ctx.repoDir, runDir)} already exists — run ${ctx.runId} of ${ctx.ticket.meta.id} has history on disk already. Another run may be in flight, or a previous one was interrupted; move or delete that directory to re-use the id.`);
+      // State only what is provable. An earlier draft of this message said "another run may be in
+      // flight", which the round-2 review showed is not how ids are allocated: nextRunId reads the
+      // `start` line, written before this directory is created, so a genuinely concurrent run takes
+      // the next id rather than colliding. What is left is a directory outliving its log line, or a
+      // sub-second race — and this guard does not make the engine safe for concurrent runs, which
+      // remains an open M1 item. See Q-0034.
+      throw new FlowError(`run directory allocation refused: ${relative(ctx.repoDir, runDir)} already exists. Run ids are allocated from runs.log, so a directory without a matching log line usually means an interrupted run whose runs.log was truncated or restored from an older copy — or a second run started within the same second. Move or delete that directory to re-use the id.`);
     }
     throw new FlowError(`run directory allocation refused: could not create ${relative(ctx.repoDir, runDir)} (${e.message})`);
   }
@@ -341,6 +366,18 @@ function terminalOccurrence(ctx, occurrence, status, fields = {}) {
     duration_ms: started == null ? 0 : Math.max(0, Date.now() - started),
   });
   ctx.activeOccurrences.delete(occurrence);
+  // AC-5 and the writer contract require output.txt for every occurrence, empty if there was no
+  // text. Every writer of it sat behind something that could throw first — the adapter path behind
+  // `if (e.raw != null)`, and the integrate path at the very end, with the base-sync throw in
+  // between, which is the most common integrate failure. terminalOccurrence is the one funnel every
+  // outcome passes through, including runFlow's catch and the signal handler, so guaranteeing it
+  // here needs no future step type to remember. Guarded like persistArtifact: a broken history
+  // directory warns and never discards a step the vendor already billed. See Q-0034.
+  const outputPath = path.join(ctx.history.dir, occurrence.occurrence_dir, 'output.txt');
+  if (!fs.existsSync(outputPath)) {
+    try { fs.writeFileSync(outputPath, ''); }
+    catch (e) { ctx.ui.warn(`could not persist run history at ${outputPath}: ${e.message}`); }
+  }
   ctx.history.manifest.rollup = rollup(ctx.history.manifest.steps);
   replaceManifest(ctx);
 }
@@ -393,13 +430,24 @@ function rollup(steps) {
   return [...rows.values()];
 }
 
+// authError() has already rewritten a vendor's auth noise into one actionable sentence by the time
+// a failure reaches here, and its own output does not match the raw vendor patterns it was built
+// from. Recognise both: the vendor's original wording via the contract layer, and the rewritten
+// forms via this pattern.
+const AUTH_REWRITTEN = /login expired or missing|is not available on a .+ subscription|API_KEY is set/i;
+
+// Classification lives in the adapter contract layer (authError/transientError in adapters/index.js),
+// where vendor error shapes are already normalised and where a contributor's adapter inherits it for
+// free. Re-implementing it here had already drifted three ways: the ChatGPT "model is not supported"
+// sentence was filed as `adapter` when authError recognises it; ENOTFOUND, EAI_AGAIN, EPIPE, "fetch
+// failed" and "stream interrupted" were absent; and `\b5\d\d\b` called any message containing a
+// three-digit number transient — a token count was enough. See Q-0034; found by review round 2.
 function errorOf(error, adapterName) {
   const message = String(error.message ?? error);
-  const category = authErrorCategory(adapterName, message) ? 'auth' : transientErrorCategory(message) ? 'transient' : 'adapter';
+  const isAuth = AUTH_REWRITTEN.test(message) || authError(adapterName, message) != null;
+  const category = isAuth ? 'auth' : transientError(message) != null ? 'transient' : 'adapter';
   return { category, message: message || 'adapter failed' };
 }
-function authErrorCategory(vendor, message) { return message.includes('login expired or missing') || /authentication|not logged in|API_KEY is set/i.test(message); }
-function transientErrorCategory(message) { return /connection|socket|ECONN|ETIMEDOUT|rate.?limit|overload|\b(429|5\d\d)\b|timed? ?out/i.test(message); }
 function relative(root, target) { return path.relative(root, target).split(path.sep).join('/'); }
 // commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
 function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
@@ -469,6 +517,13 @@ async function runGate(step, ctx) {
   // A custom UI can represent a gate with a promise that owns no libuv handle. Give a signal a
   // short window to reach the synchronous finaliser, while still allowing an EOF-backed CLI gate
   // to terminate naturally instead of keeping a non-interactive process alive forever.
+  //
+  // Known limitation, kept deliberately rather than silently (Q-0011 review round 2). Neither
+  // shipped gate path needs this: a TTY gate owns a readline handle, and a non-interactive gate
+  // throws before awaiting. So in practice it keeps only a test fixture alive, and after the second
+  // elapses the loop can drain and the process exit 0 with the manifest still reading "running".
+  // Removing it belongs with giving that fixture a promise owning its own handle, which means
+  // editing spike/test/** — qa-red's artifact, frozen by AC-4. Tracked, not resolved.
   const signalWindow = setTimeout(() => {}, 1000);
   let answer;
   try {

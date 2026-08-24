@@ -129,6 +129,24 @@ function die(m) { console.error(c.red('✗ ') + m); process.exit(1); }
 const TICKET_ID_PATTERN = /^[A-Z]+-[0-9]{4}$/;
 const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
 
+// Resolves symlinks and returns null when the path does not exist or cannot be resolved. Used for
+// confinement checks, where a lexical comparison is not enough. See Q-0034.
+function realPath(p) { try { return fs.realpathSync(p); } catch { return null; } }
+
+// Parsing is not validity. A manifest of `{}` parses, so it used to render as a run with every
+// field blank, and a type mismatch deeper in could throw during formatting and take the whole
+// listing — including its valid siblings — down with it. The listing needs only enough shape to
+// sort and render; full conformance is `harness validate`'s job against the contract schema.
+// See Q-0034; found by Q-0011 review round 2.
+function manifestShapeError(m) {
+  if (m === null || typeof m !== 'object' || Array.isArray(m)) return 'manifest.json is not an object';
+  const missing = ['run_id', 'ticket_id', 'status'].filter((k) => typeof m[k] !== 'string');
+  if (missing.length) return `manifest.json is missing or mistyped: ${missing.join(', ')}`;
+  if (!Array.isArray(m.steps)) return 'manifest.json steps is not an array';
+  if (!Array.isArray(m.rollup)) return 'manifest.json rollup is not an array';
+  return null;
+}
+
 function readRunsDir(runsRoot) {
   if (!fs.existsSync(runsRoot)) return { runs: [], warnings: [] };
   const entries = fs.readdirSync(runsRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
@@ -139,7 +157,9 @@ function readRunsDir(runsRoot) {
     const manifestPath = path.join(runsRoot, runId, 'manifest.json');
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      runs.push({ runId, manifestPath, manifest });
+      const shape = manifestShapeError(manifest);
+      if (shape) warnings.push({ runId, message: shape });
+      else runs.push({ runId, manifestPath, manifest });
     } catch (e) {
       warnings.push({ runId, message: e.code === 'ENOENT' ? 'missing manifest.json' : `malformed manifest.json (${e.message})` });
     }
@@ -178,7 +198,10 @@ function vendorTokenTotal(row) {
   return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
 }
 
-const formatMoney = (v) => (v == null ? 'n/a' : `$${v.toFixed(2)}`);
+// Three decimals, matching formatCost everywhere else in the product. At two, a real $0.004 step
+// renders as $0.00 and becomes indistinguishable from a vendor that reported zero — the same
+// confusion the tokens-only decision bans at $0.000, reached one digit earlier. See Q-0034.
+const formatMoney = (v) => (v == null ? 'n/a' : `$${v.toFixed(3)}`);
 const formatTokens = (v) => (v == null ? 'n/a' : String(v));
 
 // Never a combined cross-vendor total — the tokens-only decision means one blended number would
@@ -477,7 +500,11 @@ async function main() {
       const runsRoot = path.join(repoDir, '.quorum', 'runs');
       const token = rest[0];
       const jsonMode = Boolean(flags.json);
-      const { runs: allRuns, warnings } = readRunsDir(runsRoot);
+      // readRunsDir parses EVERY sibling manifest. Detail mode needs exactly one run directory, and
+      // AC-13 requires reading only the selected run — calling this up front coupled a single-run
+      // request to the health and size of its siblings, which is a real cost on a repository with a
+      // year of history. Read lazily, in the two branches that genuinely list. See Q-0034.
+      const listRuns = () => readRunsDir(runsRoot);
 
       if (token) {
         // A run id names a directory *directly inside* .quorum/runs and nothing else. Joining the
@@ -485,13 +512,20 @@ async function main() {
         // directory on the filesystem containing a manifest.json was accepted as a run, and --json
         // then echoed the parsed document to stdout. Require a single path segment and prove the
         // resolved parent IS the runs root before reading anything. See Q-0034 / AC-13.
-        const resolvedRoot = path.resolve(runsRoot);
-        const exactDir = path.resolve(resolvedRoot, token);
+        // Lexical confinement is necessary and NOT sufficient: path.resolve does no filesystem
+        // work, and statSync follows links, so a single-segment symlink inside .quorum/runs/ passes
+        // every string test and still reads a manifest anywhere on disk. Resolve both sides for
+        // real and compare the results. See Q-0034 / AC-13; the lexical-only version was found by
+        // Q-0011 review round 2.
+        const realRoot = realPath(runsRoot);
+        const exactDir = path.resolve(path.resolve(runsRoot), token);
+        const realDir = realPath(exactDir);
         const confined = token === path.basename(token)
           && !['', '.', '..'].includes(token)
-          && path.dirname(exactDir) === resolvedRoot;
-        if (confined && fs.existsSync(exactDir) && fs.statSync(exactDir).isDirectory()) {
-          const manifestPath = path.join(exactDir, 'manifest.json');
+          && realRoot != null && realDir != null
+          && path.dirname(realDir) === realRoot;
+        if (confined && fs.existsSync(realDir) && fs.statSync(realDir).isDirectory()) {
+          const manifestPath = path.join(realDir, 'manifest.json');
           let manifest;
           try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
           catch (e) {
@@ -506,12 +540,21 @@ async function main() {
           return;
         }
         if (TICKET_ID_PATTERN.test(token)) {
-          // A syntactically valid ticket id with zero matches is always exit 0 — see
-          // contracts/Q-0011/runs-cli.contract.md — regardless of unrelated malformed siblings
-          // elsewhere in .quorum/runs/, which this filter cannot even attribute to a ticket.
+          // A syntactically valid ticket id with zero matches still exits 0 — that is the contract.
+          // Rendered warnings are a different question, and runs-cli.contract.md answers it without
+          // carve-out: "A malformed sibling is named, valid siblings are still rendered, and the
+          // final exit is non-zero." The previous comment here argued the opposite by assertion,
+          // which both round-2 panellists flagged as resolving a frozen contract by argument.
+          // NOTE: spike/test/q0011-runs-cli.js contains an assertion freezing the old exit-0
+          // behaviour and will now fail. That is deliberate and the maintainer's explicit call on
+          // 2026-08-24: fix the code, leave the test, so the disagreement is visible in the suite
+          // rather than settled quietly in the direction of the bug. The test needs re-pointing —
+          // by qa-red or by an erratum — before this branch can land. See Q-0034.
+          const { runs: allRuns, warnings } = listRuns();
           const filtered = sortRuns(allRuns.filter((r) => r.manifest.ticket_id === token));
           if (jsonMode) console.log(JSON.stringify(runsListJSON(filtered, warnings)));
           else printRunsListHuman(filtered, warnings);
+          if (warnings.length) process.exitCode = 1;
           return;
         }
         const message = `unknown run or ticket: ${token}`;
@@ -521,6 +564,7 @@ async function main() {
         return;
       }
 
+      const { runs: allRuns, warnings } = listRuns();
       const sorted = sortRuns(allRuns);
       if (jsonMode) console.log(JSON.stringify(runsListJSON(sorted, warnings)));
       else printRunsListHuman(sorted, warnings);

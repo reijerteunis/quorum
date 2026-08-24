@@ -82,7 +82,16 @@ export function withRetry(adapter, { attempts = 5, baseDelayMs = 5000, maxDelayM
           const res = await adapter.run(opts);
           add(res.usage);
           const vendor = res.vendor ?? res.usage?.vendor ?? adapter.vendor;
-          return { ...res, vendor, usage: { vendor, ...spent }, attempts: attempt };
+          // An adapter that reported nothing must not acquire a usage object here. The wrapper used
+          // to emit `{ vendor, ...spent }` unconditionally, so an all-null spend still produced a
+          // usage record, and rollup() counts any non-null usage as an occurrence — inventing a
+          // vendor row with step_count 1 and unpriced_steps 1 for a call nobody measured. The writer
+          // contract says an occurrence with no reported usage creates no row, and AC-12 has the CLI
+          // state those counts out loud, so the fabrication surfaced as a number a reader would
+          // trust. The error path below already gates on `measures.some(...)`; mirror it.
+          // See Q-0034; found by Q-0011 review round 2.
+          const measured = measures.some((k) => spent[k] != null);
+          return { ...res, vendor, usage: measured ? { vendor, ...spent } : null, attempts: attempt };
         } catch (e) {
           add(e.usage);
           declaredVendor = e.vendor ?? declaredVendor;
