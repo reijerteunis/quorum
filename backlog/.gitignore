@@ -1,0 +1,12 @@
+# The backlog is the database, and runs.log is the only record that contains failed runs.
+#
+# The root .gitignore excludes *.log, which silently swallowed every ticket's runs.log — so the
+# file DECISIONS.md cites as authoritative for cost ("about $165 ... summed from runs.log", M1
+# closing entry) and for the runs missing from ticket.md's history ("runs.log has them") existed
+# on one laptop and in no clone. A ticket folder without it understates what the ticket cost and
+# loses every run that failed.
+#
+# Patterns in a lower-level .gitignore override a parent's, so this re-includes them. It lives
+# here rather than as a negation in the root file deliberately: nothing outside backlog/ needs to
+# know, and the rule sits next to the data it protects.
+!runs.log

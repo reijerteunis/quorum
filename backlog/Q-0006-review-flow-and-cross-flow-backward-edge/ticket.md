@@ -10,7 +10,8 @@ created: 2026-08-22
 iterations:
   solutioning.architecture-review: 3
   qa-red.scenario-review: 1
-  development.integrate: 1
+  development.integrate: 0
+  review: 1
 history:
   - stage: requirements
     run: 1
@@ -36,6 +37,30 @@ history:
     run: 9
     flow: development
     at: 2026-08-22T22:06:04.194Z
+    cost: 0
+  - stage: red
+    run: 10
+    flow: review
+    status: regressed
+    stage_before: green
+    stage_after: red
+    at: 2026-08-23T23:11:00.940Z
+    cost: 5.023
+  - stage: red
+    run: 11
+    flow: development
+    status: failed
+    stage_before: red
+    stage_after: red
+    at: 2026-08-23T23:31:00.423Z
+    cost: 0
+  - stage: green
+    run: 12
+    flow: development
+    status: completed
+    stage_before: red
+    stage_after: green
+    at: 2026-08-23T23:45:50.678Z
     cost: 0
 ---
 The seven-stage SDLC has no review stage yet: a ticket reaching `green` has passing tests but

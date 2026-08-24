@@ -1,0 +1,118 @@
+2026-08-22T22:10:34.842Z run=1 flow=requirements start stage=draft
+2026-08-22T22:12:07.465Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=92617
+2026-08-22T22:16:10.375Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=2.6764355 ms=335530
+2026-08-22T22:20:31.823Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=1.8082615000000004 ms=261444
+2026-08-22T22:21:48.755Z run=1 gate=human answer=advance
+2026-08-22T22:21:48.761Z run=1 completed stage=draft→requirements cost=4.485 tokens=2617513
+2026-08-22T22:23:28.539Z run=2 flow=solutioning start stage=requirements
+2026-08-22T22:26:03.184Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=154532
+2026-08-22T22:34:07.270Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=2.7937609999999995 ms=484084
+2026-08-22T22:36:36.172Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=148787
+2026-08-22T22:45:23.024Z run=2 step=architecture-review vendor=claude model=opus verdict=approve cost=3.4377560000000003 ms=526850
+2026-08-22T22:46:46.397Z run=2 step=finalize vendor=codex model=- verdict=- cost=? ms=83371
+2026-08-22T22:47:02.481Z run=2 step=tasks vendor=codex model=- verdict=- cost=? ms=16079
+2026-08-22T22:50:12.554Z run=2 gate=human answer=advance
+2026-08-22T22:50:12.672Z run=2 step=merge-contracts merged=1/1 tests=-
+2026-08-22T22:50:12.674Z run=2 completed stage=requirements→solutioned cost=6.232 tokens=3796191
+2026-08-23T15:03:40.180Z run=3 flow=qa-red start stage=solutioned
+2026-08-23T15:09:47.128Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=1.6792827 ms=366942
+2026-08-23T15:13:01.635Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=194383
+2026-08-23T15:13:08.674Z run=3 step=prove-red merged=1/1 tests=ok
+2026-08-23T15:21:02.496Z run=3 step=scenario-review vendor=claude model=opus verdict=approve cost=3.0414935 ms=473820
+2026-08-23T15:23:56.435Z run=3 gate=human answer=advance
+2026-08-23T15:23:56.442Z run=3 completed stage=solutioned→red cost=4.721 tokens=3735721
+2026-08-23T15:24:39.110Z run=4 flow=development start stage=red
+2026-08-23T15:26:47.165Z run=4 step=dev:Q0033-cli-lint-config vendor=codex model=- verdict=- cost=? ms=127932
+2026-08-23T15:30:21.362Z run=4 step=dev:Q0033-assets-docs vendor=codex model=- verdict=- cost=? ms=214085
+2026-08-23T15:30:49.109Z run=4 step=integrate merged=2/2 tests=fail
+2026-08-23T15:32:25.128Z run=4 step=dev:Q0033-cli-lint-config vendor=codex model=- verdict=- cost=? ms=95931
+2026-08-23T15:33:06.641Z run=4 step=dev:Q0033-assets-docs vendor=codex model=- verdict=- cost=? ms=41414
+2026-08-23T15:34:00.369Z run=4 step=integrate merged=2/2 tests=fail
+2026-08-23T15:35:11.317Z run=4 step=dev:Q0033-cli-lint-config vendor=codex model=- verdict=- cost=? ms=70884
+2026-08-23T15:36:16.316Z run=4 step=dev:Q0033-assets-docs vendor=codex model=- verdict=- cost=? ms=64911
+2026-08-23T15:37:10.384Z run=4 step=integrate merged=2/2 tests=fail
+2026-08-23T15:38:34.382Z run=4 step=dev:Q0033-cli-lint-config vendor=codex model=- verdict=- cost=? ms=83933
+2026-08-23T15:39:31.350Z run=4 step=dev:Q0033-assets-docs vendor=codex model=- verdict=- cost=? ms=56891
+2026-08-23T15:40:34.553Z run=4 step=integrate merged=2/2 tests=fail
+2026-08-23T15:40:34.556Z run=4 exhausted stage=red→red cost=0
+2026-08-23T15:52:33.757Z run=4 gate=human-locked answer=abort
+2026-08-23T15:52:33.760Z run=4 aborted stage=red→red cost=0 tokens=3587375
+2026-08-23T15:56:32.000Z manual: reset iterations.development.integrate 4 → 0 after the E-1 re-cut — all three iterations failed on files no task owned, which no developer round could fix
+2026-08-23T16:00:18.000Z manual: regressed stage red → solutioned so qa-red can rerun — E-2 invalidated scenario S11.1–S11.4 (unsatisfiable: it requires editing spike/test/smoke.js, which every development task is forbidden to touch), so the red phase must be redone rather than developed against
+2026-08-23T17:49:23.020Z run=5 flow=qa-red start stage=solutioned
+2026-08-23T17:59:17.433Z run=5 step=scenarios vendor=claude model=sonnet verdict=- cost=2.1867672000000002 ms=594406
+2026-08-23T18:02:53.585Z run=5 step=write-tests vendor=codex model=- verdict=- cost=? ms=216048
+2026-08-23T18:02:53.634Z run=5 step=prove-red base-conflict base=main files=docs/DECISIONS.md
+2026-08-23T18:02:53.637Z run=5 failed stage=solutioned→solutioned cost=2.187 tokens=2118791 error="prove-red: cannot sync harness/Q-0033/integration with main — conflicts: docs/DECISIONS.md."
+2026-08-23T18:17:05.231Z run=6 flow=qa-red start stage=solutioned
+2026-08-23T18:31:22.345Z run=6 step=scenarios vendor=claude model=sonnet verdict=- cost=3.3870003000000004 ms=857111
+2026-08-23T18:32:44.406Z run=6 step=write-tests vendor=codex model=- verdict=- cost=? ms=81993
+2026-08-23T18:33:39.857Z run=6 step=prove-red merged=1/1 tests=ok
+2026-08-23T18:40:36.027Z run=6 step=scenario-review vendor=claude model=opus verdict=revise cost=2.8279345 ms=416167
+2026-08-23T18:51:35.775Z run=6 step=scenarios vendor=claude model=sonnet verdict=- cost=2.1316819 ms=659744
+2026-08-23T18:53:49.696Z run=6 step=write-tests vendor=codex model=- verdict=- cost=? ms=133837
+2026-08-23T18:54:40.170Z run=6 step=prove-red merged=1/1 tests=ok
+2026-08-23T18:59:54.836Z run=6 step=scenario-review vendor=claude model=opus verdict=revise cost=2.278945 ms=314665
+2026-08-23T18:59:54.839Z run=6 exhausted stage=solutioned→solutioned cost=0
+2026-08-23T19:11:23.601Z run=6 gate=human-locked answer=abort
+2026-08-23T19:11:23.603Z run=6 aborted stage=solutioned→solutioned cost=10.626 tokens=6934833
+2026-08-23T19:13:42.000Z manual: re-cut harness/Q-0033/integration and dropped the tests branch — both carried run 4's abandoned development merges, so every red phase since was measured against a tree that already held the implementation (21 green, 0 red). Old branches kept as *-contaminated. Engine fixed in the same change: a run that does not complete now rolls the ticket branch back. qa-red counter reset 2 → 0; both rounds reviewed a red that was never red.
+2026-08-23T19:14:10.591Z run=7 flow=qa-red start stage=solutioned
+2026-08-23T19:19:49.390Z run=7 step=scenarios vendor=claude model=sonnet verdict=- cost=1.1978141 ms=338796
+2026-08-23T19:21:51.758Z run=7 step=write-tests vendor=codex model=- verdict=- cost=? ms=122262
+2026-08-23T19:21:58.656Z run=7 step=prove-red merged=1/1 tests=ok
+2026-08-23T19:29:56.304Z run=7 step=scenario-review vendor=claude model=opus verdict=revise cost=3.075767500000001 ms=477645
+2026-08-23T19:45:51.774Z run=7 step=scenarios vendor=claude model=sonnet verdict=- cost=3.1209142 ms=955466
+2026-08-23T19:48:01.750Z run=7 step=write-tests vendor=codex model=- verdict=- cost=? ms=129889
+2026-08-23T19:48:10.067Z run=7 step=prove-red merged=1/1 tests=ok
+2026-08-23T19:56:21.619Z run=7 step=scenario-review vendor=claude model=opus verdict=revise cost=3.5692045000000006 ms=491548
+2026-08-23T19:56:21.624Z run=7 exhausted stage=solutioned→solutioned cost=0
+2026-08-23T19:59:30.000Z manual: reset iterations.qa-red.scenario-review 2 → 0 after E-3 — both rounds reviewed a tasks.yaml carrying two of my own errors (a task with no red scenario, and a task told to edit a file a scenario freezes), plus a report with its head truncated
+2026-08-23T20:00:23.259Z run=7 gate=human-locked answer=abort
+2026-08-23T20:00:23.292Z run=7 rolled-back branch=harness/Q-0033/integration from=758a762 to=65f0cdb
+2026-08-23T20:00:23.292Z run=7 aborted stage=solutioned→solutioned cost=10.964 tokens=7517940
+2026-08-23T20:00:25.383Z run=8 flow=qa-red start stage=solutioned
+2026-08-23T20:16:24.340Z run=8 step=scenarios vendor=claude model=sonnet verdict=- cost=3.7065746 ms=958954
+2026-08-23T20:19:15.053Z run=8 step=write-tests vendor=codex model=- verdict=- cost=? ms=170634
+2026-08-23T20:19:24.212Z run=8 step=prove-red merged=1/1 tests=ok
+2026-08-23T20:29:40.259Z run=8 step=scenario-review vendor=claude model=opus verdict=revise cost=3.7665255 ms=616043
+2026-08-23T20:29:40.265Z run=8 exhausted stage=solutioned→solutioned cost=0
+2026-08-23T21:19:48.118Z run=8 gate=human-locked answer=abort
+2026-08-23T21:19:48.157Z run=8 rolled-back branch=harness/Q-0033/integration from=1561f78 to=65f0cdb
+2026-08-23T21:19:48.158Z run=8 aborted stage=solutioned→solutioned cost=7.473 tokens=6757746
+2026-08-23T21:20:17.764Z run=9 flow=qa-red start stage=solutioned
+2026-08-23T21:25:34.292Z run=9 step=scenarios vendor=claude model=sonnet verdict=- cost=1.0315450000000002 ms=316524
+2026-08-23T21:26:50.678Z run=9 step=write-tests vendor=codex model=- verdict=- cost=? ms=76336
+2026-08-23T21:27:00.534Z run=9 step=prove-red merged=1/1 tests=ok
+2026-08-23T21:37:55.400Z run=9 step=scenario-review vendor=claude model=opus verdict=revise cost=3.8771315 ms=654864
+2026-08-23T21:37:55.406Z run=9 exhausted stage=solutioned→solutioned cost=0
+2026-08-23T21:51:24.544Z run=9 gate=human-locked answer=advance
+2026-08-23T21:52:51.800Z run=9 gate=human answer=advance
+2026-08-23T21:52:51.803Z run=9 completed stage=solutioned→red cost=4.909 tokens=2761563
+2026-08-23T21:53:49.926Z run=10 flow=development start stage=red
+2026-08-23T21:54:27.030Z run=10 step=dev:Q0033-config vendor=codex model=- verdict=- cost=? ms=36871
+2026-08-23T21:55:06.416Z run=10 step=dev:Q0033-assets vendor=codex model=- verdict=- cost=? ms=76200
+2026-08-23T21:56:35.588Z run=10 step=dev:Q0033-docs vendor=codex model=- verdict=- cost=? ms=165296
+2026-08-23T21:56:53.617Z run=10 step=dev:Q0033-lint vendor=codex model=- verdict=- cost=? ms=183505
+2026-08-23T22:11:31.260Z run=10 step=dev:Q0033-cli vendor=claude model=sonnet verdict=- cost=6.838516399999998 ms=1061201
+2026-08-23T22:11:57.767Z run=10 step=integrate merged=5/5 tests=fail
+2026-08-23T22:12:30.805Z run=10 step=dev:Q0033-lint vendor=codex model=- verdict=- cost=? ms=32886
+2026-08-23T22:12:35.048Z run=10 step=dev:Q0033-config vendor=codex model=- verdict=- cost=? ms=37060
+2026-08-23T22:12:38.729Z run=10 step=dev:Q0033-assets vendor=codex model=- verdict=- cost=? ms=40677
+2026-08-23T22:13:23.247Z run=10 step=dev:Q0033-docs vendor=codex model=- verdict=- cost=? ms=85101
+2026-08-23T22:23:13.039Z run=10 step=dev:Q0033-cli vendor=claude model=sonnet verdict=- cost=4.1448390999999996 ms=675168
+2026-08-23T22:23:39.006Z run=10 step=integrate merged=5/5 tests=fail
+2026-08-23T22:24:39.848Z run=10 step=dev:Q0033-lint vendor=codex model=- verdict=- cost=? ms=60618
+2026-08-23T22:24:42.363Z run=10 step=dev:Q0033-assets vendor=codex model=- verdict=- cost=? ms=62950
+2026-08-23T22:24:47.235Z run=10 step=dev:Q0033-config vendor=codex model=- verdict=- cost=? ms=67865
+2026-08-23T22:24:48.256Z run=10 step=dev:Q0033-docs vendor=codex model=- verdict=- cost=? ms=68743
+2026-08-23T22:32:08.667Z run=10 step=dev:Q0033-cli vendor=claude model=sonnet verdict=- cost=3.4781912 ms=509541
+2026-08-23T22:32:20.751Z run=10 step=integrate merged=5/5 tests=ok
+2026-08-23T22:32:54.285Z run=11 flow=development start stage=red
+2026-08-23T22:33:20.364Z run=11 step=dev:Q0033-config vendor=codex model=- verdict=- cost=? ms=25961
+2026-08-23T22:33:35.108Z run=11 step=dev:Q0033-lint vendor=codex model=- verdict=- cost=? ms=40718
+2026-08-23T22:33:40.340Z run=11 step=dev:Q0033-assets vendor=codex model=- verdict=- cost=? ms=45892
+2026-08-23T22:34:34.243Z run=11 step=dev:Q0033-docs vendor=codex model=- verdict=- cost=? ms=99772
+2026-08-23T22:34:54.295Z run=11 interrupted stage=red→red cost=0 tokens=1054182 error="received SIGTERM"
+2026-08-23T22:46:02.173Z run=10 gate=human answer=advance
+2026-08-23T22:46:02.181Z run=10 completed stage=red→green cost=14.462 tokens=30991485

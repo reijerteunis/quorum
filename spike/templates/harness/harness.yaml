@@ -16,11 +16,15 @@ budget:
 repo:
   # The branch ticket work integrates against. `integrate` merges it into the ticket branch
   # before testing, so a long-running ticket never builds on the base it was cut from.
+  # Base branch used to materialize review diffs.
   base_branch: main
+  # Maximum UTF-8 byte length of a review diff before truncation.
+  max_diff_bytes: 200000
 commands:
   # Kills a test or script command that has not finished in this long. An orchestrator that can
   # wait forever cannot run unattended — a hung suite once blocked a run for 24 minutes silently.
   timeout_ms: 900000
+  # Install dependencies in the integration worktree before running tests.
   # Run in the integration worktree before `test` — a worktree has no node_modules, and a suite
   # that cannot start would otherwise satisfy `expect: fail` on every ticket.
   install: npm install --no-audit --no-fund --silent

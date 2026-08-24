@@ -1,0 +1,59 @@
+name: chore
+consumes: requirements
+produces: reviewed
+cross_vendor: required
+steps:
+  - id: implement
+    role: developer-generalist
+    adapter: claude
+    worktree: true
+    branch: "harness/{id}/implement"
+    base: "harness/{id}/integration"
+    input:
+      backlog: [requirements/merged.md, requirements/errata.md, review/chore-iter-*.md]
+      harness: [rules.md, architecture.md]
+      repo: true
+    output: { writes: [dev/implement-report.md] }
+    instructions: >
+      Implement exactly what requirements/merged.md asks for and nothing else: no scope
+      creep, no speculative abstraction, no tidying of code you were not sent to change.
+      If a review report from an earlier iteration is present, this is a revision round —
+      address every finding explicitly. If the requirement is ambiguous or contradictory,
+      stop and say so in the summary rather than improvising a decision it does not
+      authorise. Commit nothing; the harness commits your worktree. Write a report of what
+      you changed file by file and what you deliberately left alone — the reviewer reads
+      it beside your diff.
+
+  - id: review
+    role: code-reviewer
+    adapter: codex
+    input:
+      backlog: [requirements/merged.md, requirements/errata.md, dev/implement-report.md]
+      diff: "harness/{id}/integration...harness/{id}/implement"
+    output:
+      writes: ["review/chore-iter-{iter}.md"]
+      verdict: approve|revise
+    instructions: >
+      Review the diff against the requirement and the implementer's report. Judge whether
+      the change does what the requirement asks and only that: unrequested scope, a default
+      nobody chose, and configuration that contradicts the repository's rules are findings.
+      This is read-only — do not edit any file. Write every finding as
+      "blocker: <file>:<line> <what is wrong and what to do>", with the prefix exactly
+      blocker, major or nit and the file:line reference always present; output in any other
+      shape is rejected and the run stops. Findings must be empty on approve and non-empty
+      on revise. Approve only when no blocker or major survives; nits alone approve.
+    on_fail: { goto: implement, max_iterations: 2, on_exhausted: gate }
+
+  # No on_fail: a conflict with the base branch, or a suite red for a reason this flow did
+  # not introduce, is not work the implementer can do — its worktree branches from the
+  # ticket branch, where nothing is wrong. Stop with the reason rather than spend a budget.
+  - id: integrate
+    type: integrate
+    branches: ["harness/{id}/implement"]
+    into: "harness/{id}/integration"
+    run_tests: true
+    expect: pass
+    output: { writes: [dev/integration.md] }
+
+  - gate: human
+    reason: Chore owner approves the reviewed change now on the ticket branch, with the suite green

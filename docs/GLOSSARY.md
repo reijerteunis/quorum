@@ -10,7 +10,7 @@
 
 **Canonical harness**: The single per-project source of truth (`harness/` folder): rules, architecture context, command prompts, flow files. Compiled by the Studio into vendor dialects (CLAUDE.md, AGENTS.md, GEMINI.md); vendor-unique features pass through in marked native sections.
 
-**Gate**: The checkpoint between flow steps. Human-gated by default (user sees verdict + diffs + reasoning, then advances/re-runs/overrides); can be set to `auto` per gate in the flow file.
+**Gate**: A checkpoint in a flow. An author-declared gate is human-gated by default and may be set to `auto`; an author-declared `human-locked` deploy gate can never be automated. Separately, an engine-presented exhaustion gate appears when a bounded loop exhausts. It uses the same gate kind but is not declared as a flow step, requires an explicit `advance`, `retry`, or `abort`, and cannot be bypassed by `--auto`.
 
 **Flow**: A declarative, git-versioned file in the harness describing one orchestration: ordered steps, which adapter+model runs each step, what each step receives, and the gates between steps. Example: "grill → 2 competing coders → judge → reviewer panel". Since 2026-08-21 a flow also declares the backlog stage it `consumes` and `produces`.
 
@@ -36,7 +36,17 @@
 
 **Cross-vendor rule**: `cross_vendor: required` — a lint guaranteeing the reviewer/judge of an artifact runs on a different adapter than its writer.
 
+**Panel**: A parallel group of reviewing or judging steps over the same input, spanning more than one
+adapter. The review flow's Claude + Codex reviewers are a panel; `cross_vendor: required` is satisfied
+by the panel spanning vendors, not by writer ≠ reviewer.
+
 **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).
 
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
+
+**Chore flow**: The short route for machinery and configuration tickets — requirements → one implementer
+in a worktree → cross-vendor review with a bounded revise loop → integrate → human gate. Consumes
+`requirements`, produces `reviewed`, skipping solutioning and qa-red because a scaffold has no
+behaviour a test could fail on before it exists. Not a lighter SDLC; a different one, for work that
+changes what the repository *is* rather than what it *does*.

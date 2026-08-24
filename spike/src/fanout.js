@@ -22,6 +22,15 @@ export function loadTasks(ticket) {
   return YAML.parse(m).tasks ?? [];
 }
 
+// Narrow a fan-out to the tasks that still fail. A depends_on naming a task outside the scope is
+// already satisfied — that task succeeded and its branch is merged — so it is dropped rather than
+// left for waves() to report as an unresolvable cycle. Q-0006's run 11 crashed on exactly that.
+export function scopeToFailing(tasks, failing) {
+  const kept = tasks.filter((t) => failing.has(t.id));
+  const ids = new Set(kept.map((t) => t.id));
+  return kept.map((t) => ({ ...t, depends_on: (t.depends_on ?? []).filter((d) => ids.has(d)) }));
+}
+
 // Group tasks into waves: a task runs once all its depends_on are in earlier waves.
 export function waves(tasks) {
   const done = new Set(); const out = [];
@@ -81,6 +90,19 @@ export function commitAll(dir, message, onDiscard) {
   if (!staged) return null;
   git(['-c', 'user.email=harness@local', '-c', 'user.name=harness', 'commit', '-q', '-m', message], dir);
   return staged.split('\n');
+}
+
+// A run that does not complete must leave the ticket branch as it found it. integrate merges task
+// branches before anyone knows whether the run will succeed, and an exhausted or aborted run used
+// to leave those merges behind permanently — so the next stage measured its red phase against a
+// tree that already contained the implementation. Nothing is lost by rolling back: each task's work
+// stays on its own branch. See Q-0033.
+export function branchHead(repo, branch) { return safe(() => git(['rev-parse', branch], repo)); }
+
+export function resetBranchTo(repo, branch, sha) {
+  const dir = path.join(repo, '.harness', 'worktrees', branch.replace(/\//g, '__'));
+  if (fs.existsSync(dir)) { git(['reset', '--hard', sha], dir); safe(() => git(['clean', '-qfd'], dir)); }
+  else git(['branch', '-f', branch, sha], repo);
 }
 
 // Merge `branch` into the checked-out branch of `dir`. Returns {ok, conflicts[]}.

@@ -7,9 +7,10 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema } from './adapters/index.js';
 import { ensureWorktree, ensureExcluded } from './git.js';
-import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, IntegrationError } from './fanout.js';
+import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
+import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
-export class FlowError extends Error {}
+export { FlowError, lintFlow, lintFlowDirectory, validateFlowDirectory } from './lint.js';
 
 export function loadFlow(file) {
   const flow = YAML.parse(fs.readFileSync(file, 'utf8'));
@@ -18,69 +19,38 @@ export function loadFlow(file) {
   return flow;
 }
 
-// Static lint: ids unique, goto targets exist, every backward edge bounded, cross-vendor rule.
-export function lintFlow(flow) {
-  const problems = [];
-  const steps = flattenSteps(flow.steps);
-  const ids = steps.filter((s) => s.id).map((s) => s.id);
-  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) problems.push(`duplicate step id "${id}"`); });
-  for (const s of steps) {
-    if (s.on_fail) {
-      if (!s.on_fail.goto) problems.push(`${s.id}: on_fail without goto`);
-      else if (!String(s.on_fail.goto).startsWith('flow:') && !ids.includes(s.on_fail.goto)) problems.push(`${s.id}: goto target "${s.on_fail.goto}" not found`);
-      if (!Number.isInteger(s.on_fail.max_iterations)) problems.push(`${s.id}: on_fail needs integer max_iterations`);
-      if (s.on_fail.on_exhausted !== 'gate') problems.push(`${s.id}: on_exhausted must be "gate"`);
-    }
-    if (s.output?.verdict && !s.on_fail && !s.route) problems.push(`${s.id}: has a verdict but no on_fail/route — verdicts must go somewhere`);
-    if (s.fan_out && !s.step) problems.push(`${s.id}: fan_out needs a step template`);
-    if (s.type === 'integrate' && !s.branches) problems.push(`${s.id}: integrate needs branches`);
-  }
-  if (flow.cross_vendor === 'required') {
-    // producer map: backlog path -> adapter that writes it
-    const producer = {};
-    for (const s of steps) for (const w of writesOf(s)) producer[w] = s.adapter;
-    // Rule: a reviewing/judging step must see at least one input written by another vendor.
-    // Single-writer review → writer ≠ reviewer. Judge over N candidates → fine if candidates span vendors.
-    for (const s of steps) {
-      if (!s.output?.verdict) continue;
-      const reviewed = (s.input?.backlog ?? []).flatMap((inp) => Object.keys(producer).filter((p) => globMatch(inp, p)));
-      if (reviewed.length && reviewed.every((p) => producer[p] === s.adapter)) {
-        problems.push(`${s.id}: every input it judges (${reviewed.join(', ')}) was written by its own vendor (${s.adapter}) — cross_vendor: required`);
-      }
-    }
-  }
-  // A bounded loop that never shows its verdict to the step it returns to cannot converge: that
-  // step regenerates its output from the same inputs, and the reviewer objects to the same things.
-  // qa-red shipped exactly this way and spent $4.45 re-reviewing a file nothing had changed —
-  // write-tests committed nothing because it had no idea what was wrong. See Q-0011.
-  for (const s of steps) {
-    const target = s.on_fail?.goto;
-    if (!target || String(target).startsWith('flow:')) continue;   // cross-flow edges regress a stage
-    const written = writesOf(s);
-    if (!written.length) continue;
-    const dest = steps.find((t) => t.id === target);
-    if (!dest || dest.fan_out) continue;   // fan_out receives the integration result from the engine
-    const receives = dest.input?.backlog ?? [];
-    if (!written.some((w) => receives.some((inp) => globMatch(inp, w)))) {
-      problems.push(`${s.id}: loops back to "${target}", which never receives ${written.join(', ')} — the loop cannot converge`);
-    }
-  }
-  if (!flow.consumes || !flow.produces) problems.push('flow needs consumes/produces');
-  const gates = steps.filter((s) => s.gate);
-  if (flow.produces === 'deployed' && !gates.some((g) => g.gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');
-  if (problems.length) throw new FlowError(`flow ${flow.name ?? flow.file} invalid:\n  - ${problems.join('\n  - ')}`);
-  return true;
+// A dry run previews a flow; it must not change anything a real run would change. Every step
+// already guarded ctx.dry, but the run's own bookkeeping did not, so --dry logged a start line,
+// advanced the ticket's stage and appended a "completed" history entry having invoked no agent and
+// written no artifact — the preview left the ticket looking like the flow had run, which then
+// refused the real run because the stage it had consumed was gone. Guarding the individual call
+// sites would leave every future writer to remember; making the database itself read-only cannot
+// be forgotten. See Q-0034.
+function readOnlyBacklog(backlog) {
+  const view = Object.create(backlog);   // inherits every reader; only the writers are stubbed
+  view.write = () => {};
+  view.writeFile = () => {};
+  view.log = () => {};
+  return view;
 }
 
 export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false }) {
   if (ticket.meta.stage !== flow.consumes) {
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);
   }
+  if (dry) backlog = readOnlyBacklog(backlog);
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
+    diffInputs: new Map(),
   };
+  // What the ticket branch looked like before this run touched it, so a run that does not
+  // complete can put it back. See Q-0033.
+  ctx.branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
+  // The run's own `start` line and its runs.log entry are emitted inside the try below, not here:
+  // Q-0011 moved them so that a failure during initialiseRunHistory still receives a terminal
+  // record. Merging main's copies back in at this point would print and log every run twice.
   // Ctrl-C at a gate used to leave no terminal line in runs.log and no persisted counters, so an
   // interrupted run silently handed its iteration budget back — an undocumented way to buy
   // unlimited retries, which defeats the bound the design rests on. See Q-0004.
@@ -106,6 +76,14 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   const steps = flow.steps;
   let i = 0;
   try {
+  // Diff-bearing flows have a run-level safety preflight. Preparing every distinct range here
+  // means a preceding agent can never be billed before a bad ref (or empty review range) is
+  // discovered, and every panel member receives the exact same bytes. It remains inside the run
+  // try block so a failed preflight receives the same terminal audit record as every other error.
+  for (const step of flattenSteps(flow.steps).filter((candidate) => candidate.input?.diff)) {
+    const range = interpolate(step.input.diff, ctx.vars);
+    if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(step, ctx));
+  }
   while (i < steps.length) {
     const step = steps[i];
     const res = await runStep(step, ctx);
@@ -117,7 +95,9 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
         ui.warn(`backward edge → ${target}: ticket regresses to stage "${targetFlow.consumes}"`);
         return finish(ctx, targetFlow.consumes, 'regressed', null, {
           targetFlow: targetFlow.name, stageBefore: ticket.meta.stage, stageAfter: targetFlow.consumes,
-          count: ctx.counters.review, limit: res.limit, remaining: Math.max(0, (res.limit ?? 0) - (ctx.counters.review ?? 0)),
+          counter: res.counter,
+          count: ctx.counters[res.counter], limit: res.limit,
+          remaining: Math.max(0, (res.limit ?? 0) - (ctx.counters[res.counter] ?? 0)),
         });
       }
       i = steps.findIndex((s) => s.id === target || (s.parallel && s.parallel.some((p) => p.id === target)));
@@ -396,6 +376,30 @@ function relative(root, target) { return path.relative(root, target).split(path.
 // commands.timeout_ms in harness.yaml; fifteen minutes suits a spike's own suite.
 function cmdTimeout(ctx) { return ctx.config.commands?.timeout_ms ?? 15 * 60_000; }
 
+// The report used to be the last 8000 characters of output, which cuts off the head: on a large
+// suite seven of nineteen failing groups had no line at all, and the reviewer judging the red
+// phase never saw them. Keep every result line — they are what the report is for — and truncate
+// only the payload in the middle, saying so where the cut is. See Q-0033.
+const RESULT_LINE = /^\s*(?:\x1b\[[0-9;]*m)*\s*(?:[✓✗×√]|(?:not )?ok\s|#\s|\d+\)\s|(?:PASS|FAIL|SKIP)\b)/;
+
+export function testReport(cmd, out, { maxBytes = 24000 } = {}) {
+  const lines = String(out ?? '').split('\n');
+  const results = lines.filter((l) => RESULT_LINE.test(l));
+  const body = String(out ?? '');
+  const kept = body.length <= maxBytes
+    ? body
+    : `${body.slice(0, maxBytes / 2)}\n\n… ${body.length - maxBytes} characters of output omitted from the middle …\n\n${body.slice(-maxBytes / 2)}`;
+  const roster = results.length
+    ? `\n## Every result line\n\n\`\`\`\n${results.join('\n')}\n\`\`\`\n`
+    : '\n_No lines in the output looked like test results._\n';
+  return `# Test output\n\n\`${cmd}\`\n${roster}\n## Output\n\n\`\`\`\n${kept}\n\`\`\`\n`;
+}
+
+function safeMergeBase(repo, a, b) {
+  try { return execFileSync('git', ['merge-base', a, b], { cwd: repo, encoding: 'utf8' }).trim(); }
+  catch { return null; }
+}
+
 function countUsage(ctx, usage) {
   if (!usage) return;
   // Tokens are comparable across vendors; money is not. Count an unpriced step so the run can
@@ -419,7 +423,7 @@ function handleFail(step, ctx) {
   ctx.counters[counter] = n;
   if (n <= f.max_iterations) {
     ctx.ui.warn(`${step.id}: iteration ${n}/${f.max_iterations} → goto ${f.goto}`);
-    return { goto: f.goto, limit: f.max_iterations };
+    return { goto: f.goto, counter, limit: f.max_iterations };
   }
   ctx.ui.warn(`${step.id}: loop exhausted (${f.max_iterations}) → human gate`);
   recordEvent(ctx, ctx.ticket.meta.stage, 'exhausted', 0);
@@ -454,7 +458,7 @@ async function runGate(step, ctx) {
     // max_iterations+1 further traversals rather than one. See Q-0004 / DECISIONS 2026-08-22.
     if (step.retryCounter != null) ctx.counters[step.retryCounter] = step.retryMax;
     ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=retry counter=${step.retryCounter} set=${step.retryMax} (one further traversal authorised)`);
-    return { goto: step.retryTarget, limit: step.retryMax };
+    return { goto: step.retryTarget, counter: step.retryCounter, limit: step.retryMax };
   }
   return { abort: true };
 }
@@ -501,6 +505,19 @@ function finish(ctx, stage, status, note, fields = {}) {
     replaceManifest(ctx);
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
+  // A run that did not complete leaves the ticket branch as it found it. integrate merges task
+  // branches before anyone knows the outcome, and an exhausted or aborted run used to leave those
+  // merges behind for good — so the next qa-red measured its red phase against a tree that already
+  // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
+  // task's work stays on its own branch. See Q-0033.
+  if (!ctx.dry && !['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
+    const now = branchHead(ctx.repoDir, ticket.meta.branch);
+    if (now && now !== ctx.branchHeadAtStart) {
+      resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
+      ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
+      backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+    }
+  }
   backlog.write(ticket);
   backlog.log(ticket, `run=${ctx.runId} ${status} stage=${from}→${ticket.meta.stage} cost=${round(ctx.stats.cost)} tokens=${ctx.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
   const partial = ctx.stats.unpriced ? `  (+${ctx.stats.unpriced} unpriced step${ctx.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)` : '';
@@ -538,7 +555,10 @@ export function schemaFor(step) {
   if (writesOf(step).length) { props.document = { type: 'string', description: 'The full markdown document to be written to the backlog.' }; required.push('document'); }
   if (step.output?.verdict) {
     props.verdict = { type: 'string', enum: String(step.output.verdict).split('|') };
-    props.findings = { type: 'array', items: { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
+    const items = props.verdict.enum.includes('changes-requested')
+      ? { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }
+      : { type: 'string' };
+    props.findings = { type: 'array', items, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
     required.push('verdict', 'findings');
   }
   return { type: 'object', properties: props, required, additionalProperties: false };
@@ -558,7 +578,10 @@ export function buildPrompt(step, role, ctx) {
     for (const { rel, text } of backlog.readFiles(ticket, interpolate(b, ctx.vars))) parts.push(`\n## Input: backlog/${ticket.folder}/${rel}\n\n${text.trim()}`);
   }
   if (step.input?.repo) parts.push(`\n## Repository\n\nYou are running inside the repository at your working directory. Inspect it as needed.${step.worktree ? ' You MAY write files; this is an isolated worktree on its own branch.' : ' Do NOT modify files.'}`);
-  if (step.input?.diff) parts.push(materialiseDiff(step, ctx));
+  if (step.input?.diff) {
+    const range = interpolate(step.input.diff, ctx.vars);
+    parts.push(ctx.diffInputs?.get(range) ?? materialiseDiff(step, ctx));
+  }
   if (step.instructions) parts.push(`\n# Task\n\n${step.instructions.trim()}`);
   const outs = writesOf(step).map((w) => interpolate(w, ctx.vars));
   parts.push(`\n# Output contract\n\nRespond ONLY with a JSON object matching the provided schema.${outs.length ? ` Put the complete markdown document in "document" (it will be saved as ${outs.join(', ')}).` : ''}${step.output?.verdict ? ` Set "verdict" to one of: ${step.output.verdict}. The first option means pass.` : ''}`);
@@ -578,10 +601,9 @@ export function loadFlowByName(name, harnessDir) {
   return loadFlow(path.join(harnessDir, 'flows', `${name}.yaml`));
 }
 
-export function flattenSteps(steps) { return steps.flatMap((s) => (s.parallel ? s.parallel : [s])); }
+export { flattenSteps } from './lint.js';
 export function writesOf(step) { const o = step.output ?? {}; return [...(o.write ? [o.write] : []), ...(o.writes ?? [])]; }
 export function interpolate(s, vars) { return String(s).replace(/\{([\w.]+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`)); }
-function globMatch(pattern, p) { return new RegExp('^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(p) || (pattern.endsWith('/') && p.startsWith(pattern)); }
 // History only gains an entry when a run completes or regresses, so deriving the id from it alone
 // hands a failed run's number to the next one and the audit trail cannot tell them apart.
 // runs.log is the append-only record of every attempt, successful or not. See Q-0001.
@@ -603,37 +625,85 @@ function reviewRound(ticket) {
   return (completed.length ? Math.max(...completed) : 0) + 1;
 }
 
-function materialiseDiff(step, ctx) {
+export function materialiseDiff(step, ctx) {
   const range = interpolate(step.input.diff, ctx.vars);
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
   const integration = `harness/${ctx.ticket.meta.id}/integration`;
   const hasRef = (ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; } catch { return false; } };
   if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
   if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
+  const expectedRange = `${base}...${integration}`;
+  if (range !== expectedRange) throw new FlowError(`${step.id}: input.diff must resolve to ${expectedRange}, got ${range}`);
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
+  // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
+  // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
+  // have acted on; the panel only produced findings because the agents read the working tree
+  // instead of the evidence handed to them. Diagnose the overwhelmingly likely cause rather than
+  // reporting emptiness: a branch already merged into base has nothing left to show.
+  if (!stat.trim()) {
+    const merged = (() => {
+      try { execFileSync('git', ['merge-base', '--is-ancestor', integration, base], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
+      catch { return false; }
+    })();
+    throw new FlowError(merged
+      ? `${step.id}: \`${range}\` is empty because ${integration} is already merged into ${base} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
+      : `${step.id}: \`${range}\` is empty — no commits to review. Check input.diff in the flow and that the ticket's work was committed to ${integration}.`);
+  }
   const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
   const limit = ctx.config.repo?.max_diff_bytes ?? 200000;
   let bytes = full; let truncated = bytes.length > limit;
   if (truncated) {
     bytes = bytes.subarray(0, limit);
-    while (bytes.length && Buffer.from(bytes.toString('utf8')).compare(bytes) !== 0) bytes = bytes.subarray(0, -1);
-    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} diff truncated range=${range} limit=${limit}`);
+    bytes = trimIncompleteUtf8Suffix(bytes);
+    ctx.backlog.log(ctx.ticket, `run=${ctx.runId} diff truncated range=${range} limit=${limit} kept=${bytes.length}`);
   }
-  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${limit} UTF-8 bytes.` : '';
+  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${bytes.length} UTF-8 bytes (configured limit ${limit}).` : '';
   return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+}
+
+function trimIncompleteUtf8Suffix(bytes) {
+  if (!bytes.length) return bytes;
+  let lead = bytes.length - 1;
+  while (lead >= 0 && (bytes[lead] & 0xc0) === 0x80) lead -= 1;
+  if (lead < 0) return bytes;
+  const first = bytes[lead];
+  const width = first < 0x80 ? 1 : first >= 0xc2 && first <= 0xdf ? 2 : first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 1;
+  return bytes.length - lead < width ? bytes.subarray(0, lead) : bytes;
 }
 const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------
 
+// Catch the ticket branch up with the repository's base BEFORE cutting task worktrees from it.
+// The worktrees sync to the ticket branch, and integrate syncs the ticket branch to base — so
+// with the sync only at the end, every agent works against a base that moves underneath it and
+// anything landing on base mid-run surfaces as a conflict nobody in the loop can repair. Q-0006's
+// run 11 lost its runtime task that way: engine.js changed on main between fan-out and integrate.
+export function syncBaseIntoTicketBranch(step, ctx) {
+  const { ui } = ctx;
+  const into = interpolate(step.step?.base ?? ctx.ticket.meta.branch, ctx.vars);
+  const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+  if (!base || base === into) return { skipped: 'base is the ticket branch' };
+  // Normal on a ticket's first pass: the integration branch is created by the first integrate.
+  if (!branchExists(ctx.repoDir, into)) return { skipped: `${into} does not exist yet` };
+  if (!branchExists(ctx.repoDir, base)) return { skipped: `${base} does not exist` };
+  const m = mergeInto(ticketWorktree(ctx.repoDir, into), base);
+  if (m.ok) { ui?.info?.(`${step.id}: ${into} synced to ${base} before fan-out`); return { ok: true }; }
+  // Same reasoning as integrate's base conflict: the agents sync to the ticket branch, where
+  // nothing is wrong, so they correctly change nothing and the conflict returns unchanged. Stop
+  // and name the work rather than spending the iteration budget rediscovering it.
+  throw new FlowError(`${step.id}: cannot sync ${into} to ${base} before fan-out — ${mergeFailure(m)}. Resolve it in a worktree on ${into}, commit, and re-run; no agent in this loop can repair a base conflict.`);
+}
+
 async function runFanOut(step, ctx) {
   const { ui, ticket } = ctx;
   let tasks = loadTasks(ticket);
   if (step.fan_out.scope === 'failing-tasks-only' && ctx.failingTasks?.size) {
-    tasks = tasks.filter((t) => ctx.failingTasks.has(t.id));
+    tasks = scopeToFailing(tasks, ctx.failingTasks);
     ui.warn(`${step.id}: scoped to failing tasks: ${tasks.map((t) => t.id).join(', ')}`);
   }
   if (!tasks.length) throw new FlowError(`${step.id}: no tasks to fan out`);
+  if (!ctx.dry) syncBaseIntoTicketBranch(step, ctx);
   const plan = step.fan_out.respect === 'depends_on' ? waves(tasks) : [tasks];
   ui.info(`${step.id}: ${tasks.length} task(s) in ${plan.length} wave(s)`);
   ctx.fanned = ctx.fanned ?? [];
@@ -682,6 +752,20 @@ async function runIntegrate(step, ctx) {
   else branches = [pattern];
   branches = branches.filter((b) => branchExists(ctx.repoDir, b));
   const notes = [`# Integration — run ${ctx.runId}, iteration ${ctx.vars.iter}`, '', `Target: \`${into}\``, ''];
+  // Evidence about this run, recorded once so a scenario never has to assert it. A fact true only
+  // during the red phase is not an acceptance test: QA smuggled branch-cleanliness into an
+  // assertion because there was nowhere else to put it, and that test could never go green.
+  // See the "a red test is a permanent acceptance test" decision, 2026-08-23.
+  {
+    const base = interpolate(ctx.config.repo?.base_branch ?? 'main', ctx.vars);
+    const head = branchHead(ctx.repoDir, into);
+    notes.push(`Evidence: \`${into}\` at ${head ? head.slice(0, 7) : '(new)'}, base \`${base}\`.`);
+    for (const b of (Array.isArray(step.branches) ? step.branches.map((x) => interpolate(x, ctx.vars)) : [])) {
+      const mb = safeMergeBase(ctx.repoDir, into, b);
+      if (mb) notes.push(`Evidence: \`${b}\` diverges from \`${into}\` at ${mb.slice(0, 7)}.`);
+    }
+    notes.push('');
+  }
   const conflicts = [];
   // Catch the ticket branch up with the repository's base branch first. A ticket open for more
   // than a day otherwise integrates against the base it was cut from, and work landed on the base
@@ -742,7 +826,7 @@ async function runIntegrate(step, ctx) {
     notes.push('', `Tests: \`${cmd}\` → exit ${r.code} (expected ${expect}) → ${envError ? 'INVALID' : testsOk ? 'OK' : 'NOT OK'}`);
     ui[testsOk ? 'info' : 'warn'](`${step.id}: tests exit ${r.code}, expected ${expect}${envError ? ' — ' + envError : ''}`);
   }
-  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? `# Test output\n\n\`\`\`\n${out.slice(-8000)}\n\`\`\`\n` : notes.join('\n'));
+  for (const w of writesOf(step)) backlog.writeFile(ticket, interpolate(w, ctx.vars), w.includes('report') ? testReport(cmd, out) : notes.join('\n'));
   persistArtifact(ctx, occurrence, 'output.txt', out);
   backlog.log(ticket, `run=${ctx.runId} step=${step.id} merged=${branches.length - conflicts.length}/${branches.length} tests=${cmd ? (envError ? 'invalid' : testsOk ? 'ok' : 'fail') : '-'}`);
   // Looping back to the author cannot fix a broken environment, so stop with the reason rather

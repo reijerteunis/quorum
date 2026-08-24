@@ -130,12 +130,12 @@ export function authError(vendor, text = '') {
 // binary exists; this proves the subscription actually answers. Used by `harness adapters --probe`.
 // additionalProperties:false and every property in `required` are mandatory for OpenAI strict
 // structured outputs — codex rejects anything else. schemaFor() already obeys this; so must we.
-const PROBE_SCHEMA = {
+export const PROBE_SCHEMA = {
   type: 'object',
   properties: { ok: { type: 'boolean' }, summary: { type: 'string' } },
-  required: ['ok'], additionalProperties: false,
+  required: ['ok', 'summary'], additionalProperties: false,
 };
-const PROBE_PROMPT = 'Reply with exactly this JSON and nothing else: {"ok": true}. Do not use any tools.';
+const PROBE_PROMPT = 'Reply with exactly this JSON and nothing else: {"ok": true, "summary": "subscription answered"}. Do not use any tools.';
 
 export async function probeAdapter(adapter, { cwd, model } = {}) {
   const t0 = Date.now();
@@ -192,7 +192,10 @@ export function checkAgainstSchema(obj, schema) {
       }
     }
   }
-  if (obj.verdict === 'approve' && Array.isArray(obj.findings) && obj.findings.length) problems.push('approve requires empty findings');
-  if (obj.verdict === 'changes-requested' && Array.isArray(obj.findings) && !obj.findings.length) problems.push('changes-requested requires findings');
+  const verdicts = schema.properties?.verdict?.enum;
+  if (Array.isArray(verdicts) && Array.isArray(obj.findings)) {
+    if (obj.verdict === verdicts[0] && obj.findings.length) problems.push(`${verdicts[0]} requires empty findings`);
+    if (verdicts.slice(1).includes(obj.verdict) && !obj.findings.length) problems.push(`${obj.verdict} requires findings`);
+  }
   return problems;
 }

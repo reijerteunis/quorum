@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    name: workspace (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Turbo's local cache, so a re-run of an unchanged task is a hit rather than a repeat.
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  spike:
+    name: spike (regression suite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # The suite drives the engine, which commits worktrees with the ambient git identity.
+      # A bare runner has none, so the first commit would fail before a single check ran.
+      - run: |
+          git config --global user.email "ci@quorum.invalid"
+          git config --global user.name "Quorum CI"
+      - run: npm ci
+        working-directory: spike
+      - run: npm test
+        working-directory: spike

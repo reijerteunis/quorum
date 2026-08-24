@@ -7,7 +7,7 @@ steps:
     role: automation-qa
     adapter: claude
     model: sonnet
-    input: { backlog: [requirements/merged.md, solution/solution.md, solution/tasks.yaml, qa/scenario-review.md] }
+    input: { backlog: [requirements/merged.md, solution/solution.md, solution/errata.md, solution/tasks.yaml, qa/scenario-review.md] }
     output: { write: qa/scenarios.md }
     instructions: >
       Write the test scenarios for this ticket: one Given/When/Then scenario per acceptance
@@ -20,7 +20,7 @@ steps:
     worktree: true
     branch: "harness/{id}/tests"
     base: "harness/{id}/integration"
-    input: { backlog: [qa/scenarios.md, solution/tasks.yaml, qa/scenario-review.md, qa/red-report.md], harness: [architecture.md], repo: true }
+    input: { backlog: [qa/scenarios.md, solution/tasks.yaml, solution/errata.md, qa/scenario-review.md, qa/red-report.md], harness: [architecture.md], repo: true }
     instructions: >
       Implement automated tests for every scenario against the contracts under contracts/.
       Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing

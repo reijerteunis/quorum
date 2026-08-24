@@ -16,15 +16,24 @@ budget:
 repo:
   # The branch ticket work integrates against. `integrate` merges it into the ticket branch
   # before testing, so a long-running ticket never builds on the base it was cut from.
+  # Base branch used to materialize review diffs.
   base_branch: main
+  # Maximum UTF-8 byte length of a review diff before truncation.
+  max_diff_bytes: 200000
 commands:
   # Kills a test or script command that has not finished in this long. An orchestrator that can
   # wait forever cannot run unattended — a hung suite once blocked a run for 24 minutes silently.
   timeout_ms: 900000
   # Used by integrate steps with run_tests: true. Until packages/core lands (M2) the runnable
   # code is the spike, so the suite is the spike's mock-adapter smoke test.
+  # Install dependencies in the integration worktree before running tests.
   # Run in the integration worktree before `test`. A worktree is a fresh checkout with no
   # node_modules; without this the suite dies on a missing dependency and `expect: fail` reads
   # that as proof of red.
-  install: npm install --prefix spike --no-audit --no-fund --silent
-  test: npm test --prefix spike
+  # Both dependency sets and both suites, chained so the step fails if either does. The spike is
+  # not a pnpm workspace member (its runner is not Vitest and its lockfile is npm's), so until
+  # Q-0009 retires it the repository genuinely has two suites and an `integrate` step that ran
+  # only one would prove the wrong half. Q-0008 criterion 8. `runCommand` goes through execSync,
+  # so `&&` is a shell chain, not an argv.
+  install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
+  test: npm test --prefix spike && pnpm turbo run test

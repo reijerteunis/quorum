@@ -1,6 +1,8 @@
-# Integration — run 9, iteration 2
+# Integration — run 13, iteration 1
 
 Target: `harness/Q-0006/integration`
+
+Evidence: `harness/Q-0006/integration` at aa09641, base `main`.
 
 - ✓ base `main`
 - ✓ harness/Q-0006/Q0006-mock-switch

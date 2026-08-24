@@ -14,7 +14,11 @@ const run = (args, env = {}) => {
   process.stdout.write(r.stdout); if (r.stderr) process.stderr.write(r.stderr);
   return r;
 };
-const assert = (cond, msg) => { if (!cond) { console.error('✗ ' + msg); process.exit(1); } console.log('✓ ' + msg); };
+let smokeFailures = 0;
+const assert = (cond, msg) => {
+  if (!cond) { smokeFailures++; console.error('✗ ' + msg); return false; }
+  console.log('✓ ' + msg); return true;
+};
 
 execSync('git init -q && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init', { cwd: tmp });
 assert(run(['init']).status === 0, 'init');
@@ -193,20 +197,12 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const before = fs.readFileSync(at('ticket.md'), 'utf8').replace('iterations: {}', 'iterations:\n  qa-final.unrelated: 2');
   fs.writeFileSync(at('ticket.md'), before);
 
-  // Answer both gates up front: retry, then refuse the next one. Assertions read files rather
-  // than captured stdout — a busy-wait blocks this process's event loop, so 'data' never fires.
-  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
-    { cwd: tmp, stdio: ['pipe', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' } });
-  // Answer the first gate only, and leave stdin open: the second gate must still be waiting when
-  // the grace traversal is done. SIGINT then ends it, persisting counters via the handler above.
-  child.stdin.write('retry\n');
-  const deadline = Date.now() + 25000;
+  // Answer the first gate explicitly. With no second answer available, a non-interactive run
+  // must terminate itself when the gate is presented again.
+  const child = spawnSync('node', [bin, 'run', 'requirements', id, '--adapter', 'mock', '--gate-answer', 'retry'],
+    { cwd: tmp, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, MOCK_ALWAYS_FAIL: '1' }, timeout: 25000 });
+  assert(child.status !== 0, 'the unanswered second exhaustion gate exits non-zero');
   const log = () => (fs.existsSync(at('runs.log')) ? fs.readFileSync(at('runs.log'), 'utf8') : '');
-  const count = (re) => (log().match(re) ?? []).length;
-  while (Date.now() < deadline && count(/step=head-of-product/g) < 3) execSync('sleep 0.2');
-  child.kill('SIGINT');
-  while (Date.now() < deadline && !/ interrupted /.test(log())) execSync('sleep 0.2');
-  child.kill('SIGKILL');
 
   const runsLog = log();
   // hof runs once, loops once (its whole budget), hits the gate; retry buys exactly one more and
@@ -219,31 +215,22 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/qa-final\.unrelated: 2/.test(after), 'a retry does not refund an unrelated loop’s budget');
 }
 
-// Interrupting a run at a gate must record the outcome and persist counters. Otherwise Ctrl-C is
-// an undocumented way to hand back the iteration budget and retry forever (found by Q-0004).
+// A non-interactive unanswered gate must record a terminal outcome and preserve counters. AC10
+// makes the old pipe-and-SIGINT mechanism unreachable because a pipe is never a TTY.
 {
   const id = run(['ticket', 'new', 'Interrupted at a gate']).stdout.match(/T-\d{4}/)[0];
   const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
   const at = (rel) => path.join(tmp, 'backlog', dir, rel);
-  // No --auto, so it stops at the flow's closing gate and waits on stdin.
-  const child = spawn('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'], { cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
-  const deadline = Date.now() + 20000;
-  const waitFor = (test) => {
-    while (Date.now() < deadline) {
-      if (fs.existsSync(at('runs.log')) && test(fs.readFileSync(at('runs.log'), 'utf8'))) return true;
-      execSync('sleep 0.2');
-    }
-    return false;
-  };
-  const reached = waitFor((log) => /step=head-of-product/.test(log));
-  assert(reached, 'the interrupt fixture reaches the gate');
-  child.kill('SIGINT');
-  const recorded = waitFor((log) => / interrupted /.test(log));
-  child.kill('SIGKILL');   // belt and braces; the process should already be gone
-  assert(recorded, 'an interrupted run is recorded in runs.log');
+  const before = fs.readFileSync(at('ticket.md'), 'utf8');
+  const child = spawnSync('node', [bin, 'run', 'requirements', id, '--adapter', 'mock'],
+    { cwd: tmp, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 20000 });
+  assert(child.status !== 0, 'an unanswered non-TTY gate terminates the run');
+  const runs = fs.readFileSync(at('runs.log'), 'utf8');
+  assert(/ (failed|aborted) /.test(runs), 'an unanswered gate records a terminal outcome in runs.log');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
-  assert(ticket4.includes('stage: draft'), 'an interrupted run does not advance the stage');
-  assert(/requirements\.head-of-product: \d/.test(ticket4), 'an interrupted run persists its counters instead of refunding them');
+  assert(ticket4.includes('stage: draft'), 'an unanswered gate does not advance the stage');
+  const counter = (text) => text.match(/requirements\.head-of-product: (\d+)/)?.[1] ?? '0';
+  assert(Number(counter(ticket4)) >= Number(counter(before)), 'an unanswered gate does not refund its iteration counter');
 }
 
 // A bounded loop that never shows its verdict to the step it returns to cannot converge. qa-red
@@ -296,6 +283,55 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(/does not exist yet — nothing to sync/.test(sol), 'a base branch that does not exist yet is stated, not warned about');
   assert(!/could not sync/.test(sol), 'no sync warning is raised when there was nothing to sync');
   assert(!/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m.test(sol), 'no failure is ever reported with an empty reason');
+}
+
+// The red/green report is what the reviewer judges, and it used to be the last 8000 characters of
+// output — which cuts off the head. On Q-0033 seven of nineteen failing groups had no line at all,
+// so the gate was asked to judge a report with its beginning missing.
+{
+  const { testReport } = await import('../src/engine.js');
+  const big = ['✓ first check', ...Array.from({ length: 900 }, (_, i) => `  noise line ${i} ${'x'.repeat(60)}`), '✗ last check'].join('\n');
+  const r = testReport('npm test', big);
+  assert(r.includes('✓ first check'), 'a result line at the very start survives truncation');
+  assert(r.includes('✗ last check'), 'a result line at the very end survives truncation');
+  assert(/characters of output omitted from the middle/.test(r), 'the cut is in the middle and says so');
+  assert(r.includes('`npm test`'), 'the report names the command it ran');
+
+  const none = testReport('sh -c true', 'no results here\njust prose\n');
+  assert(/No lines in the output looked like test results/.test(none), 'output with no result lines says so rather than looking empty');
+}
+
+// A run that does not complete must leave the ticket branch as it found it. integrate merges task
+// branches before anyone knows the outcome; an aborted run used to leave those merges behind, so
+// the next qa-red measured red against a tree that already held the implementation and reported
+// nothing red at all (Q-0033).
+{
+  const id = run(['ticket', 'new', 'Abandoned merge']).stdout.match(/T-\d{4}/)[0];
+  const branch = `harness/${id}/integration`;
+  const cur = execSync('git rev-parse --abbrev-ref HEAD', { cwd: tmp, encoding: 'utf8' }).trim();
+
+  // A ticket branch with one commit, and a side branch carrying "implementation".
+  execSync(`git checkout -q -b ${branch} && echo base > carried.txt && git add carried.txt && git -c user.email=a@b -c user.name=t commit -q -m base`, { cwd: tmp });
+  execSync(`git checkout -q -b ${branch}-side && echo impl > impl.txt && git add impl.txt && git -c user.email=a@b -c user.name=t commit -q -m impl`, { cwd: tmp });
+  execSync(`git checkout -q ${cur}`, { cwd: tmp });
+  const before = execSync(`git rev-parse ${branch}`, { cwd: tmp, encoding: 'utf8' }).trim();
+
+  // integrate merges the side branch, then a failing test with no on_fail aborts the run.
+  fs.writeFileSync(path.join(tmp, 'harness/flows/abandon.yaml'), `name: abandon\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: integrate\n    type: integrate\n    branches: ["${branch}-side"]\n    into: "${branch}"\n    run_tests: "sh -c 'exit 1'"\n    expect: pass\n    output: { writes: [dev/integration.md] }\n`);
+
+  const ab = run(['run', 'abandon', id, '--adapter', 'mock', '--auto']);
+  const after = execSync(`git rev-parse ${branch}`, { cwd: tmp, encoding: 'utf8' }).trim();
+
+  assert(ab.status !== 0, 'a failing integrate with no on_fail aborts the run');
+  assert(after === before, 'an aborted run leaves the ticket branch exactly as it found it');
+  assert(!execSync(`git ls-tree -r --name-only ${branch}`, { cwd: tmp, encoding: 'utf8' }).includes('impl.txt'),
+    'the abandoned merge is gone, so the next red phase measures against a clean base');
+  assert(execSync(`git ls-tree -r --name-only ${branch}-side`, { cwd: tmp, encoding: 'utf8' }).includes('impl.txt'),
+    'the work itself survives on its own branch — nothing is lost by rolling back');
+  assert(/rolled-back branch=/.test(fs.readFileSync(path.join(tmp, 'backlog', fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id)), 'runs.log'), 'utf8')),
+    'the rollback is recorded in runs.log');
+
+  fs.rmSync(path.join(tmp, 'harness/flows/abandon.yaml'));
 }
 
 // A base-sync conflict cannot be fixed by re-running the developers — their worktrees branch from
@@ -590,4 +626,104 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   assert(resolveModel({ model: 'x' }, role, 'codex') === 'x', 'an explicit step model always wins');
 }
 
-console.log('\nall good — ' + tmp);
+// An empty diff range is a failure, not a review. Q-0006's first review paid two vendors to read
+// zero bytes and returned a verdict; the range was empty because the branch was already merged.
+{
+  const { materialiseDiff } = await import('../src/engine.js');
+  const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-diff-'));
+  const g = (cmd) => execSync(`git -c user.email=a@b -c user.name=t ${cmd}`, { cwd: gitRepo, encoding: 'utf8' });
+  g('init -q -b main');
+  fs.writeFileSync(path.join(gitRepo, 'a.txt'), 'one\n');
+  g('add -A'); g('commit -q -m base');
+  g('checkout -q -b harness/T-9/integration');
+  fs.writeFileSync(path.join(gitRepo, 'a.txt'), 'one\ntwo\n');
+  g('add -A'); g('commit -q -m work');
+
+  const ctx = {
+    repoDir: gitRepo, config: { repo: { base_branch: 'main' } }, vars: {},
+    ticket: { meta: { id: 'T-9' } }, backlog: { log: () => {} }, runId: 1,
+  };
+  const step = { id: 'review-claude', input: { diff: 'main...harness/T-9/integration' } };
+
+  const withCommits = materialiseDiff(step, ctx);
+  assert(/\+two/.test(withCommits), 'a range with commits yields the patch');
+
+  g('checkout -q main'); g('merge -q --no-ff -m merged harness/T-9/integration');
+  let err = null;
+  try { materialiseDiff(step, ctx); } catch (e) { err = e; }
+  assert(err !== null, 'an empty diff range throws instead of reviewing nothing');
+  assert(/already merged/.test(err?.message ?? ''), 'the error names the cause: the branch is already merged');
+  assert(/main/.test(err?.message ?? '') && /T-9/.test(err?.message ?? ''), 'the error names both refs');
+  fs.rmSync(gitRepo, { recursive: true, force: true });
+}
+
+// A scoped retry must not inherit dependencies on tasks it is not running. Q-0006 run 11 crashed
+// here: a conflict scoped the retry to one task whose depends_on named an already-merged sibling.
+{
+  const { waves, scopeToFailing } = await import('../src/fanout.js');
+  const all = [{ id: 'a', depends_on: [] }, { id: 'b', depends_on: ['a'] }];
+  assert(waves(all).length === 2, 'unscoped tasks still wave by depends_on');
+
+  let crashed = false;
+  try { waves([all[1]]); } catch { crashed = true; }
+  assert(crashed, 'waves() alone still rejects a depends_on it cannot resolve');
+
+  const scoped = scopeToFailing(all, new Set(['b']));
+  assert(scoped.length === 1 && scoped[0].id === 'b', 'scoping keeps only the failing task');
+  assert(scoped[0].depends_on.length === 0, 'a dependency on a merged sibling is dropped, not carried');
+  assert(waves(scoped).length === 1, 'the scoped retry runs in one wave instead of crashing');
+  assert(all[1].depends_on.length === 1, 'scoping does not mutate the loaded tasks');
+
+  const both = scopeToFailing(all, new Set(['a', 'b']));
+  assert(waves(both).length === 2, 'a dependency inside the scope is preserved');
+}
+
+// The ticket branch catches up with base BEFORE task worktrees are cut from it. With the sync
+// only at integrate time, agents work against a base that moves under them — Q-0006 run 11 lost
+// its runtime task to a conflict on a file that changed on main mid-run.
+{
+  const { syncBaseIntoTicketBranch } = await import('../src/engine.js');
+  const r = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-basesync-'));
+  const g = (cmd, cwd = r) => execSync(`git -c user.email=a@b -c user.name=t ${cmd}`, { cwd, encoding: 'utf8' });
+  g('init -q -b main');
+  fs.writeFileSync(path.join(r, 'shared.txt'), 'base\n');
+  g('add -A'); g('commit -q -m base');
+  g('branch harness/T-1/integration');
+  // Base moves after the ticket branch was cut — the situation that produced the conflict.
+  fs.writeFileSync(path.join(r, 'landed.txt'), 'landed on main\n');
+  g('add -A'); g('commit -q -m "landed on main"');
+
+  const ctx = { repoDir: r, config: { repo: { base_branch: 'main' } }, vars: {}, ui: { info: () => {} },
+                ticket: { meta: { id: 'T-1', branch: 'harness/T-1/integration' } } };
+  const step = { id: 'developers', step: { base: 'harness/T-1/integration' } };
+
+  assert(syncBaseIntoTicketBranch(step, ctx).ok === true, 'the ticket branch syncs to base before fan-out');
+  const files = g('ls-tree --name-only harness/T-1/integration').split('\n');
+  assert(files.includes('landed.txt'), 'work landed on base is present before any worktree is cut');
+
+  // A first pass has no integration branch yet; that is normal, not a failure.
+  const fresh = { ...ctx, ticket: { meta: { id: 'T-2', branch: 'harness/T-2/integration' } } };
+  assert(/does not exist yet/.test(syncBaseIntoTicketBranch({ ...step, step: {} }, fresh).skipped ?? ''),
+    'a ticket with no integration branch yet is skipped, not failed');
+
+  // A genuine base conflict stops the run instead of feeding an unrepairable loop. The ticket-side
+  // edit is made in the worktree the sync created: git will not let the same branch be checked out
+  // twice, which is the whole reason worktrees exist.
+  const wt = path.join(r, '.harness', 'worktrees', 'harness__T-1__integration');
+  fs.writeFileSync(path.join(wt, 'shared.txt'), 'ticket side\n');
+  g('add -A', wt); g('commit -q -m "ticket edit"', wt);
+  fs.writeFileSync(path.join(r, 'shared.txt'), 'base side\n');
+  g('add -A'); g('commit -q -m "base edit"');
+  let err = null;
+  try { syncBaseIntoTicketBranch(step, ctx); } catch (e) { err = e; }
+  assert(err !== null, 'a base conflict before fan-out throws instead of spawning agents');
+  assert(/no agent in this loop can repair/.test(err?.message ?? ''), 'and it says a human must resolve it');
+  fs.rmSync(r, { recursive: true, force: true });
+}
+
+if (smokeFailures) {
+  console.error(`\n✗ ${smokeFailures} smoke assertion(s) failed`);
+  process.exitCode = 1;
+} else {
+  console.log('\nall good — ' + tmp);
+}
