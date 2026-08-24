@@ -101,3 +101,53 @@ entries remain in date order:
 ```
 
 Post-landing results are appended below by AC-7's completion record.
+
+---
+
+## Completion record — AC-7
+
+Landed 2026-08-24.
+
+| | |
+| --- | --- |
+| Reviewed integration commit | `534d3d96ed22131f19c27d961a6c36530cd5248f` |
+| Merge commit on `main` | `655e05a` |
+| `main` before | `4c83ccfd8f0031e4d2bf4cc4f0263ecf72904d5b` |
+
+Q-0006 and Q-0011 are not described as reconciled on the grounds that their branches are still
+green. These are commands, re-runnable by any reader, and each was run:
+
+```
+git merge-base --is-ancestor harness/Q-0011/integration main   # exit 0 — contained
+git merge-base --is-ancestor harness/Q-0006/integration main   # exit 0 — contained
+grep -rn "\.quorum" spike/src spike/bin                        # 8 hits (was 0 on main)
+test -f spike/src/lint.js && node spike/bin/harness.js lint    # exit 0 — Q-0033's module survives
+node spike/bin/harness.js runs --json                          # {"mode":"list","runs":[],"warnings":[]} exit 0
+```
+
+**Both CI jobs, on `main` after landing** (AC-6). Compare with the pre-landing baseline above: the
+spike suite went 5 → 8 files, which is the three files this landing adds, and no pre-existing
+failure was masked because there were none.
+
+```
+node spike/test/run.js                     # ✓ all 8 test files passed
+pnpm install --frozen-lockfile             # ok
+pnpm lint / pnpm typecheck / pnpm test     # 7 tasks each, all successful
+```
+
+**Fresh checkout**, cloned from `main` into a scratch directory and verified from cold, which is the
+claim that actually matters — the whole ticket exists because the repository's own working tree
+disagreed with what any clone contained:
+
+```
+git clone --no-hardlinks . <tmp>           # HEAD 655e05a on main
+grep -rln "\.quorum" spike/src spike/bin   # engine.js, adapters/mock.js, bin/harness.js
+cd spike && npm ci && node test/run.js     # ✓ all 8 test files passed
+pnpm install --frozen-lockfile             # ok
+pnpm lint / typecheck / test               # ✓ ✓ ✓
+```
+
+One note for whoever reads this next: `harness runs` in a cold clone fails with
+`ERR_MODULE_NOT_FOUND: yaml` until `npm ci` is run in `spike/`. That is ordinary dependency
+installation, not a defect, but it is the first thing a stranger following the README would hit, and
+`.quorum/` remains git-ignored so the feature ships while the run data does not.
