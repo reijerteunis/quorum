@@ -95,3 +95,14 @@
 2026-08-23T14:44:59.952Z run=11 step=integrate merged=2/2 tests=ok
 2026-08-23T14:48:59.621Z run=11 gate=human answer=advance
 2026-08-23T14:48:59.627Z run=11 completed stage=red→green cost=1.228 tokens=2247483
+2026-08-24T18:58:09.026Z run=12 flow=review start stage=green
+2026-08-24T18:59:14.275Z run=12 step=review-codex vendor=codex model=- verdict=- cost=? ms=65219
+2026-08-24T19:08:22.363Z run=12 step=review-claude vendor=claude model=- verdict=- cost=5.0120105 ms=613312
+2026-08-24T19:12:46.393Z run=12 step=verdict vendor=claude model=- verdict=changes-requested cost=1.638703 ms=264028
+2026-08-24T19:12:46.397Z run=12 regressed stage=green→red cost=6.651 tokens=4195362
+2026-08-24T19:45:00.000Z hand-advance stage=red→green by=ruud no-run reason="development performed by hand under Q-0034, which routes the landing outside the flows; run #12's four blockers closed in 5e5c41d with tests in spike/test/q0034-review-fixes.js; branch made current by c90d736. Not a run: no flow executed, no agent invoked, no cost. Deliberately absent from ticket.md history, which records run outcomes only."
+2026-08-24T19:28:32.965Z run=13 flow=review start stage=green
+2026-08-24T19:29:32.054Z run=13 step=review-codex vendor=codex model=- verdict=- cost=? ms=59061
+2026-08-24T19:37:53.788Z run=13 step=review-claude vendor=claude model=- verdict=- cost=4.1738765 ms=560797
+2026-08-24T19:41:54.652Z run=13 step=verdict vendor=claude model=- verdict=changes-requested cost=1.7756830000000001 ms=240860
+2026-08-24T19:41:54.658Z run=13 regressed stage=green→red cost=5.95 tokens=3910827
