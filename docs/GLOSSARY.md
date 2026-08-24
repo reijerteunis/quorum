@@ -22,7 +22,17 @@
 
 **Ticket**: One folder in the backlog: `ticket.md` (frontmatter state + intent) and per-stage artifact subfolders (requirements/, solution/, qa/, dev/, review/, deploy/).
 
-**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` the next.
+**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` the next. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `harness board` as **Containment**.
+
+**Containment**: The git-derived relationship between a ticket branch tip and the configured base
+branch, computed on every `harness board` invocation and never stored. Exactly three states,
+rendered as one token beside the ticket: contained (`main:contained` — the branch tip is an
+ancestor of the base tip), not contained (`main:not-contained(+12)` — with the count of commits
+reachable from the branch and not from the base), and indeterminate (`main:indeterminate(missing
+ref)`, `main:indeterminate(shallow clone)`, `main:indeterminate(git failed)` — git could not
+answer, which is never reported as either of the other two). An ancestry fact about two refs at
+the moment of reading, not a claim about how the code arrived — and not a synonym-carrier: the
+board and the docs say "contained", never "merged", "landed" or "shipped".
 
 **Contract**: A machine-checkable artifact emitted by solutioning — interface, schema, stub, migration skeleton — that tests and developers code against.
 

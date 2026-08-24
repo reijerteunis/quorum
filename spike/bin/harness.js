@@ -19,6 +19,7 @@ import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from 
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 import { validateFile, readData } from '../src/contracts.js';
 import { IntegrationError } from '../src/fanout.js';
+import { containment } from '../src/git.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -420,9 +421,16 @@ async function main() {
       return;
     }
     case 'board': {
-      const { backlog, harnessDir } = loadProject();
+      const { backlog, harnessDir, repoDir, config } = loadProject();
       const tickets = backlog.list();
       const flows = fs.existsSync(path.join(harnessDir, 'flows')) ? fs.readdirSync(path.join(harnessDir, 'flows')).filter((f) => f.endsWith('.yaml')).map((f) => { try { return loadFlow(path.join(harnessDir, 'flows', f)); } catch { return null; } }).filter(Boolean) : [];
+      // Stage and containment are different facts and the board shows both: the stage is the
+      // ticket's position in the state machine, containment is where the code actually is, read
+      // from git on every invocation and never persisted. Outside a git repository `where` is
+      // null and every row renders exactly as before. See Q-0036.
+      const base = config.repo?.base_branch ?? 'main';
+      const where = containment(repoDir, base);
+      let anyIndeterminate = false;
       for (const stage of STAGES) {
         const col = tickets.filter((t) => t.meta.stage === stage);
         if (!col.length && !['draft', 'requirements', 'solutioned'].includes(stage)) continue;
@@ -430,13 +438,24 @@ async function main() {
         console.log(c.bold(stage.padEnd(14)) + c.dim(next ? `→ harness run ${next.name} <id>` : ''));
         for (const t of col) {
           const cost = (t.meta.history ?? []).reduce((s, h) => s + (h.cost ?? 0), 0);
-          console.log(`  ${c.teal(t.meta.id)} ${t.meta.title}  ${c.dim(`owner=${t.meta.owner} cost=$${cost.toFixed(2)} iter=${JSON.stringify(t.meta.iterations ?? {})}`)}`);
+          const spot = where?.stateOf(t.meta.branch);
+          if (spot?.state === 'indeterminate') anyIndeterminate = true;
+          const token = spot == null ? ''
+            : spot.state === 'contained' ? ` ${base}:contained`
+              : spot.state === 'not-contained' ? ` ${base}:not-contained(+${spot.ahead})`
+                : ` ${base}:indeterminate(${spot.reason})`;
+          console.log(`  ${c.teal(t.meta.id)} ${t.meta.title}  ${c.dim(`owner=${t.meta.owner} cost=$${cost.toFixed(2)} iter=${JSON.stringify(t.meta.iterations ?? {})}${token}`)}`);
         }
       }
       // The roll-up can only see vendors that report a price. Saying so is the whole point of the
       // tokens-only decision (2026-08-22); an unlabelled total reads as the cost of the run.
       if (tickets.some((t) => (t.meta.history ?? []).length)) {
         console.log(c.dim('· cost = billed cost where the vendor reports one; steps on token-only vendors (codex) are not included'));
+      }
+      // Indeterminate means git could not answer here, not that the code is missing — a fresh or
+      // shallow clone legitimately cannot say. Only printed when a row actually reads it.
+      if (anyIndeterminate) {
+        console.log(c.dim(`· indeterminate = git could not answer whether that branch is contained in ${base} (missing ref, shallow clone, or a failed git command) — it does not mean the code is missing`));
       }
       return;
     }
