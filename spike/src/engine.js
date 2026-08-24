@@ -116,11 +116,18 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
       const members = group.parallel ?? [group];
       // Judge every diff in the group against branches created strictly before the group: a
       // parallel sibling's branch is concurrent, not earlier.
-      for (const s of members.filter((candidate) => candidate.input?.diff)) {
-        const range = interpolate(s.input.diff, ctx.vars);
+      for (const { site, perTask } of members.flatMap(diffSitesOf)) {
+        const range = interpolate(site.input.diff, ctx.vars);
+        // A template range naming a per-task variable — harness/{id}/{task.id} — has no single
+        // value at run start: it becomes one range per task only when tasks.yaml is expanded, and
+        // ctx.vars cannot resolve it here. Left to step time rather than guessed at, which is the
+        // same earliest-possible limit a deferred range carries; its shape is still checked with
+        // no run at all by lintFlow. Only a template can be in this state, so an outer step's
+        // unresolved range still fails here exactly as it always did. See Q-0035 (OQ-1).
+        if (perTask && /\{[\w.]+\}/.test(range)) continue;
         const pending = range.split('...').find((ref) => createdSoFar.has(ref));
         if (pending != null) { ctx.deferredDiffs.set(range, { ref: pending, step: createdSoFar.get(pending) }); continue; }
-        if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(s, ctx));
+        if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(site, ctx));
       }
       for (const s of members) {
         if (s.worktree) remember(interpolate(s.branch ?? `harness/${ctx.ticket.meta.id}/${s.id}`, ctx.vars), s.id);
@@ -755,6 +762,25 @@ function reviewRound(ticket) {
 // A range is named twice wherever it appears — interpolated, so it can be pasted into a terminal,
 // and as the flow file writes it, so it can be found in the file that has to change.
 const named = (range, written) => `\`${range}\` (flow file: \`${written}\`)`;
+
+// Every place one step of a flow can carry an input.diff. The step itself, and — for a fan_out
+// step — its `step:` template, which runFanOut copies into a real step and buildPrompt then reads
+// like any other input.diff. Left out of the preflight, a template range escapes it twice over: a
+// bad one fails only once the fan-out's own adapters have been billed, and a good one is
+// re-materialised by every expanded task, so one range costs n git spawns and the members of a
+// wave read evidence resolved at different moments — which is what AC-11's once-per-distinct-range
+// rule exists to prevent. lintFlow's diffSites reaches the same site for the same reason, and
+// flattenSteps deliberately still does not: the template's id, role and adapter are placeholders
+// the duplicate-id, goto and cross_vendor rules must not see. The synthetic id matches the label
+// lint uses, so one flow file reads the same in both failures. See Q-0035.
+function diffSitesOf(step) {
+  return [
+    ...(step.input?.diff ? [{ site: step, perTask: false }] : []),
+    ...(step.fan_out && step.step?.input?.diff
+      ? [{ site: { id: `${step.id}.step`, input: { diff: step.step.input.diff } }, perTask: true }]
+      : []),
+  ];
+}
 
 export function materialiseDiff(step, ctx) {
   const written = String(step.input.diff);

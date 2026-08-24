@@ -294,11 +294,25 @@ await scenario('E9', 'AC-10 — harness lint rejects a malformed or out-of-class
 // ---- The run-level guarantees. Counted at the adapter boundary, from the run-history occurrence
 // records under .quorum/runs/ — never inferred from an artifact's absence, which a step that is
 // billed and then fails would satisfy falsely.
-function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'q0035-run-'));
-  git(root, 'init', '-q', '-b', 'main');
-  write(path.join(root, 'README.md'), 'fixture\n');
-  git(root, 'add', '-A'); commit(root, 'base');
+function fixture({ shallow = false } = {}) {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'q0035-run-'));
+  const root = path.join(parent, 'repo');
+  if (shallow) {
+    // A genuinely truncated clone. Nothing here simulates shallowness: the run-level cases have to
+    // meet the same repository an adopter would hand them, or they prove only that a flag was read.
+    const origin = path.join(parent, 'origin');
+    git(parent, 'init', '-q', '-b', 'main', origin);
+    write(path.join(origin, 'README.md'), 'fixture\n');
+    git(origin, 'add', '-A'); commit(origin, 'base');
+    commit(origin, 'c2', ['--allow-empty']);
+    git(parent, 'clone', '-q', '--depth', '1', `file://${origin}`, root);
+    assert.equal(git(root, 'rev-parse', '--is-shallow-repository'), 'true', 'fixture must be genuinely shallow');
+  } else {
+    fs.mkdirSync(root);
+    git(root, 'init', '-q', '-b', 'main');
+    write(path.join(root, 'README.md'), 'fixture\n');
+    git(root, 'add', '-A'); commit(root, 'base');
+  }
   const harnessDir = path.join(root, 'harness');
   // Deliberately NOT principal-architect: that is the one role the mock adapter writes a file for,
   // and a branch with a commit on it would make the implement→review range non-empty, which is the
@@ -340,57 +354,125 @@ function adapterCalls(root, ticketId) {
       .filter((s) => s.kind === 'adapter').map((s) => s.step_id);
   });
 }
+// The prompt each adapter was actually handed, read from the run history beside the manifest that
+// names it. Asserting on these is what stops a fan-out fixture passing because nothing ran.
+function adapterPrompts(root, ticketId) {
+  const runs = path.join(root, '.quorum', 'runs');
+  if (!fs.existsSync(runs)) return {};
+  const out = {};
+  for (const d of fs.readdirSync(runs).filter((name) => name.startsWith(`${ticketId}-`))) {
+    const manifest = path.join(runs, d, 'manifest.json');
+    if (!fs.existsSync(manifest)) continue;
+    for (const s of JSON.parse(fs.readFileSync(manifest, 'utf8')).steps ?? []) {
+      const f = path.join(runs, d, s.occurrence_dir ?? '', 'prompt.txt');
+      if (s.kind === 'adapter' && fs.existsSync(f)) out[s.step_id] = fs.readFileSync(f, 'utf8');
+    }
+  }
+  return out;
+}
 // runFlow records the flow's own file in the run manifest, and loadFlow is what normally sets it.
 // These fixtures build the flow object directly, so they have to supply it too — the same thing
 // q0034-chore-preflight.js's C3 does for the same reason.
 const onDisk = (f, flow) => ({ ...flow, file: path.join(f.harnessDir, 'flows', `${flow.name}.yaml`) });
-const run = (f, flow) => runFlow({
+const run = (f, flow, repo = {}) => runFlow({
   flow: onDisk(f, flow), ticket: f.backlog.read(f.ticket.meta.id), backlog: f.backlog, harnessDir: f.harnessDir,
-  repoDir: f.root, config: { repo: { base_branch: 'main' } }, ui: silent, auto: true,
-}).then(() => null, (e) => e);
+  repoDir: f.root, config: { repo: { base_branch: 'main', ...repo } }, ui: silent, auto: true,
+}).then((r) => r ?? null, (e) => e);
+// A fan-out shaped flow: one fan_out step whose template carries the diff, and nothing else. The
+// template's branch and base mirror the shipped development flow — a template without them lands
+// every task on `harness/{id}/{step.id}`, which for the default template id contains a colon and is
+// not a legal ref, so the fixture would fail on git plumbing rather than on the thing under test.
+const fanOutFlowWith = (diff) => ({
+  name: 'probe', consumes: 'requirements', produces: 'reviewed',
+  steps: [
+    { id: 'build', fan_out: { from: 'solution/tasks.yaml', by: 'role', respect: 'depends_on' },
+      step: {
+        branch: 'harness/{id}/{task.id}', base: 'harness/{id}/integration',
+        input: { backlog: ['ticket.md'], repo: true, ...(diff ? { diff } : {}) }, output: { writes: ['dev/{task.id}.md'] },
+      } },
+  ],
+});
+// tasks.yaml plus the role its tasks name, so a regression that skipped the preflight would really
+// reach and bill the fan-out's adapters. Without them a regression would die in loadTasks instead
+// and the zero-invocation assertions below would pass for the wrong reason.
+function seedTasks(f, ids) {
+  write(path.join(f.harnessDir, 'roles', 'developer-backend.md'), '---\nadapter: mock\n---\nBackend developer.\n');
+  write(path.join(f.ticket.dir, 'solution', 'tasks.yaml'),
+    `tasks:\n${ids.map((id) => `  - id: ${id}\n    role: backend\n    title: Task ${id}\n    depends_on: []\n`).join('')}`);
+}
 
 await scenario('E10', 'AC-8 — a bad range over pre-existing refs fails with zero adapter invocations', async () => {
   // Every failure class AC-8 lists, each with the ticket branch present so the range is judged as
   // pre-existing rather than deferred.
   const cases = {
-    'AC-4.1 contained': (root, ticket) => {
-      git(root, 'branch', ticket.meta.branch, 'main');            // identical to main → empty, contained
-      return `{base}...harness/{id}/integration`;
+    'AC-4.1 contained': {
+      prepare: (root, ticket) => {
+        git(root, 'branch', ticket.meta.branch, 'main');          // identical to main → empty, contained
+        return `{base}...harness/{id}/integration`;
+      },
+      expect: /→ contained/,
     },
-    'AC-4.2 identical trees': (root, ticket) => {
-      const base = git(root, 'rev-parse', 'HEAD');
-      commit(root, 'theirs', ['--allow-empty']);                  // main moves; its tree does not
-      branchAt(root, ticket.meta.branch, `${base}^{tree}`, base, 'ours');
-      return `{base}...harness/{id}/integration`;
+    'AC-4.2 identical trees': {
+      prepare: (root, ticket) => {
+        const base = git(root, 'rev-parse', 'HEAD');
+        commit(root, 'theirs', ['--allow-empty']);                // main moves; its tree does not
+        branchAt(root, ticket.meta.branch, `${base}^{tree}`, base, 'ours');
+        return `{base}...harness/{id}/integration`;
+      },
+      expect: /identical trees/,
     },
-    'AC-4.3 nothing added': (root, ticket) => {
-      const base = git(root, 'rev-parse', 'HEAD');
-      write(path.join(root, 'b.txt'), 'main only\n'); git(root, 'add', '-A'); commit(root, 'main moves');
-      branchAt(root, ticket.meta.branch, `${base}^{tree}`, base, 'ours');
-      return `{base}...harness/{id}/integration`;
+    'AC-4.3 nothing added': {
+      prepare: (root, ticket) => {
+        const base = git(root, 'rev-parse', 'HEAD');
+        write(path.join(root, 'b.txt'), 'main only\n'); git(root, 'add', '-A'); commit(root, 'main moves');
+        branchAt(root, ticket.meta.branch, `${base}^{tree}`, base, 'ours');
+        return `{base}...harness/{id}/integration`;
+      },
+      expect: /adds nothing since its merge base/,
     },
-    'a missing ref': () => `{base}...harness/{id}/integration`,   // the branch is never created
+    // AC-4.4 at the run level, not only at the message level: a shallow clone whose ancestry check
+    // really exits 1. This is the case the old catch rendered as one of the two above, so a
+    // regression that reintroduced the confident negative would pass every other row here.
+    'AC-4.4 indeterminate': {
+      shallow: true,
+      prepare: (root, ticket) => {
+        const tip = git(root, 'rev-parse', 'main');
+        branchAt(root, ticket.meta.branch, `${tip}^{tree}`, tip, 'ours');   // same tree, later commit
+        return `{base}...harness/{id}/integration`;
+      },
+      expect: /indeterminate \(shallow clone\)/,
+    },
+    'a missing ref': {
+      prepare: () => `{base}...harness/{id}/integration`,         // the branch is never created
+      expect: /review requires an integrated branch/,
+    },
   };
-  for (const [label, prepare] of Object.entries(cases)) {
-    const f = fixture();
+  for (const [label, { prepare, expect, shallow }] of Object.entries(cases)) {
+    const f = fixture({ shallow });
     const err = await run(f, flowWith(prepare(f.root, f.ticket)));
     assert.ok(err instanceof FlowError, `${label}: expected a FlowError, got ${err?.constructor?.name}: ${err?.message}`);
     assert.deepEqual(adapterCalls(f.root, f.ticket.meta.id), [], `${label}: an adapter was billed against bad evidence`);
+    assert.match(err.message, expect, `${label}: the run-level failure carries the right diagnosis`);
+    assert.doesNotMatch(err.message, FORBIDDEN, `${label}: the message claims a historical event`);
   }
 
-  // Malformed and out-of-class ranges never reach a run at all: lint refuses the flow.
+  // Malformed and out-of-class ranges: refused by lint before the run starts, and — if one is
+  // smuggled past lint — refused by the engine's guard before any adapter runs. AC-8 counts at the
+  // adapter boundary, so both classes are counted there too rather than trusted to lint alone.
   for (const value of ['main..harness/{id}/integration', '{base}...some/other-branch']) {
-    let err = null;
-    try { lintFlow(flowWith(value)); } catch (e) { err = e; }
-    assert.ok(err instanceof FlowError, `lint must refuse ${value} before the run starts`);
+    let linted = null;
+    try { lintFlow(flowWith(value)); } catch (e) { linted = e; }
+    assert.ok(linted instanceof FlowError, `lint must refuse ${value} before the run starts`);
+
+    const smuggled = fixture();
+    git(smuggled.root, 'branch', smuggled.ticket.meta.branch, 'main');
+    git(smuggled.root, 'branch', 'some/other-branch', 'main');
+    const guarded = await run(smuggled, flowWith(value));
+    assert.ok(guarded instanceof FlowError, `${value}: expected a FlowError, got ${guarded?.constructor?.name}`);
+    assert.match(guarded.message, /must relate the configured base/, `${value}: it fails at the guard`);
+    assert.doesNotMatch(guarded.message, /is empty|containment/, `${value}: a guard failure must not read as an empty-range diagnosis`);
+    assert.deepEqual(adapterCalls(smuggled.root, smuggled.ticket.meta.id), [], `${value}: the guard must fire before any adapter`);
   }
-  // And if one is smuggled past lint, the engine's guard still stops it before any adapter runs.
-  const smuggled = fixture();
-  git(smuggled.root, 'branch', smuggled.ticket.meta.branch, 'main');
-  git(smuggled.root, 'branch', 'some/other-branch', 'main');
-  const guarded = await run(smuggled, flowWith('main...some/other-branch'));
-  assert.match(guarded.message, /must relate the configured base/);
-  assert.deepEqual(adapterCalls(smuggled.root, smuggled.ticket.meta.id), [], 'the guard must fire before any adapter');
 
   // One bad range fails the run even when another range is valid. The ticket branch carries real
   // work, so the first range materialises successfully and only the second one is bad.
@@ -503,6 +585,142 @@ await scenario('E14', 'AC-10 — the lint rule reaches a fan_out step\'s templat
     name: 'probe', consumes: 'a', produces: 'b',
     steps: [{ id: 'developers', fan_out: { from: 'solution/tasks.yaml' }, step: { id: 'dev:{task.id}', input: { backlog: ['ticket.md'] } } }],
   }), 'a template with no diff must not be a finding');
+});
+
+await scenario('E15', 'AC-9 — a deferred range that comes out indeterminate says so, and still names the step that owed the branch', async () => {
+  // E11 covers the deferred range that comes out empty and contained. AC-9 asks for the same
+  // quality of evidence when it comes out indeterminate, which is the outcome the old catch could
+  // not produce at all — so a deferred range was the one place a confident negative could survive.
+  const f = fixture({ shallow: true });
+  git(f.root, 'branch', f.ticket.meta.branch, 'main');
+  // The implement branch already exists from an earlier round: one commit ahead of the ticket
+  // branch and holding the same tree. The range is empty, the ancestry check genuinely exits 1,
+  // and the truncated history cannot disprove ancestry — so the honest answer is "don't know".
+  const implement = `harness/${f.ticket.meta.id}/implement`;
+  const tip = git(f.root, 'rev-parse', f.ticket.meta.branch);
+  branchAt(f.root, implement, `${tip}^{tree}`, tip, 'an earlier round');
+
+  const err = await run(f, flowWith('harness/{id}/integration...harness/{id}/implement'));
+  assert.ok(err instanceof FlowError, `expected a FlowError, got ${err?.constructor?.name}: ${err?.message}`);
+  const calls = adapterCalls(f.root, f.ticket.meta.id);
+  assert.ok(calls.includes('implement'), 'the producing adapter must have run — its output is the evidence');
+  assert.ok(!calls.includes('review'), 'the consuming adapter must not have been billed against a range git could not judge');
+
+  assertEvidence(err.message, {
+    root: f.root, left: f.ticket.meta.branch, right: implement,
+    range: `${f.ticket.meta.branch}...${implement}`,
+    written: 'harness/{id}/integration...harness/{id}/implement',
+    outcome: 'indeterminate',
+  });
+  assert.ok(err.message.includes('shallow clone'), `it must carry the reason: ${err.message}`);
+  assert.ok(err.message.includes('"implement"'), `it must still name the step that owed the endpoint: ${err.message}`);
+  assert.doesNotMatch(err.message, /is not contained|→ not contained/, 'absent history cannot disprove ancestry');
+  assert.doesNotMatch(err.message, /→ contained/, 'and it cannot prove it either');
+});
+
+await scenario('E16', 'AC-9 — a deferred range whose endpoint does not resolve reports the evidence that exists', async () => {
+  // (a) The realistic shape: chore.yaml reviews integration...implement, and on a ticket's first
+  // pass the integration branch does not exist yet — its integrate step runs AFTER the review. The
+  // range is still deferred on implement, and the endpoint that fails is the other one.
+  const first = fixture();
+  const implement = `harness/${first.ticket.meta.id}/implement`;
+  const err = await run(first, flowWith('harness/{id}/integration...harness/{id}/implement'));
+  assert.ok(err instanceof FlowError, `expected a FlowError, got ${err?.constructor?.name}: ${err?.message}`);
+  const calls = adapterCalls(first.root, first.ticket.meta.id);
+  assert.ok(calls.includes('implement'), 'the producing adapter must have run');
+  assert.ok(!calls.includes('review'), 'the consuming adapter must not have been billed against an unresolvable range');
+  assert.match(err.message, /review requires an integrated branch/, 'the existing identifying phrase is preserved');
+  assert.ok(err.message.includes('left endpoint'), `it says which endpoint failed: ${err.message}`);
+  assert.ok(err.message.includes(git(first.root, 'rev-parse', '--short', implement)),
+    `it gives the short SHA of the endpoint that does resolve: ${err.message}`);
+  assert.ok(err.message.includes(`${first.ticket.meta.branch}...${implement}`), 'it names the complete range');
+  assert.match(err.message, /Neither the diff nor the containment check was run/);
+  assert.doesNotMatch(err.message, FORBIDDEN);
+  assert.doesNotMatch(err.message, /contained/, 'it invents no containment outcome for a ref it could not read');
+  // No step owed the endpoint that failed, so none may be blamed for it. Crediting the deferring
+  // step here would be the same overstatement the ticket exists to remove, one field along.
+  assert.doesNotMatch(err.message, /was expected to create harness\/\S*\/integration/,
+    `no step owed the integration branch: ${err.message}`);
+
+  // (b) The endpoint that fails IS the one a step owed. A fan_out step declared `worktree: true`
+  // is remembered by the preflight under its own id, while runFanOut creates task branches — so
+  // the branch the review waits for is never written. That is a flow-authoring mistake, and making
+  // it legible is exactly AC-9's purpose clause: the reader learns which step owed the branch
+  // rather than that a branch is missing.
+  const owed = fixture();
+  git(owed.root, 'branch', owed.ticket.meta.branch, 'main');
+  seedTasks(owed, ['alpha']);
+  const owedErr = await run(owed, {
+    name: 'probe', consumes: 'requirements', produces: 'reviewed',
+    steps: [
+      { id: 'build', worktree: true, fan_out: { from: 'solution/tasks.yaml', by: 'role', respect: 'depends_on' },
+        step: {
+          branch: 'harness/{id}/{task.id}', base: 'harness/{id}/integration',
+          input: { backlog: ['ticket.md'], repo: true }, output: { writes: ['dev/{task.id}.md'] },
+        } },
+      { id: 'review', role: 'code-reviewer', adapter: 'mock',
+        input: { backlog: ['ticket.md'], diff: 'harness/{id}/integration...harness/{id}/build' },
+        output: { writes: ['review/iter-{iter}.md'] } },
+    ],
+  });
+  assert.ok(owedErr instanceof FlowError, `expected a FlowError, got ${owedErr?.constructor?.name}: ${owedErr?.message}`);
+  const owedCalls = adapterCalls(owed.root, owed.ticket.meta.id);
+  assert.ok(owedCalls.includes('build:alpha'), `the producing adapter must have run and been billed: ${owedCalls}`);
+  assert.ok(!owedCalls.includes('review'), 'the consuming adapter must not have been billed');
+  assert.match(owedErr.message, /names missing ref "harness\/\S*\/build"/, `it names the ref that does not resolve: ${owedErr.message}`);
+  assert.match(owedErr.message, /step "build" was expected to create harness\/\S*\/build/,
+    `it names the step that owed the endpoint: ${owedErr.message}`);
+  assert.ok(owedErr.message.includes(git(owed.root, 'rev-parse', '--short', owed.ticket.meta.branch)),
+    'it gives the short SHA of the endpoint that does resolve');
+  assert.match(owedErr.message, /Neither the diff nor the containment check was run/);
+  assert.doesNotMatch(owedErr.message, FORBIDDEN);
+});
+
+await scenario('E17', 'AC-8/AC-11 — the preflight reaches a fan_out template, so its range is judged once, before the fan-out is billed', async () => {
+  // The template is a diff site the preflight used to walk straight past. Left out, a bad template
+  // range failed only after the fan-out's adapters had been paid for, and a good one was
+  // re-materialised by every expanded task.
+  const bad = fixture();
+  git(bad.root, 'branch', bad.ticket.meta.branch, 'main');        // identical to main → empty range
+  seedTasks(bad, ['alpha']);
+  const err = await run(bad, fanOutFlowWith('{base}...harness/{id}/integration'));
+  assert.ok(err instanceof FlowError, `expected a FlowError, got ${err?.constructor?.name}: ${err?.message}`);
+  assert.deepEqual(adapterCalls(bad.root, bad.ticket.meta.id), [], 'the fan-out was billed against a range the preflight could have judged');
+  assert.ok(err.message.startsWith('build.step:'), `it names the template site as lint does: ${err.message}`);
+  assert.doesNotMatch(err.message, FORBIDDEN);
+
+  // AC-11's once-per-distinct-range, counted rather than assumed. materialiseDiff logs a line to
+  // runs.log whenever it truncates, so a small max_diff_bytes turns each materialisation into one
+  // durable, countable record — one for the preflight, or one per task without it.
+  const good = fixture();
+  write(path.join(good.root, 'big.txt'), `${'padding line\n'.repeat(400)}`);
+  git(good.root, 'add', 'big.txt'); commit(good.root, 'work');
+  git(good.root, 'branch', good.ticket.meta.branch);
+  git(good.root, 'reset', '-q', '--hard', 'HEAD~1');              // main back to base; the branch is ahead
+  seedTasks(good, ['alpha', 'beta']);
+  const res = await run(good, fanOutFlowWith('{base}...harness/{id}/integration'), { max_diff_bytes: 500 });
+  assert.ok(!(res instanceof Error), `the fan-out must complete on a valid range: ${res?.message}`);
+
+  const calls = adapterCalls(good.root, good.ticket.meta.id);
+  assert.ok(calls.includes('build:alpha') && calls.includes('build:beta'), `both tasks must have run: ${calls}`);
+  const range = `main...${good.ticket.meta.branch}`;
+  const log = fs.readFileSync(path.join(good.ticket.dir, 'runs.log'), 'utf8');
+  const materialisations = [...log.matchAll(/diff truncated range=(\S+)/g)].filter((m) => m[1] === range).length;
+  assert.equal(materialisations, 1, `one distinct range must be materialised once, not once per task (got ${materialisations})`);
+
+  // And the one materialisation reached every member of the wave, byte for byte — the other half
+  // of AC-11, and the reason counting alone is not enough: a count of one proves nothing if the
+  // evidence never arrived.
+  const prompts = adapterPrompts(good.root, good.ticket.meta.id);
+  // The diff section alone: everything after it — the output contract, the task brief — is
+  // per-task by design and would make any two members differ for reasons that are not the evidence.
+  const section = (text) => {
+    const start = text.indexOf('## Diff to review');
+    assert.notEqual(start, -1, 'a task prompt carried no diff at all');
+    return text.slice(start, text.indexOf('\n# Output contract', start));
+  };
+  assert.ok(section(prompts['build:alpha']).includes('+padding line'), 'the first task received the patch');
+  assert.equal(section(prompts['build:alpha']), section(prompts['build:beta']), 'both tasks must receive identical bytes');
 });
 
 if (failed) { console.error(`\n✗ ${failed} Q-0035 scenario(s) failed`); process.exit(1); }
