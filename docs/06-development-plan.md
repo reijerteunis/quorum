@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-24 — M1 closed; M2's ticket list extended the same day with the Q-0034–Q-0037 reconciliation work (Q-0036). Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, and again overnight with Q-0038, opened from Q-0035's chore review. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -88,9 +88,13 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
 - Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven flows.
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
-- Q-0035 The empty-range diagnostic reports evidence, not a story.
+- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` 2026-08-25; the
+  change is on its ticket branch, not on `main`.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
 - Q-0037 Run-history review remainder — one major and eight nits.
+- Q-0038 Deferred-range failures name their producing step in every case — plus the two
+  neighbours Q-0035 found: the chore flow cannot run on a ticket's first pass, and
+  `budget.per_run_usd` stops nothing.
 
 ---
 
