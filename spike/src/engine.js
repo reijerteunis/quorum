@@ -87,9 +87,32 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // means a preceding agent can never be billed before a bad ref (or empty review range) is
   // discovered, and every panel member receives the exact same bytes. It remains inside the run
   // try block so a failed preflight receives the same terminal audit record as every other error.
-  for (const step of flattenSteps(flow.steps).filter((candidate) => candidate.input?.diff)) {
-    const range = interpolate(step.input.diff, ctx.vars);
-    if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(step, ctx));
+  //
+  // Exception: a range naming a branch created by an EARLIER step of this same flow cannot be
+  // evidence yet — the chore flow reviews integration...implement, and implement exists only
+  // after the implement step runs. Those ranges materialise at step time via buildPrompt's
+  // fallback instead. The rule is order-aware on purpose: a ref created only by a LATER step
+  // (integrate's target, after the review that reads it) can never exist when the diff step
+  // runs, so deferring it would just move the failure past a billed step — exactly what the
+  // preflight exists to prevent. For ranges over pre-existing refs, the review flow's case,
+  // the guarantee is unchanged. Found the day the Q-0006 preflight landed: it was written
+  // before chore.yaml existed and never met it. See Q-0034.
+  {
+    const createdSoFar = new Set();
+    for (const group of flow.steps) {
+      const members = group.parallel ?? [group];
+      // Judge every diff in the group against branches created strictly before the group: a
+      // parallel sibling's branch is concurrent, not earlier.
+      for (const s of members.filter((candidate) => candidate.input?.diff)) {
+        const range = interpolate(s.input.diff, ctx.vars);
+        if (range.split('...').some((ref) => createdSoFar.has(ref))) continue;
+        if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(s, ctx));
+      }
+      for (const s of members) {
+        if (s.worktree) createdSoFar.add(interpolate(s.branch ?? `harness/${ctx.ticket.meta.id}/${s.id}`, ctx.vars));
+        if (s.type === 'integrate' && s.into) createdSoFar.add(interpolate(s.into, ctx.vars));
+      }
+    }
   }
   while (i < steps.length) {
     const step = steps[i];
@@ -663,7 +686,14 @@ export function buildPrompt(step, role, ctx) {
   if (step.input?.repo) parts.push(`\n## Repository\n\nYou are running inside the repository at your working directory. Inspect it as needed.${step.worktree ? ' You MAY write files; this is an isolated worktree on its own branch.' : ' Do NOT modify files.'}`);
   if (step.input?.diff) {
     const range = interpolate(step.input.diff, ctx.vars);
-    parts.push(ctx.diffInputs?.get(range) ?? materialiseDiff(step, ctx));
+    // Absent from diffInputs means the preflight deferred this range: an endpoint is created by an
+    // earlier step of this flow. In a real run that step has run by now and the branch exists; in
+    // a dry run worktree steps create nothing, so the range is honestly unmaterialisable and gets
+    // a placeholder rather than a missing-ref failure — a preview must not demand branches only a
+    // paid run produces. See Q-0034.
+    parts.push(ctx.diffInputs?.get(range) ?? (ctx.dry
+      ? `\n## Diff to review\n\n(dry run: \`${range}\` is produced by an earlier step of this flow and is materialised when that step has run)`
+      : materialiseDiff(step, ctx)));
   }
   if (step.instructions) parts.push(`\n# Task\n\n${step.instructions.trim()}`);
   const outs = writesOf(step).map((w) => interpolate(w, ctx.vars));
@@ -713,10 +743,25 @@ export function materialiseDiff(step, ctx) {
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
   const integration = `harness/${ctx.ticket.meta.id}/integration`;
   const hasRef = (ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; } catch { return false; } };
-  if (!hasRef(base)) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
-  if (!hasRef(integration)) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
-  const expectedRange = `${base}...${integration}`;
-  if (range !== expectedRange) throw new FlowError(`${step.id}: input.diff must resolve to ${expectedRange}, got ${range}`);
+  // The guard forbids a flow file aiming input.diff at refs unrelated to this ticket — a merge
+  // commit, another ticket's branch, an arbitrary SHA. It used to demand exactly
+  // `{base}...{integration}`, which was the review flow's shape and only that: chore.yaml reviews
+  // integration...implement, shipped after this guard was written on Q-0006's branch, and the
+  // stale guard rejected the newer flow the day it landed. Both endpoints must be the configured
+  // base or one of this ticket's own branches; the guard still composes with a future --base flag,
+  // since `base` is ctx.vars.base. See Q-0034.
+  const ticketPrefix = `harness/${ctx.ticket.meta.id}/`;
+  const [left, right, ...extra] = range.split('...');
+  const related = (ref) => ref === base || ref.startsWith(ticketPrefix);
+  if (!left || !right || extra.length || !related(left) || !related(right)) {
+    throw new FlowError(`${step.id}: input.diff must relate the configured base or this ticket's own branches ("${base}", "${ticketPrefix}…") with "...", got ${range}`);
+  }
+  for (const ref of [left, right]) {
+    if (hasRef(ref)) continue;
+    if (ref === base) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
+    if (ref === integration) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
+    throw new FlowError(`${step.id}: input.diff names missing ref "${ref}"`);
+  }
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
   // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
   // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
@@ -724,12 +769,15 @@ export function materialiseDiff(step, ctx) {
   // instead of the evidence handed to them. Diagnose the overwhelmingly likely cause rather than
   // reporting emptiness: a branch already merged into base has nothing left to show.
   if (!stat.trim()) {
+    // Diagnose against the range's own endpoints, not the assumed base/integration pair — the
+    // chore flow's range is integration...implement, where the question is whether the implement
+    // side is already merged into the integration side. See Q-0034.
     const merged = (() => {
-      try { execFileSync('git', ['merge-base', '--is-ancestor', integration, base], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
+      try { execFileSync('git', ['merge-base', '--is-ancestor', right, left], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
       catch { return false; }
     })();
     throw new FlowError(merged
-      ? `${step.id}: \`${range}\` is empty because ${integration} is already merged into ${base} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
+      ? `${step.id}: \`${range}\` is empty because ${right} is already merged into ${left} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
       : `${step.id}: \`${range}\` is empty — no commits to review. Check input.diff in the flow and that the ticket's work was committed to ${integration}.`);
   }
   const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
