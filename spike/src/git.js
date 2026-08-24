@@ -44,24 +44,33 @@ export function removeWorktree(repoDir, branch, { deleteBranch = false } = {}) {
 // ancestry found in the history that is present is real; exit 1 becomes indeterminate, because
 // history that is absent cannot disprove ancestry.
 //
+// `shallow` is three-valued for the same reason rule 1 exists: `null` means the shallow probe
+// itself could not answer, and an unanswered probe may not be read as "not shallow". Rendering it
+// as false would let a failed probe plus an exit 1 produce exactly the confident negative rule 1
+// forbids — the repository would be asserting that absent history is not what made the check fail,
+// having failed to establish whether any history is absent.
+//
 // `command` is returned so a caller can quote what it ran precisely enough for a reader to re-run
 // by hand; `detail` is git's own first line of stderr, normalised, and is never load-bearing.
-export function ancestry(repoDir, ref, inRef, { shallow = false } = {}) {
+export function ancestry(repoDir, ref, inRef, { shallow = false, shallowDetail = null } = {}) {
   const command = `git merge-base --is-ancestor ${ref} ${inRef}`;
   try { git(['merge-base', '--is-ancestor', ref, inRef], repoDir); }
   catch (e) {
     if (e.status !== 1) return { state: 'indeterminate', reason: 'git failed', detail: firstLine(e.stderr) ?? firstLine(e.message), command };
-    if (shallow) return { state: 'indeterminate', reason: 'shallow clone', detail: null, command };
+    if (shallow === true) return { state: 'indeterminate', reason: 'shallow clone', detail: null, command };
+    if (shallow === null) return { state: 'indeterminate', reason: 'shallow state unknown', detail: shallowDetail, command };
     return { state: 'not-contained', reason: null, detail: null, command };
   }
   return { state: 'contained', reason: null, detail: null, command };
 }
 
-// A repository that cannot be asked is treated as not shallow: the shallow rule only ever turns a
-// confident negative into an honest "don't know", so failing to detect it costs nothing that
-// rule 1 does not already catch.
-export function isShallowRepository(repoDir) {
-  return safe(() => git(['rev-parse', '--is-shallow-repository'], repoDir)) === 'true';
+// Whether this repository's history is truncated — and, when git will not say, that it would not
+// say. `shallow: null` is "could not ask", which is a different fact from "not shallow" and is
+// kept distinct all the way into the message: only rule 2 can turn a proven negative into an
+// honest "don't know", so a probe that fails must not quietly forfeit that. See Q-0035.
+export function shallowState(repoDir) {
+  try { return { shallow: git(['rev-parse', '--is-shallow-repository'], repoDir) === 'true', detail: null }; }
+  catch (e) { return { shallow: null, detail: firstLine(e.stderr) ?? firstLine(e.message) }; }
 }
 
 const firstLine = (text) => {
@@ -88,8 +97,8 @@ export function shortSha(repoDir, ref) {
 // "nothing added since the merge base". It is three-valued — null means git could not compare the
 // trees, and a caller must then claim nothing about them. See Q-0035.
 export function emptyRangeEvidence(repoDir, left, right) {
-  const shallow = isShallowRepository(repoDir);
-  const check = ancestry(repoDir, right, left, { shallow });
+  const { shallow, detail } = shallowState(repoDir);
+  const check = ancestry(repoDir, right, left, { shallow, shallowDetail: detail });
   if (check.state !== 'not-contained') return { check, sameTree: null };
   const leftTree = safe(() => git(['rev-parse', `${left}^{tree}`], repoDir));
   const rightTree = safe(() => git(['rev-parse', `${right}^{tree}`], repoDir));

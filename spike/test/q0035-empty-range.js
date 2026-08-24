@@ -15,7 +15,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { Backlog } from '../src/backlog.js';
 import { FlowError, lintFlow, materialiseDiff, runFlow, validateFlowDirectory } from '../src/engine.js';
-import { ancestry } from '../src/git.js';
+import { ancestry, shallowState } from '../src/git.js';
 
 let failed = 0;
 const scenario = async (id, title, fn) => {
@@ -447,6 +447,62 @@ await scenario('E12', 'AC-9 — the --dry placeholder for a deferred range is un
   assert.equal(res.status, 'completed', 'a preview must not demand branches only a paid run produces');
   assert.equal(fs.readFileSync(path.join(f.ticket.dir, 'ticket.md'), 'utf8'), before, 'dry run mutated the ticket');
   assert.deepEqual(adapterCalls(f.root, f.ticket.meta.id), [], 'a dry run invokes no adapter');
+});
+
+await scenario('E13', 'AC-3 — a shallow probe that cannot answer never becomes a confident negative', async () => {
+  // The probe is a git call like any other, so it can fail like any other. Read as "not shallow",
+  // a failed probe plus an exit 1 yields exactly the confident negative rule 1 forbids: the
+  // repository would be ruling out absent history without having established whether any is
+  // absent. Asserted at the primitive, which is the layer that owns both rules.
+  const root = repo();
+  write(path.join(root, 'b.txt'), 'main only\n'); git(root, 'add', '-A'); commit(root, 'main moves');
+  // A genuinely not-contained pair, so the check really does exit 1 and only `shallow` decides.
+  assert.equal(ancestry(root, 'main', BRANCH).state, 'not-contained', 'fixture must produce a real exit 1');
+
+  const unknown = ancestry(root, 'main', BRANCH, { shallow: null, shallowDetail: 'fatal: not a git repository' });
+  assert.equal(unknown.state, 'indeterminate', 'an unanswered shallow probe cannot yield "not contained"');
+  assert.equal(unknown.reason, 'shallow state unknown');
+  assert.ok(unknown.command.includes('merge-base --is-ancestor'), 'it still quotes the check it ran');
+  // The three shallow values stay three distinct answers.
+  assert.equal(ancestry(root, 'main', BRANCH, { shallow: true }).reason, 'shallow clone');
+  assert.equal(ancestry(root, 'main', BRANCH, { shallow: false }).state, 'not-contained');
+
+  // And the probe itself reports "could not ask" rather than "not shallow".
+  const notARepo = fs.mkdtempSync(path.join(os.tmpdir(), 'q0035-norepo-'));
+  const probe = shallowState(notARepo);
+  assert.equal(probe.shallow, null, 'a probe that fails must not report false');
+  assert.ok(probe.detail && !probe.detail.includes('\n'), 'its reason is normalised to a single line');
+  assert.equal(shallowState(root).shallow, false, 'and an ordinary repository still reports false');
+});
+
+await scenario('E14', 'AC-10 — the lint rule reaches a fan_out step\'s template, where a bad range would survive to a billed run', async () => {
+  // flattenSteps does not descend into `step:`, so before this rule looked there a malformed range
+  // in a fan-out template passed lint and failed at step time — after the fan-out's own adapters
+  // had been paid for. The template is a step in every way that matters to materialiseDiff.
+  const fanFlow = (diff) => ({
+    name: 'probe', consumes: 'a', produces: 'b',
+    steps: [{
+      id: 'developers',
+      fan_out: { from: 'solution/tasks.yaml', by: 'role' },
+      step: { id: 'dev:{task.id}', role: 'developer-{role}', input: { diff } },
+    }],
+  });
+  assert.doesNotThrow(() => lintFlow(fanFlow('{base}...harness/{id}/integration')), 'a well-formed template range must pass');
+
+  for (const value of ['main..harness/{id}/integration', '{base}...some/other-branch', 'harness/{id}/integration']) {
+    let err = null;
+    try { lintFlow(fanFlow(value)); } catch (e) { err = e; }
+    assert.ok(err instanceof FlowError, `lint must reject ${value} inside a fan_out template`);
+    assert.match(err.message, /developers\.step: input\.diff must be two/, `it names the fan_out step and its template: ${err?.message}`);
+    assert.ok(err.message.includes(JSON.stringify(value)), 'it quotes the offending value');
+  }
+
+  // A fan_out step carrying no template diff is not a finding, and the shipped development flow —
+  // the only fan_out this repository ships — must still pass unchanged.
+  assert.doesNotThrow(() => lintFlow({
+    name: 'probe', consumes: 'a', produces: 'b',
+    steps: [{ id: 'developers', fan_out: { from: 'solution/tasks.yaml' }, step: { id: 'dev:{task.id}', input: { backlog: ['ticket.md'] } } }],
+  }), 'a template with no diff must not be a finding');
 });
 
 if (failed) { console.error(`\n✗ ${failed} Q-0035 scenario(s) failed`); process.exit(1); }
