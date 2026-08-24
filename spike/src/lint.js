@@ -25,6 +25,34 @@ function globMatch(pattern, value) {
     || (pattern.endsWith('/') && value.startsWith(pattern));
 }
 
+// The static half of materialiseDiff's range guard: both endpoints must be the configured base or
+// one of this ticket's own branches. Deliberately text-only — it interpolates nothing and runs no
+// git — which is precisely why it is the one check that also protects a DEFERRED range, whose
+// endpoint no run has created yet and whose emptiness therefore cannot be known early. `{id}` is
+// uninterpolated in a flow file, so the rule is a property of the text and needs no run to check.
+// It restates the engine's guard rather than adding to it: a flow the engine would accept must
+// pass here, and a flow rejected here would have been rejected at step time anyway — after a
+// preceding adapter had already been billed. See Q-0035.
+function validDiffRange(value) {
+  if (typeof value !== 'string') return false;
+  const endpoints = value.split('...');
+  return endpoints.length === 2 && endpoints.every((ref) => ref === '{base}' || /^harness\/\{id\}\/.+/.test(ref));
+}
+
+// Every place a flow file can put an input.diff, each labelled so a problem names something the
+// reader can find in the file. flattenSteps deliberately does not descend into a fan_out step's
+// `step:` template — the template's id, role and adapter are placeholders resolved per task, so
+// the duplicate-id, goto and cross_vendor rules must not see it. This rule must: runFanOut copies
+// the template into a real step and buildPrompt reads its input.diff like any other, so a
+// malformed range there would survive lint and fail mid-run, after the fan-out's own adapters had
+// been billed — which is the failure the static rule exists to make impossible. See Q-0035.
+function diffSites(steps) {
+  return steps.flatMap((step) => [
+    { label: step.id, value: step.input?.diff },
+    ...(step.fan_out && step.step ? [{ label: `${step.id}.step`, value: step.step.input?.diff }] : []),
+  ]).filter((site) => site.value != null);
+}
+
 export function lintFlow(flow) {
   const problems = [];
   const steps = flattenSteps(flow.steps);
@@ -49,6 +77,11 @@ export function lintFlow(flow) {
     if (step.output?.verdict && !step.on_fail && !step.route) problems.push(`${step.id}: has a verdict but no on_fail/route — verdicts must go somewhere`);
     if (step.fan_out && !step.step) problems.push(`${step.id}: fan_out needs a step template`);
     if (step.type === 'integrate' && !step.branches) problems.push(`${step.id}: integrate needs branches`);
+  }
+  for (const { label, value } of diffSites(steps)) {
+    if (!validDiffRange(value)) {
+      problems.push(`${label}: input.diff must be two "..."-joined endpoints, each "{base}" or "harness/{id}/…", got ${JSON.stringify(value)}`);
+    }
   }
   if (flow.cross_vendor === 'required') {
     let invalidPanel = false;
