@@ -172,5 +172,18 @@ await scenario('C8', 'an injection-shaped branch value never reaches a git comma
   assert.equal(fs.existsSync(path.join(process.cwd(), 'pwned')), false, 'no file named pwned may be created here either');
 });
 
+await scenario('C9', 'a tag sharing the branch name does not stop the branch being annotated', async () => {
+  const root = projectFixture();
+  makeTicket(root);
+  git(root, 'branch', TICKET_BRANCH);
+  // With refs/tags/<name> beside refs/heads/<name>, %(refname:short) would emit the
+  // disambiguated "heads/<name>" and the branch lookup would miss a ref that resolves.
+  git(root, 'tag', TICKET_BRANCH);
+  const r = cli(root, ['board']);
+  assert.equal(r.status, 0, output(r));
+  assert.match(output(r), /T-0001[^\n]*main:contained/, 'the branch resolves and must be annotated despite the tag');
+  assert.doesNotMatch(output(r), /indeterminate/);
+});
+
 if (failed) { console.error(`\n✗ ${failed} Q-0036 scenario(s) failed`); process.exit(1); }
 console.log('✓ q0036 board containment: all scenarios passed');

@@ -47,7 +47,10 @@ export function containment(repoDir, base) {
   const [inWorkTree, shallow] = probe.split('\n').map((line) => line.trim() === 'true');
   if (!inWorkTree) return null;
   const baseResolves = safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${base}^{commit}`], repoDir)) != null;
-  const branches = new Set((safe(() => git(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], repoDir)) ?? '')
+  // lstrip=2 drops exactly "refs/heads/", unconditionally. Not %(refname:short): shortening is
+  // ambiguity-dependent, so a tag sharing a branch's name makes it emit "heads/<name>" and the
+  // lookup below would miss a branch that resolves.
+  const branches = new Set((safe(() => git(['for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads'], repoDir)) ?? '')
     .split('\n').filter(Boolean));
   return {
     // null → the branch does not resolve to a local ref; the row renders unannotated.
