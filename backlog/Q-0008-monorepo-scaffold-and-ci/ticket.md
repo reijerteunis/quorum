@@ -7,7 +7,8 @@ repos: []
 branch: harness/Q-0008/integration
 priority: p1
 created: 2026-08-24
-iterations: {}
+iterations:
+  chore.review: 0
 history:
   - stage: draft
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: draft
     at: 2026-08-24T00:24:38.429Z
     cost: 4.346
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T01:06:50.551Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T01:06:50.553Z
+    cost: 17.66
 ---
 Everything Quorum runs today is plain Node ESM in `spike/`, with two dependencies and a
 hand-rolled test runner, and CLAUDE.md's instruction not to extend it past M0/M1 needs is now

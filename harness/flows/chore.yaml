@@ -10,7 +10,7 @@ steps:
     branch: "harness/{id}/implement"
     base: "harness/{id}/integration"
     input:
-      backlog: [requirements/merged.md, review/chore-iter-*.md]
+      backlog: [requirements/merged.md, requirements/errata.md, review/chore-iter-*.md]
       harness: [rules.md, architecture.md]
       repo: true
     output: { writes: [dev/implement-report.md] }
@@ -28,7 +28,7 @@ steps:
     role: code-reviewer
     adapter: codex
     input:
-      backlog: [requirements/merged.md, dev/implement-report.md]
+      backlog: [requirements/merged.md, requirements/errata.md, dev/implement-report.md]
       diff: "harness/{id}/integration...harness/{id}/implement"
     output:
       writes: ["review/chore-iter-{iter}.md"]
