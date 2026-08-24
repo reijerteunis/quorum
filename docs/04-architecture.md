@@ -1,6 +1,6 @@
 # Quorum — Technical Architecture (v1)
 
-*Status: proposed 2026-08-22, to be confirmed by the first milestone. Changes go through DECISIONS.md.*
+*Status: proposed 2026-08-22; scaffold created 2026-08-24 (Q-0008) — the pnpm + Turborepo workspace, the single strict `tsconfig.base.json`, Vitest, ESLint and CI now exist, and the seven package boundaries drawn below are real directories, empty on purpose until Q-0009 ports the spike into them. Changes go through DECISIONS.md.*
 
 ## Shape
 
