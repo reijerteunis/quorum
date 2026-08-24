@@ -30,5 +30,10 @@ commands:
   # Run in the integration worktree before `test`. A worktree is a fresh checkout with no
   # node_modules; without this the suite dies on a missing dependency and `expect: fail` reads
   # that as proof of red.
-  install: npm install --prefix spike --no-audit --no-fund --silent
-  test: npm test --prefix spike
+  # Both dependency sets and both suites, chained so the step fails if either does. The spike is
+  # not a pnpm workspace member (its runner is not Vitest and its lockfile is npm's), so until
+  # Q-0009 retires it the repository genuinely has two suites and an `integrate` step that ran
+  # only one would prove the wrong half. Q-0008 criterion 8. `runCommand` goes through execSync,
+  # so `&&` is a shell chain, not an argv.
+  install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
+  test: npm test --prefix spike && pnpm turbo run test
