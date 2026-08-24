@@ -165,10 +165,16 @@ function occurrenceSeq(occurrenceDir) {
   return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
-// cached_input_tokens is already counted inside input_tokens (writer contract); cache-write
-// tokens are a genuinely separate spend, so they're added rather than double-counting cache reads.
+// Input totals already include EVERY vendor-reported cache component, cache-write as well as
+// cache-read: adapters/claude.js folds both cache_creation_input_tokens and cache_read_input_tokens
+// into input_tokens. Adding cache_write_input_tokens back here counted it twice — roughly a 35%
+// overstatement on the M0 figures, in the one number Q-0011 exists to report. The previous comment
+// asserted cache-write was "a genuinely separate spend" and was simply wrong about the mapping.
+// run-history-writer.contract.md settles it verbatim: "Input totals already include vendor-reported
+// cache components; readers do not add them again." The cache fields stay on the row as a
+// breakdown for anyone who wants the split; they are not summands. See Q-0034.
 function vendorTokenTotal(row) {
-  const parts = [row.input_tokens, row.output_tokens, row.cache_write_input_tokens].filter((v) => v != null);
+  const parts = [row.input_tokens, row.output_tokens].filter((v) => v != null);
   return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
 }
 
@@ -474,8 +480,17 @@ async function main() {
       const { runs: allRuns, warnings } = readRunsDir(runsRoot);
 
       if (token) {
-        const exactDir = path.join(runsRoot, token);
-        if (fs.existsSync(exactDir) && fs.statSync(exactDir).isDirectory()) {
+        // A run id names a directory *directly inside* .quorum/runs and nothing else. Joining the
+        // raw token let "..", a leading "/" or an absolute path walk out of the runs root: any
+        // directory on the filesystem containing a manifest.json was accepted as a run, and --json
+        // then echoed the parsed document to stdout. Require a single path segment and prove the
+        // resolved parent IS the runs root before reading anything. See Q-0034 / AC-13.
+        const resolvedRoot = path.resolve(runsRoot);
+        const exactDir = path.resolve(resolvedRoot, token);
+        const confined = token === path.basename(token)
+          && !['', '.', '..'].includes(token)
+          && path.dirname(exactDir) === resolvedRoot;
+        if (confined && fs.existsSync(exactDir) && fs.statSync(exactDir).isDirectory()) {
           const manifestPath = path.join(exactDir, 'manifest.json');
           let manifest;
           try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }

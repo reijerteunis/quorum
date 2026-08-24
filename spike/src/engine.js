@@ -264,9 +264,12 @@ function initialiseRunHistory(ctx) {
   const runId = `${ctx.ticket.meta.id}-${ctx.runId}`;
   const runDir = path.join(ctx.repoDir, '.quorum', 'runs', runId);
   const historyRoot = path.dirname(runDir);
-  // Once this writer has persisted history, do not let a stale in-memory ticket snapshot fork a
-  // second timeline. Compare with the ticket file, rather than old outcome entries: backward
-  // edges legitimately make a current stage differ from the preceding outcome's stage_after.
+  // Guard one: a stale in-memory ticket snapshot must not fork a second timeline once this writer
+  // has persisted history. Compare with the ticket file rather than old outcome entries, because
+  // backward edges legitimately make a current stage differ from the preceding outcome's
+  // stage_after. This is NOT the run-directory collision refusal below — it is a narrower,
+  // separate check that happens to fire first, and conflating the two is what let AC-1 look
+  // implemented when it was not. See Q-0034.
   const persistedStage = fs.existsSync(historyRoot)
     ? parseFrontmatter(fs.readFileSync(path.join(ctx.ticket.dir, 'ticket.md'), 'utf8')).meta.stage
     : null;
@@ -274,7 +277,19 @@ function initialiseRunHistory(ctx) {
     throw new FlowError(`run directory allocation refused: ticket stage conflicts with persisted run history (${persistedStage} != ${ctx.ticket.meta.stage})`);
   }
   fs.mkdirSync(historyRoot, { recursive: true });
-  fs.mkdirSync(runDir, { recursive: false });
+  // Guard two, and the one AC-1 actually asks for: the run directory must not already exist.
+  // `recursive: false` was already doing the detection; nothing translated the errno, so a genuine
+  // collision surfaced as a raw EEXIST stack trace from bin/harness.js instead of a refusal a
+  // reader can act on. Two runs holding one ticket is a real state — M1 saw it twice — and it must
+  // stop the run by name. See Q-0034.
+  try {
+    fs.mkdirSync(runDir, { recursive: false });
+  } catch (e) {
+    if (e.code === 'EEXIST') {
+      throw new FlowError(`run directory allocation refused: ${relative(ctx.repoDir, runDir)} already exists — run ${ctx.runId} of ${ctx.ticket.meta.id} has history on disk already. Another run may be in flight, or a previous one was interrupted; move or delete that directory to re-use the id.`);
+    }
+    throw new FlowError(`run directory allocation refused: could not create ${relative(ctx.repoDir, runDir)} (${e.message})`);
+  }
   fs.mkdirSync(path.join(runDir, 'steps'));
   ctx.history = {
     dir: runDir, started: started.getTime(), sequence: 0,
@@ -291,6 +306,15 @@ function initialiseRunHistory(ctx) {
   replaceManifest(ctx, { fatal: true });
 }
 
+// Monotonic start time per occurrence, deliberately NOT a field on the occurrence itself. Every
+// occurrence lives in ctx.history.manifest.steps, and replaceManifest() serialises that whole array
+// on each terminal occurrence — so a bookkeeping field stamped on a *still-running* occurrence is
+// written into manifest.json and violates run-manifest.schema.json's additionalProperties: false.
+// It hid because terminalOccurrence deleted the field just before its own write; any other step's
+// write (a parallel sibling finishing first) or a kill in that window persisted it, the latter
+// permanently. A side table cannot leak into JSON.stringify at all. See Q-0034.
+const occurrenceStart = new WeakMap();
+
 function allocateOccurrence(ctx, step, kind, fields = {}) {
   const seq = ++ctx.history.sequence;
   const safeId = String(step.id).replace(/[/:]/g, '-');
@@ -301,8 +325,9 @@ function allocateOccurrence(ctx, step, kind, fields = {}) {
     role: fields.role ?? null, adapter: fields.adapter ?? null, model: fields.model ?? null,
     branch: fields.branch ?? null, worktree: fields.worktree ?? null,
     started_at: new Date().toISOString(), duration_ms: null, attempts: 0, status: 'running',
-    verdict: null, error: null, usage: null, _started: Date.now(),
+    verdict: null, error: null, usage: null,
   };
+  occurrenceStart.set(occurrence, Date.now());
   ctx.history.manifest.steps.push(occurrence);
   ctx.activeOccurrences.add(occurrence);
   return occurrence;
@@ -310,8 +335,11 @@ function allocateOccurrence(ctx, step, kind, fields = {}) {
 
 function terminalOccurrence(ctx, occurrence, status, fields = {}) {
   if (!ctx.activeOccurrences.has(occurrence)) return;
-  Object.assign(occurrence, fields, { status, duration_ms: Math.max(0, Date.now() - occurrence._started) });
-  delete occurrence._started;
+  const started = occurrenceStart.get(occurrence);
+  Object.assign(occurrence, fields, {
+    status,
+    duration_ms: started == null ? 0 : Math.max(0, Date.now() - started),
+  });
   ctx.activeOccurrences.delete(occurrence);
   ctx.history.manifest.rollup = rollup(ctx.history.manifest.steps);
   replaceManifest(ctx);
