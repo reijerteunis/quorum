@@ -31,3 +31,29 @@ inside Q-0011 and Q-0033. **Q-0008 does not go through the full SDLC.** Per the 
 decision on harness-machinery work — the one Q-0033 paid roughly $41 in qa-red attempts to learn
 — contracts and a red phase are the wrong instrument for configuration work, so this ticket runs
 requirements → chore → human gates, per the chore-flow decision of 2026-08-24.
+
+## Scope, decided — do not re-litigate it
+
+The scope is exactly the skeleton `docs/04-architecture.md` already draws, and nothing beyond it.
+Create `packages/core`, `packages/server`, `packages/cli`, `packages/compiler`, `packages/templates`,
+`packages/shared` and `apps/web` as **empty** packages: a `package.json`, a `tsconfig.json`
+extending the root, a placeholder `src/index.ts`, and one passing placeholder test each. No code is
+ported and no feature is implemented — that is Q-0009 and Q-0010, and a scaffold that quietly
+starts porting is the scope creep this ticket most needs to avoid.
+
+- **Workspace:** pnpm workspaces plus Turborepo.
+- **TypeScript:** strict everywhere, from a single root `tsconfig.base.json` that every package
+  extends. Node ≥ 22, enforced through `engines` and `.nvmrc`.
+- **Tests:** Vitest, run at the root through turbo. The spike's 30-check smoke test is **not**
+  ported here (Q-0009), and `spike/`'s own `npm test` must keep passing untouched — the spike stays
+  the working regression suite until core replaces it.
+- **Lint:** ESLint flat config, one shared configuration, no per-package divergence.
+- **CI:** GitHub Actions, one workflow, on push and pull request: install with pnpm and a frozen
+  lockfile, then turbo lint, typecheck and test, with turbo caching enabled. One Node version.
+
+**Non-goals.** No publish or release pipeline. No changesets or versioning. No bundler decision for
+`apps/web` beyond a Vite placeholder. No Docker. No renovate or dependabot. No README rewrite.
+
+**Shape of the requirement.** At most ten acceptance criteria, each independently checkable by
+running a single command. Ten is the ceiling this repository already pays for exceeding — see the
+2026-08-22 decision on ticket size, where thirty criteria hit the iteration bound at every stage.
