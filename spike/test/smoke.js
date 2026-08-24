@@ -627,7 +627,9 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
 }
 
 // An empty diff range is a failure, not a review. Q-0006's first review paid two vendors to read
-// zero bytes and returned a verdict; the range was empty because the branch was already merged.
+// zero bytes and returned a verdict. What the failure SAYS is Q-0035's subject: it reports the
+// ancestry git returned, with both endpoints' short SHAs and the check it ran, and never narrates
+// a historical event it did not observe.
 {
   const { materialiseDiff } = await import('../src/engine.js');
   const gitRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-diff-'));
@@ -652,8 +654,16 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   let err = null;
   try { materialiseDiff(step, ctx); } catch (e) { err = e; }
   assert(err !== null, 'an empty diff range throws instead of reviewing nothing');
-  assert(/already merged/.test(err?.message ?? ''), 'the error names the cause: the branch is already merged');
-  assert(/main/.test(err?.message ?? '') && /T-9/.test(err?.message ?? ''), 'the error names both refs');
+  const msg = err?.message ?? '';
+  assert(/main/.test(msg) && /T-9/.test(msg), 'the error names both refs');
+  assert(msg.includes(g('rev-parse --short main').trim()), 'and the short SHA main resolved to');
+  assert(msg.includes(g('rev-parse --short harness/T-9/integration').trim()), 'and the one the branch resolved to');
+  assert(/git merge-base --is-ancestor harness\/T-9\/integration main/.test(msg), 'and the check it ran, quotably');
+  assert(/→ contained/.test(msg), 'and that check\'s outcome');
+  // The claim this ticket removed: an ancestry check cannot witness a merge, a rebase or a
+  // cherry-pick, so the message may not report one. See Q-0035 and the Containment glossary entry.
+  assert(!/\b(merged|landed|shipped|rebased|cherry-picked)\b/i.test(msg), 'the error claims no historical event');
+  assert(!/merge commit/.test(msg), 'and recommends no range the guard would reject');
   fs.rmSync(gitRepo, { recursive: true, force: true });
 }
 

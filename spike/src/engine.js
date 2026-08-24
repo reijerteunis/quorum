@@ -6,7 +6,7 @@ import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema, authError, transientError } from './adapters/index.js';
-import { ensureWorktree, ensureExcluded } from './git.js';
+import { ensureWorktree, ensureExcluded, shortSha, emptyRangeEvidence } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
 import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
@@ -43,7 +43,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
     vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
-    diffInputs: new Map(),
+    diffInputs: new Map(), deferredDiffs: new Map(),
   };
   // What the ticket branch looked like before this run touched it, so a run that does not
   // complete can put it back. See Q-0033.
@@ -97,20 +97,34 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // preflight exists to prevent. For ranges over pre-existing refs, the review flow's case,
   // the guarantee is unchanged. Found the day the Q-0006 preflight landed: it was written
   // before chore.yaml existed and never met it. See Q-0034.
+  //
+  // State the limit rather than implying it is not there: "no adapter is billed before bad
+  // evidence is found" holds for ranges over refs that exist when the run starts, and cannot hold
+  // for the rest. A range whose right endpoint is a branch this run creates has no emptiness to
+  // discover until the step that creates it has run and been billed — the evidence does not exist
+  // before its producer does. What that class gets instead is earliest-possible: the producing
+  // adapter may run, the consuming one may not, and a range that is malformed or out of class is
+  // caught with no run at all by the input.diff rule in lintFlow. See Q-0035 (OQ-1).
   {
-    const createdSoFar = new Set();
+    // ref → the id of the earliest step that creates it. A Set answered "is this deferred?"; the
+    // map also answers "deferred waiting on whom?", which is what lets a deferred range that turns
+    // out empty at step time tell the reader the implementer committed nothing rather than that a
+    // branch is missing. See Q-0035.
+    const createdSoFar = new Map();
+    const remember = (ref, stepId) => { if (!createdSoFar.has(ref)) createdSoFar.set(ref, stepId); };
     for (const group of flow.steps) {
       const members = group.parallel ?? [group];
       // Judge every diff in the group against branches created strictly before the group: a
       // parallel sibling's branch is concurrent, not earlier.
       for (const s of members.filter((candidate) => candidate.input?.diff)) {
         const range = interpolate(s.input.diff, ctx.vars);
-        if (range.split('...').some((ref) => createdSoFar.has(ref))) continue;
+        const pending = range.split('...').find((ref) => createdSoFar.has(ref));
+        if (pending != null) { ctx.deferredDiffs.set(range, { ref: pending, step: createdSoFar.get(pending) }); continue; }
         if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(s, ctx));
       }
       for (const s of members) {
-        if (s.worktree) createdSoFar.add(interpolate(s.branch ?? `harness/${ctx.ticket.meta.id}/${s.id}`, ctx.vars));
-        if (s.type === 'integrate' && s.into) createdSoFar.add(interpolate(s.into, ctx.vars));
+        if (s.worktree) remember(interpolate(s.branch ?? `harness/${ctx.ticket.meta.id}/${s.id}`, ctx.vars), s.id);
+        if (s.type === 'integrate' && s.into) remember(interpolate(s.into, ctx.vars), s.id);
       }
     }
   }
@@ -738,11 +752,15 @@ function reviewRound(ticket) {
   return (completed.length ? Math.max(...completed) : 0) + 1;
 }
 
+// A range is named twice wherever it appears — interpolated, so it can be pasted into a terminal,
+// and as the flow file writes it, so it can be found in the file that has to change.
+const named = (range, written) => `\`${range}\` (flow file: \`${written}\`)`;
+
 export function materialiseDiff(step, ctx) {
-  const range = interpolate(step.input.diff, ctx.vars);
+  const written = String(step.input.diff);
+  const range = interpolate(written, ctx.vars);
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
   const integration = `harness/${ctx.ticket.meta.id}/integration`;
-  const hasRef = (ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; } catch { return false; } };
   // The guard forbids a flow file aiming input.diff at refs unrelated to this ticket — a merge
   // commit, another ticket's branch, an arbitrary SHA. It used to demand exactly
   // `{base}...{integration}`, which was the review flow's shape and only that: chore.yaml reviews
@@ -756,30 +774,33 @@ export function materialiseDiff(step, ctx) {
   if (!left || !right || extra.length || !related(left) || !related(right)) {
     throw new FlowError(`${step.id}: input.diff must relate the configured base or this ticket's own branches ("${base}", "${ticketPrefix}…") with "...", got ${range}`);
   }
-  for (const ref of [left, right]) {
-    if (hasRef(ref)) continue;
-    if (ref === base) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}"`);
-    if (ref === integration) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch`);
-    throw new FlowError(`${step.id}: input.diff names missing ref "${ref}"`);
+  // Which endpoint an earlier step of THIS flow was supposed to create, when the preflight deferred
+  // this range. Naming that step is the difference between telling the reader a branch is missing
+  // and telling them the implementer committed nothing. See Q-0035.
+  const deferred = ctx.deferredDiffs?.get(range) ?? null;
+  // One spawn per endpoint answers both "does it resolve?" and "to what?" — and the SHA is what
+  // makes the failure re-checkable tomorrow, after the branch tips have moved.
+  const sha = { left: shortSha(ctx.repoDir, left), right: shortSha(ctx.repoDir, right) };
+  for (const side of ['left', 'right']) {
+    const ref = side === 'left' ? left : right;
+    if (sha[side] != null) continue;
+    const other = side === 'left' ? 'right' : 'left';
+    const otherRef = other === 'left' ? left : right;
+    const tail = [
+      `it is the ${side} endpoint of ${named(range, written)}`,
+      sha[other] != null
+        ? `the ${other} endpoint ${otherRef} resolves to ${sha[other]}`
+        : `the ${other} endpoint ${otherRef} does not resolve either`,
+      deferred?.ref === ref ? `step "${deferred.step}" was expected to create ${ref}` : null,
+    ].filter(Boolean).join('; ') + '. Neither the diff nor the containment check was run.';
+    // The three identifying phrases below are matched by substring in existing fixtures. The
+    // evidence is added AROUND them; they are never replaced. See Q-0035.
+    if (ref === base) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}" — ${tail}`);
+    if (ref === integration) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch — ${tail}`);
+    throw new FlowError(`${step.id}: input.diff names missing ref "${ref}" — ${tail}`);
   }
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
-  // An empty range is never a reviewable state, and it must not be one silently. Q-0006's own
-  // review paid two vendors $5.02 to review zero bytes and returned a verdict the engine would
-  // have acted on; the panel only produced findings because the agents read the working tree
-  // instead of the evidence handed to them. Diagnose the overwhelmingly likely cause rather than
-  // reporting emptiness: a branch already merged into base has nothing left to show.
-  if (!stat.trim()) {
-    // Diagnose against the range's own endpoints, not the assumed base/integration pair — the
-    // chore flow's range is integration...implement, where the question is whether the implement
-    // side is already merged into the integration side. See Q-0034.
-    const merged = (() => {
-      try { execFileSync('git', ['merge-base', '--is-ancestor', right, left], { cwd: ctx.repoDir, stdio: 'ignore' }); return true; }
-      catch { return false; }
-    })();
-    throw new FlowError(merged
-      ? `${step.id}: \`${range}\` is empty because ${right} is already merged into ${left} — there is nothing left to review. Review before merging, or point input.diff at the merge commit.`
-      : `${step.id}: \`${range}\` is empty — no commits to review. Check input.diff in the flow and that the ticket's work was committed to ${integration}.`);
-  }
+  if (!stat.trim()) throw new FlowError(emptyRangeFailure({ step, written, range, left, right, sha, deferred, ctx }));
   const full = execFileSync('git', ['diff', range], { cwd: ctx.repoDir });
   const limit = ctx.config.repo?.max_diff_bytes ?? 200000;
   let bytes = full; let truncated = bytes.length > limit;
@@ -790,6 +811,54 @@ export function materialiseDiff(step, ctx) {
   }
   const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${bytes.length} UTF-8 bytes (configured limit ${limit}).` : '';
   return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+}
+
+// An empty range is never a reviewable state, and it must not be one silently: Q-0006's review run
+// 10 paid two vendors $5.023 to read zero bytes and returned a verdict the engine acted on. That
+// the run stops is settled. What it stops WITH is Q-0035's subject.
+//
+// The message this replaced reported a historical event — that the right endpoint was "already
+// merged into" the left — from an ancestry check, which establishes a relationship between two
+// commits and says nothing about the route by which it arose. It named no SHA, so it could not be
+// re-checked once the branch tips moved, which is exactly when someone wants to. And it recommended
+// pointing input.diff at the merge commit, which the guard forty lines above refuses.
+//
+// So: name the range as written and as interpolated, both endpoints with the short SHA each
+// resolved to, the check verbatim, and its outcome — then assert nothing git did not return. Four
+// outcomes, each tied to an exit code and to nothing else; every further branch would be a new
+// claim that can be wrong in the way this function exists to stop being wrong.
+//
+// Vocabulary is the board's, settled on 2026-08-24 and recorded under Containment in the glossary:
+// "contained", never "merged", "landed" or "shipped". `merge-base` survives because it is the name
+// of the command being quoted and of the commit a three-dot range is defined against.
+function emptyRangeFailure({ step, written, range, left, right, sha, deferred, ctx }) {
+  const { check, sameTree } = emptyRangeEvidence(ctx.repoDir, left, right);
+  const outcome = check.state === 'contained' ? 'contained'
+    : check.state === 'not-contained' ? 'not contained'
+    : `indeterminate (${check.reason}${check.detail ? `: ${check.detail}` : ''})`;
+  const committed = deferred
+    ? `check that step "${deferred.step}" committed its work to ${deferred.ref}`
+    : `check that the ticket's work was committed to ${right}`;
+  const [diagnosis, remedy] = check.state === 'contained'
+    ? [`${right} is contained in ${left}, so the range spans no commits. That is a relationship between the two commits above, not a record of how it came about.`,
+       `review ${right} before it becomes contained in ${left}`]
+    : check.state === 'indeterminate'
+      ? [`git could not answer whether ${right} is contained in ${left}, so this failure reports the emptiness and claims nothing further.`,
+         `re-run the check above and fix whatever stopped git answering`]
+      : [`${right} is not contained in ${left}, and the range is still empty.`
+         + (sameTree === true ? ` ${left} and ${right} are different commits holding identical trees.`
+           : sameTree === false ? ` ${right} adds nothing since its merge base with ${left}.`
+             : ''),
+         committed];
+  return [
+    `${step.id}: ${named(range, written)} is empty — git diff --stat printed nothing.`,
+    `  left endpoint   ${left} = ${sha.left}`,
+    `  right endpoint  ${right} = ${sha.right}`,
+    deferred ? `  produced by     step "${deferred.step}", which was expected to create ${deferred.ref}` : null,
+    `  containment     \`${check.command}\` → ${outcome}`,
+    `  ${diagnosis}`,
+    `  Remedy: ${remedy}.`,
+  ].filter(Boolean).join('\n');
 }
 
 function trimIncompleteUtf8Suffix(bytes) {

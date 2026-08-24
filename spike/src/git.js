@@ -29,6 +29,73 @@ export function removeWorktree(repoDir, branch, { deleteBranch = false } = {}) {
   if (deleteBranch) safe(() => git(['branch', '-D', branch], repoDir));
 }
 
+// The repository's one answer to "is <ref> contained in <inRef>?", and the only place the two
+// rules the containment decision of 2026-08-24 records are written down. Both callers reach it:
+// containment() below, for the board, and materialiseDiff() in engine.js, for the empty-range
+// diagnostic. Until Q-0035 the engine read ancestry its own way — a bare try/catch that mapped
+// every non-zero exit onto "not merged" — so one repository answered the same question two ways
+// and the wrong one was the one that talked to the user.
+//
+// Rule 1: the state is selected from git's own exit codes and from nothing else. 0 → contained,
+// 1 → provably not contained, any other exit (or a git that could not be executed at all) →
+// indeterminate. "Not contained" is never inferred from a failure.
+//
+// Rule 2, the shallow asymmetry: exit 0 stays contained even in a shallow repository, because
+// ancestry found in the history that is present is real; exit 1 becomes indeterminate, because
+// history that is absent cannot disprove ancestry.
+//
+// `command` is returned so a caller can quote what it ran precisely enough for a reader to re-run
+// by hand; `detail` is git's own first line of stderr, normalised, and is never load-bearing.
+export function ancestry(repoDir, ref, inRef, { shallow = false } = {}) {
+  const command = `git merge-base --is-ancestor ${ref} ${inRef}`;
+  try { git(['merge-base', '--is-ancestor', ref, inRef], repoDir); }
+  catch (e) {
+    if (e.status !== 1) return { state: 'indeterminate', reason: 'git failed', detail: firstLine(e.stderr) ?? firstLine(e.message), command };
+    if (shallow) return { state: 'indeterminate', reason: 'shallow clone', detail: null, command };
+    return { state: 'not-contained', reason: null, detail: null, command };
+  }
+  return { state: 'contained', reason: null, detail: null, command };
+}
+
+// A repository that cannot be asked is treated as not shallow: the shallow rule only ever turns a
+// confident negative into an honest "don't know", so failing to detect it costs nothing that
+// rule 1 does not already catch.
+export function isShallowRepository(repoDir) {
+  return safe(() => git(['rev-parse', '--is-shallow-repository'], repoDir)) === 'true';
+}
+
+const firstLine = (text) => {
+  const line = String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
+  return line ? line.slice(0, 200) : null;
+};
+
+// The abbreviation git itself chooses, so a message can be re-checked after the refs have moved —
+// which is the only time anyone wants to re-check it. null when the ref does not resolve, which is
+// also how the engine tests an endpoint's existence: one spawn answers both questions. The length
+// is git's business and varies by repository, so nothing may assume it.
+export function shortSha(repoDir, ref) {
+  return safe(() => git(['rev-parse', '--verify', '--quiet', '--short', ref], repoDir));
+}
+
+// Everything git can still prove about a three-dot range that showed nothing. Gathering it here,
+// beside the rules, is what lets the engine quote evidence instead of narrating a cause.
+//
+// Direction matters: a three-dot range shows what the RIGHT endpoint added since its merge base
+// with the left, so the question is whether the right endpoint is contained in the left.
+//
+// `sameTree` is asked only once ancestry has proven the two unrelated, because that is the one
+// place it discriminates: it separates "different commits that happen to hold the same tree" from
+// "nothing added since the merge base". It is three-valued — null means git could not compare the
+// trees, and a caller must then claim nothing about them. See Q-0035.
+export function emptyRangeEvidence(repoDir, left, right) {
+  const shallow = isShallowRepository(repoDir);
+  const check = ancestry(repoDir, right, left, { shallow });
+  if (check.state !== 'not-contained') return { check, sameTree: null };
+  const leftTree = safe(() => git(['rev-parse', `${left}^{tree}`], repoDir));
+  const rightTree = safe(() => git(['rev-parse', `${right}^{tree}`], repoDir));
+  return { check, sameTree: leftTree && rightTree ? leftTree === rightTree : null };
+}
+
 // Where a ticket's code actually is, derived from git at the moment of asking and never stored —
 // a persisted copy of a git fact drifts the first time someone merges by hand, and a wrong field
 // is believed. Returns null when repoDir is not a git work tree (or git itself is unavailable):
@@ -53,27 +120,19 @@ export function containment(repoDir, base) {
   const branches = new Set((safe(() => git(['for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads'], repoDir)) ?? '')
     .split('\n').filter(Boolean));
   return {
-    // null → the branch does not resolve to a local ref; the row renders unannotated.
-    // Otherwise exactly one of the three states, selected from git's own exit codes and nothing
-    // else: merge-base --is-ancestor exits 0 → contained, 1 → provably not contained, anything
-    // else → indeterminate. "Not contained" is never inferred from a failure. The shallow rule is
-    // deliberately asymmetric: ancestry found in the history that is present is real, so exit 0
-    // stays contained, while history that is absent cannot disprove ancestry, so exit 1 becomes
-    // indeterminate rather than a confident falsehood.
+    // null → the branch does not resolve to a local ref; the row renders unannotated. Otherwise
+    // exactly one of the three states, chosen by ancestry() above — which owns both rules, so the
+    // board and the engine's empty-range diagnostic cannot drift apart. See Q-0035.
     stateOf(branch) {
       if (typeof branch !== 'string' || !branches.has(branch)) return null;
       if (!baseResolves) return { state: 'indeterminate', reason: 'missing ref' };
-      try { git(['merge-base', '--is-ancestor', `refs/heads/${branch}`, `refs/heads/${base}`], repoDir); }
-      catch (e) {
-        if (e.status !== 1) return { state: 'indeterminate', reason: 'git failed' };
-        if (shallow) return { state: 'indeterminate', reason: 'shallow clone' };
-        // Commits reachable from the ticket branch and not from the base — not the symmetric
-        // difference, and only computed for a proven not-contained result.
-        const ahead = safe(() => git(['rev-list', '--count', `refs/heads/${base}..refs/heads/${branch}`], repoDir));
-        if (ahead == null) return { state: 'indeterminate', reason: 'git failed' };
-        return { state: 'not-contained', ahead: Number(ahead) };
-      }
-      return { state: 'contained' };
+      const { state, reason } = ancestry(repoDir, `refs/heads/${branch}`, `refs/heads/${base}`, { shallow });
+      if (state !== 'not-contained') return state === 'contained' ? { state } : { state, reason };
+      // Commits reachable from the ticket branch and not from the base — not the symmetric
+      // difference, and only computed for a proven not-contained result.
+      const ahead = safe(() => git(['rev-list', '--count', `refs/heads/${base}..refs/heads/${branch}`], repoDir));
+      if (ahead == null) return { state: 'indeterminate', reason: 'git failed' };
+      return { state: 'not-contained', ahead: Number(ahead) };
     },
   };
 }

@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import YAML from 'yaml';
 import { Backlog } from '../src/backlog.js';
 import { FlowError, loadFlow, runFlow } from '../src/engine.js';
 
@@ -98,8 +99,10 @@ await scenario('C1b', 'a dry run of the chore-shaped flow previews without deman
 await scenario('C2', 'the preflight still fails before any step for a pre-existing-ref range with a missing endpoint', async () => {
   const { root, harnessDir, backlog, ticket } = fixture();
   // Review-flow shape: base...integration, integration deliberately absent. The implement step
-  // would run first — the preflight must fail before it can be billed.
-  write(path.join(harnessDir, 'flows', 'chore-shaped.yaml'), CHORE('main...harness/{id}/integration'));
+  // would run first — the preflight must fail before it can be billed. Written as {base} rather
+  // than a literal "main" since Q-0035: the lint rule wants the placeholder, and the interpolated
+  // range — and therefore everything this scenario asserts — is identical either way.
+  write(path.join(harnessDir, 'flows', 'chore-shaped.yaml'), CHORE('{base}...harness/{id}/integration'));
   const flow = loadFlow(path.join(harnessDir, 'flows', 'chore-shaped.yaml'));
 
   const err = await env({ MOCK_ALWAYS_PASS: '1', MOCK_ALWAYS_FAIL: null }, () =>
@@ -115,8 +118,15 @@ await scenario('C3', 'the guard still rejects a range aimed at refs unrelated to
   const { root, harnessDir, backlog, ticket } = fixture();
   git(root, 'branch', ticket.meta.branch, 'main');
   git(root, 'branch', 'some/other-branch', 'main');
-  write(path.join(harnessDir, 'flows', 'chore-shaped.yaml'), CHORE('main...some/other-branch'));
-  const flow = loadFlow(path.join(harnessDir, 'flows', 'chore-shaped.yaml'));
+  const file = path.join(harnessDir, 'flows', 'chore-shaped.yaml');
+  write(file, CHORE('main...some/other-branch'));
+
+  // Since Q-0035 this range is caught statically too, so loadFlow never returns it — which is the
+  // improvement, not a regression. The flow is therefore parsed without linting, so that the
+  // engine's own runtime guard is still the thing under test here; the lint layer is asserted
+  // separately, immediately below and in q0035-empty-range.js.
+  assert.throws(() => loadFlow(file), /input\.diff must be two/, 'harness lint must reject it before the run starts');
+  const flow = { ...YAML.parse(fs.readFileSync(file, 'utf8')), file };
 
   const err = await runFlow({ flow, ticket, backlog, harnessDir, repoDir: root, config: {}, ui: silent, auto: true })
     .then(() => null, (e) => e);
