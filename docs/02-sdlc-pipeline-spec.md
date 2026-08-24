@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum
 
-*Status: draft v1, 2026-08-21. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -99,6 +99,8 @@ draft ──▶ requirements ──▶ solutioned ──▶ red ──▶ green 
 ```
 
 Plus `blocked` (human parked it) and `abandoned` from any stage. A flow may only start on a ticket whose `stage` equals the flow's `consumes`. The Studio's backlog board is a kanban over this field.
+
+A stage is the ticket's position in this state machine, and only that. `green` means the ticket's integration branch integrated and passed its configured suite; it says nothing about where that code now is. No stage — `green` or any later one — implies the ticket's branch is contained in the configured base branch, because containment is a fact about two refs at the moment of reading and either ref can move after any transition. It is therefore never stored in `ticket.md`. `harness board` derives it from git on every invocation and shows it beside each ticket whose `branch` resolves to a local ref, as one token naming the configured base literally: `main:contained`, `main:not-contained(+12)`, or `main:indeterminate(missing ref)` / `main:indeterminate(shallow clone)` / `main:indeterminate(git failed)` when git could not answer — which is never reported as either of the other two states.
 
 ### 3.5 `tasks.yaml` (output of solutioning)
 
