@@ -39,7 +39,7 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // interrupted run silently handed its iteration budget back — an undocumented way to buy
   // unlimited retries, which defeats the bound the design rests on. See Q-0004.
   const onSignal = (sig) => {
-    try { finish(ctx, ticket.meta.stage, 'aborted', `received ${sig}`); } catch { /* nothing left to save */ }
+    try { finish(ctx, ticket.meta.stage, 'interrupted', `received ${sig}`); } catch { /* nothing left to save */ }
     process.exit(130);
   };
   process.once('SIGINT', onSignal);
