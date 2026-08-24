@@ -1,0 +1,6 @@
+2026-08-24T21:59:38.570Z run=1 flow=requirements start stage=draft
+2026-08-24T22:00:56.565Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=77965
+2026-08-24T22:04:30.051Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=2.1690585 ms=291456
+2026-08-24T22:09:18.689Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=1.6476685 ms=288625
+2026-08-24T22:09:18.704Z run=1 failed stage=draft→draft cost=3.817 tokens=1968404 error="gate (human) \"PM owner approves requirements/merged.md\" needs an answer and stdin closed without one — pass --gate-answer advance|abort (repeatable, consumed in order), or run interactively"
+2026-08-24T22:13:34.000Z run=1 gate=human answer=advance (out-of-band: owner approved requirements/merged.md after the non-interactive run stopped at the gate; head-of-product returned ready with zero findings and all three steps completed, so only the gate answer was missing; stage advanced by hand, no engine run completed)
