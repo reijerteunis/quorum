@@ -15,9 +15,24 @@ explains it. The explanation is a story rather than evidence: it runs `git merge
 and then reports a *historical event* — that the branch "is already merged into" the base — from an
 *ancestry fact*, which is precisely the shape of claim the 2026-08-24 erratum in `docs/DECISIONS.md`
 exists to warn about. It also recommends a workaround, pointing `input.diff` at the merge commit,
-that the range guard on `harness/Q-0006/integration` makes impossible. The message should name the
-range, both refs with their short SHAs, and the outcome of the check that produced its conclusion,
-and it should assert only git states the engine has verified.
+that the range guard makes impossible. The message should name the range, both refs with their short
+SHAs, and the outcome of the check that produced its conclusion, and it should assert only git
+states the engine has verified.
+
+**Updated 2026-08-24, after Q-0034 landed.** Two clauses above have moved and the ticket is smaller
+than it was written. Q-0006's branch is now on `main`, and landing it changed the same function
+twice more, so read the code rather than this paragraph. What is no longer true: the message does
+not hard-code "main" — it diagnoses against the range's own endpoints, because the chore flow
+reviews `integration...implement` and the question there is whether the implement side is contained
+in the integration side. What is still true, and is this ticket's whole subject: it reports a
+historical event from an ancestry fact, it names no SHAs and no check outcome, and it still
+recommends pointing `input.diff` at a merge commit — which the guard now rejects more definitively
+than before, since both endpoints must be the configured base or one of this ticket's own branches.
+The billing clause is also partly satisfied already: the run-level preflight materialises every
+pre-existing-ref range before the first step, so no adapter is billed against a bad ref. It does
+*not* cover ranges an earlier step of the same flow creates, which defer to step time by design —
+whether that gap needs closing, and how it could be, is a real question for this ticket rather than
+a settled one.
 
 Two things travel with it. No adapter should be billed before bad evidence is found: M1 paid two
 vendors $5.02 to review a diff that did not exist, and a flow whose later step carries an empty or
