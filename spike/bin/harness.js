@@ -540,16 +540,12 @@ async function main() {
           return;
         }
         if (TICKET_ID_PATTERN.test(token)) {
-          // A syntactically valid ticket id with zero matches still exits 0 — that is the contract.
-          // Rendered warnings are a different question, and runs-cli.contract.md answers it without
-          // carve-out: "A malformed sibling is named, valid siblings are still rendered, and the
-          // final exit is non-zero." The previous comment here argued the opposite by assertion,
-          // which both round-2 panellists flagged as resolving a frozen contract by argument.
-          // NOTE: spike/test/q0011-runs-cli.js contains an assertion freezing the old exit-0
-          // behaviour and will now fail. That is deliberate and the maintainer's explicit call on
-          // 2026-08-24: fix the code, leave the test, so the disagreement is visible in the suite
-          // rather than settled quietly in the direction of the bug. The test needs re-pointing —
-          // by qa-red or by an erratum — before this branch can land. See Q-0034.
+          // A syntactically valid ticket id with zero matches exits 0; rendered warnings are a
+          // separate question. runs-cli.contract.md states both rules and did not say which governs
+          // when both apply, which is why the implementation and its test read it one way and both
+          // round-2 panellists read it the other. Settled by erratum E-4
+          // (backlog/Q-0011-…/solution/errata.md, 2026-08-24) in favour of store health: warnings
+          // force a non-zero exit whatever the selection matched. See Q-0034.
           const { runs: allRuns, warnings } = listRuns();
           const filtered = sortRuns(allRuns.filter((r) => r.manifest.ticket_id === token));
           if (jsonMode) console.log(JSON.stringify(runsListJSON(filtered, warnings)));

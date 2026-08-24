@@ -37,7 +37,14 @@ scenario('AC-12/EDGE-10/EDGE-11', 'lists, filters, warns, and applies the specif
   assert.match(r.stdout, /codex[^\n]*unpriced_steps=1/i);
   assert.doesNotMatch(r.stdout, /(?:combined|total)[^\n]*\$/i, 'must not render a cross-vendor money total');
   const filtered = cli(root, ['runs', 'Q-0011']); assert.doesNotMatch(filtered.stdout, /Q-0012-1/);
-  assert.equal(cli(root, ['runs', 'Q-9999']).status, 0); assert.notEqual(cli(root, ['runs', 'q-0011']).status, 0); assert.notEqual(cli(root, ['runs', 'Q-11']).status, 0);
+  // Erratum E-4 (solution/errata.md, 2026-08-24). The contract states both "zero matches ... exit
+  // zero" (:12) and "a malformed sibling is named ... and the final exit is non-zero" (:18-19), and
+  // `root` satisfies both — it carries a deliberately malformed `bad` sibling. Store health wins.
+  // Split rather than deleted, so both clauses keep coverage: zero matches on a CLEAN store still
+  // exits zero, and the same query over a corrupt store does not.
+  assert.equal(cli(fixture(), ['runs', 'Q-9999']).status, 0, 'zero matches on a clean store exits zero');
+  assert.notEqual(cli(root, ['runs', 'Q-9999']).status, 0, 'a named malformed sibling forces a non-zero exit even with zero matches');
+  assert.notEqual(cli(root, ['runs', 'q-0011']).status, 0); assert.notEqual(cli(root, ['runs', 'Q-11']).status, 0);
 });
 
 scenario('AC-12', 'missing history is an explicit successful empty state', () => {
