@@ -1,14 +1,23 @@
 ---
 id: Q-0009
 title: Port the spike to packages/core
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0009/integration
 priority: p1
 created: 2026-08-25
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-25T01:03:50.603Z
+    cost: 8.323
 ---
 The runnable Quorum is still `spike/` — 2,261 lines of plain Node ESM across seven modules, plus a
 616-line CLI and 3,142 lines of tests, on two dependencies and a hand-rolled runner. Q-0008 built
