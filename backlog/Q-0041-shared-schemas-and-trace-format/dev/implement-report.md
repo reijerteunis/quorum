@@ -1,371 +1,264 @@
-# Q-0041 — implementation report
+# Q-0041 — implementation report (chore, iteration 5)
 
-*Third implement round. This report replaces iteration 2's, so it carries forward everything from it
-that is still true rather than only describing the delta. The delta is the first two sections.*
+*Revision round, and the **single traversal** authorised by the `retry` answered at run 3's
+exhaustion gate — `runs.log`: `2026-08-25T19:49:23.790Z run=3 gate=retry counter=chore.review set=2
+(one further traversal authorised)`. A further rejection re-presents the gate rather than buying
+another round.*
 
----
-
-## The major from `review/chore-iter-2.md`
-
-> **major: packages/shared/src/flow.ts:43** — The schema explicitly admits exceptions to AC-3's
-> binding requirement that every flow accepted by `lintFlow` must parse successfully. The documented
-> counterexamples — wrongly typed fields, missing `name`, and missing `steps` — are accepted by the
-> current linter but rejected here. Documenting a narrower boundary does not override the merged
-> requirement… Widen the schema so the implication holds, or stop and obtain a requirements
-> amendment before landing; add tests that actually invoke `lintFlow` against these boundary cases
-> rather than asserting the exception.
-
-**The finding is correct, and I checked it by running `lintFlow` rather than by reading it.** All
-three counterexamples behave exactly as the reviewer says. Iteration 2 had written a test named
-*"the property's boundary: zod owns structure, so three shapes lint accepts do not parse"*, which is
-the reviewer's objection in the test suite's own words: a criterion the requirement calls binding
-was being documented away instead of met.
-
-The reviewer offered two remedies. **I have applied both, split along a line the requirement itself
-draws** — because the three counterexamples are not one kind of thing, and treating them as one is
-what produced a bad answer twice.
-
-### Widened: every divergence that is a rule about which keys are present
-
-`name` and `steps` are now optional. This is not only a concession to AC-3 — it is required by AC-4
-rule 1 independently, which says in as many words that zod *"may never add a rule lint does not
-have."* **A required key is a rule.** Lint requires neither:
-
-- `lint.js:127` throws with `` flow ${flow.name ?? flow.file} invalid `` — a nameless flow lints
-  clean and prints as its filename.
-- `flattenSteps(steps = [])` at `lint.js:7` defaults the key away, so a flow with no `steps` returns
-  `true`.
-
-`consumes` and `produces` stay required, and that is not an added rule either: `lint.js:124` pushes
-`flow needs consumes/produces`, so `{}` is refused by both.
-
-One shape that looks like part of the residue and is not: **`steps` present but not an array.**
-`steps: null` and `steps: [null]` both throw a `TypeError` out of `flattenSteps`, so `lintFlow` does
-not succeed on them and refusing them here narrows nothing. There is a test making that argument
-explicit, so the next reader does not mistake it for a fourth exception.
-
-### Stopped and reported: every divergence that is a rule about a value's type
-
-This is the half I have **not** resolved, because I do not think the requirement authorises either
-answer. See the next section.
-
-### The test the reviewer asked for, and the one I actually shipped
-
-The offending test is gone. In its place:
-
-- **`no key is required here that lint does not require`** — the nameless flow, the stepless flow and
-  the flow with neither all parse *and* round-trip unchanged; `{}` is refused. Passing assertions
-  about what the schema accepts, not assertions about what it declines.
-- **`` `steps` present but not an array is rejected — which is where lint stops accepting too ``.**
-
-I did **not** ship a test that imports `spike/src/lint.js` at runtime, though the reviewer suggested
-it and though I used exactly that to produce the transcript below. Three reasons, and the third is
-the one that decides it:
-
-1. The requirement's own Risks section states the opposite is available: *"`spike/` is outside the
-   pnpm workspace… so the spike cannot exercise a zod schema and the schema cannot exercise the
-   spike."*
-2. `packages/shared/test/corpus.ts` already reads `spike/` — but as **text**, for the constants and
-   `STAGES` byte-comparisons. Executing it is a different coupling: a runtime import escaping the
-   package root into a tree whose `yaml` resolution is incidental.
-3. **The cutover deletes `spike/`.** A test that imports it makes the bottom-of-the-graph package's
-   suite fail on the day Q-0009 cuts over. That is a consequence outside this ticket, landing on
-   someone else's, and choosing it unilaterally is the thing a chore implementer is told not to do.
-
-**A finding worth having anyway: the Risks section's claim is false.** The import works — that is
-how the transcript below was produced. If the gate wants the property under continuous test rather
-than under review, the mechanism exists and costs one file; it needs an answer for the cutover, and
-that answer is Q-0009's or Q-0054's, not mine.
+**One finding was open. It was correct. It is fixed, and the fix is proved to be load-bearing.**
 
 ---
 
-## Stop-and-report: AC-3 and AC-4 rule 1 cannot both hold as written
+## 1. Which review is current, and why only one finding is open
 
-**This is the one thing in this round I am asking the gate to decide.**
+Three files sit under `review/`, and a reviewer opening the folder will reasonably assume three
+findings are outstanding. Only one is. The evidence is the file mtimes against `runs.log`, which
+match to the millisecond:
 
-AC-3: *"For any flow object, `lintFlow` succeeding implies the flow schema parsing succeeding."*
-AC-4 rule 1: *"Zod describes structure and **types**."*
-
-`lintFlow` type-checks almost nothing. Where a value reaches it at all it reaches `String()` or
-`.includes()`, which accept anything. So the set of objects lint accepts includes objects with
-wrongly typed values, and any schema that checks types rejects some of them. **The two criteria are
-in direct conflict, and no drafting of the schema satisfies both.**
-
-Holding AC-3 literally means `z.unknown()` on every field. That is a schema which describes nothing,
-and it returns thirteen consumers to re-deriving what a flow file is from `YAML.parse`'s return —
-the state the ticket's own Problem statement exists to end, and the reason its user story asks for
-*"a type instead of each re-deriving one."* I did not do that, and I did not quietly keep the types
-while calling AC-3 satisfied either.
-
-### The transcript
-
-Produced by importing the real `lintFlow` from `spike/src/lint.js` and `flowSchema` from this
-package, in one process, over the same objects. `VIOLATION` marks lint accepting where the schema
-refuses — the property's failures, and nothing else.
-
-| Case | `lintFlow` | `flowSchema` | |
+| File | mtime (+02:00) | `runs.log` line | Which run |
 | --- | --- | --- | --- |
-| no `name` | accepts | parses | |
-| no `steps` | accepts | parses | |
-| neither `name` nor `steps` | accepts | parses | |
-| unknown top-level key | accepts | parses | |
-| `consumes` outside `STAGES` | accepts | parses | |
-| `gate: null` (falsy) | accepts | parses | |
-| `{}` | rejects (`FlowError`) | rejects | |
-| `steps: null` | rejects (`TypeError`) | rejects | |
-| `steps: [null]` | rejects (`TypeError`) | rejects | |
-| `adapter: 42` | accepts | rejects | **VIOLATION** |
-| `id: 42` | accepts | rejects | **VIOLATION** |
-| `gate: 42` | accepts | rejects | **VIOLATION** |
-| `max_turns: "many"` | accepts | rejects | **VIOLATION** |
-| `cross_vendor: 42` | accepts | rejects | **VIOLATION** |
-| `instructions: {}` | accepts | rejects | **VIOLATION** |
-| step is a bare string | accepts | rejects | **VIOLATION** |
+| `review/chore-iter-1.md` | 21:39:18.885 | `19:39:18.885Z run=3 step=review … verdict=revise` | **run 3 — current, and the only open finding** |
+| `review/chore-iter-2.md` | 20:42:02.121 | `18:42:02.121Z run=2 step=review … verdict=revise` | run 2, iteration 2 — settled by **E-1** |
+| `review/chore-iter-3.md` | 20:55:32.916 | `18:55:32.916Z run=2 step=review … verdict=revise` | run 2, iteration 3 — settled by **E-1, E-2, E-3** |
 
-Before this round the first three rows were violations too. They are not any more. **Every remaining
-violation is a value type, and every one of them is rule 1 doing its job.**
+So `chore-iter-1.md` is not run 2's first review; it is **run 3's review of round 4's work**, and it
+overwrote run 2's first review, which no longer exists anywhere. The cause is in the engine and is
+mechanical: `chore.yaml:34` writes `review/chore-iter-{iter}.md`, and `ctx.vars.iter` is initialised
+to `1` at **run** start (`spike/src/engine.js:45`) and incremented per traversal (`:155`). It is
+run-scoped, not ticket-scoped, so every new run restarts the numbering and its first review lands on
+`chore-iter-1.md` again. This is a stop-and-report item, not something this ticket may fix — §6.
 
-### The two amendments available
-
-Either resolves it; I am not choosing between them.
-
-1. **Scope AC-3's property to key presence.** *"`lintFlow` succeeding implies the schema parses,
-   except where a value's type is wrong — the schema is the only thing that checks types, and lint
-   never has."* This is what the code and the DECISIONS entry now describe, and it costs little,
-   because the objects it stops accepting are ones that crash the engine a moment later.
-2. **Drop "types" from AC-4 rule 1** and accept a schema that names keys without constraining them.
-   Cheap to write and, I think, not worth having — but it is a coherent position and it is the gate's
-   to take.
-
-Until one is recorded, `packages/shared` ships holding the property for presence and not for types,
-and says so in three places: `flow.ts`'s header, the DECISIONS entry, and here.
-
-**On process, since this is the third round on one criterion.** Rounds 1 and 2 each spent themselves
-on a claim about what `lintFlow` accepts that could have been settled in a minute by calling it. I
-did that first this time. The lesson is small and cheap: when a review round and an implement round
-disagree about the behaviour of a function that is sitting in the repository, running it is the
-shortest path.
+Rounds 2 and 3's findings were settled by `requirements/errata.md` and implemented in round 4
+(`.passthrough()` → `strict` on the event variants for E-3, `route` left untyped with E-2's evidence,
+and the property re-stated and executed against the real linter for E-1). Round 4's report covers
+that work; nothing in it is re-opened here, and nothing in it is re-litigated.
 
 ---
 
-## The two majors from `review/chore-iter-1.md` — confirmed still closed
+## 2. The finding, and the check I ran before believing it
 
-Both were fixed in iteration 2 and neither regressed. Restated because this report replaces the one
-that recorded them.
+> **major: packages/shared/src/flow.ts:181** `agentStepSchema` requires `id`, and the script,
+> integrate, and fan-out schemas repeat that requirement, even though `lintFlow` accepts steps of
+> those kinds without an `id`; parallel members inherit the same requirement through
+> `agentStepSchema`. This violates erratum E-1's binding rule that the schema may require no key
+> whose absence lint accepts […] Make `id` optional for every step kind where `lintFlow` does not
+> require it, and add real-`lintFlow` presence tests covering an id-less plain agent, parallel
+> member, script, integrate, and fan-out step.
 
-**1. `flow.ts:207` — the ordered `z.union` did not commit to the engine's step kind.** Closed.
-`flowStepSchema` is a `z.unknown().transform()` that calls `stepKind(value)` — a transcription of
-`runStep`'s dispatch at `engine.js:176–198`, by *truthiness* of `parallel`, `gate` and `fan_out`,
-with `type` separating only script from integrate — then validates against that one schema and
-re-raises its issues unchanged. There is no fallback branch. Tests: *"the selected kind is validated,
-and never falls through to the agent step"* (six malformed steps, one per kind) and *"a failure names
-the field of the kind the engine selected"*, which asserts the issue path is exactly `steps.0.gate`.
+It is right on every count. Three review rounds on this ticket were spent arguing about what
+`lintFlow` accepts *from reading it*, which is the mistake E-1 exists to end — so I ran it. Each row
+below is `spike/src/lint.js`'s own verdict on a flow whose single step carries no `id`, with whatever
+else that kind needs to lint clean:
 
-**2. `flow.ts:221` — `consumes`/`produces` used the ten-member `stageSchema`.** Closed; both are
-`z.string()`. `lint.js:124` checks only that they are truthy, so a flow naming a stage outside the
-list runs today and the schema may not be the thing that stops it. This round's transcript re-proves
-it: *`consumes` outside `STAGES`* → lint accepts, schema parses. `stageSchema` remains correct for a
-ticket's own `stage`, in `ticket.ts`.
-
----
-
-## Read this before the diff: two things I could not decide alone
-
-Flagged in iterations 1 and 2; neither was raised in review, so both still stand.
-
-**1. I wrote two `docs/DECISIONS.md` entries, and my role file says not to.** `developer-generalist`
-says *"You do not append to docs/DECISIONS.md; a decision is the human's to record."* AC-4 requires
-*"a dated DECISIONS entry with **Decision** / **Alternatives considered** / **Why**"* and tests that
-it exists in that shape; AC-8 requires its disposition table to go into that entry or a second one
-beside it. I took the merged requirement — approved at a human gate, specific, and later than the
-role file — as governing. They are the last two sections of the file and nothing else in it is
-touched. **If you would rather author them yourself, delete both sections and the `docs.test.ts`
-block asserting them; nothing else depends on them.** This round amended the first entry rather than
-appending a third; since that entry has never left this branch, no merged text was rewritten.
-
-**2. `@types/node` is a dependency the requirement does not name, and I added it.** At the workspace
-**root**, as a `devDependency`, beside `typescript` and `vitest`. AC-3, AC-5 and AC-6 all require
-corpus tests that read files; the workspace had never had a test importing a platform builtin, so
-`pnpm typecheck` fails on every one of them without it. The alternatives were dropping test files
-from `tsconfig` (a larger change to Q-0008's scaffold) or suppressing each import (banned by
-`harness/rules.md`). It is type-only and ships nothing; `packages/shared`'s own list stays `zod`
-alone plus `yaml` in `devDependencies`, exactly as AC-1 specifies.
-
----
-
-## The one-line dependency justification AC-1 asks the report to carry
-
-> `zod` is the only schema library whose runtime validation and inferred TypeScript types come from
-> one declaration, which is the entire reason for putting these shapes in a package rather than
-> writing interfaces.
-
-`yaml` (devDependency) is used by `packages/shared/test/corpus.ts` and by nothing that ships;
-`index.test.ts` → *"zod is the only runtime dependency"* asserts it.
-
-Version `zod@^4.4.3`, pinned by the lockfile (OQ-6), using constructs common to v3 and v4 so a later
-bump is not a rewrite at the bottom of the graph. Two honest qualifications: `.passthrough()` and
-`.strict()` are deprecated aliases in v4 (`z.looseObject` / `z.strictObject` are the v4 spellings),
-and the `{ ...issue }` spread in the selector exists because of v4's raw-issue typing. Both are
-one-line changes per site; neither changes behaviour. Dependencies and the lockfile are **untouched
-this round**.
-
----
-
-## File by file
-
-### Changed this round — three files
-
-| File | Change |
+| Step, written with no `id` | Real `lintFlow` |
 | --- | --- |
-| `packages/shared/src/flow.ts` | `name` → `z.string().optional()`, `steps` → `z.array(flowStepSchema).optional()`, each with a doc-comment citing the lint line that forced it. The header's *"three shapes lint accepts and this schema does not"* paragraph is replaced by a **PRESENCE / TYPES** statement: the property holds for the first, cannot hold for the second alongside rule 1, and the conflict is reported rather than absorbed. |
-| `packages/shared/src/flow.test.ts` | The exception test is deleted. Two tests replace it: *"no key is required here that lint does not require"* (three shapes parse and round-trip; `{}` refused) and *"`steps` present but not an array is rejected"*. AC-3's block goes 15 → 16 tests; the file 19 → 20. |
-| `docs/DECISIONS.md` | Rule 1 of *"Zod describes structure and types"* gains the presence clause — a required key is a rule, so the schema requires a key only where lint does. A closing paragraph states the limit of the implication and the standing rule: **the schema may add no rule about which keys are present, and it is the only thing that checks what their values are.** |
+| plain agent — `{role, adapter}` | **ACCEPTS** |
+| `parallel` member — `{parallel: [{role, adapter}, {role, adapter}]}` | **ACCEPTS** |
+| script — `{type: 'script', run}` | **ACCEPTS** |
+| integrate — `{type: 'integrate', branches}` | **ACCEPTS** |
+| fan-out — `{fan_out, step}` | **ACCEPTS** |
+| agent with `input.diff` | **ACCEPTS** |
 
-One incidental: the phrase `` never `.default([])` `` in a new doc-comment tripped AC-4's guard,
-which greps `packages/shared/src` for the literal `.default(`. I reworded the prose rather than
-teach the guard to skip comments — the guard is blunt on purpose and passed review twice.
+The mechanism is one line: `lintFlow` gathers ids with `steps.filter((step) => step.id)`
+(`lint.js:59`), so an id-less step is simply absent from the duplicate-id check, and **no other rule
+in the function looks for one**. The gate step was never the exception it appeared to be — it was the
+only kind anyone had checked, which is why it was the only one already optional.
 
-### The branch as a whole — unchanged since iteration 2
+Four required-`id` schemas is four presence rules lint does not have. That is zod adding rules to the
+flow format, which is what AC-3 was written to prevent, what E-1 makes the whole of the property, and
+what `docs/DECISIONS.md` ("Zod describes structure and types…", 2026-08-25) states as *"the schema
+may add no rule about which keys are present."* That entry also claims *"after the third implement
+round the schema requires nothing lint does not"* — **that claim was false when it was written, and
+is true of this file only from this round onward.** No document needed editing; the code needed to
+catch up with it.
 
-| File | What it holds |
-| --- | --- |
-| `src/stages.ts` | `STAGES` (ten names in order, from `backlog.js:6–9`), `Stage`, `stageSchema`, all derived from the one tuple. |
-| `src/constants.ts` | The cross-package values, each with the spike line it replaces: the two `.harness/` namespaces, the `/`→`__` worktree encoding, the run-history root and filenames, run-id and occurrence-directory shapes, ticket branch shapes, `main`, `runs.log`, the finding vocabulary, the five usage measures. |
-| `src/flow.ts` | The flow file: top-level keys including the loader-injected `file`, the six step kinds, and the selector that picks between them by the engine's dispatch. |
-| `src/ticket.ts` | `ticket.md` frontmatter (ten fields) and the history entry (eight, three optional because shorter entries exist on disk). |
-| `src/role.ts` | Role frontmatter: `adapter`, `model`, `paths` — every one optional. |
-| `src/step-output.ts` | The two step-output shapes under different names, and the doc-comment naming all four validators and where each lives. |
-| `src/events.ts` | `adapterEventSchema` and `eventSchema`, the evidence table, and register row 22's operative reading. |
-| `src/index.ts` | Seven `export *` lines and nothing else. |
-| `test/corpus.ts` | Test support, deliberately **outside `src/`** so the one module that touches the filesystem sits beside AC-2's boundary rather than inside it. Every reader throws when its subject is missing or empty. |
-| `packages/core/src/shared-resolution.test.ts` | AC-1's resolution proof, as a **new** file — AC-1 wants a typecheck resolving a `shared` type from `core` while the non-goals forbid changing a `core` source file, so: add a file, do not change one. `packages/core/src/index.ts` is byte-for-byte untouched, with a test saying so. |
+### I swept the rest of the package for the same defect rather than patching the named line
 
-Modified elsewhere on the branch: root `package.json` (`@types/node`), `pnpm-lock.yaml`,
-`packages/shared/package.json` (`exports`, `zod`, `yaml`), `packages/core/package.json` (one
-workspace line), `docs/04-architecture.md`, `docs/03-adapter-contract.md`,
-`docs/02-sdlc-pipeline-spec.md`, `docs/GLOSSARY.md` (**Event**), `docs/DECISIONS.md`.
+If four presence rules survived three rounds, the question is whether any others did. I checked every
+required key in the package against the real linter. `id` was the only violation:
 
-**Nothing under `spike/` or `backlog/` is touched, on this round or on the branch.**
-`git diff --stat main...HEAD -- spike backlog` is empty and `git status -- spike` is clean, which is
-what the freeze's `branch-scope` job checks.
+| Required key | Does lint require it? | Verdict |
+| --- | --- | --- |
+| `flowSchema.consumes`, `.produces` | Yes — `lint.js:124`; `lintFlow({})` and `lintFlow({consumes, steps})` both refuse | correct, unchanged |
+| `onFailSchema.goto` | Yes — `lint.js:63`, *"on_fail without goto"* | correct, unchanged |
+| `onFailSchema.max_iterations` | Yes — `lint.js:65`, absent fails `Number.isInteger` | correct, unchanged |
+| `onFailSchema.on_exhausted` | Yes — `lint.js:75`, absent is `!== 'gate'` | correct, unchanged |
+| `parallel`, `gate`, `type`, `fan_out` | Present by construction — the selector chooses that branch *on* them | not a presence rule |
+| `stepInputSchema`, `stepOutputDeclarationSchema` | Every field already optional | nothing to check |
 
----
-
-## Stop-and-report: what I found while reading and did not fix
-
-Per charter §2. Finding 6 is materially revised this round.
-
-**1. A corpus fact contradicts the requirement's stated mechanism (AC-6).** The requirement says
-`harness/roles/code-reviewer.md` reaches an empty object *"so `YAML.parse('')` yields nothing and
-`backlog.js:14`'s `?? {}` hands the engine an empty object."* It does not take that route: with two
-consecutive `---` lines and no third, the regex at `backlog.js:12` finds **no match at all** and
-`:13` returns `{ meta: {}, body: text }` before any YAML is parsed. The outcome the schema must
-accept is identical, which is why AC-6 is satisfied unchanged — but the whole file including its
-delimiters becomes `body`. Tests pin both facts. Q-0043 owns `parseFrontmatter`.
-
-**2. AC-10 undercounts the hard-coded `main`.** The criterion names four sites
-(`engine.js:45, 916, 991, 1004`). There are **five** — `engine.js:788`, in `materialiseDiff`, is the
-same `base_branch ?? 'main'` fallback and is unlisted — and a **sixth** in the CLI
-(`bin/harness.js:431`), which Q-0043 lifts. The constant's value is unaffected; the test asserts the
-real counts so the next reader is not misled.
-
-**3. The nine defects the requirement's own non-goals enumerate, all still present.** Confirmed while
-reading, none changed: `nextId()` assumes a `T-` prefix and does not recognise the `Q-` ids in use
-(`backlog.js:51`); `route` is linted and never implemented; `fan_out.from` and `fan_out.by` are never
-read, since `loadTasks` hard-codes `solution/tasks.yaml`; `output.append` is documented and
-unimplemented; `verdict_file` and `max_turns` are implemented and undocumented; `priority`, `repos`
-and `created` are written and never read; `history[].stage` duplicates `stage_after`. Only the tenth
-— the two documents disagreeing about the event union — is corrected, and only because AC-8 and
-AC-11 require the documents to agree with what shipped.
-
-**4. `output.append` becomes a build-time failure for Q-0012** rather than a silent no-op, because
-the `output:` block is the one object that rejects unknown keys instead of preserving them.
-
-**5. The charter's own row reference is still inconsistent** — the ticket body cites *"register rows
-22 (charter §2)"* in one place and *"§6's register is normative"* in another. Both point at row 22,
-so nothing material turns on it. Not mine to edit.
-
-**6. `lintFlow` accepts a flow with no `steps` and no `name`, and the engine then throws a raw
-TypeError.** *(Revised: iteration 2 recorded this finding and had the schema compensate for it. It no
-longer does, and the finding is the whole of what remains.)* `flattenSteps(steps = [])` defaults
-`steps` away inside lint and `lint.js:127` falls back to `flow.file` when printing, so
-`lintFlow({name: 'x', consumes: 'green', produces: 'reviewed'})` returns `true` — and then
-`engine.js:83` (`const steps = flow.steps`) and `:115` (`for (const group of flow.steps)`) read the
-key directly. This is the ticket's own Problem statement — *"a malformed flow does not fail lint … it
-throws a raw TypeError"* — surviving in a second place nobody had named.
-
-**Iteration 2 closed it in the schema, and that was the wrong instrument.** A required key in zod is
-a rule lint does not have, so the compensation broke AC-4 rule 1 and AC-3 together in order to catch
-a defect in a module this ticket does not own. **Q-0044 should add the lint rule**, and its message
-should name `steps` the way the other fourteen name a step id. Until it does, `quorum lint` keeps
-accepting these flows, which is exactly the behaviour the port is required to preserve.
+`agentStepResultSchema` (`step-output.ts`) requires `summary`, and E-1 does not reach it: it is a
+value Quorum constructs from an agent's answer, not a flow object lint ever sees.
 
 ---
 
-## Deliberately left alone
+## 3. File by file
 
-- **`spike/**`** — charter §3. Read extensively, and executed once in a scratch test to produce the
-  transcript above; that file was deleted and nothing under `spike/` was written.
-- **`backlog/**`** — `commitAll` reverts it and no criterion asks for it.
-- **Every other child's module.** No `git`, `backlog`, `lint`, `contracts`, `adapters`, `fanout`,
-  `run-history` or `engine` code. `test/corpus.ts`'s frontmatter transcription is test support, not a
-  port, and is not exported from the package.
-- **`lintFlow` itself** — finding 6. The lint gap is real, it is Q-0044's module, and a new lint rule
-  is behaviour the port does not authorise.
-- **The `harness.yaml` project-config schema** — Q-0043, with `loadProject`.
-- **The run-status and manifest error-category vocabularies** — not cross-package yet; `status` in a
-  history entry is an open string with a comment saying so. Q-0049/Q-0050 decide.
-- **`checkAgainstSchema`, `contracts.js`/ajv, `extractJson`** — register row 13. `shared` imports no
-  ajv, emits no JSON Schema and validates no vendor output; three tests check it.
-- **The frozen run manifest** — cited as evidence for AC-9, never opened.
-- **The event stream's channel, ordering, terminal semantics and gate-answer path** — Q-0050. This
-  ticket defines payload shapes and a step-id envelope, and emits nothing.
-- **`packages/core/src/index.ts`** — byte-for-byte unchanged, with a test that says so.
-- **A `build` task, `outDir`, `composite` or project references** — not needed for AC-1, and a
-  decision for whoever first publishes.
+Two files changed. Nothing else in the package was touched.
+
+### `packages/shared/src/flow.ts` — `id` optional on four schemas, plus the reasoning
+
+- **`agentStepSchema:190`** — `id: z.string()` → `id: z.string().optional()`, with a doc-comment
+  saying why and pointing at the header. This one line is also what fixes the `parallel` half of the
+  finding: `parallelGroupSchema:198` is `z.array(agentStepSchema)`, so its members inherit it.
+- **`scriptStepSchema:222`**, **`integrateStepSchema:233`**, **`fanOutStepSchema:282`** — the same
+  change, each with a one-line comment rather than a repeat of the argument.
+- **Header, the PRESENCE paragraph** — rewritten from a sentence into the three cases it actually
+  governs, so the next reader does not have to re-derive the third: `name`/`steps` optional,
+  `consumes`/`produces` required, and `id` optional on every kind with `lint.js:59` cited as the
+  mechanism and the six-row probe above recorded as having been *run*.
+- **The cost is stated in the same paragraph rather than left implicit.** `id` is now
+  `string | undefined` on every step type a consumer holds, and the engine genuinely needs one — it
+  interpolates `harness/<ticket>/<step.id>` for a worktree branch (`engine.js:211`) and keys a loop
+  counter `<flow>.<step.id>` (`engine.js:541`). A reader who finds that surprising should find the
+  reason next to the field, not in a report nobody opens again. It is a gap in lint, and closing it
+  here would be the very failure this change corrects; §6 reports it.
+- **`fanOutStepTemplateSchema:275`** — comment only. It read *"`id` is optional here where it is
+  required on a real agent step"*, which this round makes false. It now records that the two schemas
+  are structurally identical and are deliberately **not** aliased to each other: they are different
+  things — one is a step the engine runs, the other a template it copies per task — and an alias
+  would make a later change to one silently a change to the other.
+
+No other schema, field, type or export in the file moved.
+
+### `packages/shared/src/flow.test.ts` — the tests the finding asks for, plus one it implies
+
+- **`ID_LESS_CASES`** — the same flow written once per step kind with its step carrying no `id`:
+  plain agent, `parallel` member, script, integrate (with `branches`), fan-out (with its `step:`
+  template), and the gate step. Each row carries whatever else its kind needs to lint clean, so the
+  only variable under test is the missing id. The gate row overlaps one row in `PRESENCE_CASES`
+  deliberately — this table is *all six kinds*, and dropping one to avoid a duplicate assertion would
+  make it five and hide which kind is which.
+- **`presence: no step kind requires an id…`** — for each row: the real `lintFlow` accepts it (the
+  premise), the schema accepts it (the fix), and the schema returns it **unchanged** (AC-4 rule 3,
+  which the new optional field must not quietly breach).
+- **`presence: an id-less step is still parsed as its own kind, not demoted to an agent step`** — the
+  finding does not ask for this and the change needs it. Making `id` optional must not blur the
+  selector, so this asserts that `{gate: 42}`, `{type: 'script', run: 5}`,
+  `{type: 'integrate', branches: 7}` and `{fan_out: 42}` — all id-less — still fail on **their own
+  kind's field** (`steps.0.gate`, `steps.0.run`, `steps.0.branches`, `steps.0.fan_out`) rather than
+  falling through to the permissive agent branch. Without it, a later widening could silently make a
+  malformed integrate step an agent step and take lint's `integrate needs branches` message out of
+  `quorum lint`'s output.
+
+**I checked that the new test actually catches the defect**, rather than assuming it. Restoring
+`id: z.string()` on `agentStepSchema` and re-running gives
+`FAIL … AssertionError: the schema must accept a plain agent step with no id`, 1 failed / 26 passed.
+The fix was then restored and the suite is green. A test added alongside a fix that would pass
+without it is not a test, and this round is the last one the gate authorises.
 
 ---
 
-## Verification
+## 4. What I deliberately left alone
+
+- **Every other schema in the package.** `constants`, `stages`, `ticket`, `role`, `step-output`,
+  `events` and `index` are untouched; no finding reaches them and the sweep in §2 found nothing.
+- **`route`** — still carried untouched by passthrough, per **E-2**. Iteration 3 asked for a shape;
+  three clauses of this requirement forbid inventing one and there is nothing to derive one from.
+- **The event union** — still `strict`, per **E-3**, with `vendor` an open string per AC-9.
+- **`consumes` / `produces`** — still plain strings, not `stageSchema`. E-1 preserves this explicitly:
+  *"they are structurally strings."*
+- **`fanOutStepTemplateSchema` as a separate declaration** — now identical in shape to
+  `agentStepSchema`. Collapsing them is tidying I was not sent to do, and §3 records why it would be
+  the wrong tidy anyway.
+- **`docs/`** — nothing to correct. The DECISIONS entry already states this round's rule in this
+  round's words; the code was what disagreed with it.
+- **`spike/`** — read only. `git status` shows two modified files, both under `packages/shared/`,
+  none under `spike/`, so the `branch-scope` freeze job is clear.
+- **`docs/DECISIONS.md`** — I do not append to it; §7 names what may want an entry.
+
+---
+
+## 5. Criteria that require something to be stated in this report
+
+This file is the artifact of record and is overwritten each round, so the three standing statements
+are restated rather than left in a superseded copy.
+
+**AC-1 — the dependency justification.** *zod is the only schema library whose runtime validation and
+inferred TypeScript types come from one declaration, which is the entire reason for putting these
+shapes in a package rather than writing interfaces.* It is the sole `dependencies` entry; `yaml` is a
+devDependency used only by the corpus tests and by nothing that ships.
+
+**AC-8 — the event disposition table.**
+
+| What exists today | Where | Disposition |
+| --- | --- | --- |
+| `{type: 'spawn', vendor, cmd}` | `claude.js:31`, `codex.js:52` | member, fields verbatim |
+| `{type: 'stdout', line}` | `claude.js:32`, `codex.js:60`, `mock.js:66` | member, fields verbatim |
+| `{type: 'retry', vendor, attempt, of, delayMs, reason, message}` | `adapters/index.js:109` | member, fields verbatim (contract layer, not a vendor) |
+| `ui.step(id, m)` / `ui.done(id, m)` | `bin/harness.js:66–67` | members `step`, `done` |
+| `ui.info(m)` / `ui.warn(m)` | `bin/harness.js:64–65` | members `info`, `warn`, no step id |
+| `ui.gate({kind, reason, ticketDir, retry})` | `bin/harness.js:74–127` | the **question** is a member; the answer channel is Q-0050's |
+| `tool`, `text` | emitted by nothing | **not added** — needs an adapter to normalise vendor JSONL, which changes `--verbose` and enlarges Q-0047 |
+
+**AC-11 — the spike contains no transition table.** `STAGES` is used for board column ordering
+(`bin/harness.js:434`) and a hard-coded first-three subset (`:436`); transitions are the flow
+directory's `consumes`/`produces` (`engine.js:38–40`, `:622–624`, `lint.js:147–181`); nothing
+validates `meta.stage ∈ STAGES` at read or write. What moved is the list.
+
+---
+
+## 6. Stop-and-report — defects seen while reading, not fixed
+
+Per *"The port preserves behaviour; one exception is authorised and everything else stops the child"*
+(`docs/DECISIONS.md`, 2026-08-25). **Two are new this round** and both were found by doing the work
+rather than by reading around it.
+
+**New — a later run's review silently destroys an earlier run's.** `chore.yaml:34` writes
+`review/chore-iter-{iter}.md`, and `ctx.vars.iter` is initialised to `1` at **run** start
+(`engine.js:45`) and incremented per traversal (`:155`) — run-scoped, not ticket-scoped. Run 3's
+review therefore overwrote run 2's `chore-iter-1.md`, and that review no longer exists. This ticket's
+own history is the evidence (§1). It matters beyond tidiness for two reasons: `chore.yaml:13` feeds
+`review/chore-iter-*.md` back to the implementer as input, so a revision round can be handed a
+*mixture* of reviews from different runs of different code with nothing distinguishing them; and a
+ticket that exhausts and is retried loses the record of what its first reviewer said, which is
+exactly the evidence a gate needs. The material for a fix is already in the same line —
+`reviewRound(ticket)` at `engine.js:45` is a ticket-scoped counter, bound to `{round}`. Not mine to
+change: `spike/src` is frozen for the port, and this is a flow-file and engine question.
+
+**New — an id-less step lints clean and then reaches the engine as `undefined`.** The premise of this
+round's fix, stated as the defect it is: `lintFlow` requires an id on no step kind, and the engine
+needs one — `harness/<ticket>/<step.id>` for a worktree branch (`engine.js:211`) and
+`<flow>.<step.id>` for a loop counter (`engine.js:541`). A flow with an id-less agent step passes
+lint and then creates a branch literally named `.../undefined`. Same class as the `steps`-less flow
+below: lint accepts, the engine falls over downstream. Closing it belongs to Q-0044 (flow lint), and
+closing it *here* would be the exact failure this round exists to correct.
+
+**Carried, unchanged.** `nextId()` assumes a `T-` prefix and does not recognise the `Q-` ids in use
+(`backlog.js:51`); `route` is linted (`lint.js:77`) and never implemented; `fan_out.from` and
+`fan_out.by` are never read (`loadTasks` hard-codes `solution/tasks.yaml`, `fanout.js:14`);
+`output.append` is documented (`02-sdlc:365`) and unimplemented; `verdict_file` and `max_turns` are
+implemented and undocumented; `priority`, `repos` and `created` are written and never read;
+`history[].stage` duplicates `stage_after`; a flow with no `steps` lints clean and then throws a raw
+`TypeError` out of the engine (`engine.js:83`, `:115`); and `qa-final.yaml` as sketched at
+`02-sdlc-pipeline-spec.md:365–374` would **fail** `lintFlow` today, since its verdict step at `:369`
+carries neither `on_fail` nor `route` (for Q-0012).
+
+---
+
+## 7. For the gate
+
+- **The review-overwrite defect needs a ticket, and it is not cosmetic.** It destroyed one review on
+  this ticket and it feeds mixed-run reviews back into the implement step. It will do the same on the
+  thirteen remaining children of Q-0009, every one of which runs this flow.
+- **E-3 may still want its own DECISIONS entry**, as round 4 noted. The rule it draws — *schemas over
+  files preserve unknown keys; schemas over values Quorum constructs reject them* — is inherited by
+  thirteen later children, and an errata file inside one ticket folder is not where a child's
+  reviewer will look for it. A decision is the human's to record, so I name it rather than write it.
+- **Nothing in this round changes behaviour.** No file format, no flow semantics, no output, no gate.
+  The change is one field's optionality in a package nothing imports yet.
+
+---
+
+## 8. Verification
 
 | Command | Result |
 | --- | --- |
-| `pnpm lint` | 7 tasks, all pass |
-| `pnpm typecheck` | 7 tasks, all pass — including `core` resolving `@quorum/shared` |
-| `pnpm test --force` | 7 tasks, all pass on a forced fresh run — **76 tests in `shared`** across 9 files (75 before this round), 2 in `core`, 1 each elsewhere |
-| `git diff --stat main...HEAD -- spike backlog` | empty |
-| `git status --short` | `docs/DECISIONS.md`, `packages/shared/src/flow.ts`, `packages/shared/src/flow.test.ts` — and nothing else |
+| `pnpm lint` | 7 tasks successful |
+| `pnpm typecheck` | 7 tasks successful |
+| `pnpm test` | 7 tasks successful — `@quorum/shared` **86 tests in 9 files** (84 before this round) |
+| `npm test --prefix spike` | **11 test files passed** — the freeze's witness, unchanged and green |
+| new test against the restored defect | **fails** — 1 failed / 26 passed, then reverted and green |
 
-**One command I could not run: `npm test --prefix spike`.** It fails here with
-`ERR_MODULE_NOT_FOUND`, not an assertion failure, because `spike/node_modules` does not exist in this
-worktree; installing was refused in this non-interactive session. **I am not claiming it green.**
-What I can say precisely: no file under `spike/` is modified on this branch, and this round touched
-only two files in `packages/shared` and one in `docs/`. The `integrate` step runs
-`npm test --prefix spike && pnpm turbo run test` after installing dependencies in the worktree — that
-chaining is the honest proof of both halves, and it is the step to trust here rather than this
-report. Dependencies and the lockfile are untouched this round, so iteration 1's
-`pnpm install --frozen-lockfile` result still describes the branch.
-
----
-
-## Criterion map
-
-| AC | Where it lives | Where it is tested |
-| --- | --- | --- |
-| AC-1 | `packages/shared/package.json`, `packages/core/package.json`, `packages/core/src/shared-resolution.test.ts` | `index.test.ts` (4), `shared-resolution.test.ts` |
-| AC-2 | `src/index.ts`, `test/corpus.ts` placed outside `src/` | `index.test.ts` (4) |
-| AC-3 | `src/flow.ts` | `flow.test.ts` (16) — **holds for presence, not for value types; see the stop-and-report above** |
-| AC-4 | `src/flow.ts` header, two DECISIONS entries | `flow.test.ts` (4), `docs.test.ts` (4) |
-| AC-5 | `src/ticket.ts` | `ticket.test.ts` (6) |
-| AC-6 | `src/role.ts` | `role.test.ts` (5) |
-| AC-7 | `src/step-output.ts` | `step-output.test.ts` (8) |
-| AC-8 | `src/events.ts`, `docs/04-architecture.md`, `docs/03-adapter-contract.md`, DECISIONS | `events.test.ts` (6), `docs.test.ts` |
-| AC-9 | `src/events.ts` header, DECISIONS | `events.test.ts` (5) |
-| AC-10 | `src/constants.ts` | `constants.test.ts` (6) |
-| AC-11 | `src/stages.ts`, `docs/02-sdlc-pipeline-spec.md`, `docs/GLOSSARY.md` | `stages.test.ts` (4), `docs.test.ts` |
-
-**AC-3 is the one criterion I am not reporting as fully met**, and I would rather say so than have
-the gate infer it from a passing suite. Open questions OQ-1, OQ-2, OQ-3, OQ-5 and OQ-6 are
-implemented as their stated defaults; **OQ-4** is implemented as its default too — the step id and
-nothing else, with ordering, timestamps, terminal events and the answer channel left to Q-0050 and
-named as left.
+Both halves of `harness.yaml`'s `commands.test` (`npm test --prefix spike && pnpm turbo run test`)
+are green, so the `integrate` step has been run in advance in the form it will take. `git status`
+shows two modified files, both under `packages/shared/`, none under `spike/`. I committed nothing.
