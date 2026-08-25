@@ -9,7 +9,7 @@ about any specific SaaS product.
 
 - @docs/README.md — index; start with 01, 02, 04, 06
 - @docs/DECISIONS.md — every decision and why; do not contradict one silently, add a new entry
-- @docs/GLOSSARY.md — use exactly these terms (harness, flow, gate, adapter, ticket, stage, contract, role, backward edge, integrate, cross-vendor rule, BYOS)
+- @docs/GLOSSARY.md — use exactly these terms (harness, flow, gate, adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule, panel, chore flow, occurrence, preflight, dry run, BYOS)
 - @docs/06-development-plan.md — current milestone and its tickets
 
 ## Rules (full text in .claude/rules/)

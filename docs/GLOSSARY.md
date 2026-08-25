@@ -55,6 +55,21 @@ by the panel spanning vendors, not by writer ≠ reviewer.
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
 
+**Occurrence**: One entry in a run manifest's record of what actually executed — an adapter call, a
+script, or an integrate step — carrying its own usage, errors and retained files. Adapter
+occurrences keep their exact `prompt.txt` and `output.txt`; gates and fan-out parents allocate
+none. The unit a roll-up sums over.
+
+**Preflight**: A check a run performs before invoking any adapter, so that bad evidence is found
+before it is paid for. The run-level diff preflight materialises every range a flow's steps will
+need. A preflight that declines to examine something reports that it *skipped* it — reporting
+success for an unexamined subject is the failure recorded in the 2026-08-25 decision.
+
+**Dry run** (`--dry`): `harness run … --dry` walks a flow without invoking an adapter or writing
+anything, reporting what each step would do. It is the same run machinery, not a separate code
+path, which is why its preflight must be as honest as a real run's. Not called a "preview" —
+DECISIONS entries before 2026-08-25 use that word for it.
+
 **Chore flow**: The short route for machinery and configuration tickets — requirements → one implementer
 in a worktree → cross-vendor review with a bounded revise loop → integrate → human gate. Consumes
 `requirements`, produces `reviewed`, skipping solutioning and qa-red because a scaffold has no

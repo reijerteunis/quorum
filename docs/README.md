@@ -24,7 +24,7 @@ and the plan. The other three are reference you consult rather than read.
   entry silently: add a new one, or amend the old one naming the new.
 - **[GLOSSARY.md](GLOSSARY.md)** — the vocabulary. Use exactly these terms (harness, flow, gate,
   adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule,
-  panel, chore flow, BYOS). A new term goes here before it is used in a second file, and synonyms
+  panel, chore flow, occurrence, preflight, dry run, BYOS). A new term goes here before it is used in a second file, and synonyms
   for existing terms are not introduced.
 
 ## Conventions

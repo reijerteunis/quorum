@@ -457,7 +457,7 @@ re-performed by hand, and the one finding that survived the cross-vendor review 
 **Q-0038** rather than spent on another loop. Two rules come out of the night and are general
 enough to record here rather than inside Q-0038:
 
-1. **Skipped is not passed.** A preflight, a preview or a lint that declines to examine something
+1. **Skipped is not passed.** A preflight, a `--dry` run or a lint that declines to examine something
    reports that it skipped it. `harness run chore Q-0035 --dry` printed a clean four-step preview
    for a range it had deliberately not looked at, and the real run then billed **$13.86** before
    discovering the range's left endpoint did not exist. Silence must never render as a green tick.
@@ -480,7 +480,7 @@ column to expose.
 
 **Why: a ticket about honest diagnostics was stopped twice by dishonest ones.** Q-0035 exists
 because `materialiseDiff` reported a historical event it had not verified. Its own two runs failed
-because a preview reported a check it had not performed, and then because a gate could not say
+because a `--dry` run reported a check it had not performed, and then because a gate could not say
 what it meant. The subject matter kept reappearing in the instrument.
 
 The expensive half. `chore.yaml` reviews `harness/{id}/integration...harness/{id}/implement`, and
