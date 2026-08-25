@@ -53,3 +53,22 @@ means porting a file while it is being changed underneath.
 
 **And the rule the whole thing generalises to:** *skipped is not passed*. A preflight, a `--dry` run
 or a lint that declines to examine something says so. Silence must never render as a green tick.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `engine.js` diff preflight and materialisation
+- **Lifts from `spike/bin/harness.js`:** nothing
+- **Depends on:** Q-0050 · **Depended on by:** Q-0052
+- **Invariants inherited:** register rows 10, 11, 12 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

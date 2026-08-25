@@ -47,3 +47,22 @@ that fails to parse is a flow that cannot run, and `lintFlow` (Q-0044) already r
 malformed shapes with messages written to name something the reader can find in the file. If the zod
 schema rejects first, those messages are lost. The likely answer is that zod describes structure and
 lint keeps the semantics, but the boundary needs drawing here, once.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** *(new)* `packages/shared`: zod schemas, event union, constants; `STAGES` from `backlog.js:6`
+- **Lifts from `spike/bin/harness.js`:** nothing
+- **Depends on:** — · **Depended on by:** every other child
+- **Invariants inherited:** register rows 22 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

@@ -55,3 +55,25 @@ a crash. Enforced in `core`, not in the UI or by convention.
 around them: Q-0039 (no lock on a ticket — two runs overlapped twice in one night) and Q-0040 (a gate
 cannot say "undecided", so `finish()` rolls back proven-green work). Both are listed before M3 for the
 same reason, and both change this file.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **the full SDLC** (`requirements → solutioning → qa-red → development → review`) — the
+one child routed differently, because the event stream is the port's single authorised behaviour
+change and five later tickets code against its shape. Per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25); its solutioning
+runs early, alongside Q-0041–Q-0048, not when its turn in the landing order arrives. Behaviour
+is preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `engine.js` run loop, routing, stage transitions, `runFlow` as event stream
+- **Lifts from `spike/bin/harness.js`:** nothing
+- **Depends on:** Q-0041, Q-0049 · **Depended on by:** Q-0051
+- **Invariants inherited:** register rows 5, 6, 16, 17, 19, 20, 21 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

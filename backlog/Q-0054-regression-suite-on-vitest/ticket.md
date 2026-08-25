@@ -51,3 +51,22 @@ fixed width; a Vitest rewrite reaching for snapshots would undo both.
 **The cutover is not this ticket's.** Deleting `spike/` and dropping CI's second job belongs to
 Q-0009, after Q-0010. Until then both CI jobs stay green: the workspace job proves the port, the spike
 job proves the harness the port is being developed with still works.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `spike/test/**` library-level suites → Vitest; CI gating
+- **Lifts from `spike/bin/harness.js`:** nothing
+- **Depends on:** all thirteen above · **Depended on by:** — (lands last)
+- **Invariants inherited:** register rows — (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

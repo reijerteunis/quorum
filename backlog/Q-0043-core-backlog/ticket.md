@@ -36,3 +36,22 @@ does not decide it.
 **Scope boundary.** Stage *transitions* — which flow may consume which stage, and what a failed run
 does to it — are the engine's, and land in Q-0050. This ticket owns the stage list, the ticket
 representation and the store.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `backlog.js` — frontmatter, `Backlog`, ticket walk
+- **Lifts from `spike/bin/harness.js`:** `findProject`, `loadProject` (:46–61)
+- **Depends on:** Q-0041 · **Depended on by:** —
+- **Invariants inherited:** register rows 9, 19 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

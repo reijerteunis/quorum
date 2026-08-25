@@ -46,3 +46,22 @@ suite compares lint output; the ported messages are load-bearing.
 checkable flow property and a candidate for `harness lint`. It belongs to a ticket that decides it,
 not to the port. Same for anything that would newly reject a flow file shipped in
 `harness/flows/`: this ticket must leave all six shipped flows and their template copies passing.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `lint.js` — `FlowError`, `flattenSteps`, `lintFlow`, `validateFlowDirectory`
+- **Lifts from `spike/bin/harness.js`:** `lintDirectory` (:374)
+- **Depends on:** Q-0041 · **Depended on by:** —
+- **Invariants inherited:** register rows 12, 16, 18 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.

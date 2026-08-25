@@ -42,8 +42,9 @@ the workspace it is meant to move into: `packages/{core,shared,cli,server,compil
 `apps/web` exist, strict TypeScript, Vitest, ESLint and a two-job CI. They are empty on purpose.
 This ticket is the port that fills `core` and `shared`, and it is deliberately **not implemented as
 one ticket** — it is cut into fourteen, one per module, listed below. Q-0009 itself owns the ground
-rules, the order, and the cutover; it ports nothing. Belongs to M2 in `docs/06-development-plan.md`,
-which already anticipates this shape: *"one ticket per module is fine"*.
+rules and the order; it ports nothing, and it does not own the cutover. Belongs to M2 in
+`docs/06-development-plan.md`, which already anticipates this shape: *"one ticket per module is
+fine"*.
 
 ## Why it is cut this far
 
@@ -71,8 +72,11 @@ harness-machinery work through the harness"* does not bite here: the engine unde
 engine running the flow. The moment that stops being true, this ticket set has a problem worth
 stopping for.
 
-Deleting `spike/` and pointing CI at the workspace is the cutover, and it belongs to Q-0009 after
-Q-0010 (the `quorum` binary) and Q-0054 (the suite) are both landed — not to any child ticket.
+Deleting `spike/` and pointing CI at the workspace is the cutover. It belongs to **a follow-up
+ticket, proposed Q-0055** — not to Q-0009 as this body originally claimed, and not to any child.
+It runs only once Q-0010 (the `quorum` binary) and Q-0054 (the suite) both report `main:contained`,
+and it is drafted as `CO-1`–`CO-4` in `requirements/merged.md` and carried by
+`harness/port-charter.md` §10.
 
 ## Two findings that change what "port" means here
 
@@ -94,10 +98,24 @@ stream is design work — it decides what M3's WebSocket carries and what run hi
 and it is the single largest risk in the port. Q-0050 owns it; every other ticket consumes whatever
 it decides.
 
-## What the requirements flow must settle first
+## What the requirements flow settled — all three, 2026-08-25
 
-Three questions, raised here and deliberately not answered, because two of them are DECISIONS
-entries rather than ticket scope:
+Three questions were raised here and deliberately left open for the requirements flow. All three
+are now answered; the answers are recorded where the ticket body cannot drift from them, and this
+section is kept for the reasoning rather than as an open list.
+
+- **Which flow does a port take?** → *"The port takes the chore route, except the one child that
+  has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Thirteen take chore; **Q-0050 alone**
+  takes the full SDLC, because the event stream is the one child with behaviour a test can fail on
+  before it exists.
+- **Is the port allowed to change behaviour?** → *"The port preserves behaviour; one exception is
+  authorised and everything else stops the child"* (`docs/DECISIONS.md`, 2026-08-25), with the
+  invariant register at `harness/port-charter.md` §2.
+- **Where do the zod schemas live?** → `packages/shared`, and `core` imports them.
+  `docs/04-architecture.md` was the authority and `docs/06-development-plan.md` was corrected to
+  agree. Charter §4 states the dependency direction.
+
+The reasoning that produced them, as it stood before the gate:
 
 - **Which flow does a port take?** Not obvious in either direction. The chore flow (2026-08-24)
   exists for work where a red phase cannot exist, and its rationale — *"a scaffold has no behaviour

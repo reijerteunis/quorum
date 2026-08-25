@@ -51,3 +51,22 @@ here — but this is where the budget gets burned when they are missed.
 
 **`testReport` truncates on purpose** (24 KB), because a suite's output goes into the next agent's
 prompt. `mergeFailure` and `IntegrationError` must keep printing sentences rather than stacks.
+
+## Port charter
+
+The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
+body cites it rather than restating it — where the two ever differ, the register is right.
+
+Route: **chore** (`requirements → chore → human gate`), per *"The port takes the chore route,
+except the one child that has new behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Behaviour is
+preserved per *"The port preserves behaviour; one exception is authorised and everything else
+stops the child"* (`docs/DECISIONS.md`, 2026-08-25) — a defect found while reading the spike is
+reported, never fixed in passing.
+
+- **Ports:** `engine.js` fan-out and integrate steps
+- **Lifts from `spike/bin/harness.js`:** nothing
+- **Depends on:** Q-0052, Q-0048 · **Depended on by:** —
+- **Invariants inherited:** register rows 7 (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.
