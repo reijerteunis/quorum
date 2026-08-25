@@ -73,10 +73,13 @@ engine running the flow. The moment that stops being true, this ticket set has a
 stopping for.
 
 Deleting `spike/` and pointing CI at the workspace is the cutover. It belongs to **a follow-up
-ticket, proposed Q-0055** — not to Q-0009 as this body originally claimed, and not to any child.
+ticket, proposed Q-0058** — not to Q-0009 as this body originally claimed, and not to any child.
 It runs only once Q-0010 (the `quorum` binary) and Q-0054 (the suite) both report `main:contained`,
 and it is drafted as `CO-1`–`CO-4` in `requirements/merged.md` and carried by
-`harness/port-charter.md` §10.
+`harness/port-charter.md` §10. *(Corrected 2026-08-25: this body and `requirements/merged.md` both
+proposed `Q-0055`, the next free id the night they were written. `Q-0055` was opened hours later
+for the step-id lint, from Q-0041's chore run. The charter carries the current id; the requirement
+is a run artifact and keeps its original wording.)*
 
 ## Two findings that change what "port" means here
 

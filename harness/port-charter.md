@@ -1,9 +1,10 @@
 # The port charter — Q-0009
 
-*Status: written 2026-08-25 by Q-0009. The ground rules for porting `spike/` into
-`packages/core` and `packages/shared` across fourteen child tickets, Q-0041 to Q-0054. Q-0009
-ports nothing; this document and the guard beside it are its output. Read with
-`harness/rules.md` and `harness/architecture.md`, which points here.*
+*Status: written 2026-08-25 by Q-0009; the cutover follow-up's proposed id corrected the same day
+from `Q-0055` to `Q-0058`, `Q-0055` having been opened for other work in the meantime (§10). The
+ground rules for porting `spike/` into `packages/core` and `packages/shared` across fourteen child
+tickets, Q-0041 to Q-0054. Q-0009 ports nothing; this document and the guard beside it are its
+output. Read with `harness/rules.md` and `harness/architecture.md`, which points here.*
 
 > **Three of Q-0009's criteria are outstanding and cannot be closed by the flow it runs on** —
 > this file's location, and the fourteen child bodies under AC-1 and AC-8. All three need a write
@@ -394,9 +395,14 @@ rather than the disease.
 
 The cutover — deleting `spike/`, retiring the second CI job and this guard, and rewriting every
 document that tells a reader to run the spike — is drafted as `CO-1`–`CO-4` in Q-0009's merged
-requirement and belongs to a follow-up ticket, proposed **Q-0055**, which runs only after Q-0010
-and Q-0054 both report `main:contained`. The event stream's shape belongs to Q-0050. The four
-machinery defects belong to Q-0037–Q-0040. This charter works around them and fixes none.
+requirement and belongs to a follow-up ticket, proposed **Q-0058**, which runs only after Q-0010
+and Q-0054 both report `main:contained`. Q-0009's merged requirement, and Q-0009's own body,
+propose `Q-0055` for it — the next free id the night they were written. `Q-0055` has since been
+opened as *"Lint requires a step id wherever the engine interpolates one"*, from Q-0041's chore
+run. The cutover ticket is unopened either way; this file carries the current id, and a reader who
+arrives here from either of those two documents should follow this one. The event stream's shape
+belongs to Q-0050. The four machinery defects belong to Q-0037–Q-0040. This charter works around
+them and fixes none.
 
 ## 11. Not delivered: three criteria that need a backlog write
 
@@ -452,7 +458,7 @@ Q-0050's block differs in one line only: its route is the full SDLC
 (`requirements → solutioning → qa-red → development → review`), per the same entry.
 
 Q-0009's own body needs the reverse edit — its cutover claim removed, since the cutover is §10's
-follow-up, proposed **Q-0055**, which runs only after Q-0010 and Q-0054 both report
+follow-up, proposed **Q-0058**, which runs only after Q-0010 and Q-0054 both report
 `main:contained`.
 
 ### Until then
