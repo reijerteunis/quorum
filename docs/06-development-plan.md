@@ -88,8 +88,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
 - Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
-- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` 2026-08-25;
-  `main:not-contained`.)*
+- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` and
+  `main:contained` 2026-08-25.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
 - Q-0037 Run-history review remainder — one major and eight nits.
 - Q-0038 Deferred-range failures name their producing step in every case. Its body also records
