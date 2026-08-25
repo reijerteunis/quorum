@@ -12,7 +12,7 @@
 // subject must not report success", docs/DECISIONS.md 2026-08-25).
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import YAML from 'yaml';
 
@@ -148,4 +148,52 @@ export function importSpecifiers(text: string): string[] {
 /** True when the spike's frontmatter regex still reads exactly as the copy above. */
 export function frontmatterRegexMatchesSpike(): boolean {
   return spikeSource('src/backlog.js').includes(FRONTMATTER.source);
+}
+
+/**
+ * The real `lintFlow`, executed rather than transcribed.
+ *
+ * `requirements/errata.md` E-1 requires the flow property to be asserted against the product's own
+ * linter, and the reason is the whole history of this criterion: three review rounds argued about
+ * what `lintFlow` accepts, from reading it. It accepts `adapter: 42`. A transcription of a linter
+ * is a second linter, and a property proved against a copy proves nothing about the original.
+ *
+ * Two things make this safe to do from here. Reading `spike/**` is what the corpus tests already
+ * do and is explicitly permitted; the port freeze forbids WRITING it (harness/port-charter.md §3),
+ * and CI enforces that on the branch name. And the specifier is a file URL rather than a package
+ * import, because `spike/` is outside the pnpm workspace and has no entry in it — `@vite-ignore`
+ * keeps Vite from trying to analyse it at build time. Verified to resolve with `spike/node_modules`
+ * absent, which is the state CI's `workspace` job runs in: it installs with pnpm and never runs
+ * `npm ci` in `spike/`, so `lint.js`'s own `yaml` import resolves through this package's declared
+ * `yaml` devDependency instead.
+ *
+ * `lintFlow` returns `true` or throws `FlowError`; `lintAccepts` below is the boolean form.
+ */
+export async function spikeLintFlow(): Promise<(flow: unknown) => boolean> {
+  const file = path.join(repoRoot, 'spike/src/lint.js');
+  if (!fs.existsSync(file)) {
+    throw new Error(`corpus missing: ${file} does not exist — the flow property proves nothing without the real linter`);
+  }
+  const module = await import(/* @vite-ignore */ pathToFileURL(file).href) as {
+    lintFlow?: (flow: unknown) => boolean;
+  };
+  if (typeof module.lintFlow !== 'function') {
+    throw new Error('corpus changed: spike/src/lint.js no longer exports a lintFlow function — the flow property cannot be asserted against it');
+  }
+  return module.lintFlow;
+}
+
+/**
+ * Whether the real `lintFlow` accepts a flow object. A `FlowError` is a refusal and is the answer;
+ * anything else thrown is not, and is re-raised rather than counted as one — a linter that crashed
+ * has not accepted or rejected anything, and reading a crash as "rejected" is the conflation the
+ * containment decision of 2026-08-24 forbids in its own domain.
+ */
+export function lintAccepts(lintFlow: (flow: unknown) => boolean, flow: unknown): boolean {
+  try {
+    return lintFlow(flow) === true;
+  } catch (error) {
+    if (error instanceof Error && error.constructor.name === 'FlowError') return false;
+    throw error;
+  }
 }

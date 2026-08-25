@@ -59,6 +59,30 @@
 // contributor's new adapter cannot emit an event without editing this package, and an unknown
 // adapter name is already refused with a good message by `getAdapter`
 // (spike/src/adapters/index.js:29), so nothing is lost.
+//
+// ---------------------------------------------------------------------------------------------
+// UNKNOWN KEYS: THESE VARIANTS REJECT THEM, AND THE FILE-DERIVED SCHEMAS PRESERVE THEM
+// ---------------------------------------------------------------------------------------------
+//
+// AC-4 rule 3 permits two dispositions — "either preserved in the parsed result or rejected
+// explicitly — never dropped" — and requirements/errata.md E-3 (2026-08-25) decides which one this
+// file takes. It is `strict`: an unknown key on an event is a parse error.
+//
+// The rule E-3 draws, which the later children inherit, follows the direction the data travels,
+// and the two directions are not alike:
+//
+//   - A schema over a file a human or another tool wrote — flow.ts, ticket.ts, role.ts — PRESERVES
+//     unknown keys. A parsed object gets written back, and a stripped key is data loss;
+//     backlog/Q-0033-…/ticket.md already carries a hand-added `depends_on` that nothing reads.
+//   - A schema over a value Quorum itself constructs in memory — this union — REJECTS them. Nothing
+//     here round-trips through a file, so there is no key to lose, and the whole value of a
+//     discriminated union is an exact inferred type. Passing unknown keys through widens that
+//     inferred type to admit `{[k: string]: unknown}` — which is precisely how a vendor-specific
+//     field would enter the union without anyone writing one down. That is the thing the reading
+//     above exists to prevent, defeated by a type rather than by a line of code.
+//
+// Neither disposition is a fallback taken for want of a decision, which is why both are named here
+// and asserted in events.test.ts.
 import { z } from 'zod';
 
 /**
@@ -81,13 +105,13 @@ export const spawnEventSchema = z.object({
   vendor: vendorLabel,
   /** The command line, quoted for a human to read — spike/src/adapters/claude.js:31. */
   cmd: z.string(),
-}).passthrough();
+}).strict();
 
 export const stdoutEventSchema = z.object({
   type: z.literal('stdout'),
   /** One line of the CLI's stdout, newline stripped — spike/src/adapters/claude.js:76-80. */
   line: z.string(),
-}).passthrough();
+}).strict();
 
 /**
  * Emitted by the contract layer's retry wrapper, not by any vendor — a dropped connection is not a
@@ -103,7 +127,7 @@ export const retryEventSchema = z.object({
   /** Why it is worth retrying, in words — spike/src/adapters/index.js:37-50. */
   reason: z.string(),
   message: z.string(),
-}).passthrough();
+}).strict();
 
 export const adapterEventSchema = z.discriminatedUnion('type', [
   spawnEventSchema,
@@ -123,26 +147,26 @@ export const stepStartedEventSchema = z.object({
   type: z.literal('step'),
   stepId,
   message: z.string(),
-}).passthrough();
+}).strict();
 
 /** A step finished. Payload: `ui.done(step.id, "verdict=… cost=… 1234ms")`, `"exit 0"`, … */
 export const stepDoneEventSchema = z.object({
   type: z.literal('done'),
   stepId,
   message: z.string(),
-}).passthrough();
+}).strict();
 
 /** Run-level narration with no step of its own — `ui.info(m)`, spike/bin/harness.js:64. */
 export const infoEventSchema = z.object({
   type: z.literal('info'),
   message: z.string(),
-}).passthrough();
+}).strict();
 
 /** Run-level warning — `ui.warn(m)`, spike/bin/harness.js:65. */
 export const warnEventSchema = z.object({
   type: z.literal('warn'),
   message: z.string(),
-}).passthrough();
+}).strict();
 
 /**
  * The gate QUESTION — the only event that expects an answer. Payload verbatim from the one call
@@ -160,8 +184,15 @@ export const gateQuestionEventSchema = z.object({
   ticketDir: z.string(),
   /** The step id a `retry` answer would jump back to — spike/src/engine.js:553, :580. */
   retry: z.string().optional(),
-}).passthrough();
+}).strict();
 
+/**
+ * A run event is an adapter event plus the step id, or one of the engine's own. `.extend` carries
+ * the strictness of the schema it extends, which cuts both ways on purpose: a run event is rejected
+ * by `adapterEventSchema` because `stepId` is an unknown key there, and an adapter event is
+ * rejected here because `stepId` is missing. The two shapes exist because two interfaces do, and
+ * under E-3 neither will quietly accept the other's value.
+ */
 export const eventSchema = z.discriminatedUnion('type', [
   spawnEventSchema.extend({ stepId }),
   stdoutEventSchema.extend({ stepId }),

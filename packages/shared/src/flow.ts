@@ -31,38 +31,55 @@
 //   5. Every object passes unknown keys through rather than dropping them. Zod strips unknown keys
 //      by default, and a stripped key becomes data loss the moment a parsed object is written
 //      back. The one exception is a step's `output` block; see step-output.ts for why.
+//      This is the file-derived side of the rule requirements/errata.md E-3 draws. A schema over
+//      something a human or another tool WROTE preserves what it does not recognise, because the
+//      object gets written back; a schema over a value Quorum CONSTRUCTS — the event union in
+//      events.ts — rejects unknown keys instead, because nothing there round-trips through a file.
+//      `route` is the clearest case on this side: unimplemented, unshaped, and carried untouched.
 //
 // ---------------------------------------------------------------------------------------------
-// THE PROPERTY AC-3 ASKS FOR, AND EXACTLY WHERE IT STANDS
+// THE PROPERTY AC-3 ASKS FOR, AS ERRATUM E-1 AMENDS IT
 // ---------------------------------------------------------------------------------------------
 //
-// AC-3 states it as binding: "for any flow object, `lintFlow` succeeding implies the flow schema
-// parsing succeeding". The converse is deliberately not wanted — a structurally valid flow may
-// still be rejected by lint, which is rule 1.
+// AC-3 first stated it as "for any flow object, `lintFlow` succeeding implies the flow schema
+// parsing succeeding". requirements/errata.md E-1 (2026-08-25) supersedes that wording, because it
+// and rule 1 above cannot both hold. What is binding now:
 //
-// PRESENCE: the property holds. This schema requires no key that lint does not require. `name` and
-// `steps` were required here until the third implement round and are now optional, because lint
-// accepts a flow carrying neither — lint.js:127 prints `flow.name ?? flow.file`, and
-// `flattenSteps(steps = [])` at lint.js:7 defaults `steps` away. Requiring them was zod adding a
-// rule lint does not have, which rule 2 forbids. `consumes` and `produces` stay required because
-// lint requires them too, at lint.js:124.
+//     For any flow object, `lintFlow` succeeding implies the flow schema REQUIRES NO KEY THAT IS
+//     ABSENT. Where a key is present, its type is zod's to judge, and a type zod rejects is not a
+//     counterexample.
 //
-// TYPES: the property does not hold, and cannot hold alongside rule 1. `lintFlow` type-checks
-// almost nothing — verified by running it, not by reading it: it returns true for `adapter: 42`,
-// `id: 42`, `gate: 42`, `max_turns: 'many'`, `cross_vendor: 42`, and for a bare string where a step
-// object belongs. This schema rejects each. That residue is not a list of exceptions to be argued
-// down one at a time; it is precisely the half of "structure and TYPES" that rule 1 assigns to zod,
-// and closing it means typing every field `z.unknown()` — a schema that describes nothing, leaving
-// thirteen consumers to re-derive what a flow file is, which is the state this package exists to
-// end.
+// PRESENCE — the half that is a rule about the flow format, and therefore lint's. This schema
+// requires no key lint does not require. `name` and `steps` are optional because lint accepts a
+// flow carrying neither: lint.js:127 prints `flow.name ?? flow.file`, and `flattenSteps(steps = [])`
+// at lint.js:7 defaults `steps` away. `consumes` and `produces` stay required because lint requires
+// them too, at lint.js:124. A schema requiring a key lint does not require would BE zod adding a
+// rule, which is the failure AC-3 was written to prevent, and rule 2 above.
 //
-// So AC-3's property and AC-4's rule 1 cannot both hold as written. That is a contradiction between
-// two criteria of one requirement, not a choice this file is entitled to settle, and it is reported
-// as such in dev/implement-report.md rather than absorbed here.
+// TYPES — the half that is a description of the format, and therefore this package's reason to
+// exist. `lintFlow` type-checks almost nothing: where a value reaches it at all it reaches
+// `String()` or `.includes()`, which accept anything. It returns true for `adapter: 42`, `id: 42`,
+// `gate: 42`, `max_turns: 'many'`, `cross_vendor: 42`, and for a bare string where a step object
+// belongs. This schema rejects each, and E-1 draws the boundary there rather than treating the
+// divergence as exceptions: a schema that types a value lint never looked at is not adding a rule
+// to the flow format, it is describing the format. Closing the gap the other way means
+// `z.unknown()` on every field — a schema that describes nothing, leaving thirteen consumers to
+// re-derive what a flow file is from `YAML.parse`'s return, which is the state this package exists
+// to end.
 //
-// One shape that looks like part of that residue and is not: `steps` present but not an array.
-// `steps: null` and `steps: [null]` both throw a TypeError out of `flattenSteps`, so `lintFlow`
-// does not succeed on them and rejecting them here breaks nothing.
+// Both halves are asserted in flow.test.ts against the REAL `lintFlow`, imported from
+// spike/src/lint.js and executed. Three review rounds were spent arguing about what lint accepts,
+// from reading it; running it settles each case in one line and fails if the linter ever moves.
+//
+// What E-1 does NOT authorise: zod refusing anything on SEMANTIC grounds. Rule 1's boundary is
+// untouched — duplicate ids, goto resolution, counter prefixes, verdict-must-route, the two
+// cross-vendor rules, loop convergence, the deploy gate and the `input.diff` range rule all stay in
+// `lintFlow`, and no zod issue may replace a lint message in `quorum lint`'s output. That direction
+// has its own test: nine flows this schema accepts and lint refuses.
+//
+// One shape that looks like part of the type divergence and is not: `steps` present but not an
+// array. `steps: null` and `steps: [null]` both throw a TypeError out of `flattenSteps`, so
+// `lintFlow` does not succeed on them and rejecting them here narrows nothing.
 import { z } from 'zod';
 
 import { stepOutputDeclarationSchema } from './step-output.js';
@@ -119,10 +136,24 @@ const agentStepFields = {
   output: stepOutputDeclarationSchema.optional(),
   instructions: z.string().optional(),
   on_fail: onFailSchema.optional(),
-  // `route` is deliberately NOT typed. spike/src/lint.js:77 reads it, and the engine implements
-  // nothing for it — `runStep` (spike/src/engine.js:176-198) has no branch for a route and
-  // docs/02-sdlc-pipeline-spec.md:365 sketches it only for the unshipped qa-final flow. Giving an
-  // unimplemented feature a shape would be inventing one; passthrough carries it untouched.
+  // `route` is carried untouched by passthrough and deliberately NOT typed —
+  // requirements/errata.md E-2 (2026-08-25), which supersedes the ticket body's Scope list so far
+  // as it asks for a schema covering `route`, and agrees with AC-3, where `route` is listed among
+  // the permissive choices whose comment must name what forced it. There is no existing shape to
+  // declare, and three independent readings of the repository say so:
+  //
+  //   - No shipped flow uses it. `grep -rn route harness/flows/ packages/templates` returns
+  //     nothing, so there is no corpus to derive a shape from.
+  //   - Lint knows only that it is truthy. spike/src/lint.js:77 tests `!step.route` inside
+  //     `step.output?.verdict && !step.on_fail && !step.route`, and never looks inside it.
+  //   - The only sketch is prose for an unshipped flow, and it disagrees with lint about where
+  //     `route` even lives: docs/02-sdlc-pipeline-spec.md:370 draws `- route:` as a step of its
+  //     own in qa-final.yaml's step list, while lint.js:77 reads it as a property of the step that
+  //     carries the verdict. Two incompatible shapes, no user, no implementation.
+  //
+  // Declaring a shape from that would be inventing one, which rule 4 above forbids. Whether `route`
+  // should exist at all, and which of the two shapes is right, belongs to Q-0012, which ships
+  // qa-final.yaml.
 };
 
 /** The ordinary step: a role on an adapter, producing structured output. */
@@ -297,9 +328,10 @@ export const flowSchema = z.object({
    * A flow may only run on a ticket whose stage equals this — spike/src/engine.js:38-40. A plain
    * string, deliberately NOT `stageSchema`: `lint.js:124` is `if (!flow.consumes || !flow.produces)`
    * and checks nothing else, so a flow naming a stage outside the ten-member list passes lint today
-   * and must parse here. Making this an enum would add a rule lint does not have, which is rule 1,
-   * and would break the property AC-3 asks for — lint succeeding implies parsing succeeding.
-   * `stageSchema` is right for a ticket's own `stage` (ticket.ts) and wrong here.
+   * and must parse here. An enum would be a MEMBERSHIP rule rather than a type — zod adding a rule
+   * to the flow format, which is rule 2 — and it is the one case E-1 singles out as surviving its
+   * own amendment: "they are structurally strings". `stageSchema` is right for a ticket's own
+   * `stage` (ticket.ts) and wrong here.
    */
   consumes: z.string(),
   /** The stage a completed run advances the ticket to — spike/src/engine.js:622-624. Same as above. */
@@ -313,9 +345,9 @@ export const flowSchema = z.object({
    * defect, and one this ticket reports rather than fixes ("The port preserves behaviour",
    * docs/DECISIONS.md 2026-08-25). Note that the fallback stays in the engine per rule 4: the key
    * is optional here and carries no zod default, so a consumer writes `flow.steps ?? []` exactly as
-   * `flattenSteps` does. Present-but-not-an-array IS rejected, and that is not an exception to the
-   * property — `steps: null` and `steps: [null]` throw a TypeError out of `flattenSteps`, so lint
-   * does not succeed on them either.
+   * `flattenSteps` does. Present-but-not-an-array IS rejected, and E-1 names that shape explicitly
+   * as not part of the type divergence — `steps: null` and `steps: [null]` throw a TypeError out of
+   * `flattenSteps`, so lint does not succeed on them either.
    */
   steps: z.array(flowStepSchema).optional(),
   /**
