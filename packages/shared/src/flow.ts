@@ -32,23 +32,37 @@
 //      by default, and a stripped key becomes data loss the moment a parsed object is written
 //      back. The one exception is a step's `output` block; see step-output.ts for why.
 //
-// The property this buys, and the one AC-3 asks for: a flow object `lintFlow` accepts parses here.
-// The converse does not hold and is not wanted — a structurally valid flow may still be rejected
-// by lint, which is rule 1.
+// ---------------------------------------------------------------------------------------------
+// THE PROPERTY AC-3 ASKS FOR, AND EXACTLY WHERE IT STANDS
+// ---------------------------------------------------------------------------------------------
 //
-// The property's boundary, stated rather than implied, because rule 1 gives zod STRUCTURE and lint
-// is not a structural check at all. Three shapes lint accepts and this schema does not, all of
-// which crash the engine rather than run:
-//   * a wrongly TYPED value lint never looks at — `{id: 'x', adapter: 42}` reaches lint's `String()`
-//     and its `includes`, and is a step whose adapter is a number.
-//   * a flow with no `name` — lint.js:127 falls back to `flow.file` when printing, so it never
-//     needs one, but `name` is what identifies a flow to a human and to `goto: flow:<name>`.
-//   * a flow with no `steps` — `flattenSteps(steps = [])` defaults it, so lint returns true, and
-//     then engine.js:83 and :115 read `flow.steps` directly and throw a raw TypeError. Requiring
-//     the key here is what turns that stack trace into an issue naming `steps`, and is exactly the
-//     failure the ticket's problem statement cites.
-// A schema that dropped these to hold the property literally would describe nothing: every field
-// would be optional, and thirteen consumers would each re-derive what a flow file is.
+// AC-3 states it as binding: "for any flow object, `lintFlow` succeeding implies the flow schema
+// parsing succeeding". The converse is deliberately not wanted — a structurally valid flow may
+// still be rejected by lint, which is rule 1.
+//
+// PRESENCE: the property holds. This schema requires no key that lint does not require. `name` and
+// `steps` were required here until the third implement round and are now optional, because lint
+// accepts a flow carrying neither — lint.js:127 prints `flow.name ?? flow.file`, and
+// `flattenSteps(steps = [])` at lint.js:7 defaults `steps` away. Requiring them was zod adding a
+// rule lint does not have, which rule 2 forbids. `consumes` and `produces` stay required because
+// lint requires them too, at lint.js:124.
+//
+// TYPES: the property does not hold, and cannot hold alongside rule 1. `lintFlow` type-checks
+// almost nothing — verified by running it, not by reading it: it returns true for `adapter: 42`,
+// `id: 42`, `gate: 42`, `max_turns: 'many'`, `cross_vendor: 42`, and for a bare string where a step
+// object belongs. This schema rejects each. That residue is not a list of exceptions to be argued
+// down one at a time; it is precisely the half of "structure and TYPES" that rule 1 assigns to zod,
+// and closing it means typing every field `z.unknown()` — a schema that describes nothing, leaving
+// thirteen consumers to re-derive what a flow file is, which is the state this package exists to
+// end.
+//
+// So AC-3's property and AC-4's rule 1 cannot both hold as written. That is a contradiction between
+// two criteria of one requirement, not a choice this file is entitled to settle, and it is reported
+// as such in dev/implement-report.md rather than absorbed here.
+//
+// One shape that looks like part of that residue and is not: `steps` present but not an array.
+// `steps: null` and `steps: [null]` both throw a TypeError out of `flattenSteps`, so `lintFlow`
+// does not succeed on them and rejecting them here breaks nothing.
 import { z } from 'zod';
 
 import { stepOutputDeclarationSchema } from './step-output.js';
@@ -270,7 +284,15 @@ export const flowStepSchema = z.unknown().transform((value, ctx): FlowStep => {
 });
 
 export const flowSchema = z.object({
-  name: z.string(),
+  /**
+   * Optional, because lint is. `lint.js:127` throws with `flow ${flow.name ?? flow.file}`, so a
+   * nameless flow lints clean and must parse here; requiring the key would be a presence rule lint
+   * does not have. It is still typed rather than left to passthrough, because `name` is what the
+   * cross-flow messages print (spike/src/lint.js:156, :166, :172, :176) and what the engine names
+   * in a stage mismatch (spike/src/engine.js:39). A `goto: flow:<target>` resolves against the
+   * FILENAME, not this field — `byFilename` is keyed by basename at spike/src/lint.js:146.
+   */
+  name: z.string().optional(),
   /**
    * A flow may only run on a ticket whose stage equals this — spike/src/engine.js:38-40. A plain
    * string, deliberately NOT `stageSchema`: `lint.js:124` is `if (!flow.consumes || !flow.produces)`
@@ -284,7 +306,18 @@ export const flowSchema = z.object({
   produces: z.string(),
   /** `required` is the only value lint acts on — spike/src/lint.js:86. */
   cross_vendor: z.string().optional(),
-  steps: z.array(flowStepSchema),
+  /**
+   * Optional, because lint is: `flattenSteps(steps = [])` (spike/src/lint.js:7) defaults the key
+   * away, so a flow with no `steps` returns true from lint today. The engine then reads
+   * `flow.steps` directly (spike/src/engine.js:83, :115) and throws a raw TypeError — a real
+   * defect, and one this ticket reports rather than fixes ("The port preserves behaviour",
+   * docs/DECISIONS.md 2026-08-25). Note that the fallback stays in the engine per rule 4: the key
+   * is optional here and carries no zod default, so a consumer writes `flow.steps ?? []` exactly as
+   * `flattenSteps` does. Present-but-not-an-array IS rejected, and that is not an exception to the
+   * property — `steps: null` and `steps: [null]` throw a TypeError out of `flattenSteps`, so lint
+   * does not succeed on them either.
+   */
+  steps: z.array(flowStepSchema).optional(),
   /**
    * Not in any YAML file. `loadFlow` assigns it onto the parsed object before lint sees it
    * (spike/src/engine.js:17) and `lint.js:127` prints it as the flow's name when `name` is absent,

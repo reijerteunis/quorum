@@ -159,21 +159,30 @@ describe('AC-3 — the flow schema describes the format as it is', () => {
     expect(result.data).toEqual(flow);
   });
 
-  test('the property\'s boundary: zod owns structure, so three shapes lint accepts do not parse', () => {
-    // `lintFlow` is not a structural check, and rule 1 gives that half to zod. Each of these three
-    // returns true from lint and then throws a raw TypeError in the engine, which is the failure
-    // the ticket's problem statement cites. Stated here so the boundary is a decision on the
-    // record, not an accident of how the schema happened to be written.
-    // A value lint never types: it reaches lint's `String()` and `includes` unharmed.
-    expect(flowSchema.safeParse({
-      name: 'x', consumes: 'green', produces: 'reviewed', steps: [{ id: 'x', adapter: 42 }],
-    }).success).toBe(false);
-    // No `name`: spike/src/lint.js:127 falls back to `flow.file` when it prints, so lint never
-    // needs one.
-    expect(flowSchema.safeParse({ consumes: 'green', produces: 'reviewed', steps: [] }).success).toBe(false);
-    // No `steps`: `flattenSteps(steps = [])` defaults it away, so lint returns true — and then
-    // spike/src/engine.js:83 and :115 read `flow.steps` directly.
-    expect(flowSchema.safeParse({ name: 'x', consumes: 'green', produces: 'reviewed' }).success).toBe(false);
+  test('no key is required here that lint does not require', () => {
+    // All three lint clean today — spike/src/lint.js:127 prints `flow.name ?? flow.file`, and
+    // `flattenSteps(steps = [])` at spike/src/lint.js:7 defaults `steps` away — so requiring
+    // either key would be zod adding a rule lint does not have. Each verdict below was taken from
+    // the real `lintFlow`; the transcript is in dev/implement-report.md.
+    for (const flow of [
+      { consumes: 'green', produces: 'reviewed', steps: [] },        // no name
+      { name: 'x', consumes: 'green', produces: 'reviewed' },        // no steps
+      { consumes: 'green', produces: 'reviewed' },                   // neither
+    ]) {
+      const result = flowSchema.safeParse(flow);
+      expect(result.error?.issues ?? [], JSON.stringify(flow)).toEqual([]);
+      expect(result.data).toEqual(flow);
+    }
+    // `consumes` and `produces` stay required, and that is not an added rule either: lint pushes
+    // "flow needs consumes/produces" at spike/src/lint.js:124, so `{}` fails both.
+    expect(flowSchema.safeParse({}).success).toBe(false);
+  });
+
+  test('`steps` present but not an array is rejected — which is where lint stops accepting too', () => {
+    // Not an exception to the property: `flattenSteps` throws a raw TypeError on both of these, so
+    // `lintFlow` does not succeed on them and nothing is narrowed by refusing them here.
+    expect(flowSchema.safeParse({ name: 'x', consumes: 'a', produces: 'b', steps: null }).success).toBe(false);
+    expect(flowSchema.safeParse({ name: 'x', consumes: 'a', produces: 'b', steps: [null] }).success).toBe(false);
   });
 });
 
