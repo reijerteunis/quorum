@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0056, opened from Q-0041's chore run and its erratum. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -118,6 +118,16 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - Q-0040 A gate can say "undecided". A non-interactive run that reaches an unanswerable gate
   currently fails, and `finish()` then rolls back work the run had already proven green — it has
   cost Q-0036 and Q-0035 their merges on consecutive nights.
+- Q-0055 Lint requires a step id wherever the engine interpolates one. `lintFlow` requires an `id`
+  on no step kind; `engine.js:211` names a worktree branch after it and `engine.js:541` keys a loop
+  counter with it, so an id-less step lints clean and creates `harness/<ticket>/undefined`. Lands
+  after Q-0044 so the fix is written once in the ported lint. Its body also carries a neighbour that
+  still needs its own ticket — a later run's review overwrites an earlier run's, because
+  `chore.yaml:34`'s `{iter}` is run-scoped.
+- Q-0056 What `route` is, and the qa-final sketch that cannot lint. Blocks Q-0012: the sketch at
+  `02-sdlc-pipeline-spec.md:345–376` fails the real `lintFlow` on both of its verdict steps, and
+  `route` has three incompatible descriptions (a step property in lint, a step kind in the spec,
+  unimplemented in the engine) with no shipped flow using it.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
