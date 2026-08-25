@@ -53,15 +53,7 @@ should land after Q-0044, against `packages/core`, so the fix is written once in
 rather than twice. Until then `spike/src` is frozen (`harness/port-charter.md` §3). Belongs to M2 in
 `docs/06-development-plan.md`.
 
-**A neighbour found the same round, recorded here so it is not lost — it wants its own ticket.**
-**A later run's review silently destroys an earlier run's.** `chore.yaml:34` writes
-`review/chore-iter-{iter}.md`, and `ctx.vars.iter` is initialised to `1` at **run** start
-(`engine.js:45`) and incremented per traversal (`:155`) — run-scoped, not ticket-scoped. Run 3's
-review overwrote run 2's `chore-iter-1.md` on this very ticket; that review survives only because it
-had been committed by hand first (`e6b31b7`). Two consequences beyond tidiness: `chore.yaml:13` feeds
-`review/chore-iter-*.md` back to the implementer as input, so a revision round can be handed a
-mixture of reviews of *different code from different runs* with nothing distinguishing them; and a
-ticket that exhausts and is retried loses the record of what its first reviewer said, which is
-exactly the evidence a gate needs. The material for a fix is on the same line — `reviewRound(ticket)`
-at `engine.js:45` is already a ticket-scoped counter bound to `{round}`. **It will hit the thirteen
-remaining children of Q-0009, every one of which runs this flow.**
+**A neighbour found the same round now has its own ticket: Q-0057.** A later run's review silently
+destroys an earlier run's, because `chore.yaml:34`'s `{iter}` is run-scoped while `review.yaml`'s
+`{round}` is ticket-scoped. It hit this pair of tickets' own parent — run 3 overwrote two of run 2's
+three reviews on Q-0041 — and it will hit the thirteen remaining children of Q-0009.
