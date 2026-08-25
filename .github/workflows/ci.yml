@@ -26,6 +26,28 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  # Q-0009's port freeze. The spike stays authoritative and green until the cutover, so none of
+  # the port's fourteen children may edit spike/src — and every other ticket still may, which is
+  # why this keys on branch name rather than on a role's paths. The policy lives in
+  # harness/port-charter.md §3; the script reads it rather than restating it.
+  port-freeze:
+    name: port freeze (spike/src)
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the guard needs a merge base, and it fails closed on a shallow clone
+      # rather than reading an uncomputable diff as a clean one. `ref` is explicit because on a
+      # pull_request the default checkout is main-merged-into-the-branch, whose merge base with
+      # main is main itself — the diff would come back empty for the wrong reason and the guard
+      # would report clear on a branch it had not actually examined.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref }}
+      - run: bash .github/scripts/port-freeze-guard.sh
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          BASE: origin/main
+
   spike:
     name: spike (regression suite)
     runs-on: ubuntu-latest
