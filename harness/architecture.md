@@ -27,8 +27,8 @@ role body. Frontmatter and prose must nevertheless agree so tooling can validate
 | generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `spike/`, `harness/`, `docs/` | scaffolds, CI, tool and workspace configuration |
 | backend | codex | `spike/src/`, `packages/core/`, `packages/shared/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
 | tooling | claude | `spike/bin/`, `spike/test/`, `packages/core/`, `packages/shared/` | argument parsing, terminal output, exit codes, the regression suite |
-| frontend | claude | `apps/*` — of which only `apps/web` exists; `packages/ui` and `packages/i18n`, neither of which exists yet | component props, view states, user-facing strings |
-| data | codex | `packages/database` — does not exist yet | persistence schemas and migrations |
+| frontend | claude | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
+| data | codex | `packages/database` | persistence schemas and migrations |
 
 `generalist` is not a fan-out role: `chore.yaml`'s `implement` step runs it alone, on a whole
 ticket rather than on one task from a solution. It is listed here because it is fed this table
@@ -46,7 +46,13 @@ the two directories appearing in two rows is a grant, never a shared claim.
 `frontend` and `data` remain inert. `apps/web` exists since Q-0008, but `packages/ui`,
 `packages/i18n` and `packages/database` do not exist and are not planned before M3 — the rows are
 kept so the write contract still describes the roles that exist, and the non-existence is stated
-so nobody solutions a task against a directory that is not there.
+here so nobody solutions a task against a directory that is not there.
+
+**The third column is read by a machine, so it holds paths and nothing else.** `spike/test/smoke.js`
+parses each cell as a comma-separated path list and asserts it equals the role's `paths`
+frontmatter — that assertion is why `developer-tooling` stopped being invisible to the architect.
+Annotating a cell (*"— does not exist yet"*) parses as a path and breaks it. Caveats go in this
+prose, where a reader still finds them and the parser does not.
 
 **Split by surface when the work allows it.** A ticket touching both engine internals and
 the command line should become at least two tasks, one per role, rather than one `backend`

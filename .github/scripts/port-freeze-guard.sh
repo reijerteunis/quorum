@@ -83,7 +83,7 @@ policy)
   printf 'port-freeze: policy read from %s\n  children:          %s\n  freeze-sha:        %s\n  exemption-trailer: %s\n' \
     "$CHARTER" "$children" "$freeze_sha" "$trailer"
   if [ "$freeze_sha" = "not-yet-recorded" ]; then
-    printf '\nport-freeze: the freeze-SHA half has no subject yet, so its job is SKIPPED — not passed.\nRecording a SHA in %s is what gives that half something to verify (Q-0037..Q-0040 must settle first).\n' "$CHARTER"
+    printf '\nport-freeze: the freeze-SHA half has no subject yet, so its job is SKIPPED, not passed.\nRecording a SHA in %s is what gives that half something to verify (Q-0037..Q-0040 must settle first).\n' "$CHARTER"
   fi
   exit 0 ;;
 
