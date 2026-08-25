@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-24 — M1 closed; M2's ticket list extended the same day with the Q-0034–Q-0037 reconciliation work (Q-0036). Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, and again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -54,7 +54,7 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 **Tickets**
 - Q-0004 qa-red on the M0 ticket. *(Done 2026-08-22 — the role needed no tuning; six engine defects did. See the DECISIONS entry "Red for the right reason is an engine property".)*
 - Q-0005 development fan-out; record merge-conflict rate and iterations to green. *(Never created as a ticket — the work was done inside Q-0011 and Q-0033 and is recorded there.)*
-- Q-0011 Run history on disk *(pulled forward from M2; green 2026-08-23 — M1's first two-vendor fan-out)*.
+- Q-0011 Run history on disk *(pulled forward from M2; green 2026-08-23 — M1's first two-vendor fan-out; its stage was later regressed to `red` by a review backward edge and never moved back, while the code is contained in `main` — see Q-0034's closing entry)*.
 - Q-0006 Implement `review.yaml` + cross-flow backward edge (`goto: flow:development` regresses stage). *(Split 2026-08-22: Q-0006 is the engine half, Q-0033 the CLI/lint/assets/docs half. 30 criteria in one ticket hit the bound at every stage.)*
 - Q-0033 Review flow surface — CLI, lint, config, shipped assets and docs. Depends on Q-0006.
 - Q-0007 Map failing tests → tasks (replace "re-run all tasks" with targeted retry) if Q-0005 shows it matters. *(Never created — `scope: failing-tasks-only` shipped with the fan-out and is exercised by Q-0033.)*
@@ -86,11 +86,29 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - Q-0009 Port core to TypeScript with schemas (one ticket per module is fine).
 - Q-0010 CLI package; `npx quorum` entry.
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
-- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven flows.
+- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
-- Q-0035 The empty-range diagnostic reports evidence, not a story.
+- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` 2026-08-25;
+  `main:not-contained`.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
 - Q-0037 Run-history review remainder — one major and eight nits.
+- Q-0038 Deferred-range failures name their producing step in every case. Its body also records
+  two neighbours it explicitly does not own — the chore flow cannot run on a ticket's first pass,
+  and `budget.per_run_usd` stops nothing — each of which still needs its own ticket.
+- Q-0039 One run at a time per ticket. Open since M1, where two runs overlapped twice in one night
+  and one run's rollback moved a branch another live run was holding.
+- Q-0040 A gate can say "undecided". A non-interactive run that reaches an unanswerable gate
+  currently fails, and `finish()` then rolls back work the run had already proven green — it has
+  cost Q-0036 and Q-0035 their merges on consecutive nights.
+
+**Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
+back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
+diff at anything but `{base}...integration`, which is why a merged ticket cannot be reviewed; a
+`--base <ref>` flag is the small fix. A review backward edge has no red phase, so the loop's green
+proves the agents ran rather than that they fixed anything. Q-0011's stage reads `red` while its
+code is contained in `main`, and what a stage means after a backward edge is undecided. Q-0039 and
+Q-0040 are listed above rather than left here because both entries say they should land before M3
+makes concurrent and unattended runs ordinary.
 
 ---
 
@@ -100,7 +118,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 
 **Done when**
 - `packages/server`: start/stop runs, stream events over WebSocket, answer gates.
-- `apps/web`: projects home, backlog board, mission control (parallel trace columns, cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions, override with reason), run history.
+- `apps/web`: projects home, backlog board, mission control (parallel trace columns, per-vendor cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions, override with reason), run history.
 - `quorum open` starts daemon + browser; CLI and UI can both answer the same gate.
 - Resumable runs after daemon restart.
 
@@ -117,7 +135,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 
 ## M4 — Editors + step chat (≈ 2 weeks)
 
-**Goal:** the Studio is an editor over the harness, not just a runner.
+**Goal:** Quorum is an editor over the harness, not just a runner.
 
 **Done when**
 - Flow editor: form generated from the flow schema, YAML preview, lint errors inline, templates drawer.
@@ -148,7 +166,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 **Goal:** pass the cold-clone test with someone who isn't you; publish.
 
 **Done when**
-- README is the only document a stranger needs: install, login check, init, first ticket, first gate, first merged branch, in under 30 minutes — timed by two outside testers.
+- README is the only document a stranger needs: install, login check, init, first ticket, first gate, first merged branch, in under 30 minutes — timed by two outside testers. Scope of that path is undecided: one stage fits, seven do not (see 01's measured constraint). Settle it before writing the README.
 - `npm publish` as `quorum` (or `@heyruud/quorum`), GitHub repo public with roadmap (Gemini adapter as "good first issue", desktop shell, canvas, evals, CI mode).
 - heyruud.com: launch post (the story: why multi-vendor + gates, what the spike found), docs entry page linking to the repo, one demo recording of mission control on a real ticket.
 - Social plan for Bluesky/X/LinkedIn queued.

@@ -1,4 +1,4 @@
-# Decisions — Harness project
+# Decisions — Quorum
 
 ## Agent-agnostic = multi-vendor via subscription-authed CLIs — 2026-08-06
 **Decision:** Quorum orchestrates multiple vendors and models (Claude, GPT/Codex, Gemini, …) by driving each vendor's headless CLI agent (`claude -p`, `codex exec`, `gemini -p`) through a common adapter interface. Auth is always the CLI's own subscription OAuth login — the Studio never handles an API key ("bring your own subscriptions"). Claude Code is the reference adapter; other adapters are the first open-source contribution surface.
@@ -56,6 +56,11 @@
 **Decision:** Steps and routes may declare `on_fail: goto <step | flow:name>` with a mandatory `max_iterations`, a named counter persisted in the ticket, and `on_exhausted: gate`. Cross-flow backward edges (review → development, qa-final → development/solutioning) are allowed. Exhausted loops and exceeded budgets always land on a human gate.
 **Alternatives considered:** Keep v1 strictly DAG and let humans re-run manually (safe but defeats the review↔dev loop the SDLC needs); unbounded loops (two vendors arguing on the user's subscription).
 **Why:** The loops are the value of review and QA stages; bounding them is what keeps them safe and affordable.
+**Amended 2026-08-25:** the budget half of this was never built. Nothing in the engine reads
+`budget.per_run_usd` or `budget.per_ticket_usd`; a $13.86 step and a $22.27 run passed a cap of 10
+untouched on Q-0035. Exhausted loops do land on a human gate, as decided; exceeded budgets do not,
+because nothing measures them. See "Q-0035 accepted: a check that skips its subject must not report
+success" (2026-08-25), which found it, and Q-0038, which carries it.
 
 ## Writer and reviewer are never the same vendor — 2026-08-21
 **Decision:** Flows can set `cross_vendor: required`; the flow linter rejects a step whose reviewer/judge adapter equals the adapter that produced its input. All shipped SDLC templates set it.
@@ -298,6 +303,10 @@ One number here needs care. Q-0006's `ticket.md` roll-up reads **$22.15**, not $
 
 ## A chore flow for machinery and configuration work — 2026-08-24
 **Decision:** The full SDLC — solutioning's contracts, qa-red's failing suite, the development fan-out — is reserved for feature work against a harness that is already stable. Machinery and configuration tickets take a shorter route: **requirements → chore → human gate**. `chore.yaml` consumes `requirements` and produces `reviewed`; it runs one implementer in its own worktree, then a cross-vendor review with a bounded revise loop back to the implementer, then an `integrate` step that merges to the ticket branch and must pass the repository's test command, then a human gate. It keeps `cross_vendor: required` and keeps every gate, and it drops only the two things a scaffold cannot supply: a contract to code against and a test that can be red before the work exists. First applied to Q-0008 (monorepo scaffold + CI); it is the default for Q-0009–Q-0012 as well, and a ticket that wants the full SDLC instead says so in its body.
+**Refines:** "One flow per SDLC stage, chained by backlog state" (2026-08-21), whose "seven stages,
+seven templates" this breaks in two ways: `chore` is a second flow consuming `requirements` and a second
+flow producing `reviewed`, and it produces a stage three steps later rather than the next one. The
+consumes/produces mechanism is unchanged; only the one-to-one mapping is.
 **Refines:** "Do not drive harness-machinery work through the harness" (2026-08-23), which named the problem and prescribed only "prefer hand-written acceptance tests, a smaller cut, or a stage run manually". This entry supplies the missing third option, so the choice is no longer between the full pipeline and no pipeline at all.
 **Alternatives considered:** (a) Hand-write the scaffold with no flow at all, which is what 2026-08-23 literally suggests — rejected: it is the milestone whose stated goal is "Quorum develops Quorum", and a ticket that skips the flows entirely produces no runs.log, no cost record and no gate, which is precisely the evidence M2 exists to generate. (b) Run the full SDLC anyway and let qa-red write tests against the scaffold — rejected on measured evidence: Q-0033 spent roughly $41 across six qa-red attempts without ever producing a usable red, because a red test must fail for a reason the feature will fix, and "pnpm-workspace.yaml does not exist yet" is a fact about the repository rather than a behaviour anything can assert. (c) Keep the full flow but let solutioning emit a trivial contract — rejected: a contract nothing can violate is documentation wearing a contract's clothes, and the 2026-08-22 entry on executable contracts exists to stop exactly that.
 **Why:** The distinction is not ticket size, it is whether a red phase can exist. Feature work changes behaviour, so a test can fail before it and pass after — that is the whole mechanism, and contracts are what make the failure meaningful. Configuration work changes what the repository *is*: the assertion "the workspace builds" is unfalsifiable until the workspace exists, at which point it is trivially true, so a red phase over a scaffold tests the absence of a file rather than the absence of a behaviour. Q-0033 established that empirically and this entry makes it routable instead of a warning to remember.
@@ -580,3 +589,80 @@ check with a hole in exactly the place a run is most expensive to fail.
 **Found by:** re-deriving the erratum, as Q-0034's closing entry assigned to Q-0035; and, for the
 correction to the branch-position argument and the two rule gaps above, by the chore review of
 Q-0035 itself.
+## Q-0035 accepted: a check that skips its subject must not report success — 2026-08-25
+
+**Decision:** Q-0035 is accepted at `reviewed`. The reviewed change is on
+`harness/Q-0035/integration` (`cf12197`), both suites verified green after the merge was
+re-performed by hand, and the one finding that survived the cross-vendor review is carried to
+**Q-0038** rather than spent on another loop. Two rules come out of the night and are general
+enough to record here rather than inside Q-0038:
+
+1. **Skipped is not passed.** A preflight, a `--dry` run or a lint that declines to examine something
+   reports that it skipped it. `harness run chore Q-0035 --dry` printed a clean four-step preview
+   for a range it had deliberately not looked at, and the real run then billed **$13.86** before
+   discovering the range's left endpoint did not exist. Silence must never render as a green tick.
+2. **A non-interactive run authorises the first N gates it meets, not the N gates you had in
+   mind.** `--gate-answer` values are consumed in order by whichever gate arrives first, and an
+   engine-presented exhaustion gate is a gate. Passing one answer intended for a flow's final gate
+   is therefore also an offer to accept an exhausted loop. Pass exactly as many as you would
+   authorise blind, and prefer too few: the run fails, which is recoverable, instead of advancing.
+
+**Alternatives considered:** Spending another $8–16 on a fourth `implement` + `review` pass to
+close the surviving major — rejected on Q-0034 AC-2's reasoning and on the evidence of the rounds
+themselves, which went three majors, three majors, one major with no blocker in any of them; the
+loop was already exhausted at `chore.review = 3` against a limit of 2, and a `retry` authorises
+exactly one more traversal for a message-shape change. Fixing the implementer's two red scenarios
+by hand between runs — cheapest route to a completed run, rejected because it puts the
+orchestrator's hand inside the artifact under review and makes authorship unreadable. Advancing
+the stage without re-performing the discarded merge — rejected outright: a ticket reading
+`reviewed` over a branch holding nothing is the precise failure Q-0036 shipped its containment
+column to expose.
+
+**Why: a ticket about honest diagnostics was stopped twice by dishonest ones.** Q-0035 exists
+because `materialiseDiff` reported a historical event it had not verified. Its own two runs failed
+because a `--dry` run reported a check it had not performed, and then because a gate could not say
+what it meant. The subject matter kept reappearing in the instrument.
+
+The expensive half. `chore.yaml` reviews `harness/{id}/integration...harness/{id}/implement`, and
+the run-level preflight defers a range whole when *either* endpoint is created by an earlier step
+of the same flow — one `.some()` over both endpoints at `spike/src/engine.js:108`. The right endpoint
+is step-created, so nothing checked the left one, which was a pre-existing-ref-class branch that
+simply did not exist. `--dry` reported the range valid. The `implement` step ran for 23 minutes and
+$13.86, and `review` then failed on the missing ref. Q-0035's own AC-8 promises zero adapter
+invocations for pre-existing-ref ranges and AC-9 accepts earliest-possible for deferred ones; a
+range holding one of each is covered by neither. A requirement that had thought harder about this
+subject than any other in the repository still had a hole in exactly this shape.
+
+The cheap half, found independently. Round 3's reviewer, reading the diff on the other vendor,
+returned one major: a deferred range names its producing step only when the *deferred* endpoint is
+the unresolved one, so when the other endpoint is missing the message omits who owed what. That is
+the same asymmetry from the opposite side. Worth keeping: the $13.86 route found the **timing**
+half and the free route found the **diagnosis** half, and neither found both. Q-0038 owns closing
+them together.
+
+**Three things found around the flow rather than in it.** The chore flow itself performed well —
+three implement passes converging to one major, an `integrate` that synced base, merged, installed
+and ran the real suite green.
+
+- **The chore flow cannot run on a ticket's first pass.** `review` diffs against the integration
+  branch; `integrate`, the only step that creates it, runs after. `backlog.js:64` writes the branch
+  *name* into frontmatter and nothing ever creates the ref — `spike/src/engine.js:200` says as much
+  in a comment written for a different flow's ordering. Q-0008 and Q-0036 passed only because the
+  branch was made by hand first: the reflog has `harness/Q-0036/integration` "Created from main" at
+  23:28:46 against a run starting 23:30:38. An undocumented manual prerequisite that reads as an
+  operator error, and a statically checkable flow property `harness lint` could refuse.
+- **`budget.per_run_usd` does not stop anything.** It is `10`; one step spent $13.86 and one run
+  spent $22.27, neither interrupted. A cap that only describes is not a cap.
+- **An unanswerable gate destroyed proven-green work for the second night running.** Run 3 reached
+  `integrate: tests exit 0, expected pass`, then failed at the final gate for want of an answer,
+  and `finish()` rolled `harness/Q-0035/integration` back from the merge it had just made
+  (`d77b632`) to `a916d07` — forty seconds after the suite went green. The rollback is right in every other case and is what
+  Q-0033 added it for. What is wrong is upstream: the engine cannot express *the human has not
+  decided yet* as distinct from *the run failed*, so an absent decision is indistinguishable from a
+  failure and is punished like one. M1's closing entry named this as something M3's daemon must not
+  inherit; it has now cost two tickets their merge on two consecutive nights, in two different
+  flows. It should be fixed before M3 rather than listed again.
+
+**Cost.** $36.66 in billed Claude cost — $13.86 for the run that found the preflight hole, $22.27
+for the run that did the work, $0.53 for the probe — plus roughly 44 million Codex tokens no
+roll-up can price. The ticket's own roll-up reads $39.95 because it includes the requirements run.

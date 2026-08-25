@@ -6,6 +6,6 @@
 - Files are the database. Anything persistent is a file in `backlog/`, `harness/`, or `.quorum/`; no hidden state in the daemon.
 - One trace/event format (`packages/shared`). Adapters map to it; nothing downstream knows which vendor produced an event.
 - Errors are explicit: invalid structured output saves the raw text next to the ticket and stops the run with a clear message. Never default silently.
-- Safety by construction: worktrees, integration branch, `human-locked` gate on deploy, budget caps — enforced in `core`, not in the UI or by convention.
+- Safety by construction: worktrees, integration branch, `human-locked` gate on deploy — enforced in `core`, not in the UI or by convention. Budget caps are specified but not yet enforced; do not rely on one stopping a run.
 - Conventional commits, ticket id in the subject (`feat(core): bounded backward edges [Q-0009]`).
 - Keep the cold-clone test in mind: if a feature makes the first 30 minutes longer, it needs a reason.

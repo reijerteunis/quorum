@@ -1,13 +1,14 @@
 ---
 id: Q-0035
 title: The empty-range diagnostic reports evidence, not a story
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0035/integration
 priority: p2
 created: 2026-08-24
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: draft
     run: 1
@@ -17,6 +18,30 @@ history:
     stage_after: draft
     at: 2026-08-24T22:09:18.702Z
     cost: 3.817
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T22:40:29.137Z
+    cost: 13.86
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T23:35:26.517Z
+    cost: 0
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-24T23:36:04.343Z
+    cost: 22.271
 ---
 When a step's `input.diff` resolves to an empty range, `materialiseDiff` in `spike/src/engine.js`
 explains it. The explanation is a story rather than evidence: it runs `git merge-base --is-ancestor`

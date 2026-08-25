@@ -21,7 +21,8 @@ When they disagree, this file wins and the other is the drift.
   downstream may learn which vendor produced an event.
 - Vendor-specific knowledge lives in the adapter and nowhere else.
 - Safety is enforced in `core`, never in the UI and never by convention: worktrees, the
-  integration branch, the human-locked deploy gate, budget caps.
+  integration branch, the human-locked deploy gate. Budget caps are specified in
+  `harness.yaml` but nothing reads them yet.
 - Errors are explicit. Invalid structured output is saved beside the ticket as raw text and
   the run stops with a clear message. Never default silently.
 
@@ -32,8 +33,8 @@ When they disagree, this file wins and the other is the drift.
   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `CODEX_API_KEY` is set, and refuses *before* it
   probes the CLI, so a missing CLI cannot mask a key.
 - **Never write to the user's working tree from a flow.** Worktrees live under
-  `.quorum/worktrees/`; the integration branch is `harness/<id>/integration` with step and
-  task branches beside it.
+  `.harness/worktrees/` (`.quorum/` holds run history, not worktrees); the integration branch is
+  `harness/<id>/integration` with step and task branches beside it.
 - Quorum is product-agnostic. No reference to any specific SaaS product except as an example
   name in demo data.
 - Flows are YAML files in the project. The UI edits files and never holds the truth.

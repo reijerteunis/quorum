@@ -4,3 +4,19 @@
 2026-08-24T22:09:18.689Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=1.6476685 ms=288625
 2026-08-24T22:09:18.704Z run=1 failed stage=draft→draft cost=3.817 tokens=1968404 error="gate (human) \"PM owner approves requirements/merged.md\" needs an answer and stdin closed without one — pass --gate-answer advance|abort (repeatable, consumed in order), or run interactively"
 2026-08-24T22:13:34.000Z run=1 gate=human answer=advance (out-of-band: owner approved requirements/merged.md after the non-interactive run stopped at the gate; head-of-product returned ready with zero findings and all three steps completed, so only the gate answer was missing; stage advanced by hand, no engine run completed)
+2026-08-24T22:17:34.098Z run=2 flow=chore start stage=requirements
+2026-08-24T22:40:29.119Z run=2 step=implement vendor=claude model=- verdict=- cost=13.8597705 ms=1374890
+2026-08-24T22:40:29.138Z run=2 failed stage=requirements→requirements cost=13.86 tokens=17528884 error="ticket Q-0035: expected harness/Q-0035/integration; review requires an integrated branch"
+2026-08-24T22:46:06.069Z run=3 flow=chore start stage=requirements
+2026-08-24T22:55:58.262Z run=3 step=implement vendor=claude model=- verdict=- cost=6.640806499999999 ms=592111
+2026-08-24T22:57:07.228Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=68920
+2026-08-24T23:09:53.191Z run=3 step=implement vendor=claude model=- verdict=- cost=6.453243499999998 ms=765862
+2026-08-24T23:11:21.283Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=88046
+2026-08-24T23:34:37.872Z run=3 step=implement vendor=claude model=- verdict=- cost=9.176561000000001 ms=1396493
+2026-08-24T23:35:26.511Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=48599
+2026-08-24T23:35:26.520Z run=3 exhausted stage=requirements→requirements cost=0
+2026-08-24T23:35:26.520Z run=3 gate=human-locked answer=advance
+2026-08-24T23:36:04.322Z run=3 step=integrate merged=1/1 tests=ok
+2026-08-24T23:36:04.381Z run=3 rolled-back branch=harness/Q-0035/integration from=d77b632 to=a916d07
+2026-08-24T23:36:04.382Z run=3 failed stage=requirements→requirements cost=22.271 tokens=26455953 error="gate (human) \"Chore owner approves the reviewed change now on the ticket branch, with the suite green\" needs an answer and stdin closed without one — pass --gate-answer advance|abort (repeatable, cons"
+2026-08-24T23:40:48.000Z run=3 gate=human answer=advance (out-of-band: owner accepted the reviewed change after the non-interactive run stopped at the final gate; the integrate-proven merge that finish() rolled back was re-performed by hand at cf12197 and re-verified — npm test --prefix spike all 11 files green, pnpm turbo run test 7/7 green; review exhausted at chore.review=3 with verdict=revise and one surviving major (spike/src/engine.js:820, deferred range omits the producing step when the other endpoint is missing), zero blockers in any round, carried to Q-0038 per Q-0034 AC-2; stage advanced by hand, no engine run completed)
