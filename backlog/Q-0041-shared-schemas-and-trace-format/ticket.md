@@ -7,7 +7,8 @@ repos: []
 branch: harness/Q-0041/integration
 priority: p1
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-08-25T17:46:20.087Z
     cost: 12.676
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-25T18:55:32.926Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-25T18:55:32.941Z
+    cost: 40.465
 ---
 The first ticket of Q-0009's port, and the only one everything else imports. `packages/shared` is
 empty; `04-architecture.md` gives it *"types, schemas (zod), event/trace format, constants"*, and the
