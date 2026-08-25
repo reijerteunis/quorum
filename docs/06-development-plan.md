@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -76,7 +76,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 
 **Done when**
 - Monorepo scaffold per `04-architecture.md` (pnpm, Turborepo, TS strict, Vitest, ESLint).
-- `packages/core` ports engine/backlog/fanout/git/adapters with zod schemas for flow, ticket, role, step output; public API as documented.
+- `packages/core` ports engine/backlog/fanout/git/adapters against the zod schemas for flow, ticket, role and step output that `packages/shared` defines (04-architecture.md is the authority: the schemas live in `shared`, `core` imports them); public API as documented.
 - The 30-check smoke test passes as a Vitest suite; CI runs it on every push.
 - `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
 - `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.

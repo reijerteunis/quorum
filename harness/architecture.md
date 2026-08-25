@@ -24,14 +24,35 @@ role body. Frontmatter and prose must nevertheless agree so tooling can validate
 
 | role | vendor | directories it may write | typical contracts |
 | --- | --- | --- | --- |
-| backend | codex | `spike/src/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
-| tooling | claude | `spike/bin/`, `spike/test/` | argument parsing, terminal output, exit codes, the regression suite |
+| generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `spike/`, `harness/`, `docs/` | scaffolds, CI, tool and workspace configuration |
+| backend | codex | `spike/src/`, `packages/core/`, `packages/shared/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
+| tooling | claude | `spike/bin/`, `spike/test/`, `packages/core/`, `packages/shared/` | argument parsing, terminal output, exit codes, the regression suite |
 | frontend | claude | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
 | data | codex | `packages/database` | persistence schemas and migrations |
 
-`frontend` and `data` are inert in this repository until `apps/` and `packages/` exist
-(M2 onward). `backend` and `tooling` are the two live roles, and they are deliberately on
+`generalist` is not a fan-out role: `chore.yaml`'s `implement` step runs it alone, on a whole
+ticket rather than on one task from a solution. It is listed here because it is fed this table
+as context on every chore run, and a role reading a table that omits it — and that grants no
+role the directories it is being sent to write — is being told two different things at once.
+Its wide paths are deliberate: repository configuration lives at the root, and a chore ticket
+usually touches several unrelated corners of it.
+
+`backend` and `tooling` are the two live **fan-out** roles, and they are deliberately on
 **different vendors** — that is what makes a fan-out multi-vendor rather than merely parallel.
+Both may write `packages/core/` and `packages/shared/`, on the same terms as `spike/bin/` below:
+which of them owns a given file is a statement each solution's `tasks.yaml` makes explicitly, and
+the two directories appearing in two rows is a grant, never a shared claim.
+
+`frontend` and `data` remain inert. `apps/web` exists since Q-0008, but `packages/ui`,
+`packages/i18n` and `packages/database` do not exist and are not planned before M3 — the rows are
+kept so the write contract still describes the roles that exist, and the non-existence is stated
+here so nobody solutions a task against a directory that is not there.
+
+**The third column is read by a machine, so it holds paths and nothing else.** `spike/test/smoke.js`
+parses each cell as a comma-separated path list and asserts it equals the role's `paths`
+frontmatter — that assertion is why `developer-tooling` stopped being invisible to the architect.
+Annotating a cell (*"— does not exist yet"*) parses as a path and breaks it. Caveats go in this
+prose, where a reader still finds them and the parser does not.
 
 **Split by surface when the work allows it.** A ticket touching both engine internals and
 the command line should become at least two tasks, one per role, rather than one `backend`
@@ -44,6 +65,17 @@ than defaulting to `backend`.
 them only where its own description assigns those files explicitly and names why — tasks
 solutioned before this table gained its `tooling` row do exactly that, and remain valid.
 Tasks must still assign each concrete file to exactly one owner.
+
+**The spike is frozen for Q-0009's port, and for nothing else.** Q-0041 through Q-0054 port
+`spike/src` into `packages/core` and `packages/shared`, and while they do, none of them may
+modify or delete any file under `spike/src/` — the spike is the harness those tickets are
+themselves run on, and the port's only independent witness. Every other ticket may still write
+there, which is why the freeze is enforced on branch names in CI
+(`.github/scripts/port-freeze-guard.sh`) and not by narrowing anyone's paths above: Q-0038 and
+Q-0040 have `spike/src` as their whole subject. **If you are working on one of the fourteen,
+read `harness/port-charter.md` first** — it carries the freeze and its exemption path, the
+behaviour-preservation policy, the invariant register each child inherits, the landing order and
+the pre-run checklist.
 
 **Tasks are small, and their ownership is complete.** A task touches one coherent file set and
 is describable in a sentence. Between them, a solution's tasks must own every file the red suite
