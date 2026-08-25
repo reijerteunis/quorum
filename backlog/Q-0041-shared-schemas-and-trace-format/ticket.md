@@ -1,14 +1,22 @@
 ---
 id: Q-0041
 title: packages/shared — schemas, types and the trace format
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0041/integration
 priority: p1
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-25T17:46:20.087Z
+    cost: 12.676
 ---
 The first ticket of Q-0009's port, and the only one everything else imports. `packages/shared` is
 empty; `04-architecture.md` gives it *"types, schemas (zod), event/trace format, constants"*, and the
