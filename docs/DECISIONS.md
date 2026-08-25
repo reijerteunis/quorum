@@ -56,6 +56,11 @@
 **Decision:** Steps and routes may declare `on_fail: goto <step | flow:name>` with a mandatory `max_iterations`, a named counter persisted in the ticket, and `on_exhausted: gate`. Cross-flow backward edges (review → development, qa-final → development/solutioning) are allowed. Exhausted loops and exceeded budgets always land on a human gate.
 **Alternatives considered:** Keep v1 strictly DAG and let humans re-run manually (safe but defeats the review↔dev loop the SDLC needs); unbounded loops (two vendors arguing on the user's subscription).
 **Why:** The loops are the value of review and QA stages; bounding them is what keeps them safe and affordable.
+**Amended 2026-08-25:** the budget half of this was never built. Nothing in the engine reads
+`budget.per_run_usd` or `budget.per_ticket_usd`; a $13.86 step and a $22.27 run passed a cap of 10
+untouched on Q-0035. Exhausted loops do land on a human gate, as decided; exceeded budgets do not,
+because nothing measures them. See "Q-0035 accepted: a check that skips its subject must not report
+success" (2026-08-25), which found it, and Q-0038, which carries it.
 
 ## Writer and reviewer are never the same vendor — 2026-08-21
 **Decision:** Flows can set `cross_vendor: required`; the flow linter rejects a step whose reviewer/judge adapter equals the adapter that produced its input. All shipped SDLC templates set it.
@@ -298,6 +303,10 @@ One number here needs care. Q-0006's `ticket.md` roll-up reads **$22.15**, not $
 
 ## A chore flow for machinery and configuration work — 2026-08-24
 **Decision:** The full SDLC — solutioning's contracts, qa-red's failing suite, the development fan-out — is reserved for feature work against a harness that is already stable. Machinery and configuration tickets take a shorter route: **requirements → chore → human gate**. `chore.yaml` consumes `requirements` and produces `reviewed`; it runs one implementer in its own worktree, then a cross-vendor review with a bounded revise loop back to the implementer, then an `integrate` step that merges to the ticket branch and must pass the repository's test command, then a human gate. It keeps `cross_vendor: required` and keeps every gate, and it drops only the two things a scaffold cannot supply: a contract to code against and a test that can be red before the work exists. First applied to Q-0008 (monorepo scaffold + CI); it is the default for Q-0009–Q-0012 as well, and a ticket that wants the full SDLC instead says so in its body.
+**Refines:** "One flow per SDLC stage, chained by backlog state" (2026-08-21), whose "seven stages,
+seven templates" this breaks in two ways: `chore` is a second flow consuming `requirements` and a second
+flow producing `reviewed`, and it produces a stage three steps later rather than the next one. The
+consumes/produces mechanism is unchanged; only the one-to-one mapping is.
 **Refines:** "Do not drive harness-machinery work through the harness" (2026-08-23), which named the problem and prescribed only "prefer hand-written acceptance tests, a smaller cut, or a stage run manually". This entry supplies the missing third option, so the choice is no longer between the full pipeline and no pipeline at all.
 **Alternatives considered:** (a) Hand-write the scaffold with no flow at all, which is what 2026-08-23 literally suggests — rejected: it is the milestone whose stated goal is "Quorum develops Quorum", and a ticket that skips the flows entirely produces no runs.log, no cost record and no gate, which is precisely the evidence M2 exists to generate. (b) Run the full SDLC anyway and let qa-red write tests against the scaffold — rejected on measured evidence: Q-0033 spent roughly $41 across six qa-red attempts without ever producing a usable red, because a red test must fail for a reason the feature will fix, and "pnpm-workspace.yaml does not exist yet" is a fact about the repository rather than a behaviour anything can assert. (c) Keep the full flow but let solutioning emit a trivial contract — rejected: a contract nothing can violate is documentation wearing a contract's clothes, and the 2026-08-22 entry on executable contracts exists to stop exactly that.
 **Why:** The distinction is not ticket size, it is whether a red phase can exist. Feature work changes behaviour, so a test can fail before it and pass after — that is the whole mechanism, and contracts are what make the failure meaningful. Configuration work changes what the repository *is*: the assertion "the workspace builds" is unfalsifiable until the workspace exists, at which point it is trivially true, so a red phase over a scaffold tests the absence of a file rather than the absence of a behaviour. Q-0033 established that empirically and this entry makes it routable instead of a warning to remember.
@@ -476,7 +485,7 @@ what it meant. The subject matter kept reappearing in the instrument.
 
 The expensive half. `chore.yaml` reviews `harness/{id}/integration...harness/{id}/implement`, and
 the run-level preflight defers a range whole when *either* endpoint is created by an earlier step
-of the same flow — one `find` over both endpoints at `spike/src/engine.js:110`. The right endpoint
+of the same flow — one `.some()` over both endpoints at `spike/src/engine.js:108`. The right endpoint
 is step-created, so nothing checked the left one, which was a pre-existing-ref-class branch that
 simply did not exist. `--dry` reported the range valid. The `implement` step ran for 23 minutes and
 $13.86, and `review` then failed on the missing ref. Q-0035's own AC-8 promises zero adapter

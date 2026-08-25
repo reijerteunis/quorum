@@ -22,7 +22,7 @@
 
 **Ticket**: One folder in the backlog: `ticket.md` (frontmatter state + intent) and per-stage artifact subfolders (requirements/, solution/, qa/, dev/, review/, deploy/).
 
-**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` the next. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `harness board` as **Containment**.
+**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` a later one — usually the next, though the **chore flow** produces `reviewed` from `requirements`. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `harness board` as **Containment**.
 
 **Containment**: The git-derived relationship between a ticket branch tip and the configured base
 branch, computed on every `harness board` invocation and never stored. Exactly three states,
@@ -59,4 +59,6 @@ prompts and outputs, errors, usage, and per-vendor roll-up.
 in a worktree → cross-vendor review with a bounded revise loop → integrate → human gate. Consumes
 `requirements`, produces `reviewed`, skipping solutioning and qa-red because a scaffold has no
 behaviour a test could fail on before it exists. Not a lighter SDLC; a different one, for work that
-changes what the repository *is* rather than what it *does*.
+changes what the repository *is* rather than what it *does*. Requires `harness/<id>/integration` to
+exist before its first run — `review` diffs against that branch and only `integrate`, which runs
+later, creates it (see 02-sdlc-pipeline-spec.md §5.8).

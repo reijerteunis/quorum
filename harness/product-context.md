@@ -62,10 +62,10 @@ Every requirement carries acceptance criteria for these where they apply:
 1. **BYOS.** No code path, test, doc or example may accept an API key. `check()` refuses when
    `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `CODEX_API_KEY` is set.
 2. **Safety by construction.** A flow never writes to the user's working tree. Code-writing
-   steps run in worktrees under `.quorum/worktrees/` on branches beside
+   steps run in worktrees under `.harness/worktrees/` on branches beside
    `harness/<id>/integration`. Enforced in core, not in the UI and not by convention.
 3. **Human-gated by default.** `auto` is opt-in per gate; `human-locked` (deploy) cannot be
-   flipped. Exhausted loops and exceeded budgets always land on a human gate.
+   flipped. Exhausted loops always land on a human gate. Budget caps are not yet enforced.
 4. **Files are the database.** Anything persistent is a file in `backlog/`, `harness/` or
    `.quorum/`. No hidden daemon state.
 5. **Cross-vendor rule.** A reviewing or judging step must see at least one input written by

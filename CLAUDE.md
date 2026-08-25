@@ -24,7 +24,7 @@ about any specific SaaS product.
 - Until M2 lands, the runnable code is the spike in `spike/` (plain Node ESM). Do not extend the spike beyond M0/M1 needs; port it into `packages/core` instead.
 - Every behaviour change ships with a test. The mock-adapter end-to-end test is the regression suite; keep it green.
 - Never add an API-key path. Adapters run on the vendor CLI's own login. `check()` must refuse if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `CODEX_API_KEY` is set.
-- Never write to the user's working tree from a flow. Worktrees under `.quorum/worktrees/`, integration branch `harness/<id>/integration`, step branches beside it.
+- Never write to the user's working tree from a flow. Worktrees under `.harness/worktrees/` (run history is the one thing under `.quorum/`), integration branch `harness/<id>/integration`, step branches beside it.
 - Commits: conventional commits; reference the ticket (`Q-0012`) in the subject.
 - From M2 onward Quorum develops itself: a change starts as a ticket in `backlog/` and goes through the flows in `harness/flows/`.
 

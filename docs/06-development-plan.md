@@ -86,15 +86,15 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - Q-0009 Port core to TypeScript with schemas (one ticket per module is fine).
 - Q-0010 CLI package; `npx quorum` entry.
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
-- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven flows.
+- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
-- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` 2026-08-25; the
-  change is on its ticket branch, not on `main`.)*
+- Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` 2026-08-25;
+  `main:not-contained`.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
 - Q-0037 Run-history review remainder — one major and eight nits.
-- Q-0038 Deferred-range failures name their producing step in every case — plus the two
-  neighbours Q-0035 found: the chore flow cannot run on a ticket's first pass, and
-  `budget.per_run_usd` stops nothing.
+- Q-0038 Deferred-range failures name their producing step in every case. Its body also records
+  two neighbours it explicitly does not own — the chore flow cannot run on a ticket's first pass,
+  and `budget.per_run_usd` stops nothing — each of which still needs its own ticket.
 
 ---
 
