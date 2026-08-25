@@ -5,30 +5,41 @@
 ports nothing; this document and the guard beside it are its output. Read with
 `harness/rules.md` and `harness/architecture.md`, which points here.*
 
-## Why this lives in `harness/` and not in the ticket folder
+## Why this file is here, and where the requirement says it belongs
 
-Q-0009's requirement asks for the charter under
-`backlog/Q-0009-port-the-spike-to-packages-core/`. It cannot live there and be read, for two
-reasons that are properties of the engine rather than preferences:
+**Q-0009's requirement puts the charter under `backlog/Q-0009-port-the-spike-to-packages-core/`,
+and that is the right place. This copy is not here because a better one was found.** It is here
+because the step that wrote it could not write there: `commitAll` reverts and cleans everything
+under `backlog/` before every agent step commits (`spike/src/fanout.js:80–93`), since the engine
+owns ticket state — an agent once rewrote a ticket's frontmatter on its branch, resetting
+`iterations` and deleting three history entries with their costs. A charter an implementer writes
+into `backlog/` never reaches a commit at all. See §11.
 
-1. **An agent's writes under `backlog/` are discarded.** `commitAll` reverts and cleans
-   `backlog/` before every step commit (`spike/src/fanout.js`), because the engine owns ticket
-   state and an agent once rewrote a ticket's frontmatter on its branch. A charter written
-   there by an implementer never reaches a commit at all.
-2. **A child could not read it even if it did.** `input.backlog` resolves against *the running
-   ticket's own folder* (`spike/src/engine.js:704–705`). Q-0041 reading
-   `requirements/merged.md` reads Q-0041's copy; nothing in the flow file can point a child at
-   another ticket's directory.
+An earlier draft of this section gave a second reason — that a child could not *read* a charter in
+the ticket folder, because `input.backlog` resolves against the running ticket's own folder
+(`spike/src/engine.js:704–705`). **That reason does not hold, and it should not be relied on.** It
+is true that nothing in a flow file can inject another ticket's directory into a prompt; it is also
+true that this file is not injected either, because `chore.yaml:14` lists exactly `rules.md` and
+`architecture.md`. Both locations are reached the same way: `input.repo: true` gives every child's
+implementer the whole working tree, and `harness/architecture.md` — which *is* injected — points at
+the charter by path. **There is no functional argument for `harness/` over the ticket folder.** The
+pointer is what does the work, and it costs one line either way.
 
-`harness/` is the opposite on both counts: it survives an agent's commit, and
-`harness/architecture.md` is injected verbatim into every `chore` implement step
-(`chore.yaml:14`). Pointing at this file from there is the only route by which the charter
-reaches the fourteen agents that need it. `harness/` is one of the four surfaces Q-0009's
-requirement declares, so this is a relocation within scope, not a new one.
+**Moving it is therefore a small, deliberate act, not a rewrite.** `git mv` this file to
+`backlog/Q-0009-port-the-spike-to-packages-core/port-charter.md` and update the two places that
+name its path: `CHARTER` in `.github/scripts/port-freeze-guard.sh` (one default, already
+overridable by environment) and the pointer in `harness/architecture.md`. The alternative is an
+accepted amendment to the requirement blessing `harness/`. Either settles it; leaving it
+unsettled does not, because the guard fails closed on a charter it cannot find and the fourteen
+children read whatever the pointer names.
+
+Whichever way it goes, **a pointer from `harness/architecture.md` is retained**, since that file
+and `rules.md` are the only two a child's prompt actually carries.
 
 This file is repository-specific context, like `rules.md` and `architecture.md`. It has no
 counterpart under `spike/templates/harness/` and must not acquire one — it describes Quorum's
-own port, not an adopter's project.
+own port, not an adopter's project. It is retired at the cutover; the two decisions it restates
+are in `docs/DECISIONS.md` and are not.
 
 ---
 
@@ -54,6 +65,11 @@ Three consequences that entry fixes, repeated here because they change how runs 
   fan-out role table to grant it anything.
 
 ## 2. Behaviour preservation
+
+Decided in `docs/DECISIONS.md`, **"The port preserves behaviour; one exception is authorised and
+everything else stops the child" (2026-08-25)**. That entry is the durable record and outlives
+this charter, which is retired at the cutover; what follows is the working restatement, and the
+register below is the operative half.
 
 **The default is that the port preserves externally observable behaviour, and the ported tests
 are the proof.** Externally observable means: what a command prints and its exit code, what is
@@ -122,11 +138,23 @@ The freeze is a property of *these fifteen tickets*, not of any role. `developer
 may write `spike` and should — Q-0038 and Q-0040 are chore-shaped tickets whose whole subject is
 `spike/src`. That is why it is enforced on branch names in CI rather than in a role's `paths`.
 
-**Enforcement.** `.github/scripts/port-freeze-guard.sh`, run by the `port-freeze` job in
-`.github/workflows/ci.yml`, reads the machine-readable block below. Any branch
-`harness/<id>/*` whose `<id>` is in the `children` list and whose diff against `main` touches
-`spike/src/` fails the job. Branches for any other ticket are out of the guard's scope and it
-says so rather than passing silently.
+**Enforcement, in two halves that are two CI jobs.**
+`.github/scripts/port-freeze-guard.sh` reads the machine-readable block below and never restates
+it. The halves are separate jobs rather than two sections of one report, because a green tick is
+a claim and one job cannot make it for a half it did not run:
+
+| Job | Question it answers | State |
+| --- | --- | --- |
+| `port freeze (policy)` | what does the charter authorise? | always runs |
+| `port freeze (branch scope)` | did *this branch* touch `spike/src` since it forked from the base? | **active** |
+| `port freeze (base unchanged since the freeze SHA)` | has the base acquired a `spike/src` change since the freeze? | **skipped** until a SHA is recorded |
+
+Any branch `harness/<id>/*` whose `<id>` is in the `children` list and whose diff against `main`
+touches `spike/src/` fails the branch-scope job. Branches for any other ticket are out of the
+guard's scope and it says so rather than passing silently. All of it fails closed: a missing or
+unparseable charter, a shallow clone, an unanswerable ancestry check and an unknown mode each
+fail rather than report clear. `node .github/scripts/port-freeze-guard.test.mjs` exercises every
+direction against a throwaway repository.
 
 The `children` list holds the **fourteen**, not Q-0009 itself, because that is what Q-0009's
 requirement specifies the guard to key on. Q-0009's own compliance rests on its stated non-goal
@@ -146,6 +174,20 @@ the trailer it honoured. An agent does not write this trailer — the harness au
 messages on a child's branches, so an exemption can only come from the human amending or adding
 a commit deliberately.
 
+**It is honoured only complete**, and all three parts are required: the trailer at the start of
+a line, *this branch's* ticket id, and a non-empty reason. A bare `Port-freeze-exemption:`, one
+naming a different ticket, and the word appearing in prose are each **not** an exemption — the
+guard reports them as malformed, quotes the lines it refused, and still fails. An exemption is a
+deliberate override of a rule that exists to stop both suites going green over a wrong product;
+a trailer typed carelessly, pasted from another ticket or mentioned in passing must not be able
+to switch it off. The `exemption-trailer` key is itself checked to be a plain token, so a
+charter edit cannot widen the match into a wildcard.
+
+The exemption is a property of a *branch*, so it applies to the branch-scope half only. The
+freeze-SHA half asks a question about the base branch, which no commit trailer on a child can
+answer; if the base legitimately acquires a `spike/src` change after the freeze, what changes is
+the recorded SHA, deliberately and in this file.
+
 **The freeze SHA is not yet named.** The SHA-anchored half of the freeze — that `main` acquired
 no `spike/src` change after the port began — cannot be recorded until four open tickets that
 legitimately edit `spike/src` are settled:
@@ -158,10 +200,16 @@ legitimately edit `spike/src` are settled:
 | Q-0040 | A gate can say "undecided" *(no folder yet)* | as above |
 
 Re-targeting any of them at `core` makes it a port-plus-feature and larger than it currently
-looks. Until all four are settled and the SHA is written into the block below, **the guard
-reports its SHA-anchored half as SKIPPED, not as passed** — the 2026-08-25 rule applied to the
-guard itself. Its branch-scope half is live now, because fourteen child runs start long before
-the SHA exists and an inert guard would protect none of them.
+looks. Until all four are settled and the SHA is written into the block below, **the SHA-anchored
+half is SKIPPED, not passed** — the 2026-08-25 rule applied to the guard itself. Its job is
+conditioned on a SHA existing, so GitHub renders it as skipped rather than as a green tick over a
+check nobody ran, and the script refuses to exit 0 if it is invoked in that state anyway. Its
+branch-scope half is live now, because fourteen child runs start long before the SHA exists and
+an inert guard would protect none of them.
+
+Once a SHA *is* recorded, that half stops being a printed reminder and becomes a check: the
+recorded commit must exist, must be an ancestor of the base, and the base must hold no `spike/src`
+change since it — otherwise the job fails and names the files that moved.
 
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
@@ -221,25 +269,31 @@ suites transfer at Q-0010, and the new binary is proved before the old one is de
 
 ## 6. The per-child register
 
-What each child ports, the CLI-held domain logic it lifts, what it depends on, and the register
-rows it inherits. Ownership is stated once here so fourteen bodies do not each re-derive it.
+What each child ports, the CLI-held domain logic it lifts, what it depends on, what depends on it,
+and the register rows it inherits. **This table is the normative source for all five.** A child's
+body cites it rather than restating it, and where the two ever differ this table is right — one
+table drifting from fourteen bodies is a problem with fourteen fixes, and the sizing decision was
+never worth paying for twice.
 
-| Child | Ports from `spike/src` | Lifts from `spike/bin/harness.js` | Depends on | Invariants |
-| --- | --- | --- | --- | --- |
-| Q-0041 | *(new)* `packages/shared`: zod schemas, event union, constants; `STAGES` from `backlog.js:6` | — | — | 22 |
-| Q-0042 | `git.js` — worktrees, `ancestry()`, containment, `shallowState()` | — | Q-0041 | 8, 19 |
-| Q-0043 | `backlog.js` — frontmatter, `Backlog`, ticket walk | `findProject`, `loadProject` (:46–61) | Q-0041 | 9, 19 |
-| Q-0044 | `lint.js` — `FlowError`, `flattenSteps`, `lintFlow`, `validateFlowDirectory` | `lintDirectory` (:374) | Q-0041 | 12, 16, 18 |
-| Q-0045 | `contracts.js` — ajv validation | `run-manifest-v1` semantic pass and roll-up recomputation (:270–360) | Q-0041 | 13, 14 |
-| Q-0046 | `adapters/index.js` — contract layer, `checkAgainstSchema`, `extractJson`, `authError`, mock | — | Q-0041 | 1, 13, 21, 22 |
-| Q-0047 | `adapters/claude.js`, `adapters/codex.js`, per-adapter `capabilities` | `overrideAdapters` (:612) | Q-0041, Q-0046 | 2, 4, 22 |
-| Q-0048 | `fanout.js` — tasks, waves, worktrees, branches, `commitAll` | — | Q-0041, Q-0042 | 19 |
-| Q-0049 | run history in `engine.js` — manifest, occurrences, roll-ups | reader: `manifestShapeError` (:142), `readRunsDir` (:151), `sortRuns` (:171), `occurrenceSeq` (:184), `isIncomplete`, `realpath` traversal guard (:135–246) | Q-0041, Q-0045 | 3, 4, 15 |
-| Q-0050 | `engine.js` run loop, routing, stage transitions, `runFlow` as event stream | — | Q-0041, Q-0049 | 5, 6, 16, 17, 19, 20, 21 |
-| Q-0051 | `engine.js` diff preflight and materialisation | — | Q-0050 | 10, 11, 12 |
-| Q-0052 | `engine.js` agent, gate and script steps | — | Q-0051 | 17 |
-| Q-0053 | `engine.js` fan-out and integrate steps | — | Q-0052, Q-0048 | 7 |
-| Q-0054 | `spike/test/**` library-level suites → Vitest; CI gating | — | all above | — |
+`Q-0054` is omitted from the dependents column because it lands after all thirteen and therefore
+depends on every one of them.
+
+| Child | Ports from `spike/src` | Lifts from `spike/bin/harness.js` | Depends on | Depended on by | Invariants |
+| --- | --- | --- | --- | --- | --- |
+| Q-0041 | *(new)* `packages/shared`: zod schemas, event union, constants; `STAGES` from `backlog.js:6` | — | — | every other child | 22 |
+| Q-0042 | `git.js` — worktrees, `ancestry()`, containment, `shallowState()` | — | Q-0041 | Q-0048 | 8, 19 |
+| Q-0043 | `backlog.js` — frontmatter, `Backlog`, ticket walk | `findProject`, `loadProject` (:46–61) | Q-0041 | — | 9, 19 |
+| Q-0044 | `lint.js` — `FlowError`, `flattenSteps`, `lintFlow`, `validateFlowDirectory` | `lintDirectory` (:374) | Q-0041 | — | 12, 16, 18 |
+| Q-0045 | `contracts.js` — ajv validation | `run-manifest-v1` semantic pass and roll-up recomputation (:270–360) | Q-0041 | Q-0049 | 13, 14 |
+| Q-0046 | `adapters/index.js` — contract layer, `checkAgainstSchema`, `extractJson`, `authError`, mock | — | Q-0041 | Q-0047 | 1, 13, 21, 22 |
+| Q-0047 | `adapters/claude.js`, `adapters/codex.js`, per-adapter `capabilities` | `overrideAdapters` (:612) | Q-0041, Q-0046 | — | 2, 4, 22 |
+| Q-0048 | `fanout.js` — tasks, waves, worktrees, branches, `commitAll` | — | Q-0041, Q-0042 | Q-0053 | 19 |
+| Q-0049 | run history in `engine.js` — manifest, occurrences, roll-ups | reader: `manifestShapeError` (:142), `readRunsDir` (:151), `sortRuns` (:171), `occurrenceSeq` (:184), `isIncomplete`, `realpath` traversal guard (:135–246) | Q-0041, Q-0045 | Q-0050 | 3, 4, 15 |
+| Q-0050 | `engine.js` run loop, routing, stage transitions, `runFlow` as event stream | — | Q-0041, Q-0049 | Q-0051 | 5, 6, 16, 17, 19, 20, 21 |
+| Q-0051 | `engine.js` diff preflight and materialisation | — | Q-0050 | Q-0052 | 10, 11, 12 |
+| Q-0052 | `engine.js` agent, gate and script steps | — | Q-0051 | Q-0053 | 17 |
+| Q-0053 | `engine.js` fan-out and integrate steps | — | Q-0052, Q-0048 | — | 7 |
+| Q-0054 | `spike/test/**` library-level suites → Vitest; CI gating | — | all above | — | — |
 
 **Every child's non-goals include, without restating them:** porting another child's module;
 editing `spike/**` (§3); fixing a defect found while reading (§2); the cutover; the `quorum`
@@ -319,3 +373,36 @@ document that tells a reader to run the spike — is drafted as `CO-1`–`CO-4` 
 requirement and belongs to a follow-up ticket, proposed **Q-0055**, which runs only after Q-0010
 and Q-0054 both report `main:contained`. The event stream's shape belongs to Q-0050. The four
 machinery defects belong to Q-0037–Q-0040. This charter works around them and fixes none.
+
+## 11. Outstanding: the two criteria a chore `implement` step cannot satisfy
+
+Recorded here rather than only in an implementation report, because a report is read once at a
+gate and this has to survive until someone acts on it.
+
+**The engine discards an agent's writes under `backlog/`.** `commitAll` runs
+`git checkout -- backlog` and `git clean -qfd -- backlog` before every agent step commits
+(`spike/src/fanout.js:80–93`). It is correct and it is not a bug: the engine owns ticket state,
+and it was added after an architect rewrote a ticket's frontmatter on its branch. It does mean
+that **`backlog/` is not a writable surface for `chore.yaml`'s `implement` step**, while two of
+Q-0009's twelve criteria name `backlog/` as their surface. Attempting the writes would not produce
+a diff to review; it would produce a warning and nothing else.
+
+Two things therefore remain, and both need either a human commit or a flow step authorised to
+write the backlog:
+
+1. **AC-8 — reconcile the fourteen child bodies and Q-0009's own.** The material is not missing:
+   §6 above carries, for every child, the spike source it ports, the CLI-held logic it lifts, its
+   dependencies, its dependents and its inherited invariant rows, and the paragraph beneath it
+   carries the non-goals every child shares. Applying it is transcription from one table into
+   fourteen files. Q-0009's own body additionally needs its cutover claim removed — the cutover is
+   §10's follow-up, proposed Q-0055 — and each child needs one line citing *"The port takes the
+   chore route…"* (2026-08-25) for its route and *"The port preserves behaviour…"* (2026-08-25)
+   for its licence.
+2. **AC-1 and the charter's location.** Each child body cites the routing entry by title and date;
+   and this file belongs at `backlog/Q-0009-port-the-spike-to-packages-core/port-charter.md` unless
+   the requirement is amended. See the opening section for the two path references a `git mv` has
+   to carry with it.
+
+Until (1) is done, a child agent that reads only its own ticket body gets its route and its
+invariants from §6 and §2 via `harness/architecture.md`'s pointer, which is why that pointer is
+load-bearing and not a convenience.
