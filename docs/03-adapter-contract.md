@@ -4,8 +4,9 @@
 Claude invocation, BYOS guard moved ahead of the CLI check. The first real run then failed on an
 expired Codex login that `check()` had reported as ✓, which added `adapters --probe`, the
 `authError()` translation, and the rule that a failing parallel branch must not discard its
-siblings' work. Still open: Claude's structured output for a large document, and Codex's JSONL
-field names.*
+siblings' work. Both of the questions this document once listed as open are closed: Codex's JSONL field
+names are verified below, and Claude returned a 28,080-byte markdown document intact (M0,
+2026-08-22), so the 2–4 KB worry was unfounded. Status 2026-08-25.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -125,7 +126,7 @@ Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220 and codex-cli
 | Both adapters return schema-valid structured output on subscription auth | **verified** by `adapters --probe`, 2026-08-22: claude 4674ms / $0.3919 / 74264 tokens, codex 4148ms / 14026 tokens |
 | `codex` JSONL usage/session field names | **verified** — see below |
 | Codex model aliases (`gpt-5`, `gpt-5-codex`, `gpt-5.1-codex`, `gpt-5.1`, `gpt-5.2`, `gpt-5.2-codex`) | **verified rejected** on a ChatGPT account: *"The 'X' model is not supported when using Codex with a ChatGPT account."* No model name is pinned for codex anywhere any more |
-| `claude` structured output for a full 2–4 KB document | still open — the probe proves the mechanism, not the size |
+| `claude` structured output for a full 2–4 KB document | **verified** by M0, 2026-08-22: a 28,080-byte markdown document returned intact — no truncation, no escaping damage, and the adapter's trailing-JSON fallback never fired |
 
 ### Codex JSONL, as observed on 0.149.0
 
@@ -155,11 +156,16 @@ a real cost of $0.39; adding `cache_creation_input_tokens` and `cache_read_input
 
 ## What to verify on day 1 (the real spike questions)
 
-1. Does `claude -p --json-schema` return `structured_output` for a 2–4 KB markdown
-   document in a string field, or does it truncate / escape badly?
-2. Does `codex exec --output-schema` honour the schema on a subscription login, and
-   what does the JSONL stream call its usage/session fields?
-3. Cost: Claude reports `total_cost_usd`; Codex reports tokens at best. Decide whether
-   the Studio prices Codex tokens itself or shows tokens only.
+Questions 1–3 were answered by M0 and are kept here only as a record of what was asked.
+
+1. ~~Does `claude -p --json-schema` return `structured_output` for a 2–4 KB markdown document
+   in a string field, or does it truncate / escape badly?~~ **Answered 2026-08-22:** intact at
+   28,080 bytes.
+2. ~~Does `codex exec --output-schema` honour the schema on a subscription login, and what does
+   the JSONL stream call its usage/session fields?~~ **Answered 2026-08-22:** yes; fields are
+   tabulated above.
+3. ~~Cost: Claude reports `total_cost_usd`; Codex reports tokens at best. Decide whether Quorum
+   prices Codex tokens itself or shows tokens only.~~ **Decided 2026-08-22:** tokens only, never
+   priced locally — see the DECISIONS entry.
 4. `--permission-mode plan` on Claude for read-only steps: does it still let the agent
-   read the repo and the `--add-dir` folders?
+   read the repo and the `--add-dir` folders? **Still open.**

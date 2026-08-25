@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -100,7 +100,7 @@ draft ──▶ requirements ──▶ solutioned ──▶ red ──▶ green 
                     └──────────────────────────────────────────┘ (qa: design issue, ≤1)
 ```
 
-Plus `blocked` (human parked it) and `abandoned` from any stage. A flow may only start on a ticket whose `stage` equals the flow's `consumes`. The Studio's backlog board is a kanban over this field.
+Plus `blocked` (human parked it) and `abandoned` from any stage. A flow may only start on a ticket whose `stage` equals the flow's `consumes`. Quorum's backlog board is a kanban over this field.
 
 A stage is the ticket's position in this state machine, and only that. `green` means the ticket's integration branch integrated and passed its configured suite; it says nothing about where that code now is. No stage — `green` or any later one — implies the ticket's branch is contained in the configured base branch, because containment is a fact about two refs at the moment of reading and either ref can move after any transition. It is therefore never stored in `ticket.md`. `harness board` derives it from git on every invocation and shows it beside each ticket whose `branch` resolves to a local ref, as one token naming the configured base literally: `main:contained`, `main:not-contained(+12)`, or `main:indeterminate(missing ref)` / `main:indeterminate(shallow clone)` / `main:indeterminate(git failed)` when git could not answer — which is never reported as either of the other two states.
 
@@ -131,7 +131,7 @@ tasks:
 
 | Addition | Why |
 |---|---|
-| `consumes` / `produces` on a flow | Stage chaining; the Studio can list "runnable now" tickets per flow |
+| `consumes` / `produces` on a flow | Stage chaining; Quorum can list "runnable now" tickets per flow |
 | `backlog` step input type | Steps receive ticket files as context without ad-hoc prompting |
 | `write` step output → backlog path | Declarative persistence of artifacts |
 | `on_fail: goto` + `max_iterations` + `on_exhausted: gate` | Bounded loops |
@@ -235,7 +235,7 @@ steps:
       must compile/typecheck against the stubs and FAIL on assertions, not on
       missing symbols. Do not implement any production code.
   - id: prove-red
-    type: script                       # v1 roadmap item, needed here
+    type: script                       # in v1 since 2026-08-21
     run: "npm test -- --reporter=json > ../backlog/{id}/qa/red-report.json"
     assert: "all tests fail, zero compile errors"
     on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
@@ -417,11 +417,11 @@ Initial set: `product-manager`, `head-of-product`, `principal-architect`, `archi
 
 ## 7. Multi-repo and reuse
 
-The seven flows and the roles live in the Studio's template library. `harness init --template sdlc` copies them into a project's `harness/flows/` and `harness/roles/`. Projects diverge by editing their copy; a `harness template diff` shows drift from the library. For organisations with many repos, the `central` backlog layout plus a shared `harness-org/` repo (referenced via git submodule or `harness.yaml: extends: ../harness-org`) keeps roles and rules common while each repo keeps its own `architecture.md`.
+The seven flows and the roles live in Quorum's template library. `harness init --template sdlc` copies them into a project's `harness/flows/` and `harness/roles/`. Projects diverge by editing their copy; a `harness template diff` shows drift from the library. For organisations with many repos, the `central` backlog layout plus a shared `harness-org/` repo (referenced via git submodule or `harness.yaml: extends: ../harness-org`) keeps roles and rules common while each repo keeps its own `architecture.md`.
 
-## 8. Interfaces (new Studio screens)
+## 8. Interfaces (new Quorum screens)
 
-- **Backlog board** — kanban over `stage`, per ticket: owner, iteration counters, cost to date, "Run next flow" button (enabled only when a flow `consumes` that stage).
+- **Backlog board** — kanban over `stage`, per ticket: owner, iteration counters, cost to date **per vendor** (never one blended figure — see the Codex-pricing decision), "Run next flow" button (enabled only when a flow `consumes` that stage).
 - **Ticket page** — the folder rendered as tabs (requirements, solution, QA, dev, review) with diff-between-versions and the runs.log timeline.
 - **Requirement merge view** — candidate-claude / candidate-codex / merged side by side with the Head-of-Product reasoning.
 - **Contracts & tasks view** — tasks.yaml as a table with role badges and dependency arrows, each task linking to its contract files and its branch.
@@ -436,9 +436,9 @@ Per-flow and per-ticket budget in `harness.yaml` (`budget: { per_run_usd: 10, pe
 ## 10. Open questions
 
 1. M1 ships no lighter `fix` flow. A review rejection targets the full `development` flow, whose declared `consumes: red` stage is the derived regression target.
-2. Script steps are on the v1 roadmap but `qa-red`, `qa-final` and `deploy` need them. Pulling `type: script` into v1 is the cheapest way to unblock this spec.
+2. ~~Script steps are on the v1 roadmap but `qa-red`, `qa-final` and `deploy` need them.~~ **Resolved 2026-08-21:** `type: script` moved into v1; see "Deploy gate is human-locked; script steps pulled into v1".
 3. Does the `central` backlog layout make the cold-clone test worse? Default stays `in-repo`; `central` is opt-in.
-4. Codex CLI's headless output is less structured than Claude Code's stream-json; the `findings: true` / `verdict:` outputs assume the adapter can extract a trailing JSON block. Spec the "structured tail" convention in the adapter contract.
+4. ~~Codex CLI's headless output is less structured than Claude Code's stream-json; the `findings: true` / `verdict:` outputs assume the adapter can extract a trailing JSON block.~~ **Resolved:** the structured-tail convention is specced in 03-adapter-contract.md, and M0 found the fallback never fires in practice.
 
 ## 11. Minimal proof path
 

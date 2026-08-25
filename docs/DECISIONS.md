@@ -1,4 +1,4 @@
-# Decisions — Harness project
+# Decisions — Quorum
 
 ## Agent-agnostic = multi-vendor via subscription-authed CLIs — 2026-08-06
 **Decision:** Quorum orchestrates multiple vendors and models (Claude, GPT/Codex, Gemini, …) by driving each vendor's headless CLI agent (`claude -p`, `codex exec`, `gemini -p`) through a common adapter interface. Auth is always the CLI's own subscription OAuth login — the Studio never handles an API key ("bring your own subscriptions"). Claude Code is the reference adapter; other adapters are the first open-source contribution surface.

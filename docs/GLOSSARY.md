@@ -1,22 +1,22 @@
-# Glossary — Harness project
+# Glossary — Quorum
 
 **Harness**: The complete agentic development flow of a project, from start to finish, expressed as versioned configuration — rules/CLAUDE.md, slash commands, subagents, skills, MCP servers, permissions, plus the orchestration patterns that combine agents (e.g. two coder agents + one judge, multi-model code review). Lives in the project folder (`.claude/` and friends), not in the UI's database.
 
-**Quorum** (working name): The local web app being defined here — a visual workbench to create, maintain, execute and observe harnesses.
+**Quorum**: The local web app defined here — a visual workbench to create, maintain, execute and observe harnesses. Named 2026-08-22; DECISIONS entries written before that date call it **the Studio**, which is the same thing and is not current vocabulary.
 
 **Agent-agnostic**: Able to orchestrate any coding agent that ships as a headless CLI with its own subscription login (Claude Code, Codex CLI, Gemini CLI, …) via a common adapter interface. Does NOT mean direct API integration with model vendors.
 
-**BYOS (bring your own subscriptions)**: The auth model — the Studio never stores or uses API keys; every agent runs on the OAuth login of the CLI the user already pays for.
+**BYOS (bring your own subscriptions)**: The auth model — Quorum never stores or uses API keys; every agent runs on the OAuth login of the CLI the user already pays for.
 
-**Canonical harness**: The single per-project source of truth (`harness/` folder): rules, architecture context, command prompts, flow files. Compiled by the Studio into vendor dialects (CLAUDE.md, AGENTS.md, GEMINI.md); vendor-unique features pass through in marked native sections.
+**Canonical harness**: The single per-project source of truth (`harness/` folder): rules, architecture context, command prompts, flow files. Compiled by Quorum into vendor dialects (CLAUDE.md, AGENTS.md, GEMINI.md); vendor-unique features pass through in marked native sections.
 
 **Gate**: A checkpoint in a flow. An author-declared gate is human-gated by default and may be set to `auto`; an author-declared `human-locked` deploy gate can never be automated. Separately, an engine-presented exhaustion gate appears when a bounded loop exhausts. It uses the same gate kind but is not declared as a flow step, requires an explicit `advance`, `retry`, or `abort`, and cannot be bypassed by `--auto`.
 
 **Flow**: A declarative, git-versioned file in the harness describing one orchestration: ordered steps, which adapter+model runs each step, what each step receives, and the gates between steps. Example: "grill → 2 competing coders → judge → reviewer panel". Since 2026-08-21 a flow also declares the backlog stage it `consumes` and `produces`.
 
-**Template library**: Flows that ship with the Studio as starting points, encoding the opinionated SDLC (grill, architecture, development, QA, maintenance). Users copy and adapt them; nothing is enforced.
+**Template library**: Flows that ship with Quorum as starting points, encoding the opinionated SDLC (grill, architecture, development, QA, maintenance). Users copy and adapt them; nothing is enforced.
 
-**Adapter**: The thin integration layer that lets one CLI agent participate in the Studio: launch headless, stream events, map its output to the Studio's common trace format, stop/abort.
+**Adapter**: The thin integration layer that lets one CLI agent participate in Quorum: launch headless, stream events, map its output to Quorum's common trace format, stop/abort.
 
 **Backlog**: The per-project (or central, multi-repo) folder of ticket folders in git. Replaces Jira. Its `stage` fields drive which flow can run next.
 
