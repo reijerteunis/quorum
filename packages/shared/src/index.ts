@@ -4,6 +4,7 @@
 // generate the flow editor's form from `flowSchema` (docs/04-architecture.md:31), so this has to
 // be safe to put in a browser bundle.
 export * from './constants.js';
+export * from './containment.js';
 export * from './events.js';
 export * from './flow.js';
 export * from './role.js';
