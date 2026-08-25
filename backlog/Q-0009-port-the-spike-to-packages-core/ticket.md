@@ -1,7 +1,7 @@
 ---
 id: Q-0009
 title: Port the spike to packages/core
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0009/integration
