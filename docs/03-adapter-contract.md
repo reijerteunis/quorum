@@ -6,7 +6,9 @@ expired Codex login that `check()` had reported as ✓, which added `adapters --
 `authError()` translation, and the rule that a failing parallel branch must not discard its
 siblings' work. Both of the questions this document once listed as open are closed: Codex's JSONL field
 names are verified below, and Claude returned a 28,080-byte markdown document intact (M0,
-2026-08-22), so the 2–4 KB worry was unfounded. Status 2026-08-25.*
+2026-08-22), so the 2–4 KB worry was unfounded. Status 2026-08-25. `onEvent`'s signature corrected
+2026-08-25 (Q-0041): it named two event kinds where three exist, and `retry` — emitted by the
+contract layer rather than by any vendor — was missing.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -29,7 +31,10 @@ await adapter.run({
   allowWrite,             // true only for worktree steps
   maxTurns,               // agentic turn budget — accepted by every adapter, honoured only where
                           // the CLI has an equivalent flag (neither claude nor codex does today)
-  onEvent,                // ({type:'spawn'|'stdout', ...}) streaming trace
+  onEvent,                // streaming trace — `AdapterEvent` in packages/shared. An adapter emits
+                          // {type:'spawn', vendor, cmd} and {type:'stdout', line}; the contract
+                          // layer's retry wrapper adds {type:'retry', vendor, attempt, of,
+                          // delayMs, reason, message}. No step id: the engine supplies that.
 }) -> {
   output,                 // object matching schema   ← the "structured tail"
   raw,                    // final message as text

@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -76,16 +76,34 @@ repos: [my-saas-api]       # only meaningful for central layout
 branch: harness/T-0012/integration   # ticket integration branch (git refs: a branch cannot be both a ref and a directory, so step branches sit beside it)
 priority: p1
 created: 2026-08-21
-iterations:
-  review: 0                # review↔dev loop counter
-  qa: 0                    # final-qa → dev/solution loop counter
+iterations:                # loop counters, created on first use — never a fixed set of keys
+  solutioning.architecture-review: 2   # <flow>.<step>, computed when a step names no counter
+  review: 1                            # a bare key, from a step's explicit on_fail.counter
 history:
-  - {stage: requirements, run: 41, at: 2026-08-21T09:12Z, cost: 0.84}
-  - {stage: solutioned,   run: 42, at: 2026-08-21T10:40Z, cost: 1.92}
+  - {stage: requirements, run: 41, flow: requirements, status: completed,
+     stage_before: draft, stage_after: requirements, at: 2026-08-21T09:12:00.000Z, cost: 0.84}
+  - {stage: solutioned,   run: 42, flow: solutioning,  status: completed,
+     stage_before: requirements, stage_after: solutioned, at: 2026-08-21T10:40:00.000Z, cost: 1.92}
 ---
 Clinics can downgrade their plan mid-cycle. Define what happens to active
 subscriptions, proration and the patient-facing side.
 ```
+
+Two fields here are not what an earlier draft of this document showed, and the difference matters
+to anything that reads a ticket.
+
+**`iterations` has no fixed set of keys.** A counter is created the first time a loop traverses,
+and its name is either the `<flow>.<step>` pair the engine computes or the unprefixed key a step's
+`on_fail.counter` declares — the flow lint rejects a key that carries an `iterations.` prefix. A
+ticket that has looped nowhere has `iterations: {}`.
+
+**A `history` entry carries eight fields, not four.** `stage`, `run`, `flow`, `status`,
+`stage_before`, `stage_after`, `at` and `cost`, where `cost` may be null for a vendor that reports
+no price, and `stage` duplicates `stage_after`. Entries written before `status` existed are shorter
+and are still valid; nothing rewrites them. `status` is one of `completed`, `regressed`, `aborted`,
+`failed`, `interrupted` or `exhausted` — and note that only `completed` and `regressed` move the
+stage, so a ticket's history legitimately contains entries whose `stage_before` equals its
+`stage_after`.
 
 ### 3.4 State machine
 

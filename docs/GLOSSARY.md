@@ -52,6 +52,16 @@ by the panel spanning vendors, not by writer ≠ reviewer.
 
 **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).
 
+**Event**: One item of the trace a run emits, defined once in `packages/shared` as a discriminated
+union on `type`. Two shapes, because two interfaces exist. An **adapter event** is what an adapter
+passes to `onEvent` — `spawn`, `stdout`, and the `retry` the contract layer adds — carrying no
+identity, because an adapter does not know which step it is running. A **run event** is one of
+those with the step id the engine supplies, or one of the engine's own: `step`, `done`, `info`,
+`warn`, and the gate question, which is the only event that expects an answer. Vendor identity is
+one neutral, open `vendor` label and nothing else in the union is vendor-specific. Not persisted in
+v1 (see **Run history**, which is), and not to be called a "log line" or a "trace message" — the
+trace is the stream, an event is one item of it.
+
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
 
