@@ -9,6 +9,7 @@ priority: p1
 created: 2026-08-25
 iterations:
   requirements.head-of-product: 1
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,22 @@ history:
     stage_after: requirements
     at: 2026-08-25T01:03:50.603Z
     cost: 8.323
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-25T16:35:36.130Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-25T16:35:36.139Z
+    cost: 23.254
 ---
 The runnable Quorum is still `spike/` — 2,261 lines of plain Node ESM across seven modules, plus a
 616-line CLI and 3,142 lines of tests, on two dependencies and a hand-rolled runner. Q-0008 built
