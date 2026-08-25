@@ -100,6 +100,50 @@ describe('AC-3 — the flow schema describes the format as it is', () => {
     expect(flowStepSchema.safeParse({ id: 's', type: 'script' }).success).toBe(true);
   });
 
+  test('the selected kind is validated, and never falls through to the agent step', () => {
+    // Each of these is dispatched by spike/src/engine.js:176-198 to runGate, runScript, runFanOut,
+    // runIntegrate or the parallel branch on the truthiness of ONE key. An ordered `z.union` would
+    // fail that kind's branch and then accept the object as an agent step, where `.passthrough()`
+    // keeps the deciding key as an unknown one — so the parsed type would name the single kind the
+    // engine will never run it as, and its real structure would go unchecked.
+    for (const step of [
+      { id: 'x', gate: 42 },
+      { id: 's', type: 'script', run: 5 },
+      { id: 'f', fan_out: 42 },
+      { id: 'p', parallel: 42 },
+      { id: 'i', type: 'integrate', branches: 7 },
+      { id: 'g', gate: 'human', reason: 9 },
+    ]) {
+      expect(flowStepSchema.safeParse(step).success, JSON.stringify(step)).toBe(false);
+    }
+  });
+
+  test('a failure names the field of the kind the engine selected, not every branch it is not', () => {
+    const result = flowSchema.safeParse({
+      name: 'x', consumes: 'green', produces: 'reviewed', steps: [{ id: 'g', gate: 42 }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['steps.0.gate']);
+  });
+
+  test('a falsy discriminator is not that kind — `gate:` with no value is an agent step', () => {
+    // YAML `gate:` with nothing after it parses to null, and `if (step.gate)` at
+    // spike/src/engine.js:192 is false for it, so the engine runs it as an agent step. Truthiness,
+    // not presence, is what the selector copies.
+    const step = { id: 'x', gate: null, role: 'r' };
+    expect(flowStepSchema.parse(step)).toEqual(step);
+  });
+
+  test('`consumes` and `produces` are typed as strings, not enumerated against the stage list', () => {
+    // spike/src/lint.js:124 is `if (!flow.consumes || !flow.produces)` and checks nothing further,
+    // so a flow naming stages outside the ten-member list passes lint today. Making these an enum
+    // would add a rule lint does not have and break the property below.
+    const flow = { name: 'x', consumes: 'custom', produces: 'custom-next', steps: [] };
+    expect(flowSchema.parse(flow)).toEqual(flow);
+    // The ticket's own `stage` field is the one that IS the enum; that lives in ticket.ts.
+    expect(flowSchema.safeParse({ ...flow, consumes: 42 }).success).toBe(false);
+  });
+
   test('the property: what lint accepts, the schema accepts — including what a naive `.strict()` would reject', () => {
     // Two things a naive strict schema rejects and lint does not. `file` is injected by the loader
     // and appears in no YAML file (spike/src/engine.js:17); `notes` stands for any key an author
@@ -113,6 +157,23 @@ describe('AC-3 — the flow schema describes the format as it is', () => {
     const result = flowSchema.safeParse(flow);
     expect(result.error?.issues ?? []).toEqual([]);
     expect(result.data).toEqual(flow);
+  });
+
+  test('the property\'s boundary: zod owns structure, so three shapes lint accepts do not parse', () => {
+    // `lintFlow` is not a structural check, and rule 1 gives that half to zod. Each of these three
+    // returns true from lint and then throws a raw TypeError in the engine, which is the failure
+    // the ticket's problem statement cites. Stated here so the boundary is a decision on the
+    // record, not an accident of how the schema happened to be written.
+    // A value lint never types: it reaches lint's `String()` and `includes` unharmed.
+    expect(flowSchema.safeParse({
+      name: 'x', consumes: 'green', produces: 'reviewed', steps: [{ id: 'x', adapter: 42 }],
+    }).success).toBe(false);
+    // No `name`: spike/src/lint.js:127 falls back to `flow.file` when it prints, so lint never
+    // needs one.
+    expect(flowSchema.safeParse({ consumes: 'green', produces: 'reviewed', steps: [] }).success).toBe(false);
+    // No `steps`: `flattenSteps(steps = [])` defaults it away, so lint returns true — and then
+    // spike/src/engine.js:83 and :115 read `flow.steps` directly.
+    expect(flowSchema.safeParse({ name: 'x', consumes: 'green', produces: 'reviewed' }).success).toBe(false);
   });
 });
 

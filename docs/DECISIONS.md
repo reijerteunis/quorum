@@ -924,12 +924,22 @@ each checkable against a proposed new rule by reading one paragraph:
    Zod may reject something lint also rejects; it may never add a rule lint does not have. Where
    lint owns a value — `on_exhausted` must be `gate`, an `input.diff` range's endpoints, a verdict
    must route somewhere, the two cross-vendor rules — the field is typed open and lint refuses it.
+   The same rule decides a case that looks like an obvious enum and is not: a flow's `consumes` and
+   `produces` are typed as plain strings, because `lint.js:124` checks only that both are present,
+   so a flow naming a stage outside the ten-member list runs today and the schema may not be the
+   thing that stops it. `stageSchema` is right for a ticket's own `stage` and wrong there.
 2. **Where a key decides which KIND of step an object is, it stays optional even when lint requires
-   it** — `integrate.branches`, `script.run`, and a `fan_out` step's `step:` template. That is what
-   keeps the step union discriminating exactly as `runStep` dispatches (`spike/src/engine.js:176–198`,
-   by presence of `parallel`, `gate` and `fan_out`, with `type` separating only script from
-   integrate), so a malformed integrate step is still recognisably an integrate step and still
-   receives lint's message about it rather than a union error naming an array index.
+   it** — `integrate.branches`, `script.run`, and a `fan_out` step's `step:` template — **and the
+   step schema selects its kind by `runStep`'s own dispatch and then commits to it**
+   (`spike/src/engine.js:176–198`, by truthiness of `parallel`, `gate` and `fan_out`, with `type`
+   separating only script from integrate). Both halves are needed and the second is the one that is
+   easy to get wrong: an ordered `z.union` tries its branches in turn, so `{id: 'x', gate: 42}` —
+   which the engine sends to `runGate` — fails the gate branch and is then *accepted* by the
+   permissive agent branch, which keeps `gate` as an unknown key. The object ends up typed as the
+   one kind the engine will never run it as, and its real structure is never checked. Selecting
+   first and validating once means a malformed integrate step is still an integrate step, still
+   receives lint's message about it rather than a union error naming an array index, and reports its
+   own field (`steps.0.gate`) rather than every branch it is not.
 3. **No field carries `.default()` or `.catch()`.** A zod default invents state the file did not
    carry, in the package thirteen tickets import, and no test would fail. `harness/rules.md` forbids
    it in as many words. The spike's fallbacks — `step.into ?? ticket.meta.branch`, `step.expect ??

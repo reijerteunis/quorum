@@ -16,10 +16,14 @@
 //   2. Zod never adds a rule lint does not have. Where lint already has a message for a value
 //      (`on_exhausted` must be "gate"; an `input.diff` range's endpoints; a verdict must route
 //      somewhere; the cross-vendor rules), the field here is typed open and lint owns the refusal.
+//      The case that looks like an obvious enum and is not: `consumes` and `produces` are plain
+//      strings, because lint.js:124 checks only that both are present.
 //   3. Where a key decides WHICH KIND of step this is, it stays optional even when lint requires
-//      it — `branches`, `run` and a fan-out's `step:` template. That is what keeps the union below
-//      discriminating exactly as spike/src/engine.js:176-198 dispatches, so a malformed integrate
-//      step is still recognisably an integrate step and still gets lint's message about it.
+//      it — `branches`, `run` and a fan-out's `step:` template. That is one half of keeping a
+//      malformed integrate step recognisably an integrate step, so it still gets lint's message
+//      about it. The other half is that the step schema SELECTS its branch by the engine's own
+//      dispatch (spike/src/engine.js:176-198) and commits to it, with no fallback to a permissive
+//      kind; see `flowStepSchema` below for why a `z.union` cannot do that.
 //   4. No field carries a default or a fallback value. A zod default invents state the file did
 //      not carry, which harness/rules.md forbids in as many words ("Never default silently").
 //      Where the spike applies a fallback — `step.into ?? ticket.meta.branch`, `step.expect ??
@@ -31,9 +35,22 @@
 // The property this buys, and the one AC-3 asks for: a flow object `lintFlow` accepts parses here.
 // The converse does not hold and is not wanted — a structurally valid flow may still be rejected
 // by lint, which is rule 1.
+//
+// The property's boundary, stated rather than implied, because rule 1 gives zod STRUCTURE and lint
+// is not a structural check at all. Three shapes lint accepts and this schema does not, all of
+// which crash the engine rather than run:
+//   * a wrongly TYPED value lint never looks at — `{id: 'x', adapter: 42}` reaches lint's `String()`
+//     and its `includes`, and is a step whose adapter is a number.
+//   * a flow with no `name` — lint.js:127 falls back to `flow.file` when printing, so it never
+//     needs one, but `name` is what identifies a flow to a human and to `goto: flow:<name>`.
+//   * a flow with no `steps` — `flattenSteps(steps = [])` defaults it, so lint returns true, and
+//     then engine.js:83 and :115 read `flow.steps` directly and throw a raw TypeError. Requiring
+//     the key here is what turns that stack trace into an issue naming `steps`, and is exactly the
+//     failure the ticket's problem statement cites.
+// A schema that dropped these to hold the property literally would describe nothing: every field
+// would be optional, and thirteen consumers would each re-derive what a flow file is.
 import { z } from 'zod';
 
-import { stageSchema } from './stages.js';
 import { stepOutputDeclarationSchema } from './step-output.js';
 
 /** What a step is given to work with. */
@@ -188,26 +205,83 @@ export const fanOutStepSchema = z.object({
   on_fail: onFailSchema.optional(),
 }).passthrough();
 
+/** The six kinds a step can be. The names are this file's; the engine dispatches, it does not label. */
+type StepKind = 'parallel' | 'gate' | 'script' | 'integrate' | 'fan_out' | 'agent';
+
 /**
- * The six kinds, in the engine's own dispatch order (spike/src/engine.js:176-198) — by PRESENCE of
- * `parallel`, `gate` and `fan_out`, with `type` distinguishing only script from integrate. Not by
- * `type` alone, which is why this is an ordered union and not `z.discriminatedUnion`.
+ * `runStep`'s dispatch, transcribed (spike/src/engine.js:176-198): the TRUTHINESS of `parallel`,
+ * `gate` and `fan_out` in that order, with `type` separating only script from integrate, and
+ * everything left over an agent step. Truthiness rather than presence is the engine's own test and
+ * matters in the file: `gate:` written with no value parses to `null`, which `engine.js:192` reads
+ * as not-a-gate, so the schema must read it that way too. A step that is not an object at all is
+ * sent to the agent branch, which is where its "expected an object" issue comes from.
  */
-export const flowStepSchema = z.union([
-  parallelGroupSchema,
-  gateStepSchema,
-  scriptStepSchema,
-  integrateStepSchema,
-  fanOutStepSchema,
-  agentStepSchema,
-]);
+function stepKind(value: unknown): StepKind {
+  const step = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  if (step.parallel) return 'parallel';
+  if (step.gate) return 'gate';
+  if (step.type === 'script') return 'script';
+  if (step.type === 'integrate') return 'integrate';
+  if (step.fan_out) return 'fan_out';
+  return 'agent';
+}
+
+function schemaForKind(kind: StepKind) {
+  switch (kind) {
+    case 'parallel': return parallelGroupSchema;
+    case 'gate': return gateStepSchema;
+    case 'script': return scriptStepSchema;
+    case 'integrate': return integrateStepSchema;
+    case 'fan_out': return fanOutStepSchema;
+    case 'agent': return agentStepSchema;
+  }
+}
+
+/** The six kinds, as a type. Written out rather than inferred, so the selector below can name it. */
+export type FlowStep =
+  | ParallelGroup | GateStep | ScriptStep | IntegrateStep | FanOutStep | AgentStep;
+
+/**
+ * The step schema SELECTS one branch by the engine's own dispatch and then commits to it: whatever
+ * `stepKind` picks is the only schema that runs, and a failure there is the result — there is no
+ * second attempt at another kind.
+ *
+ * That is why this is not a `z.union`. A union tries its branches in turn and accepts the first
+ * that fits, so `{id: 'x', gate: 42}` — which `engine.js:192` sends to `runGate` — would fail the
+ * gate branch, fall through to the permissive agent branch, and be accepted there with `gate` kept
+ * as an unknown key. The object would then be typed as the one kind the engine will never run it
+ * as, and its actual structure would never be checked. Same for `{id: 's', type: 'script', run: 5}`
+ * and `{id: 'f', fan_out: 42}`. Rule 3 above keeps the kind-deciding keys optional so a malformed
+ * step of a kind stays that kind; this is the other half of it, and without both a malformed
+ * integrate step is silently an agent step rather than lint's `integrate needs branches`.
+ *
+ * The transform is a selector, not a conversion: every branch is a passthrough object with no
+ * default and no transform of its own, so what comes out is what went in. The round-trip test in
+ * flow.test.ts is what holds that true.
+ */
+export const flowStepSchema = z.unknown().transform((value, ctx): FlowStep => {
+  const result = schemaForKind(stepKind(value)).safeParse(value);
+  if (result.success) return result.data;
+  // Re-raised as-is, so the code, the message and the path all stay the selected branch's. The
+  // spread is not cosmetic: zod types the argument as a raw issue with an index signature, which a
+  // `$ZodIssue` read straight out of the error does not satisfy.
+  for (const issue of result.error.issues) ctx.addIssue({ ...issue });
+  return z.NEVER;
+});
 
 export const flowSchema = z.object({
   name: z.string(),
-  /** A flow may only run on a ticket whose stage equals this — spike/src/engine.js:38-40. */
-  consumes: stageSchema,
-  /** The stage a completed run advances the ticket to — spike/src/engine.js:622-624. */
-  produces: stageSchema,
+  /**
+   * A flow may only run on a ticket whose stage equals this — spike/src/engine.js:38-40. A plain
+   * string, deliberately NOT `stageSchema`: `lint.js:124` is `if (!flow.consumes || !flow.produces)`
+   * and checks nothing else, so a flow naming a stage outside the ten-member list passes lint today
+   * and must parse here. Making this an enum would add a rule lint does not have, which is rule 1,
+   * and would break the property AC-3 asks for — lint succeeding implies parsing succeeding.
+   * `stageSchema` is right for a ticket's own `stage` (ticket.ts) and wrong here.
+   */
+  consumes: z.string(),
+  /** The stage a completed run advances the ticket to — spike/src/engine.js:622-624. Same as above. */
+  produces: z.string(),
   /** `required` is the only value lint acts on — spike/src/lint.js:86. */
   cross_vendor: z.string().optional(),
   steps: z.array(flowStepSchema),
@@ -230,5 +304,5 @@ export type IntegrateStep = z.infer<typeof integrateStepSchema>;
 export type FanOut = z.infer<typeof fanOutSchema>;
 export type FanOutStepTemplate = z.infer<typeof fanOutStepTemplateSchema>;
 export type FanOutStep = z.infer<typeof fanOutStepSchema>;
-export type FlowStep = z.infer<typeof flowStepSchema>;
+// `FlowStep` is declared beside the selector above, because the selector's return type names it.
 export type Flow = z.infer<typeof flowSchema>;
