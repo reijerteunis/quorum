@@ -1,0 +1,49 @@
+---
+id: Q-0041
+title: packages/shared — schemas, types and the trace format
+stage: draft
+owner: ruud
+repos: []
+branch: harness/Q-0041/integration
+priority: p1
+created: 2026-08-25
+iterations: {}
+history: []
+---
+The first ticket of Q-0009's port, and the only one everything else imports. `packages/shared` is
+empty; `04-architecture.md` gives it *"types, schemas (zod), event/trace format, constants"*, and the
+M2 done-when asks for zod schemas covering flow, ticket, role and step output. Today those shapes
+are implicit: a flow is whatever `YAML.parse` returned, a ticket is `parseFrontmatter`'s object, and
+`schemaFor(step)` builds a JSON Schema for the vendor at run time from fields nothing validated
+first. This ticket writes them down once, in the package that has no dependencies, so that every
+later port consumes a type instead of re-deriving one. Belongs to M2 in
+`docs/06-development-plan.md`; parent Q-0009.
+
+**Scope.** Zod schemas and inferred types for the flow file (steps, `parallel`, `fan_out` + `step`
+template, `on_fail`, `route`, `gate`, `input`, `output`, `consumes`/`produces`, `cross_vendor`), the
+ticket (`ticket.md` frontmatter, including `iterations` and `history`), the role file, and step
+output. `STAGES` and the stage state machine move here from `spike/src/backlog.js:6`. The trace/event
+union — `spawn`, `tool`, `text`, `verdict`, `usage`, `done` per `04-architecture.md` — is defined
+here even though nothing emits it until Q-0050, because Q-0050 is where it becomes expensive to
+change. Constants that more than one package needs (branch-name shapes, worktree root
+`.harness/worktrees/`, `.quorum/runs/`) live here rather than being re-typed in three places.
+
+**A new dependency.** `zod` needs the one-line justification the engineering rules require, and
+`04-architecture.md` names it, so this is a confirmation rather than a decision. Worth stating
+anyway: it is the only schema library whose inferred types and runtime validation come from one
+declaration, which is the whole reason for putting the shapes here instead of writing interfaces.
+
+**What must not happen.** Two validators already exist and neither is replaced by this one. The
+2026-08-22 decision *"step-output validation is Quorum's contract with its own agents"* names three
+distinct checks and forbids confusing them: `checkAgainstSchema` guards vendor output against the
+schema Quorum generated (Q-0046), `contracts.js` validates artifacts with ajv, fully strict
+(Q-0045), and tolerance for how a vendor wraps its answer stays in `extractJson`. Zod here is a
+fourth thing — the shape of Quorum's own files — and adding it must not tempt anyone to collapse the
+other three. ajv is not removed; JSON Schema is the contract language solutioning emits and zod
+cannot read it.
+
+**One judgement call this ticket makes for everyone.** How strict is the flow schema? A flow file
+that fails to parse is a flow that cannot run, and `lintFlow` (Q-0044) already rejects a long list of
+malformed shapes with messages written to name something the reader can find in the file. If the zod
+schema rejects first, those messages are lost. The likely answer is that zod describes structure and
+lint keeps the semantics, but the boundary needs drawing here, once.

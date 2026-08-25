@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, and again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -83,7 +83,25 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 
 **Tickets**
 - Q-0008 Monorepo scaffold + CI.
-- Q-0009 Port core to TypeScript with schemas (one ticket per module is fine).
+- Q-0009 Port the spike to `packages/core` — the parent. Owns the port's ground rules (the spike
+  stays authoritative and green until cutover; the CLI's domain logic moves into core; behaviour is
+  preserved except for the event stream), the order, and the cutover itself. Ports nothing; the work
+  is Q-0041–Q-0054 below, cut per module because `engine.js` alone is 1,113 lines and the sizing
+  decision of 2026-08-22 puts a ticket at roughly ten criteria.
+  - Q-0041 `packages/shared` — zod schemas, the trace/event format, constants.
+  - Q-0042 `core/git` — worktrees, ancestry, containment, shallow state.
+  - Q-0043 `core/backlog` — tickets, frontmatter, stages, and `loadProject` lifted from the CLI.
+  - Q-0044 `core/lint` — flow lint and whole-directory validation.
+  - Q-0045 `core/contracts` — ajv validation and the `run-manifest-v1` semantic pass.
+  - Q-0046 `core/adapters` — the contract layer and the mock adapter.
+  - Q-0047 `core/adapters` — claude and codex, with the per-adapter `capabilities` split.
+  - Q-0048 `core/fanout` — tasks, waves, worktrees, branches.
+  - Q-0049 `core/run-history` — manifest, occurrences, roll-ups, and the reader lifted from the CLI.
+  - Q-0050 `core/engine` — the run loop, routing, stage transitions, and `runFlow` as an event stream.
+  - Q-0051 `core/engine` — diff preflight and materialisation.
+  - Q-0052 `core/engine` — agent, gate and script steps.
+  - Q-0053 `core/engine` — fan-out and integrate steps.
+  - Q-0054 The regression suite on Vitest, and CI gating the port.
 - Q-0010 CLI package; `npx quorum` entry.
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
 - Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
