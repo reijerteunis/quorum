@@ -5,36 +5,60 @@
 ports nothing; this document and the guard beside it are its output. Read with
 `harness/rules.md` and `harness/architecture.md`, which points here.*
 
-## Why this file is here, and where the requirement says it belongs
+> **Three of Q-0009's criteria are outstanding and cannot be closed by the flow it runs on** —
+> this file's location, and the fourteen child bodies under AC-1 and AC-8. All three need a write
+> under `backlog/`, which the engine discards from an agent step. **§11 is the open list**; it is
+> not a record of work done elsewhere.
 
-**Q-0009's requirement puts the charter under `backlog/Q-0009-port-the-spike-to-packages-core/`,
-and that is the right place. This copy is not here because a better one was found.** It is here
-because the step that wrote it could not write there: `commitAll` reverts and cleans everything
-under `backlog/` before every agent step commits (`spike/src/fanout.js:80–93`), since the engine
-owns ticket state — an agent once rewrote a ticket's frontmatter on its branch, resetting
-`iterations` and deleting three history entries with their costs. A charter an implementer writes
-into `backlog/` never reaches a commit at all. See §11.
+## This file is in the wrong place, and the implementer could not put it in the right one
+
+**Q-0009's requirement puts the charter under `backlog/Q-0009-port-the-spike-to-packages-core/`.
+That is where it belongs, and this copy does not satisfy the criterion.** Nothing below is an
+argument that `harness/` is better; there is no such argument, and §11 records the criterion as
+**not delivered** rather than as delivered elsewhere.
+
+The obstruction is mechanical. `commitAll` runs `git checkout -- backlog` and
+`git clean -qfd -- backlog` before every agent step commits (`spike/src/fanout.js:80–93`), so a
+file a `chore.yaml` implementer writes under `backlog/` is reverted or deleted and never reaches a
+commit. That guard is correct and deliberate — the engine owns ticket state, and it was added
+after an agent rewrote a ticket's frontmatter on its branch, resetting `iterations` and deleting
+three history entries with their costs. It also means `backlog/` is not a writable surface for the
+flow Q-0009 was routed through, which is a collision between the requirement and the route, not a
+defect in either.
 
 An earlier draft of this section gave a second reason — that a child could not *read* a charter in
 the ticket folder, because `input.backlog` resolves against the running ticket's own folder
-(`spike/src/engine.js:704–705`). **That reason does not hold, and it should not be relied on.** It
-is true that nothing in a flow file can inject another ticket's directory into a prompt; it is also
-true that this file is not injected either, because `chore.yaml:14` lists exactly `rules.md` and
-`architecture.md`. Both locations are reached the same way: `input.repo: true` gives every child's
-implementer the whole working tree, and `harness/architecture.md` — which *is* injected — points at
-the charter by path. **There is no functional argument for `harness/` over the ticket folder.** The
-pointer is what does the work, and it costs one line either way.
+(`spike/src/engine.js:704–705`). **That reason does not hold and must not be relied on.** This file
+is not injected either: `chore.yaml:14` lists exactly `rules.md` and `architecture.md`. Both
+locations are reached the same way — `input.repo: true` gives every child's implementer the whole
+working tree, and `harness/architecture.md`, which *is* injected, points at the charter by path.
+The pointer does the work, and it costs one line from either location.
 
-**Moving it is therefore a small, deliberate act, not a rewrite.** `git mv` this file to
-`backlog/Q-0009-port-the-spike-to-packages-core/port-charter.md` and update the two places that
-name its path: `CHARTER` in `.github/scripts/port-freeze-guard.sh` (one default, already
-overridable by environment) and the pointer in `harness/architecture.md`. The alternative is an
-accepted amendment to the requirement blessing `harness/`. Either settles it; leaving it
-unsettled does not, because the guard fails closed on a charter it cannot find and the fourteen
-children read whatever the pointer names.
+### What a move costs, in full
 
-Whichever way it goes, **a pointer from `harness/architecture.md` is retained**, since that file
-and `rules.md` are the only two a child's prompt actually carries.
+The earlier draft said "update the two places that name its path". That was an undercount, and the
+undercount matters because one of the files cannot be edited in place:
+
+| Where | References | Editable? |
+| --- | --- | --- |
+| `.github/scripts/port-freeze-guard.sh:39` | the `CHARTER` default | yes — one line, already overridable by environment |
+| `.github/scripts/port-freeze-guard.test.mjs:21,33,55,140` | the path it copies into its scratch repository | yes |
+| `harness/architecture.md:70` | the pointer a child's prompt actually carries | yes |
+| `harness/roles/developer-backend.md:18`, `developer-tooling.md:19` | the pointer in each role body | yes |
+| `.github/workflows/ci.yml:32`, `port-freeze-guard.sh:4` | prose citing `§3` | yes |
+| `docs/DECISIONS.md:793, 826, 838` | three citations inside the two entries Q-0009 landed | **append-only** — a move needs an amending entry naming the old one |
+
+The last row is the one to weigh at the gate, and it is a cost this ticket created rather than
+found: the two DECISIONS entries were written while the charter sat in `harness/`, so they now cite
+that path in a file the rules forbid editing silently. Relocating after they landed therefore costs
+an amendment, and the longer it is deferred the more of the fourteen children cite the old path
+too. **This is an argument for settling the location at this gate, in either direction — not an
+argument for leaving it here.**
+
+The two remedies are unchanged: an authorised backlog-writing commit performing the `git mv` and
+the edits above, or an accepted amendment to the requirement blessing `harness/`. Whichever is
+chosen, **the pointer from `harness/architecture.md` is retained**, since that file and `rules.md`
+are the only two a child's prompt carries.
 
 This file is repository-specific context, like `rules.md` and `architecture.md`. It has no
 counterpart under `spike/templates/harness/` and must not acquire one — it describes Quorum's
@@ -374,35 +398,66 @@ requirement and belongs to a follow-up ticket, proposed **Q-0055**, which runs o
 and Q-0054 both report `main:contained`. The event stream's shape belongs to Q-0050. The four
 machinery defects belong to Q-0037–Q-0040. This charter works around them and fixes none.
 
-## 11. Outstanding: the two criteria a chore `implement` step cannot satisfy
+## 11. Not delivered: three criteria that need a backlog write
 
-Recorded here rather than only in an implementation report, because a report is read once at a
-gate and this has to survive until someone acts on it.
+**Status: outstanding.** Q-0009 is not complete on these, and the charter says so here rather than
+only in an implementation report, because a report is read once at a gate and this has to survive
+until someone acts on it. Two review rounds have raised them; neither round could close them.
 
-**The engine discards an agent's writes under `backlog/`.** `commitAll` runs
+**`backlog/` is not a writable surface for `chore.yaml`'s `implement` step.** `commitAll` runs
 `git checkout -- backlog` and `git clean -qfd -- backlog` before every agent step commits
-(`spike/src/fanout.js:80–93`). It is correct and it is not a bug: the engine owns ticket state,
-and it was added after an architect rewrote a ticket's frontmatter on its branch. It does mean
-that **`backlog/` is not a writable surface for `chore.yaml`'s `implement` step**, while two of
-Q-0009's twelve criteria name `backlog/` as their surface. Attempting the writes would not produce
-a diff to review; it would produce a warning and nothing else.
+(`spike/src/fanout.js:80–93`) — reverting tracked edits and deleting untracked additions. Writing
+the files anyway produces no diff to review, only a warning. Three of Q-0009's criteria name
+`backlog/` as their surface, so each needs a human commit or a flow step authorised to write there:
 
-Two things therefore remain, and both need either a human commit or a flow step authorised to
-write the backlog:
+| | Criterion | What is missing |
+| --- | --- | --- |
+| 1 | **Scope item 1** | this file at `backlog/Q-0009-port-the-spike-to-packages-core/port-charter.md` |
+| 2 | **AC-1**, second half | each of the fourteen child bodies citing the routing entry by title and date |
+| 3 | **AC-8** | the five required items in each child body, and the cutover claim removed from Q-0009's own |
 
-1. **AC-8 — reconcile the fourteen child bodies and Q-0009's own.** The material is not missing:
-   §6 above carries, for every child, the spike source it ports, the CLI-held logic it lifts, its
-   dependencies, its dependents and its inherited invariant rows, and the paragraph beneath it
-   carries the non-goals every child shares. Applying it is transcription from one table into
-   fourteen files. Q-0009's own body additionally needs its cutover claim removed — the cutover is
-   §10's follow-up, proposed Q-0055 — and each child needs one line citing *"The port takes the
-   chore route…"* (2026-08-25) for its route and *"The port preserves behaviour…"* (2026-08-25)
-   for its licence.
-2. **AC-1 and the charter's location.** Each child body cites the routing entry by title and date;
-   and this file belongs at `backlog/Q-0009-port-the-spike-to-packages-core/port-charter.md` unless
-   the requirement is amended. See the opening section for the two path references a `git mv` has
-   to carry with it.
+(1) is the opening section's `git mv` plus the path edits tabulated there. (2) and (3) are one
+edit per file and are specified below so the authorised commit is transcription, not authoring.
 
-Until (1) is done, a child agent that reads only its own ticket body gets its route and its
-invariants from §6 and §2 via `harness/architecture.md`'s pointer, which is why that pointer is
-load-bearing and not a convenience.
+### The block each child body needs
+
+The material is not missing — §6 is the normative source for all five items and the paragraph
+beneath it carries the non-goals every child shares. Append one section to each of the fourteen
+`backlog/Q-00NN-…/ticket.md` bodies, reading its row off §6:
+
+```markdown
+## Port charter
+
+Route: chore (`requirements → chore → human gate`), per *"The port takes the chore route, except
+the one child that has new behaviour"* (docs/DECISIONS.md, 2026-08-25). Behaviour is preserved
+per *"The port preserves behaviour; one exception is authorised and everything else stops the
+child"* (2026-08-25) — a defect found while reading the spike is reported, never fixed in passing.
+
+- **Ports:** <§6 "Ports from spike/src">
+- **Lifts from `spike/bin/harness.js`:** <§6 column 3, or "nothing">
+- **Depends on:** <§6 column 4> · **Depended on by:** <§6 column 5>
+- **Invariants inherited:** register rows <§6 column 6> (charter §2)
+- **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
+  while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
+  anything on v1's exclusion list.
+```
+
+Worked example, Q-0045, read straight off §6's row:
+
+> **Ports:** `contracts.js` — ajv validation. **Lifts from `spike/bin/harness.js`:** the
+> `run-manifest-v1` semantic pass and its roll-up recomputation (:270–360). **Depends on:**
+> Q-0041 · **Depended on by:** Q-0049. **Invariants inherited:** rows 13, 14.
+
+Q-0050's block differs in one line only: its route is the full SDLC
+(`requirements → solutioning → qa-red → development → review`), per the same entry.
+
+Q-0009's own body needs the reverse edit — its cutover claim removed, since the cutover is §10's
+follow-up, proposed **Q-0055**, which runs only after Q-0010 and Q-0054 both report
+`main:contained`.
+
+### Until then
+
+A child agent that reads only its own ticket body gets its route and its invariants from §6 and §2
+through `harness/architecture.md`'s pointer. **That pointer is load-bearing, not a convenience** —
+it is the only path by which an unreconciled child reaches this document, and it is the reason the
+location question above should be settled before the first child runs rather than after.
