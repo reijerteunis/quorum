@@ -50,11 +50,34 @@
 //     counterexample.
 //
 // PRESENCE — the half that is a rule about the flow format, and therefore lint's. This schema
-// requires no key lint does not require. `name` and `steps` are optional because lint accepts a
-// flow carrying neither: lint.js:127 prints `flow.name ?? flow.file`, and `flattenSteps(steps = [])`
-// at lint.js:7 defaults `steps` away. `consumes` and `produces` stay required because lint requires
-// them too, at lint.js:124. A schema requiring a key lint does not require would BE zod adding a
-// rule, which is the failure AC-3 was written to prevent, and rule 2 above.
+// requires no key lint does not require. Three cases, of which the third is the one that was got
+// wrong and is the whole of iteration 5's change:
+//
+//   - `name` and `steps` are optional, because lint accepts a flow carrying neither: lint.js:127
+//     prints `flow.name ?? flow.file`, and `flattenSteps(steps = [])` at lint.js:7 defaults `steps`
+//     away.
+//   - `consumes` and `produces` stay required, because lint requires them too, at lint.js:124.
+//   - `id` is optional on EVERY step kind, because lint requires it on none of them. It gathers ids
+//     with `steps.filter((step) => step.id)` (lint.js:59), so an id-less step is simply absent from
+//     the duplicate-id check, and no other rule in the function looks for one. Verified by running
+//     the real linter, not by reading it: a plain agent step, a `parallel` member, a script step, an
+//     integrate step carrying `branches` and a fan-out step carrying its `step:` template all lint
+//     clean with no id. The gate step was never the exception it looked like — it was the only kind
+//     anyone had checked.
+//
+// A schema requiring a key lint does not require would BE zod adding a rule, which is the failure
+// AC-3 was written to prevent, and rule 2 above. docs/DECISIONS.md ("Zod describes structure and
+// types; the flow lint keeps the semantics", 2026-08-25) states it in the same words — "the schema
+// may add no rule about which keys are present, and it is the only thing that checks what their
+// values are" — and its claim that "after the third implement round the schema requires nothing lint
+// does not" is true of this file only from iteration 5 onward.
+//
+// The cost of the third case, stated rather than hidden: `id` is `string | undefined` on every step
+// type a consumer holds, and the engine does need one. It interpolates `harness/<ticket>/<step.id>`
+// for a worktree branch (engine.js:211) and keys a loop counter `<flow>.<step.id>` (engine.js:541),
+// so an id-less step reaches both as the literal `undefined`. That is a gap in lint, not a licence
+// for this schema to close it here — closing it is exactly the "zod adds a rule" failure — so it is
+// reported in dev/implement-report.md and left alone.
 //
 // TYPES — the half that is a description of the format, and therefore this package's reason to
 // exist. `lintFlow` type-checks almost nothing: where a value reaches it at all it reaches
@@ -156,9 +179,15 @@ const agentStepFields = {
   // qa-final.yaml.
 };
 
-/** The ordinary step: a role on an adapter, producing structured output. */
+/**
+ * The ordinary step: a role on an adapter, producing structured output.
+ *
+ * `id` is optional because `lintFlow` requires one on no step kind — see PRESENCE above for the
+ * evidence and for what it costs. The three kinds below repeat it for the same reason, and a
+ * `parallel` group's members inherit it from here.
+ */
 export const agentStepSchema = z.object({
-  id: z.string(),
+  id: z.string().optional(),
   ...agentStepFields,
 }).passthrough();
 
@@ -189,7 +218,8 @@ export const gateStepSchema = z.object({
 
 /** A project command, run in the repository. */
 export const scriptStepSchema = z.object({
-  id: z.string(),
+  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  id: z.string().optional(),
   type: z.literal('script'),
   /** Optional here for rule 3 above: absence must still read as a script step. */
   run: z.string().optional(),
@@ -199,7 +229,8 @@ export const scriptStepSchema = z.object({
 
 /** Merge branches onto a target branch in a worktree, then optionally run the test command. */
 export const integrateStepSchema = z.object({
-  id: z.string(),
+  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  id: z.string().optional(),
   type: z.literal('integrate'),
   /**
    * Both shapes the engine accepts (spike/src/engine.js:981-983): a list of branch templates
@@ -233,8 +264,13 @@ export const fanOutSchema = z.object({
 
 /**
  * The per-task template a fan-out expands. Its `id`, `role`, `adapter` and `model` are
- * interpolation placeholders resolved once per task (spike/src/engine.js:946-952), so `id` is
- * optional here where it is required on a real agent step.
+ * interpolation placeholders resolved once per task (spike/src/engine.js:946-952).
+ *
+ * Structurally identical to `agentStepSchema` since iteration 5 made `id` optional there too, and
+ * kept as a declaration of its own rather than aliased to it: these are two different things — one
+ * is a step the engine runs, the other a template it copies per task — and an alias would make a
+ * later change to one silently a change to the other. The name is what tells a consumer which of
+ * the two it is holding.
  */
 export const fanOutStepTemplateSchema = z.object({
   id: z.string().optional(),
@@ -242,7 +278,8 @@ export const fanOutStepTemplateSchema = z.object({
 }).passthrough();
 
 export const fanOutStepSchema = z.object({
-  id: z.string(),
+  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  id: z.string().optional(),
   fan_out: fanOutSchema,
   /** Optional for rule 3; lint has the message (spike/src/lint.js:78). */
   step: fanOutStepTemplateSchema.optional(),

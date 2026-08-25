@@ -195,6 +195,35 @@ describe('AC-3 as errata E-1 amends it — lint succeeding implies no absent key
   ];
 
   /**
+   * The same flow written once per step kind, each with its step carrying NO id.
+   *
+   * `lintFlow` requires an id on none of them: it gathers ids with `steps.filter((step) => step.id)`
+   * (spike/src/lint.js:59), so an id-less step is absent from the duplicate-id check and no other
+   * rule in the function looks for one. Until iteration 5 this schema required `id` on the agent,
+   * script, integrate and fan-out kinds — and `parallel` members inherited the requirement through
+   * `agentStepSchema` — which is four presence rules lint does not have, and the exact failure E-1
+   * names. The gate step was never the exception it looked like; it was the only kind that had been
+   * checked.
+   *
+   * Each row carries whatever else its kind needs to lint clean (`branches` on integrate, a `step:`
+   * template on fan-out), so the only thing under test is the missing id.
+   */
+  const ID_LESS_CASES: [string, Record<string, unknown>][] = [
+    ['a plain agent step',
+      { consumes: 'a', produces: 'b', steps: [{ role: 'r', adapter: 'claude' }] }],
+    ['a `parallel` member',
+      { consumes: 'a', produces: 'b', steps: [{ parallel: [{ role: 'r', adapter: 'claude' }, { role: 'r', adapter: 'codex' }] }] }],
+    ['a script step',
+      { consumes: 'a', produces: 'b', steps: [{ type: 'script', run: 'pnpm test' }] }],
+    ['an integrate step',
+      { consumes: 'a', produces: 'b', steps: [{ type: 'integrate', branches: ['harness/{id}/implement'] }] }],
+    ['a fan-out step',
+      { consumes: 'a', produces: 'b', steps: [{ fan_out: { by: 'role' }, step: { role: 'developer-{role}' } }] }],
+    ['a gate step — chore.yaml:58, the one kind that was already right',
+      { consumes: 'a', produces: 'b', steps: [{ gate: 'human', reason: 'approve' }] }],
+  ];
+
+  /**
    * Flows the real `lintFlow` also accepts, and this schema rejects — because `lintFlow`
    * type-checks almost nothing: where a value reaches it at all it reaches `String()` or
    * `.includes()`, which accept anything. This is E-1's boundary, in the direction E-1 chose:
@@ -217,6 +246,34 @@ describe('AC-3 as errata E-1 amends it — lint succeeding implies no absent key
       const result = flowSchema.safeParse(flow);
       expect(result.error?.issues ?? [], `schema must accept: ${why}`).toEqual([]);
       expect(result.data, `schema must not alter: ${why}`).toEqual(flow);
+    }
+  });
+
+  test('presence: no step kind requires an id, because lintFlow requires one on none of them', async () => {
+    const lintFlow = await spikeLintFlow();
+    for (const [what, flow] of ID_LESS_CASES) {
+      expect(lintAccepts(lintFlow, flow), `lintFlow accepts ${what} with no id — that is the premise`).toBe(true);
+      const result = flowSchema.safeParse(flow);
+      expect(result.error?.issues ?? [], `the schema must accept ${what} with no id`).toEqual([]);
+      expect(result.data, `the schema must not alter ${what}`).toEqual(flow);
+    }
+  });
+
+  test('presence: an id-less step is still parsed as its own kind, not demoted to an agent step', () => {
+    // Making `id` optional must not blur the selector: `stepKind` reads the truthiness of
+    // `parallel`, `gate` and `fan_out` and then `type`, none of which is `id`. So a malformed
+    // id-less step of a kind keeps getting that kind's issue — and lint's message about it — rather
+    // than falling through to the permissive agent branch.
+    for (const [step, expectedPath] of [
+      [{ gate: 42 }, 'steps.0.gate'],
+      [{ type: 'script', run: 5 }, 'steps.0.run'],
+      [{ type: 'integrate', branches: 7 }, 'steps.0.branches'],
+      [{ fan_out: 42 }, 'steps.0.fan_out'],
+    ] as [Record<string, unknown>, string][]) {
+      const result = flowSchema.safeParse({ consumes: 'a', produces: 'b', steps: [step] });
+      expect(result.success, JSON.stringify(step)).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path.join('.')), JSON.stringify(step))
+        .toContain(expectedPath);
     }
   });
 
