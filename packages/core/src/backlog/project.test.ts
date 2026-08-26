@@ -10,7 +10,7 @@ import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import { Backlog } from './backlog.js';
 import { ProjectNotFoundError, findProject, loadProject } from './project.js';
-import { removeTempDirs, tempDir, walk, write } from '../test/repo.js';
+import { removeTempDirs, tempDir, walk, write } from '../../test/repo.js';
 
 afterAll(removeTempDirs);
 

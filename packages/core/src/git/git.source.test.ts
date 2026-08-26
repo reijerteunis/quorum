@@ -9,11 +9,17 @@ import type { AncestryReason, ContainmentReason, ContainmentResult } from '@quor
 import { ANCESTRY_REASONS, CONTAINMENT_REASONS, CONTAINMENT_STATES } from '@quorum/shared';
 
 import * as gitModule from './git.js';
-import { coreSourceFiles, repoFile } from '../test/corpus.js';
+import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+
+/**
+ * The corpus keys every entry by its whole path below `src`, so a same-named file in another
+ * folder can never answer for this one (Q-0064).
+ */
+const GIT_SOURCE = 'git/git.ts';
 
 const gitSource = (): string => {
-  const found = coreSourceFiles().find(([name]) => name === 'git.ts');
-  if (!found) throw new Error('corpus missing: packages/core/src/git.ts does not exist');
+  const found = coreSourceFiles().find(([name]) => name === GIT_SOURCE);
+  if (!found) throw new Error(`corpus missing: packages/core/src/${GIT_SOURCE} does not exist`);
   return found[1];
 };
 
@@ -28,7 +34,7 @@ describe('AC-1 — the module exports eight functions, and core reads ancestry i
 
   test('merge-base and --is-ancestor appear in git.ts and in no other source file', () => {
     for (const [name, text] of coreSourceFiles()) {
-      const isTheOnePlace = name === 'git.ts';
+      const isTheOnePlace = name === GIT_SOURCE;
       for (const needle of ['merge-base', '--is-ancestor']) {
         expect(
           text.includes(needle),

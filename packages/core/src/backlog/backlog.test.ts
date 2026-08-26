@@ -18,8 +18,8 @@ import { YAMLParseError } from 'yaml';
 
 import { Backlog, parseFrontmatter, renderFrontmatter } from './backlog.js';
 import type { TicketRecord } from './backlog.js';
-import { removeTempDirs, tempDir, walk, write } from '../test/repo.js';
-import { repoRoot } from '../test/corpus.js';
+import { removeTempDirs, tempDir, walk, write } from '../../test/repo.js';
+import { repoRoot } from '../../test/corpus.js';
 
 afterAll(removeTempDirs);
 

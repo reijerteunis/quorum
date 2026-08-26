@@ -67,9 +67,24 @@ export function shallowCloneOf(origin: string): string {
   return clone;
 }
 
-/** A recursive listing of `dir`, sorted — the before/after snapshot for "this writes nothing". */
+/**
+ * An entry git's own background maintenance may create while a snapshot is open: under a `.git/`
+ * directory AND ending `.lock`. Deliberately narrower than `.git/**` — a cache written under
+ * `.git/` is precisely what a "writes nothing" snapshot exists to catch. Why: see Q-0061.
+ */
+const isGitLock = (entry: string): boolean => {
+  const segments = entry.split(path.sep);
+  return segments.slice(0, -1).includes('.git') && entry.endsWith('.lock');
+};
+
+/**
+ * A recursive listing of `dir`, sorted — the before/after snapshot for "this writes nothing",
+ * ignoring {@link isGitLock} entries and nothing else (Q-0061).
+ */
 export const walk = (dir: string): string[] =>
-  fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).sort() : [];
+  fs.existsSync(dir)
+    ? fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((entry) => !isGitLock(entry)).sort()
+    : [];
 
 export interface GitShim {
   /** How many git processes have been spawned since the shim was installed. */
