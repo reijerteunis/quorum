@@ -12,7 +12,7 @@ history: []
 ---
 Found by Q-0043's implement step while porting `spike/src/backlog.js`, reported and not fixed per
 *"The port preserves behaviour"* (`docs/DECISIONS.md`, 2026-08-25). The behaviour is now in
-`packages/core/src/backlog.ts:133` as well, carried forward deliberately and pinned by test.
+`packages/core/src/backlog/backlog.ts` as well, carried forward deliberately and pinned by test.
 
 **The defect.** `dirOf`'s first branch is an existence check on the joined path
 (`spike/src/backlog.js:34`):
@@ -43,7 +43,7 @@ after.
 **Scope.** One function, plus whatever `writeFile` needs so the two agree — the write-side item is
 listed in Q-0043's non-goals and should be closed by this ticket rather than left to drift apart
 from the read side. `spike/src` is frozen (`harness/port-charter.md` §3), so this lands against
-`packages/core/src/backlog.ts`, which is on `main` as of Q-0043. Its 37 behaviour tests are the
+`packages/core/src/backlog/backlog.ts`, on `main` as of Q-0043 and moved by Q-0064. Its 37 behaviour tests are the
 regression net; the criterion to add is that a traversing or symlinked argument raises rather than
 resolves, and the existing "ticket not found" message for a genuine miss is unchanged. Belongs to
 M2 in `docs/06-development-plan.md`, and wants settling before M3.

@@ -13,7 +13,7 @@ history: []
 Raised by Ruud on 2026-08-26: *"worktrees are not automatically cleared after they have finished"*.
 
 **The defect.** `removeWorktree(repoDir, branch, { deleteBranch })` exists at `spike/src/git.js:26`,
-is exported, and was ported to `packages/core/src/git.ts:84` by Q-0042 with four tests covering
+is exported, and was ported to `packages/core/src/git/git.ts` by Q-0042 with four tests covering
 removal, idempotence, branch deletion and the refusal to delete the current branch. **It has zero
 call sites.** Nothing in `engine.js`, `fanout.js` or `finish()` calls it, so every worktree a run
 creates stays on disk forever.
