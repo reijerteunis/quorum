@@ -1,14 +1,22 @@
 ---
 id: Q-0044
 title: core/lint — flow lint and whole-directory validation
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0044/integration
 priority: p2
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-26T14:19:34.146Z
+    cost: 6.796
 ---
 Ports `spike/src/lint.js` (194 lines) — `FlowError`, `flattenSteps`, `lintFlow`, `lintFlowDirectory`,
 `validateFlowDirectory` — to `packages/core`, and lifts `lintDirectory` from
