@@ -328,11 +328,18 @@ describe('AC-4 — the diff range grammar, at every site a flow can hold one', (
     expect(lintFlow(flowOf({ id: 'developers', fan_out: { from: 't' }, step: { id: 'd' } }))).toBe(true);
   });
 
-  test('trailing whitespace on a TICKET endpoint is swallowed by the rule\'s `.+`', () => {
-    // The merged requirement's AC-4 lists "leading or trailing whitespace" among the refused
-    // forms. Three of the four placements are refused (above); this one is not, because `.+`
-    // matches the space. Reported in dev/implement-report.md and carried unchanged, since the
-    // grammar is what Q-0034 settled and this ticket may not narrow it.
+  test('UNRESOLVED — trailing whitespace on a TICKET endpoint is accepted, against AC-4\'s test clause', () => {
+    // AC-4's two halves disagree, and this assertion is the disagreement rather than a decision
+    // about it. Its RULE says a range is valid when each endpoint "is exactly `{base}` or matches
+    // /^harness\/\{id\}\/.+/", with "no whitespace trimming" — under which `.+` matches a trailing
+    // space. Its TEST clause lists "leading or trailing whitespace" among the refused forms. Of the
+    // four placements, three are refused (in REFUSED above) and this one is not.
+    //
+    // Carried as the spike has it, because that is the only side this ticket is authorised to take:
+    // refusing it means narrowing the grammar Q-0034 settled, which AC-4's own rule, AC-11 and
+    // charter §2 each forbid. Recorded under AC-12's stop-and-report in dev/implement-report.md as
+    // the finding this round could not close alone — moving it needs an accepted erratum, and this
+    // test is what turns that erratum from a silent edit into a red suite.
     expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration ' } })))).toBe(true);
     expect(lintFlow(flowOf(step({ input: { diff: 'harness/{id}/integration ...{base}' } })))).toBe(true);
     // `.` does not match a line terminator, so the character right after the prefix still cannot be
