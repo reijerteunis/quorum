@@ -1,13 +1,14 @@
 ---
 id: Q-0046
 title: core/adapters — the contract layer and the mock adapter
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0046/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 1
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-08-26T19:27:55.707Z
     cost: 7.733
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-26T20:06:04.559Z
+    cost: 21.61
 ---
 Ports the vendor-independent half of `spike/src/adapters/` to `packages/core`: the `Adapter`
 interface itself, `getAdapter`, `withRetry`, `transientError`, `authError`, `extractJson`,
