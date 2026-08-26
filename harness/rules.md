@@ -13,6 +13,21 @@ When they disagree, this file wins and the other is the drift.
 - Conventional commits with the ticket id in the subject: `feat(core): bounded backward
   edges [Q-0009]`.
 
+## Comments
+
+- **JSDoc, not line comments.** A module, exported symbol, interface field or non-obvious
+  parameter is documented with a `/** … */` block stating its contract. `//` is for a single
+  short remark inside a body, not for prose.
+- **Code that needs explaining is written wrong.** Fix the name, the shape or the size before
+  reaching for a comment. A comment restating what the next line does is deleted.
+- **The one thing code cannot carry is why it is deliberately strange.** Where behaviour is
+  counterintuitive on purpose — a preserved defect, a workaround, an option that looks wrong and
+  is load-bearing — add **one line** naming the authority: `Why: preserved defect, see Q-0043
+  AC-7.` A reader who wants the argument follows the pointer.
+- **Never restate `docs/DECISIONS.md` or a ticket body in a source file.** Those are the durable
+  record; a copy in code goes stale silently and doubles the size of every file that carries it.
+  Cite, do not transcribe.
+
 ## Architecture
 
 - Files are the database. Anything persistent is a file in `backlog/`, `harness/` or

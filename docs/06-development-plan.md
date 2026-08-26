@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -153,6 +153,21 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   (`packages/core/src/git.test.ts:235`). Observed twice on 2026-08-26, once on clean `main`. Not
   blocked by the freeze, and worth doing early: it is a false red in the suite that gates every
   remaining child of Q-0009, and one that clears on a rerun teaches everyone to rerun.
+- Q-0062 Worktrees are never removed. `removeWorktree` exists, is exported and was ported with four
+  tests by Q-0042, and has **zero call sites** — four worktrees from two completed, contained
+  tickets are on disk now. Decide the lifecycle together with the open M1 item *"`finish()` does not
+  roll back task branches"*; they are the same question.
+- Q-0063 A vendor CLI that exits before reading its prompt crashes the run with an unhandled
+  `EPIPE`. `exec()` (`spike/src/adapters/claude.js:70–83`, shared by both adapters) attaches no
+  `'error'` handler to `p.stdin` and then writes the whole prompt to it. Prompts are 54–133 KB
+  against a 64 KB pipe buffer, so the write cannot complete in one pass. Triggered by an expired
+  login, a rejected model or a crashed CLI — the failures this project has already paid to learn
+  about — and it replaces the vendor's message with a `node:events` stack trace. **This is why CI
+  has been red on every run since 2026-08-24.** P1.
+- Q-0064 `packages/core/src` into folders, before the remaining port children land. Runs **before
+  Q-0044**. Per the 2026-08-26 DECISIONS entry; carries the comment pass for the moved files, and
+  must make `coreSourceFiles()` recursive in the same change or three landed house-rule tests
+  silently narrow to one file while reporting green.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a

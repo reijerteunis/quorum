@@ -1,6 +1,6 @@
 # Quorum — Technical Architecture (v1)
 
-*Status: proposed 2026-08-22; scaffold created 2026-08-24 (Q-0008) — the pnpm + Turborepo workspace, the single strict `tsconfig.base.json`, Vitest, ESLint and CI now exist, and the seven package boundaries drawn below are real directories, empty on purpose until Q-0009 ports the spike into them. 2026-08-25 docs review: worktrees are under `.harness/worktrees/`, and budget caps are specified rather than enforced. 2026-08-25 (Q-0009): `packages/core` states that it imports `shared`'s zod schemas rather than declaring its own, settling a contradiction with the development plan, and the `core` → `shared` dependency direction is written down. 2026-08-25 (Q-0041): `shared` is populated — zod schemas for flow, ticket, role and step output, the trace/event union and the cross-package constants — and principle 2 is corrected to the events that exist rather than the six it had named since it was written. Changes go through DECISIONS.md.*
+*Status: proposed 2026-08-22; scaffold created 2026-08-24 (Q-0008) — the pnpm + Turborepo workspace, the single strict `tsconfig.base.json`, Vitest, ESLint and CI now exist, and the seven package boundaries drawn below are real directories, empty on purpose until Q-0009 ports the spike into them. 2026-08-25 docs review: worktrees are under `.harness/worktrees/`, and budget caps are specified rather than enforced. 2026-08-25 (Q-0009): `packages/core` states that it imports `shared`'s zod schemas rather than declaring its own, settling a contradiction with the development plan, and the `core` → `shared` dependency direction is written down. 2026-08-25 (Q-0041): `shared` is populated — zod schemas for flow, ticket, role and step output, the trace/event union and the cross-package constants — and principle 2 is corrected to the events that exist rather than the six it had named since it was written. 2026-08-26 (Q-0064): `core/src` is organised into one folder per module and `shared` stays flat, with the asymmetry explained. Changes go through DECISIONS.md.*
 
 ## Shape
 
@@ -11,12 +11,17 @@ quorum/
   apps/
     web/            Vite + React UI (mission control, gate screen, backlog board, editors)
   packages/
-    core/           engine, backlog, flows, lint, git/worktrees, adapters  ← the spike, typed
+    core/           engine, backlog, lint, contracts, git/worktrees, adapters, fanout, run-history
+      src/          one folder per module, named as Q-0009's children are (Q-0064):
+                      adapters/ backlog/ contracts/ engine/ fanout/ git/ lint/ run-history/
+                    index.ts stays at src/ root; tests are colocated with the code they test
     server/         Hono HTTP + WebSocket daemon: runs flows, streams traces, serves web/
     cli/            `quorum` binary: init · ticket · board · run · lint · adapters · open
     compiler/       canonical harness/ → CLAUDE.md / AGENTS.md / GEMINI.md (thin, linked)
     templates/      shipped harness/ (flows, roles, context files) + project scaffolds
     shared/         types, schemas (zod), event/trace format, constants  ← declarations only
+                    deliberately flat: ten leaf modules, and index.test.ts pins index.ts to
+                    `export * from './<name>.js';` lines, which a folder path cannot satisfy
   docs/             these documents
   harness/          Quorum's own harness — it is developed with itself from M2 onwards
   backlog/          Quorum's own backlog (files in git, like every other project)
@@ -35,6 +40,8 @@ quorum/
 
 ### `packages/core`
 Seeded from the spike (`engine`, `backlog`, `fanout`, `git`, `adapters/*`), converted to TypeScript and validated against the zod schemas for flows, tickets, roles and step outputs that `shared` defines — `core` imports them and declares none of its own. Public API: `loadProject(dir)`, `runFlow(opts): AsyncIterable<Event>`, `lintFlow`, `Backlog`, `Adapter` interface. The mock adapter stays in the package for tests and demos.
+
+Laid out as one folder per module (`adapters/`, `backlog/`, `contracts/`, `engine/`, `fanout/`, `git/`, `lint/`, `run-history/`), the names Q-0009's fourteen children already carry, with `index.ts` at `src/` root and tests colocated. `shared` stays flat, for the reason given above. See the 2026-08-26 DECISIONS entry.
 
 **The dependency direction is one-way: `core` → `shared`, never the reverse.** `shared` depends on no other workspace package, and nothing in it may import from `core`, `cli`, `server`, `compiler`, `templates` or `apps/web`. No cycle between workspace packages is permitted.
 
