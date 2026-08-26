@@ -328,32 +328,28 @@ describe('AC-4 — the diff range grammar, at every site a flow can hold one', (
     expect(lintFlow(flowOf({ id: 'developers', fan_out: { from: 't' }, step: { id: 'd' } }))).toBe(true);
   });
 
-  test('UNRESOLVED — trailing whitespace on a TICKET endpoint is accepted, against AC-4\'s test clause', () => {
-    // AC-4's two halves disagree, and this assertion is the disagreement rather than a decision
-    // about it. Its RULE says a range is valid when each endpoint "is exactly `{base}` or matches
-    // /^harness\/\{id\}\/.+/", with "no whitespace trimming" — under which `.+` matches a trailing
-    // space. Its TEST clause lists "leading or trailing whitespace" among the refused forms.
+  test('trailing whitespace on a TICKET endpoint is accepted — requirements/errata.md E-1', () => {
+    // Why: AC-4's *Test* clause is superseded here, and only here. See errata.md E-1 (2026-08-26).
     //
-    // The scope is one placement, established by running BOTH linters over each of them rather
-    // than by reading either. Whitespace can sit in four positions in `A...B`, and it is refused in
-    // every one — all four are pinned in REFUSED above, trailing whitespace on a `{base}` endpoint
-    // included — EXCEPT trailing whitespace on a ticket-prefixed endpoint, which `.+` matches and
-    // which is therefore accepted in either position, for a tab as readily as for a space. Spike
-    // and port agree on every case, so the conflict is internal to AC-4: it is not a divergence
-    // between this port and the code it transcribes.
+    // Which way a placement goes depends on the endpoint's KIND, not on its position in the range.
+    // Leading whitespace breaks both `=== '{base}'` and `^harness/`, so it is refused on either
+    // endpoint; trailing whitespace breaks `=== '{base}'` but is matched by `.+`, so it is refused
+    // on a `{base}` endpoint and accepted on a ticket-prefixed one. That is four refused forms —
+    // leading whitespace in both positions, trailing-on-`{base}` in both — all pinned in REFUSED
+    // above, against the one accepted kind asserted here in both positions, tab as well as space.
     //
-    // Carried as the spike has it, because every normative authority points one way and only a
-    // parenthetical in a *Test* clause points the other: AC-4's own rule, AC-11 ("no rule added,
-    // tightened or newly applied"), charter §2, and the merged requirement's own precedence note —
-    // "verified by running spike/src/lint.js, not by reading it … where a candidate's transcription
-    // disagreed with the code, the code won". Refusing it would narrow the grammar Q-0034 settled.
+    // E-1 corrects AC-4's *Test* clause to agree with AC-4's own normative rule — each endpoint "is
+    // exactly `{base}` or matches /^harness\/\{id\}\/.+/", with "no whitespace trimming" — because
+    // refusing it would narrow the grammar Q-0034 settled, and the port authorises one behaviour
+    // change, which is Q-0050's. Spike and port agree on all four placements, so the conflict was
+    // always internal to AC-4 rather than a divergence between the port and what it transcribes.
     //
-    // Recorded under AC-12's stop-and-report in dev/implement-report.md, which carries the erratum
-    // text ready to commit. It stays open here because closing it needs an accepted erratum under
-    // backlog/, which no agent step may write (docs/DECISIONS.md, 2026-08-25) — and this test is
-    // what turns that erratum from a silent edit into a red suite.
+    // What E-1 does not settle is whether the grammar *should* refuse it. It is a real rough edge —
+    // `harness/{id}/integration ` is not a ref anyone means — and tightening it is a behaviour
+    // change belonging to its own ticket beside Q-0055 and Q-0056.
     expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration ' } })))).toBe(true);
     expect(lintFlow(flowOf(step({ input: { diff: 'harness/{id}/integration ...{base}' } })))).toBe(true);
+    expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration\t' } })))).toBe(true);
     // `.` does not match a line terminator, so the character right after the prefix still cannot be
     // a newline — which is why the rule is a regexp and not a `startsWith` plus a length check.
     expect(() => lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/\nx' } })))).toThrow(FlowError);
