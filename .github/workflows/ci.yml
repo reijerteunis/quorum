@@ -92,7 +92,13 @@ jobs:
     name: spike (regression suite)
     runs-on: ubuntu-latest
     steps:
+      # Full history: S11.5 and S13.8 assert that frozen inputs are unchanged since a named
+      # baseline commit, which a depth-1 clone does not contain — `git cat-file -e` then fails and
+      # the scenario goes red for want of history rather than for a real change. Same reasoning as
+      # `port freeze (branch scope)` above, which has always fetched depth 0 for its merge base.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
