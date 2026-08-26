@@ -332,14 +332,26 @@ describe('AC-4 — the diff range grammar, at every site a flow can hold one', (
     // AC-4's two halves disagree, and this assertion is the disagreement rather than a decision
     // about it. Its RULE says a range is valid when each endpoint "is exactly `{base}` or matches
     // /^harness\/\{id\}\/.+/", with "no whitespace trimming" — under which `.+` matches a trailing
-    // space. Its TEST clause lists "leading or trailing whitespace" among the refused forms. Of the
-    // four placements, three are refused (in REFUSED above) and this one is not.
+    // space. Its TEST clause lists "leading or trailing whitespace" among the refused forms.
     //
-    // Carried as the spike has it, because that is the only side this ticket is authorised to take:
-    // refusing it means narrowing the grammar Q-0034 settled, which AC-4's own rule, AC-11 and
-    // charter §2 each forbid. Recorded under AC-12's stop-and-report in dev/implement-report.md as
-    // the finding this round could not close alone — moving it needs an accepted erratum, and this
-    // test is what turns that erratum from a silent edit into a red suite.
+    // The scope is one placement, established by running BOTH linters over each of them rather
+    // than by reading either. Whitespace can sit in four positions in `A...B`, and it is refused in
+    // every one — all four are pinned in REFUSED above, trailing whitespace on a `{base}` endpoint
+    // included — EXCEPT trailing whitespace on a ticket-prefixed endpoint, which `.+` matches and
+    // which is therefore accepted in either position, for a tab as readily as for a space. Spike
+    // and port agree on every case, so the conflict is internal to AC-4: it is not a divergence
+    // between this port and the code it transcribes.
+    //
+    // Carried as the spike has it, because every normative authority points one way and only a
+    // parenthetical in a *Test* clause points the other: AC-4's own rule, AC-11 ("no rule added,
+    // tightened or newly applied"), charter §2, and the merged requirement's own precedence note —
+    // "verified by running spike/src/lint.js, not by reading it … where a candidate's transcription
+    // disagreed with the code, the code won". Refusing it would narrow the grammar Q-0034 settled.
+    //
+    // Recorded under AC-12's stop-and-report in dev/implement-report.md, which carries the erratum
+    // text ready to commit. It stays open here because closing it needs an accepted erratum under
+    // backlog/, which no agent step may write (docs/DECISIONS.md, 2026-08-25) — and this test is
+    // what turns that erratum from a silent edit into a red suite.
     expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration ' } })))).toBe(true);
     expect(lintFlow(flowOf(step({ input: { diff: 'harness/{id}/integration ...{base}' } })))).toBe(true);
     // `.` does not match a line terminator, so the character right after the prefix still cannot be
