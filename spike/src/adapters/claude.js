@@ -78,6 +78,17 @@ export function exec(bin, args, { cwd, stdin, onLine } = {}) {
     p.stderr.on('data', (d) => { stderr += d.toString(); });
     p.on('error', (e) => resolve({ code: -1, stdout, stderr: String(e) }));
     p.on('close', (code) => { if (buf) onLine?.(buf); resolve({ code, stdout, stderr }); });
+    // A CLI that exits before reading its prompt closes this pipe under us. Prompts run to
+    // 50-150KB against a 64KB pipe buffer, so the write cannot complete in one pass and depends on
+    // the child draining it — an expired login, a rejected model or a crash all win that race.
+    // Without a listener here the EPIPE is an unhandled 'error' event and Node kills the process,
+    // replacing the vendor's own message with a node:events stack trace. The child's exit code is
+    // the authority on what happened, so this records the truncation and lets 'close' resolve.
+    // Why: see Q-0063 and backlog/Q-0009-…/requirements/errata.md E-2.
+    p.stdin.on('error', (e) => {
+      if (e.code === 'EPIPE') { stderr += `\n[quorum] the CLI closed its input before the prompt was fully written\n`; return; }
+      resolve({ code: -1, stdout, stderr: `${stderr}\n${String(e)}` });
+    });
     if (stdin != null) p.stdin.end(stdin); else p.stdin.end();
   });
 }

@@ -214,7 +214,7 @@ answer; if the base legitimately acquires a `spike/src` change after the freeze,
 the recorded SHA, deliberately and in this file.
 
 **The freeze SHA is not yet named.** The SHA-anchored half of the freeze — that `main` acquired
-no `spike/src` change after the port began — cannot be recorded until four open tickets that
+no `spike/src` change after the port began — cannot be recorded until five open tickets that
 legitimately edit `spike/src` are settled:
 
 | Ticket | Subject | Must |
@@ -223,6 +223,7 @@ legitimately edit `spike/src` are settled:
 | Q-0038 | Deferred-range failures name their producing step | as above |
 | Q-0039 | One run at a time per ticket *(no folder yet)* | as above |
 | Q-0040 | A gate can say "undecided" *(no folder yet)* | as above |
+| Q-0063 | A CLI that exits before reading its prompt crashes the run with EPIPE | authorised to fix `exec()` in the spike, 2026-08-26 — see `backlog/Q-0009-…/requirements/errata.md` E-2. Not a freeze exemption: Q-0063 is not in `children`. Q-0047 must port the **fixed** `exec()` |
 
 Re-targeting any of them at `core` makes it a port-plus-feature and larger than it currently
 looks. Until all four are settled and the SHA is written into the block below, **the SHA-anchored

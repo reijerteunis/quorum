@@ -40,3 +40,54 @@ Q-0009's own. Those are not relocations and cannot be amended away: the material
 in the ticket bodies. They are performed by a human commit outside the flow, which is what the
 charter's §11 specifies and what closed them here. The general lesson is recorded in
 `docs/DECISIONS.md`.
+
+## E-2 — 2026-08-26 — Q-0063 fixes `exec()` in the spike, and Q-0047 ports the fixed version
+
+**Supersedes:** nothing in `requirements/merged.md`. This entry amends **`harness/port-charter.md`
+§3's freeze-SHA table** and adds one obligation to **Q-0047**. It is recorded here because the
+charter is Q-0009's artifact and §3 says a change to the freeze's preconditions is made
+"deliberately and in this file".
+
+**What is authorised.** Q-0063 modifies `spike/src/adapters/claude.js` — the shared `exec()` helper
+— to attach an `'error'` handler to the child's stdin and treat `EPIPE` as *the child closed its
+input*, resolving through the normal `close` path so the vendor's own exit code, stdout and stderr
+remain what the caller reports. Authorised by Ruud, 2026-08-26.
+
+**This is not a freeze exemption, and no trailer is required.** §3 binds "no ticket in Q-0009's
+set — Q-0041 through Q-0054, and Q-0009 itself", and the machine-readable `children` list holds
+those fourteen. **Q-0063 is not among them**, and §3 says in as many words that the freeze "is a
+property of *these fifteen tickets*, not of any role", naming Q-0038 and Q-0040 as chore-shaped
+tickets whose whole subject is `spike/src`. Q-0063 is the same shape. The `Port-freeze-exemption`
+trailer is a property of a *child's branch* and would be malformed here, since the guard requires
+the trailer to name that branch's own ticket id.
+
+**What this erratum therefore does, in two parts.**
+
+1. **Q-0063 joins §3's freeze-SHA table.** That table lists the open tickets which legitimately edit
+   `spike/src` and gates when `freeze-sha:` can stop reading `not-yet-recorded`. It named four —
+   Q-0037, Q-0038, Q-0039, Q-0040. It now names five. Recording a SHA against a stale list would
+   anchor the freeze at a commit that a still-open ticket is entitled to invalidate, and the
+   SHA-anchored half would then fail for a change the charter had already blessed.
+2. **Q-0047 ports the fixed `exec()`, not the version frozen at M2's start.** This is the half that
+   matters and the reason an erratum exists rather than a commit message. The port's proof is that
+   the spike is its *independent witness* — §3: "a witness that has been edited is not one" — and
+   this edits it. The obligation is therefore explicit: Q-0047's implementer ports `exec()`
+   **including the stdin `'error'` handler**, and its reviewer treats a port of the pre-fix shape as
+   a blocker citing this entry. A silently reverted fix would be invisible in exactly the way the
+   preserve-behaviour policy exists to prevent — both suites green, the product wrong.
+
+**Why the fix is not deferred to Q-0047 instead.** `exec()` is shared by both shipped adapters
+(`claude.js:32`, `codex.js:58`) and is on every run's path. The write is the whole prompt — 54 KB
+and 133 KB on Q-0043's two steps — against a 64 KB pipe buffer, so it cannot complete in one pass
+and depends on the child draining it. When the child exits first the write raises `EPIPE` on a
+stream with no listener and Node throws `Unhandled 'error' event`, killing the process instead of
+failing the step: the vendor's own message is replaced by a `node:events` stack trace, which
+defeats `authError()` and reproduces the M0 failure recorded as *"a failure that withholds the one
+thing the reader needs"*. It is also, today, the sole remaining cause of a red `spike (regression
+suite)` job on every push — and a permanently red CI is one everyone learns to ignore, which is how
+the next real regression ships unnoticed. Q-0047 is several children away.
+
+**What this erratum does not settle.** Whether `exec()`'s `resolve`-rather-than-`reject` behaviour
+on spawn failure (`p.on('error')` → `code: -1`) is right; it is preserved as-is. Whether any other
+`spike/src` defect may be fixed in place — this authorises one named change and no class of
+changes. And it records no freeze SHA: the table now has five rows and all five are still open.

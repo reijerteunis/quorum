@@ -1,7 +1,7 @@
 ---
 id: Q-0063
 title: A CLI that exits before reading its prompt crashes the run with EPIPE
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0063/integration
@@ -57,7 +57,26 @@ the vendor may have exited 0 having read enough, and the exit code is the author
 missing binary returns `code: -1` with the error text in `stderr`. That is deliberate and should
 stay; confirm the new handler composes with it rather than racing it.
 
-**Scope.** `spike/src` is frozen (`harness/port-charter.md` §3). The fix lands against
+**Resolved 2026-08-26, in the spike, by hand.** Authorised by Ruud and recorded as erratum **E-2**
+in `backlog/Q-0009-…/requirements/errata.md`, which also adds this ticket to `harness/port-charter.md`
+§3's freeze-SHA table and obliges **Q-0047 to port the fixed `exec()`**, not the pre-fix shape — the
+spike is the port's independent witness and this edits it. **It is not a freeze exemption**: §3 binds
+Q-0009's fifteen tickets and the `children` list holds Q-0041–Q-0054; Q-0063 is not among them, the
+same way Q-0038 and Q-0040 are not.
+
+`p.stdin` now carries an `'error'` handler that treats `EPIPE` as *the child closed its input*,
+appending one line to `stderr` and letting `close` resolve, so the child's own exit code, stdout and
+stderr stay the authority. Non-`EPIPE` stream errors resolve `code: -1`, matching what `p.on('error')`
+already did for spawn failures.
+
+`spike/test/q0063-stdin-epipe.js` covers five cases: exit 0 without reading, non-zero exit reporting
+its own code and message, the truncation recorded rather than swallowed, a CLI that *does* read its
+prompt being unaffected, and a missing binary still resolving `-1`. **Verified red before green** —
+reverted to the pre-fix source, the suite reproduces the CI crash verbatim (`write EPIPE`, unhandled
+`'error'` event, process killed). Both suites green afterwards: 12 spike test files, 7 workspace
+tasks with a forced run.
+
+**Original scope note, superseded above.** `spike/src` is frozen (`harness/port-charter.md` §3). The fix lands against
 `packages/core` with Q-0047 (`core/adapters` — claude and codex), which owns `exec()`. **P1 and
 worth pulling forward**: it is on every run's path, it is currently the reason CI cannot be trusted,
 and a red CI that everyone has learned to ignore is how the next real regression ships. If Q-0047 is
