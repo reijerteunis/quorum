@@ -1,7 +1,7 @@
 ---
 id: Q-0042
 title: core/git — worktrees, ancestry and containment
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0042/integration
@@ -17,6 +17,14 @@ history:
     stage_after: draft
     at: 2026-08-25T23:20:14.077Z
     cost: 5.749
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-26T05:44:30.588Z
+    cost: 11.117
 ---
 Ports `spike/src/git.js` (163 lines) to `packages/core`: `ensureWorktree`, `removeWorktree`,
 `ancestry`, `shallowState`, `shortSha`, `emptyRangeEvidence`, `containment`, `ensureExcluded`. It is
