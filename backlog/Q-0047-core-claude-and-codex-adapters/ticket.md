@@ -38,6 +38,30 @@ it is the difference between a port and a small feature.
 and JSONL field by field. The port should be checkable against it, and any divergence found while
 porting is a doc fix in the same change, per the docs rule.
 
+**Two obligations inherited from Q-0046, which its requirement must carry as criteria.** Q-0046
+landed on 2026-08-26 and handed both forward explicitly; a requirement that omits either closes
+nothing while appearing to.
+
+- **Register row 1 is split, and this ticket owns the half that has no test.**
+  `backlog/Q-0046-core-adapter-contract-and-mock/requirements/errata.md` E-1 re-points the row:
+  Q-0046 discharged only what it could write (nothing in `core/adapters` calls `check()`), because
+  the refusal itself lives in `claude.js:12` and `codex.js:21` — this ticket's files. **A criterion
+  must assert that the refusal fires *before* the `--version` probe, over all three variable names,
+  and that it still fires when the configured executable is missing.** Charter §2 says why the last
+  two clauses are not padding: *"a rewrite that probes first and refuses second passes every test
+  that checks only the refusal."*
+- **The registry must regain its two entries.** Q-0046 shipped `getAdapter` with `mock` alone
+  (its AC-3), so `getAdapter('claude')` throws `unknown adapter "claude" (known: mock)` in `core`
+  today while the spike answers it. The message *format* is already pinned there; the *membership*
+  is deliberately not, and restoring it is this ticket's.
+
+**One wording finding is already reported and unfixed**, from Q-0046's implement report:
+`claude.js:12`, `codex.js:21` and the fixture at `spike/test/smoke.js:465` call the product
+*"Harness"*, which `.claude/rules/product-boundaries.md` forbids — "Harness" is the concept and the
+folder, never the product. The two adapter files are this ticket's, so it is the first ticket that
+*may* fix it; charter §2 makes that a deliberate change needing an erratum or a decision entry
+first, never a tidy-up in passing. `spike/test/smoke.js` is frozen either way.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this

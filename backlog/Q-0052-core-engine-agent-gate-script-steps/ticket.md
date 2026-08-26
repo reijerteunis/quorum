@@ -47,6 +47,15 @@ the only such invitation in the port: no other ticket may change behaviour to ma
 (2026-08-21) — and they inherit `runCommand`'s timeout, because a project's own command can hang
 exactly as a suite can.
 
+**An obligation inherited from Q-0046, which this ticket's requirement must carry as a criterion.**
+Q-0046 ported the `PROBE_SCHEMA` half of `spike/test/q0034-probe-schema.js` and **deferred the
+`schemaFor` half to this ticket by name** — porting it there would have meant importing
+`spike/src/engine.js`, which charter §3 forbids. It left the rule as a reusable exported helper,
+`strictSchemaProblems` in `packages/core/test/strict-schema.ts`, precisely so this ticket imports the
+rule rather than retyping it. **A criterion must assert `schemaFor`'s output against that helper for
+every shape it emits.** Until then the rule is covered on the spike alone, and Q-0046 recorded the
+gap as *deferred with a named owner* rather than as coverage that is complete.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
