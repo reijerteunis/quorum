@@ -1,7 +1,7 @@
 ---
 id: Q-0043
 title: core/backlog — tickets, frontmatter, stages and loadProject
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0043/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-08-26T06:10:21.643Z
     cost: 9.473
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-26T06:39:03.690Z
+    cost: 15.671
 ---
 Ports `spike/src/backlog.js` (102 lines) — `parseFrontmatter`, `renderFrontmatter`, the `Backlog`
 class and its ticket walk — to `packages/core`, against the ticket schema Q-0041 defines. Belongs to
