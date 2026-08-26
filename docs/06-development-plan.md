@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-25 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -134,6 +134,25 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `chore.yaml:13` then fed the mixture back to the implementer. Swapping `{iter}` for `{round}`
   reproduces it, since `reviewRound` counts directories chore never creates. Worth settling early —
   every remaining child of Q-0009 runs this flow.
+- Q-0058 `harness.yaml` documents a retry key nothing reads. The commented example at
+  `harness/harness.yaml:11` and in the shipped template says `base_delay_ms`; `withRetry`
+  destructures `baseDelayMs` (`spike/src/adapters/index.js:68`), so an adopter's value is discarded
+  in silence — masked because the ignored value and the default are both 5000. Reaches the
+  cold-clone path via `harness init`. Also where Q-0043's `projectConfigSchema`, shipped declared
+  and called nowhere, gets its first caller if the fix is validation.
+- Q-0059 `dirOf` accepts a traversing argument and reads outside the backlog root
+  (`spike/src/backlog.js:34`, now `packages/core/src/backlog.ts:133`). Q-0043's non-goals carry the
+  write-side twin but name `writeFile` only. Barely reachable today because every caller passes a
+  CLI argument; M3's server takes a ticket id over HTTP, so it wants settling before the daemon.
+- Q-0060 A damaged or CRLF `ticket.md` reads as a ticket with no fields, silently. The regex at
+  `backlog.js:12` is anchored on `\n` and line 13 falls open to `{ meta: {}, body: text }` — no
+  error, contradicting the "never default silently" rule, under the module the product calls its
+  database. Constrained by `parseFrontmatter` also being the role-file reader
+  (`engine.js:727–732`), and the obvious fix is refused by Q-0043's AC-4.
+- Q-0061 The containment "writes nothing" test snapshots `.git` and goes red under git maintenance
+  (`packages/core/src/git.test.ts:235`). Observed twice on 2026-08-26, once on clean `main`. Not
+  blocked by the freeze, and worth doing early: it is a false red in the suite that gates every
+  remaining child of Q-0009, and one that clears on a rerun teaches everyone to rerun.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
