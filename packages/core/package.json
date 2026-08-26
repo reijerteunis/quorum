@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@quorum/shared": "workspace:*"
+    "@quorum/shared": "workspace:*",
+    "yaml": "^2.9.0"
   }
 }
