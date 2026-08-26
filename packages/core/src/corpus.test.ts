@@ -101,8 +101,11 @@ describe('AC-5 — every guard can fire, and says what it could not cover', () =
   });
 
   test('the same narrowing is caught on this package\'s own src, not only on a fixture', () => {
+    // Any module folder, rather than the two that existed when this was written: the guard reports
+    // the first uncovered directory it meets, so enumerating them makes this red on the next child
+    // to add one — which is what Q-0046's `adapters/` did.
     expect(() => coreSourceFiles(CORE_SRC, nonRecursive))
-      .toThrow(/corpus incomplete: packages\/core\/src\/(backlog|git)/);
+      .toThrow(/corpus incomplete: packages\/core\/src\/[a-z-]+ holds source/);
   });
 
   test('a directory named like a source file is not source, and obliges the corpus to nothing', () => {
