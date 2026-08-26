@@ -7,7 +7,8 @@ repos: []
 branch: harness/Q-0044/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-08-26T14:19:34.146Z
     cost: 6.796
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-26T15:05:29.155Z
+    cost: 0
 ---
 Ports `spike/src/lint.js` (194 lines) — `FlowError`, `flattenSteps`, `lintFlow`, `lintFlowDirectory`,
 `validateFlowDirectory` — to `packages/core`, and lifts `lintDirectory` from
