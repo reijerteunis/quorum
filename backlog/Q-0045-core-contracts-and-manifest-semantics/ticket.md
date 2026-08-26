@@ -1,13 +1,14 @@
 ---
 id: Q-0045
 title: core/contracts — ajv validation and the run-manifest semantic pass
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0045/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 1
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-08-26T18:21:13.349Z
     cost: 8.794
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-26T18:57:48.743Z
+    cost: 20.991
 ---
 Ports `spike/src/contracts.js` (41 lines: `validate`, `readData`, `validateFile`, ajv 2020-12 plus
 `ajv-formats`) to `packages/core`, and lifts the product-level semantic pass out of the CLI —

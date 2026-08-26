@@ -1,0 +1,3 @@
+# Q-0045 code review — chore iteration 1
+
+major: packages/core/src/contracts/contracts.source.test.ts:80 The permanent core suite reads `spike/package.json` through `repoFile` and compares dependency versions against it. Q-0009’s cutover is expected to delete `spike/`, so this test will then fail solely because the frozen implementation was removed; that contradicts AC-9’s rule that no permanent test assert a fact the next landing changes and the implementation report’s claim that the suite does not depend on the spike. Keep the literal `^8.20.0` and `^3.0.1` assertions, plus the lockfile and runtime-resolution checks, but remove the runtime dependency on `spike/package.json`.
