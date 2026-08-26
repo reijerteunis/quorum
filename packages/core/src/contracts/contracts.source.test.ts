@@ -84,13 +84,13 @@ describe('AC-1 — the surface, the folder, and the entry point left alone', () 
     }
   });
 
-  test('core declares both dependencies at the versions the spike already carries', () => {
+  test('core declares both dependencies, at the versions AC-1 names', () => {
+    // The literals are the criterion; they are not read back from spike/package.json at run time.
+    // The Q-0009 cutover deletes spike/, and a permanent test may not assert a fact this
+    // repository's next landing changes ("A red test is a permanent acceptance test", 2026-08-23).
     const pkg = JSON.parse(repoFile('packages/core/package.json')) as { dependencies: Record<string, string> };
     expect(pkg.dependencies.ajv).toBe('^8.20.0');
     expect(pkg.dependencies['ajv-formats']).toBe('^3.0.1');
-    const spike = JSON.parse(repoFile('spike/package.json')) as { dependencies: Record<string, string> };
-    expect(pkg.dependencies.ajv).toBe(spike.dependencies.ajv);
-    expect(pkg.dependencies['ajv-formats']).toBe(spike.dependencies['ajv-formats']);
   });
 
   test('the lockfile carries an ajv 8, beside the ajv 6 that is ESLint\'s', () => {
