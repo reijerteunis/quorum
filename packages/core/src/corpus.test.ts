@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test } from 'vitest';
 
-import { coreSourceFiles, repoRoot } from '../test/corpus.js';
+import { coreSourceFiles, repoRoot, type SourceCollector } from '../test/corpus.js';
 import { removeTempDirs, tempDir, write } from '../test/repo.js';
 
 afterAll(removeTempDirs);
@@ -74,19 +74,41 @@ describe('AC-5 — every guard can fire, and says what it could not cover', () =
     expect(() => coreSourceFiles(empty)).toThrow(/corpus empty/);
   });
 
-  test('a subdirectory holding source the corpus does not cover throws, naming the directory', () => {
-    // The tree says `engine/` holds source; the reader can collect no file from it, so the corpus
-    // would silently be one file wide. That is the shape a non-recursive read has.
-    const root = tempDir('corpus-');
-    write(path.join(root, 'index.ts'), "export const name = 'fixture';\n");
-    fs.mkdirSync(path.join(root, 'engine', 'engine.ts'), { recursive: true });
-    expect(() => coreSourceFiles(root)).toThrow(/corpus incomplete: .*engine/);
-  });
+  /**
+   * The reader this ticket replaced: one level, no descent. Handing it to `coreSourceFiles` is how a
+   * genuine source file gets left out of a corpus, so the guard is shown catching the real defect
+   * rather than a fixture contrived to trip it.
+   */
+  const nonRecursive: SourceCollector = (root) =>
+    fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts'))
+      .map((entry) => [entry.name, fs.readFileSync(path.join(root, entry.name), 'utf8')]);
 
-  test('the same fixture passes once that directory is covered', () => {
+  /** `index.ts` beside a real `engine/engine.ts`, which every reader below either takes or drops. */
+  function fixture(): string {
     const root = tempDir('corpus-');
     write(path.join(root, 'index.ts'), "export const name = 'fixture';\n");
     write(path.join(root, 'engine', 'engine.ts'), 'export const run = (): void => undefined;\n');
-    expect(coreSourceFiles(root).map(([key]) => key)).toStrictEqual(['engine/engine.ts', 'index.ts']);
+    return root;
+  }
+
+  test('a real source file the corpus leaves out throws, naming the directory holding it', () => {
+    expect(() => coreSourceFiles(fixture(), nonRecursive)).toThrow(/corpus incomplete: .*engine/);
+  });
+
+  test('and the file it missed is one the whole-tree reader takes, so the omission was real', () => {
+    expect(coreSourceFiles(fixture()).map(([key]) => key)).toStrictEqual(['engine/engine.ts', 'index.ts']);
+  });
+
+  test('the same narrowing is caught on this package\'s own src, not only on a fixture', () => {
+    expect(() => coreSourceFiles(CORE_SRC, nonRecursive))
+      .toThrow(/corpus incomplete: packages\/core\/src\/(backlog|git)/);
+  });
+
+  test('a directory named like a source file is not source, and obliges the corpus to nothing', () => {
+    const root = tempDir('corpus-');
+    write(path.join(root, 'index.ts'), "export const name = 'fixture';\n");
+    fs.mkdirSync(path.join(root, 'engine', 'engine.ts'), { recursive: true });
+    expect(coreSourceFiles(root).map(([key]) => key)).toStrictEqual(['index.ts']);
   });
 });
