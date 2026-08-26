@@ -132,12 +132,18 @@ describe('AC-11 — the project config is declared once, in shared, and validate
 });
 
 describe('AC-12 — one new dependency, and it is the emitter the format is defined by', () => {
-  test('core declares exactly shared and yaml', () => {
+  test('core declares exactly shared, yaml and the two ajv packages', () => {
+    // The set stays exhaustive, which is the point of the assertion: a stray dependency still turns
+    // it red. `ajv` and `ajv-formats` were added by Q-0045, whose AC-1 requires them at exactly the
+    // versions spike/package.json already carries, and whose 2026-08-22 DECISIONS entry carries
+    // their justification. Q-0043's own answer — yaml and nothing else — is unchanged.
     const pkg = JSON.parse(repoFile('packages/core/package.json')) as {
       dependencies: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
-    expect(pkg.dependencies).toStrictEqual({ '@quorum/shared': 'workspace:*', yaml: '^2.9.0' });
+    expect(pkg.dependencies).toStrictEqual({
+      '@quorum/shared': 'workspace:*', ajv: '^8.20.0', 'ajv-formats': '^3.0.1', yaml: '^2.9.0',
+    });
     expect(pkg.devDependencies).toBeUndefined();
   });
 });
