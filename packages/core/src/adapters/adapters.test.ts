@@ -233,17 +233,18 @@ describe('AC-4 — withRetry is the whole retry policy, in one place', () => {
     expect((await withRetry(declaring, { baseDelayMs: 0 }).run(runOptions())).vendor).toBe('billed-elsewhere');
 
     // A contributor's adapter that omits the per-call declaration, which is the only case the
-    // fallback exists for — both shipped adapters always declare one.
+    // fallback exists for — both shipped adapters always declare one. No cast: `AdapterResult`
+    // permits the omission, and this returning without one is the compile-time half of the claim.
     const silent = stub(async () => {
       const { vendor: _undeclared, ...rest } = answer();
-      return rest as AdapterResult;
+      return rest;
     }, 'adapter-name');
     expect((await withRetry(silent, { baseDelayMs: 0 }).run(runOptions())).vendor).toBe('adapter-name');
 
     // And the usage's own declaration sits between the two.
     const viaUsage = stub(async () => {
       const { vendor: _undeclared, ...rest } = answer({ usage: { vendor: 'from-usage', input_tokens: 1, output_tokens: null, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: null } });
-      return rest as AdapterResult;
+      return rest;
     }, 'adapter-name');
     expect((await withRetry(viaUsage, { baseDelayMs: 0 }).run(runOptions())).vendor).toBe('from-usage');
   });

@@ -115,7 +115,8 @@ export interface AdapterRunOptions {
 }
 
 /**
- * What one adapter call answers with.
+ * What one adapter call answers with — the six fields docs/03-adapter-contract.md:38-45 names, and
+ * nothing the wrapper adds.
  *
  * `usage` is `null` when nothing was reported rather than an object of five nulls, because a
  * roll-up counts any non-null usage as an occurrence and would otherwise invent a vendor row for a
@@ -129,12 +130,29 @@ export interface AdapterResult {
   usage: AdapterUsage | null;
   /** The vendor's own session id, where it has one. */
   session: string | null;
-  /** Which vendor this call was billed to — a per-call declaration, not the adapter's name. */
-  vendor: string;
+  /**
+   * Which vendor this call was billed to — a per-call declaration, not the adapter's name, which is
+   * why both shipped adapters set it per call.
+   *
+   * Optional because the contract permits a call to omit it: `withRetry` then falls back through
+   * `usage.vendor` to the adapter's own name, and a contributor implementing that documented case
+   * must not meet a type error for it (docs/03-adapter-contract.md:48-51). What the wrapper hands
+   * back is {@link RetriedAdapterResult}, where the resolution has happened and this is a `string`.
+   */
+  vendor?: string;
   /** Wall clock for the call. */
   ms: number;
-  /** How many invocations it took. Present on every result {@link withRetry} returns. */
-  attempts?: number;
+}
+
+/**
+ * What a {@link RetryingAdapter} answers with: an {@link AdapterResult} plus the two things only the
+ * wrapper can know — which vendor the call resolved to, and how many invocations it took.
+ */
+export interface RetriedAdapterResult extends AdapterResult {
+  /** Resolved: the call's own declaration, else its usage's, else the adapter's own name. */
+  vendor: string;
+  /** How many invocations it took. Written by {@link withRetry}, never by an adapter. */
+  attempts: number;
 }
 
 /**
@@ -153,6 +171,17 @@ export interface Adapter {
    */
   check(): Promise<string>;
   run(options: AdapterRunOptions): Promise<AdapterResult>;
+}
+
+/**
+ * An adapter that has been through {@link withRetry} — which is every adapter {@link getAdapter}
+ * hands out, and the only kind anything above this layer receives.
+ *
+ * It is an {@link Adapter} in every other respect; what the type adds is the guarantee the wrapper
+ * makes about its answer.
+ */
+export interface RetryingAdapter extends Adapter {
+  run(options: AdapterRunOptions): Promise<RetriedAdapterResult>;
 }
 
 /**
@@ -234,7 +263,7 @@ const registry: Record<string, (config: AdapterConfig) => Adapter> = { mock: moc
  * @throws {Error} naming the adapter and listing the registry's own keys — never a second, drifting
  *   list of what is known.
  */
-export function getAdapter(name: string, config: Record<string, AdapterConfig> = {}): Adapter {
+export function getAdapter(name: string, config: Record<string, AdapterConfig> = {}): RetryingAdapter {
   const factory = registry[name];
   if (!factory) throw new Error(`unknown adapter "${name}" (known: ${Object.keys(registry).join(', ')})`);
   const cfg = config[name] ?? {};
@@ -303,15 +332,16 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeo
  *
  * @param adapter the adapter to wrap.
  * @param policy how many attempts, and how far apart.
- * @returns the same adapter with a retrying `run`.
+ * @returns the same adapter with a retrying `run`, whose answer carries a resolved `vendor` and the
+ *   real invocation count.
  */
 export function withRetry(
   adapter: Adapter,
   { attempts = 5, baseDelayMs = 5000, maxDelayMs = 60000 }: RetryPolicy = {},
-): Adapter {
+): RetryingAdapter {
   return {
     ...adapter,
-    async run(opts: AdapterRunOptions): Promise<AdapterResult> {
+    async run(opts: AdapterRunOptions): Promise<RetriedAdapterResult> {
       const spent = Object.fromEntries(USAGE_MEASURES.map((measure) => [measure, null])) as Record<UsageMeasure, number | null>;
       let declaredVendor: string | null = null;
       const add = (usage: ReportedUsage | null | undefined): void => {
