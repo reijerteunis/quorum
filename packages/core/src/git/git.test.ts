@@ -16,7 +16,7 @@ import {
 import {
   commit, commitAll, counting, git, installGitShim, notARepo, removeTempDirs, repo, shallowCloneOf,
   tempDir, walk, write,
-} from '../test/repo.js';
+} from '../../test/repo.js';
 
 afterAll(removeTempDirs);
 
@@ -235,6 +235,42 @@ describe('AC-4 — containment derives the board\'s answer and never guesses an 
     expect(walk(dir)).toEqual(filesBefore);
     expect(git(dir, 'for-each-ref')).toBe(refsBefore);
     expect(fs.readFileSync(path.join(dir, 'ticket.md'))).toEqual(ticketBefore);
+  });
+});
+
+describe('Q-0064 — the snapshot above ignores git\'s own lock files, and nothing else', () => {
+  // Both cases write inside the snapshot window themselves rather than waiting for git's
+  // background maintenance to do it, which is what made the assertion above fail on some runs and
+  // pass on others.
+
+  test('a lock file appearing under .git while the snapshot is open does not fail it', () => {
+    const dir = repo();
+    git(dir, 'branch', TICKET_BRANCH);
+    const filesBefore = walk(dir);
+
+    const derived = containment(dir, 'main');
+    write(path.join(dir, '.git', 'objects', 'maintenance.lock'), '');
+    derived?.stateOf(TICKET_BRANCH);
+
+    expect(walk(dir)).toEqual(filesBefore);
+  });
+
+  test('a non-lock file under .git, and a .lock outside it, are both still seen', () => {
+    const dir = repo();
+    git(dir, 'branch', TICKET_BRANCH);
+    const filesBefore = walk(dir);
+
+    const derived = containment(dir, 'main');
+    // A cache under .git is exactly what the containment rule forbids, so excluding .git/**
+    // wholesale would blind the snapshot to it.
+    write(path.join(dir, '.git', 'quorum-cache'), 'derived containment\n');
+    write(path.join(dir, 'derived.lock'), 'in the user\'s tree\n');
+    derived?.stateOf(TICKET_BRANCH);
+
+    const filesAfter = walk(dir);
+    expect(filesAfter).not.toEqual(filesBefore);
+    expect(filesAfter).toContain(path.join('.git', 'quorum-cache'));
+    expect(filesAfter).toContain('derived.lock');
   });
 });
 

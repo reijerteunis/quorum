@@ -141,7 +141,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   cold-clone path via `harness init`. Also where Q-0043's `projectConfigSchema`, shipped declared
   and called nowhere, gets its first caller if the fix is validation.
 - Q-0059 `dirOf` accepts a traversing argument and reads outside the backlog root
-  (`spike/src/backlog.js:34`, now `packages/core/src/backlog.ts:133`). Q-0043's non-goals carry the
+  (`spike/src/backlog.js:34`, now `packages/core/src/backlog/backlog.ts`). Q-0043's non-goals carry the
   write-side twin but name `writeFile` only. Barely reachable today because every caller passes a
   CLI argument; M3's server takes a ticket id over HTTP, so it wants settling before the daemon.
 - Q-0060 A damaged or CRLF `ticket.md` reads as a ticket with no fields, silently. The regex at
