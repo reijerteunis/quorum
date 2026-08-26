@@ -1,7 +1,7 @@
 ---
 id: Q-0061
 title: The containment writes-nothing test goes red under git maintenance
-stage: draft
+stage: abandoned
 owner: ruud
 repos: []
 branch: harness/Q-0061/integration
@@ -10,6 +10,12 @@ created: 2026-08-26
 iterations: {}
 history: []
 ---
+**Absorbed into Q-0064, 2026-08-26 — not fixed here and not dropped.** Q-0064 already moves
+`packages/core/src/git.test.ts` and already rewrites `packages/core/test/corpus.ts`, and `walk`
+lives beside `coreSourceFiles` in `packages/core/test/repo.ts`. Running this separately would touch
+the same files twice for one outcome. Q-0064's body carries the fix and the trap in it; this body
+stays as the evidence, which is why it is `abandoned` rather than deleted.
+
 Reported by Q-0043's implement step as a defect in **Q-0042's** file, outside its own sanctioned
 surface and therefore untouched, per *"The port preserves behaviour"* (`docs/DECISIONS.md`,
 2026-08-25). Its report said it *"will go red for someone eventually"*. It went red within the hour,

@@ -149,10 +149,9 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   error, contradicting the "never default silently" rule, under the module the product calls its
   database. Constrained by `parseFrontmatter` also being the role-file reader
   (`engine.js:727–732`), and the obvious fix is refused by Q-0043's AC-4.
-- Q-0061 The containment "writes nothing" test snapshots `.git` and goes red under git maintenance
-  (`packages/core/src/git.test.ts:235`). Observed twice on 2026-08-26, once on clean `main`. Not
-  blocked by the freeze, and worth doing early: it is a false red in the suite that gates every
-  remaining child of Q-0009, and one that clears on a rerun teaches everyone to rerun.
+- ~~Q-0061 The containment "writes nothing" test snapshots `.git`~~ — **absorbed into Q-0064**
+  2026-08-26. Same surface: Q-0064 already moves `git.test.ts` and rewrites `packages/core/test/`,
+  where `walk` lives beside `coreSourceFiles`. Its body stays as the evidence.
 - Q-0062 Worktrees are never removed. `removeWorktree` exists, is exported and was ported with four
   tests by Q-0042, and has **zero call sites** — four worktrees from two completed, contained
   tickets are on disk now. Decide the lifecycle together with the open M1 item *"`finish()` does not
@@ -164,8 +163,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   login, a rejected model or a crashed CLI — the failures this project has already paid to learn
   about — and it replaces the vendor's message with a `node:events` stack trace. **This is why CI
   has been red on every run since 2026-08-24.** P1.
-- Q-0064 `packages/core/src` into folders, before the remaining port children land. Runs **before
-  Q-0044**. Per the 2026-08-26 DECISIONS entry; carries the comment pass for the moved files, and
+- Q-0064 `core/src` into folders, plus the flaky containment snapshot. Runs **before Q-0044**.
+  Carries Q-0061. Per the 2026-08-26 DECISIONS entry; carries the comment pass for the moved files, and
   must make `coreSourceFiles()` recursive in the same change or three landed house-rule tests
   silently narrow to one file while reporting green.
 

@@ -1,6 +1,6 @@
 ---
 id: Q-0064
-title: packages/core/src into folders, before the remaining port children land
+title: core/src into folders, plus the flaky containment snapshot
 stage: draft
 owner: ruud
 repos: []
@@ -46,6 +46,26 @@ repeated here as acceptance surface because each is a silent failure.
    byte-pins `packages/core/src/index.ts` and **must not move** — `index.ts` stays at `src/` root,
    byte-unchanged, and that pin staying green is the proof.
 
+**Also in scope: Q-0061's flaky test, absorbed 2026-08-26.** `packages/core/src/git.test.ts:235`
+asserts that deriving containment writes nothing, by comparing a `walk(dir)` snapshot taken before
+and after. `walk` is `fs.readdirSync(dir, { recursive: true })` with no exclusion
+(`packages/core/test/repo.ts:71–72`), so **`.git/**` is inside the snapshot** and any file git's own
+background maintenance creates in that window — `.git/objects/maintenance.lock` is the observed one
+— fails the assertion. Observed twice on 2026-08-26, once on clean `main`.
+
+It is folded in here rather than run separately because it is the same surface: this ticket already
+moves `git.test.ts` and already rewrites `packages/core/test/corpus.ts`, and `walk` lives beside
+`coreSourceFiles` in `packages/core/test/repo.ts`. Two tickets editing those files in sequence would
+touch them twice for one outcome.
+
+**The fix, and the trap in it.** Filter git's transient lock files out of the snapshot; do **not**
+loosen the assertion. The criterion is real — Q-0036 exists because containment must derive from git
+and store nothing, and charter register row 9 binds every later child to it. Excluding `.git/**`
+wholesale is also too broad: the sibling `expect(git(dir, 'for-each-ref')).toBe(refsBefore)` covers
+refs, but the file snapshot is what would catch a cache written under `.git/`, which is exactly what
+the containment decision forbids. The narrow exclusion keeps both. Q-0061 is closed as absorbed and
+its body carries the full evidence.
+
 **Also in scope, because it is the same pass.** `harness/rules.md`'s new *Comments* section
 (2026-08-26) applies to the moved files: JSDoc for the contract, one `Why:` line naming an authority
 where behaviour is deliberately counterintuitive, no transcription of DECISIONS entries or ticket
@@ -54,13 +74,16 @@ copied from elsewhere. **Reduce the prose; do not delete a `Why:` pointer** — 
 the port charter requires to be preserved, and an unexplained preserved defect is one the next
 child helpfully fixes.
 
-**Non-goals.** Any behaviour change whatsoever — this is a move, a helper fix and a comment pass.
-No new export, no signature change, no defect fixed (`harness/port-charter.md` §2, and Q-0043
-reported nine that stay reported). No folder created for a module that does not exist yet. No change
+**Non-goals.** Any change to shipped behaviour — this is a move, two test-helper fixes and a
+comment pass. No new export, no signature change. **No defect fixed other than Q-0061's**, which is
+named above and is a defect in a test helper rather than in the product
+(`harness/port-charter.md` §2 stands, and Q-0043's nine reported defects stay reported). No folder created for a module that does not exist yet. No change
 under `spike/` (§3). Not `packages/shared`'s layout. Not `packages/core/src/index.ts`'s bytes.
 
 **How it is proven.** `pnpm turbo run test --force` and `npm test --prefix spike`, both green, with
-the same test count as before the move — **123 in `core` and 96 in `shared`**. A drop in either is
+the same test count as before the move — **123 in `core` and 96 in `shared`**. For Q-0061
+specifically: a test that creates a lock file under `.git/` inside the snapshot window and shows the
+assertion still passing, so the fix is proven rather than assumed to have made a flake go away. A drop in either is
 this ticket's characteristic failure rather than a tidy-up, and hazard (1) is exactly how the count
 would fall while the suite stayed green. Use `--force`: a cached turbo run replays a pass it never
 executed.
