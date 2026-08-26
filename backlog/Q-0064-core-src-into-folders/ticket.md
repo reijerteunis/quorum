@@ -1,14 +1,22 @@
 ---
 id: Q-0064
 title: core/src into folders, plus the flaky containment snapshot
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0064/integration
 priority: p1
 created: 2026-08-26
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-26T09:24:42.904Z
+    cost: 5.864
 ---
 Raised by Ruud on 2026-08-26. Decided as *"`core` is organised in folders named after the port's
 children; `shared` stays flat"* (`docs/DECISIONS.md`, 2026-08-26) — that entry is normative and this
