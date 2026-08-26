@@ -52,3 +52,49 @@ also settles nothing about any other clause of AC-4 or any other criterion.
 asking for an erratum; and by the implementer, which declined to pick a side under AC-12's
 stop-and-report and drafted this text in `dev/implement-report.md` §3. Committed by the owner at the
 exhaustion gate of run 2, so that closing it is transcription rather than authoring.
+
+## E-2 — 2026-08-26 — AC-1's "six names" is the runtime surface
+
+**Supersedes:** the words "six names, no more" in **AC-1** (`requirements/merged.md:129`), so far as
+they are read to cover **type-only** exports.
+
+**Replacement:** AC-1 constrains the module's **runtime** surface, which is exactly the six names it
+lists. A type-only export — an `interface` or a `type` naming what an exported function returns or
+accepts — is not one of the "names" AC-1 counts, and `lint.ts` exporting `FlowRecord`,
+`FlowFileReport` and `DirectoryReport` satisfies AC-1. Every other word of AC-1 stands: the six
+runtime names, TypeScript strict, no `any`, no `@ts-ignore`, no import from `spike/**`, no zod call
+inside `lintFlow`, and the untouched package entry point.
+
+**Why the requirement was wrong.** Three independent readings, and they agree.
+
+1. **AC-1's own test names the surface it means.** Its *Test* clause is "`Object.keys` over the
+   module namespace equals the six names" (`merged.md:139`). `Object.keys` sees runtime values and
+   nothing else, because a TypeScript interface is erased at compile time. A criterion whose only
+   check is structurally blind to type exports was not written about type exports.
+2. **Two landed, reviewed children already do this.** On `main`,
+   `packages/core/src/git/git.ts` exports four interfaces beside its functions — `AncestryOptions`,
+   `ShallowState`, `EmptyRangeEvidence`, `Containment` (Q-0042) — and
+   `packages/core/src/backlog/backlog.ts` exports four — `Frontmatter`, `TicketRecord`, `TicketFile`,
+   `NewTicket` (Q-0043). Both passed a cross-vendor review. Refusing the pattern here would make
+   `core` internally inconsistent across three modules ported by one parent ticket.
+3. **The alternative breaks a consumer this port has.** `lintFlowDirectory` returns `FlowRecord[]`
+   and `lintDirectory` returns `DirectoryReport`. Q-0050 imports from this module, as
+   `spike/src/engine.js:11` does today; making the return types unnameable is a surface reduction no
+   decision authorises — the same reasoning by which OQ-3 kept `lintFlowDirectory` exported.
+
+**What the finding got right, and what it costs.** The reviewer's mechanism is correct and is worth
+recording separately from its remedy: **AC-1's `Object.keys` test cannot detect a type export at
+all**, so it reports success over a surface it never examined. That is *"a check that skips its
+subject must not report success"* (`docs/DECISIONS.md`, 2026-08-25) arriving through type erasure.
+This erratum decides that the three exports are correct; it does **not** add the assertion that
+would pin them. So the module's type surface is presently unpinned, and a later ticket may export a
+fourth interface with nothing turning red. That is accepted here rather than hidden, and it applies
+equally to `git.ts` and `backlog.ts`, which have the same gap and no test either — which is why it
+belongs to a ticket covering all three modules rather than to this one.
+
+**What this erratum does not settle.** Whether `core`'s modules should pin their type surface, and
+how. It also settles nothing about AC-1's other clauses, or about `packages/core/src/index.ts`,
+which OQ-2 decided and this does not touch.
+
+**Found by:** the chore review, round 4 — the first round after E-1 closed the trailing-whitespace
+blocker. Committed by the owner at the second exhaustion gate of run 2.
