@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -168,6 +168,14 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   must make `coreSourceFiles()` recursive in the same change or three landed house-rule tests
   silently narrow to one file while reporting green.
 - Q-0065 `integrate` can report `tests=ok` from a cached pass it never executed.
+- Q-0066 `probeAdapter` reports its own crash as an unusable login. `withRetry` returns
+  `usage: null` when no attempt reported a measure (Q-0034, deliberate); `probeAdapter` dereferences
+  it unguarded, so an adapter whose login is **perfect** and which reports no usage answers
+  `✗ login not usable: Cannot read properties of null…`. The one command that exists to de-risk a
+  paid run can blame a healthy login for its own `TypeError`. Preserved and pinned in both trees by
+  Q-0046 (AC-11 defect 1) rather than fixed in passing, per *"The port preserves behaviour"*; the fix
+  must land in `spike` **and** `packages/core` together or the port loses its independent witness.
+  Raised as OQ-6 of Q-0046's requirement.
   `harness/harness.yaml`'s `commands.test` runs `pnpm turbo run test` without `--force`, so the one
   step whose whole job is to prove a suite green can be satisfied by a replay — *"skipped is not
   passed"* (2026-08-25) one layer down. Observed on 2026-08-26: a cached run reported 7/7 while a
