@@ -103,7 +103,7 @@ describe('AC-11 — the declaration lives here and is called nowhere in core', (
   });
 
   test('loadProject imports the type and does not run the schema', () => {
-    const core = repoFile('packages/core/src/project.ts');
+    const core = repoFile('packages/core/src/backlog/project.ts');
     expect(core).toContain('ProjectConfig');
     for (const call of ['projectConfigSchema.parse(', 'projectConfigSchema.safeParse(', '.safeParse(']) {
       expect(core.includes(call), `validating a config that loads today is a behaviour change: ${call}`).toBe(false);

@@ -9,7 +9,14 @@ import { describe, expect, test } from 'vitest';
 
 import * as backlogModule from './backlog.js';
 import * as projectModule from './project.js';
-import { coreSourceFiles, repoFile } from '../test/corpus.js';
+import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+
+/**
+ * Corpus keys are whole paths below `src`, so a same-named file in another folder can never answer
+ * for one of these two (Q-0064).
+ */
+const BACKLOG_SOURCE = 'backlog/backlog.ts';
+const PROJECT_SOURCE = 'backlog/project.ts';
 
 const source = (name: string): string => {
   const found = coreSourceFiles().find(([file]) => file === name);
@@ -41,7 +48,7 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
   });
 
   test('the two modules take their vocabulary from shared and import nothing from spike', () => {
-    const backlog = source('backlog.ts');
+    const backlog = source(BACKLOG_SOURCE);
     expect(backlog).toContain('integrationBranch');
     expect(backlog).toContain('RUNS_LOG_FILE');
     // The branch shape and the log filename belong to shared; a second spelling would drift.
@@ -64,13 +71,13 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
 
 describe('AC-4 — no read path runs the object through zod', () => {
   test('backlog.ts calls neither parse nor safeParse on the ticket schema', () => {
-    const text = source('backlog.ts');
+    const text = source(BACKLOG_SOURCE);
     expect(text.includes('ticketSchema.parse('), 'a parse on read returns a reordered copy').toBe(false);
     expect(text.includes('.safeParse('), 'validating on read is a behaviour change, not a port').toBe(false);
   });
 
   test('the ticket schema is imported for its TYPE only', () => {
-    const text = source('backlog.ts');
+    const text = source(BACKLOG_SOURCE);
     expect(text).toContain("import type { Ticket } from '@quorum/shared'");
     expect(text.includes('ticketSchema,'), 'the schema itself is not needed here').toBe(false);
   });
@@ -78,32 +85,32 @@ describe('AC-4 — no read path runs the object through zod', () => {
 
 describe('AC-5 — no private field, because --dry is Object.create(backlog)', () => {
   test('backlog.ts declares no # field and reaches for none', () => {
-    const text = source('backlog.ts');
+    const text = source(BACKLOG_SOURCE);
     expect(text.includes('this.#'), 'a private field makes every inherited method throw').toBe(false);
     expect(/^\s*(?:static\s+)?#[A-Za-z_]/m.test(text), 'backlog.ts must declare no # field').toBe(false);
   });
 
   test('root is declared readonly and public', () => {
-    expect(source('backlog.ts')).toContain('readonly root: string;');
+    expect(source(BACKLOG_SOURCE)).toContain('readonly root: string;');
   });
 });
 
 describe('AC-10 — the lift does not exit the run or write to the terminal', () => {
   test('project.ts contains no exit and no terminal write', () => {
-    const text = source('project.ts');
+    const text = source(PROJECT_SOURCE);
     expect(text.includes('process.exit'), 'a library may not end its host').toBe(false);
     expect(text.includes('console.'), 'what a command prints is Q-0010\'s, not core\'s').toBe(false);
     expect(text).toContain('ProjectNotFoundError');
   });
 
   test('the sentence is the CLI\'s, byte for byte', () => {
-    expect(source('project.ts')).toContain('no harness/harness.yaml found — run `harness init` in your repo');
+    expect(source(PROJECT_SOURCE)).toContain('no harness/harness.yaml found — run `harness init` in your repo');
   });
 });
 
 describe('AC-11 — the project config is declared once, in shared, and validated nowhere', () => {
   test('core imports the type and declares no config shape of its own', () => {
-    const text = source('project.ts');
+    const text = source(PROJECT_SOURCE);
     expect(text).toContain("import type { ProjectConfig } from '@quorum/shared'");
     expect(text.includes('projectConfigSchema.parse('), 'loadProject does not validate').toBe(false);
     expect(text.includes('.safeParse('), 'loadProject does not validate').toBe(false);
