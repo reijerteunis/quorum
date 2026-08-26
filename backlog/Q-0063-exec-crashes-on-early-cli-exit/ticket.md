@@ -1,6 +1,6 @@
 ---
 id: Q-0063
-title: A vendor CLI that exits before reading its prompt crashes the run with an unhandled EPIPE
+title: A CLI that exits before reading its prompt crashes the run with EPIPE
 stage: draft
 owner: ruud
 repos: []

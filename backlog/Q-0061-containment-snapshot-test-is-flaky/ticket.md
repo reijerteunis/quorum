@@ -1,6 +1,6 @@
 ---
 id: Q-0061
-title: The containment "writes nothing" test snapshots .git and goes red under git maintenance
+title: The containment writes-nothing test goes red under git maintenance
 stage: draft
 owner: ruud
 repos: []
