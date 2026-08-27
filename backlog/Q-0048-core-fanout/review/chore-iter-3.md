@@ -1,0 +1,1 @@
+major: packages/core/src/fanout/fanout.ts:61 AC-1 requires every exported interface field to carry JSDoc, but `Task.title` is undocumented; `MergeResult.ok` has the same omission at line 295. Add JSDoc to both exported fields so the declared TypeScript surface meets the source contract.

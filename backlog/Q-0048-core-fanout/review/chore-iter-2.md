@@ -1,0 +1,3 @@
+major: packages/core/src/fanout/fanout.source.test.ts:238 E-1 explicitly replaces AC-13’s branch-state assertion with recorded evidence and says it must not be in Vitest. This block inspects `main...HEAD` and the current repository despite that prohibition; remove the block and its supporting repository/branch helpers, retaining the implement-report evidence and CI guard as enforcement.
+
+major: backlog/Q-0048-core-fanout/dev/implement-report.md:117 E-2 records defects 5 and 6 as already landed in Q-0050 while defect 1 remains open, but the report assigns all three to Q-0050. Update the report throughout to use E-2’s table: Q-0050 for defects 5 and 6, and plainly no destination yet for defect 1.
