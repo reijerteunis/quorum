@@ -56,6 +56,55 @@ around them: Q-0039 (no lock on a ticket — two runs overlapped twice in one ni
 cannot say "undecided", so `finish()` rolls back proven-green work). Both are listed before M3 for the
 same reason, and both change this file.
 
+**Two conflations inherited from Q-0048, which this ticket's requirement must carry as a
+criterion.** Found by Q-0048's requirements run (2026-08-27), verified by reading, preserved there
+under its AC-12(3), and routed here at that gate because the decision they need is about the run
+loop rather than about a helper's return type.
+
+- **`branchExists` and `branchHead` cannot tell "no such branch" from "git failed".** Both wrap
+  `safe()` (`spike/src/fanout.js:69`), which swallows every error, so an absent ref and a git that
+  could not run produce the identical answer.
+- **`commitAll` wraps its `checkout` and `clean` in `safe()` too**, so a revert that *failed* still
+  reports through `onDiscard` as though it had discarded — the engine warns that it dropped the
+  agent's edits under `backlog/` when it may not have.
+
+**Why it lands here rather than in Q-0048 or in a ticket of its own.** The engine is the only caller
+of all three. What a caller should *do* with "git failed" — stop and name the work a human must do,
+or carry on — is a question about `runFlow` and `handleFail`, and a ticket that could only widen
+`branchExists`'s return to a three-valued state, with nothing reading the third value, would ship a
+type change and no behaviour.
+
+**The precedent that decides the shape is already in the same package.** *"Containment is derived
+from git on each board invocation"* (2026-08-24) states the rule in as many words: the state is
+selected from git's own exit codes and from nothing else, and exit 1 is *never* inferred from a
+failure, a timeout or an absent binary — "conflating 'provably not' with 'could not answer'
+manufactures exactly the confident falsehood this ticket removes". Q-0035 then removed an engine-side
+`catch { return false }` that committed precisely this error, and put `ancestry()` in `core/git` as
+the one primitive both callers reach. So `core` will ship a three-valued answer that forbids this
+conflation, in the same package as two helpers that commit it. That is the argument, and it is also
+the reason not to close it by reflex: `ancestry` has a caller that acts on the third value, and these
+do not yet.
+
+**What the requirement must state, at minimum.** For each site where the run loop consumes one of
+these answers, what it does when git *fails* as distinct from when the branch is *absent* — even
+where the answer is "exactly what it does today". An unstated answer is what lets the next reader
+assume the question was considered.
+
+**The charter binds this in both directions.** This ticket preserves behaviour like every other
+child, so it may not close either conflation in passing; a reviewer may cite
+*"The port preserves behaviour"* (2026-08-25) against a fix that arrives without authority. That
+entry's own escape is the route if the fix is wanted: a dated decision entry, written and accepted
+**before** it is implemented, never a silent improvement discovered in review. If Q-0050's
+requirements or solutioning gate takes that route, the fix lands in `spike/src/fanout.js` and
+`packages/core/src/fanout/` **together** once Q-0048 has landed — the Q-0066/Q-0068 shape — or the
+port loses the independent witness the freeze exists to provide. Absent such an entry, this ticket
+preserves and reports, and the item stays open.
+
+**Latent, and it stops being latent at M3.** A run that reaches this code has already spawned git
+successfully several times, which is why nobody has been bitten. The daemon makes concurrent and
+unattended runs ordinary, and a run nobody is watching is exactly where "git failed" rendering as
+"the branch is not there" costs something.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this

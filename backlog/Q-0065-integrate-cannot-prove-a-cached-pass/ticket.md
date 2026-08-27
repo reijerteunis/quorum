@@ -89,6 +89,72 @@ is where it was reached. Two fixes, and they are not exclusive: add `"env": ["QU
 invocation. Prefer deciding it with the cache question above, since both are answers to *"what may
 `turbo run test` be trusted to have done?"*
 
+**Folded in 2026-08-27: `runCommand` inherits `execSync`'s 1 MiB `maxBuffer`, and a suite that
+exceeds it fails for a reason nothing can name.** Raised as OQ-1 of Q-0048's merged requirement and
+decided at that gate. `runCommand` (`spike/src/fanout.js:124–134`, which Q-0048 ports to
+`packages/core/src/fanout/command.ts`) passes no `maxBuffer`, so it takes Node's 1 MiB default, and
+`integrate` runs the repository's whole suite through it.
+
+**Measured here rather than inherited, because the requirement's sample turned out to be one face of
+a racy behaviour.** On Node v24.15.0, a child writing 2 MiB to stdout resolves two ways depending on
+whether Node's own kill lands before the child exits:
+
+| The child | `e.status` | `e.signal` | `e.code` | captured stdout |
+| --- | --- | --- | --- | --- |
+| writes 2 MiB, exits 0 | `null` | `SIGTERM` | `ENOBUFS` | 1,114,112 B (truncated at the buffer) |
+| writes 2 MiB, **then exits 1** | `1` | `null` | `undefined` | **65,536 B** (one pipe buffer) |
+
+Both land in `runCommand`'s `catch`. In both, `timedOut` is `false` — `e.killed` is `undefined`,
+`e.signal` is not `SIGKILL`, `e.code` is not `ETIMEDOUT`. In both, `code` is a plausible non-zero
+(`e.status ?? 1`). And in both the output is **silently truncated**, with nothing in the return value
+saying so. The merged requirement records this as *"status=1, signal=null, stdout length 0"*; the
+first two hold for the second row only, and a length of zero did not reproduce — 65,536 is the
+smallest observed. The correction does not weaken the finding, it sharpens it.
+
+**The second row is the dangerous one, because it is undetectable.** The first at least leaves
+`ENOBUFS` on the error. The second leaves no marker at all: `code` is the child's own exit status,
+there is no signal, and the captured output is far *below* `maxBuffer`, so a length check cannot
+catch it either. A caller inspecting the error object cannot tell this from an ordinary failing test
+run. That is what makes "report overflow as a third outcome beside `timedOut`" a design question
+rather than a constant bump — it cannot be answered by reading the error, only by streaming the
+output somewhere that does not have a ceiling.
+
+**Three consequences, in the order they cost something.** A *passing* suite whose output exceeds
+1 MiB is reported as a failure, so `integrate --expect pass` fails a green tree. `expect: fail` banks
+the same event as proof of red, which is the exit-code conflation Q-0004 found, one layer down. And
+register row 7 — *"a suite that could not start is rejected rather than counted as red"* — is
+defeated from underneath, because its detector reads the raw output, and truncation can remove the
+very lines it reads while leaving a result-shaped exit code behind.
+
+**Latent today, with less headroom than it looks.** The configured command
+(`npm test --prefix spike && pnpm turbo run test --force`) produces **69,951 bytes** on a green
+`main` as of 2026-08-27 — about 7% of the budget. A *failing* run prints diffs and stack traces
+rather than tick marks, the suite is 562 tests and growing, and Q-0054 still has the whole regression
+suite to port. The margin is a factor of fifteen on the quietest possible run.
+
+**Why here and not in Q-0053.** Q-0053 ports the integrate step and inherits register row 7, so it is
+the ticket this defect *reaches*. It is not the ticket that can fix it: Q-0053 is a port child, and
+*"The port preserves behaviour"* (2026-08-25) makes a defect found while reading a stop-and-report,
+never a repair. Folding a fix into a ticket whose own route forbids performing it would be the
+"deferred obligation that quietly expires" failure with extra steps. It belongs here because this
+ticket already asks the one question all three defects answer: **what may a test command's result be
+trusted to have done?** The cache half reports a success it never executed; the `passThroughEnv` half
+cannot be made to execute at all and says so; this half executes, loses part of the answer, and
+reports the loss as an ordinary failure. Same knob, three faces, and only the middle one is honest.
+
+**Shapes, none decided here.** Raise `maxBuffer` to something large (cheapest, moves the cliff rather
+than removing it, and a cliff that moves is harder to find). Stream stdout and stderr to a file in the
+worktree and read the exit code from the process (no ceiling, and `dev/integration.md` gains a real
+artifact — but it changes what `runCommand` returns, which is externally observable through what
+`integrate` writes). Report overflow as a third outcome beside `timedOut` (composes with register
+row 7, and per the table above cannot be implemented by inspecting the error alone). The first is a
+constant; the other two are products.
+
+**Landing constraint.** Once Q-0048 lands, `runCommand` exists in both trees, so the fix goes into
+`spike/src/fanout.js` **and** `packages/core/src/fanout/command.ts` together — the Q-0066/Q-0068
+shape — or the port loses the independent witness the freeze exists to provide. `spike/src` is frozen
+for Q-0009's fifteen children and this ticket is not among them, which is the same route Q-0063 took.
+
 **Scope.** The config half is a one-line change to `harness/harness.yaml` and the shipped template,
 neither of which is frozen. An engine-side refusal (shapes 2 and 3) touches the integrate step, which
 `spike/src/engine.js` still owns and which the port hands to **Q-0053**; `spike/src` is frozen for
