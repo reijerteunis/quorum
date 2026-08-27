@@ -1,14 +1,22 @@
 ---
 id: Q-0048
 title: core/fanout — tasks, waves, worktrees and branches
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0048/integration
 priority: p2
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-27T07:50:55.406Z
+    cost: 7.612
 ---
 Ports `spike/src/fanout.js` (139 lines) to `packages/core`: `loadTasks`, `waves`, `scopeToFailing`,
 `taskVars`, `taskPromptSection`, `branchExists`, `branchHead`, `resetBranchTo`, `commitAll`,
