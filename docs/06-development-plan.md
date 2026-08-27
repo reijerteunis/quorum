@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change). M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change). M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -201,6 +201,19 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   spike disagreeing until the cutover, which is the divergence the freeze exists to expose. Lands in
   both trees together, like Q-0066. The decision is what the sentence says instead — it is on the
   cold-clone path, so worth more than a `sed`. Opened at Q-0047's requirements gate (Q-4).
+
+- Q-0069 A deprecated zod API is in use, and nothing in the repository can detect one.
+  `packages/shared` calls `.passthrough()` 21 times and zod 4.4.3 marks it `@deprecated`; the
+  replacement is not the obvious one, since `.loose()` already carries its own *"Consider
+  `z.looseObject()`"* nudge. The call sites are a morning's work and the blind spot is the subject:
+  `tsc --noEmit` does not error on `@deprecated`, and `@typescript-eslint/no-deprecated` — which
+  ships in the installed typescript-eslint and is in its `strict` preset — needs type information,
+  which `eslint.config.js:3` deliberately turns off saying *"`tsc --noEmit` owns types"*. True of
+  types, false of deprecation, so nobody owns it and `lint` plus `typecheck` report 14/14 green over
+  all 21 sites. The same shape as Q-0065's `passThroughEnv` gap, in the same class of file. Migration
+  must land **before** the guard in one change, or lint is red from its own first commit. Found
+  2026-08-27 by an audit Ruud asked for; the rule now in `harness/rules.md` states the gap until
+  this closes it.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
