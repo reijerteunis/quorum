@@ -9,7 +9,8 @@
       "outputs": []
     },
     "test": {
-      "outputs": []
+      "outputs": [],
+      "env": ["QUORUM_REAL_CLI"]
     }
   }
 }

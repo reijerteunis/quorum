@@ -3,6 +3,9 @@
 // The witness is the two `harness.yaml` files this repository actually ships — its own and the one
 // `init` copies into an adopter's repo — rather than a fixture written to match the schema. A
 // schema written from a fixture is a schema checked against itself.
+//
+// Q-0065 AC-3 is at the foot of the file, for the same reason: the claim is about the `commands.test`
+// string this repository actually configures, and this is where that string is already read.
 import { describe, expect, test } from 'vitest';
 
 import { projectConfigSchema } from './project.js';
@@ -108,5 +111,40 @@ describe('AC-11 — the declaration lives here and is called nowhere in core', (
     for (const call of ['projectConfigSchema.parse(', 'projectConfigSchema.safeParse(', '.safeParse(']) {
       expect(core.includes(call), `validating a config that loads today is a behaviour change: ${call}`).toBe(false);
     }
+  });
+});
+
+/**
+ * Whether `command`'s turbo invocation defeats the cache.
+ *
+ * A pure function of the string, so the assertion below cannot pass or fail on whether a local
+ * cache happens to be warm — which is the whole point: the subject is what `integrate` will run,
+ * not what it ran here. The chain is split on `&&` because `commands.test` is a shell chain of two
+ * suites and a flag on the other half is not this half's.
+ */
+const forcesTurbo = (command: string): boolean => {
+  const segment = command.split('&&').map((part) => part.trim()).find((part) => part.includes('turbo run test'));
+  return segment !== undefined && segment.split(/\s+/).includes('--force');
+};
+
+describe('Q-0065 AC-3 — the configured test command defeats this repository\'s cache', () => {
+  test('the turbo half carries --force, so a replayed pass cannot write tests=ok', () => {
+    // Turbo without it prints every package's full pass output and reports `7 successful,
+    // 7 cached` having executed nothing; `integrate` reads the exit code and advances the flow.
+    const config = projectConfigSchema.parse(parseYaml(path.join(repoRoot, 'harness/harness.yaml')));
+    const command = config.commands?.test;
+    expect(typeof command, 'harness.yaml must declare commands.test').toBe('string');
+    expect(forcesTurbo(command ?? ''), `commands.test must force a fresh run: ${command ?? '(absent)'}`).toBe(true);
+  });
+
+  test('and the check has a subject — the command as it stood before this ticket fails it', () => {
+    // A guard whose only evidence is a green run has not been shown to have one (Q-0069).
+    expect(forcesTurbo('npm test --prefix spike && pnpm turbo run test')).toBe(false);
+    expect(forcesTurbo('npm test --prefix spike && pnpm turbo run test --force')).toBe(true);
+    // A flag on the spike half, and a flag that merely starts the same way, are both refused.
+    expect(forcesTurbo('npm test --force --prefix spike && pnpm turbo run test')).toBe(false);
+    expect(forcesTurbo('pnpm turbo run test --force-something')).toBe(false);
+    // A command that has stopped running turbo at all is not silently reported as forcing it.
+    expect(forcesTurbo('npm test --prefix spike')).toBe(false);
   });
 });
