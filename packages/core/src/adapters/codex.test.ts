@@ -356,6 +356,42 @@ describe('AC-6 — tokens include reasoning, cost is always null, and no rate ta
   });
 });
 
+describe('AC-6 — a vendor field is transcribed, never corrected', () => {
+  // The codex half of the review finding on iteration 1: the port had narrowed each measure to a
+  // `number` test and the session id to a `string` test. Both read as tidying and both are
+  // behaviour changes (charter §2). The values below are the spike's own answers, taken from a
+  // differential run of both adapters over the same stubs (Q-0047, implement iteration 2).
+  const runWith = async (stdout: string): Promise<AdapterResult> =>
+    codexAdapter({ bin: cliStub({ stdout }).bin }).run(runOptions());
+
+  test('a measure that is not a number is handed on as the stream reported it', async () => {
+    const usage = (await runWith(stream({ type: 'turn.completed', usage: { input_tokens: '5', cached_input_tokens: '1' } }))).usage;
+    expect(usage?.input_tokens as unknown).toBe('5');
+    expect(usage?.cached_input_tokens as unknown).toBe('1');
+  });
+
+  test('a usage field that is not an object leaves every measure where it was', async () => {
+    // The truthiness check is the spike's: `usage: 'lots'` enters the branch, every key reads
+    // `undefined`, and each measure falls back to its previous value rather than to zero.
+    expect(await runWith(stream({ type: 'turn.completed', usage: 'lots' })).then((r) => r.usage)).toStrictEqual({
+      vendor: 'codex', input_tokens: null, output_tokens: null,
+      cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: null,
+    });
+  });
+
+  test('a thread id that is not a string is handed on as the vendor sent it', async () => {
+    expect((await runWith(stream({ type: 'thread.started', thread_id: 9 }))).session as unknown).toBe(9);
+  });
+
+  test('and an event carrying no id at all leaves the previous one standing', async () => {
+    const result = await runWith(stream(
+      { type: 'thread.started', thread_id: 'th-1' },
+      { type: 'turn.completed', usage: { input_tokens: 1 } },
+    ));
+    expect(result.session).toBe('th-1');
+  });
+});
+
 describe('AC-7 — the structured tail comes from the vendor\'s own channel first, and nothing is repaired', () => {
   /** A stub that leaves `text` where the CLI is told to write its final message. */
   const writingLast = (text: string): ReturnType<typeof cliStub> => {

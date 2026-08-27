@@ -24,11 +24,19 @@ const fields = (value: unknown): Fields | undefined =>
   (typeof value === 'object' && value !== null ? (value as Fields) : undefined);
 
 /**
- * One measure as the vendor reported it. Anything that is not a number counts as **not reported**
- * rather than as zero, which is the distinction the whole roll-up rests on
- * ("Codex cost is reported as tokens, never priced locally", docs/DECISIONS.md 2026-08-22).
+ * One measure as the vendor reported it, carried through **without inspection** — an absent one
+ * becomes `null`, which means "not reported" and is not zero.
+ *
+ * The cast is the load-bearing part and is deliberate. Rejecting a value because it is not a
+ * `number` would be a behaviour change: the spike propagates whatever the envelope held, and a port
+ * that corrects it would disagree with the spike over an envelope neither suite covers, both suites
+ * staying green while it did (charter §2). Judging a malformed measure belongs to whoever consumes
+ * it, not to the adapter that transcribes it.
+ *
+ * Why: preserved from spike/src/adapters/claude.js:56-66; narrowing was the review finding on
+ * iteration 1 (Q-0047, review/chore-iter-1.md).
  */
-const measure = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+const verbatim = (value: unknown): number | null => (value ?? null) as number | null;
 
 /**
  * One argument as the `spawn` event shows it: single-quoted when it holds whitespace or a quote,
@@ -52,17 +60,20 @@ const quoted = (value: string): string =>
  * would claim a call was measured and found free.
  */
 function usageOf(env: Fields | undefined): AdapterUsage {
-  const reported = fields(env?.[envelope.usage]);
-  const count = (field: string): number => measure(reported?.[field]) ?? 0;
+  // Cast rather than `fields()`: the spike reads its keys off whatever `usage` holds, so a value
+  // that is not an object answers `undefined` for each of them instead of voiding the whole object.
+  const u = env?.[envelope.usage] as Fields | undefined;
   return {
     vendor: 'claude',
-    input_tokens: reported
-      ? count(usageFields.inputTokens) + count(usageFields.cacheCreationInputTokens) + count(usageFields.cacheReadInputTokens)
+    input_tokens: u
+      ? (verbatim(u[usageFields.inputTokens]) ?? 0)
+        + (verbatim(u[usageFields.cacheCreationInputTokens]) ?? 0)
+        + (verbatim(u[usageFields.cacheReadInputTokens]) ?? 0)
       : null,
-    output_tokens: measure(reported?.[usageFields.outputTokens]),
-    cached_input_tokens: measure(reported?.[usageFields.cacheReadInputTokens]),
-    cache_write_input_tokens: measure(reported?.[usageFields.cacheCreationInputTokens]),
-    cost_usd: measure(env?.[envelope.costUsd]),
+    output_tokens: verbatim(u?.[usageFields.outputTokens]),
+    cached_input_tokens: verbatim(u?.[usageFields.cacheReadInputTokens]),
+    cache_write_input_tokens: verbatim(u?.[usageFields.cacheCreationInputTokens]),
+    cost_usd: verbatim(env?.[envelope.costUsd]),
   };
 }
 
@@ -131,13 +142,14 @@ export function claudeAdapter(cfg: AdapterConfig = {}): Adapter {
         throw error;
       }
 
-      const message = env?.[envelope.result];
-      const raw = typeof message === 'string' ? message : result.stdout;
+      // Stdout stands in only when the envelope carried no final message at all. A message that is
+      // present but not a string is still the vendor's answer and is handed on as one: substituting
+      // stdout for it would replace the vendor's own value, which is a behaviour change.
+      const raw = (env?.[envelope.result] ?? result.stdout) as string;
       // The vendor's own channel first, then the fallback that tolerates how it wrapped the answer.
       // Nothing here validates or repairs: an unparseable tail is `null`, which becomes an explicit
       // stop upstream rather than a default (register rows 13 and 21).
       const output = env?.[envelope.structuredOutput] ?? extractJson(raw);
-      const session = env?.[envelope.sessionId];
       return {
         vendor: 'claude',
         // `extractJson` answers `null` for a tail it cannot parse, which `checkAgainstSchema`
@@ -146,7 +158,9 @@ export function claudeAdapter(cfg: AdapterConfig = {}): Adapter {
         output: output as Record<string, unknown>,
         raw,
         usage: usageOf(env),
-        session: typeof session === 'string' ? session : null,
+        // Absent is `null`; present is the vendor's own id, unexamined — the same cast, and the
+        // same reason, as {@link verbatim}.
+        session: (env?.[envelope.sessionId] ?? null) as string | null,
         ms: Date.now() - startedAt,
       };
     },

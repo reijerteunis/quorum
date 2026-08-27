@@ -29,11 +29,19 @@ const fields = (value: unknown): Fields | undefined =>
   (typeof value === 'object' && value !== null ? (value as Fields) : undefined);
 
 /**
- * One measure as the vendor reported it. Anything that is not a number counts as **not reported**
- * rather than as zero — and for this vendor `cost_usd` is never reported at all
+ * One measure as the vendor reported it, carried through **without inspection** — an absent one
+ * leaves the previous value standing, and for this vendor `cost_usd` is never reported at all
  * ("Codex cost is reported as tokens, never priced locally", docs/DECISIONS.md 2026-08-22).
+ *
+ * The cast is the load-bearing part, for the reason `claude.ts` gives at the same helper: rejecting
+ * a value because it is not a `number` would make the port disagree with the spike over a stream
+ * neither suite covers, both suites staying green while it did (charter §2).
+ *
+ * Why: preserved from spike/src/adapters/codex.js:66-69; narrowing was the review finding on
+ * iteration 1 (Q-0047, review/chore-iter-1.md).
  */
-const measure = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+/** Named to leave the spike's own `reported` free for the joined error text below. */
+const verbatim = (value: unknown): number | null => (value ?? null) as number | null;
 
 /**
  * The error text a JSONL event carries, in each of the three shapes codex uses for one.
@@ -53,10 +61,12 @@ function errorMessageOf(event: Fields | undefined): unknown {
  * out the human sentence; falls back to the original text, which is what an adapter reading stderr
  * alone would have printed as nothing at all.
  */
-function unwrapCodexError(message: string): string {
+function unwrapCodexError(message: unknown): unknown {
   try {
-    const inner = fields(JSON.parse(message));
-    return String(fields(inner?.[jsonl.error])?.[jsonl.message] ?? inner?.[jsonl.message] ?? message);
+    // `JSON.parse` coerces a non-string argument itself, and an argument that does not survive that
+    // throws into the fallback below — which is the spike's own route through this function.
+    const inner = fields(JSON.parse(message as string));
+    return fields(inner?.[jsonl.error])?.[jsonl.message] ?? inner?.[jsonl.message] ?? message;
   } catch {
     return message;
   }
@@ -108,7 +118,7 @@ export function codexAdapter(cfg: AdapterConfig = {}): Adapter {
       // Cost is `null` on every path and no rate table exists here or anywhere in the product.
       const usage: AdapterUsage = { vendor: 'codex', input_tokens: null, output_tokens: null, cost_usd: null, cached_input_tokens: null, cache_write_input_tokens: null };
       let session: string | null = null;
-      const errors: string[] = [];   // codex puts failures on stdout as JSONL, not on stderr
+      const errors: unknown[] = [];   // codex puts failures on stdout as JSONL, not on stderr
       const result = await exec(bin, args, {
         cwd,
         stdin: prompt,
@@ -118,21 +128,23 @@ export function codexAdapter(cfg: AdapterConfig = {}): Adapter {
           // the ones that are not JSON at all.
           try {
             const event = fields(JSON.parse(line));
-            const measured = fields(
+            // Cast rather than `fields()`, as in `claude.ts`: the spike reads its keys off whatever
+            // `usage` holds, so a value that is not an object answers `undefined` for each of them.
+            const measured = (
               event?.[jsonl.usage]
               ?? fields(event?.[jsonl.payload])?.[jsonl.usage]
-              ?? fields(event?.[jsonl.item])?.[jsonl.usage],
-            );
+              ?? fields(event?.[jsonl.item])?.[jsonl.usage]
+            ) as Fields | undefined;
             if (measured) {
-              usage.input_tokens = measure(measured[usageFields.inputTokens]) ?? usage.input_tokens;
+              usage.input_tokens = verbatim(measured[usageFields.inputTokens]) ?? usage.input_tokens;
               // Reasoning tokens are billed as output; counting the output field alone undercounts.
-              usage.output_tokens = (measure(measured[usageFields.outputTokens]) ?? 0) + (measure(measured[usageFields.reasoningOutputTokens]) ?? 0) || usage.output_tokens;
-              usage.cached_input_tokens = measure(measured[usageFields.cachedInputTokens]) ?? usage.cached_input_tokens;
+              usage.output_tokens = (verbatim(measured[usageFields.outputTokens]) ?? 0) + (verbatim(measured[usageFields.reasoningOutputTokens]) ?? 0) || usage.output_tokens;
+              usage.cached_input_tokens = verbatim(measured[usageFields.cachedInputTokens]) ?? usage.cached_input_tokens;
             }
-            const thread = event?.[jsonl.threadId] ?? event?.[jsonl.sessionId] ?? fields(event?.[jsonl.payload])?.[jsonl.threadId];
-            if (typeof thread === 'string') session = thread;
+            // Absent leaves the previous id standing; present is the vendor's own, unexamined.
+            session = (event?.[jsonl.threadId] ?? event?.[jsonl.sessionId] ?? fields(event?.[jsonl.payload])?.[jsonl.threadId] ?? session) as string | null;
             const message = errorMessageOf(event);
-            if (message) errors.push(unwrapCodexError(String(message)));
+            if (message) errors.push(unwrapCodexError(message));
           } catch { /* not JSON, ignore */ }
         },
       });

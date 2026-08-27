@@ -327,6 +327,63 @@ describe('AC-7 — the structured tail comes from the vendor\'s own channel firs
   });
 });
 
+describe('AC-6 and AC-7 — a vendor field is transcribed, never corrected', () => {
+  // The review finding on iteration 1: the port narrowed `env.result ?? stdout` to a `typeof`
+  // check, `env.session_id ?? null` to a string test, and each measure to a `number` test. Every
+  // one of those reads as tidying and each is a behaviour change (charter §2) — and NOT ONE of the
+  // 551 tests in this package failed when they were present, which is exactly why they are pinned
+  // here. The values below are the spike's own answers, taken from a differential run of both
+  // adapters over the same stubs (Q-0047, implement iteration 2).
+  const runWith = async (stdout: string): Promise<AdapterResult> =>
+    claudeAdapter({ bin: cliStub({ stdout }).bin }).run(runOptions());
+
+  test('a final message that is not a string is still the vendor\'s answer, not a reason to use stdout', async () => {
+    const result = await runWith(envelope({ result: 42, structured_output: { summary: 'ok' } }));
+    expect(result.raw as unknown).toBe(42);
+  });
+
+  test('and only an ABSENT one falls back to stdout', async () => {
+    const stdout = envelope({ result: undefined, structured_output: { summary: 'ok' } });
+    expect((await runWith(stdout)).raw).toBe(stdout);
+  });
+
+  test('an empty final message is present, so it does NOT fall back', async () => {
+    expect((await runWith(envelope({ result: '', structured_output: { summary: 'ok' } }))).raw).toBe('');
+  });
+
+  test('a session id that is not a string is handed on as the vendor sent it', async () => {
+    expect((await runWith(envelope({ session_id: 7 }))).session as unknown).toBe(7);
+  });
+
+  test('a measure that is not a number is handed on too — judging it is not the adapter\'s job', async () => {
+    // `'5' + 0 + 0` is the sum the spike computes, string concatenation and all. It looks wrong
+    // because it IS wrong, and correcting it here would be a silent divergence rather than a fix:
+    // the spike would keep the old arithmetic, both suites would stay green, and only a roll-up
+    // would ever know. Reported in dev/implement-report.md instead.
+    const usage = (await runWith(envelope({ usage: { input_tokens: '5', output_tokens: '9' } }))).usage;
+    expect(usage?.input_tokens as unknown).toBe('500');
+    expect(usage?.output_tokens as unknown).toBe('9');
+  });
+
+  test('a usage field that is not an object reports zero tokens, not "unmeasured"', async () => {
+    // The truthiness check is the spike's: `usage: 'lots'` takes the summing branch, every key
+    // reads `undefined`, and the sum is 0. Treating it as absent would answer `null` instead, and
+    // `null` means something different to a roll-up — it means nobody measured this call.
+    expect((await runWith(envelope({ usage: 'lots' }))).usage?.input_tokens).toBe(0);
+  });
+
+  test('PRESERVED DEFECT: a non-string message with no structured output crashes the run', async () => {
+    // Why: preserved defect — the spike does the same, verified by running both adapters over this
+    // stub. `extractJson` is typed `string | null` and reached with whatever `result` held, so
+    // `text.matchAll` throws a TypeError and the vendor's answer is replaced by a Node stack trace
+    // — the shape Q-0063 removed from `exec()`. Iteration 1's narrowing hid it by substituting
+    // stdout, which is how the divergence got in. Fixing it belongs in both trees at once, like
+    // Q-0066 and Q-0068; reported in dev/implement-report.md, not fixed here.
+    await expect(runWith(envelope({ result: 42, structured_output: undefined })))
+      .rejects.toThrow(TypeError);
+  });
+});
+
 describe('AC-9 — the adapter emits spawn and stdout, and nothing else', () => {
   const eventsOf = async (options: Partial<AdapterRunOptions> = {}, stdout = envelope()): Promise<AdapterEvent[]> => {
     const events: AdapterEvent[] = [];
