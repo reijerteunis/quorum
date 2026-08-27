@@ -65,6 +65,38 @@ heaviest, and it touches landed reviewed tests in two packages.
 ticket a hit should mean "nothing this task reads has changed", and today it means "nothing inside
 this package has changed". Those are different claims and only one of them is worth trusting.
 
+**Measured 2026-08-28, before the requirements run.** Both of this body's *verify first*
+instructions were carried out against turbo **2.10.11** on a clean tree, reading `tasks[].inputs`
+and `tasks[].hash` from `pnpm turbo run test --dry=json`. `turbo.json` and every probed file were
+restored afterwards; `git status` is clean. Do not re-derive these from the prose above — it was
+written before them.
+
+- **The hashed-input set is package-relative and nothing else.** `@quorum/shared#test` hashes
+  **24** files and `@quorum/core#test` **56** — the two counts Q-0071's requirement quoted, which
+  therefore hold, in a repository where three inherited measurements failed in a week. Every entry
+  is package-relative (`src/**`, `test/**`, `package.json`, `tsconfig.json`, `vitest.config.js`);
+  the only root-relative inputs anywhere are the four `globalDependencies`. None of `docs/`,
+  `harness/`, `spike/`, `contracts/`, `backlog/`, `pnpm-lock.yaml` or `turbo.json` appears in
+  either set. `dependencies` and `dependents` are `[]` for all seven tasks.
+- **Both axes reproduce.** Appending one line to `docs/GLOSSARY.md` leaves both hashes
+  byte-identical (`@quorum/core 1b9dcd308b9b89fc`, `@quorum/shared 7152b03db47071bb`, before and
+  after). Appending one line to `packages/shared/src/constants.ts` moves `shared`'s hash to
+  `b6aa5348de10c90d` and leaves `core`'s at `1b9dcd308b9b89fc` — **unchanged**.
+- **Shape (2) is available: turbo 2.10.11 does accept a `../`-escaping glob in a package task's
+  `inputs`.** With `"inputs": ["$TURBO_DEFAULT$", "../../docs/**", "../../harness/harness.yaml"]`
+  the dry run lists those ten files in both packages' hashed sets (24 → 34, 56 → 66), exits 0 and
+  emits no warning about the escape; an edit to `docs/GLOSSARY.md` or to `harness/harness.yaml`
+  then moves both hashes. The caution written into shape (2) — that package inputs *"historically
+  are package-relative and cannot escape"* — does not hold for this version, so it is no longer a
+  reason to prefer another shape. **Not tested:** whether a real (non-dry) run honours the escaping
+  glob when writing and restoring a cache entry, and how it behaves on CI's checkout.
+- **Shape (3) works as expected, and adds edges.** With `"dependsOn": ["^test"]`, the same edit to
+  `packages/shared/src/constants.ts` moves `@quorum/core#test`'s hash. It also creates task-graph
+  edges where there are none today, which is the ordering consequence the shape says to state
+  rather than discover.
+- **The cache is live, not theoretical.** The baseline dry run reports `@quorum/core#test` as
+  `"status": "HIT"` with `"timeSaved": 28507` ms against a cache entry built at `5576ebb`.
+
 Needs its own `docs/DECISIONS.md` entry — Ruud's to write; the implementer names it. Belongs to M2.
 
 **One more consequence, added at Q-0071's gate rather than by that requirement.** CI now invokes
