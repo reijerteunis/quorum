@@ -1,0 +1,3 @@
+major: .claude/rules/engineering.md:4 The rules copy still says type-aware linting is off and nothing detects deprecated APIs, contradicting the enabled `@typescript-eslint/no-deprecated` rule and AC-11(b). Apply the specified replacement so it matches `harness/rules.md`, including the covered file set and explicit `spike/**` exclusion.
+
+major: backlog/Q-0069-deprecated-zod-api-and-nothing-detects-it/dev/implement-report.md:124 AC-9 requires `npm test --prefix spike` to be proven green, but the report explicitly records that it was not run successfully. Install the spike dependencies in an authorized environment, run the suite, and record a passing result before approval.

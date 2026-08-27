@@ -1,13 +1,14 @@
 ---
 id: Q-0069
 title: A deprecated zod API is in use, and nothing in the repository can detect one
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0069/integration
 priority: p2
 created: 2026-08-27
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-08-27T09:58:39.952Z
     cost: 5.221
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-27T10:38:55.731Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-27T10:59:09.602Z
+    cost: 23.339
 ---
 Found on 2026-08-27 by an audit of the workspace for deprecated APIs, prompted by Ruud. Two halves,
 and the second is the one that matters: **21 call sites use an API zod marks `@deprecated`, and
