@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -215,14 +215,18 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `harness/rules.md`. It was demonstrated to fail 21 times over the unmigrated tree before it was
   trusted over the migrated one. A source-text pin ships beside it in `packages/shared`, because
   `commands.test` runs neither gate, so `integrate` cannot see a lint failure — that half is
-  Q-0065's argument. See *"Type-aware linting is on for exactly one rule"* (2026-08-27). **Still
-  open, and not closable by this flow:** the `.claude/rules/engineering.md` copy still says
-  type-aware linting is off and that nothing here detects a deprecated API — both false since this
-  change. `.claude/` is outside the chore role's write paths, and the implement step's write to it
-  was refused outright, so the copy is settled by a human commit and not by another revise round —
-  the route *"A requirement may not name a surface its flow cannot write"* (2026-08-25) already
-  prescribes. `harness/rules.md` is canonical, carries the current text, and its own header names
-  the other file as the drift.
+  Q-0065's argument. See *"Type-aware linting is on for exactly one rule"* (2026-08-27). **Closed by hand, and the
+  surface it exposed is now ruled.** AC-11(b) named `.claude/rules/engineering.md`, which is
+  outside the chore role's write paths and which Claude Code's own file gate refused through both
+  `Edit` and `Write`. Three revise rounds refused it correctly and the loop reached its exhaustion
+  gate; the copy was synced by the human commit `89ceacf`, transcribing the wording the implementer
+  supplied for exactly that purpose. `harness/rules.md` is canonical and its header names the other
+  file as the drift. The general lesson is a decision rather than a footnote: see *"`.claude/rules/`
+  is a derived copy, not a surface a requirement may name"* (2026-08-27), which adds *is it
+  derived?* to the two questions routing already asked of a surface. The requirement had certified
+  that no criterion named `backlog/` — it checked the one unwritable surface anyone had written
+  down and never asked the general question, which is *"review the fix round, not only the feature
+  round"* (Q-0034) arriving through a document.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
