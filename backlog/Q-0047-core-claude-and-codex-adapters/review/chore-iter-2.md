@@ -1,0 +1,3 @@
+# Q-0047 — chore review, iteration 2
+
+major: packages/core/src/adapters/real-cli.probe.test.ts:41 The real-CLI tests call `probeAdapter(getAdapter(...))` directly without clearing `ANTHROPIC_API_KEY`, `CODEX_API_KEY`, or `OPENAI_API_KEY`. `probeAdapter` deliberately does not call `check()`, and `run()` contains no BYOS guard, so either vendor CLI may prefer an inherited API key. This contradicts AC-13’s requirement that the evidence use the CLI’s subscription login with “no key, ever,” and could spend API credit while falsely being accepted as subscription evidence. Run both probes with all three key variables explicitly removed from the environment (and restore them afterward), or otherwise enforce the same guarantee around the probe calls.
