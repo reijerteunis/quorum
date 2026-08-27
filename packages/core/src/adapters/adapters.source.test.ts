@@ -5,16 +5,40 @@
 // reaches a browser; "no second spelling of the five measures" fails nowhere until a roll-up drifts;
 // "this module does not reach for ajv" fails nowhere until two of the four validations have quietly
 // become one. Each is exactly the property a later change breaks silently.
+import path from 'node:path';
+
 import { USAGE_MEASURES } from '@quorum/shared';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
 
 import * as adaptersModule from './adapters.js';
 import * as mockModule from './mock.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+import { removeTempDirs, tempDir, write } from '../../test/repo.js';
+
+afterAll(removeTempDirs);
 
 /** Corpus keys are whole paths below `src`, so a same-named file elsewhere can never answer for these. */
 const ADAPTERS_SOURCE = 'adapters/adapters.ts';
 const MOCK_SOURCE = 'adapters/mock.ts';
+const EXEC_SOURCE = 'adapters/exec.ts';
+
+/**
+ * Q-0047's eight, in the order the corpus sorts them.
+ *
+ * The capability modules are hyphenated rather than dotted because the specifier rule below admits
+ * `./claude-capabilities.js` and rejects `./claude.capabilities.js`. That is a landed assertion
+ * deciding a filename, which is the cheap direction: the alternative was editing the assertion.
+ */
+const FOLDER = [
+  ADAPTERS_SOURCE,
+  'adapters/claude-capabilities.ts',
+  'adapters/claude.ts',
+  'adapters/codex-capabilities.ts',
+  'adapters/codex.ts',
+  EXEC_SOURCE,
+  MOCK_SOURCE,
+  'adapters/override.ts',
+];
 
 /** Every non-test source this ticket added — the corpus's own view of the module's folder. */
 const moduleSources = (): [string, string][] => {
@@ -48,8 +72,23 @@ describe('AC-1 — the surface, the folder, the dependencies, and the entry poin
     expect(Object.keys(mockModule)).not.toContain('resetMockCalls');
   });
 
-  test('the folder is two files, and neither is a barrel', () => {
-    expect(moduleSources().map(([name]) => name)).toStrictEqual([ADAPTERS_SOURCE, MOCK_SOURCE]);
+  test('the folder is eight files, and none of them is a barrel', () => {
+    // A `toStrictEqual` over the sorted array, and it stays one: relaxed to `toContain`, to a
+    // length, to a filter or to a regex, a ninth file arrives unnoticed forever (Q-0047 AC-2).
+    expect(moduleSources().map(([name]) => name)).toStrictEqual(FOLDER);
+    expect(FOLDER).not.toContain('adapters/index.ts');
+  });
+
+  test('and the assertion above can fire — a ninth file in a fixture tree fails it', () => {
+    // The guard is only worth its line if it is shown catching the thing it exists to catch, over
+    // genuine sources rather than over a contrivance: the eight files are copied verbatim.
+    const root = tempDir('adapters-ninth-');
+    for (const [name, text] of moduleSources()) write(path.join(root, name), text);
+    write(path.join(root, 'adapters/gemini.ts'), 'export const geminiAdapter = (): void => undefined;\n');
+
+    const ninth = coreSourceFiles(root).filter(([name]) => name.startsWith('adapters/')).map(([name]) => name);
+    expect(ninth).toHaveLength(FOLDER.length + 1);
+    expect(() => expect(ninth).toStrictEqual(FOLDER)).toThrow();
   });
 
   test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
@@ -72,13 +111,24 @@ describe('AC-1 — the surface, the folder, the dependencies, and the entry poin
   test('it imports node builtins, shared and its own siblings — never the spike', () => {
     // Deliberately about SPECIFIERS: this package cites spike paths in comments as its evidence,
     // which is the house style, and a check that forbade the word would forbid the citations.
-    const allowed = ['node:fs', 'node:os', 'node:path', '@quorum/shared'];
+    // `node:child_process` joined the list with Q-0047: `exec.ts` cannot spawn a CLI without it,
+    // and it is the only file in the folder that may reach for it — asserted just below.
+    const allowed = ['node:child_process', 'node:fs', 'node:os', 'node:path', '@quorum/shared'];
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
         expect(allowed.includes(specifier) || /^\.\/[a-z-]+\.js$/.test(specifier), `${name} imports ${specifier}`).toBe(true);
       }
       for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
         expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
+      }
+    }
+  });
+
+  test('one file spawns a process, and it is exec.ts', () => {
+    for (const [name, text] of moduleSources()) {
+      const isTheOnePlace = name === EXEC_SOURCE;
+      for (const needle of ['node:child_process', 'spawn(']) {
+        expect(text.includes(needle), `${name} ${isTheOnePlace ? 'must' : 'must not'} contain ${needle}`).toBe(isTheOnePlace);
       }
     }
   });
