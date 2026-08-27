@@ -5,6 +5,16 @@ on:
   pull_request:
 
 jobs:
+  # What this job's green tick claims: lint, typecheck and test were *executed* against this
+  # commit. Each is forced, so no task can be served from a cache entry — turbo's key is a content
+  # hash, and a hit means "a task with these inputs passed once", which is a weaker claim than the
+  # one a required check makes. The `cache: pnpm` step below stays, because it replays downloads
+  # and never a verdict; only a task-result cache can make a tick a lie. A check reporting green
+  # having executed nothing is the failure this repository calls "skipped is not passed"
+  # (docs/DECISIONS.md, 2026-08-25). The guard asserting these lines lives in
+  # packages/core/src/test-command.test.ts and is itself in no package's hashed inputs, so it is
+  # only trustworthy while this job and `integrate` both force: a ticket restoring a cached path
+  # here silences its own guard.
   workspace:
     name: workspace (lint, typecheck, test)
     runs-on: ubuntu-latest
@@ -16,15 +26,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Turbo's local cache, so a re-run of an unchanged task is a hit rather than a repeat.
-      - uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: turbo-${{ runner.os }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm turbo run lint --force
+      - run: pnpm turbo run typecheck --force
+      - run: pnpm turbo run test --force
 
   # Q-0009's port freeze. The spike stays authoritative and green until the cutover, so none of
   # the port's fourteen children may edit spike/src — and every other ticket still may, which is
