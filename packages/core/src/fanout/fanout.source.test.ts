@@ -3,13 +3,11 @@
 // "The shell appears in exactly one file in core" cannot be observed at run time, and it is exactly
 // what a later module breaks silently — the same shape as the ancestry rule Q-0042 pinned here
 // after this repository had already answered one question two ways.
-import { execFileSync } from 'node:child_process';
-
 import { describe, expect, test } from 'vitest';
 
 import * as commandModule from './command.js';
 import * as fanoutModule from './fanout.js';
-import { coreSourceFiles, repoFile, repoRoot } from '../../test/corpus.js';
+import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /** Corpus keys are whole paths below `src`, so a same-named file elsewhere never answers for these. */
 const FANOUT_SOURCE = 'fanout/fanout.ts';
@@ -30,35 +28,6 @@ const sourceOf = (key: string): string => {
 
 /** Every module specifier a file imports from, in source order. */
 const importsOf = (text: string): string[] => [...text.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-
-/**
- * The scope AC-13 gives the freeze check, and the scope of CI's `port freeze (branch scope)` job:
- * `harness/Q-0048/*`. Off it the check is *skipped*, never passed — `packages/core/test/repo.ts:5–8`
- * forbids a test in this package asserting the state of a branch in THIS repository, and an
- * unscoped assertion would be red on Q-0038, Q-0040, Q-0066 and Q-0068, which change `spike/src`
- * legitimately. Scoping to one prefix also keeps the charter's exemption path (§3) where it lives,
- * in the guard, rather than half-copied into a unit suite that could silently override it.
- */
-const TICKET_BRANCH_PREFIX = 'harness/Q-0048/';
-
-/** `git` in this repository, or `null` when it could not answer. Deciding scope only — see {@link gitAnswer}. */
-const gitHere = (...args: string[]): string | null => {
-  try {
-    return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  } catch {
-    return null;
-  }
-};
-
-/** The same call inside the assertion, where an unanswered question fails closed rather than reading as clean. */
-const gitAnswer = (why: string, ...args: string[]): string => {
-  const answer = gitHere(...args);
-  if (answer === null) throw new Error(`port freeze: ${why} — \`git ${args.join(' ')}\` failed here`);
-  return answer;
-};
-
-const headBranch = gitHere('rev-parse', '--abbrev-ref', 'HEAD');
-const onTicketBranch = headBranch !== null && headBranch.startsWith(TICKET_BRANCH_PREFIX);
 
 describe('AC-1 — two files, the exact surface, no dependency, and nothing printed', () => {
   test('the folder is exactly the two files, and neither is a barrel', () => {
@@ -116,7 +85,9 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
 
   test('it imports node builtins, yaml, shared and its own siblings — never the spike', () => {
     // About SPECIFIERS: this package cites spike paths in comments as its evidence, which is the
-    // house style, and a check that forbade the word would forbid the citations.
+    // house style, and a check that forbade the word would forbid the citations. The freeze itself
+    // is not asserted here — it is evidence, per requirements/errata.md E-1, and CI's `port freeze
+    // (branch scope)` job is the enforcement.
     const allowed = ['node:child_process', 'node:fs', 'node:path', 'yaml', '@quorum/shared', '../git/git.js'];
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
@@ -233,32 +204,4 @@ describe('AC-13 — no schema, no worktree lifecycle, and one write', () => {
       .flatMap(([, text]) => [...text.matchAll(/Why: preserved defect, see Q-0048 AC-\d+/g)].map((m) => m[0]));
     expect(citations.length, 'AC-6, AC-9 defect 2, AC-12 defects 1, 3 and 4 each carry one').toBeGreaterThanOrEqual(5);
   });
-});
-
-describe('AC-13 — the freeze holds: this branch changes nothing under spike/', () => {
-  // The import check above cannot see an edit to a file that already exists in the spike, which is
-  // the whole of what the freeze forbids. This is that check. Its enforcement is CI's `port freeze
-  // (branch scope)` job, which reads the charter's children list and honours the exemption trailer;
-  // this is the implementer's own early warning, which is why it is scoped to one branch prefix
-  // rather than re-deciding a policy that lives in harness/port-charter.md §3.
-  test.skipIf(!onTicketBranch)(
-    `on a ${TICKET_BRANCH_PREFIX}… branch: \`main...HEAD\` names no spike/ path and spike/ is clean `
-      + `(skipped on any other branch — CI's port freeze job is the enforcement)`,
-    () => {
-      // Fails closed, as .github/scripts/port-freeze-guard.sh does: a diff computed over history
-      // that is not there comes back empty for the wrong reason and must never read as clean.
-      expect(
-        gitAnswer('git could not say whether this is a shallow clone', 'rev-parse', '--is-shallow-repository'),
-        'a shallow clone cannot answer what this branch changed, so no diff taken here is evidence',
-      ).toBe('false');
-      gitAnswer("base branch 'main' is not in this checkout", 'rev-parse', '--verify', 'main');
-
-      const changed = gitAnswer('the diff against main failed', 'diff', '--name-only', 'main...HEAD');
-      expect(changed.split('\n').filter((file) => file.startsWith('spike/'))).toStrictEqual([]);
-
-      // Committed history cannot see an edit that has not been committed, and an early warning that
-      // misses the state the implementer is actually in is not one.
-      expect(gitAnswer('git status over spike/ failed', 'status', '--porcelain', '--', 'spike')).toBe('');
-    },
-  );
 });
