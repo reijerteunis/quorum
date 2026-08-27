@@ -226,13 +226,19 @@ const executes = (steps: WorkflowStep[], task: string): boolean =>
  * cannot fail the assertion it exists to explain. Action-agnostic on purpose: the criterion is
  * about a task-result cache, not about who provides one. `actions/setup-node`'s `cache: pnpm`
  * carries neither marker, which is the point of keeping it.
+ *
+ * Both markers match anywhere in the value, never only at its start: AC-4(b) refuses a `turbo-`
+ * cache key, and `v1-turbo-${{ github.sha }}` is one. Matching the whole `with` block rather than
+ * a list of cache-action key names errs toward refusing too much — an unrelated value containing
+ * `turbo-` would fail this loudly, which is the right direction for a guard whose subject is a
+ * check that reports green having examined nothing.
  */
 const restoresTaskCache = (flow: Workflow): boolean =>
   Object.values(flow.jobs ?? {}).some((job) =>
     (job?.steps ?? []).some((step) =>
       Object.values(step.with ?? {})
         .map((value) => String(value))
-        .some((value) => value.includes('.turbo') || value.startsWith('turbo-'))));
+        .some((value) => value.includes('.turbo') || value.includes('turbo-'))));
 
 /**
  * `.github/workflows/ci.yml` as it stood before this ticket, verbatim through the `workspace` job.
@@ -267,6 +273,37 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+`;
+
+/**
+ * A turbo result cache that this guard's first form read as clean.
+ *
+ * Two evasions at once, and each defeats one half of the marker pair: the key is *prefixed*, so
+ * `turbo-` is not where the value starts, and the path is turbo's `--cache-dir` pointed away from
+ * `.turbo`, so the path half cannot carry the assertion on the key half's behalf. Every task is
+ * forced, so the only thing wrong with this workflow is the cache — which is what makes it a test
+ * of AC-4(b) rather than of AC-4(a).
+ */
+const PREFIXED_TURBO_CACHE = `name: CI
+
+on:
+  push:
+
+jobs:
+  workspace:
+    name: workspace (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/turbo
+          key: v1-turbo-\${{ runner.os }}-\${{ github.sha }}
+          restore-keys: |
+            v1-turbo-\${{ runner.os }}-
+      - run: pnpm turbo run lint --force
+      - run: pnpm turbo run typecheck --force
+      - run: pnpm turbo run test --force
 `;
 
 describe('Q-0071 AC-4 — CI executes its checks rather than replaying them', () => {
@@ -304,5 +341,14 @@ describe('Q-0071 AC-4 — CI executes its checks rather than replaying them', ()
       expect(executes(workspaceSteps(BEFORE_Q0071), task), `${task} was replayable before this ticket`).toBe(false);
     }
     expect(restoresTaskCache(workflow(BEFORE_Q0071)), 'the turbo result cache was restored before this ticket').toBe(true);
+  });
+
+  test('and a prefixed key is refused too — `turbo-` is read anywhere in the value', () => {
+    // The second subject, for the half of (b) the first fixture cannot reach: `BEFORE_Q0071` fails
+    // on `path: .turbo` as well as on its key, so it would still fail if the key check did nothing.
+    for (const task of WORKSPACE_TASKS) {
+      expect(executes(workspaceSteps(PREFIXED_TURBO_CACHE), task), `${task} is forced in this fixture`).toBe(true);
+    }
+    expect(restoresTaskCache(workflow(PREFIXED_TURBO_CACHE)), 'v1-turbo-… names a turbo result cache').toBe(true);
   });
 });
