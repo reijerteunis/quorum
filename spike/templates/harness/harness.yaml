@@ -28,4 +28,9 @@ commands:
   # Run in the integration worktree before `test` — a worktree has no node_modules, and a suite
   # that cannot start would otherwise satisfy `expect: fail` on every ticket.
   install: npm install --no-audit --no-fund --silent
+  # `integrate` trusts this command's exit result and nothing else, so a caching test runner —
+  # Turbo, Nx, Gradle and Bazel all cache by default — can satisfy it by replaying an earlier pass
+  # without executing anything, and the flow then advances on a claim this run never made. Make
+  # this command defeat your runner's cache; the default below is left as it is because the
+  # template cannot know which runner you use, or what its option is called.
   test: npm test          # used by integrate steps with run_tests: true
