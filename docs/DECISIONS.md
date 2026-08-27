@@ -1133,6 +1133,16 @@ permits preservation. Settled by erratum E-3 so the revise loop did not relitiga
 generalised here because thirteen later children inherit it and an errata file inside one ticket
 folder is not where a child's reviewer will look.
 
+**Note — 2026-08-27 (Q-0069):** preservation is now spelled `z.looseObject({ … })`. zod 4.4.3 marks
+`.passthrough()` `@deprecated`, so the 21 calls in `packages/shared` moved to the constructor zod
+documents, and `@typescript-eslint/no-deprecated` refuses the method from here on. **Nothing this
+entry decides changes.** The rule is about *who owns the key set*, not about a method name; both
+dispositions, their reasons and the tell at the end stand exactly as written, and
+`z.object({ … }).passthrough()` and `z.looseObject({ … })` produce the identical `core.$loose`
+config, so no schema's accepted or rejected set moved. The prose above is deliberately left in its
+own vocabulary: it says `.passthrough()` because that is what the code said when it was written.
+See "Type-aware linting is on for exactly one rule" (2026-08-27).
+
 ## `core` is organised in folders named after the port's children; `shared` stays flat — 2026-08-26
 
 **Decision:** `packages/core/src` is organised into one folder per module, and the folder names are
@@ -1194,3 +1204,146 @@ answer is in this entry and in `04-architecture.md`. The move itself touches lan
 in two packages, so it is a ticket with a cross-vendor review (Q-0064) rather than a rename
 performed in passing — which is also the rule the repository already has for changes that eleven
 later tickets depend on.
+
+## Type-aware linting is on for exactly one rule — 2026-08-27
+
+**Decision:** `@typescript-eslint/no-deprecated` is enabled at error severity in `eslint.config.js`,
+with the type information it requires (`parserOptions.projectService`, `tsconfigRootDir:
+import.meta.dirname`). It is the **only** type-aware rule — not the `strict` or
+`strict-type-checked` preset it ships in — and it covers exactly the file set ESLint already
+covered, `packages/**/*.ts` and `apps/**/*.ts`, tests included. Nothing was added to `ignores` to
+make it install, so `spike/**` stays outside ESLint's scope as it already was, and is the one tree
+in this repository where a deprecated API is still undetectable. That is stated in
+`harness/rules.md` rather than left to be discovered, because the spike is the port's independent
+witness and "the workspace detects deprecated APIs" would otherwise read as covering it.
+
+This **supersedes the sentence at `eslint.config.js:3`** — *"Type-aware linting is deliberately off
+— `tsc --noEmit` owns types."* That sentence was never a decision entry, which is half of what went
+wrong: the policy that cost something lived in a config comment, where nobody looks and nothing
+cites it. What each gate owns, written down so the next person weighing a second type-aware rule
+has something to argue against rather than a comment to contradict:
+
+- **`tsc --noEmit` owns types.** Unchanged, and the superseded sentence was right about it. No rule
+  enabled here duplicates a type error.
+- **`pnpm lint` owns deprecation**, because `tsc` never did and never claimed to. `@deprecated` is
+  an editor strikethrough to TypeScript and never an error, at any strictness. This is the general
+  net: it catches the *next* deprecation, in any dependency, without anyone thinking to look.
+- **`pnpm test` owns the pin, not the net.** A source-text assertion in `packages/shared`
+  (`flow.test.ts`) refuses the one string this ticket migrated. It exists because
+  `harness/harness.yaml`'s `commands.test` is `npm test --prefix spike && pnpm turbo run test` —
+  two suites and neither gate — so a chore run's `integrate` cannot see a lint failure at all, and
+  the rule above is enforced by CI alone. Whether `integrate` should run `lint` and `typecheck` is
+  Q-0065's argument and is deliberately not taken here.
+
+**Alternatives considered:**
+
+**(a) The source-text assertion alone, with no rule.** Free, instant, and already precedented in
+the same file (`flow.test.ts` greps every shared source for `.default(` and `.catch(`). Rejected as
+the whole answer: it catches one string. The next deprecated API arrives unnoticed, which is the
+failure this ticket exists to close rather than to re-file. It ships **as well**, for the gate
+reason above, and its own comment says it is a pin and not the net.
+
+**(b) The `strict` or `strict-type-checked` preset, which contains the rule.** Rejected: dozens of
+rules nobody has read, arriving under one flag, in a repository whose lint config has held two
+rules and an argument for each. One rule, argued for, is the whole change.
+
+**(c) Leave it off and keep the prose rule.** `harness/rules.md` already told contributors to read
+a dependency's typings before reaching for an unfamiliar method, and that instruction is what
+produced the 21 calls — it was written by the audit that found them. A rule a gate cannot see is
+advice, and advice is what was already in place while a landed, cross-vendor-reviewed ticket
+accumulated 21 deprecated calls without either gate having anything to say.
+
+**Why:** two green ticks stood over `packages/shared` while every one of its 21 `.passthrough()`
+calls was deprecated, and **neither tick was lying about what it checked**. `tsc` does not error on
+`@deprecated`; ESLint could not see it without type information; type information was off by a
+decision that was correct about types and silent about deprecation. The gap was between the gates,
+which is the repository's own named failure — *"a check that skips its subject must not report
+success"* (2026-08-25) — reached through a configuration comment instead of a preflight. It is the
+second time that shape has cost something in the same class of file: Q-0065 records `turbo.json`
+declaring no `passThroughEnv`, so a test that needs an environment variable can never run. Both are
+a good decision with a consequence nobody enumerated, sitting in a file that reads as settled.
+
+The rule was demonstrated to have a subject before it was trusted: over the unmigrated tree it
+reports **21 errors, every one `@typescript-eslint/no-deprecated` on `passthrough`, all under
+`packages/shared/src`**, with the other six packages clean; over the migrated tree, none. A guard
+whose only evidence is a green run has not been shown to have a subject.
+
+**Cost accepted:** a dependency bump that deprecates something can turn `pnpm lint` red on code
+nobody touched. That is the rule working, and it is still a real cost — mitigated by it being one
+rule whose message names both the symbol and its replacement, and by `harness/rules.md`'s standing
+instruction that such a migration is its own change rather than a passing fix. Type-aware parsing
+also builds the program `tsc` already builds: measured at **+0.4s wall for the whole workspace**
+(1.45s → 1.88s, `--force`, seven packages in parallel), not per package.
+
+**Found by:** an audit of the workspace for deprecated APIs on 2026-08-27, which Ruud asked for.
+Q-0069.
+
+## `.claude/rules/` is a derived copy, not a surface a requirement may name — 2026-08-27
+
+**Decision:** The vendor dialect files — `.claude/rules/`, and from M5 `CLAUDE.md`, `AGENTS.md`
+and `GEMINI.md` — are **derived copies of `harness/`**. They are never a source, and they are
+never a surface an acceptance criterion may name as work for a flow step. A requirement names the
+canonical file in `harness/` and nothing else. Until M5's compiler lands, the copy is synced by a
+**human commit in the same change** that edits its canonical original.
+
+The routing check of *"A requirement may not name a surface its flow cannot write"* (2026-08-25)
+therefore asks **three** questions of every criterion's surface, not one:
+
+1. **May the role write it?** — the `paths` allow-list in `harness/roles/<role>.md`.
+2. **Will the engine revert it?** — `commitAll` restores `backlog/` before every agent commit.
+3. **Is it derived?** — a compilation target is written by the compiler, never by hand and never
+   by an agent, however wide its allow-list.
+
+Only the first two were being asked. The third is what Q-0069 hit.
+
+**Alternatives considered:**
+
+**(a) Widen `developer-generalist`'s `paths` to include `.claude/`, and relax the file gate that
+refused the write.** Rejected on two independent grounds. It hands an agent the file that
+constrains the agent — the same hazard `commitAll` exists to prevent for `backlog/`, where an
+agent that can edit `ticket.md` can advance its own stage and refund its own counters. An agent
+that can edit `.claude/rules/` can delete the rule it is about to violate. And the gate that
+refused is **Claude Code's own**, not this repository's: it is not ours to relax, and "relaxing"
+it would mean shipping a per-run permission flag scoped to the one directory whose whole purpose
+is to constrain the run. Neither ground depends on the other, and neither addresses the real
+problem, which is that the file is an output.
+
+**(b) Open a separate ticket and decide it there.** Rejected: the answer is already fixed by
+*"Canonical harness compiled to vendor dialects"* (2026-08-06) and restated in
+`harness/rules.md:3–4`, which calls the `.claude/` copy *"the drift"* in as many words. A ticket
+would spend a requirements run rediscovering a decision this file already contains.
+
+**(c) Delete the `.claude/` copy now and have Claude Code read `harness/rules.md` through a
+`CLAUDE.md` import.** Genuinely attractive — it removes the drift rather than managing it, and it
+is where the product is going. Deferred to M5, which owns the compiler: doing it by hand now means
+authoring the import wiring the compiler is scheduled to generate, and then owning both.
+
+**Why:** Q-0069's chore run reached its exhaustion gate on this and nothing else. Eleven of twelve
+criteria were satisfied in the first implement round; AC-11(b) named
+`.claude/rules/engineering.md:4`, and three consecutive rounds correctly refused to close it —
+the implementer reporting that both `Edit` and `Write` were refused and that `.claude/` is in
+neither its role's `paths` nor `harness/architecture.md`'s role table, the reviewer correctly
+declining to approve an unmet criterion. Two right agents, no legal move, roughly $12 spent
+establishing it.
+
+The requirement had checked. Its preamble certifies *"No criterion below names `backlog/`"* — and
+that is the tell. It verified the one unwritable surface the repository had written down, and
+never asked the general question of which surfaces a step may write. This is the failure Q-0034
+named as *"review the fix round, not only the feature round"*, arriving through a document: a
+correction inherited without re-deriving what it did **not** say. The 2026-08-25 entry closed
+`backlog/`; it did not claim to enumerate every unwritable surface, and it was read as though it
+had.
+
+**Cost accepted, and it is a real one:** until M5, every edit to a canonical file in `harness/`
+needs a paired human commit to its `.claude/` copy, and **nothing enforces the pairing** — the two
+files can drift silently, which is exactly the disease the 2026-08-06 entry says the compiler
+exists to cure. `harness/rules.md`'s header already says which wins, so a drift is resolvable
+rather than ambiguous, but it is not detectable. A test asserting that the rules in `.claude/`
+correspond to the canonical set would close it, and is deliberately not written here: it needs to
+survive M5 replacing the copy with generated output, and that is the compiler's ticket to own.
+
+**Found by:** Q-0069's chore run, 2026-08-27, at its exhaustion gate. The implementer raised the
+underlying contradiction — that `harness/rules.md:3` promises `.claude/rules/` *"carries the same
+rules"* while no flow in the repository can make that true — and explicitly declined to decide it,
+its role forbidding it to record a decision. Decided here at Ruud's direction rather than deferred
+to a new ticket.

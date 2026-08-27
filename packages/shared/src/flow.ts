@@ -108,7 +108,7 @@ import { z } from 'zod';
 import { stepOutputDeclarationSchema } from './step-output.js';
 
 /** What a step is given to work with. */
-export const stepInputSchema = z.object({
+export const stepInputSchema = z.looseObject({
   /** Paths inside the ticket folder, simple `*` globs allowed — spike/src/engine.js:704-705. */
   backlog: z.array(z.string()).optional(),
   /** Filenames inside `harness/` — spike/src/engine.js:700-703. */
@@ -121,10 +121,10 @@ export const stepInputSchema = z.object({
    * fan-out step's `step:` template.
    */
   diff: z.string().optional(),
-}).passthrough();
+});
 
 /** A bounded backward edge. */
-export const onFailSchema = z.object({
+export const onFailSchema = z.looseObject({
   /** A step id in this flow, or `flow:<name>`. Lint resolves it — spike/src/lint.js:64. */
   goto: z.string(),
   /**
@@ -136,7 +136,7 @@ export const onFailSchema = z.object({
   max_iterations: z.number(),
   /** Lint requires exactly `gate` — spike/src/lint.js:75 — so the value is lint's to refuse. */
   on_exhausted: z.string(),
-}).passthrough();
+});
 
 /**
  * The fields every agent step may carry. Not exported as a step kind of its own: an agent step is
@@ -186,18 +186,18 @@ const agentStepFields = {
  * evidence and for what it costs. The three kinds below repeat it for the same reason, and a
  * `parallel` group's members inherit it from here.
  */
-export const agentStepSchema = z.object({
+export const agentStepSchema = z.looseObject({
   id: z.string().optional(),
   ...agentStepFields,
-}).passthrough();
+});
 
 /**
  * A `parallel` group. Its members are always agent steps: `runStep` sends each one straight to
  * `runAgentStep` without re-dispatching (spike/src/engine.js:181).
  */
-export const parallelGroupSchema = z.object({
+export const parallelGroupSchema = z.looseObject({
   parallel: z.array(agentStepSchema),
-}).passthrough();
+});
 
 /**
  * A gate. It carries no `id` — harness/flows/chore.yaml:58 and every other shipped gate are
@@ -209,15 +209,15 @@ export const parallelGroupSchema = z.object({
  * reject a flow the engine runs. `human-locked` can never be flipped to auto; lint additionally
  * requires a deploy flow to contain one (spike/src/lint.js:126).
  */
-export const gateStepSchema = z.object({
+export const gateStepSchema = z.looseObject({
   gate: z.string(),
   reason: z.string().optional(),
   /** Read as a fallback for `reason` — spike/src/engine.js:574. */
   prompt: z.string().optional(),
-}).passthrough();
+});
 
 /** A project command, run in the repository. */
-export const scriptStepSchema = z.object({
+export const scriptStepSchema = z.looseObject({
   /** Optional: lint requires an id on no step kind — see PRESENCE above. */
   id: z.string().optional(),
   type: z.literal('script'),
@@ -225,10 +225,10 @@ export const scriptStepSchema = z.object({
   run: z.string().optional(),
   output: stepOutputDeclarationSchema.optional(),
   on_fail: onFailSchema.optional(),
-}).passthrough();
+});
 
 /** Merge branches onto a target branch in a worktree, then optionally run the test command. */
-export const integrateStepSchema = z.object({
+export const integrateStepSchema = z.looseObject({
   /** Optional: lint requires an id on no step kind — see PRESENCE above. */
   id: z.string().optional(),
   type: z.literal('integrate'),
@@ -246,9 +246,9 @@ export const integrateStepSchema = z.object({
   expect: z.string().optional(),
   output: stepOutputDeclarationSchema.optional(),
   on_fail: onFailSchema.optional(),
-}).passthrough();
+});
 
-export const fanOutSchema = z.object({
+export const fanOutSchema = z.looseObject({
   /**
    * Both `from` and `by` are inert: `loadTasks` hard-codes `solution/tasks.yaml`
    * (spike/src/fanout.js:14) and grouping is by wave, not by role. Typed as they are written so
@@ -260,7 +260,7 @@ export const fanOutSchema = z.object({
   respect: z.string().optional(),
   /** `failing-tasks-only` narrows a retry to the tasks that failed — spike/src/engine.js:932. */
   scope: z.string().optional(),
-}).passthrough();
+});
 
 /**
  * The per-task template a fan-out expands. Its `id`, `role`, `adapter` and `model` are
@@ -272,12 +272,12 @@ export const fanOutSchema = z.object({
  * later change to one silently a change to the other. The name is what tells a consumer which of
  * the two it is holding.
  */
-export const fanOutStepTemplateSchema = z.object({
+export const fanOutStepTemplateSchema = z.looseObject({
   id: z.string().optional(),
   ...agentStepFields,
-}).passthrough();
+});
 
-export const fanOutStepSchema = z.object({
+export const fanOutStepSchema = z.looseObject({
   /** Optional: lint requires an id on no step kind — see PRESENCE above. */
   id: z.string().optional(),
   fan_out: fanOutSchema,
@@ -285,7 +285,7 @@ export const fanOutStepSchema = z.object({
   step: fanOutStepTemplateSchema.optional(),
   output: stepOutputDeclarationSchema.optional(),
   on_fail: onFailSchema.optional(),
-}).passthrough();
+});
 
 /** The six kinds a step can be. The names are this file's; the engine dispatches, it does not label. */
 type StepKind = 'parallel' | 'gate' | 'script' | 'integrate' | 'fan_out' | 'agent';
@@ -351,7 +351,7 @@ export const flowStepSchema = z.unknown().transform((value, ctx): FlowStep => {
   return z.NEVER;
 });
 
-export const flowSchema = z.object({
+export const flowSchema = z.looseObject({
   /**
    * Optional, because lint is. `lint.js:127` throws with `flow ${flow.name ?? flow.file}`, so a
    * nameless flow lints clean and must parse here; requiring the key would be a presence rule lint
@@ -394,7 +394,7 @@ export const flowSchema = z.object({
    * flows. This is the key that makes a naive `.strict()` flow schema wrong.
    */
   file: z.string().optional(),
-}).passthrough();
+});
 
 export type StepInput = z.infer<typeof stepInputSchema>;
 export type OnFail = z.infer<typeof onFailSchema>;

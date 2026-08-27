@@ -26,7 +26,7 @@ import { stageSchema } from './stages.js';
  * `stage` duplicates `stage_after` in every entry the current writer produces. That is a known
  * redundancy, reported rather than fixed: the port preserves behaviour.
  */
-export const ticketHistoryEntrySchema = z.object({
+export const ticketHistoryEntrySchema = z.looseObject({
   stage: stageSchema,
   /** The run number, allocated from `runs.log` — spike/src/engine.js:744-751. */
   run: z.number(),
@@ -46,9 +46,9 @@ export const ticketHistoryEntrySchema = z.object({
    * never priced locally", docs/DECISIONS.md 2026-08-22).
    */
   cost: z.number().nullable(),
-}).passthrough();
+});
 
-export const ticketSchema = z.object({
+export const ticketSchema = z.looseObject({
   id: z.string(),
   title: z.string(),
   /** The ticket's position in the state machine, and only that. Where the code IS is derived from
@@ -82,7 +82,7 @@ export const ticketSchema = z.object({
    */
   iterations: z.record(z.string(), z.number()).optional(),
   history: z.array(ticketHistoryEntrySchema).optional(),
-}).passthrough();
+});
 
 export type TicketHistoryEntry = z.infer<typeof ticketHistoryEntrySchema>;
 export type Ticket = z.infer<typeof ticketSchema>;

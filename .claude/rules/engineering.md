@@ -1,7 +1,7 @@
 # Engineering rules
 
 - TypeScript strict; no `any`, no `@ts-ignore` without a one-line reason on the same line.
-- No deprecated API in new code; one found in code you are already changing is reported, not migrated in passing. `tsc --noEmit` does not error on `@deprecated` and type-aware linting is off, so nothing here detects one today — see Q-0069.
+- No deprecated API in new code; one found in code you are already changing is reported, not migrated in passing — the migration is its own change. `tsc --noEmit` does not error on `@deprecated`; it is an editor strikethrough. Since Q-0069 `pnpm lint` does: `@typescript-eslint/no-deprecated` is on at error severity, with the type information it needs, and it is the only type-aware rule enabled. It covers exactly what ESLint covers — `packages/**/*.ts` and `apps/**/*.ts`, tests included. `spike/**` is outside ESLint's scope entirely and stays unlinted, so nothing detects one there.
 - Prefer small, boring, proven libraries. A new dependency needs a one-line justification in the PR and, if it changes architecture, a DECISIONS.md entry.
 - Every behaviour change ships with a test. Core logic is tested through the mock adapter end-to-end suite plus focused unit tests; adapters are tested by the local `adapters --probe` and its JSON report.
 - Files are the database. Anything persistent is a file in `backlog/`, `harness/`, or `.quorum/`; no hidden state in the daemon.
