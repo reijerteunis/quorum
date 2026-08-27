@@ -58,6 +58,7 @@ export interface TaskNode {
 export interface Task extends TaskNode {
   /** The role the task runs as — a file in `harness/roles/`. */
   role: string;
+  /** One line naming the work. It heads the task's prompt and is a {@link taskVars} key. */
   title: string;
   /** Where a task states its file ownership, because it is the only field that reaches the agent. */
   description?: string;
@@ -292,6 +293,7 @@ export function commitAll(dir: string, message: string, onDiscard?: (dropped: st
 
 /** What a merge did. `error` is present only on failure; that asymmetry is the spike's. */
 export interface MergeResult {
+  /** Whether the merge landed. `false` is a result the caller decides on, never a throw. */
   ok: boolean;
   /** Paths left unmerged, read before the merge is aborted. Empty on success. */
   conflicts: string[];

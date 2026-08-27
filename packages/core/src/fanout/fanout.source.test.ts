@@ -83,6 +83,29 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
     }
   });
 
+  test('so is every field of an exported interface', () => {
+    // AC-1 asks for JSDoc on "every exported symbol, interface field and non-obvious parameter",
+    // and the assertion above reads `export` lines only — a field is not one, which is how two
+    // undocumented fields reached a review round. The declared type surface is what a consumer of
+    // this module reads, so it is checked at the same grain as the exports.
+    const fields: string[] = [];
+    for (const [name, text] of moduleSources()) {
+      const lines = text.split('\n');
+      let open = false;
+      lines.forEach((line, i) => {
+        if (/^export interface \w+/.test(line)) { open = true; return; }
+        if (open && line === '}') { open = false; return; }
+        if (!open || !/^ {2}(?:readonly )?[A-Za-z_$][\w$]*\??:/.test(line)) return;
+        fields.push(`${name}:${i + 1}`);
+        expect(lines[i - 1]?.trim().endsWith('*/'), `${name}:${i + 1} — ${line.trim()} has no JSDoc`).toBe(true);
+      });
+    }
+    // The walk itself is the fragile part: an interface it failed to enter would assert nothing and
+    // still report green. Fifteen fields across six interfaces — TaskNode 2, Task 4, TicketFolder 1
+    // and MergeResult 3 in fanout.ts; RunCommandOptions 1 and CommandResult 4 in command.ts.
+    expect(fields.length).toBe(15);
+  });
+
   test('it imports node builtins, yaml, shared and its own siblings — never the spike', () => {
     // About SPECIFIERS: this package cites spike paths in comments as its evidence, which is the
     // house style, and a check that forbade the word would forbid the citations. The freeze itself
