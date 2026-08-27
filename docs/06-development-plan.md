@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -167,17 +167,25 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   Carries Q-0061. Per the 2026-08-26 DECISIONS entry; carries the comment pass for the moved files, and
   must make `coreSourceFiles()` recursive in the same change or three landed house-rule tests
   silently narrow to one file while reporting green.
-- Q-0065 `integrate` can report `tests=ok` from a cached pass it never executed.
-  `harness/harness.yaml`'s `commands.test` runs `pnpm turbo run test` without `--force`, so the one
-  step whose whole job is to prove a suite green can be satisfied by a replay — *"skipped is not
-  passed"* (2026-08-25) one layer down. Observed on 2026-08-26: a cached run reported 7/7 while a
-  `--force` re-run failed 1 of 123. The shipped template ships `test: npm test` and inherits the
-  same hazard for any adopter on a caching runner. Raised as OQ-2 of Q-0064's requirement, which
-  correctly refused to change a default affecting every ticket's `integrate`. **Folded in 2026-08-27
-  at Q-0047's gate:** `turbo.json` declares no `env`/`passThroughEnv` on `test`, so Turbo strips
-  `QUORUM_REAL_CLI` and the command `real-cli.probe.test.ts` documents can never run it — the
-  opposite failure through the same knob, and reachable only from a gate, since neither implementer
-  nor reviewer may spend a paid CLI round-trip.
+- Q-0065 `integrate` can report `tests=ok` from a cached pass it never executed. *(`reviewed` and
+  `main:contained` 2026-08-27.)* `harness/harness.yaml`'s `commands.test` now ends `pnpm turbo run
+  test --force`, `turbo.json`'s `test` task declares `"env": ["QUORUM_REAL_CLI"]`, and the shipped
+  template keeps `npm test` while gaining a comment saying a caching runner can satisfy `integrate`
+  from a replay. `core` learns nothing about any runner — shapes 2 and 3 of the original body, output
+  parsing and `TURBO_FORCE` injection, were refused and a test now enforces the refusal. The
+  environment half was folded in at Q-0047's gate and is closed: the probe file reports 31/31 files
+  and **0 skipped** under the command its own JSDoc documents, against 30 passed and 1 skipped
+  without the switch. **The requirement's severity finding was wrong and the implementer disproved
+  it.** §0.1 inferred from the absence of `.turbo/cache` inside a worktree that `integrate` ran cold;
+  turbo 2.10 resolves a worktree's cache to the main checkout's and says so — `is_shared_worktree=
+  true` — so `integrate` has been running **warm on every chore ticket here**, and a ticket touching
+  only `harness/` and `docs/` replayed all seven packages. Q-0065's own `integrate` did it, in
+  thirty-five seconds including two installs and both suites, because `runFlow` stores `config` at
+  run start and never re-reads it — which is why AC-3 is a file assertion and why the runtime proof
+  is the *next* ticket's `integrate` line. Cost measured, not estimated: 25–30 s per `integrate`
+  against 9 ms replayed. The buffer half split out as **Q-0070**; CI's identical hazard reported and
+  carried as **Q-0071**. See *"The test command defeats its own cache, in configuration and not in
+  the engine"* (2026-08-27).
 - Q-0066 `probeAdapter` reports its own crash as an unusable login. `withRetry` returns
   `usage: null` when no attempt reported a measure (Q-0034, deliberate); `probeAdapter` dereferences
   it unguarded, so an adapter whose login is **perfect** and which reports no usage answers
@@ -245,6 +253,18 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   together — the Q-0066/Q-0068 shape. The subject has now been measured four times and three earlier
   records were wrong in three different places, which is why the ticket body says not to re-derive
   it from any of them.
+
+- Q-0071 CI can report green from a replay, and its cache outlives the commit it was built for.
+  `.github/workflows/ci.yml:20–24` restores `.turbo` across runs with `restore-keys: turbo-${{
+  runner.os }}-`, and `:27` runs `pnpm test` — `turbo run test` with no `--force` — so a job can
+  report every package green having executed nothing, from a cache usually built for a different
+  commit. Q-0065 closed the same defect one layer up and its fix does not reach here: `integrate`
+  runs `harness.yaml`'s `commands.test`, CI runs `package.json`'s. It has already hidden something —
+  Q-0043's containment flake survived behind a cached pass until a forced re-run failed 1 of 123. The
+  ticket is *what is a green tick being claimed for*, not reflexively forcing everywhere: replaying
+  an untouched package is what a cache is for, while a required check that never ran is not. Reported
+  by Q-0065's implement step, which correctly refused to change CI on a ticket naming no `.github/`
+  surface.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a

@@ -137,6 +137,16 @@ review — `command.test.ts:14,23` (`toStrictEqual` on the whole result object),
 **Also fold in:** `commands.install` runs through the same `runCommand` (`engine.js:1036`) with the
 same ceiling — Q-0065 OQ-2.
 
+## Inherited from Q-0065, because this ticket opens the file next
+
+`packages/core/src/fanout/command.ts:55` quotes this repository's configured command in its JSDoc
+as ``(`npm test --prefix spike && pnpm turbo run test`)``, to explain why `runCommand` goes through
+a shell. Q-0065 appended `--force` to that command on 2026-08-27, so the quotation is one flag out
+of date. Q-0065's own §7 put the file out of its scope, so its implementer reported the staleness
+rather than fixing it — correctly. Nothing pins the sentence and no test fails on it, which is
+exactly why it needs an owner: **carry it as a criterion**, and correct the spike's twin comment in
+the same change if it carries one.
+
 ## Landing constraint
 
 The fix lands in `spike/src/fanout.js` **and** `packages/core/src/fanout/command.ts` together — the
