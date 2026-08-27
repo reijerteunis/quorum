@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-26 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change). M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -168,6 +168,12 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   must make `coreSourceFiles()` recursive in the same change or three landed house-rule tests
   silently narrow to one file while reporting green.
 - Q-0065 `integrate` can report `tests=ok` from a cached pass it never executed.
+  `harness/harness.yaml`'s `commands.test` runs `pnpm turbo run test` without `--force`, so the one
+  step whose whole job is to prove a suite green can be satisfied by a replay — *"skipped is not
+  passed"* (2026-08-25) one layer down. Observed on 2026-08-26: a cached run reported 7/7 while a
+  `--force` re-run failed 1 of 123. The shipped template ships `test: npm test` and inherits the
+  same hazard for any adopter on a caching runner. Raised as OQ-2 of Q-0064's requirement, which
+  correctly refused to change a default affecting every ticket's `integrate`.
 - Q-0066 `probeAdapter` reports its own crash as an unusable login. `withRetry` returns
   `usage: null` when no attempt reported a measure (Q-0034, deliberate); `probeAdapter` dereferences
   it unguarded, so an adapter whose login is **perfect** and which reports no usage answers
@@ -176,12 +182,21 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   Q-0046 (AC-11 defect 1) rather than fixed in passing, per *"The port preserves behaviour"*; the fix
   must land in `spike` **and** `packages/core` together or the port loses its independent witness.
   Raised as OQ-6 of Q-0046's requirement.
-  `harness/harness.yaml`'s `commands.test` runs `pnpm turbo run test` without `--force`, so the one
-  step whose whole job is to prove a suite green can be satisfied by a replay — *"skipped is not
-  passed"* (2026-08-25) one layer down. Observed on 2026-08-26: a cached run reported 7/7 while a
-  `--force` re-run failed 1 of 123. The shipped template ships `test: npm test` and inherits the
-  same hazard for any adopter on a caching runner. Raised as OQ-2 of Q-0064's requirement, which
-  correctly refused to change a default affecting every ticket's `integrate`.
+- Q-0067 The per-adapter version probe, and what an unsupported CLI version does. The deferred half
+  of `04-architecture.md:62` — a `capabilities.ts` *"with a version probe"*. Q-0047 ships the
+  extraction and not the probe: moving flag names into a data module is internal layout, which the
+  charter does not preserve, while a probe adds a CLI invocation, a range that goes stale and a
+  policy for an unsupported version, which is behaviour and needs a decision entry first. The
+  staleness is already here — `03-adapter-contract.md:122` pins its table to Claude Code 2.1.220 and
+  codex-cli 0.149.0 while the machine runs 2.1.231 and 0.149.1, and nothing noticed. Runs after
+  Q-0010, which gives it a surface to report on. Opened at Q-0047's requirements gate (Q-1).
+- Q-0068 The BYOS refusal calls the product "Harness". `claude.js:12`, `codex.js:21`, their ported
+  twins, and the two pinned fixtures at `smoke.js:464` and `adapters.test.ts:314` say *"Harness runs
+  on subscription OAuth only"*, which `.claude/rules/product-boundaries.md` forbids. Reported by
+  Q-0046 and again by Q-0047, both of which correctly preserved it: a fix in `core` alone leaves the
+  spike disagreeing until the cutover, which is the divergence the freeze exists to expose. Lands in
+  both trees together, like Q-0066. The decision is what the sentence says instead — it is on the
+  cold-clone path, so worth more than a `sed`. Opened at Q-0047's requirements gate (Q-4).
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a

@@ -56,6 +56,22 @@ rule rather than retyping it. **A criterion must assert `schemaFor`'s output aga
 every shape it emits.** Until then the rule is covered on the spike alone, and Q-0046 recorded the
 gap as *deferred with a named owner* rather than as coverage that is complete.
 
+**Inherited from Q-0047 (erratum E-1, 2026-08-27).** Register row 2's third clause — *"a role's
+default model never crosses vendors"* — is **Q-0052's**, not Q-0047's. It is `resolveModel`
+(`spike/src/engine.js:670`), called only from the agent step (`:205`), which this ticket ports.
+Q-0052's requirement must carry it as a criterion: the step's own `model` always wins; a role's
+default is inherited **only** when `role.meta.adapter` equals the resolved adapter name; otherwise
+no model is passed at all, so the CLI picks one its own login supports. A `model: opus` reached a
+codex step once already (Q-0001). Frozen coverage: `spike/test/smoke.js:620–626`. If this ticket's
+cut leaves `resolveModel` with the run loop, the obligation moves to Q-0050 with the function.
+
+Q-0047 owns the adapter half of the same row and discharges it — `--ignore-user-config`
+unconditional, `-m`/`--model` only when the caller names a model, no vendor alias anywhere. Its
+implement report names this split rather than reporting the row closed, so nothing here is
+double-counted; see `backlog/Q-0047-core-claude-and-codex-adapters/requirements/errata.md` E-1.
+The same erratum also owns `ctx.config.adapterOverride` (`spike/src/engine.js:204`), the fan-out
+half of Q-0047's `overrideAdapters`, which the CLI sets on the same line and this ticket ports.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
@@ -70,7 +86,8 @@ reported, never fixed in passing.
 - **Ports:** `engine.js` agent, gate and script steps
 - **Lifts from `spike/bin/harness.js`:** nothing
 - **Depends on:** Q-0051 · **Depended on by:** Q-0053
-- **Invariants inherited:** register rows 17 (charter §2)
+- **Invariants inherited:** register row 17, and row 2's cross-vendor clause (charter §2, as
+  re-pointed by Q-0047 erratum E-1, 2026-08-27)
 - **Non-goals:** another child's module; editing `spike/**` (charter §3); fixing a defect found
   while reading (§2); the cutover; the `quorum` binary (Q-0010); persisting the event stream;
   anything on v1's exclusion list.
