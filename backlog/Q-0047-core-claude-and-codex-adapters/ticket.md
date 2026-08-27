@@ -1,14 +1,22 @@
 ---
 id: Q-0047
 title: core/adapters — claude and codex
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0047/integration
 priority: p2
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-27T05:21:54.942Z
+    cost: 6.926
 ---
 Ports the two vendor adapters — `spike/src/adapters/claude.js` (83 lines, including the shared
 `exec`) and `codex.js` (91 lines) — onto the contract layer Q-0046 types. These are the only files in
