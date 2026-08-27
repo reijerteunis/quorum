@@ -36,4 +36,6 @@ commands:
   # only one would prove the wrong half. Q-0008 criterion 8. `runCommand` goes through execSync,
   # so `&&` is a shell chain, not an argv.
   install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
-  test: npm test --prefix spike && pnpm turbo run test
+  # `--force` because turbo replays a cached pass without executing it while `integrate` reads only
+  # the exit code, and a worktree shares the main checkout's cache, so this step runs warm (Q-0065).
+  test: npm test --prefix spike && pnpm turbo run test --force

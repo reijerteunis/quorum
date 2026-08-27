@@ -1,0 +1,186 @@
+/**
+ * Q-0065: what a test command's result may be trusted to have done.
+ *
+ * The cache half of this ticket is a one-line change to `harness/harness.yaml` and is asserted in
+ * `packages/shared/src/project.test.ts`, beside the other claims about that file. What is left here
+ * is the half that belongs to code: that the engine never learns the name of a test runner (AC-5),
+ * and that the one variable this workspace's `test` task has to carry actually reaches a package's
+ * test process (AC-6, AC-7) so the invocation `real-cli.probe.test.ts` documents is a command that
+ * works (AC-8).
+ *
+ * Neither `spike/src` nor `packages/core/src` is written by this ticket. Reading either is what the
+ * corpus tests already do, and the port freeze forbids only writing (harness/port-charter.md §3).
+ */
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { afterAll, describe, expect, test } from 'vitest';
+
+import { coreSourceFiles, repoFile, repoRoot } from '../test/corpus.js';
+import { removeTempDirs, tempDir, write } from '../test/repo.js';
+
+afterAll(removeTempDirs);
+
+/** The switch `real-cli.probe.test.ts` reads, and the only variable this workspace's suite needs. */
+const SWITCH = 'QUORUM_REAL_CLI';
+
+/** The invocation the probe documents, which AC-6 exists to make work. */
+const DOCUMENTED = `${SWITCH}=1 pnpm turbo run test --force --filter @quorum/core`;
+
+const turboConfig = (): { tasks: Record<string, { env?: string[]; passThroughEnv?: string[] }> } =>
+  JSON.parse(repoFile('turbo.json')) as { tasks: Record<string, { env?: string[]; passThroughEnv?: string[] }> };
+
+/**
+ * The lines of `text` that are not a whole-line comment.
+ *
+ * A doc-comment naming Turbo is documentation — `fanout/command.ts` quotes this repository's
+ * configured command to explain why `runCommand` goes through a shell — while a line of code
+ * naming one is the runner knowledge AC-5 keeps out of the engine.
+ */
+const codeLines = (text: string): string[] =>
+  text.split('\n').filter((line) => {
+    const trimmed = line.trim();
+    return trimmed !== '' && !trimmed.startsWith('*') && !trimmed.startsWith('//') && !trimmed.startsWith('/*');
+  });
+
+/** Every `.js` under `spike/src`, at any depth, as `[path below the repository root, text]`. */
+function spikeSources(dir = path.join(repoRoot, 'spike/src'), prefix = 'spike/src'): [string, string][] {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = entries.flatMap((entry): [string, string][] => {
+    const key = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) return spikeSources(path.join(dir, entry.name), key);
+    return entry.name.endsWith('.js') ? [[key, fs.readFileSync(path.join(dir, entry.name), 'utf8')]] : [];
+  });
+  if (!files.length) throw new Error(`corpus empty: ${prefix} holds no .js file — this test proves nothing without one`);
+  return files;
+}
+
+describe('AC-5 — no engine coupling: the runner is configuration, never code', () => {
+  /**
+   * The four runners AC-5 names, plus the environment variable shape 3 would have injected —
+   * `\b` does not fire inside `TURBO_FORCE`, so that one has to be asked for separately. Word
+   * anchors rather than substrings, so an ordinary identifier is never mistaken for a product.
+   */
+  const RUNNERS = [/\bturbo\b/i, /\bnx\b/i, /\bgradle\b/i, /\bbazel\b/i, /TURBO_FORCE/];
+
+  const sweep = (files: [string, string][]): void => {
+    for (const [name, text] of files) {
+      for (const line of codeLines(text)) {
+        for (const runner of RUNNERS) {
+          expect(runner.test(line), `${name} must not name a test runner in code: ${line.trim()}`).toBe(false);
+        }
+      }
+    }
+  };
+
+  test('nothing in packages/core/src names a test runner outside a comment', () => {
+    sweep(coreSourceFiles());
+  });
+
+  test('nothing in spike/src does either — the engine that runs integrate today', () => {
+    sweep(spikeSources());
+  });
+
+  test('and neither tree parses a runner\'s output or counts its cache hits', () => {
+    // The two shapes this ticket refused: read a cache-hit signal out of the output, or inject the
+    // one tool's environment variable. Both put a vendor's output format inside the engine.
+    for (const [name, text] of [...coreSourceFiles(), ...spikeSources()]) {
+      for (const needle of ['cache hit', 'Cached:', 'FULL TURBO']) {
+        expect(text.includes(needle), `${name} must not read a runner's cache report: ${needle}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe('AC-6 — the workspace declares the switch, and declares it as env', () => {
+  test('turbo.json\'s test task lists it under env', () => {
+    expect(turboConfig().tasks.test.env).toStrictEqual([SWITCH]);
+  });
+
+  test('and not under passThroughEnv, because paid probes must move the task\'s hash', () => {
+    // `passThroughEnv` hands the variable to the child without it entering the cache key, so a run
+    // with the probes selected and one without would share a cache entry — a replay of the cheap
+    // one would then stand for the expensive one.
+    expect(turboConfig().tasks.test.passThroughEnv).toBeUndefined();
+  });
+});
+
+describe('AC-7 — the declaration reaches a package\'s test process', () => {
+  /**
+   * The real `turbo` this workspace runs. Absent is a failure, never a skip: a propagation proof
+   * that quietly does not run is the shape of defect this whole ticket is about.
+   */
+  const turboBin = (): string => {
+    const bin = path.join(repoRoot, 'node_modules/.bin/turbo');
+    if (!fs.existsSync(bin)) throw new Error(`corpus missing: ${bin} — install the workspace before asserting what turbo passes`);
+    return bin;
+  };
+
+  /**
+   * A throwaway workspace whose one package's `test` script prints what it can see, carrying THIS
+   * repository's `test` task definition verbatim. Running this repository's own suite instead would
+   * make the check spawn the run it is running inside.
+   *
+   * @returns the line the fixture's test process printed, naming every `QUORUM_` variable it could
+   *   see. A run that printed no such line throws rather than returning: an absence proves nothing
+   *   about what was stripped if the reader never ran, and the negative assertions below would pass
+   *   over it in silence.
+   */
+  const seenBy = (task: unknown, environment: Record<string, string>): string => {
+    const root = tempDir('q0065-turbo-');
+    write(path.join(root, 'package.json'), JSON.stringify({
+      name: 'q0065-fixture', private: true, packageManager: 'npm@11.0.0', workspaces: ['reader'],
+    }));
+    write(path.join(root, 'package-lock.json'), JSON.stringify({
+      name: 'q0065-fixture', lockfileVersion: 3, requires: true,
+      packages: { '': { name: 'q0065-fixture', workspaces: ['reader'] }, 'reader': {} },
+    }));
+    write(path.join(root, 'turbo.json'), JSON.stringify({ $schema: 'https://turbo.build/schema.json', tasks: { test: task } }));
+    write(path.join(root, 'reader/package.json'), JSON.stringify({
+      name: 'reader', version: '0.0.0', private: true, scripts: { test: 'node read-env.mjs' },
+    }));
+    // A file rather than `node -e`, because npm runs a script through a shell and every quoting
+    // style this needs means something to that shell.
+    write(path.join(root, 'reader/read-env.mjs'),
+      'const seen = Object.keys(process.env).filter((k) => k.startsWith("QUORUM_")).sort();\n'
+      + 'console.log("SEEN " + seen.map((k) => k + "=" + process.env[k]).join(" "));\n');
+    const output = execFileSync(turboBin(), ['run', 'test', '--force', '--output-logs=full'], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (!output.includes('SEEN ')) throw new Error(`the fixture's test process never reported what it saw:\n${output}`);
+    return output;
+  };
+
+  test('a variable this repository declares arrives; one it does not is stripped', () => {
+    // Both halves in one run, so the negative is a control rather than a second opinion: turbo's
+    // strict env mode removes what is not declared, and the declaration is what makes the
+    // difference. Without the control, a green tick would also be what a turbo that passed
+    // everything through looks like.
+    const seen = seenBy(turboConfig().tasks.test, { [SWITCH]: '1', QUORUM_NOT_DECLARED: '1' });
+    expect(seen).toContain(`${SWITCH}=1`);
+    expect(seen).not.toContain('QUORUM_NOT_DECLARED');
+  }, 180_000);
+
+  test('and the declaration is load-bearing: the same task without it strips the switch too', () => {
+    // The subject demonstrated before the guard is trusted (Q-0069): this is `turbo.json` as it
+    // stood before AC-6, which is why the documented command reported `skipped`, always.
+    const seen = seenBy({ outputs: [] }, { [SWITCH]: '1' });
+    expect(seen).not.toContain(`${SWITCH}=1`);
+  }, 180_000);
+});
+
+describe('AC-8 — the probe documents one invocation, and it is the one that works', () => {
+  const probe = (): string => repoFile('packages/core/src/adapters/real-cli.probe.test.ts');
+
+  test('the documented command is the turbo one, forced, and there is no second spelling', () => {
+    expect(probe()).toContain(DOCUMENTED);
+    for (const rival of ['npx vitest', 'pnpm vitest', 'vitest run src/adapters/real-cli.probe.test.ts']) {
+      expect(probe().includes(rival), `a second invocation to disambiguate: ${rival}`).toBe(false);
+    }
+  });
+
+  test('and it still reports skipped rather than passed when the switch is absent', () => {
+    expect(probe()).toContain(`describe.skipIf(!process.env.${SWITCH})`);
+  });
+});
