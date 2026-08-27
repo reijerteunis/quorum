@@ -8,7 +8,11 @@ siblings' work. Both of the questions this document once listed as open are clos
 names are verified below, and Claude returned a 28,080-byte markdown document intact (M0,
 2026-08-22), so the 2–4 KB worry was unfounded. Status 2026-08-25. `onEvent`'s signature corrected
 2026-08-25 (Q-0041): it named two event kinds where three exist, and `retry` — emitted by the
-contract layer rather than by any vendor — was missing.*
+contract layer rather than by any vendor — was missing. Two invocation blocks corrected 2026-08-27
+(Q-0047), against the ported adapters line by line: the codex block omitted `--add-dir`, which the
+adapter passes for every extra directory and which the table below already called verified present,
+and the claude block drew `--model <alias>` unqualified where the flag is passed only when a flow
+step names a model — the same rule codex's line already carried.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -101,7 +105,8 @@ Claude Code:
 
 ```
 claude -p --output-format json --json-schema '<schema>' \
-  --permission-mode acceptEdits|plan --model <alias> --add-dir <ticket> --add-dir <harness>
+  --permission-mode acceptEdits|plan [--model <alias> only if the flow names one] \
+  --add-dir <ticket> --add-dir <harness>
 ```
 
 Codex CLI:
@@ -109,7 +114,8 @@ Codex CLI:
 ```
 codex exec --json --output-schema schema.json -o last.txt -C <cwd> \
   --sandbox workspace-write|read-only --skip-git-repo-check --ephemeral \
-  --ignore-user-config [-m <model> only if the flow names one] -
+  --ignore-user-config [-m <model> only if the flow names one] \
+  --add-dir <ticket> --add-dir <harness> -
 ```
 
 `--ignore-user-config` is deliberate: `~/.codex/config.toml` can pin a model the user's own

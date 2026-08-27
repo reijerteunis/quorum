@@ -27,6 +27,8 @@ import path from 'node:path';
 import { USAGE_MEASURES } from '@quorum/shared';
 import type { AdapterEvent, UsageMeasure } from '@quorum/shared';
 
+import { claudeAdapter } from './claude.js';
+import { codexAdapter } from './codex.js';
 import { mockAdapter } from './mock.js';
 
 // ---------- the contract, as types ----------
@@ -246,13 +248,16 @@ export type ProbeResult =
 /**
  * The adapters this package can hand out, by the name a flow step or `--adapter` uses.
  *
- * `mock` alone at this landing, because `claude` and `codex` are Q-0047's files: importing them
- * before they exist is impossible and inventing them would break the freeze. `getAdapter('claude')`
- * therefore throws here while the spike's registry still answers it — the one transitional
- * divergence this module ships, and nothing user-facing reaches it before Q-0010.
- * Why: see Q-0046 AC-3; Q-0047 restores the two entries.
+ * The two vendors and the mock, which is the whole of v1: `gemini` is a community milestone and is
+ * designed as a copy-and-edit of `codex` (docs/04-architecture.md, §Adapters), needing nothing in
+ * this file changed but a line here.
+ *
+ * The KEY ORDER is load-bearing, because it is the list an unknown name is answered with, and it is
+ * the spike's own (spike/src/adapters/index.js:25) so both sides of the port print the same
+ * sentence. Q-0046 shipped this with `mock` alone as a deliberate transitional divergence; Q-0047
+ * restores the two entries.
  */
-const registry: Record<string, (config: AdapterConfig) => Adapter> = { mock: mockAdapter };
+const registry: Record<string, (config: AdapterConfig) => Adapter> = { claude: claudeAdapter, codex: codexAdapter, mock: mockAdapter };
 
 /**
  * Resolves an adapter name to a retry-wrapped adapter, configured from `harness.yaml`.
