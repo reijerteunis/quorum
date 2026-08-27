@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -227,6 +227,24 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   that no criterion named `backlog/` — it checked the one unwritable surface anyone had written
   down and never asked the general question, which is *"review the fix round, not only the feature
   round"* (Q-0034) arriving through a document.
+
+- Q-0070 `runCommand` loses no output, and an overflow is not reported as a timeout. Split from
+  Q-0065 at its requirements gate, 2026-08-27, where the merged requirement drafted its body in
+  full so the obligation could not expire. `runCommand` takes Node's 1 MiB `maxBuffer` default and
+  `integrate` runs the whole suite through it. Measured at that gate against the real function,
+  three runs per cell: three of the four overflow shapes are killed with the configured `SIGKILL`,
+  which `timedOut` tests, so an overflow reports a fifteen-minute timeout that did not happen —
+  Q-0048's implementer's *"buffer defect wearing the timeout's clothes"* hypothesis holds after all,
+  by `signal` rather than the `killed` disjunct they named. The fourth shape is not an overflow at
+  all: a monolithic write followed by `process.exit()` discards the child's own unflushed stdout, so
+  64 KiB arrives and **`code: 0`** is returned — a `tests=ok` false green that raising the ceiling
+  cannot fix, and that file capture does (2,097,152 B complete, file writes being synchronous). That
+  measurement answers the ticket's blocking *raise or remove?* question with evidence rather than
+  taste; the `docs/DECISIONS.md` entry is still owed before an implementer starts, and the route
+  follows the design. Lands in `spike/src/fanout.js` and `packages/core/src/fanout/command.ts`
+  together — the Q-0066/Q-0068 shape. The subject has now been measured four times and three earlier
+  records were wrong in three different places, which is why the ticket body says not to re-derive
+  it from any of them.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
