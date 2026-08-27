@@ -254,7 +254,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   records were wrong in three different places, which is why the ticket body says not to re-derive
   it from any of them.
 
-- Q-0071 CI can report green from a replay, and its cache outlives the commit it was built for.
+- Q-0071 CI can report green from a replay, and its cache outlives its commit.
   `.github/workflows/ci.yml:20–24` restores `.turbo` across runs with `restore-keys: turbo-${{
   runner.os }}-`, and `:27` runs `pnpm test` — `turbo run test` with no `--force` — so a job can
   report every package green having executed nothing, from a cache usually built for a different

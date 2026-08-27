@@ -1,6 +1,6 @@
 ---
 id: Q-0071
-title: CI can report green from a replay, and its cache outlives the commit it was built for
+title: CI can report green from a replay, and its cache outlives its commit
 stage: draft
 owner: ruud
 repos: []
