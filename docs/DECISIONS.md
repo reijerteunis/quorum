@@ -1524,6 +1524,36 @@ execution half so that it can only fail on the cache half. This is the ticket's 
 inside the instrument built to enforce it — a check reporting success over something it did not
 actually examine.
 
+**Note — 2026-08-28: measured on the runner, and the estimate above was right for the wrong
+reason.** The paragraph on cost says these are developer-machine numbers and that *"half a minute
+is a floor"*, on the stated reasoning that an ubuntu runner is slower per core. The first forced
+run — `33126447905`, on `main` at 23:29Z, all four active jobs green and the freeze-SHA job
+correctly skipped — reports `cache bypass, force executing` **21 times**, seven packages by three
+tasks, and `0 cached, 7 total` on each:
+
+| task | ubuntu-latest | this macOS machine |
+| --- | --- | --- |
+| `lint` | **13.59 s** | 1.7–2.5 s |
+| `typecheck` | **8.07 s** | 0.9–1.3 s |
+| `test` | **9.96 s** | 26.4–26.9 s |
+| all three | **31.6 s** | ≈ 29–30 s |
+
+The `workspace` job went from 15 s and 21 s on its last two replayed runs to **45 s**. So the total
+held to within two seconds and **every component of it was wrong**, one of them inverted: `test` is
+nearly three times *faster* on the runner, while `lint` and `typecheck` are five to nine times
+slower. Half a minute was not a floor; it was a coincidence between two errors. No cause is
+asserted here beyond the measurement — a cold runner has no warm file cache and no previously built
+TypeScript program, and a 31-file vitest suite is cheaper on Linux than on macOS, but neither was
+tested.
+
+Nothing this entry decides changes: the decision is about what a tick claims, and the cost was
+accepted at a figure the runner has now confirmed. What changes is the confidence anyone should
+place in the *reasoning*, and it earns its place in the file for the same reason
+*"verify inherited measurements"* keeps recurring here — the estimate was mine and the implementer's
+independently, agreed to within a second across three samples, and still described the wrong
+machine. **An aggregate that matches is not evidence that its parts do.** Which is, one level up,
+the same shape as the guard rule two paragraphs above.
+
 **Found by:** Q-0065's implement step, which reported the hazard and correctly refused to change CI
 on a ticket naming no `.github/` surface. The requirement was `ready` on its first pass with zero
 findings, and corrected five things in the ticket body it was written from. The chore run took three
