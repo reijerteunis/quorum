@@ -119,6 +119,17 @@ run. That is what makes "report overflow as a third outcome beside `timedOut`" a
 rather than a constant bump — it cannot be answered by reading the error, only by streaming the
 output somewhere that does not have a ceiling.
 
+**One hypothesis raised and disproved, recorded so it is not re-derived.** Q-0048's implementer,
+reading the code without running it, offered this for checking: `timedOut` includes
+`e.killed === true`, and Node sets `killed` when it kills a child for `maxBuffer` — so an overflow
+might report `timedOut: true`, *"the buffer defect wearing the timeout's clothes"*. It was offered
+honestly as a thing to check rather than as a finding. **It does not hold.** In both shapes measured
+above, `e.killed` is `undefined`, not `true`, so `timedOut` is `false` and an overflow is reported as
+an ordinary failing command. That is worth knowing in both directions: it removes a misdiagnosis
+(`timedOut: true` would at least have been a *distinguishable* wrong answer, and it is not what
+happens), and it closes off the fix that hypothesis would have suggested — narrowing `timedOut` —
+which would have changed nothing.
+
 **Three consequences, in the order they cost something.** A *passing* suite whose output exceeds
 1 MiB is reported as a failure, so `integrate --expect pass` fails a green tree. `expect: fail` banks
 the same event as proof of red, which is the exit-code conflation Q-0004 found, one layer down. And

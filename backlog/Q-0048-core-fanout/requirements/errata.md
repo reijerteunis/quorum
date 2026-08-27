@@ -77,18 +77,27 @@ below. As of this erratum:
 | 4 — `commitAll` reports a discard when the revert itself failed | **Q-0050** | `80bc290` |
 | 5 — `commitAll`'s first discarded path loses its first character | **Q-0050** | this erratum's commit |
 | 6 — `mergeInto` returns `error: ''` on a content conflict | **Q-0050** | this erratum's commit |
-| 1 — `loadTasks` throws a raw `TypeError` on an empty `tasks.yaml` | **open** | — |
+| 1 — `loadTasks` throws a raw `TypeError` on an empty `tasks.yaml` | **Q-0060** | `8f42c76` |
 
 Defects 5 and 6 are new, found by the implementer while writing tests rather than by reading, and
 both are in the functions register row 3's caller already owns — the implementer proposed Q-0050 for
 each and the reasoning holds: same module, same caller, and the fix in both cases is a decision
 about what a caller does with a diagnostic rather than a change to a return type nobody reads.
 
-**What this erratum does not settle.** Defect 1 has no home yet and the obligation is **not**
-discharged for it. That is a decision for the chore gate, not for the implementer — the candidates
-are Q-0060, whose subject is a malformed file under the module the product calls its database, and a
-new ticket. Until it is taken, this row stays open, and the implement report should say so rather
-than claim a destination.
+**Defect 1's row, decided after the review loop closed.** When this erratum was written the row
+was open, and it says so below in the words the implementer correctly transcribed. It was taken at
+the chore gate on 2026-08-27 in favour of **Q-0060** (`8f42c76`), on the grounds that the two are one
+question asked of two parsers from opposite sides: Q-0060's defect fails *open* — a damaged file
+reads as a valid object with no fields — and this one fails *closed but illegibly*, stopping the run
+with a Node stack trace instead of the name of the file that is wrong. Answering them separately
+would give the product two accidents rather than one policy.
+
+`dev/implement-report.md` predates that decision and states the row as open. That is not a
+contradiction to reconcile: the report is accurate as of the round that wrote it, and this table is
+the current record. **The gate obligation is now discharged in full — all six defects have named
+ticket bodies.**
+
+**What this erratum did not settle when it was written.** The above. Nothing else changed.
 
 **What the implementer must still do, and what it cannot.** Round 1's second major has two halves,
 and only one of them is the implementer's. The **recording** half — a named ticket body per defect —
