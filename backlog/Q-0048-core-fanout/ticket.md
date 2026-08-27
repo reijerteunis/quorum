@@ -44,6 +44,29 @@ and the `commands.timeout_ms` override both carry.
 run syncs into. That is an open item carried from M1 into M2 and not yet ticketed; the port must not
 close it by accident, because doing so changes behaviour the engine's tests describe.
 
+**One hazard inherited from Q-0042, which its requirement must carry as a criterion — to
+preserve, not to fix.** Q-0042's implement report (finding 4) hands it forward by name:
+`ensureWorktree` has no equivalent of `containment`'s branch-name guard. It interpolates whatever it
+is handed into `refs/heads/${branch}` and passes it to `worktree add -b <branch>`; argv prevents
+*shell* injection but not *option* injection, since git parses an argument beginning with `-` as a
+flag. It is latent rather than live, because every caller composes the name as
+`harness/<ticket-id>/<leaf>` and the prefix means the argument never starts with a dash. It reaches
+this ticket because `taskVars` is what lifts an agent-authored `task.id` out of `tasks.yaml` into
+the variable namespace the branch name is built from — the interpolation itself is
+`spike/src/engine.js:211`, which is Q-0053's. **A criterion must say the port adds no branch-name or
+task-id validation and preserves the hazard, reporting it.** Charter §2 makes that binding in both
+directions: an implementer may not fix it in passing, and a reviewer may not treat its absence as a
+blocker. Its neighbour, Q-0042's finding 5 — a worktree directory deleted by hand wedges the branch,
+because the decision is made from `fs.existsSync(dir)` alone — has the same shape in `resetBranchTo`
+and is preserved on the same reasoning.
+
+**One thing that changes and one that must not.** `resetBranchTo` derives its worktree directory
+inline as `path.join(repo, '.harness', 'worktrees', branch.replace(/\//g, '__'))`. Q-0041 landed
+that derivation in `packages/shared` as `REPO_WORKTREE_ROOT` and `worktreeDirName`, and Q-0042's
+`ensureWorktree` already imports both, so reaching for them here is internal layout — which charter
+§2 does not preserve — and duplicating the literal is what would be the defect. The *path it
+produces* is externally observable and must survive byte for byte.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
