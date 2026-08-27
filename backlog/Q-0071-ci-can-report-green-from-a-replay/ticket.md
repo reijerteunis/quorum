@@ -1,14 +1,22 @@
 ---
 id: Q-0071
 title: CI can report green from a replay, and its cache outlives its commit
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0071/integration
 priority: p2
 created: 2026-08-27
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-27T14:24:36.242Z
+    cost: 6.459
 ---
 Reported by Q-0065's implement step, 2026-08-27, which correctly declined to fix it: no criterion of
 that ticket named `.github/`, and changing CI's caching is the unrequested default a chore must not
