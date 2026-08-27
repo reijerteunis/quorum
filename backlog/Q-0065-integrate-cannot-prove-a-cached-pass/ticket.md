@@ -1,14 +1,23 @@
 ---
 id: Q-0065
 title: integrate can report tests=ok from a cached pass it never executed
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0065/integration
 priority: p2
 created: 2026-08-26
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-27T13:10:29.423Z
+    cost: 9.739
 ---
 Raised as OQ-2 of Q-0064's merged requirement, 2026-08-26, which correctly refused to fix it in
 passing: changing the configured test command affects **every ticket's** `integrate` step, and that
