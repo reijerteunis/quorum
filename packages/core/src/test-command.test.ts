@@ -10,12 +10,17 @@
  *
  * Neither `spike/src` nor `packages/core/src` is written by this ticket. Reading either is what the
  * corpus tests already do, and the port freeze forbids only writing (harness/port-charter.md §3).
+ *
+ * Q-0071 adds the same class of claim one layer up. `integrate` runs `harness.yaml`'s command and
+ * CI runs `package.json`'s, so Q-0065 closed one of two independent paths; the block at the end of
+ * this file asserts that `.github/workflows/ci.yml` closes the other (Q-0071 AC-4).
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterAll, describe, expect, test } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import { coreSourceFiles, repoFile, repoRoot } from '../test/corpus.js';
 import { removeTempDirs, tempDir, write } from '../test/repo.js';
@@ -182,5 +187,168 @@ describe('AC-8 — the probe documents one invocation, and it is the one that wo
 
   test('and it still reports skipped rather than passed when the switch is absent', () => {
     expect(probe()).toContain(`describe.skipIf(!process.env.${SWITCH})`);
+  });
+});
+
+/** The workspace tasks CI's required check claims to have executed rather than replayed. */
+const WORKSPACE_TASKS = ['lint', 'typecheck', 'test'];
+
+/** As much of a GitHub Actions step as these assertions read. */
+interface WorkflowStep {
+  uses?: string;
+  run?: string;
+  with?: Record<string, unknown>;
+}
+
+/** As much of a workflow file as these assertions read. */
+interface Workflow {
+  jobs?: Record<string, { steps?: WorkflowStep[] } | undefined>;
+}
+
+/**
+ * Whether `steps` invoke `task` in a form no cache entry can satisfy.
+ *
+ * Word-wise rather than by substring, so `--force-something` is not read as the flag and a task
+ * name inside a longer word is not read as the task. One step naming several tasks satisfies all
+ * of them, which is right: AC-1 asks for the property, not for one spelling of it.
+ */
+const executes = (steps: WorkflowStep[], task: string): boolean =>
+  steps.some((step) => {
+    const words = (step.run ?? '').split(/\s+/);
+    return ['turbo', 'run', task, '--force'].every((word) => words.includes(word));
+  });
+
+/**
+ * Whether any step in `flow` restores or saves a turbo result cache.
+ *
+ * Read from each step's `with` block rather than from the file's text, so the comment above the
+ * job — which has to name both the cache and the flag in order to say what the tick claims —
+ * cannot fail the assertion it exists to explain. Action-agnostic on purpose: the criterion is
+ * about a task-result cache, not about who provides one. `actions/setup-node`'s `cache: pnpm`
+ * carries neither marker, which is the point of keeping it.
+ *
+ * Both markers match anywhere in the value, never only at its start: AC-4(b) refuses a `turbo-`
+ * cache key, and `v1-turbo-${{ github.sha }}` is one. Matching the whole `with` block rather than
+ * a list of cache-action key names errs toward refusing too much — an unrelated value containing
+ * `turbo-` would fail this loudly, which is the right direction for a guard whose subject is a
+ * check that reports green having examined nothing.
+ */
+const restoresTaskCache = (flow: Workflow): boolean =>
+  Object.values(flow.jobs ?? {}).some((job) =>
+    (job?.steps ?? []).some((step) =>
+      Object.values(step.with ?? {})
+        .map((value) => String(value))
+        .some((value) => value.includes('.turbo') || value.includes('turbo-'))));
+
+/**
+ * `.github/workflows/ci.yml` as it stood before this ticket, verbatim through the `workspace` job.
+ *
+ * A guard whose only evidence is a green run has not been shown to have a subject (Q-0069). This
+ * is the text the criterion calls defective, and both assertions below fail over it.
+ */
+const BEFORE_Q0071 = `name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    name: workspace (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Turbo's local cache, so a re-run of an unchanged task is a hit rather than a repeat.
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-\${{ runner.os }}-\${{ github.sha }}
+          restore-keys: turbo-\${{ runner.os }}-
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+`;
+
+/**
+ * A turbo result cache that this guard's first form read as clean.
+ *
+ * Two evasions at once, and each defeats one half of the marker pair: the key is *prefixed*, so
+ * `turbo-` is not where the value starts, and the path is turbo's `--cache-dir` pointed away from
+ * `.turbo`, so the path half cannot carry the assertion on the key half's behalf. Every task is
+ * forced, so the only thing wrong with this workflow is the cache — which is what makes it a test
+ * of AC-4(b) rather than of AC-4(a).
+ */
+const PREFIXED_TURBO_CACHE = `name: CI
+
+on:
+  push:
+
+jobs:
+  workspace:
+    name: workspace (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/turbo
+          key: v1-turbo-\${{ runner.os }}-\${{ github.sha }}
+          restore-keys: |
+            v1-turbo-\${{ runner.os }}-
+      - run: pnpm turbo run lint --force
+      - run: pnpm turbo run typecheck --force
+      - run: pnpm turbo run test --force
+`;
+
+describe('Q-0071 AC-4 — CI executes its checks rather than replaying them', () => {
+  const ciText = (): string => repoFile('.github/workflows/ci.yml');
+
+  const workflow = (text: string): Workflow => parseYaml(text) as Workflow;
+
+  /**
+   * The `workspace` job's steps. An absent job throws rather than yielding an empty list: a
+   * renamed job would otherwise turn every assertion below into a pass over nothing.
+   */
+  const workspaceSteps = (text: string): WorkflowStep[] => {
+    const steps = workflow(text).jobs?.workspace?.steps;
+    if (!steps?.length) throw new Error('the workflow declares no `workspace` job with steps');
+    return steps;
+  };
+
+  test.each(WORKSPACE_TASKS)('%s is invoked in a form no cache entry can satisfy', (task) => {
+    expect(executes(workspaceSteps(ciText()), task), `${task} must be executed, not replayed`).toBe(true);
+  });
+
+  test('no step restores or saves a turbo result cache', () => {
+    expect(restoresTaskCache(workflow(ciText()))).toBe(false);
+  });
+
+  test('and the workflow selects the live-CLI probes nowhere', () => {
+    // A runner has no subscription login, so `real-cli.probe.test.ts`'s `describe.skipIf` must keep
+    // skipping there. Forcing `test` means CI now executes that file and reports it skipped, which
+    // is the honest outcome rather than a change of behaviour.
+    expect(ciText()).not.toContain(SWITCH);
+  });
+
+  test('the guard has a subject — the workflow as it stood before this ticket fails it', () => {
+    for (const task of WORKSPACE_TASKS) {
+      expect(executes(workspaceSteps(BEFORE_Q0071), task), `${task} was replayable before this ticket`).toBe(false);
+    }
+    expect(restoresTaskCache(workflow(BEFORE_Q0071)), 'the turbo result cache was restored before this ticket').toBe(true);
+  });
+
+  test('and a prefixed key is refused too — `turbo-` is read anywhere in the value', () => {
+    // The second subject, for the half of (b) the first fixture cannot reach: `BEFORE_Q0071` fails
+    // on `path: .turbo` as well as on its key, so it would still fail if the key check did nothing.
+    for (const task of WORKSPACE_TASKS) {
+      expect(executes(workspaceSteps(PREFIXED_TURBO_CACHE), task), `${task} is forced in this fixture`).toBe(true);
+    }
+    expect(restoresTaskCache(workflow(PREFIXED_TURBO_CACHE)), 'v1-turbo-… names a turbo result cache').toBe(true);
   });
 });
