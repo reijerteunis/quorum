@@ -216,9 +216,13 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   trusted over the migrated one. A source-text pin ships beside it in `packages/shared`, because
   `commands.test` runs neither gate, so `integrate` cannot see a lint failure — that half is
   Q-0065's argument. See *"Type-aware linting is on for exactly one rule"* (2026-08-27). **Still
-  open:** the `.claude/rules/engineering.md` copy of the rule was not updated — `.claude/` is
-  outside the chore role's write paths, so it needs a human commit; `harness/rules.md` is canonical
-  and carries the current text.
+  open, and not closable by this flow:** the `.claude/rules/engineering.md` copy still says
+  type-aware linting is off and that nothing here detects a deprecated API — both false since this
+  change. `.claude/` is outside the chore role's write paths, and the implement step's write to it
+  was refused outright, so the copy is settled by a human commit and not by another revise round —
+  the route *"A requirement may not name a surface its flow cannot write"* (2026-08-25) already
+  prescribes. `harness/rules.md` is canonical, carries the current text, and its own header names
+  the other file as the drift.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
