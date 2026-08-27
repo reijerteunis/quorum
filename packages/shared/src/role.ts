@@ -8,7 +8,7 @@
 // role the product ships and runs on every review.
 import { z } from 'zod';
 
-export const roleSchema = z.object({
+export const roleSchema = z.looseObject({
   /**
    * The role's default adapter. A step always wins over it, and it is inherited across steps only
    * when the vendors match (spike/src/engine.js:670-675). Open string, like every other adapter
@@ -31,6 +31,6 @@ export const roleSchema = z.object({
    * harness/architecture.md, which is the only thing that checks it at all.
    */
   paths: z.array(z.string()).optional(),
-}).passthrough();
+});
 
 export type Role = z.infer<typeof roleSchema>;

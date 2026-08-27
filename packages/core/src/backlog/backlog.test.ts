@@ -189,8 +189,9 @@ describe('AC-3 — a ticket this writer wrote round-trips byte for byte', () => 
 describe('AC-4 — reading never validates, never rewrites and never reorders', () => {
   test('an unknown key keeps its POSITION, not merely its presence', () => {
     // backlog/Q-0033-…/ticket.md carries `depends_on` between `created` and `iterations`. Running
-    // a read through `ticketSchema.passthrough().parse()` would return a new object with that key
-    // moved to the end, and the next write would commit the move.
+    // a read through `ticketSchema.parse()` — the schema is a `z.looseObject`, so it preserves that
+    // key rather than dropping it — would still return a NEW object with the key moved to the end,
+    // and the next write would commit the move.
     const backlog = emptyBacklog();
     const text = FIXTURE.replace('iterations: {}', 'depends_on: Q-0006\niterations: {}');
     const ticket = ticketAt(backlog, 'Q-0001-a-ticket', text);

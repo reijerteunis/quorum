@@ -33,11 +33,11 @@ import { z } from 'zod';
  * that mismatch is reported rather than repaired, since correcting either side is a behaviour
  * change this ticket is not authorised to make.
  */
-const retryPolicySchema = z.object({
+const retryPolicySchema = z.looseObject({
   attempts: z.number().optional(),
   baseDelayMs: z.number().optional(),
   maxDelayMs: z.number().optional(),
-}).passthrough();
+});
 
 /**
  * One adapter's entry. `bin` is the executable name the adapter spawns
@@ -47,47 +47,47 @@ const retryPolicySchema = z.object({
  * unknown name is already refused with a good message by `getAdapter`
  * (spike/src/adapters/index.js:29).
  */
-const adapterConfigSchema = z.object({
+const adapterConfigSchema = z.looseObject({
   bin: z.string().optional(),
   extraArgs: z.array(z.string()).optional(),
   retry: retryPolicySchema.optional(),
-}).passthrough();
+});
 
-export const projectConfigSchema = z.object({
+export const projectConfigSchema = z.looseObject({
   /**
    * `path` is resolved against the repository root to give the backlog root
    * (spike/bin/harness.js:57). `layout` is `in-repo` or `central` in every shipped file and is read
    * by nothing, so it is typed as an open string rather than an enum — an enum here would be this
    * package adding a rule no other code has.
    */
-  backlog: z.object({
+  backlog: z.looseObject({
     path: z.string().optional(),
     layout: z.string().optional(),
-  }).passthrough().optional(),
+  }).optional(),
   adapters: z.record(z.string(), adapterConfigSchema).optional(),
   /**
    * `base_branch` is what a run syncs and compares against, defaulted at every reading site to
    * `DEFAULT_BASE_BRANCH`; `max_diff_bytes` caps a materialised review diff.
    */
-  repo: z.object({
+  repo: z.looseObject({
     base_branch: z.string().optional(),
     max_diff_bytes: z.number().optional(),
-  }).passthrough().optional(),
+  }).optional(),
   /**
    * What `integrate` and `type: script` steps run. `install` goes first in a fresh worktree, `test`
    * is what `green` means, and `timeout_ms` kills a suite that never finishes — an orchestrator
    * that can wait forever cannot run unattended.
    */
-  commands: z.object({
+  commands: z.looseObject({
     install: z.string().optional(),
     test: z.string().optional(),
     timeout_ms: z.number().optional(),
-  }).passthrough().optional(),
+  }).optional(),
   /** Specified, and read by nothing. A cap that only describes is not a cap; see Q-0038. */
-  budget: z.object({
+  budget: z.looseObject({
     per_run_usd: z.number().optional(),
     per_ticket_usd: z.number().optional(),
-  }).passthrough().optional(),
-}).passthrough();
+  }).optional(),
+});
 
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;

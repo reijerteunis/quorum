@@ -103,7 +103,7 @@ describe('AC-3 — the flow schema describes the format as it is', () => {
   test('the selected kind is validated, and never falls through to the agent step', () => {
     // Each of these is dispatched by spike/src/engine.js:176-198 to runGate, runScript, runFanOut,
     // runIntegrate or the parallel branch on the truthiness of ONE key. An ordered `z.union` would
-    // fail that kind's branch and then accept the object as an agent step, where `.passthrough()`
+    // fail that kind's branch and then accept the object as an agent step, where `z.looseObject`
     // keeps the deciding key as an unknown one — so the parsed type would name the single kind the
     // engine will never run it as, and its real structure would go unchecked.
     for (const step of [
@@ -382,5 +382,26 @@ describe('AC-4 — the schema invents nothing and discards nothing', () => {
     const result = flowStepSchema.safeParse({ id: 'x', output: { write: 'a.md', wrties: 'b.md' } });
     expect(result.success).toBe(false);
     expect(flowStepSchema.safeParse({ id: 'x', output: { append: 'qa/final-report.md' } }).success).toBe(false);
+  });
+});
+
+describe('Q-0069 AC-7 — the deprecated zod object API is gone, and stays gone', () => {
+  // THE PIN FOR ONE MIGRATION, and deliberately not more. The general net is
+  // `@typescript-eslint/no-deprecated` in eslint.config.js, which catches the NEXT deprecation in
+  // any dependency without anyone thinking to look — but it runs in `pnpm lint`, and
+  // harness/harness.yaml's `commands.test` runs the two suites and neither gate, so a chore run's
+  // `integrate` cannot see a lint failure. This assertion is the half a flow run can see.
+  //
+  // The needle is assembled rather than written so the check is sound with respect to its own
+  // text: `sharedSourceFiles()` skips `*.test.ts` today, and a check that fails on itself if it
+  // ever moves is one refactor away from being deleted rather than fixed. Same device, and the
+  // same reason, as index.test.ts:11.
+  const DEPRECATED_OBJECT_CALL = `.${'passthrough'}(`;
+
+  test('no source file in the package calls the deprecated passthrough', () => {
+    for (const [name, text] of sharedSourceFiles()) {
+      expect(text, `${name} must spell preservation z.looseObject, not the deprecated method`)
+        .not.toContain(DEPRECATED_OBJECT_CALL);
+    }
   });
 });
