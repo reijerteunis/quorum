@@ -61,6 +61,34 @@ know their runner.
 **A neighbour this does not own.** `--force` is also missing from any human verification done by
 hand; that is a habit, not a defect, and it is recorded in the session memory rather than here.
 
+**Folded in 2026-08-27: Turbo also strips the environment, which breaks the one test that needs it.**
+Found at Q-0047's gate, running that ticket's AC-13 acceptance evidence. `turbo.json` declares
+neither `env` nor `passThroughEnv` on the `test` task, so Turborepo removes every undeclared variable
+from the child environment. The command
+`packages/core/src/adapters/real-cli.probe.test.ts`'s own JSDoc documents —
+
+    QUORUM_REAL_CLI=1 pnpm turbo run test --force --filter @quorum/core
+
+— therefore reports the file **skipped**, always, and no amount of `--force` changes it. The evidence
+was obtained instead by bypassing turbo:
+`cd packages/core && QUORUM_REAL_CLI=1 npx vitest run src/adapters/real-cli.probe.test.ts`, which
+passes both probes against the ported adapters.
+
+This is the same file and the same knob as the cache half, which is why it lands here rather than in
+its own ticket, but it is the **opposite** failure and worth stating as such. The cache hazard is a
+check that reports success without executing; this is a check that cannot be made to execute at all,
+and it says so honestly. The honesty is exactly what stops it being a false green — the file was
+designed for it (*"a check that skips its subject must not report success"*, 2026-08-25) — so the
+cost is not a wrong answer but an unobtainable one: the next person follows the documented command,
+sees `skipped`, and concludes the switch does nothing.
+
+Neither the implementer nor the reviewer could have caught it. Both are forbidden to spend a paid CLI
+round-trip, so neither could run the command it documents; it is reachable only from the gate, which
+is where it was reached. Two fixes, and they are not exclusive: add `"env": ["QUORUM_REAL_CLI"]` to
+`turbo.json`'s `test` task so the documented command works, and/or correct the JSDoc to the vitest
+invocation. Prefer deciding it with the cache question above, since both are answers to *"what may
+`turbo run test` be trusted to have done?"*
+
 **Scope.** The config half is a one-line change to `harness/harness.yaml` and the shipped template,
 neither of which is frozen. An engine-side refusal (shapes 2 and 3) touches the integrate step, which
 `spike/src/engine.js` still owns and which the port hands to **Q-0053**; `spike/src` is frozen for

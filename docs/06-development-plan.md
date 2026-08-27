@@ -173,7 +173,11 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   passed"* (2026-08-25) one layer down. Observed on 2026-08-26: a cached run reported 7/7 while a
   `--force` re-run failed 1 of 123. The shipped template ships `test: npm test` and inherits the
   same hazard for any adopter on a caching runner. Raised as OQ-2 of Q-0064's requirement, which
-  correctly refused to change a default affecting every ticket's `integrate`.
+  correctly refused to change a default affecting every ticket's `integrate`. **Folded in 2026-08-27
+  at Q-0047's gate:** `turbo.json` declares no `env`/`passThroughEnv` on `test`, so Turbo strips
+  `QUORUM_REAL_CLI` and the command `real-cli.probe.test.ts` documents can never run it — the
+  opposite failure through the same knob, and reachable only from a gate, since neither implementer
+  nor reviewer may spend a paid CLI round-trip.
 - Q-0066 `probeAdapter` reports its own crash as an unusable login. `withRetry` returns
   `usage: null` when no attempt reported a measure (Q-0034, deliberate); `probeAdapter` dereferences
   it unguarded, so an adapter whose login is **perfect** and which reports no usage answers
