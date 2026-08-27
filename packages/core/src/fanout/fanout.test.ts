@@ -9,6 +9,8 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test } from 'vitest';
 
+import { REPO_WORKTREE_ROOT } from '@quorum/shared';
+
 import { runCommand } from './command.js';
 import {
   IntegrationError, branchExists, branchHead, commitAll, loadTasks, mergeInto, resetBranchTo,
@@ -508,9 +510,36 @@ describe('AC-9 — worktrees and the sibling branch layout', () => {
 });
 
 describe('AC-11 — nothing in this module writes to the user\'s working tree', () => {
-  /** Everything outside the worktree root and git\'s own directory — what must not change. */
-  const outside = (entries: string[]): string[] =>
-    entries.filter((e) => !['.harness', '.git'].includes(e.split(path.sep)[0]));
+  /** The worktree root as `walk` spells it: below the repository, separated by this platform's `sep`. */
+  const WORKTREE_ROOT = path.join(...REPO_WORKTREE_ROOT.split('/'));
+
+  /**
+   * Whether AC-11 permits `entry` to appear or vanish: git's own directory, the worktree root and
+   * everything beneath it, and the ancestor directories that root cannot exist without.
+   *
+   * Deliberately narrower than `.harness/**`. A sibling such as `.harness/notes` is not under
+   * `.harness/worktrees/`, so it is exactly what the comparison below exists to catch, and
+   * filtering the whole of `.harness/` away would let a regression write there and still pass.
+   */
+  const permitted = (entry: string): boolean =>
+    entry === '.git' || entry.startsWith(`.git${path.sep}`)
+    || entry === WORKTREE_ROOT || entry.startsWith(`${WORKTREE_ROOT}${path.sep}`)
+    || WORKTREE_ROOT.startsWith(`${entry}${path.sep}`);
+
+  /** Everything a snapshot holds that must be identical before and after. */
+  const outside = (entries: string[]): string[] => entries.filter((e) => !permitted(e));
+
+  test('the comparison keeps a write anywhere else under .harness visible', () => {
+    // Without this the safety test below is vacuous for `.harness/` siblings: it would filter out
+    // the very regression it is there to fail on.
+    const allowed = ['.harness', WORKTREE_ROOT, path.join(WORKTREE_ROOT, 'harness__T-9__integration'),
+      '.git', path.join('.git', 'HEAD')];
+    expect(outside(allowed), 'the root, its ancestors and git\'s directory are permitted').toStrictEqual([]);
+
+    const forbidden = [path.join('.harness', 'notes.txt'), path.join('.harness', 'runs', 'x'),
+      path.join('.quorum', 'runs'), 'f.txt'];
+    expect(outside(forbidden), 'everything else stays visible to the comparison').toStrictEqual(forbidden);
+  });
 
   test('after every function has run, the repository root is clean and unchanged', () => {
     const dir = repo();
