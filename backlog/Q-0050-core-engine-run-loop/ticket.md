@@ -100,6 +100,31 @@ requirements or solutioning gate takes that route, the fix lands in `spike/src/f
 port loses the independent witness the freeze exists to provide. Absent such an entry, this ticket
 preserves and reports, and the item stays open.
 
+**Two more from the same functions, added 2026-08-27 after Q-0048's implement round found them by
+writing tests rather than by reading.** Both are preserved and pinned in Q-0048's suite; both land
+here for the reason above — the engine is the only caller, and each fix is a decision about what a
+caller does with a diagnostic rather than a change to a return type nobody reads.
+
+- **`commitAll`'s first discarded path loses its first character.** `git()` trims the whole of
+  `status --porcelain`, so a modified-but-unstaged entry (`" M path"`) has its leading space
+  stripped **on line one only**, and the `.slice(3)` that removes the status columns then eats a
+  character of the path. Measured: `['acklog/T-0001/ticket.md', 'backlog/T-0001/sneaked.md']` — the
+  untracked entry (`"?? path"`, no leading space) and every later line are unaffected. It has
+  survived because the list is a report to a human and never a path anything opens, and because
+  `spike/test/smoke.js:400` asserts only `dropped.length >= 2`. It is the same `onDiscard` report as
+  the failed-revert item above, so the two are one decision.
+- **`mergeInto` returns `error: ''` on a content conflict.** The conflict case is the one where
+  `conflicts` is populated and `error` is redundant; the case where `error` is the *only*
+  information there is — a merge that fails with no conflicted paths — is exactly where it comes
+  back empty. The fix is a choice between falling back on stdout, on `e.message`, or reporting the
+  stream explicitly, which is a diagnostics decision of the same kind.
+
+Q-0048's report records how the second was found, and it is worth keeping: the first draft of the
+test asserted only `raw.endsWith(result.error)`, which passes vacuously over `''` and did pass.
+Adding `expect(raw.length).toBeGreaterThan(0)` first is what turned a green tick into a finding —
+*"a check that skips its subject must not report success"* (2026-08-25), arriving through a test
+somebody had just written.
+
 **Latent, and it stops being latent at M3.** A run that reaches this code has already spawned git
 successfully several times, which is why nobody has been bitten. The daemon makes concurrent and
 unattended runs ordinary, and a run nobody is watching is exactly where "git failed" rendering as
