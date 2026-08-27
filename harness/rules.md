@@ -8,14 +8,17 @@ When they disagree, this file wins and the other is the drift.
 - TypeScript strict. No `any`. No `@ts-ignore` without a one-line reason on the same line.
 - Every behaviour change ships with a test. The mock-adapter end-to-end suite is the
   regression suite and stays green; adapters are covered by `adapters --probe` and its report.
-- **No deprecated API, and do not assume a gate is watching for one.** A symbol a dependency
-  marks `@deprecated` is not used in new code, and one found in code you are already changing is
-  reported rather than migrated in passing — the migration is its own change, because it is
-  workspace-wide and the replacement is a decision. `tsc --noEmit` does **not** error on
-  `@deprecated`; it is an editor strikethrough. Type-aware linting is off, so
-  `@typescript-eslint/no-deprecated` is unavailable. **Nothing here detects one today** (Q-0069),
-  so read the dependency's own typings before reaching for an unfamiliar method, and prefer the
-  constructor a library documents to the chained method it merely still accepts.
+- **No deprecated API.** A symbol a dependency marks `@deprecated` is not used in new code, and
+  one found in code you are already changing is reported rather than migrated in passing — the
+  migration is its own change, because it is workspace-wide and the replacement is a decision.
+  `tsc --noEmit` does **not** error on `@deprecated`; it is an editor strikethrough, and it never
+  detected one. Since Q-0069 `pnpm lint` does: `@typescript-eslint/no-deprecated` is on at error
+  severity, with the type information it needs, and it is the only type-aware rule enabled.
+  It covers exactly what ESLint covers — `packages/**/*.ts` and `apps/**/*.ts`, tests included.
+  **`spike/` is outside ESLint's scope entirely and stays unlinted**, so the port's independent
+  witness detects nothing: read the dependency's own typings before reaching for an unfamiliar
+  method there, and prefer the constructor a library documents to the chained method it merely
+  still accepts.
 - Prefer small, boring, proven libraries. A new dependency needs a one-line justification in
   the solution document, and a `docs/DECISIONS.md` entry if it changes architecture.
 - Conventional commits with the ticket id in the subject: `feat(core): bounded backward
