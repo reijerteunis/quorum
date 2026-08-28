@@ -25,8 +25,9 @@ suite extends the recursive corpus/module-folder assertion before implementation
 spike tests into `packages/core/src/engine/`; implementation satisfies those tests through the
 production files above.
 
-The architect commits compilable throwing stubs for all six production files at
-`packages/core/src/engine/{types,channel,loaders,routing,lifecycle,engine}.ts`. They expose every
+The architect commits compilable contract stubs for seven production files: the six throwing stubs
+at `packages/core/src/engine/{types,channel,loaders,routing,lifecycle,engine}.ts` and the reserved
+Q-0050 schema/type declarations in `packages/shared/src/events.ts`. They expose every
 focused-test symbol in `run-flow-api.contract.ts`. `types.ts` re-exports `FlowError` from
 `../lint/lint.js`; no engine file declares another error class. `merge-contracts` places these
 stubs on qa-red's integration base, so tests fail on assertions rather than resolution. QA does not
@@ -48,3 +49,7 @@ edit the append-only decision record.
 QA deliberately updates the landed `packages/core/src/corpus.test.ts` and
 `packages/shared/src/events.test.ts` suites and creates `packages/core/src/engine/docs.test.ts` for
 the engine module, strict event variants, and terminal/gate documentation respectively.
+
+QA must not assert that AC-12 wrote `dev/implement-report.md`: this full-SDLC route has no writer
+for that file. It tests the owned sites and reads the durable enumeration in
+`lifecycle-routing.contract.md`; any amendment is written to `solution/errata.md`.

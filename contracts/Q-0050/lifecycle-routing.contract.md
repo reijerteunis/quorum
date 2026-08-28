@@ -13,7 +13,14 @@ paraphrase them.
 - Initialise history inside the run `try`. Preflight remains inside that same `try` when Q-0051
   lands. If history initialisation fails, write the terminal `runs.log` line without advancing.
 - Persist counters and one terminal line for completed, regressed, aborted, failed, and interrupted.
-  Move the stage only for completed and regressed. Write the ticket once.
+  `finish(ctx, stage, status, note, fields)` receives the target stage explicitly: completed callers
+  pass `flow.produces`, regressed callers pass the target flow's `consumes`, and other callers pass
+  the current stage. Move the stage only for completed and regressed. `note` is the optional failure
+  cause used by the JSON-quoted log suffix and terminal event. Write the ticket once.
+- `outcome(ctx, before, after, status, cost)` returns the landed `TicketHistoryEntry` shape with
+  `run`, not `runId`, and preserves the deliberately duplicated `stage`/`stage_after`. `finish`
+  supplies distinct stages and rounded run cost; `recordEvent` supplies the same stage twice and
+  its explicit event cost, including zero for `exhausted`.
 - For non-dry failed, aborted, or interrupted runs, reset the ticket branch when both start and
   current heads are truthy and differ. Do not reset task branches or add a helper to do so.
 - Cancellation is an `AbortSignal`; core contains no `process.exit`, `process.on`, or `process.once`
@@ -34,6 +41,8 @@ emits the correlated question, validates and logs the answer before acting, and 
 `step.gate` branch also calls `askGate`; Q-0052 inherits that call and adds no gate policy. This
 deliberately moves the gate-policy body across the requirement's Q-0052 non-goal because one owner
 is required for AC-4's ordinary-gate clauses and round one accepted that boundary change.
+This handoff must be added to Q-0052's gate actions before its solutioning run: Q-0052 calls the
+Q-0050-owned `askGate` policy for author-declared gates and must not recreate that policy.
 
 - `runStep` dispatches in spike order. Parallel groups use `Promise.allSettled`, report survivors,
   and preserve the defect that every nested member is sent to `runAgentStep` irrespective of kind.

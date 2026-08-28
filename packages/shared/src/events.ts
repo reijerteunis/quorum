@@ -178,6 +178,8 @@ export const warnEventSchema = z.object({
  */
 export const gateQuestionEventSchema = z.object({
   type: z.literal('gate'),
+  /** Opaque correlation id, unique among the gates asked by one run. */
+  gateId: z.string(),
   kind: z.string(),
   reason: z.string(),
   /** Absolute path of the ticket folder, so a human can go and look. */
@@ -185,6 +187,42 @@ export const gateQuestionEventSchema = z.object({
   /** The step id a `retry` answer would jump back to — spike/src/engine.js:553, :580. */
   retry: z.string().optional(),
 }).strict();
+
+/** The closed set of decisions core accepts for a pending gate. */
+export const gateAnswerSchema = z.enum(['advance', 'retry', 'abort']);
+
+/** An out-of-band answer correlated to exactly one pending gate. */
+export const gateAnswerEnvelopeSchema = z.object({
+  gateId: z.string(),
+  answer: gateAnswerSchema,
+}).strict();
+
+const runTerminalBase = {
+  type: z.literal('terminal'),
+  runId: z.number(),
+  stageBefore: z.string(),
+  stageAfter: z.string(),
+  cost: z.number(),
+  tokens: z.number(),
+  error: z.string().optional(),
+};
+
+/** The last event of a run; regression-only fields are present as one closed group. */
+export const runTerminalEventSchema = z.discriminatedUnion('status', [
+  z.object({
+    ...runTerminalBase,
+    status: z.literal('regressed'),
+    targetFlow: z.string(),
+    counter: z.string(),
+    count: z.number(),
+    limit: z.number(),
+    remaining: z.number(),
+  }).strict(),
+  z.object({
+    ...runTerminalBase,
+    status: z.enum(['completed', 'aborted', 'failed', 'interrupted']),
+  }).strict(),
+]);
 
 /**
  * A run event is an adapter event plus the step id, or one of the engine's own. `.extend` carries
@@ -202,6 +240,7 @@ export const eventSchema = z.discriminatedUnion('type', [
   infoEventSchema,
   warnEventSchema,
   gateQuestionEventSchema,
+  runTerminalEventSchema,
 ]);
 
 export type SpawnEvent = z.infer<typeof spawnEventSchema>;
@@ -213,4 +252,7 @@ export type StepDoneEvent = z.infer<typeof stepDoneEventSchema>;
 export type InfoEvent = z.infer<typeof infoEventSchema>;
 export type WarnEvent = z.infer<typeof warnEventSchema>;
 export type GateQuestionEvent = z.infer<typeof gateQuestionEventSchema>;
+export type GateAnswer = z.infer<typeof gateAnswerSchema>;
+export type GateAnswerEnvelope = z.infer<typeof gateAnswerEnvelopeSchema>;
+export type RunTerminalEvent = z.infer<typeof runTerminalEventSchema>;
 export type Event = z.infer<typeof eventSchema>;
