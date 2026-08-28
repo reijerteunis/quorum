@@ -1,7 +1,7 @@
 ---
 id: Q-0070
 title: runCommand loses no output, and an overflow is not reported as a timeout
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0070/integration
