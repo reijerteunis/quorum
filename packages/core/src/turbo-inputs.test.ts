@@ -8,8 +8,8 @@
  * the failure was silent: the same shape Q-0071 closed one layer up, where a required check
  * reported green having executed nothing.
  *
- * Two clauses, because two things decay independently, and each is demonstrated firing on its own
- * below — demonstrating that a guard has a subject proves the guard fires, not that each of its
+ * Three clauses, because three things decay independently, and each is demonstrated firing on its
+ * own below — demonstrating that a guard has a subject proves the guard fires, not that each of its
  * clauses does (Q-0071).
  *
  * - **A, declaration → hash.** Every audited read is in the task's hashed input set, as turbo
@@ -18,17 +18,24 @@
  * - **B, read → declaration.** Every repository path either suite names is covered: by its own
  *   task's inputs, by the workspace dependency edge, or by {@link NOT_READ}. This is what fails
  *   the first time somebody adds a `repoFile('…')` call no declaration covers.
+ * - **C, route → literal.** Clause B can only see a path that is *written down*, so C requires that
+ *   every route out of a package hands its path over as a quoted literal, or is entered in
+ *   {@link INDIRECT_ROUTES} with the reason its values are literals in the same file. This is what
+ *   fails on a helper handed a template literal, and on a raw `path.join(repoRoot, computed)` —
+ *   reads that clause B is structurally unable to notice.
  *
- * Neither clause is a TypeScript parser. Clause B collects quoted string literals that resolve to a
- * real path outside the package naming them, which over-collects rather than under-collects: a path
+ * No clause is a TypeScript parser. Clause B collects quoted string literals that resolve to a real
+ * path outside the package naming them, which over-collects rather than under-collects: a path
  * named in an assertion but never opened is refused until it is entered in {@link NOT_READ} with a
- * reason, and entering one is a visible act a reviewer can weigh.
+ * reason, and entering one is a visible act a reviewer can weigh. Clause C does not interpret an
+ * expression at all — it decides only whether the path is a quoted literal, and refuses everything
+ * else until a human writes down why. Failing closed is what lets it be this small.
  *
- * The limit, stated rather than left to be discovered: clause B reads single- and double-quoted
- * literals, so a path assembled in a template literal is invisible to it. What compensates is that
- * a directory literal must be an audited {@link WALKS} entry, and {@link WALKS} recomputes each
- * walk's file set from disk rather than trusting a representative — so the tree reads, which are
- * where a dynamic path would come from, are checked in full.
+ * The limit, stated rather than left to be discovered: clause C exempts the two `test/corpus.ts`
+ * modules, because they are where the routes are *defined* and taking a computed path is their
+ * whole purpose. A read added there is checked by clause B if it names a literal, and by nothing if
+ * it does not — so a new reader in those two files is a reviewed act, which is the same standing
+ * they already had.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -274,6 +281,248 @@ function pathLiterals(text: string): string[] {
   return [...found];
 }
 
+/**
+ * The corpus helpers — the audited routes out of a package — and `repoRoot`, which is the raw one
+ * every helper is built on. A read that reaches outside its package goes through one of these.
+ */
+const ROUTES = ['repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'repoRoot'] as const;
+
+/** The modules that define the routes, and are therefore not subject to clause C. */
+const ROUTE_MODULES = ['packages/shared/test/corpus.ts', 'packages/core/test/corpus.ts'];
+
+/**
+ * Route sites whose path is not a quoted literal, and why the values reaching each one are.
+ *
+ * Keyed by file, then by the site exactly as {@link routeSites} renders it — `route → argument`.
+ * Every entry is a hole clause B cannot see through, held open deliberately: the reason must say
+ * where the literals are, because "the literals are in the same file" is what makes clause B's
+ * scan of that file sufficient. An unregistered site fails, which is the point.
+ *
+ * `repoRoot → (bare)` is the root used other than as `path.join(repoRoot, …)` — handed to a
+ * subprocess as a working directory, say — which reads nothing by itself.
+ */
+const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
+  'packages/shared/src/docs.test.ts': {
+    'repoFile → file': 'the loop iterates a literal array of the three documents, in the same test',
+  },
+  'packages/shared/src/events.test.ts': {
+    'spikeSource → file': 'the loop iterates a literal array of the four adapter sources, in the same test',
+  },
+  'packages/shared/src/role.test.ts': {
+    'spikeSource → file': 'the loop iterates a literal array of the four spike modules, in the same test',
+  },
+  'packages/shared/src/index.test.ts': {
+    'repoRoot → relative': 'readJson\'s parameter; its three call sites in this file all pass a literal',
+  },
+  'packages/core/src/contracts/validate-artifact.test.ts': {
+    'repoFile → relative': 'committedSchema\'s parameter; both call sites in this file pass a literal',
+  },
+  'packages/core/src/lint/lint.test.ts': {
+    'repoRoot → relative': 'the loop iterates SHIPPED, a literal array of the two flow directories',
+  },
+  'packages/core/src/backlog/backlog.test.ts': {
+    'repoRoot → file': 'path.relative, which builds a name for a failure message and opens nothing',
+  },
+  'packages/core/src/turbo-inputs.test.ts': {
+    'repoRoot → dir': 'typescriptFiles and filesBelow walk a directory from SUITES or WALKS, both audited above',
+    'repoFile → key': 'a .ts path typescriptFiles found inside a package it was pointed at, never outside one',
+    'repoFile → GUARD': 'the literal naming this file, and its own reads are audited by the three lists above',
+    'repoRoot → (bare)': 'the working directory the turbo subprocess is spawned in; nothing is read through it',
+    'repoRoot → value': 'existence of a literal clause B already collected, to decide whether it is a path',
+    'repoRoot → read': 'existence of a MANIFEST key, so a manifested file that has gone fails loudly',
+    'repoRoot → literal': 'clause B asking whether a literal it collected is a directory',
+  },
+};
+
+/**
+ * `text` with every comment body and every string body blanked to spaces, offsets and newlines
+ * preserved, so a route named in prose or quoted as an example is not read as a call.
+ *
+ * Interpolations inside a template literal are left as code, because a call can legitimately live
+ * in one. Regular expressions are blanked too: a quote inside one would otherwise open a string
+ * that swallows the code after it, and this file contains exactly such a pattern.
+ */
+function codeOnly(text: string): string {
+  const out = text.split('');
+  const blank = (from: number, to: number): void => {
+    for (let k = Math.max(from, 0); k < Math.min(to, out.length); k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+
+  /** Index just past the `'` or `"` string opening at `open`. */
+  const quoted = (open: number): number => {
+    let i = open + 1;
+    while (i < text.length && text[i] !== text[open] && text[i] !== '\n') { i += text[i] === '\\' ? 2 : 1; }
+    blank(open + 1, i);
+    return i + 1;
+  };
+
+  /** Index just past the `}` closing the interpolation whose `${` ended at `start`. */
+  const interpolation = (start: number): number => {
+    let i = start;
+    let depth = 1;
+    while (i < text.length) {
+      const c = text[i];
+      if (c === "'" || c === '"') { i = quoted(i); continue; }
+      // Mutually recursive with `template` below, which is how a nested template is handled.
+      if (c === '`') { i = template(i); continue; }
+      if (c === '{') depth++;
+      if (c === '}' && --depth === 0) return i + 1;
+      i++;
+    }
+    return i;
+  };
+
+  /** Index just past the template literal opening at `open`, its literal chunks blanked. */
+  const template = (open: number): number => {
+    let i = open + 1;
+    let chunk = i;
+    while (i < text.length) {
+      if (text[i] === '\\') { i += 2; continue; }
+      if (text[i] === '`') break;
+      if (text[i] === '$' && text[i + 1] === '{') {
+        blank(chunk, i);
+        i = interpolation(i + 2);
+        chunk = i;
+        continue;
+      }
+      i++;
+    }
+    blank(chunk, i);
+    return i + 1;
+  };
+
+  // A `/` opens a regular expression only where a value may begin; after a name, a number or a
+  // closing bracket it is division. This is the standard test and it is exact for this corpus.
+  const opensRegex = /[(,=:[!&|?{};+\-*%^~<>]$/;
+  let previous = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '/' && text[i + 1] === '/') {
+      let j = i;
+      while (j < text.length && text[j] !== '\n') j++;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const j = end === -1 ? text.length : end + 2;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === '/' && opensRegex.test(previous)) {
+      let j = i + 1;
+      let inClass = false;
+      while (j < text.length && text[j] !== '\n') {
+        if (text[j] === '\\') { j += 2; continue; }
+        if (text[j] === '[') inClass = true;
+        else if (text[j] === ']') inClass = false;
+        else if (text[j] === '/' && !inClass) break;
+        j++;
+      }
+      blank(i + 1, j);
+      previous = '/';
+      i = j + 1;
+      continue;
+    }
+    if (c === "'" || c === '"') { previous = c; i = quoted(i); continue; }
+    if (c === '`') { previous = c; i = template(i); continue; }
+    if (c.trim()) previous = c;
+    i++;
+  }
+  return out.join('');
+}
+
+/**
+ * `code` with module specifiers blanked, so `repoRoot` named in an import is not read as a use.
+ *
+ * The span is capped because a non-greedy match would otherwise run from a dynamic `import(` to
+ * whatever `from` came next; requiring whitespace after the keyword already excludes that call
+ * form, and the cap makes the failure bounded rather than silent if it ever does not.
+ */
+const withoutImports = (code: string): string =>
+  code.replace(/\b(?:import|export)\s+(?!\()[\s\S]{0,300}?\bfrom\s*'[^'\n]*'/g, (span) => ' '.repeat(span.length));
+
+/**
+ * The index just past the argument beginning at `start`, or -1 if the call never closes.
+ *
+ * The end is the first top-level `,` or the `)` that closes the call, so a scan cannot run on into
+ * the rest of the file when a name appears somewhere no argument list follows.
+ */
+function argumentEnd(code: string, start: number): number {
+  let depth = 0;
+  for (let i = start; i < code.length; i++) {
+    const c = code[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      if (depth === 0) return i;
+      depth--;
+    } else if (c === ',' && depth === 0) return i;
+  }
+  return -1;
+}
+
+/** One place a file reaches out of its package, and the path expression it reaches with. */
+interface RouteSite {
+  /** The route taken: a corpus helper, or `repoRoot` for the raw one. */
+  readonly route: string;
+  /** The path expression handed to it, as written, or `(bare)` where no path is joined to it. */
+  readonly argument: string;
+}
+
+/** How a site is written in {@link INDIRECT_ROUTES}, and in the message when one is unregistered. */
+const siteKey = (site: RouteSite): string => `${site.route} → ${site.argument}`;
+
+/** A single-quoted or double-quoted string, which is a path clause B can see. Nothing else is. */
+const isLiteral = (argument: string): boolean => /^'[^'\n]*'$|^"[^"\n]*"$/.test(argument);
+
+/** Whether the root at `index` is the first argument of a `path.join`, `resolve` or `relative`. */
+const joinsPath = (code: string, index: number): boolean =>
+  /\bpath\.(?:join|resolve|relative)\(\s*$/.test(code.slice(Math.max(0, index - 40), index));
+
+/**
+ * Every route out of a package that `text` takes, with the path expression each is handed.
+ *
+ * Comments, strings and module specifiers are blanked first, so this reports calls and never prose.
+ * Blanking preserves offsets, so boundaries are found in the blanked code while the argument is
+ * rendered from the source — which is what keeps a register entry readable and greppable.
+ *
+ * A helper is read at its call site; `repoRoot` is read at the `path.*` call that joins a path to
+ * it, and reported as `(bare)` anywhere else, since a root nothing is joined to opens no file.
+ */
+function routeSites(text: string): RouteSite[] {
+  const code = withoutImports(codeOnly(text));
+  /** The argument running from `start`, rendered from the source rather than from the blanks. */
+  const render = (start: number): string => {
+    const end = argumentEnd(code, start);
+    // A call that never closes is reported rather than read as "no argument", so it must be
+    // registered: an argument nothing can delimit is exactly the shape worth looking at.
+    return end === -1 ? '(unparsed)' : text.slice(start, end).trim();
+  };
+  const sites: RouteSite[] = [];
+  for (const match of code.matchAll(new RegExp(`\\b(${ROUTES.join('|')})\\b`, 'g'))) {
+    const route = match[1];
+    const after = match.index + route.length;
+    if (route === 'repoRoot') {
+      const rest = code.slice(after);
+      // Composed rather than joined: `repoRoot + '/docs/…'`, or `${repoRoot}/docs/…` inside a
+      // template, both of which build a path out of pieces clause B never sees whole.
+      const composed = /^\s*[+`}]/.exec(rest);
+      if (composed) { sites.push({ route, argument: '(composed)' }); continue; }
+      const comma = /^\s*,/.exec(rest);
+      if (!comma || !joinsPath(code, match.index)) { sites.push({ route, argument: '(bare)' }); continue; }
+      sites.push({ route, argument: render(after + comma[0].length) });
+      continue;
+    }
+    const open = /^\s*\(/.exec(code.slice(after));
+    if (!open) continue;
+    sites.push({ route, argument: render(after + open[0].length) });
+  }
+  return sites;
+}
+
 const turbo = reported();
 
 describe('AC-7 clause A — every audited read is a hashed input', () => {
@@ -378,5 +627,87 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
     expect(shared.dependencies).toEqual([]);
     expect(covered('packages/core/src/index.ts', shared, 'packages/shared')).toBe(true);
     expect(shared.inputs.has('packages/core/src/index.ts'), 'shared declares this as an input, never as an edge').toBe(true);
+  });
+});
+
+describe('AC-7 clause C — every route out of a package hands over a literal path', () => {
+  /** Both suites' sources and test support, minus the two modules that define the routes. */
+  const scanned = (): [string, string][] =>
+    SUITES.flatMap(({ directory }) => [...typescriptFiles(`${directory}/src`), ...typescriptFiles(`${directory}/test`)])
+      .filter(([file]) => !ROUTE_MODULES.includes(file));
+
+  /** The sites clause C must answer for: a path is handed over, and it is not a literal. */
+  const indirect = (text: string): RouteSite[] =>
+    routeSites(text).filter((site) => site.argument !== '' && !isLiteral(site.argument));
+
+  test('the scan still finds the routes it is looking at', () => {
+    // The positive control, and the reason it is first: every failure mode of the blanking above
+    // hides sites rather than inventing them, so a clause that had stopped seeing its subject would
+    // report success — which is the defect this whole file exists to close, one level in.
+    const literals = scanned().flatMap(([, text]) => routeSites(text)).filter((site) => isLiteral(site.argument));
+    expect(literals.length, 'the scan sees almost no literal route — the blanking has eaten its subject').toBeGreaterThan(40);
+  });
+
+  test('every indirect route is registered with the reason its paths are literals', () => {
+    const unregistered = scanned().flatMap(([file, text]) =>
+      indirect(text).filter((site) => INDIRECT_ROUTES[file]?.[siteKey(site)] === undefined)
+        .map((site) => `${file}: ${siteKey(site)}`));
+    expect(unregistered).toEqual([]);
+  });
+
+  test('and the register holds no entry for a site that has gone', () => {
+    // A register that outlives its sites decays into a list nobody rereads, and the next reader
+    // cannot tell which entries are still load-bearing.
+    const live = new Set(scanned().flatMap(([file, text]) => indirect(text).map((site) => `${file}: ${siteKey(site)}`)));
+    const stale = Object.entries(INDIRECT_ROUTES).flatMap(([file, sites]) =>
+      Object.keys(sites).filter((key) => !live.has(`${file}: ${key}`)).map((key) => `${file}: ${key}`));
+    expect(stale).toEqual([]);
+  });
+
+  test('the repository root is derived in the route modules and nowhere else', () => {
+    // Clauses C1 and C2 both watch `repoRoot`. A file that computes its own root from
+    // `import.meta.url` would take neither route and be seen by neither, so the derivation is
+    // confined to the two modules whose reads are audited as a whole.
+    const rogue = scanned().filter(([, text]) => codeOnly(text).includes('fileURLToPath')).map(([file]) => file);
+    expect(rogue).toEqual([]);
+  });
+
+  test('the clause has a subject — a helper handed a template literal is reported', () => {
+    // Isolated: this fixture takes no raw root and derives no root, so it can fail C1 alone. It is
+    // the review finding of iteration 1, verbatim — the read a quoted-literal scan cannot see.
+    const fixture = 'const text = repoFile(`docs/${slug}.md`);';
+    expect(indirect(fixture).map(siteKey)).toEqual(['repoFile → `docs/${slug}.md`']);
+    expect(routeSites(fixture).some((site) => site.route === 'repoRoot')).toBe(false);
+  });
+
+  test('the clause has a subject — a raw root joined to a computed path is reported', () => {
+    // Isolated the other way: no corpus helper appears, so only C2 can fail on it.
+    const fixture = 'const text = fs.readFileSync(path.join(repoRoot, computed), "utf8");';
+    expect(indirect(fixture).map(siteKey)).toEqual(['repoRoot → computed']);
+    expect(routeSites(fixture).every((site) => site.route === 'repoRoot')).toBe(true);
+  });
+
+  test('and a root a path is built out of rather than joined to is reported too', () => {
+    // The two other ways to reach a file from the root. Both would otherwise render as `(bare)`,
+    // which this file registers for the working directory the turbo subprocess runs in.
+    expect(indirect("const text = read(repoRoot + '/docs/GLOSSARY.md');").map(siteKey)).toEqual(['repoRoot → (composed)']);
+    expect(indirect('const text = read(`${repoRoot}/docs/GLOSSARY.md`);').map(siteKey)).toEqual(['repoRoot → (composed)']);
+    expect(indirect('const cwd = { cwd: repoRoot, shell: false };').map(siteKey)).toEqual(['repoRoot → (bare)']);
+  });
+
+  test('the clause has a subject — a root derived outside the route modules is reported', () => {
+    // Isolated again: no helper, no `repoRoot`, so this can only fail the derivation clause.
+    const fixture = 'const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");';
+    expect(codeOnly(fixture).includes('fileURLToPath')).toBe(true);
+    expect(routeSites(fixture)).toEqual([]);
+  });
+
+  test('and a route named in prose or quoted as an example is not read as a call', () => {
+    // The over-collection that would make the register a chore and the reasons meaningless.
+    expect(routeSites('// somebody adds repoFile(`docs/${x}.md`) one day\n')).toEqual([]);
+    expect(routeSites('/** Prose about repoFile(x) and repoRoot. */\n')).toEqual([]);
+    expect(routeSites('const example = "repoFile(computed)";\n')).toEqual([]);
+    expect(routeSites("const pattern = /'repoFile\\(x\\)'/;\nconst after = repoFile('docs/GLOSSARY.md');\n").map(siteKey))
+      .toEqual(["repoFile → 'docs/GLOSSARY.md'"]);
   });
 });
