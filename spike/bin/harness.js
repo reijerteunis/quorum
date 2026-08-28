@@ -430,6 +430,13 @@ async function main() {
       // null and every row renders exactly as before. See Q-0036.
       const base = config.repo?.base_branch ?? 'main';
       const where = containment(repoDir, base);
+      // Every ticket names a branch from creation (backlog.js:64) and only an integrate step ever
+      // creates one, so most name a ref that does not exist — 22 of this repository's 24 such
+      // tickets are draft or abandoned. Reporting all of them would drown the column. An absent
+      // branch is worth saying exactly where the stage claims the work is done and the branch is
+      // the evidence for that claim: there it separates code nobody can locate from a ticket
+      // nobody has started. Q-0070, whose own work was done by hand and reached no branch.
+      const BRANCH_EXPECTED = new Set(['solutioned', 'red', 'green', 'reviewed', 'qa-passed', 'deployed']);
       let anyIndeterminate = false;
       for (const stage of STAGES) {
         const col = tickets.filter((t) => t.meta.stage === stage);
@@ -438,7 +445,8 @@ async function main() {
         console.log(c.bold(stage.padEnd(14)) + c.dim(next ? `→ harness run ${next.name} <id>` : ''));
         for (const t of col) {
           const cost = (t.meta.history ?? []).reduce((s, h) => s + (h.cost ?? 0), 0);
-          const spot = where?.stateOf(t.meta.branch);
+          const found = where?.stateOf(t.meta.branch);
+          const spot = found?.reason === 'no branch' && !BRANCH_EXPECTED.has(t.meta.stage) ? null : found;
           if (spot?.state === 'indeterminate') anyIndeterminate = true;
           const token = spot == null ? ''
             : spot.state === 'contained' ? ` ${base}:contained`
@@ -455,7 +463,7 @@ async function main() {
       // Indeterminate means git could not answer here, not that the code is missing — a fresh or
       // shallow clone legitimately cannot say. Only printed when a row actually reads it.
       if (anyIndeterminate) {
-        console.log(c.dim(`· indeterminate = git could not answer whether that branch is contained in ${base} (missing ref, shallow clone, or a failed git command) — it does not mean the code is missing`));
+        console.log(c.dim(`· indeterminate = the board cannot say whether that branch is contained in ${base} — git could not answer (missing ref, shallow clone, a failed git command), or the ticket's branch does not exist (no branch) — it does not mean the code is missing`));
       }
       return;
     }

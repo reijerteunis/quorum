@@ -147,12 +147,20 @@ describe('AC-4 — containment derives the board\'s answer and never guesses an 
     expect(containment(bare, 'main')).toBeNull();
   });
 
-  test('a value that is not a string, and a name that is not a local branch, render unannotated', () => {
+  test('a value that is not a string names nothing, so there is no question to ask', () => {
     const derived = containment(withTicketBranch(), 'main');
     expect(derived).not.toBeNull();
-    for (const value of [undefined, null, 42, {}, ['main'], 'never/created']) {
+    for (const value of [undefined, null, 42, {}, ['main']]) {
       expect(derived?.stateOf(value), JSON.stringify(value ?? null)).toBeNull();
     }
+  });
+
+  test('a name that is not a local branch is indeterminate (no branch), not silence', () => {
+    // Until Q-0070 this answered null, the same as "nothing was named" — so a reviewed ticket
+    // whose work never reached a branch was indistinguishable from one nobody had looked at.
+    // Whether the answer is worth rendering is the board's call; producing it is this one's.
+    expect(containment(withTicketBranch(), 'main')?.stateOf('never/created'))
+      .toStrictEqual({ state: 'indeterminate', reason: 'no branch' });
   });
 
   test('a base that does not resolve is indeterminate (missing ref), never a containment claim', () => {
@@ -275,12 +283,16 @@ describe('Q-0064 — the snapshot above ignores git\'s own lock files, and nothi
 });
 
 describe('AC-5 — an untrusted branch name never reaches a git command line', () => {
-  test('injection-shaped values return null and spawn nothing', () => {
+  test('injection-shaped values spawn nothing, whatever they are answered with', () => {
     const dir = withTicketBranch();
     const derived = containment(dir, 'main');
     const hostile = ['--upload-pack=touch pwned', 'main; echo hi', '../../../etc/passwd'];
     const { result, calls } = counting(() => hostile.map((value) => derived?.stateOf(value)));
-    expect(result).toEqual([null, null, null]);
+    // The property is the two assertions below — no invocation, no artefact. What the call
+    // ANSWERS is incidental to it: a hostile name is simply not in the set that came out of git,
+    // so it takes the same route as any other absent branch and reaches no command line. Q-0070
+    // changed that answer from null; it did not change what is asserted here.
+    expect(result).toEqual(hostile.map(() => ({ state: 'indeterminate', reason: 'no branch' })));
     expect(calls, 'a name that came from frontmatter must cost no git invocation').toBe(0);
     expect(fs.existsSync(path.join(dir, 'pwned'))).toBe(false);
     expect(fs.existsSync(path.join(process.cwd(), 'pwned'))).toBe(false);

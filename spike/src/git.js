@@ -133,7 +133,12 @@ export function containment(repoDir, base) {
     // exactly one of the three states, chosen by ancestry() above — which owns both rules, so the
     // board and the engine's empty-range diagnostic cannot drift apart. See Q-0035.
     stateOf(branch) {
-      if (typeof branch !== 'string' || !branches.has(branch)) return null;
+      if (typeof branch !== 'string') return null;
+      // Named a branch that is not here. A git fact, reported rather than swallowed: returning
+      // null made it indistinguishable from "no question was asked", which is how a reviewed
+      // ticket whose work never reached a branch rendered identically to one nobody had looked
+      // at. What to DO with it is the board's decision, not this function's. Q-0070.
+      if (!branches.has(branch)) return { state: 'indeterminate', reason: 'no branch' };
       if (!baseResolves) return { state: 'indeterminate', reason: 'missing ref' };
       const { state, reason } = ancestry(repoDir, `refs/heads/${branch}`, `refs/heads/${base}`, { shallow });
       if (state !== 'not-contained') return state === 'contained' ? { state } : { state, reason };

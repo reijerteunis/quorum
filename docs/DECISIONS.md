@@ -107,3 +107,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A command's output is captured whole, or the run stops](decisions/058-a-commands-output-is-captured-whole.md)
 - [A nit does not contradict an approval](decisions/059-a-nit-does-not-contradict-an-approval.md)
 - [Membership is a git question, not a filesystem one](decisions/060-membership-is-a-git-question-not-a-filesystem-one.md)
+- [An absent branch is an answer, and the board decides whether it is worth saying](decisions/061-an-absent-branch-is-an-answer.md)

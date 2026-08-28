@@ -60,8 +60,15 @@ export type AncestryReason = (typeof ANCESTRY_REASONS)[number];
  * - `missing ref` — the configured base branch does not resolve.
  * - `shallow clone` — as above.
  * - `git failed` — as above, including a failure of the ahead count itself.
+ * - `no branch` — the ticket names a branch and no local ref of that name exists, so there is
+ *   nothing to ask git about. Distinct from `missing ref`, which is about the BASE: one is a
+ *   repository the board cannot read, the other a ticket whose work never reached a branch —
+ *   a hand-run ticket, or one whose branch was deleted. Whether it is worth rendering is the
+ *   board's call and not this vocabulary's: every ticket names a branch from creation
+ *   (`spike/src/backlog.js:64`) and most never have one, so a board that showed all of them
+ *   would be noise. See Q-0070.
  */
-export const CONTAINMENT_REASONS = ['missing ref', 'shallow clone', 'git failed'] as const;
+export const CONTAINMENT_REASONS = ['missing ref', 'shallow clone', 'git failed', 'no branch'] as const;
 
 export type ContainmentReason = (typeof CONTAINMENT_REASONS)[number];
 

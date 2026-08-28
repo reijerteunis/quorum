@@ -87,6 +87,37 @@ await scenario('C2', 'a diverged branch counts base..branch, not the symmetric d
   assert.doesNotMatch(output(r), /\(\+3\)/, 'a symmetric-difference count would read +3');
 });
 
+await scenario('C10', 'a branch that is not here is reported once the stage claims the work is done, and not before', async () => {
+  const root = projectFixture();
+  const ticket = makeTicket(root); // its branch frontmatter names a ref that was never created
+  const stage = (name) => write(path.join(ticket, 'ticket.md'), read(ticket, 'ticket.md').replace(/^stage: .*$/m, `stage: ${name}`));
+
+  // Every ticket names a branch from creation and most never have one, so the draft case is the
+  // common case and must stay silent — C3 pins that. Here is the other half.
+  for (const quiet of ['draft', 'requirements', 'blocked', 'abandoned']) {
+    stage(quiet);
+    const r = cli(root, ['board']);
+    assert.equal(r.status, 0, output(r));
+    assert.doesNotMatch(output(r), /no branch/, `${quiet} expects no branch, so it must not be annotated`);
+  }
+
+  for (const claimed of ['solutioned', 'red', 'green', 'reviewed', 'qa-passed', 'deployed']) {
+    stage(claimed);
+    const r = cli(root, ['board']);
+    assert.equal(r.status, 0, output(r));
+    assert.match(output(r), /main:indeterminate\(no branch\)/, `${claimed} claims the work is done, so a missing branch is worth saying`);
+    // Never a containment claim either way, and the legend covers the reason it just printed.
+    assert.doesNotMatch(output(r), /main:contained|not-contained/);
+    assert.match(output(r), /does not exist \(no branch\)/, 'the legend must name the reason the board rendered');
+  }
+
+  // A ticket with no branch key at all still asks nothing and renders nothing, at any stage.
+  write(path.join(ticket, 'ticket.md'), read(ticket, 'ticket.md').replace(/^branch: .*\n/m, ''));
+  const r = cli(root, ['board']);
+  assert.equal(r.status, 0, output(r));
+  assert.doesNotMatch(output(r), /main:|indeterminate/);
+});
+
 await scenario('C3', 'an unresolvable or absent branch renders as today, as does an empty backlog', async () => {
   const root = projectFixture();
   const ticket = makeTicket(root); // its branch frontmatter names a ref that was never created

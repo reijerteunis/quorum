@@ -81,7 +81,7 @@ describe('AC-11 — the closed sets live in shared, and no literal is re-spelled
   test('shared declares the three closed sets, adds no dependency, and is re-exported', () => {
     expect(CONTAINMENT_STATES).toEqual(['contained', 'not-contained', 'indeterminate']);
     expect(ANCESTRY_REASONS).toEqual(['git failed', 'shallow clone', 'shallow state unknown']);
-    expect(CONTAINMENT_REASONS).toEqual(['missing ref', 'shallow clone', 'git failed']);
+    expect(CONTAINMENT_REASONS).toEqual(['missing ref', 'shallow clone', 'git failed', 'no branch']);
 
     const pkg = JSON.parse(repoFile('packages/shared/package.json')) as { dependencies: Record<string, string> };
     expect(Object.keys(pkg.dependencies)).toEqual(['zod']);

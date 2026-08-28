@@ -186,9 +186,10 @@ const boardReason = (reason: AncestryReason): ContainmentReason =>
 /** One board invocation's answers, over a repository probed once when the closure was built. */
 export interface Containment {
   /**
-   * `null` when the value is not a string or does not name a local branch — the row renders
-   * unannotated, exactly as it did before containment existed. `unknown` rather than `string`,
-   * because it arrives from agent-written frontmatter.
+   * `null` when the value is not a string: nothing was named, so there is no question to ask.
+   * A string naming no local branch answers `indeterminate (no branch)` — the fact that the work
+   * never reached a branch, which the caller may render or suppress. `unknown` rather than
+   * `string`, because it arrives from agent-written frontmatter.
    */
   stateOf(branch: unknown): ContainmentResult | null;
 }
@@ -217,7 +218,12 @@ export function containment(repoDir: string, base: string): Containment | null {
     .split('\n').filter(Boolean));
   return {
     stateOf(branch: unknown): ContainmentResult | null {
-      if (typeof branch !== 'string' || !branches.has(branch)) return null;
+      if (typeof branch !== 'string') return null;
+      // Named a branch that is not here. A git fact, reported rather than swallowed: returning
+      // null made it indistinguishable from "no question was asked", which is how a reviewed
+      // ticket whose work never reached a branch rendered identically to one nobody had looked
+      // at. What to DO with it is the board's decision, not this function's. Q-0070.
+      if (!branches.has(branch)) return { state: 'indeterminate', reason: 'no branch' };
       if (!baseResolves) return { state: 'indeterminate', reason: 'missing ref' };
       const check = ancestry(repoDir, `refs/heads/${branch}`, `refs/heads/${base}`, { shallow });
       if (check.state === 'contained') return { state: 'contained' };

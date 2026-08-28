@@ -29,10 +29,15 @@ branch, computed on every `harness board` invocation and never stored. Exactly t
 rendered as one token beside the ticket: contained (`main:contained` — the branch tip is an
 ancestor of the base tip), not contained (`main:not-contained(+12)` — with the count of commits
 reachable from the branch and not from the base), and indeterminate (`main:indeterminate(missing
-ref)`, `main:indeterminate(shallow clone)`, `main:indeterminate(git failed)` — git could not
-answer, which is never reported as either of the other two). An ancestry fact about two refs at
-the moment of reading, not a claim about how the code arrived — and not a synonym-carrier: the
-board and the docs say "contained", never "merged", "landed" or "shipped".
+ref)`, `main:indeterminate(shallow clone)`, `main:indeterminate(git failed)`, `main:indeterminate(no
+branch)` — the board could not answer, which is never reported as either of the other two). The
+first three are git declining to answer; `no branch` is the ticket naming a branch that does not
+exist, so git was never asked. Every ticket names one from creation and most never have one, so the
+board renders `no branch` only where the stage claims the work is done and the branch is the
+evidence for it — `solutioned` onward, never `draft`, `requirements`, `blocked` or `abandoned`.
+An ancestry fact about two refs at the moment of reading, not a claim about how the code arrived —
+and not a synonym-carrier: the board and the docs say "contained", never "merged", "landed" or
+"shipped".
 
 **Contract**: A machine-checkable artifact emitted by solutioning — interface, schema, stub, migration skeleton — that tests and developers code against.
 
