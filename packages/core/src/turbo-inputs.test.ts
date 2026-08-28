@@ -20,7 +20,7 @@
  *   the first time somebody adds a `repoFile('…')` call no declaration covers.
  * - **C, name → route.** Clause B can only see a path written down as a repository-relative
  *   literal, so C closes every other way a file could name a location outside its own package. It
- *   has three parts, each failing closed against a register a reviewer approves rather than
+ *   has four parts, each failing closed against a register a reviewer approves rather than
  *   recognising a list of bad shapes:
  *   **C1**, every call of a route hands over a quoted literal or is entered in
  *   {@link INDIRECT_ROUTES} — and a route is identified through the calling file's own import
@@ -28,31 +28,59 @@
  *   **C2**, no repository root is derived outside the two route modules, per
  *   {@link ROOT_DERIVATIONS};
  *   **C3**, no string literal names a location outside its own package, per
- *   {@link ESCAPING_LITERALS}.
+ *   {@link ESCAPING_LITERALS};
+ *   **C4**, every filesystem read is rooted at a base somebody has accounted for, per
+ *   {@link READ_APIS} and {@link READ_BASES}.
  *
- * **Why C's three parts are exhaustive** — stated so the argument can be attacked rather than the
+ * **Why the four parts are exhaustive** — stated so the argument can be attacked rather than the
  * code. To read a file, something must name it, and a name is either a literal or an expression.
  * A repository-relative literal is collected by clause B and must be declared. An absolute or
  * `..`-escaping literal is refused by C3, which is what lets clause B go on ignoring both forms.
  * An expression must be rooted somewhere: at a route, which C1 watches under whatever local name
- * it was imported as, or at a root the file derived for itself, which C2 refuses. What remains is
- * a base produced by a primitive C2's list does not name — the residual hole, and the reason C2 is
- * a register rather than a filter: a new primitive costs somebody an entry and a reason.
+ * it was imported as; at a root the file derived for itself, which C2 refuses; or at a base
+ * obtained some other way — which is where C1 to C3 stopped, and where iteration 3's review walked
+ * through. `path.dirname(path.dirname(fs.realpathSync('.')))` names no route, appears in no
+ * derivation list, and holds no escaping literal.
+ *
+ * **C4 anchors on the read rather than on the derivation, and that is the whole of the remedy**
+ * (`requirements/errata.md` E-1). Extending C2's list was refused as the fix, because extending it
+ * is the move that produced iterations 2 and 3: the ways to *compute a string* are not enumerable.
+ * The ways to *read a file* are — {@link READ_APIS} is that list, and is itself part of the
+ * register — and a read is the last point every bypass must pass through, so anchoring there turns
+ * an open-ended hunt for bad primitives into a closed question over a stable API surface.
+ * {@link READ_BASES} is keyed by the **base** a path is rooted at rather than by the read, because
+ * the base is the entire question: `dir` reaches whatever `dir` is, and every read joined onto it
+ * inherits that answer.
  *
  * No clause is a TypeScript parser. Clause B collects quoted string literals that resolve to a real
  * path outside the package naming them, which over-collects rather than under-collects: a path
  * named in an assertion but never opened is refused until it is entered in {@link NOT_READ} with a
  * reason, and entering one is a visible act a reviewer can weigh. C1 does not interpret an
  * expression at all — it decides only whether the path is a quoted literal, and refuses everything
- * else until a human writes down why. Failing closed is what lets all of this be this small.
+ * else until a human writes down why. C4 unwraps `path.join` and its siblings to find the base and
+ * then stops, refusing every base that is not a literal clause B collects or a route C1 governs.
+ * Failing closed is what lets all of this be this small.
  *
- * Two limits, stated rather than left to be discovered. Clause C exempts the two `test/corpus.ts`
- * modules, because they are where the routes are *defined* and taking a computed path is their
- * whole purpose — so a new reader in those two files is a reviewed act, which is the same standing
- * they already had. And C2's list deliberately omits `os.tmpdir`: a temporary directory is outside
- * the repository by construction, so reaching repository corpus from one needs a second derivation
- * that C2 does name, and registering the seven sandbox sites would fill the register with entries
- * carrying no information.
+ * **Residual limits, stated rather than left to be discovered** — E-1 item 3, which is the whole
+ * distinction this ticket is about: a gap that is registered and stated is acceptable, and the same
+ * gap unmentioned is the defect.
+ *
+ * 1. **A subprocess that reads a file on a suite's behalf is not covered.** `execFileSync('cat',
+ *    [somewhere])` reaches bytes without touching {@link READ_APIS}, because the path travels in
+ *    argv. Following it is the dataflow analysis E-1 declined to buy — it needs a real syntax tree,
+ *    and `typescript` as a dependency rewrites `pnpm-lock.yaml`, which CI installs frozen and which
+ *    is a declared input of the task this ticket changes.
+ * 2. **A base is registered by name, per file.** Rebinding a registered name to something else in
+ *    the same file inherits its entry. What the name can be rebound *to* is still constrained: a
+ *    route (C1), a derivation (C2), an escaping literal (C3) or another read (C4) all still report.
+ * 3. **The two `test/corpus.ts` modules are exempt from clause C**, because they are where the
+ *    routes are *defined* and taking a computed path is their whole purpose — so a new reader in
+ *    those two files is a reviewed act, which is the standing they already had.
+ * 4. **C2's list omits `os.tmpdir`**: a temporary directory is outside the repository by
+ *    construction, so reaching corpus from one needs a second derivation C2 does name, and
+ *    registering the sandbox sites there would fill that register with entries carrying no
+ *    information. C4 registers the sandbox *bases* instead, where the entry does carry one — it is
+ *    the sentence distinguishing a directory the test created from a root it climbed to.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -813,6 +841,211 @@ function routeSites(text: string, bindings: readonly Binding[]): RouteSite[] {
   return sites;
 }
 
+/**
+ * Node's filesystem read APIs — the anchor's subject, and itself part of the register.
+ *
+ * Listed rather than detected, and stated here rather than argued in prose, because the list is the
+ * claim: these are the calls through which a file's contents can enter a suite. Extending C2's list
+ * of root derivations was refused as the remedy for iteration 3 (`requirements/errata.md` E-1) and
+ * this is why — the ways to *compute a string* are not enumerable, while the ways to *read a file*
+ * are, and a read is the last point every bypass must pass through. A name missing from this list
+ * is the one way past clause C4, which is why adding one is a visible act rather than a filter
+ * quietly widening.
+ *
+ * Both spellings of each are here — `readFileSync` and `readFile`, `statSync` and `stat` — because
+ * `fs/promises` and the callback API reach the same bytes as the synchronous one.
+ */
+const READ_APIS = [
+  'readFileSync', 'readFile', 'readdirSync', 'readdir', 'existsSync',
+  'statSync', 'stat', 'lstatSync', 'lstat', 'realpathSync', 'realpath',
+  'opendirSync', 'opendir', 'openSync', 'open', 'createReadStream',
+  'readlinkSync', 'readlink', 'accessSync', 'access', 'globSync', 'glob',
+  'copyFileSync', 'copyFile', 'cpSync', 'cp',
+] as const;
+
+/**
+ * The span of a path expression's **base** — what the joining is rooted at.
+ *
+ * `path.join`, `resolve`, `relative` and `normalize` are unwrapped to their first argument, so
+ * `path.join(dir, 'ticket.md')` bases at `dir` and `path.join(repoRoot, relative)` at `repoRoot`.
+ * The base is the register's unit rather than the whole site, because it is the whole of the
+ * security question: `dir` reaches what `dir` is, and every read rooted at it inherits that answer.
+ * Keying by site instead would have produced a hundred and thirteen entries, thirty-one of them
+ * saying "the path this function was handed", which is the register-full-of-noise this file already
+ * refuses for `os.tmpdir` above.
+ *
+ * Offsets are found in the blanked code and the value is rendered from the source, so a comma
+ * inside a string cannot end an argument early.
+ */
+function baseSpan(code: string, start: number, end: number): [number, number] {
+  let from = start;
+  let to = end;
+  for (;;) {
+    const head = /^\s*path\.(?:join|resolve|relative|normalize)\s*\(/.exec(code.slice(from, to));
+    if (!head) return [from, to];
+    const inner = from + head[0].length;
+    const stop = argumentEnd(code, inner);
+    if (stop === -1 || stop > to) return [from, to];
+    from = inner;
+    to = stop;
+  }
+}
+
+/** One filesystem read whose base needs an answer, and the base as written. */
+interface ReadSite {
+  /** The API called, as {@link READ_APIS} spells it — for the reader who has to find the line. */
+  readonly api: string;
+  /** The base the path is rooted at, which is what {@link READ_BASES} is keyed by. */
+  readonly base: string;
+}
+
+/**
+ * Every filesystem read in `text` rooted at a base no other clause has already accounted for.
+ *
+ * Three exemptions, each a hand-off to the clause that owns that shape rather than a hole:
+ *
+ * - a base that is a quoted literal **clause B collects** — one naming a real repository path, so
+ *   clause B has already required it declared. A literal clause B drops is *not* exempt, which is
+ *   what stops `realpathSync('.')` buying a root for nothing: `'.'` carries no separator, so clause
+ *   B never sees it and this clause demands an answer for it.
+ * - a base naming a **route**, under whatever local name this file imported it as, because the
+ *   route call is a clause C1 site and C1 has already required its path to be a literal or
+ *   registered.
+ * - a base **inside a `path.*` call this scan could not delimit**, which is reported rather than
+ *   skipped, as `(unparsed)`.
+ *
+ * What is left is a path computed from a base the file obtained some other way — the shape
+ * iteration 3 found no clause could see, and the one this register exists to make a person answer.
+ */
+function readSites(text: string, bindings: readonly Binding[]): ReadSite[] {
+  const code = withoutImports(codeOnly(text));
+  const routes = bindings.map((binding) => binding.local);
+  const sites: ReadSite[] = [];
+  for (const match of code.matchAll(new RegExp(`\\b(${READ_APIS.join('|')})\\s*\\(`, 'g'))) {
+    const start = match.index + match[0].length;
+    const end = argumentEnd(code, start);
+    if (end === -1) { sites.push({ api: match[1], base: '(unparsed)' }); continue; }
+    const [from, to] = baseSpan(code, start, end);
+    const base = text.slice(from, to).trim();
+    if (isLiteral(base) && pathLiterals(base).length > 0) continue;
+    if (routes.some((route) => new RegExp(`\\b${route}\\b`).test(code.slice(from, to)))) continue;
+    sites.push({ api: match[1], base });
+  }
+  return sites;
+}
+
+/**
+ * Where every computed read's base comes from, per file.
+ *
+ * This is the register `requirements/errata.md` E-1 requires, and each entry answers the one
+ * question the clause exists to ask: *can this base name a file outside its own package?* A
+ * directory the test itself created under `os.tmpdir` cannot. A root climbed to from the working
+ * directory can — which is the difference between an entry that is noise and the entry that would
+ * have caught iteration 3's bypass, and why `process.cwd()` appears below as a base in its own
+ * right rather than only as a C2 derivation.
+ *
+ * The product modules are here too, and their answer is the same in every case: they read the path
+ * their caller hands them. That is not a weaker answer than a test's — it is a statement that the
+ * anchoring happens at the call site, and every call site is in the scanned set above.
+ */
+const READ_BASES: Record<string, Record<string, string>> = {
+  'packages/core/src/adapters/codex.test.ts': {
+    seen: 'path.join(tempDir(\'codex-schema-\'), \'schema-seen.json\') — a file the stub copies into a sandbox',
+    'tempDirOf(ok.argv())': 'path.dirname of the --output-schema path off the argv the stub recorded, so it is the adapter\'s own temp directory',
+    'tempDirOf(failed.argv())': 'the same, on the run that exited non-zero',
+    'os.tmpdir()': 'the system temporary directory, listed to count what a spawn failure left behind',
+  },
+  'packages/core/src/adapters/codex.ts': {
+    lastPath: 'path.join(tmp, \'last.txt\') — the temp directory this run created and removes again',
+  },
+  'packages/core/src/adapters/mock.test.ts': {
+    cwd: 'tempDir(…) — the sandbox each mock run is given as its working directory',
+  },
+  'packages/core/src/adapters/probe.test.ts': {
+    supplied: 'tempDir(\'probe-supplied-…\') — the sandbox the probe is handed',
+    'adapter.seen[0].cwd': 'the working directory the probe passed the fake adapter, asserted removed afterwards',
+    'adapter.seen[1].cwd': 'the same, on the second call',
+  },
+  'packages/core/src/backlog/backlog.test.ts': {
+    root: 'path.join(repoRoot, \'backlog\') in corpusTickets — the backlog walk WALKS declares above',
+    file: 'a ticket.md corpusTickets collected, from that same walk',
+    'ticket.dir': 'a ticket folder inside the sandbox backlog these tests build',
+    abs: 'the absolute path backlog.writeFile returned, inside that sandbox',
+    'backlog.writeFile(ticket, \'dev/two.md\', \'has one\\n\')': 'the same, read back inline',
+    'backlog.writeFile(ticket, \'dev/three.md\', \'trailing\\n\\n\')': 'likewise',
+  },
+  'packages/core/src/backlog/backlog.ts': {
+    'this.root': 'the backlog root the caller constructed this Backlog with',
+    dir: 'a ticket folder under this.root',
+    f: 'a file inside a ticket folder, joined from the caller\'s root',
+  },
+  'packages/core/src/backlog/project.test.ts': {
+    'loaded.backlog.root': 'the backlog path loadProject resolved from a sandbox project the test wrote',
+  },
+  'packages/core/src/backlog/project.ts': {
+    d: 'findProject\'s walk upward from its start directory, looking for a marker and reading nothing',
+    harnessDir: 'path.join(repoDir, \'harness\') — the project root the caller named or findProject located',
+  },
+  'packages/core/src/contracts/contracts.source.test.ts': {
+    resolved: 'createRequire(...).resolve(\'ajv/package.json\') — inside node_modules, which pnpm-lock.yaml hashes',
+  },
+  'packages/core/src/contracts/contracts.ts': {
+    file: 'readData\'s parameter — the artifact path the caller named',
+  },
+  'packages/core/src/corpus.test.ts': {
+    dir: 'listing\'s parameter, which its two callers root at CORE_SRC or at a temporary tree',
+    CORE_SRC: 'path.join(repoRoot, \'packages/core/src\'), a literal in this file and inside this package',
+    root: 'tempDir(\'corpus-\') — a tree this test builds to prove the reader walks it',
+  },
+  'packages/core/src/fanout/fanout.test.ts': {
+    'tasksFile(ticket)': 'path.join(ticket.dir, \'solution\', \'tasks.yaml\') under the sandbox ticket at the top of this file',
+    dir: 'repo() or withBranch() — a git repository created under os.tmpdir',
+    wt: 'a worktree under one of those repositories, or tempDir(\'wt-\')',
+    integration: 'the integration worktree of one of those repositories',
+    'spikeWorktreeDir(dir, \'harness/T-3/contracts\')': 'the path a worktree WOULD have, under the sandbox repository, asserted absent',
+    '\'/tmp/quorum-q0048-pwned\'': 'the file a shell-injection fixture would create if the argument were interpolated; asserted absent, and outside the repository by construction',
+  },
+  'packages/core/src/fanout/fanout.ts': {
+    f: 'path.join(ticket.dir, …) or path.join(worktreeDir, contract) — both the caller\'s',
+    doc: 'path.join(ticket.dir, \'solution\', \'solution.md\') — likewise',
+    dir: 'the worktree path built from the repository the caller named',
+  },
+  'packages/core/src/git/git.test.ts': {
+    dir: 'repo(), forked(), withTicketBranch(), divergedContent() or notARepo() — all under os.tmpdir',
+    worktree: 'ensureWorktree\'s answer, inside one of those repositories',
+    'worktreeOf(dir)': 'path.join(dir, \'.harness\', \'worktrees\', …) — the expected path, derived independently of the function under test',
+    'excludeFile(dir)': 'git rev-parse --git-path info/exclude, resolved against the sandbox repository',
+    'excludeFile(noNewline)': 'the same, on another sandbox repository',
+    'excludeFile(empty)': 'likewise',
+    'excludeFile(worktree)': 'likewise, from inside a worktree',
+    'process.cwd()': 'asserting a hostile git argument created no file beside the runner — an existence check on a name, and the one base here that COULD reach the repository, which is why it is written down rather than left to the C2 entry for the same file',
+  },
+  'packages/core/src/git/git.ts': {
+    dir: 'the worktree path built from the repoDir the caller named',
+    f: 'the exclude file git resolved, relative to that same repoDir',
+  },
+  'packages/core/src/lint/lint.ts': {
+    directory: 'lintFlowDirectory\'s parameter — the flows directory the caller named',
+    file: 'path.join(directory, filename) inside it',
+  },
+  'packages/core/src/test-command.test.ts': {
+    dir: 'spikeSources\' parameter, defaulting to path.join(repoRoot, \'spike/src\') — the walk WALKS declares above',
+    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\'), which NOT_READ names as the installed toolchain',
+  },
+  'packages/core/src/turbo-inputs.test.ts': {
+    absolute: 'path.join(repoRoot, dir) in typescriptFiles and filesBelow, whose directories come from SUITES and WALKS',
+    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\'), as above',
+  },
+  'packages/core/test/cli-stub.ts': {
+    argvLog: 'a file inside tempDir(\'cli-stub-\'), where the stub records what it was called with',
+    stdinFile: 'the same sandbox, where it records what it was sent',
+  },
+  'packages/core/test/repo.ts': {
+    dir: 'fs.mkdtempSync(path.join(os.tmpdir(), …)) — this module is where the sandboxes come from',
+    log: 'path.join(dir, \'calls\') inside one of them',
+  },
+};
+
 const turbo = reported();
 
 describe('AC-7 clause A — every audited read is a hashed input', () => {
@@ -1117,5 +1350,82 @@ describe('AC-7 clause C3 — no string literal names a location outside its own 
       .toEqual(['/../../docs']);
     expect(escapingLiterals('import { repoFile } from \'../test/corpus.js\';\n'), 'a module specifier is not a read').toEqual([]);
     expect(escapingLiterals('expect(spec.startsWith(\'../a/b\')).toBe(false);\n')).toEqual(['../a/b']);
+  });
+});
+
+/** A real file's computed reads, resolved through its own imports rather than a fixed name list. */
+const readsIn = (file: string, text: string): ReadSite[] => readSites(text, routeImports(file, text).bindings);
+
+describe('AC-7 clause C4 — every computed read names where its base came from', () => {
+  test('every base a read is rooted at is registered with where it comes from', () => {
+    const unregistered = [...new Set(scanned().flatMap(([file, text]) =>
+      readsIn(file, text).filter((site) => READ_BASES[file]?.[site.base] === undefined)
+        .map((site) => `${file}: ${site.base}`)))];
+    expect(unregistered).toEqual([]);
+  });
+
+  test('and the register holds no entry for a base that has gone', () => {
+    const live = new Set(scanned().flatMap(([file, text]) => readsIn(file, text).map((site) => `${file}: ${site.base}`)));
+    const stale = Object.entries(READ_BASES).flatMap(([file, bases]) =>
+      Object.keys(bases).filter((base) => !live.has(`${file}: ${base}`)).map((base) => `${file}: ${base}`));
+    expect(stale).toEqual([]);
+  });
+
+  test('the scan still finds the reads it is looking at', () => {
+    // The positive control, first for the same reason as C1's: every failure mode of the blanking
+    // hides sites rather than inventing them, so a clause that had stopped seeing its subject would
+    // report success. `shared` contributing nothing is a fact rather than an omission — its suite
+    // reaches the filesystem only through the corpus routes, so C1 governs all of it.
+    const sites = scanned().flatMap(([file, text]) => readsIn(file, text));
+    expect(sites.length, 'the scan sees almost no computed read — the blanking has eaten its subject').toBeGreaterThan(90);
+    // Coarse on purpose: the failure it guards against is the alternation collapsing to one name,
+    // not the corpus happening to use three APIs rather than four.
+    expect(new Set(sites.map((site) => site.api)).size, 'one API is doing all the work — the alternation is broken')
+      .toBeGreaterThan(1);
+  });
+
+  test('the clause has a subject — iteration 3\'s bypass is reported, and no earlier clause sees it', () => {
+    // `requirements/errata.md` E-1, item 4: the exact shape review round 3 named. It takes no
+    // route, so C1 is silent; `realpathSync` is in no root-derivation list, so C2 is silent; every
+    // literal in it is package-relative, so C3 is silent and clause B collects nothing outside the
+    // package. Only the read-API anchor has anything to say, which is the whole point of adding it
+    // rather than extending C2's list of primitives for a fourth time.
+    const file = 'packages/core/src/rogue.test.ts';
+    const fixture = 'const root = path.dirname(path.dirname(fs.realpathSync(\'.\')));\n'
+      + 'const text = fs.readFileSync(path.join(root, wanted), \'utf8\');\n';
+    expect(readSites(fixture, IDENTITY).map((site) => `${site.api} → ${site.base}`))
+      .toEqual(['realpathSync → \'.\'', 'readFileSync → root']);
+    expect(derivationSites(fixture), 'C2 does not name realpathSync, and adding it was refused as the remedy').toEqual([]);
+    expect(routeImports(file, fixture).bindings).toEqual([]);
+    expect(routeSites(fixture, IDENTITY)).toEqual([]);
+    expect(escapingLiterals(fixture)).toEqual([]);
+    expect(pathLiterals(fixture)).toEqual([]);
+  });
+
+  test('and a base that is a literal clause B DROPS is still reported', () => {
+    // Why the literal exemption is "a literal clause B collects" rather than "a literal". A bare
+    // `'.'` carries no separator, so clause B never sees it; exempting it would have handed the
+    // fixture above a root for nothing, one call before the read that uses it.
+    expect(readSites('fs.realpathSync(\'.\');\n', IDENTITY).map((site) => site.base)).toEqual(['\'.\'']);
+    expect(readSites('fs.readFileSync(\'/etc/passwd\');\n', IDENTITY).map((site) => site.base)).toEqual(['\'/etc/passwd\'']);
+    expect(readSites('fs.readFileSync(\'docs/GLOSSARY.md\');\n', IDENTITY), 'this one clause B does collect').toEqual([]);
+  });
+
+  test('and a read rooted at a route is left to clause C1', () => {
+    // The hand-off, asserted rather than assumed: C1 already requires this path to be a literal or
+    // registered, so reporting it here too would duplicate an entry instead of adding a check.
+    expect(readSites('fs.readFileSync(path.join(repoRoot, relative), \'utf8\');\n', IDENTITY)).toEqual([]);
+    expect(routeSites('fs.readFileSync(path.join(repoRoot, relative), \'utf8\');\n', IDENTITY).map(siteKey))
+      .toEqual(['repoRoot → relative']);
+    // ...and only under a name the file actually imported, which is the iteration-2 lesson applied
+    // to this clause: with no binding, the same line is a computed read this register must answer.
+    expect(readSites('fs.readFileSync(path.join(repoRoot, relative), \'utf8\');\n', []).map((site) => site.base))
+      .toEqual(['repoRoot']);
+  });
+
+  test('and a read named in prose or quoted as an example is not read as one', () => {
+    expect(readSites('// somebody adds fs.readFileSync(path.join(root, x)) one day\n', IDENTITY)).toEqual([]);
+    expect(readSites('/** Prose about readFileSync(root) and existsSync(dir). */\n', IDENTITY)).toEqual([]);
+    expect(readSites('const example = "fs.readFileSync(computed)";\n', IDENTITY)).toEqual([]);
   });
 });
