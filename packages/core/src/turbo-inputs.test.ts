@@ -235,6 +235,13 @@ const NOT_READ: Record<string, string> = {
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, which is data and not a read',
   'docs/05-design-prompt.md': 'named nowhere but this file, as clause B\'s own fixture below',
   'docs/01-product-definition.md': 'named nowhere but this file, as clause A\'s own fixture below',
+  // Why: product path constants, not corpus. Both name directories Quorum *creates*; a suite
+  // asserts on the constant's value and opens neither. They are registered rather than left to
+  // clause B because that clause only sees a directory literal when the directory exists, so
+  // their absence here was invisible in every worktree and on CI. Added by hand after review;
+  // the existence-dependence itself is Q-0073.
+  '.harness/worktrees': 'REPO_WORKTREE_ROOT — a directory the product creates; constants.test.ts asserts its value and opens nothing',
+  '.quorum/runs': 'RUN_HISTORY_ROOT — a directory the product creates; constants.test.ts asserts its value and opens nothing',
 };
 
 /** Every `.ts` below `dir`, at any depth, as `[repository-relative path, text]`. */
