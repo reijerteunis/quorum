@@ -52,7 +52,10 @@ fields, so a regressed event adds the other five fields. They must either all be
 `status === 'regressed'`, or all be absent for every other status. Implement this as a discriminated
 Zod union, not optional fields plus a convention. `remaining` is clamped at zero. `error` is present
 only when `finish` receives an error/note field and is byte-identical to the terminal `runs.log`
-error suffix before JSON quoting.
+error suffix before JSON quoting. Implement `runTerminalEventSchema` as one outer event option
+containing a nested `z.discriminatedUnion('status', [...])` with strict common fields. Do not add
+two flat `type: 'terminal'` alternatives to the outer union, whose discriminator requires unique
+type literals.
 
 `eventSchema` gains `RunTerminalEvent`, and its existing gate member gains `gateId`. The answer
 schema is exported separately and is not an event. Export the corresponding schemas and inferred

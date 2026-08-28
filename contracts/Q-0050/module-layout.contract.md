@@ -6,7 +6,7 @@ Production lands under `packages/core/src/engine/` with no barrel in that folder
 | File | Owned declarations |
 | --- | --- |
 | `channel.ts` | lossless single-consumer FIFO, iterator `next`/`return`/`throw`, producer completion and post-terminal throw |
-| `types.ts` | engine-internal context and injected capability types, including the lifecycle finalisation hook; public `RunFlowOptions`, `AnswerGate`, and `FlowError` |
+| `types.ts` | engine-internal context and injected capability types, including the lifecycle finalisation hook; public `RunFlowOptions` and `AnswerGate`; re-export of the landed `FlowError` from `../lint/lint.js` |
 | `loaders.ts` | `loadFlow`, `loadFlowByName`, `loadRole`, `interpolate`, `writesOf`, `reviewRound` |
 | `routing.ts` | `runStep`, `handleFail`, `askGate`, gate policy, counter arithmetic, intra-flow and cross-flow backward edges |
 | `lifecycle.ts` | `finish`, `outcome`, `recordEvent`, cancellation/abandonment finalisation and rollback policy |
@@ -25,15 +25,24 @@ suite extends the recursive corpus/module-folder assertion before implementation
 spike tests into `packages/core/src/engine/`; implementation satisfies those tests through the
 production files above.
 
-Before writing assertions, qa-red also owns declaration-only compilable stubs at
-`packages/core/src/engine/types.ts`, `channel.ts`, and `engine.ts`. They export the public shapes in
-`run-flow-api.contract.ts`, use contract-local gate shapes until shared is widened, and throw from
-every body. Red tests import these production paths and must fail on assertions, never missing
-modules or symbols. Development replaces the stubs in its later phase. The contract artifact under
-`contracts/` is normative but is not itself a workspace compilation root.
+The architect commits compilable throwing stubs for all six production files at
+`packages/core/src/engine/{types,channel,loaders,routing,lifecycle,engine}.ts`. They expose every
+focused-test symbol in `run-flow-api.contract.ts`. `types.ts` re-exports `FlowError` from
+`../lint/lint.js`; no engine file declares another error class. `merge-contracts` places these
+stubs on qa-red's integration base, so tests fail on assertions rather than resolution. QA does not
+author production-path stubs. Development replaces each stub only in its owning task. The contract
+artifact is normative but is not a compilation root; the architect hand-syncs it with the stubs.
+
+Focused tests import loaders directly; counter, gate, and regression tests import routing;
+finish, dry-view, and record tests import lifecycle. Stage-precondition, cancellation, abandonment,
+and end-to-end stream tests exercise `runFlow` through `engine.ts`.
 
 Documentation changes are confined to `docs/03-adapter-contract.md`, `docs/04-architecture.md`, and
 `docs/GLOSSARY.md`. They describe the terminal member, gate callback, cancellation ownership,
 ordering limits, and the deliberate absence of timestamps/sequence ids. A durable decision entry
 must be accepted before development; development cites its title and date but does not create or
 edit the append-only decision record.
+
+QA deliberately updates the landed `packages/core/src/corpus.test.ts`,
+`packages/shared/src/events.test.ts`, and `packages/core/src/docs.test.ts` suites for the engine
+module, strict event variants, and terminal/gate documentation respectively.

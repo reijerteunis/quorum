@@ -2,8 +2,8 @@
  * Compile-time contract for Q-0050's public engine boundary.
  *
  * This file is a contract artifact, not production source. Development implements the same
- * declarations under `packages/core/src/engine/` and imports the event types from
- * `@quorum/shared`; QA may compile against this stub before that implementation exists.
+ * declarations under `packages/core/src/engine/`. It is hand-synchronised with the six compilable
+ * production-path stubs committed by solutioning; this artifact is not itself typechecked.
  */
 import type { Event } from '@quorum/shared';
 
@@ -83,5 +83,22 @@ export interface RunFlowOptions {
  */
 export declare function runFlow(options: RunFlowOptions): AsyncIterable<Event>;
 
-/** A flow failure whose non-empty message names its cause. */
-export declare class FlowError extends Error {}
+/** The package's one flow-error identity; engine code declares no second class. */
+export { FlowError } from '../../packages/core/src/lint/lint.js';
+
+export declare function loadFlow(file: string): RunFlowDefinition;
+export declare function loadFlowByName(harnessDir: string, name: string): RunFlowDefinition;
+export declare function loadRole(harnessDir: string, name?: string | null): { meta: Record<string, unknown>; body: string };
+export declare function interpolate(template: string, values: Readonly<Record<string, unknown>>): string;
+export declare function writesOf(step: Readonly<Record<string, unknown>>): readonly string[];
+export declare function reviewRound(ticketDir: string): number;
+
+export interface RoutingContext { counters: Record<string, number>; vars: Record<string, unknown>; dry?: boolean; auto?: boolean }
+export declare function askGate(request: ContractGateQuestionEvent, context: RoutingContext): Promise<'advance' | 'retry' | 'abort'>;
+export declare function runStep(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<unknown>;
+export declare function handleFail(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<unknown>;
+
+export interface FinishFields { readonly [key: string]: string | number | undefined }
+export declare function finish(context: unknown, status: RunStatus, fields?: FinishFields): Promise<Readonly<Record<string, unknown>>>;
+export declare function outcome(context: unknown, status: RunStatus, fields?: FinishFields): Readonly<Record<string, unknown>>;
+export declare function recordEvent(context: unknown, event: string, fields?: FinishFields): Promise<void>;

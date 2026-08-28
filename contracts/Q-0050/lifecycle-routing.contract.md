@@ -28,8 +28,10 @@ not paraphrase them.
 enqueueing, the optional `answerGate` callback, cancellation, and logging as injected capabilities;
 `routing.ts` never imports `engine.ts`. `askGate` performs auto/dry short-circuits, allocates and
 emits the correlated question, validates and logs the answer before acting, and preserves the
-`signalWindow` timer. `handleFail` calls it for exhaustion. Q-0052 later calls the same exported
-primitive for author-declared gate steps rather than reimplementing policy.
+`signalWindow` timer. `handleFail` calls it for exhaustion. In Q-0050, `runStep`'s author-declared
+`step.gate` branch also calls `askGate`; Q-0052 inherits that call and adds no gate policy. This
+deliberately moves the gate-policy body across the requirement's Q-0052 non-goal because one owner
+is required for AC-4's ordinary-gate clauses and round one accepted that boundary change.
 
 - `runStep` dispatches in spike order. Parallel groups use `Promise.allSettled`, report survivors,
   and preserve the defect that every nested member is sent to `runAgentStep` irrespective of kind.
@@ -83,3 +85,7 @@ needed amendment through `solution/errata.md`. Production does not edit `fanout/
 
 QA for Q-0050 induces failures only at the two owned branch-head sites and tests the non-empty
 subject before the empty merge-error suffix. Q-0052 and Q-0053 own tests for their later sites.
+
+The branch-head tests inject a `BranchHeadReader` capability. One returns `null` at run start; the
+operational-failure case returns a valid head first and `null` at finish. This deterministic seam
+preserves the public conflation while avoiding PATH mutation and mid-run repository sabotage.
