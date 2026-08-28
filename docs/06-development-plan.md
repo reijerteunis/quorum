@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -271,7 +271,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   resolved in favour of throwing, the correction that `spike/test/run.js` auto-discovers rather than
   registering, and the AC-9 interaction nobody had flagged: file capture makes `command.ts` read
   from `os.tmpdir()`, so `turbo-inputs.test.ts`'s `READ_BASES` gains an entry — Q-0072's guard and
-  Q-0073's open class.
+  the rule Q-0073 closed.
 
 - Q-0071 CI can report green from a replay, and its cache outlives its commit. *(`reviewed` and
   `main:contained` 2026-08-27.)* `.github/workflows/ci.yml` restored `.turbo` across runs with
@@ -339,16 +339,55 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   expensive ticket this project has run. See *"A cache hit names what the task reads, not what its
   package contains"* (2026-08-28).
 
-- Q-0073 The input guard's verdict depends on checkout state. Opened 2026-08-28 at Q-0072's gate,
-  by re-running the forced suite on `main` after the merge rather than trusting `integrate`'s tick.
-  `turbo-inputs.test.ts`'s clause B refuses a directory-shaped literal no audited walk covers, but
-  only recognises a literal as a directory when the directory **exists on disk** — so the verdict
-  is a function of what the checkout contains rather than of what the code says. `git ls-files`
-  reports zero tracked files under `.harness` and `.quorum`, which is why every gate is
-  structurally blind to it and only a developer's machine is red. Registering the two instances
-  closes them and leaves the class open. Four shapes listed, none decided; the property worth
-  asserting whatever wins is that the guard returns the same verdict on a clean checkout and on one
-  that has run flows.
+- Q-0073 The input guard's verdict depends on checkout state. *(`reviewed` and `main:contained`
+  2026-08-28.)* `turbo-inputs.test.ts` decided whether a quoted literal was a repository path, and
+  whether a collected path was a directory, from `fs.existsSync` — so the verdict was a function of
+  what the checkout happened to contain. Both now come from one injectable inventory,
+  `git ls-files --cached --others --exclude-standard`. The four existence checks that **refuse to
+  run over a missing subject** are untouched and still throw: existence used to *classify* was the
+  defect, existence used to *refuse* is the rule, and conflating them would have deleted four
+  guards doing their job. That distinction is the requirements run's, not the ticket's — the body
+  counted two existence checks and there are six.
+  **Two of the ticket's own claims did not survive being re-measured before the run.** The
+  load-bearing check was `pathLiterals`'s collection filter at `:348`, not clause B's `statSync` at
+  `:1303`: creating the same two paths as plain **files** reports the same six occurrences, losing
+  only the `(a directory, …)` clause, so a fix aimed at the directory test would have moved the
+  wording and left the dependence. And **no CI run ever executed the defective revision** — `main`
+  was 15 commits ahead of `origin/main` — so the table's fresh-clone row is a measured proxy for
+  CI's checkout shape rather than an observation of CI.
+  **The census decided the shape and the erratum decided the oracle.** Existence was not only
+  classifying directories: it is what tells a path from any other string containing a slash, and it
+  drops **270 of 307** distinct literals to do it — lint messages, `./adapters.js` import
+  specifiers, `#!/bin/sh`, argv fixtures, prose. So shape (1) is a rewrite and shape (2) moves
+  exactly **3** literals. Shape (3) is a supplement, shape (4) makes the answer depend on a fixture
+  and gives a test a side effect on the reader's tree. The requirement fixed the **tracked** set and
+  recommended `git ls-files`; `requirements/errata.md` **E-1** superseded both before an
+  implementer started, on three probes showing turbo hashes untracked-**unignored** files and
+  ignores gitignored ones — so tracked-only would have dropped a path turbo genuinely hashes,
+  reintroducing the failure the guard exists to prevent. Both oracles agree on all 578 literals
+  today, so nothing moved except what the guard claims.
+  **The run found a second defect and stopped on it.** Run 2's reviewer returned `approve` with two
+  nits — obeying `chore.yaml`'s *"nits alone approve"* — and the engine refused the answer, because
+  the sentence beside it says findings must be empty on approve. The run failed after paying
+  $18.57 for an implement step it had just approved. The contradiction is in **both** shipped
+  flows, both templates and the spec, and the half being enforced is written into two frozen Q-0006
+  contracts; **E-4** supersedes them and the fix lands in `spike` and `packages/core` together. The
+  two nits were recovered from the raw output so run 3 was a revise round rather than an idle one,
+  and both were real. See *"A nit does not contradict an approval"* (2026-08-28).
+  **Two findings that outlive the ticket.** Nothing asserted a `NOT_READ` key was still a path the
+  scan would collect, so a rule change could leave the register excusing nothing while reading as
+  coverage — and `node_modules/.bin/turbo` became uncollectable on day one, which is that case
+  arriving immediately. And **a count is not an identity**: the no-contraction guard was two
+  `toBeGreaterThanOrEqual` floors, demonstrated to pass while a collected literal was swapped out,
+  and is now a register of `file: literal` identities with its own arithmetic pinned.
+  Verified forced on `main` in **both** environment rows rather than from `integrate`'s tick, which
+  is the discipline that opened the ticket: spike 12/12 and workspace 21/21 with 0 cached, identical
+  with `.harness/worktrees` and `.quorum/runs` present and absent. Three runs — $5.997, $18.575 and
+  $7.349 — **$31.92** billed and 38.3M tokens the roll-up cannot split by vendor. One nit survived
+  review and was fixed by hand after the gate: the size-floor comment named a sparse checkout as a
+  cause of an implausibly small listing while the audit above it has one *collecting* — measured on
+  git 2.55, `ls-files --cached` reports two entries over one file on disk, so the audit was right.
+  See *"Membership is a git question, not a filesystem one"* (2026-08-28).
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
