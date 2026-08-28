@@ -105,3 +105,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A cache hit names what the task reads, not what its package contains](decisions/056-a-cache-hit-names-what-the-task-reads.md)
 - [A decision is a file; this page is the index](decisions/057-a-decision-is-a-file.md)
 - [A nit does not contradict an approval](decisions/059-a-nit-does-not-contradict-an-approval.md)
+- [Membership is a git question, not a filesystem one](decisions/060-membership-is-a-git-question-not-a-filesystem-one.md)
