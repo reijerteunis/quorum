@@ -1,0 +1,9 @@
+# Q-0049 review — iteration 2
+
+major: packages/core/src/run-history/writer.ts:265 Wrapping creation of the runs root changes the required preserved behavior: E-1 requires a `.quorum/runs` file to surface the raw `EEXIST`, and explicitly permits blocking if this behavior is changed to match the superseded test sketch. Remove this translation and restore the bare recursive `mkdirSync`; retain the named `FlowError` handling only for creation of the run directory.
+
+major: packages/core/src/run-history/writer.ts:371 Replacing the ported `existsSync` check with `isExistingFile` changes the required preserved behavior for a directory named `output.txt`: E-1 requires that case to be silently skipped and explicitly permits blocking when it is changed to match the superseded test sketch. Restore the existence check and update the test to assert the silent skip; keep the removed-occurrence-directory test for the reachable warning path.
+
+major: packages/core/src/run-history/writer.ts:119 The public `persist` parameter was widened from `string` to `unknown`, directly contradicting E-2’s instruction to restore `String(text)` while keeping the parameter typed `string` and not widening it. This admits unsupported non-string callers and the new tests codify an unrequested behavior change. Keep `String(text)` in the implementation, restore `text: string`, and remove the non-string behavior tests.
+
+major: packages/core/src/run-history/writer.ts:127 `finalise` accepts the full `RunStatus`, including `'running'`, although AC-9 defines finalisation over the six terminal statuses. A caller can therefore create a manifest with `status: 'running'` but non-null `ended_at` and `duration_ms`, violating the lifecycle semantics the module is intended to enforce. Narrow this parameter to `Exclude<RunStatus, 'running'>` or an equivalent terminal-status type.

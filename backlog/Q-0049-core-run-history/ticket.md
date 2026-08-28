@@ -1,13 +1,14 @@
 ---
 id: Q-0049
 title: core/run-history — the manifest, occurrences and roll-ups
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0049/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-08-28T20:53:54.518Z
     cost: 11.446
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-28T22:35:39.202Z
+    cost: 40.895
 ---
 Lifts run history out of `spike/src/engine.js` into its own module in `packages/core`. In the spike
 it is roughly 200 lines interleaved with the run loop — `initialiseRunHistory`, `allocateOccurrence`,
