@@ -18,6 +18,15 @@ project config, `backlog` and `writeFile` appear nowhere, `StepResult` is undecl
 fixture still holds `log: [errorSuffix, gateAnswer, retryGrant, rollback, terminal]` and
 `gate: [kind, reason, retry, ticketDir]`. All four findings are open exactly as reviewed.
 
+**What `finalize` did do, which changes what this file is for.** `solution/solution.md`, written
+after round 5, already states all four remedies in prose — the caller-supplied `Project` and
+`Backlog`, the `Object.create(backlog)` dry view, the closed `StepResult` with routing returning and
+`engine.ts` moving the cursor, and the four oracle strings. So this erratum is not deciding four
+things at a gate. **It is recording that the contract files have not caught up with the solution
+document, and binding the contracts to it** — which matters because qa-red writes its tests against
+`contracts/Q-0050/**`, not against `solution.md`. Where the two disagree today, the entries below
+say the solution wins.
+
 ## E-1 — the run context carries the project config — 2026-08-28
 
 **Supersedes** `run-flow-api.contract.ts:6` (`RunFlowOptions`) and `:13` (`RunContext`), and the
@@ -55,8 +64,13 @@ resolves the contradiction between `lifecycle-routing.contract.md` § Dry view �
 `Object.create(backlog)` and replace `write`, `writeFile`, and `log` with no-ops"* — and a typed
 contract in which no backlog exists.
 
-**The amendment, and this is the choice the reviewer requires this file to state.** Of the two
-options round 5 offers, **option 1 is taken**: `RunFlowOptions` and `RunContext` carry
+**The amendment, and the choice the reviewer requires this file to state.** Of the two options
+round 5 offers, **option 1 is taken** — and it was taken by `finalize`, not here:
+`solution.md` § *Project, configuration and persistence seams* already says *"Core creates
+`Object.create(backlog)` and replaces `write`, `writeFile` and `log` with no-ops before placing that
+view in the run context."* This entry states it because the reviewer requires the oracle to name the
+choice explicitly, and because the contract file still does not carry it. `RunFlowOptions` and
+`RunContext` carry
 `backlog: Backlog`, and the dry view stays `Object.create(backlog)` verbatim from `engine.js:29-34`.
 `RunPersistence` is retained for what it already names and is no longer the only persistence seam.
 The dry-view paragraph is unchanged, because it is now true.
@@ -118,8 +132,8 @@ short.
 | --- | --- | --- |
 | `log.recordEvent` — `run=<runId> <status> stage=<stage>→<stage> cost=<cost>` | `engine.js:663` | AC-6 |
 | `log.start` — `run=<runId> flow=<flow> start stage=<stage>` | `:68` | `nextRunId` scans `run=(\d+)` |
-| `gate.autoAdvanced` — `gate: auto-advanced (<kind>)` | `:559` | AC-4(6) |
-| `gate.dryRun` — `gate (<kind>): would pause here` | `:560` | AC-4(6) |
+| `gateAutoAdvanced` — `gate: auto-advanced (<kind>)` | `:559` | AC-4(6) |
+| `gateDryRun` — `gate (<kind>): would pause here` | `:560` | AC-4(6) |
 
 Verified against the committed fixture at `63d4a6c`: `log` holds `errorSuffix`, `gateAnswer`,
 `retryGrant`, `rollback`, `terminal`; `gate` holds `kind`, `reason`, `retry`, `ticketDir`. Round 4's
