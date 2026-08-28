@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -97,6 +97,55 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   - Q-0047 `core/adapters` — claude and codex, with the per-adapter `capabilities` split.
   - Q-0048 `core/fanout` — tasks, waves, worktrees, branches.
   - Q-0049 `core/run-history` — manifest, occurrences, roll-ups, and the reader lifted from the CLI.
+    *(`reviewed` and `main:contained` 2026-08-28.)* Three files, not one, so that three rules are
+    checkable rather than intended: `reader.ts` never writes, `writer.ts` is the only file in
+    `packages/core` that writes under `.quorum/`, and `reader.ts` does not import `./writer.js` —
+    which is what lets M3's server read run history without linking the code that creates
+    directories. **The highest-value criterion was AC-11**, and it came from the requirement rather
+    than from the ticket: the confinement guard's `realpath` clause was the only clause with no
+    coverage in either suite, because `q0034-review-fixes.js` B4's five tokens are each rejected by
+    the *lexical* clauses alone — so a port that deleted `realPath` would have been green everywhere
+    while re-opening the hole Q-0011's round-2 panel found in round 1's own fix. Verified before the
+    gate rather than taken on trust. A single-segment symlink pointing outside the runs root is now
+    tested for the first time, and the sibling-symlink case is pinned as accepted so a later change
+    is deliberate.
+    **One chore run, three implement rounds, no exhaustion gate** — so charter §9's third threshold
+    (*more than three chore runs means the child was cut wrong*) is not tripped, though the cost is
+    past its first: **$52.34** billed Claude and 714,125 codex tokens the roll-up reports as `n/a`
+    across three unpriced steps. $29.58 of that is implement round 1 on the largest module in the
+    port; the two revise rounds cost $11.31 together. Q-0044 and Q-0048 each reached their
+    exhaustion gate twice and were cheaper only because they were smaller.
+    **The run's most durable finding is about the review loop, not the module.** Round 1 returned
+    three majors, two of which asked for behaviour charter §2 requires the port to preserve — a
+    `FlowError` for a runs root that is a file, and a warning for an `output.txt` that is a
+    directory. Both were measured rather than argued: AC-2's own numbered body binds `could not
+    create` to the *run* directory while step 2 is a bare `mkdirSync(historyRoot, {recursive:
+    true})` (`engine.js:342`), so a file there throws a raw `EEXIST`; and `engine.js:421` guards
+    with `existsSync`, which answers true for a directory, so that case is silently skipped and no
+    shipped path warns. Both *Test:* sketches had been written from the requirement's intent rather
+    than from the code. `requirements/errata.md` E-1 ruled them in §2's favour and E-2 ruled the
+    genuinely dropped `String(text)` a nit. Round 2's prompt was already built and obeyed the review
+    instead — **and round 2's reviewer then blocked its own requests, citing E-1 by name.** That is
+    the lesson: *a review loop cannot police charter §2 on its own, because a reviewer approves the
+    change it asked for.* The erratum is what gave it a subject, which is Q-0071's guard lesson
+    arriving on the review step itself.
+    Round 2's reviewer also found a fourth major nobody had raised: `finalise` accepted `'running'`,
+    so a caller could write that status beside a non-null `ended_at`. Now
+    `Exclude<RunStatus, 'running'>` — the compiler refuses the lifecycle contradiction rather than
+    Q-0045's semantic pass reporting it after the run is over, which is the ticket body's own
+    *"unrepresentable in the types rather than merely observed"* arriving from a reviewer.
+    Verified in **both** environment rows before and after the merge, per Q-0072's closing finding:
+    the integrate worktree had neither `.harness/worktrees` nor `.quorum/runs`, so both were created
+    inside it and everything re-run forced (21/21 tasks, 0 cached, 837 tests, spike 13/13), then run
+    again forced in the main checkout after the merge. Preserved defects are reported and not fixed:
+    the list/detail disagreement over a symlinked run directory, the blended `ctx.stats.cost` that
+    `finish()` persists, the persisted-stage guard that is unreachable from the CLI and reachable
+    from `core`, and Q-0037's five items as they touch this module. **Two neighbours were settled by
+    hand rather than opened as tickets:** OQ-1's obligations now live in Q-0051's and Q-0052's
+    bodies (`trimIncompleteUtf8Suffix`, `formatCost`), and `harness/rules.md` now states that an
+    agent's worktree has no dependencies until it installs them — `commands.install` runs only in an
+    `integrate` worktree (`engine.js:1034`), which cost this run's implementer a hand-built
+    `spike/node_modules` and would have cost every remaining child the same.
   - Q-0050 `core/engine` — the run loop, routing, stage transitions, and `runFlow` as an event stream.
   - Q-0051 `core/engine` — diff preflight and materialisation.
   - Q-0052 `core/engine` — agent, gate and script steps.

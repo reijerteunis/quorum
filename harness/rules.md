@@ -8,6 +8,13 @@ When they disagree, this file wins and the other is the drift.
 - TypeScript strict. No `any`. No `@ts-ignore` without a one-line reason on the same line.
 - Every behaviour change ships with a test. The mock-adapter end-to-end suite is the
   regression suite and stays green; adapters are covered by `adapters --probe` and its report.
+- **Your worktree has no dependencies until you install them.** `commands.install` in
+  `harness.yaml` runs only in an `integrate` step's worktree (`spike/src/engine.js:1034`), so a
+  step that writes code starts in a fresh checkout with no `node_modules` and no
+  `spike/node_modules`. Run `pnpm install --frozen-lockfile` and `npm install --prefix spike
+  --no-audit --no-fund` before either suite, and run both — `npm test --prefix spike` and
+  `pnpm turbo run test --force`. Reporting a suite as unrun is honest and reporting it as green
+  without installing is not, and a reviewer cannot tell an uninstalled suite from a red one.
 - **No deprecated API.** A symbol a dependency marks `@deprecated` is not used in new code, and
   one found in code you are already changing is reported rather than migrated in passing — the
   migration is its own change, because it is workspace-wide and the replacement is a decision.
