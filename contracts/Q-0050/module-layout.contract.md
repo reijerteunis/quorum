@@ -6,9 +6,9 @@ Production lands under `packages/core/src/engine/` with no barrel in that folder
 | File | Owned declarations |
 | --- | --- |
 | `channel.ts` | lossless single-consumer FIFO, iterator `next`/`return`/`throw`, producer completion and post-terminal throw |
-| `types.ts` | engine-internal context and structural dependency types; public `RunFlowOptions`, `AnswerGate`, and `FlowError` |
+| `types.ts` | engine-internal context and injected capability types, including the lifecycle finalisation hook; public `RunFlowOptions`, `AnswerGate`, and `FlowError` |
 | `loaders.ts` | `loadFlow`, `loadFlowByName`, `loadRole`, `interpolate`, `writesOf`, `reviewRound` |
-| `routing.ts` | `runStep`, `handleFail`, counter arithmetic, intra-flow and cross-flow backward edges |
+| `routing.ts` | `runStep`, `handleFail`, `askGate`, gate policy, counter arithmetic, intra-flow and cross-flow backward edges |
 | `lifecycle.ts` | `finish`, `outcome`, `recordEvent`, cancellation/abandonment finalisation and rollback policy |
 | `engine.ts` | `runFlow`, context construction, producer orchestration and the only composition of the files above |
 
@@ -25,9 +25,15 @@ suite extends the recursive corpus/module-folder assertion before implementation
 spike tests into `packages/core/src/engine/`; implementation satisfies those tests through the
 production files above.
 
+Before writing assertions, qa-red also owns declaration-only compilable stubs at
+`packages/core/src/engine/types.ts`, `channel.ts`, and `engine.ts`. They export the public shapes in
+`run-flow-api.contract.ts`, use contract-local gate shapes until shared is widened, and throw from
+every body. Red tests import these production paths and must fail on assertions, never missing
+modules or symbols. Development replaces the stubs in its later phase. The contract artifact under
+`contracts/` is normative but is not itself a workspace compilation root.
+
 Documentation changes are confined to `docs/03-adapter-contract.md`, `docs/04-architecture.md`, and
 `docs/GLOSSARY.md`. They describe the terminal member, gate callback, cancellation ownership,
 ordering limits, and the deliberate absence of timestamps/sequence ids. A durable decision entry
 must be accepted before development; development cites its title and date but does not create or
 edit the append-only decision record.
-

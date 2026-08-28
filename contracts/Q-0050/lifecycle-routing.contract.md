@@ -24,6 +24,13 @@ not paraphrase them.
 
 ## Routing and counters
 
+`routing.ts` owns `askGate(request, ctx)` as the one gate-policy primitive. `ctx` supplies event
+enqueueing, the optional `answerGate` callback, cancellation, and logging as injected capabilities;
+`routing.ts` never imports `engine.ts`. `askGate` performs auto/dry short-circuits, allocates and
+emits the correlated question, validates and logs the answer before acting, and preserves the
+`signalWindow` timer. `handleFail` calls it for exhaustion. Q-0052 later calls the same exported
+primitive for author-declared gate steps rather than reimplementing policy.
+
 - `runStep` dispatches in spike order. Parallel groups use `Promise.allSettled`, report survivors,
   and preserve the defect that every nested member is sent to `runAgentStep` irrespective of kind.
 - Counter key: explicit `on_fail.counter`, otherwise `<flow.name>.<step.id>`. Increment before the
@@ -60,8 +67,10 @@ both defects: `finish` still mutates the caller's in-memory ticket, and counters
 
 ## Preserved diagnostic decisions
 
-The implementation adds one-line `Why: preserved defect, see Q-0050 AC-12.` annotations and the
-implementation report enumerates all sites below. It does not edit `fanout/`.
+The implementation adds one-line `Why: preserved defect, see Q-0050 AC-12.` annotations at the
+owned source sites. This table is the durable enumeration for all eight sites; this full-SDLC route
+cannot write `dev/implement-report.md`. The human gate records that discrepancy and routes any
+needed amendment through `solution/errata.md`. Production does not edit `fanout/`.
 
 | Consumer | Absent/normal result | Operational git or diagnostic failure |
 | --- | --- | --- |
@@ -74,4 +83,3 @@ implementation report enumerates all sites below. It does not edit `fanout/`.
 
 QA for Q-0050 induces failures only at the two owned branch-head sites and tests the non-empty
 subject before the empty merge-error suffix. Q-0052 and Q-0053 own tests for their later sites.
-

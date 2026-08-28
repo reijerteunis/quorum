@@ -5,7 +5,23 @@
  * declarations under `packages/core/src/engine/` and imports the event types from
  * `@quorum/shared`; QA may compile against this stub before that implementation exists.
  */
-import type { Event, GateAnswerEnvelope, GateQuestionEvent } from '@quorum/shared';
+import type { Event } from '@quorum/shared';
+
+/** Contract-local gate question until Q-0050 widens the shared event union. */
+export interface ContractGateQuestionEvent {
+  type: 'gate';
+  gateId: string;
+  kind: string;
+  reason: string;
+  ticketDir: string;
+  retry?: string;
+}
+
+/** Contract-local answer envelope until Q-0050 adds the shared runtime schema. */
+export interface ContractGateAnswerEnvelope {
+  gateId: string;
+  answer: 'advance' | 'retry' | 'abort';
+}
 
 /** The five terminal states persisted by the run lifecycle. */
 export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
@@ -34,7 +50,9 @@ export interface RunFlowDefinition {
 }
 
 /** Resolve one gate question outside the iterator's pull stack. */
-export type AnswerGate = (question: GateQuestionEvent) => Promise<GateAnswerEnvelope>;
+export type AnswerGate = (
+  question: ContractGateQuestionEvent,
+) => Promise<ContractGateAnswerEnvelope>;
 
 /** Inputs owned by the run-loop boundary. Sibling modules may structurally extend this object. */
 export interface RunFlowOptions {

@@ -22,28 +22,37 @@ interface GateAnswerEnvelope {
   answer: GateAnswer;
 }
 
-interface RunTerminalEvent {
+interface RunTerminalBase {
   type: 'terminal';
-  status: 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
   runId: number;
   stageBefore: string;
   stageAfter: string;
   cost: number;
   tokens: number;
   error?: string;
-  targetFlow?: string;
-  counter?: string;
-  count?: number;
-  limit?: number;
-  remaining?: number;
 }
+
+type RunTerminalEvent =
+  | (RunTerminalBase & {
+      status: 'regressed';
+      targetFlow: string;
+      counter: string;
+      count: number;
+      limit: number;
+      remaining: number;
+    })
+  | (RunTerminalBase & {
+      status: 'completed' | 'aborted' | 'failed' | 'interrupted';
+    });
 ```
 
 The regression payload has seven values in the spike: target flow, stage before, stage after,
 counter, count, limit, and remaining. `stageBefore` and `stageAfter` are already required terminal
 fields, so a regressed event adds the other five fields. They must either all be present when
-`status === 'regressed'`, or all be absent for every other status. `remaining` is clamped at zero.
-`error` is present only when `finish` receives an error/note field.
+`status === 'regressed'`, or all be absent for every other status. Implement this as a discriminated
+Zod union, not optional fields plus a convention. `remaining` is clamped at zero. `error` is present
+only when `finish` receives an error/note field and is byte-identical to the terminal `runs.log`
+error suffix before JSON quoting.
 
 `eventSchema` gains `RunTerminalEvent`, and its existing gate member gains `gateId`. The answer
 schema is exported separately and is not an event. Export the corresponding schemas and inferred
