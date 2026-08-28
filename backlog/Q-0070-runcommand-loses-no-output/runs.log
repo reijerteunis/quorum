@@ -7,3 +7,4 @@
 2026-08-28T10:00:34.590Z run=1 gate=human-locked answer=advance
 2026-08-28T10:00:41.479Z run=1 gate=human answer=advance
 2026-08-28T10:00:41.488Z run=1 completed stage=draft→requirements cost=8.31 tokens=5183361
+2026-08-28T13:38:49.000Z note (out-of-band: cross-vendor review run by hand on codex against 53731bc, because no flow can review this ticket — review.yaml consumes green while the ticket is at requirements, harness/Q-0070/* does not exist, and 53731bc is already contained in main so the flow's only range would be empty. Verdict revise, two majors; review/hand-review-1.md §3 confirms the second as stated and downgrades the first, whose defensible half is that the two unguarded closeSync calls throw a raw ENOSPC rather than a message naming the capture. No stage change.)
