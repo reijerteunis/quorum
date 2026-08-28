@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // As in packages/shared/turbo.json: a hit claims that nothing this task READS has changed.
+    // Note the closure — this suite asserts over `turbo.json` and `.github/workflows/ci.yml`, so
+    // declaring them makes the Q-0065, Q-0071 and Q-0072 guards inputs of the task that runs them.
+    // `src/turbo-inputs.test.ts` is what fails when a read stops being covered. Q-0072.
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../.github/workflows/ci.yml",
+        "../../turbo.json",
+        "../../pnpm-lock.yaml",
+        "../../docs/03-adapter-contract.md",
+        "../../docs/04-architecture.md",
+        "../../contracts/Q-0006/review-artifacts.schema.json",
+        "../../contracts/Q-0006/ticket-review-state.schema.json",
+        "../../contracts/Q-0011/run-manifest.schema.json",
+        "../../backlog/*/ticket.md",
+        "../../harness/flows/*.yaml",
+        "../../spike/src/**",
+        "../../spike/templates/harness/flows/*.yaml"
+      ]
+    }
+  }
+}
