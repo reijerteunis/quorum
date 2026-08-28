@@ -1,8 +1,8 @@
 # Q-0050 lifecycle, routing, and preservation contract
 
 This contract partitions the ported behaviour without changing it. Exact user-visible messages and
-line formats come from the transcribed spike fixtures named by the requirements; implementations do
-not paraphrase them.
+line formats come from `contracts/Q-0050/run-messages.fixture.json`; implementations do not
+paraphrase them.
 
 ## Lifecycle
 
@@ -24,8 +24,10 @@ not paraphrase them.
 
 ## Routing and counters
 
-`routing.ts` owns `askGate(request, ctx)` as the one gate-policy primitive. `ctx` supplies event
-enqueueing, the optional `answerGate` callback, cancellation, and logging as injected capabilities;
+`routing.ts` owns `askGate(request, ctx)` as the one gate-policy primitive. The complete
+`RoutingContext` in `run-flow-api.contract.ts` supplies flow, ticket, harness directory, run id,
+counters, event enqueueing, the optional `answerGate` callback, cancellation, logging, history,
+named-flow loading, and lifecycle completion as injected capabilities;
 `routing.ts` never imports `engine.ts`. `askGate` performs auto/dry short-circuits, allocates and
 emits the correlated question, validates and logs the answer before acting, and preserves the
 `signalWindow` timer. `handleFail` calls it for exhaustion. In Q-0050, `runStep`'s author-declared
@@ -86,6 +88,9 @@ needed amendment through `solution/errata.md`. Production does not edit `fanout/
 QA for Q-0050 induces failures only at the two owned branch-head sites and tests the non-empty
 subject before the empty merge-error suffix. Q-0052 and Q-0053 own tests for their later sites.
 
-The branch-head tests inject a `BranchHeadReader` capability. One returns `null` at run start; the
+`LifecycleContext.readBranchHead` is the declared injection point for `BranchHeadReader`; the same
+context names ticket, flow, repository, run id, counters, statistics, persistence, emission, the
+start head, and reset capability. The branch-head tests inject that member. One returns `null` at run start; the
 operational-failure case returns a valid head first and `null` at finish. This deterministic seam
-preserves the public conflation while avoiding PATH mutation and mid-run repository sabotage.
+tests the consumer's preserved response to `null`; it does not witness `fanout.safe()` swallowing
+the underlying git failure. That swallow remains explicitly unwitnessed for Q-0074.

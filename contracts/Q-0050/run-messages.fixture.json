@@ -1,0 +1,9 @@
+{
+  "runBanner": "run #<runId>  flow=<flow>  ticket=<ticket>  <consumes> → <produces>",
+  "crossFlowRegression": "backward edge → flow:<target>: ticket regresses to stage \"<stage>\"",
+  "loopIteration": "<stepId>: iteration <count>/<limit> → goto <target>",
+  "loopExhausted": "<stepId>: loop exhausted (<limit>) → human gate",
+  "gate": { "kind": "<kind>", "reason": "<reason>", "ticketDir": "<absoluteTicketDir>", "retry": "<retryTarget-if-offered>" },
+  "rollback": "<branch>: rolled back to <shortStartSha> — a run that did not complete leaves the ticket branch as it found it",
+  "terminalInfo": "run #<runId> <status>: <stageBefore> → <stageAfter>   cost $<roundedCost>  tokens <tokens><unpricedSuffix>"
+}

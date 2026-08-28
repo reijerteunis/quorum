@@ -1,104 +1,33 @@
-/**
- * Compile-time contract for Q-0050's public engine boundary.
- *
- * This file is a contract artifact, not production source. Development implements the same
- * declarations under `packages/core/src/engine/`. It is hand-synchronised with the six compilable
- * production-path stubs committed by solutioning; this artifact is not itself typechecked.
- */
-import type { Event } from '@quorum/shared';
-
-/** Contract-local gate question until Q-0050 widens the shared event union. */
-export interface ContractGateQuestionEvent {
-  type: 'gate';
-  gateId: string;
-  kind: string;
-  reason: string;
-  ticketDir: string;
-  retry?: string;
-}
-
-/** Contract-local answer envelope until Q-0050 adds the shared runtime schema. */
-export interface ContractGateAnswerEnvelope {
-  gateId: string;
-  answer: 'advance' | 'retry' | 'abort';
-}
-
-/** The five terminal states persisted by the run lifecycle. */
+/** Compile-time contract mirrored by the production-path stubs for Q-0050. */
+import type { Event, Flow, Role } from '@quorum/shared';
+import type { TicketRecord } from '../../packages/core/src/backlog/backlog.js';
+export interface ContractGateQuestionEvent { type: 'gate'; gateId: string; kind: string; reason: string; ticketDir: string; retry?: string }
+export interface ContractGateAnswerEnvelope { gateId: string; answer: 'advance' | 'retry' | 'abort' }
 export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
-
-/** The minimum ticket shape the run loop consumes; the concrete backlog type is assignable. */
-export interface RunTicket {
-  /** Absolute ticket directory. */
-  dir: string;
-  /** Mutable frontmatter state; dry runs deliberately retain the spike's in-memory mutations. */
-  meta: {
-    /** Ticket identifier used in messages, history, and run identity. */
-    id: string;
-    stage: string;
-    iterations?: Record<string, number>;
-    history?: readonly unknown[];
-  };
-}
-
-/** A validated flow sufficient for orchestration; the shared Flow type replaces this stub. */
-export interface RunFlowDefinition {
-  name: string;
-  consumes: string;
-  produces: string;
-  file: string;
-  steps: readonly unknown[];
-}
-
-/** Resolve one gate question outside the iterator's pull stack. */
-export type AnswerGate = (
-  question: ContractGateQuestionEvent,
-) => Promise<ContractGateAnswerEnvelope>;
-
-/** Inputs owned by the run-loop boundary. Sibling modules may structurally extend this object. */
-export interface RunFlowOptions {
-  /** The already-loaded ticket to run. */
-  ticket: RunTicket;
-  /** The parsed and linted flow to execute. */
-  flow: RunFlowDefinition;
-  /** Absolute repository root. */
-  repoDir: string;
-  /** Absolute harness configuration directory. */
-  harnessDir: string;
-  /** Preview through the real routing path while replacing every persistent writer. */
-  dry?: boolean;
-  /** Opt in to gates whose flow declaration permits automatic advance. */
-  auto?: boolean;
-  /** Out-of-band gate responder; absence is an explicit failure when a gate asks. */
-  answerGate?: AnswerGate;
-  /** Caller-owned cancellation; core installs no process signal listener. */
-  signal?: AbortSignal;
-}
-
-/**
- * Start lazily on the first pull and return a single-consumer event stream.
- *
- * The implementation owns an internal, lossless FIFO so synchronous adapter callbacks can enqueue
- * bursts while the consumer is slow. `return()` cancels work, awaits lifecycle finalisation, and
- * never permits the abandoned run to continue in the background.
- */
+export type AnswerGate = (question: ContractGateQuestionEvent) => Promise<ContractGateAnswerEnvelope>;
+export interface RunFlowOptions { ticket: TicketRecord; flow: Flow; repoDir: string; harnessDir: string; dry?: boolean; auto?: boolean; answerGate?: AnswerGate; signal?: AbortSignal }
+export type EmitEvent = (event: Event) => void;
+export type FinaliseAbandonment = () => Promise<void>;
+export type BranchHeadReader = (repoDir: string, branch: string) => string | null;
+export type BranchResetter = (repoDir: string, branch: string, revision: string) => void;
+export interface RunPersistence { writeTicket(ticket: TicketRecord): void; appendLog(ticket: TicketRecord, line: string): void; recordOccurrenceEvent(ticket: TicketRecord, stage: string, event: string, cost: number): void | Promise<void>; finaliseActiveOccurrences(status: 'failed' | 'interrupted', cause: string): void | Promise<void> }
+export interface RunStats { cost: number; tokens: number; unpriced: number }
+export interface RunContext { ticket: TicketRecord; flow: Flow; repoDir: string; harnessDir: string; runId: number; counters: Record<string, number>; vars: Record<string, unknown>; stats: RunStats; dry: boolean; auto: boolean; emit: EmitEvent; answerGate?: AnswerGate; signal?: AbortSignal; persistence: RunPersistence }
+export interface FinishFields { readonly [key: string]: string | number | undefined }
+export interface RunOutcome extends Readonly<Record<string, unknown>> { status: RunStatus; stage: string; cost: number; runId: number }
+export interface RoutingContext extends RunContext { loadNamedFlow(name: string, harnessDir: string): Flow; finishRun(status: RunStatus, fields?: FinishFields): Promise<RunOutcome> }
+export interface LifecycleContext extends RunContext { branchHeadAtStart: string | null; readBranchHead: BranchHeadReader; resetBranch: BranchResetter }
 export declare function runFlow(options: RunFlowOptions): AsyncIterable<Event>;
-
-/** The package's one flow-error identity; engine code declares no second class. */
 export { FlowError } from '../../packages/core/src/lint/lint.js';
-
-export declare function loadFlow(file: string): RunFlowDefinition;
-export declare function loadFlowByName(harnessDir: string, name: string): RunFlowDefinition;
-export declare function loadRole(harnessDir: string, name?: string | null): { meta: Record<string, unknown>; body: string };
+export declare function loadFlow(file: string): Flow;
+export declare function loadFlowByName(harnessDir: string, name: string): Flow;
+export declare function loadRole(harnessDir: string, name?: string | null): Role;
 export declare function interpolate(template: string, values: Readonly<Record<string, unknown>>): string;
 export declare function writesOf(step: Readonly<Record<string, unknown>>): readonly string[];
 export declare function reviewRound(ticketDir: string): number;
-
-export interface RoutingContext { counters: Record<string, number>; vars: Record<string, unknown>; dry?: boolean; auto?: boolean }
 export declare function askGate(request: ContractGateQuestionEvent, context: RoutingContext): Promise<'advance' | 'retry' | 'abort'>;
 export declare function runStep(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<unknown>;
 export declare function handleFail(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<unknown>;
-
-export interface FinishFields { readonly [key: string]: string | number | undefined }
-export declare function finish(context: unknown, status: RunStatus, fields?: FinishFields): Promise<Readonly<Record<string, unknown>>>;
-export declare function outcome(context: unknown, status: RunStatus, fields?: FinishFields): Readonly<Record<string, unknown>>;
-export declare function recordEvent(context: unknown, event: string, fields?: FinishFields): Promise<void>;
+export declare function finish(context: LifecycleContext, status: RunStatus, fields?: FinishFields): Promise<RunOutcome>;
+export declare function outcome(context: LifecycleContext, status: RunStatus, fields?: FinishFields): RunOutcome;
+export declare function recordEvent(context: LifecycleContext, event: string, fields?: FinishFields): Promise<void>;

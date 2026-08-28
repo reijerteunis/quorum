@@ -32,6 +32,8 @@ focused-test symbol in `run-flow-api.contract.ts`. `types.ts` re-exports `FlowEr
 stubs on qa-red's integration base, so tests fail on assertions rather than resolution. QA does not
 author production-path stubs. Development replaces each stub only in its owning task. The contract
 artifact is normative but is not a compilation root; the architect hand-syncs it with the stubs.
+`RoutingContext` and `LifecycleContext` are complete named seams, not open objects or `unknown`
+placeholders.
 
 Focused tests import loaders directly; counter, gate, and regression tests import routing;
 finish, dry-view, and record tests import lifecycle. Stage-precondition, cancellation, abandonment,
@@ -43,6 +45,6 @@ ordering limits, and the deliberate absence of timestamps/sequence ids. A durabl
 must be accepted before development; development cites its title and date but does not create or
 edit the append-only decision record.
 
-QA deliberately updates the landed `packages/core/src/corpus.test.ts`,
-`packages/shared/src/events.test.ts`, and `packages/core/src/docs.test.ts` suites for the engine
-module, strict event variants, and terminal/gate documentation respectively.
+QA deliberately updates the landed `packages/core/src/corpus.test.ts` and
+`packages/shared/src/events.test.ts` suites and creates `packages/core/src/engine/docs.test.ts` for
+the engine module, strict event variants, and terminal/gate documentation respectively.
