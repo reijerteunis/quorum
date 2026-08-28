@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-08-28T09:14:51.727Z
     cost: 5.997
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-28T09:50:30.056Z
+    cost: 18.575
 ---
 Found at Q-0072's final gate, 2026-08-28, by re-running the forced suite on `main` after the merge
 rather than trusting `integrate`'s tick. Q-0072 registered the two instances by hand and did not

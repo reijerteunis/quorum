@@ -34,8 +34,9 @@ steps:
     instructions: >
       Deduplicate the panel findings. Preserve file:line references and group surviving
       findings as blocker, major, or nit. Approve exactly when no blocker or major
-      survives; nits alone approve. Findings must be empty on approve and non-empty on
-      changes-requested. Judge the reviews, not the code diff.
+      survives; nits alone approve, and a nit you have is reported rather than dropped. On
+      approve every finding must be a nit; on changes-requested there must be at least one
+      finding. Judge the reviews, not the code diff.
     on_fail:
       goto: flow:development
       counter: review
