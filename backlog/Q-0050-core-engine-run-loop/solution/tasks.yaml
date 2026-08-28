@@ -1,0 +1,155 @@
+tasks:
+  - id: q0050-shared-events
+    role: backend
+    title: Implement strict terminal and correlated gate-answer schemas
+    description: >
+      Own packages/shared/src/events.ts only and replace the Q-0050 contract
+      declarations with the final strict schemas and inferred types. Add gateId,
+      GateAnswer, GateAnswerEnvelope and the terminal member with its nested status
+      union. Do not touch packages/shared/src/index.ts, packages/core/**, tests,
+      docs/**, contracts/**, backlog/**, harness/** or spike/**.
+    contracts:
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/run-flow-api.contract.ts
+    depends_on: []
+
+  - id: q0050-loaders
+    role: tooling
+    title: Implement engine loaders and pure helpers
+    description: >
+      Own packages/core/src/engine/loaders.ts only and replace its stub. Implement
+      loadFlow, loadFlowByName, loadRole, interpolate, writesOf and reviewRound,
+      returning shared Flow and Role types, using (name, harnessDir) consistently
+      for named loaders and preserving exact errors. Do not touch any other engine
+      file, packages/shared/**, tests, docs/**, contracts/**, backlog/**, harness/**
+      or spike/**.
+    contracts:
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/lifecycle-routing.contract.md
+      - contracts/Q-0050/module-layout.contract.md
+    depends_on: []
+
+  - id: q0050-documentation
+    role: backend
+    title: Correct event-stream and gate-channel documentation
+    description: >
+      Own docs/03-adapter-contract.md, docs/04-architecture.md and docs/GLOSSARY.md
+      only. Document the terminal member, answerGate, caller-owned cancellation,
+      ordering limits and timestamp refusal, citing the accepted decision by title
+      and date. Do not create a decision entry or touch source, tests, contracts/**,
+      backlog/**, harness/** or spike/**.
+    contracts:
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/module-layout.contract.md
+    depends_on: []
+
+  - id: q0050-engine-types
+    role: tooling
+    title: Implement closed engine contexts and lifecycle payloads
+    description: >
+      Own packages/core/src/engine/types.ts only and replace its stub. Implement
+      RunFlowOptions over the caller-supplied Project, Backlog, shared Flow and gate
+      types; RunContext, RoutingContext and LifecycleContext with project config,
+      derived directories and the backlog view; persistence, writeFile,
+      branch-head/reset and abandonment capabilities; StepResult, RegressionFields
+      and the closed RunOutcome union. Re-export FlowError and add required JSDoc.
+      Do not touch any other engine file, packages/shared/**, tests, docs/**,
+      contracts/**, backlog/**, harness/** or spike/**.
+    contracts:
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/module-layout.contract.md
+      - contracts/Q-0050/lifecycle-routing.contract.md
+    depends_on:
+      - q0050-shared-events
+
+  - id: q0050-event-channel
+    role: tooling
+    title: Implement the lossless lazy event channel
+    description: >
+      Own packages/core/src/engine/channel.ts only and replace its stub. Implement
+      single-consumer lazy start, lossless FIFO buffering, completion,
+      terminal-then-throw sequencing and awaited abandonment finalisation. Do not
+      implement gate policy or persistence and do not touch any other engine file,
+      packages/shared/**, tests, docs/**, contracts/**, backlog/**, harness/** or
+      spike/**.
+    contracts:
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/module-layout.contract.md
+    depends_on:
+      - q0050-engine-types
+
+  - id: q0050-routing
+    role: backend
+    title: Implement gates and bounded failure decisions
+    description: >
+      Own packages/core/src/engine/routing.ts only and replace its stub. Implement
+      runStep, handleFail and askGate using RoutingContext, including exact fixture
+      text, allSettled parallel dispatch, auto/dry policy, correlated answers,
+      answer logging, one-traversal retry and closed StepResult decisions for abort,
+      intra-flow goto and cross-flow regression. Return targets without resolving
+      the step index or moving the engine cursor. Preserve signalWindow with its
+      authority line and preserve the routed defects. Do not implement Q-0052
+      agent/script or Q-0053 fan-out/integrate bodies. Do not touch other engine
+      files, loaders.ts, fanout/**, packages/shared/**, tests, docs/**, contracts/**,
+      backlog/**, harness/** or spike/**.
+    contracts:
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/lifecycle-routing.contract.md
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/run-messages.fixture.json
+    depends_on:
+      - q0050-engine-types
+
+  - id: q0050-lifecycle
+    role: backend
+    title: Implement typed history, terminal persistence and rollback
+    description: >
+      Own packages/core/src/engine/lifecycle.ts only and replace its stub. Implement
+      finish(context, stage, status, note, fields), outcome(context, before, after,
+      status, cost) and recordEvent(context, stage, status, cost). Preserve the
+      TicketHistoryEntry shape, terminal events, occurrence finalisation, counters,
+      five-status stage rules, ticket rollback and exact fixture text. Consume the
+      real or prototype-based dry Backlog view supplied by the context, including
+      writeFile capability, without adding per-call dry guards. Use readBranchHead
+      and resetBranch while preserving branch-head conflation, task branches and
+      both dry-run in-memory defects. Do not touch other engine files, fanout/**,
+      packages/shared/**, tests, docs/**, contracts/**, backlog/**, harness/** or
+      spike/**.
+    contracts:
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/lifecycle-routing.contract.md
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/run-messages.fixture.json
+    depends_on:
+      - q0050-engine-types
+      - q0050-shared-events
+
+  - id: q0050-engine-compose
+    role: tooling
+    title: Compose the lazy run loop over the contracted modules
+    description: >
+      Own packages/core/src/engine/engine.ts only and replace its stub. Implement
+      runFlow, the stage precondition, caller-supplied Project and Backlog context
+      construction, config-derived vars.base, prototype-based dry Backlog view,
+      Q-0049 persistence adaptation, producer orchestration, step loop, run banner,
+      stepId enrichment and failure propagation through lifecycle and channel.
+      Resolve StepResult goto targets and move the cursor here only, including
+      intra-flow iteration increments, cross-flow regression through the target
+      flow's consumes stage and the preserved unknown-target TypeError. Verify the
+      engine folder has no console output, ANSI, signal subscription, process exit,
+      prohibited import or new dependency; report a violation in another owner's
+      file instead of editing it. Do not touch other engine files,
+      packages/core/src/index.ts, packages/shared/**, tests, docs/**, contracts/**,
+      backlog/**, harness/** or spike/**.
+    contracts:
+      - contracts/Q-0050/run-flow-api.contract.ts
+      - contracts/Q-0050/run-events.contract.md
+      - contracts/Q-0050/lifecycle-routing.contract.md
+      - contracts/Q-0050/module-layout.contract.md
+      - contracts/Q-0050/run-messages.fixture.json
+    depends_on:
+      - q0050-event-channel
+      - q0050-routing
+      - q0050-lifecycle
