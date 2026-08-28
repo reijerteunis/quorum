@@ -191,6 +191,12 @@ const WALKS: readonly Walk[] = [
   },
   {
     taskId: '@quorum/shared#test',
+    dir: 'docs/decisions',
+    collects: (below) => below.endsWith('.md') && !below.includes('/'),
+    why: 'decisionFiles() — docs.test.ts, which checks the index against the folder',
+  },
+  {
+    taskId: '@quorum/shared#test',
     dir: 'spike/src',
     collects: (below) => below.endsWith('.js'),
     why: 'spikeSource(), and spikeLintFlow() which imports and executes spike/src/lint.js',
@@ -376,7 +382,7 @@ const ROUTE_MODULES: Record<string, RouteModule> = {
     inert: { SourceCollector: 'a type: it names no path and opens nothing' },
   },
   'packages/shared/test/corpus.ts': {
-    routes: ['repoRoot', 'repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'read', 'parseYaml'],
+    routes: ['repoRoot', 'repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'decisionFiles', 'read', 'parseYaml'],
     inert: {
       FRONTMATTER: 'a regular expression',
       parseFrontmatter: 'parses text a caller has already read',
@@ -409,6 +415,7 @@ const IDENTITY: Binding[] = [...new Set(Object.values(ROUTE_MODULES).flatMap((mo
 const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/shared/src/docs.test.ts': {
     'repoFile → file': 'the loop iterates a literal array of the three documents, in the same test',
+    'read → file': 'the map is built from decisionFiles(), the audited walk of docs/decisions',
   },
   'packages/shared/src/events.test.ts': {
     'spikeSource → file': 'the loop iterates a literal array of the four adapter sources, in the same test',

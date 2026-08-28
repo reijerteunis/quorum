@@ -1,0 +1,3 @@
+# Cross-vendor rule refined: judges over mixed-vendor candidates are allowed — 2026-08-21
+**Decision:** `cross_vendor: required` means a reviewing/judging step must see at least one input written by a vendor other than its own. Single-writer review therefore needs writer ≠ reviewer; a judge over N candidates only needs the candidates to span vendors.
+**Why:** The spike's flow lint flagged the requirements template: the Head of Product (Claude) judges Claude's own candidate. With two vendors a judge necessarily shares one; strict writer≠reviewer would require a third vendor for every judge. Found by `harness lint`, 2026-08-21.

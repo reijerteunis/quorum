@@ -13,6 +13,7 @@
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",
         "../../docs/DECISIONS.md",
+        "../../docs/decisions/*.md",
         "../../docs/GLOSSARY.md",
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",

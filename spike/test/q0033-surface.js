@@ -97,6 +97,26 @@ function makeDraftTicket(root, title = 'Gate fixture') {
   return path.join(root, 'backlog', dir);
 }
 
+/**
+ * Q-0006 erratum E-4, applied to a parsed `review-flow.contract.yaml` so the frozen file itself
+ * stays untouched. Returns a copy with the one superseded sentence replaced; the caller asserts
+ * that the substitution matched something, so a moved contract fails loudly instead of silently
+ * comparing the un-amended text.
+ */
+function amendE4(flow) {
+  const before = 'nits alone approve. Findings must be empty on approve and non-empty on changes-requested.';
+  const after = 'nits alone approve, and a nit you have is reported rather than dropped. On approve every finding must be a nit; on changes-requested there must be at least one finding.';
+  const copy = JSON.parse(JSON.stringify(flow));
+  const visit = (node) => {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.instructions === 'string') node.instructions = node.instructions.replace(before, after);
+    for (const value of Object.values(node)) visit(value);
+  };
+  visit(copy);
+  return copy;
+}
+
 await scenario('S1.1/S1.2/S1.4', 'review flow matches its fixture and all shipped flow peers are byte-identical', () => {
   const actualFile = path.join(repo, 'harness', 'flows', 'review.yaml');
   const templateFile = path.join(spike, 'templates', 'harness', 'flows', 'review.yaml');
@@ -104,7 +124,14 @@ await scenario('S1.1/S1.2/S1.4', 'review flow matches its fixture and all shippe
   assert.equal(fs.existsSync(templateFile), true, 'template review.yaml must ship');
   const actual = YAML.parse(read(actualFile)); delete actual.file;
   const expected = YAML.parse(read(q6, 'review-flow.contract.yaml')); delete expected.file;
-  assert.deepEqual(actual, expected); assert.deepEqual(fs.readFileSync(actualFile), fs.readFileSync(templateFile));
+  // Erratum E-4 (2026-08-28, backlog/Q-0006-…/solution/errata.md) supersedes one sentence of the
+  // frozen contract's reviewer instructions. It said both "nits alone approve" and "Findings must
+  // be empty on approve", the engine enforced the second, and a reviewer that obeyed the first
+  // killed a run. The contract file stays frozen, so the amendment is applied to the expectation
+  // here and every other byte is still compared. Q-0073.
+  const amended = amendE4(expected);
+  assert.notDeepEqual(amended, expected, 'E-4 substitution matched nothing — the contract text moved');
+  assert.deepEqual(actual, amended); assert.deepEqual(fs.readFileSync(actualFile), fs.readFileSync(templateFile));
   const a = path.join(repo, 'harness', 'flows'), b = path.join(spike, 'templates', 'harness', 'flows');
   const names = (d) => fs.readdirSync(d).filter((x) => x.endsWith('.yaml')).sort();
   assert.deepEqual(names(a), names(b));
@@ -361,9 +388,15 @@ await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', 
 });
 
 await scenario('S13.6', 'DECISIONS contains both complete review-flow decisions', () => {
-  const decisions = read(repo, 'docs', 'DECISIONS.md');
+  // One entry per file since 2026-08-28, so the block is the file and exactly one may match:
+  // the old form took the first hit anywhere in the concatenated document.
+  const dir = path.join(repo, 'docs', 'decisions');
+  const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8'));
+  assert.ok(entries.length, 'docs/decisions/ is empty — this scenario proves nothing without it');
   for (const [label, topic] of [['derived-regression-target', /derived regression/i], ['non-auto-exhaustion-gate', /non.auto.*exhaustion|exhaustion.*--auto/i]]) {
-    const at = decisions.search(topic); assert.ok(at >= 0, `DECISIONS.md is missing the ${label} entry`); const block = decisions.slice(Math.max(0, decisions.lastIndexOf('\n##', at)), decisions.indexOf('\n##', at + 3) < 0 ? undefined : decisions.indexOf('\n##', at + 3));
+    const hits = entries.filter((text) => topic.test(text));
+    assert.equal(hits.length, 1, `docs/decisions/ must hold exactly one ${label} entry, found ${hits.length}`);
+    const block = hits[0];
     assert.match(block, /\d{4}-\d{2}-\d{2}/); assert.match(block, /\*\*Decision\*\*/); assert.match(block, /\*\*Alternatives considered\*\*/); assert.match(block, /\*\*Why\*\*/);
   }
 });

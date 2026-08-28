@@ -1,0 +1,2 @@
+# `integrate` is one generic step type used by three stages — 2026-08-21
+**Decision:** `type: integrate` merges listed branches (or the fan-out's branches) into a target branch in a worktree, optionally runs `commands.test`, and asserts `expect: pass|fail`. Solutioning lands contracts with it, qa-red proves red with `expect: fail`, development proves green with `expect: pass` and `on_fail` scoped to failing tasks. Verified with the mock adapter end-to-end `draft → green` (30 checks).

@@ -1,0 +1,2 @@
+# Spike exists: quorum (engine + adapters + backlog, mock-verified) — 2026-08-21
+**Decision:** A runnable Node spike (`quorum.zip`, delivered in the Cowork session of 2026-08-21) implements the engine (stage chaining, parallel, bounded loops, gates, worktrees, lint), Claude/Codex/mock adapters under one contract, and the requirements + solutioning templates. Verified end-to-end with the mock adapter (18 checks). Next: run on a real repo with real CLIs and answer the four adapter questions in `docs/ADAPTER-CONTRACT.md`; then add `fan_out` and `integrate` step types.

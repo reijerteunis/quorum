@@ -47,7 +47,7 @@ undercount matters because one of the files cannot be edited in place:
 | `harness/architecture.md:70` | the pointer a child's prompt actually carries | yes |
 | `harness/roles/developer-backend.md:18`, `developer-tooling.md:19` | the pointer in each role body | yes |
 | `.github/workflows/ci.yml:32`, `port-freeze-guard.sh:4` | prose citing `§3` | yes |
-| `docs/DECISIONS.md:793, 826, 838` | three citations inside the two entries Q-0009 landed | **append-only** — a move needs an amending entry naming the old one |
+| the two entries Q-0009 landed, now `docs/decisions/045-…` and `046-…` | three citations of this path inside them | **append-only** — a move needs an amending entry naming the old one |
 
 The last row is the one to weigh at the gate, and it is a cost this ticket created rather than
 found: the two DECISIONS entries were written while the charter sat in `harness/`, so they now cite
