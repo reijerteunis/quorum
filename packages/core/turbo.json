@@ -1,0 +1,23 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../.github/workflows/ci.yml",
+        "../../turbo.json",
+        "../../pnpm-lock.yaml",
+        "../../docs/03-adapter-contract.md",
+        "../../docs/04-architecture.md",
+        "../../contracts/Q-0006/review-artifacts.schema.json",
+        "../../contracts/Q-0006/ticket-review-state.schema.json",
+        "../../contracts/Q-0011/run-manifest.schema.json",
+        "../../backlog/*/ticket.md",
+        "../../harness/flows/*.yaml",
+        "../../spike/src/**",
+        "../../spike/templates/harness/flows/*.yaml"
+      ]
+    }
+  }
+}

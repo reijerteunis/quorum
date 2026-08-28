@@ -352,3 +352,61 @@ describe('Q-0071 AC-4 — CI executes its checks rather than replaying them', ()
     expect(restoresTaskCache(workflow(PREFIXED_TURBO_CACHE)), 'v1-turbo-… names a turbo result cache').toBe(true);
   });
 });
+
+/**
+ * The tasks a `turbo run` command names — the word after `run`, once per invocation.
+ *
+ * Word-wise for the same reason {@link executes} is: a task name inside a longer word is not the
+ * task, and a command that does not invoke turbo names none.
+ */
+const turboTasks = (command: string): string[] => {
+  const words = command.split(/\s+/);
+  return words.flatMap((word, index) =>
+    word === 'run' && words[index - 1] === 'turbo' && words[index + 1] !== undefined ? [words[index + 1]] : []);
+};
+
+describe('Q-0072 AC-9 — package.json and CI name the same task set', () => {
+  /**
+   * Q-0071 moved CI off `package.json`'s scripts and onto `turbo run … --force` directly, for a
+   * reason that stands: the force belongs in the file a reader of a CI result opens. The cost is
+   * that the three root scripts are no longer what CI runs, and they were identical the day that
+   * shipped with nothing saying they stay so. This is that guard, and nothing more — whether the
+   * two should be one command is the successor's question, not this one's.
+   */
+  const scripts = (): Record<string, string> =>
+    (JSON.parse(repoFile('package.json')) as { scripts: Record<string, string> }).scripts;
+
+  /** The `workspace` job's steps. An absent job throws rather than yielding a passing empty list. */
+  const jobSteps = (text: string): WorkflowStep[] => {
+    const steps = (parseYaml(text) as Workflow).jobs?.workspace?.steps;
+    if (!steps?.length) throw new Error('the workflow declares no `workspace` job with steps');
+    return steps;
+  };
+
+  const namedBy = (commands: string[]): string[] => [...new Set(commands.flatMap(turboTasks))].sort();
+
+  test('the workspace job runs exactly the tasks the root scripts do', () => {
+    const fromScripts = namedBy(Object.values(scripts()));
+    expect(fromScripts, 'the root scripts must name at least the three workspace tasks').toStrictEqual(WORKSPACE_TASKS.slice().sort());
+    expect(namedBy(jobSteps(repoFile('.github/workflows/ci.yml')).map((step) => step.run ?? ''))).toStrictEqual(fromScripts);
+  });
+
+  test('and the scripts stay unforced, with no second spelling beside them', () => {
+    // Q-0071 rejected both `--force` in `package.json` and a `test:ci` script. A developer's local
+    // run is where a cache earns its keep, and one name per task is why a reader knows what ran.
+    for (const [name, command] of Object.entries(scripts())) {
+      expect(command.split(/\s+/).includes('--force'), `${name} must stay unforced`).toBe(false);
+      expect(name.endsWith(':ci'), `${name} is a second spelling of a task CI already names`).toBe(false);
+    }
+  });
+
+  test('the guard has a subject — a workflow that drops a task fails it', () => {
+    // Isolated to this clause: every task the fixture *does* name is forced and it restores no
+    // cache, so `typecheck` going missing is the only thing wrong with it.
+    const dropped = BEFORE_Q0071
+      .replace('      - run: pnpm lint\n      - run: pnpm typecheck\n      - run: pnpm test\n',
+        '      - run: pnpm turbo run lint --force\n      - run: pnpm turbo run test --force\n');
+    expect(namedBy(jobSteps(dropped).map((step) => step.run ?? ''))).toStrictEqual(['lint', 'test']);
+    expect(namedBy(Object.values(scripts()))).toStrictEqual(['lint', 'test', 'typecheck']);
+  });
+});

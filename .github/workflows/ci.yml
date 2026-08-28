@@ -12,9 +12,12 @@ jobs:
   # and never a verdict; only a task-result cache can make a tick a lie. A check reporting green
   # having executed nothing is the failure this repository calls "skipped is not passed"
   # (docs/DECISIONS.md, 2026-08-25). The guard asserting these lines lives in
-  # packages/core/src/test-command.test.ts and is itself in no package's hashed inputs, so it is
-  # only trustworthy while this job and `integrate` both force: a ticket restoring a cached path
-  # here silences its own guard.
+  # packages/core/src/test-command.test.ts, and since Q-0072 this file is a declared input of
+  # @quorum/core#test (packages/core/turbo.json), so editing it invalidates the very task that
+  # checks it. The earlier wording here said the guard was "in no package's hashed inputs", which
+  # named the wrong file: the guard has always been inside its own package. It was its SUBJECT —
+  # this workflow — that nothing hashed, so a cached pass could stand over an edited job. That is
+  # now closed on its own, rather than only while this job and `integrate` both force.
   workspace:
     name: workspace (lint, typecheck, test)
     runs-on: ubuntu-latest
