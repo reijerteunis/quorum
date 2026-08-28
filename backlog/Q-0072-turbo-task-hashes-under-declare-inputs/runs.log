@@ -12,3 +12,8 @@
 2026-08-28T07:07:39.140Z run=2 step=implement vendor=claude model=- verdict=- cost=29.626919000000008 ms=2135587
 2026-08-28T07:08:26.357Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=47189
 2026-08-28T07:08:26.375Z run=2 exhausted stage=requirements→requirements cost=0
+2026-08-28T07:15:52.614Z run=2 gate=human-locked answer=retry
+2026-08-28T07:15:52.614Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-08-28T07:32:49.067Z run=2 step=implement vendor=claude model=- verdict=- cost=10.8073965 ms=1016378
+2026-08-28T07:34:17.101Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=88003
+2026-08-28T07:34:17.107Z run=2 exhausted stage=requirements→requirements cost=0

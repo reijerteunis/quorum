@@ -26,6 +26,14 @@ history:
     stage_after: requirements
     at: 2026-08-28T07:08:26.371Z
     cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-28T07:34:17.106Z
+    cost: 0
 ---
 Found by Q-0071's requirements run, 2026-08-27, which correctly declined to fix it: that ticket's
 subject is CI's tick, this defect is equally present in a developer's local `pnpm test`, and the
