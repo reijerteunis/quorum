@@ -1,263 +1,194 @@
 # Q-0073 — implementation report
 
-*`developer-generalist` · chore · iteration 1 · one file changed, 323 insertions, 43 deletions*
+*`developer-generalist` · chore · iteration 2 · one file changed, 112 insertions, 22 deletions*
 
-The guard's verdict is now a function of what git reports and of nothing else. One file changed:
-`packages/core/src/turbo-inputs.test.ts`. No product source, no configuration, no documentation, no
-`turbo.json`, no `.github/`, no `harness/` file, no `backlog/` file.
+Iteration 1's review (`review/chore-iter-1.md`) is an **approve** carrying two nits and no blocker,
+so this round is those two findings and nothing else. The classifier, the inventory, the audit and
+the ten Q-0073 tests are untouched. One file changed: `packages/core/src/turbo-inputs.test.ts`.
 
 ---
 
-## 1. What I measured before writing code
+## 1. Finding 1 — the durable prose claimed CI reported green
 
-The ticket says to re-run its table rather than inherit it, so I did. Everything below is from this
-worktree at `65cb6b4`, and it reproduces the record exactly.
+> *nit: `turbo-inputs.test.ts:73` The durable guard prose says CI reported green, but the
+> requirements explicitly correct that claim: CI never ran the relevant revision. Change this to say
+> only implement and integrate reported green, with the fresh-clone result identified as the proxy
+> for CI's checkout shape.*
 
-### The census, both ways
+Accepted without qualification. `merged.md` §1 and the ticket's correction 2 both say `main` was
+ahead of `origin/main` and the newest CI run predates Q-0072's merge, and the fresh-clone row is
+recorded as the measured proxy for CI's disk state rather than as an observation of CI. The prose
+was asserting the one thing the requirement had gone out of its way to correct.
 
-Scanning both suites' `src` and `test` trees, excluding the guard file itself (which is what
-reproduces the record's numbers — the guard quotes every register key and is excluded from clause
-B's own scan):
+**The module header (`:66–76`)** now reads: the guard was red on a machine that had run a flow and
+green in a fresh worktree, *"which is why implement and integrate both reported green over a `main`
+that was red for every developer. **CI is named here as a checkout shape and not as an
+observation:** no CI run executed the revision that carried the defect, and a fresh clone, which
+holds neither directory, is the measured proxy for what CI would have seen."*
 
-| | raw | per-file-distinct | distinct |
+**And the second instance, which the finding did not cite.** The same claim appeared verbatim in the
+comment on the clause-B subject test (`:1620–1626`): *"the list that stood on `main` while implement,
+integrate and CI all reported green"*. Correcting only the cited line would have left the file
+asserting the refuted claim and its correction in two places, so both moved. That comment now says
+*"while implement and integrate both reported green (Q-0072); CI never ran that revision"*, and its
+neighbouring phrase *"the two environments"* became *"the two checkout shapes"*, which is what an
+integrate worktree and CI's clone have in common and is the only property the sentence needs.
+
+I checked every other occurrence of "CI" in the file. Three remain and all are accurate: the
+`pnpm-lock.yaml` frozen-install argument (`:98`), the `.github/workflows/ci.yml` manifest entry
+(`:158`), and the two corrected comments.
+
+## 2. Finding 2 — AC-5's floors let a removal be paid for by an addition
+
+> *nit: `turbo-inputs.test.ts:1593` AC-5 requires the forced suite to detect any unintended
+> reduction from the measured 60 per-file-distinct and 34 distinct literals, but
+> `toBeGreaterThanOrEqual` allows removals whenever unrelated additions keep the totals at or above
+> those floors. Pin the baseline set or otherwise compare identities so removing or replacing a
+> collected literal is detected, while deliberately accounting for later additions.*
+
+Accepted, and the finding is right in a way iteration 1's justification talked itself out of. Its
+comment argued a floor was the right instrument *because additions must be allowed* — but "allow
+additions" and "compare totals" are two different decisions, and only the first is required.
+Comparing identities in one direction gives both: nothing may leave, anything may arrive.
+
+### The hole, measured rather than argued
+
+The demonstration is a **replacement**, because that is the shape the finding names — a removal that
+an addition pays for, leaving both totals at their floors. In `packages/shared/src/role.test.ts`
+(read by the guard as text; its own suite is not involved), `'harness/architecture.md'` was
+temporarily changed to `'harness/harness.yaml'`. `harness/architecture.md` is collected there and
+nowhere else; `harness/harness.yaml` is already collected in `project.test.ts`, so the occurrence
+count is unchanged and the distinct count falls to the old floor:
+
+| | scan after the replacement | old assertion | verdict |
 | --- | --- | --- | --- |
-| candidates passing the syntactic filters | 578 | 461 | 307 |
-| collected by `fs.existsSync`, directories **present** | 79 | 67 | 37 |
-| collected by `fs.existsSync`, directories **absent** | 73 | 61 | 35 |
-| **collected by the git inventory, either way** | **72** | **60** | **34** |
-| classified a directory by `existsSync`, present / absent | 18 / 12 | 16 / 10 | 10 / 8 |
-| **classified a directory by the inventory, either way** | **12** | **10** | **8** |
-| filesystem and inventory disagree, directories present | 7 | 7 | **3** |
+| per-file-distinct occurrences | **61** | `>= 60` | passes |
+| distinct literals | **34** | `>= 34` | passes |
 
-The three divergent literals are exactly `.harness/worktrees`, `.quorum/runs` and
-`node_modules/.bin/turbo`. The record's 37/67 less those three is 34/60, which is what the inventory
-gives — so AC-5's arithmetic closes with nothing unexplained.
+Both measured, not derived — I ran the two old expressions over the modified tree and they reported
+`pairs 61 distinct 34`. So the old test was **green over a tree where a collected literal had
+silently gone**, which is this file's own recurring failure mode arriving inside the file. The new
+test fails on the same tree and names it:
 
-**Tracked-only and the hashable set agree on all 578 literal occurrences**, in both directory
-states, confirming E-1's measurement.
+    AssertionError: these baseline occurrences are no longer collected: expected [ Array(1) ] to deeply equal []
+    + [ "packages/shared/src/role.test.ts: harness/architecture.md" ]
 
-### Causation, isolated
+`role.test.ts` was restored; `git status` shows one modified file.
 
-In this worktree, at one commit, with identical file bytes: `mkdir -p .harness/worktrees
-.quorum/runs` — two empty directories — moves the filesystem rule's answer by 7 occurrences and
-moves the inventory's answer by none.
+### What replaced it
 
-### The question E-1 turns on, re-measured
+**`COLLECTED_BASELINE`** — a new register beside `AFTER_A_FLOW`, holding all **61** `file: literal`
+occurrences the classifier collects from the two audited suites, sorted, with a doc block stating
+why it is identities and not totals. Sixty of them are AC-5's measured baseline: 67 per-file-distinct
+occurrences over 37 distinct literals, less the three literals the census names and the seven
+occurrences they carried (67 − 7 = 60, 37 − 3 = 34). It is a register in the same sense as
+`NOT_READ`, `WALKS` and `READ_BASES` — a list a reviewer approves — which is why it lives with them
+rather than inline in the test.
 
-I re-ran the turbo probe rather than trusting it. With an untracked, unignored
-`backlog/zz-q0073-probe/ticket.md` present, `turbo run test --dry=json` reports it as a hashed input
-of **both** `@quorum/core#test` (135 inputs) and `@quorum/shared#test` (110), through the backlog
-glob each package configuration declares. So turbo hashes untracked-unignored files, the tracked set
-alone would have dropped paths turbo genuinely hashes, and `--others --exclude-standard` is the
-right inventory. This also **answers OQ-3**: `filesBelow('backlog')` collecting an untracked ticket
-is not a second instance of the defect, because the walk and turbo's enumeration move together.
+**The test, now `the collected set has not contracted, occurrence by occurrence`**, has three
+clauses plus the directory list:
 
-### Baseline
+1. **Nothing has left.** `COLLECTED_BASELINE.filter(entry => !collected.has(entry))` must be empty,
+   and the message names every entry that has gone. Membership is checked in one direction only, so
+   an occurrence the register does not hold is an addition — which clause B above already judges on
+   its merits, and which no criterion forbids. That is the finding's *"deliberately accounting for
+   later additions"*, made structural rather than numeric.
+2. **The register has not been trimmed to make clause 1 pass.** `length` is `61` and the distinct
+   literal count is `35`, asserted over the register itself. Without this, deleting an entry is a
+   silent way to satisfy the test — the same move the old floors permitted, one level in.
+3. **The directory list**, extended from eight to nine (below).
 
-`main` at this commit, in this worktree: guard 51/51, workspace forced `7 successful, 0 cached`,
-`npm test --prefix spike` 12/12.
+Per Q-0071 — *demonstrating that a guard has a subject proves the guard fires, not that each of its
+clauses does* — each clause was demonstrated firing **in isolation**, not just the test as a whole:
 
----
-
-## 2. The change, file by file
-
-### `packages/core/src/turbo-inputs.test.ts`
-
-**Added — the inventory (AC-1, AC-9).** Four new declarations before `typescriptFiles`:
-
-- `interface Inventory` with two members, `holds` (is this literal a repository path?) and
-  `isDirectory` (does the set hold anything below it?). Those are the two classifying decisions AC-1
-  names, and they are the only two.
-- `inventoryOf(entries)` — builds the file set and the derived directory-prefix set. Pure, so a test
-  can construct one.
-- `listing(root = repoRoot)` — `git ls-files --cached --others --exclude-standard -z`, split on NUL.
-  `-z` because a path holding a quote or a newline is otherwise returned quoted and escaped, and a
-  listing that renames its own entries is the wrong foundation for a membership test. A git that
-  cannot answer throws a named error rather than yielding an empty inventory, which would classify
-  every literal as data and report a pass over nothing. `root` is a parameter so the AC-3 sandbox
-  runs *this* function rather than a reimplementation of it.
-- `repositoryInventory()` → `const INVENTORY`, obtained once at module level beside
-  `const turbo = reported()`, with a floor: fewer than 200 paths is a wrong working directory or a
-  sparse checkout, not a small repository, and it throws. Same guard `reported()` puts under turbo's
-  input set, for the same reason.
-
-**Changed — the two classifying decisions.**
-
-- `pathLiterals(text, inventory = INVENTORY)`: `if (!fs.existsSync(path.join(repoRoot, value)))` →
-  `if (!inventory.holds(normalised))`. The syntactic filters (separator required, no trailing
-  separator, no leading `/` or `..`) are untouched; normalisation now happens before the lookup
-  rather than after it, which is the same value in every case the corpus contains.
-- Clause B's directory test: `fs.statSync(path.join(repoRoot, literal)).isDirectory()` →
-  `inventory.isDirectory(literal)`.
-
-Per the ticket's correction 1, the load-bearing check was the **collection** one — a fix aimed only
-at the `statSync` site would have moved the message and left the dependence. Both moved.
-
-**Extracted — `scanFiles(directory)` and `undeclaredPaths(taskId, directory, inventory)`.** Clause
-B's scan body moved out of its test verbatim, so the same code can be run against two inventories.
-The failure strings are unchanged, so AC-11's "names the source file and the literal" and the
-directory-specific variant both survive; directory-ness is now deterministic, so keeping the variant
-is safe.
-
-**Removed — three `NOT_READ` entries (AC-6, AC-7).**
-
-- `.harness/worktrees` and `.quorum/runs`, added by hand after Q-0072's gate. The classifier no
-  longer collects them, so the register no longer has to excuse them. If the mechanism had needed
-  those entries the criterion would be unmet; it does not.
-- `node_modules/.bin/turbo`, which under the inventory becomes uncollectable — git ignores
-  `node_modules/`. AC-7 offered "kept collectable, or removed with both citations": removed. Both
-  `READ_BASES` citations that named `NOT_READ` as its answer — `test-command.test.ts`'s `bin` and
-  the guard's own `bin` — are reworded to state the real reason (the installed toolchain is
-  unhashable, so no declaration could cover it and its absence fails loudly at `reported()`), and a
-  focused test pins that treatment.
-
-**Removed — two `INDIRECT_ROUTES` entries for this file:** `repoRoot → value` and
-`repoRoot → literal`, which were the two deleted probes. The clause C1 stale-entry test would have
-failed on them otherwise — and did, in the demonstration below. `repoRoot → (bare)` is reworded to
-cover the git subprocess and `listing`'s default root.
-
-**Added — prose (AC-2).** A new paragraph in the module header states the distinction that is the
-spine of this ticket: *existence used to **classify** is the defect; existence used to **refuse to
-run over a missing subject** is the rule.* The full audit lives in a doc block on
-`repositoryInventory`, beside the registers rather than in this report, and enumerates:
-
-- the four surviving loud refusals, unchanged and byte-identical: `typescriptFiles`, `filesBelow`,
-  `reported()`'s missing-turbo check, and clause A's missing-manifested-file check;
-- `filesBelow`'s five walks — benign because turbo hashes untracked-unignored files too (measured),
-  **with the residual stated**: a file git *ignores* that a walk's selector matched would be
-  required to be a hashed input and could never be one. None is reachable today, and it is written
-  down rather than left to be discovered, because it is this ticket's own class seen from the walk
-  side;
-- `typescriptFiles`' two walks, which have no such residual;
-- `reported()`, which is clause A's other side rather than an independent reader;
-- clause B's subject demonstration, which asserts a tracked file exists before showing it is
-  undeclared;
-- the inventory's own failure modes, including the sparse-checkout case from OQ-2 — a tracked path
-  absent from disk is *collected*, which asks more of a declaration rather than less.
-
-**Added — ten tests**, in one `describe` after clause B. 51 → 61.
-
-**Imports:** `afterAll` from vitest; `commitAll, git, removeTempDirs, tempDir, write` from
-`../test/repo.js` — existing test support, already a hard requirement of this suite, no new
-dependency (AC-9), and `pnpm-lock.yaml` is untouched.
-
----
-
-## 3. Criterion by criterion
-
-| | how |
-| --- | --- |
-| **AC-1** | Both decisions read `Inventory`; no `existsSync`, `statSync` or equivalent decides membership. The rule is one sentence and lives in one place. |
-| **AC-2** | The four refusals are byte-identical — `git diff` shows exactly two probe lines removed and none of the four touched. The audit is in the guard, on `repositoryInventory`. |
-| **AC-3** | Three tests; see §4, which is where I depart from the wording. |
-| **AC-4** | Two tests. (a) five exclusions asserted individually — import specifier, lint message, shell fragment, argv with a temporary path, prose. (b) `docs/GLOSSARY.md` collected and classified a file, `harness/flows` collected and classified a directory. A rule that promoted every slash-bearing string fails (a); one that stopped consulting the inventory fails (b). |
-| **AC-5** | Floors at the measured baseline — 60 per-file-distinct occurrences, 34 distinct — plus each of the eight directory-classified literals asserted still classified. Floors rather than equalities on purpose: a later ticket naming a new path is an addition clause B already judges on its merits, and an exact count would also make the verdict depend on a developer's untracked scratch source, which is the dependence this ticket removes. |
-| **AC-6** | Both entries gone; a test asserts they are absent from `NOT_READ`, that `constants.ts` still names both strings, and that the classifier collects neither. |
-| **AC-7** | `dead` = every `NOT_READ` key the classifier would no longer collect; must be empty, and the message names the key. `node_modules/.bin/turbo` removed, both `READ_BASES` citations corrected, its treatment covered by its own test. The guard's self-audit (*"this file is audited by its own lists"*) stays green: its 21 non-`packages/` literals are all manifested, walked or registered. |
-| **AC-8** | The only fixture that builds checkout states does it in `tempDir(…)` under `os.tmpdir`, cleaned by `afterAll(removeTempDirs)`. Nothing creates `.harness/worktrees`, `.quorum/runs` or anything else in the reader's checkout. |
-| **AC-9** | Runs from a git worktree, where `.git` is a file — this entire verification ran in one, which is where `integrate` runs. `git` is already spawned by `packages/core/test/repo.ts`; no package added. Failure is a named error. Fresh clone: see §6. |
-| **AC-10** | §5. |
-| **AC-11** | Messages unchanged and still name file and literal. The decision entry is named here and not written — `harness/roles/developer-generalist.md:23` forbids me to append to `docs/DECISIONS.md`. See §7. |
-
----
-
-## 4. Where I read AC-3 rather than followed it — the reviewer should look here
-
-AC-3 asks for the classification to be run **twice over two inventories differing only in what an
-untracked working tree can add — at minimum `.harness/worktrees`, `.quorum/runs` and
-`node_modules/.bin/turbo` — and requires the verdict and the occurrence list to be identical.**
-
-After erratum E-1 those two halves pull apart, and I could not satisfy both literally:
-
-- The inventory is what git reports. All three of those paths are **gitignored**, so they can never
-  enter it. Two inventories built from git in the two checkout states are therefore the *same set*,
-  and comparing them is true but empty.
-- An inventory with those three injected is a claim git never makes. Under it,
-  `.harness/worktrees` and `.quorum/runs` are collected and reported — so requiring the two lists to
-  be *identical* would require the fix to be absent.
-
-So I implemented the property AC-3 states in its last sentence — *the guard returns the same verdict
-on a clean checkout and on one that has run flows* — as three tests, and made the difference visible
-rather than asserting an identity that only holds vacuously:
-
-1. **`git`'s answer does not move when a working tree gains the directories the product creates.**
-   A sandbox repository whose `.gitignore` mirrors this one's three roots: `listing(dir)` before and
-   after `.harness/worktrees/…`, `.quorum/runs/…` and `node_modules/.bin/turbo` appear returns the
-   identical set. It runs the guard's own `listing`, not a copy. It is not a straw man, because the
-   same test then asserts over **this repository's** real inventory that it holds none of the three,
-   whatever the checkout has done.
-2. **Identical verdict and occurrence list, over both suites' real sources, under two inventories**
-   that differ by what an untracked working tree can genuinely add to the inventory — a stray file
-   git does *not* ignore (`docs/zz-scratch.md`, `packages/core/src/zz-scratch.ts`). Lists compared,
-   not pass/fail, so two runs cannot agree by having skipped the same subject.
-3. **The clause has a subject.** A working-tree-shaped inventory produces the exact six-occurrence
-   list in four files that stood on `main` while every gate reported green, asserted verbatim, while
-   the git inventory produces none. This is the one AC-3 most cares about: it is *constructed*, so it
-   is meaningful in an `integrate` worktree and on CI — the environments structurally blind to the
-   defect — and it needs neither directory to exist.
-
-A fourth test closes both directions of "nothing is decided by the working tree": a path the
-inventory holds but the checkout does not have is still collected (the sparse-checkout case, OQ-2),
-and a path the checkout has but the inventory does not hold is dropped. That pair fails the moment
-anything here consults the filesystem again, in **any** environment — see §5.
-
-If the reviewer reads AC-3 as binding to the letter, this is the finding to raise, and the remedy
-would be an erratum rather than another implement round: the letter and E-1 cannot both be honoured.
-
----
-
-## 5. Verification (AC-10), forced, in two real environments
-
-Both rows in this git worktree, `.git` a file, `pnpm install --frozen-lockfile` and
-`npm ci --prefix spike` performed first.
-
-| | `pnpm turbo run test --force` | `npm test --prefix spike` |
+| forced condition | which clause fires | message |
 | --- | --- | --- |
-| **(a) `.harness/worktrees` and `.quorum/runs` present** | `7 successful, 0 cached` — core 718 passed / 2 skipped (31 files passed, 1 skipped), shared 99 passed, five scaffolds 1 each | all 12 test files passed |
-| **(b) both absent** — the `integrate`/CI shape | `7 successful, 0 cached` — identical counts | all 12 test files passed |
+| a collected literal replaced in `role.test.ts` | 1 alone | names `packages/shared/src/role.test.ts: harness/architecture.md` |
+| one register entry deleted, its literal still collected elsewhere | 2's length alone | `expected 60 to be 61` |
+| one unique-literal entry replaced by a duplicate of another | 2's distinct count alone | `expected 34 to be 35` |
 
-`pnpm turbo run lint typecheck test --force` over the whole workspace: `21 successful, 0 cached`,
-28.6 s. The guard alone: **61 passed** in both states, where it was 51 before.
+Before the scratch harness was removed I also asserted the register **byte-exact** against the live
+scan (`[...COLLECTED_BASELINE].sort()` deep-equal to the sorted collected list) — it passes, so the
+61 entries are the scan and not a transcription of it. That equality is deliberately not kept: it
+would fail on the first legitimate addition, which is what the finding says to permit.
 
-### The guard was demonstrated to have a subject before it was trusted
+### One difference from AC-5's stated numbers, named as AC-5 requires
 
-A green run is not evidence (Q-0069), and a demonstration that a guard fires is not evidence that
-each of its clauses does (Q-0071). Three demonstrations, each reverted afterwards:
+The tree collects **61 occurrences over 35 distinct literals**, not 60 and 34. The single addition
+is `packages/shared/test/corpus.ts: docs/decisions`, and it is not mine: it arrived on the
+integration branch in `0ed342f`, the split of `docs/DECISIONS.md` into a file per entry, which
+landed while this ticket was in flight. Measured, not assumed — I ran the classifier over both
+suites' sources as they stood at the iteration-1 implement commit `2483270`, under that commit's own
+inventory, and diffed:
 
-1. **Classifier reverted to `fs.existsSync`, both directories absent — the blind environment where
-   the old code was green: 7 failed, 54 passed.** Among them three of the new Q-0073 tests and the
-   C1 stale-register test. This is the whole point of the ticket: the guard now fires where every
-   gate runs.
-2. **Same revert, both directories present: 9 failed, 52 passed.** The two extra failures are
-   clause B on `shared` and the constants test — exactly the checkout-dependence, reproduced.
-3. **A bogus `NOT_READ` key added:** the dead-entry check fails and names it —
-   `expected [ 'docs/zz-demonstration.md' ] to deeply equal []`.
+    now    61 pairs / 35 distinct
+    before 60 pairs / 34 distinct
+    added  packages/shared/test/corpus.ts: docs/decisions
+    gone   (none)
 
----
+So AC-5's arithmetic closes exactly at the commit it was written against, and the one difference is
+an addition covered by a `WALKS` entry the same commit added (`docs/decisions`, `decisionFiles()`).
+The directory list in clause 3 gains `docs/decisions` for the same reason — nine literals are now
+classified as directories, and the comment's *"a checkout that had run a flow made it ten"* becomes
+*"eleven"*.
 
-## 6. What I could not run, stated rather than claimed
-
-**The fresh-clone row of AC-9 was not executed here.** `git clone` is not permitted to write outside
-this session's allowed directories, and the change is uncommitted, so a clone would have tested
-`HEAD` rather than this branch. What I have instead is a derivation with its evidence: a fresh clone
-has no untracked-unignored files, so its `--cached --others --exclude-standard` equals its tracked
-set — and I measured the tracked set and the hashable set to classify **all 578 literals
-identically**, in both directory states. The fresh-clone verdict is therefore the same one this
-worktree produced. That is a derivation and is labelled as one; if the reviewer wants it observed,
-the run to make is `pnpm turbo run test --force` on a clone of the integration branch.
-
-**`spike`'s dependencies are absent in a fresh worktree.** `npm test --prefix spike` fails 11 of 12
-files with `ERR_MODULE_NOT_FOUND: yaml` until `npm ci --prefix spike` is run. Nothing to do with
-this change — `integrate` performs both installs — but worth knowing before reading a bare failure.
+The same commit explains a discrepancy in iteration 1's report worth correcting here, since this
+report is read beside the diff: it said the file went 51 → 61 tests. The guard now reports **62**.
+`test.each(WALKS)` expands to one test per walk, so the decisions-split walk added one; the ten
+Q-0073 tests are unchanged and I added none.
 
 ---
 
-## 7. The decision this implies (AC-11) — named, not written
+## 3. Verification (AC-10), re-run forced in both environment rows
 
-The guard's claim about a literal moved from *"it names something on disk"* to *"it names something
-git will hand turbo"*. That is a change of claim, so AC-11 requires a `docs/DECISIONS.md` entry as a
-**human commit at or before the gate**; my role forbids me to append to that file, so naming it is
-the whole of my obligation. Suggested title and substance:
+Re-run after this round's edits rather than carried over from iteration 1. This git worktree, `.git`
+a file — the shape `integrate` runs in.
+
+| | `pnpm turbo run lint typecheck test --force` | `npm test --prefix spike` |
+| --- | --- | --- |
+| **(a) `.harness/worktrees` and `.quorum/runs` present** | `21 successful, 0 cached`, 28.1 s — core 722 passed / 2 skipped (31 files, 1 skipped), shared 102 passed, five scaffolds 1 each | all 12 test files passed |
+| **(b) both absent** — the `integrate`/CI shape | `21 successful, 0 cached`, 29.3 s — identical counts | all 12 test files passed |
+
+Identical in both rows, which is the ticket's property. The guard file alone: **62 passed** in both.
+The two directories were created by hand for row (a) and removed afterwards; both are gitignored, so
+neither run left anything in the checkout — `git status --untracked-files=all` shows one modified
+file and nothing else. `lint` and `typecheck` are inside the forced run above, so Q-0069's
+type-aware rule is green over the new code.
+
+**The fresh-clone row of AC-9 is still a derivation, unchanged from iteration 1 and labelled the
+same way.** `git clone` cannot write outside this session's allowed directories and the change is
+uncommitted, so a clone would test `HEAD` rather than this branch. Nothing this round touched the
+classifier, so iteration 1's argument stands: a fresh clone has no untracked-unignored files, its
+`--cached --others --exclude-standard` equals its tracked set, and the two were measured to classify
+all 578 literal occurrences identically. If the reviewer wants it observed rather than derived, the
+run is `pnpm turbo run test --force` on a clone of the integration branch.
+
+---
+
+## 4. Deliberately left alone
+
+- **Everything iteration 1 shipped that the review did not fault**: the `Inventory` interface,
+  `inventoryOf`, `listing`, `repositoryInventory`, the two classifying decisions, the four surviving
+  loud refusals, the audit on `INVENTORY`, the `NOT_READ` and `INDIRECT_ROUTES` removals, and the ten
+  Q-0073 tests. An approval is not an invitation to keep editing.
+- **The AC-3 reading recorded in §4 of iteration 1's report.** It was flagged as a departure from the
+  criterion's letter and the reviewer did not raise it; I have not revisited it, and the remedy it
+  names — an erratum, not another round — is still the right one if a later reviewer disagrees.
+- **Clauses C1–C4 and their registers**, the guard's coverage, `constants.ts` and
+  `constants.test.ts`, E-1's residual limits 1 and 5, the walk-side residual, shapes (1), (3) and
+  (4), and Q-0072's successors A and B.
+- **`turbo.json`, both package configurations, `.github/workflows/ci.yml`, `package.json`,
+  `harness/harness.yaml`, `.github/`, `harness/`, `backlog/`, `docs/`** — untouched. No documentation
+  surface is named by §3 of the requirement and none needed correcting: `docs/04-architecture.md:68`
+  still describes the guard accurately.
+
+## 5. The decision this implies (AC-11) — named, not written, and unchanged
+
+Nothing this round moved what the guard claims, so iteration 1's obligation stands exactly as it
+was: the claim about a literal went from *"it names something on disk"* to *"it names something git
+will hand turbo"*, and AC-11 makes the `docs/DECISIONS.md` entry a **human commit at or before the
+gate**. `harness/roles/developer-generalist.md:23` forbids me to append to that file, so naming it is
+the whole of my obligation. Suggested title and substance, repeated so it is not lost between rounds:
 
 > **A guard asks git what is hashable, never the filesystem — 2026-08-28.** Membership in
 > `turbo-inputs.test.ts`'s subject set is decided from `git ls-files --cached --others
@@ -268,37 +199,10 @@ the whole of my obligation. Suggested title and substance:
 > dataflow analysis Q-0072's E-1 already declined to buy. Existence used to classify is the defect;
 > existence used to refuse to run over a missing subject is the rule.
 
-`docs/04-architecture.md:68` still reads correctly (*"`packages/core/src/turbo-inputs.test.ts` is
-what fails when a read stops being covered"*), so no numbered document contradicts the code and none
-was edited — §3 of the requirement names no documentation surface.
+## 6. Housekeeping
 
----
-
-## 8. Deliberately left alone
-
-- **Clauses C1–C4 and their registers.** `INDIRECT_ROUTES`, `ROOT_DERIVATIONS`, `ESCAPING_LITERALS`,
-  `READ_APIS`, `READ_BASES` are unchanged except for the entries that were about the two deleted
-  probes and the two `NOT_READ` citations AC-7 required corrected.
-- **What the guard covers.** No new manifest entry, walk or read. 307 syntactically path-shaped
-  literals are still not audited as filesystem inputs.
-- **Shape (1)** — classify by role rather than by existence. Refused in §4 of the requirement, and
-  the census says why: it is a 307-literal problem where shape (2) is a 3-literal one.
-- **Shape (3)** — auto-registering `constants.ts`'s exports. **Shape (4)** — having the suite
-  `mkdir` its own subject, refused by AC-8.
-- **`constants.ts` and `constants.test.ts`.** The constants are right; the guard was wrong.
-- **E-1's residual limits 1 and 5** (the subprocess-read gap, the finite `READ_APIS` list) stay open
-  and registered exactly as they were.
-- **`turbo.json`, both package configurations, `.github/workflows/ci.yml`, `package.json`,
-  `harness/harness.yaml`** — untouched. No claim is made that CI ever observed the original defect;
-  the ticket's correction 2 is right that it never ran this code.
-- **Q-0072's successors A and B** — not started.
-- **The walk-side residual** (an ignored file matching a walk's selector) is registered in the
-  guard's audit and **not fixed**: closing it means filtering the walks through the inventory, which
-  changes clause A's subject and is a non-goal here. If the reviewer judges it a genuine second
-  instance, it wants its own ticket, as OQ-3 instructs for the backlog walk.
-
-## 9. Housekeeping
-
-Three scratch measurement scripts and one probe ticket folder were created during §1 and **deleted**;
-`git status` shows one modified file and nothing else. The two directories created for row (a) were
-removed, so the worktree is in the state I found it.
+Four scratch tests were added to the guard during §1 and §2 — a corpus dump, a
+2483270 comparison, the old floors, and the byte-exactness check — and all four were **removed**.
+Their output went to `/tmp`, never into the repository. `packages/shared/src/role.test.ts` was
+modified for the demonstration and restored to its committed bytes. The only change on this branch
+is `packages/core/src/turbo-inputs.test.ts`.

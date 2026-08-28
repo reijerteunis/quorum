@@ -1,7 +1,7 @@
 ---
 id: Q-0073
 title: The input guard's verdict depends on checkout state
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0073/integration
@@ -25,6 +25,14 @@ history:
     stage_after: requirements
     at: 2026-08-28T09:50:30.056Z
     cost: 18.575
+  - stage: reviewed
+    run: 3
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-28T11:47:10.165Z
+    cost: 7.349
 ---
 Found at Q-0072's final gate, 2026-08-28, by re-running the forced suite on `main` after the merge
 rather than trusting `integrate`'s tick. Q-0072 registered the two instances by hand and did not
