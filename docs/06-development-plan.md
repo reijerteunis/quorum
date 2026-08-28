@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-27 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -248,11 +248,30 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   64 KiB arrives and **`code: 0`** is returned — a `tests=ok` false green that raising the ceiling
   cannot fix, and that file capture does (2,097,152 B complete, file writes being synchronous). That
   measurement answers the ticket's blocking *raise or remove?* question with evidence rather than
-  taste; the `docs/DECISIONS.md` entry is still owed before an implementer starts, and the route
-  follows the design. Lands in `spike/src/fanout.js` and `packages/core/src/fanout/command.ts`
-  together — the Q-0066/Q-0068 shape. The subject has now been measured four times and three earlier
-  records were wrong in three different places, which is why the ticket body says not to re-derive
-  it from any of them.
+  taste. **Both blocking questions were settled at the requirements gate on 2026-08-28: remove the
+  ceiling, and run the ticket by hand** — see *"A command's output is captured whole, or the run
+  stops"* (2026-08-28), which is the entry the ticket said was owed. Lands in `spike/src/fanout.js`
+  and `packages/core/src/fanout/command.ts` together — the Q-0066/Q-0068 shape. The subject has now
+  been measured four times and three earlier records were wrong in three different places, which is
+  why the ticket body says not to re-derive it from any of them.
+
+  The requirements run cost **$8.31** and its head-of-product refused twice, correctly and for the
+  same reason both times: the decision entry is a precondition no step in that flow may satisfy
+  (`harness/roles/developer-generalist.md:23`), so the loop exhausted at a limit of 1 and the human
+  advanced it. This is the sixth appearance of *"a loop spending its budget on work no agent in it
+  can perform"* and a **new variant** — the two 2026-08-23 ownership rules and the 2026-08-25
+  surface rule all ask questions about *files a step may write*, and this blocker is about a
+  **precondition external to the document** rather than a surface named inside it. The requirement
+  handled it correctly by naming the entry instead of asserting it (AC-11), which is the Q-0069
+  AC-11(b) failure avoided rather than repeated. What the run bought beyond the design: eleven
+  criteria, **seven** landed pins rather than the four the ticket body sketched — including
+  `fanout.source.test.ts`'s *"the folder is exactly the two files"*, which forbids factoring the
+  capture into a `fanout/capture.ts` and is a design constraint rather than churn — a discriminating
+  two-files-not-one test the existing `'OUTERR'` assertion cannot make, a three-way contradiction
+  resolved in favour of throwing, the correction that `spike/test/run.js` auto-discovers rather than
+  registering, and the AC-9 interaction nobody had flagged: file capture makes `command.ts` read
+  from `os.tmpdir()`, so `turbo-inputs.test.ts`'s `READ_BASES` gains an entry — Q-0072's guard and
+  Q-0073's open class.
 
 - Q-0071 CI can report green from a replay, and its cache outlives its commit. *(`reviewed` and
   `main:contained` 2026-08-27.)* `.github/workflows/ci.yml` restored `.turbo` across runs with
