@@ -356,8 +356,12 @@ function listing(root: string = repoRoot): string[] {
  */
 function repositoryInventory(): Inventory {
   const entries = listing();
-  // Nearly-empty is not a small repository: it is a wrong working directory, a sparse checkout or a
-  // git that answered without failing, and every literal below would then be classified as data.
+  // Nearly-empty is not a small repository: it is a wrong working directory, or a git that
+  // answered without failing, and every literal below would then be classified as data. A sparse
+  // checkout is deliberately NOT in that list — `--cached` reports what the index holds whether or
+  // not the worktree materialised it, measured on git 2.55 as two cached entries over one file on
+  // disk — which is why the audit above has it collecting rather than dropping. The two statements
+  // contradicted each other until the Q-0073 chore review's nit named it.
   // The same floor `reported()` puts under turbo's input set, for the same reason.
   if (entries.length < 200) {
     throw new Error(`inventory implausibly small: git reported ${entries.length} paths — the scan proves nothing over that`);
