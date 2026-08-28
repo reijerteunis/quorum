@@ -63,10 +63,24 @@
  * the base is the entire question: `dir` reaches whatever `dir` is, and every read joined onto it
  * inherits that answer.
  *
- * No clause is a TypeScript parser. Clause B collects quoted string literals that resolve to a real
- * path outside the package naming them, which over-collects rather than under-collects: a path
- * named in an assertion but never opened is refused until it is entered in {@link NOT_READ} with a
- * reason, and entering one is a visible act a reviewer can weigh. C1 does not interpret an
+ * **Membership is a git question, not a filesystem one** (Q-0073). Which quoted literals are
+ * repository paths at all, and which of those are directories, are both decided from
+ * {@link INVENTORY} — what `git ls-files --cached --others --exclude-standard` reports, which is
+ * the set turbo can hash. Deciding it from `fs.existsSync` made the verdict a function of what the
+ * checkout happened to contain: `.harness/worktrees` and `.quorum/runs` are directories the product
+ * creates and `.gitignore` excludes, so the guard was red on a machine that had run a flow and
+ * green in a fresh worktree — which is why implement and integrate both reported green over a
+ * `main` that was red for every developer. **CI is named here as a checkout shape and not as an
+ * observation:** no CI run executed the revision that carried the defect, and a fresh clone, which
+ * holds neither directory, is the measured proxy for what CI would have seen. Existence used to
+ * **classify** is that defect. Existence used to **refuse to run over a missing subject** is the
+ * rule, and the four refusals that do it are named in the audit on {@link INVENTORY}, which is also
+ * where every remaining working-tree read is accounted for.
+ *
+ * No clause is a TypeScript parser. Clause B collects quoted string literals that name a path the
+ * inventory holds, outside the package naming them, which over-collects rather than under-collects:
+ * a path named in an assertion but never opened is refused until it is entered in {@link NOT_READ}
+ * with a reason, and entering one is a visible act a reviewer can weigh. C1 does not interpret an
  * expression at all — it decides only whether the path is a quoted literal, and refuses everything
  * else until a human writes down why. C4 unwraps `path.join` and its siblings to find the base and
  * then stops, refusing every base that is not a literal clause B collects or a route C1 governs;
@@ -104,9 +118,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
 
 import { repoFile, repoRoot } from '../test/corpus.js';
+import { commitAll, git, removeTempDirs, tempDir, write } from '../test/repo.js';
 
 /** This file, which the clause B scan skips and a test of its own audits instead. */
 const GUARD = 'packages/core/src/turbo-inputs.test.ts';
@@ -236,19 +251,121 @@ const WALKS: readonly Walk[] = [
 const NOT_READ: Record<string, string> = {
   'harness/architecture.md': 'role.test.ts asserts this string appears in role.ts\'s own doc comment; no suite opens the file',
   'harness/port-charter.md': 'named in doc comments in both packages, opened by neither',
-  'node_modules/.bin/turbo': 'the installed toolchain, untracked and unhashable; its absence already fails loudly',
   'spike/src/fanout.js': 'fanout.test.ts uses the path as task-fixture data; the file itself is read only through the spike/src walk',
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, which is data and not a read',
   'docs/05-design-prompt.md': 'named nowhere but this file, as clause B\'s own fixture below',
   'docs/01-product-definition.md': 'named nowhere but this file, as clause A\'s own fixture below',
-  // Why: product path constants, not corpus. Both name directories Quorum *creates*; a suite
-  // asserts on the constant's value and opens neither. They are registered rather than left to
-  // clause B because that clause only sees a directory literal when the directory exists, so
-  // their absence here was invisible in every worktree and on CI. Added by hand after review;
-  // the existence-dependence itself is Q-0073.
-  '.harness/worktrees': 'REPO_WORKTREE_ROOT — a directory the product creates; constants.test.ts asserts its value and opens nothing',
-  '.quorum/runs': 'RUN_HISTORY_ROOT — a directory the product creates; constants.test.ts asserts its value and opens nothing',
 };
+
+/**
+ * What git will hand turbo: every tracked file, plus every untracked file git does not ignore.
+ *
+ * The one place membership is decided, and what replaced `fs.existsSync` (Q-0073). The question the
+ * guard asks of a literal is whether the path it names is *hashable*; hashability is a git property
+ * and the working tree is not it. `.gitignore` holds `.harness/`, `.quorum/` and `node_modules/`,
+ * so nothing under them can ever be hashed, no declaration could cover one, and none of them should
+ * ever have been a candidate.
+ *
+ * `--others` enumerates the working tree deliberately, and the tracked set alone would be wrong:
+ * turbo hashes untracked-unignored files too — measured on this workspace, an untracked
+ * `packages/shared/src/zz-probe.txt` moves `@quorum/shared#test`'s hash and a gitignored
+ * `zz-probe.log` does not — so tracked-only would drop a path turbo genuinely hashes, which is a
+ * real read going invisible: the failure this guard exists to prevent, reintroduced by its own fix.
+ * `requirements/errata.md` E-1.
+ */
+interface Inventory {
+  /** Whether it holds `value` as a file, or holds anything below it — the "is this a path" test. */
+  readonly holds: (value: string) => boolean;
+  /** Whether it holds something below `value`, which is the whole of "is this a directory". */
+  readonly isDirectory: (value: string) => boolean;
+}
+
+/** An inventory over `entries`, each a repository-relative path as git reported it. */
+function inventoryOf(entries: readonly string[]): Inventory {
+  const files = new Set(entries);
+  const directories = new Set<string>();
+  for (const entry of entries) {
+    const segments = entry.split('/');
+    for (let i = 1; i < segments.length; i++) directories.add(segments.slice(0, i).join('/'));
+  }
+  return {
+    holds: (value) => files.has(value) || directories.has(value),
+    isDirectory: (value) => directories.has(value),
+  };
+}
+
+/**
+ * What git reports for the checkout at `root`, as repository-relative paths.
+ *
+ * `-z` because a path holding a quote or a newline comes back quoted and escaped otherwise, and a
+ * listing that silently renames its own entries is the wrong foundation for a membership test.
+ * Failure is named and loud rather than an empty inventory, which would classify every literal as
+ * data and report a pass over nothing: git is already a hard requirement of running this suite,
+ * spawned by `packages/core/test/repo.ts` for every sandbox repository it builds.
+ *
+ * @param root the checkout to ask about — the repository, unless a test hands it a sandbox.
+ */
+function listing(root: string = repoRoot): string[] {
+  let raw: string;
+  try {
+    raw = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+      cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (cause) {
+    throw new Error(`inventory unavailable: git ls-files failed in ${root} — this guard reads what git will hand turbo, so it cannot answer without git`, { cause });
+  }
+  return raw.split('\0').filter((entry) => entry !== '');
+}
+
+/**
+ * The repository's own inventory, obtained once — and the audit of what could still move a verdict.
+ *
+ * Existence used to **classify** is the defect this constant removes; existence used to **refuse to
+ * run over a missing subject** is the rule, and four such refusals survive unchanged: the two
+ * corpus walks (`typescriptFiles`, `filesBelow`), the installed `turbo` (`reported`), and a
+ * manifested file that has gone (clause A's second test). Each throws where it is reached, which is
+ * the opposite failure — loud, everywhere, over a subject it can name.
+ *
+ * Every remaining place the verdict reads the working tree, and why it does not vary with untracked
+ * state:
+ *
+ * - **`filesBelow`'s five walks** — `backlog`, `spike/src`, `harness/flows`, `harness/roles`,
+ *   `spike/templates/harness/flows`. An untracked-unignored addition moves clause A's two sides
+ *   together rather than one of them: turbo hashes such a file, measured here — an untracked
+ *   `backlog/<id>/ticket.md` appears in both packages' reported inputs, through the backlog glob
+ *   each package configuration declares. **The residual is the other half:** a file git *ignores* that
+ *   a walk's selector matched would be required to be a hashed input and could never be one. None
+ *   is reachable today — `.gitignore`'s directory entries name no directory these walks descend
+ *   into, and `*.log`, `.env*` and `*.tsbuildinfo` match no selector — and it is stated rather than
+ *   left to be found, because it is this ticket's own class seen from the walk side.
+ * - **`typescriptFiles`'s two walks** of each package's `src` and `test`. The same first half, and
+ *   no second half: an untracked-unignored `.ts` there is a file turbo hashes and Vitest runs, so
+ *   scanning it is right, and every ignored entry (`dist/`, `coverage/`, `*.tsbuildinfo`) either
+ *   sits outside both directories or is not a `.ts` file.
+ * - **`reported()`** — turbo's own enumeration, which is the other side of clause A rather than an
+ *   independent reader, and which counts untracked-unignored files exactly as the walks do.
+ * - **Clause B's subject demonstration**, which asserts that `docs/05-design-prompt.md` really is
+ *   in the repository before showing that no declaration covers it — a demonstration over a path
+ *   that had gone would prove nothing. The file is tracked, so it is in every checkout of this
+ *   commit, and the assertion classifies nothing either way.
+ * - **This inventory's own failures** — git absent or failing is a named error; a listing that came
+ *   back implausibly small is a named error; and a sparse checkout, which can track a path that is
+ *   absent from disk, *collects* that literal, which asks more of the declaration rather than less.
+ *
+ * @throws {Error} when git cannot answer, or answers with a listing too small to be this repository.
+ */
+function repositoryInventory(): Inventory {
+  const entries = listing();
+  // Nearly-empty is not a small repository: it is a wrong working directory, a sparse checkout or a
+  // git that answered without failing, and every literal below would then be classified as data.
+  // The same floor `reported()` puts under turbo's input set, for the same reason.
+  if (entries.length < 200) {
+    throw new Error(`inventory implausibly small: git reported ${entries.length} paths — the scan proves nothing over that`);
+  }
+  return inventoryOf(entries);
+}
+
+const INVENTORY = repositoryInventory();
 
 /** Every `.ts` below `dir`, at any depth, as `[repository-relative path, text]`. */
 function typescriptFiles(dir: string): [string, string][] {
@@ -338,21 +455,30 @@ function covered(read: string, task: Reported, directory: string): boolean {
 }
 
 /**
- * Every quoted string literal in `text` that names an existing repository path.
+ * Every quoted string literal in `text` that names a repository path the inventory holds.
  *
  * A separator is required, so a bare word that happens to match a directory name — `main`, `test`,
  * `spike` — is not mistaken for a path. Values that are relative (`../..`), absolute, or a bare
  * prefix ending in a separator (`backlog/`, `.harness/`) are dropped as well: those are fragments
  * used in string arithmetic rather than paths handed to a reader.
+ *
+ * What is left is decided by {@link Inventory} and by nothing else — 270 of the 307 distinct
+ * literals that reach that decision are lint messages, import specifiers, shell fragments, argv
+ * fixtures and prose, and it is membership that tells them from a path.
+ *
+ * @param inventory the set membership is taken from. A parameter because a classification nothing
+ *   can vary is a property nobody has checked, which is how the working tree came to decide this
+ *   one (Q-0073 AC-3).
  */
-function pathLiterals(text: string): string[] {
+function pathLiterals(text: string, inventory: Inventory = INVENTORY): string[] {
   const found = new Set<string>();
   for (const match of text.matchAll(/'([^'\n\\]+)'|"([^"\n\\]+)"/g)) {
     const value = match[1] ?? match[2];
     if (!value.includes('/') || value.endsWith('/')) continue;
     if (value.startsWith('/') || value.startsWith('..')) continue;
-    if (!fs.existsSync(path.join(repoRoot, value))) continue;
-    found.add(path.posix.normalize(value));
+    const normalised = path.posix.normalize(value);
+    if (!inventory.holds(normalised)) continue;
+    found.add(normalised);
   }
   return [...found];
 }
@@ -460,10 +586,8 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoFile → key': 'a .ts path typescriptFiles found inside a package it was pointed at, never outside one',
     'repoFile → GUARD': 'the literal naming this file, and its own reads are audited by the three lists above',
     'repoFile → file': 'a key of ROUTE_MODULES, which is a literal list of the two corpus modules',
-    'repoRoot → (bare)': 'the working directory the turbo subprocess is spawned in; nothing is read through it',
-    'repoRoot → value': 'existence of a literal clause B already collected, to decide whether it is a path',
+    'repoRoot → (bare)': 'the working directory the turbo and git subprocesses are spawned in, and listing\'s default root; nothing is read through it',
     'repoRoot → read': 'existence of a MANIFEST key, so a manifested file that has gone fails loudly',
-    'repoRoot → literal': 'clause B asking whether a literal it collected is a directory',
   },
 };
 
@@ -1236,11 +1360,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/test-command.test.ts': {
     dir: 'spikeSources\' parameter, defaulting to path.join(repoRoot, \'spike/src\') — the walk WALKS declares above',
-    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\'), which NOT_READ names as the installed toolchain',
+    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\') — the installed toolchain, which git ignores and turbo therefore cannot hash, so no declaration could cover it and its absence fails loudly instead',
   },
   'packages/core/src/turbo-inputs.test.ts': {
     absolute: 'path.join(repoRoot, dir) in typescriptFiles and filesBelow, whose directories come from SUITES and WALKS',
-    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\'), as above',
+    bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\') — the installed toolchain, as in test-command.test.ts above',
   },
   'packages/core/test/cli-stub.ts': {
     argvLog: 'a file inside tempDir(\'cli-stub-\'), where the stub records what it was called with',
@@ -1253,6 +1377,37 @@ const READ_BASES: Record<string, Record<string, string>> = {
 };
 
 const turbo = reported();
+
+/** Each suite's own sources and test support, minus this file, which its own lists audit instead. */
+const scanFiles = (directory: string): [string, string][] =>
+  [...typescriptFiles(`${directory}/src`), ...typescriptFiles(`${directory}/test`)]
+    .filter(([file]) => file !== GUARD);
+
+/**
+ * Clause B over one suite: every repository path it names that nothing hashes, as `file: literal`.
+ *
+ * @param inventory what membership and directory-ness are decided from. It is a parameter so the
+ *   occurrence list can be compared across two inventories rather than across two checkouts —
+ *   the property Q-0073 exists to establish, checkable in an environment where neither directory
+ *   the defect turned on is present.
+ */
+function undeclaredPaths(taskId: string, directory: string, inventory: Inventory = INVENTORY): string[] {
+  const missing: string[] = [];
+  for (const [file, text] of scanFiles(directory)) {
+    for (const literal of pathLiterals(text, inventory)) {
+      if (literal in NOT_READ) continue;
+      if (literal === directory || literal.startsWith(`${directory}/`)) continue;
+      if (inventory.isDirectory(literal)) {
+        if (!WALKS.some((walk) => walk.taskId === taskId && walk.dir === literal)) {
+          missing.push(`${file}: ${literal} (a directory, and no audited walk covers it)`);
+        }
+        continue;
+      }
+      if (!covered(literal, turbo[taskId], directory)) missing.push(`${file}: ${literal}`);
+    }
+  }
+  return missing;
+}
 
 describe('AC-7 clause A — every audited read is a hashed input', () => {
   test.each(SUITES)('$taskId reports a hashed input set at all', ({ taskId }) => {
@@ -1295,28 +1450,9 @@ describe('AC-7 clause A — every audited read is a hashed input', () => {
 });
 
 describe('AC-7 clause B — every path either suite names is covered by a declaration', () => {
-  /** Each suite's own sources and test support, which is where every read is written. */
-  const sources = (directory: string): [string, string][] =>
-    [...typescriptFiles(`${directory}/src`), ...typescriptFiles(`${directory}/test`)];
-
   test.each(SUITES)('$taskId names no repository path that nothing hashes', ({ taskId, directory }) => {
-    const files = sources(directory).filter(([file]) => file !== GUARD);
-    expect(files.length, `${directory} holds no TypeScript — the scan proves nothing`).toBeGreaterThan(5);
-    const missing: string[] = [];
-    for (const [file, text] of files) {
-      for (const literal of pathLiterals(text)) {
-        if (literal in NOT_READ) continue;
-        if (literal === directory || literal.startsWith(`${directory}/`)) continue;
-        if (fs.statSync(path.join(repoRoot, literal)).isDirectory()) {
-          if (!WALKS.some((walk) => walk.taskId === taskId && walk.dir === literal)) {
-            missing.push(`${file}: ${literal} (a directory, and no audited walk covers it)`);
-          }
-          continue;
-        }
-        if (!covered(literal, turbo[taskId], directory)) missing.push(`${file}: ${literal}`);
-      }
-    }
-    expect(missing).toEqual([]);
+    expect(scanFiles(directory).length, `${directory} holds no TypeScript — the scan proves nothing`).toBeGreaterThan(5);
+    expect(undeclaredPaths(taskId, directory)).toEqual([]);
   });
 
   test('this file is audited by its own lists rather than exempt from them', () => {
@@ -1356,6 +1492,240 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
     expect(shared.dependencies).toEqual([]);
     expect(covered('packages/core/src/index.ts', shared, 'packages/shared')).toBe(true);
     expect(shared.inputs.has('packages/core/src/index.ts'), 'shared declares this as an input, never as an edge').toBe(true);
+  });
+});
+
+/** What a checkout that has run a flow holds under the two roots `.gitignore` excludes. */
+const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manifest.json'];
+
+/**
+ * Every `file: literal` the classifier collects from the two audited suites — AC-5's baseline,
+ * pinned as a set of identities rather than as a count.
+ *
+ * A count is the wrong instrument here, which is what iteration 1's review found: a floor lets an
+ * unrelated addition pay for a removal, so a literal could stop being collected — the classifier
+ * quietly losing its subject, the failure this whole file exists to close — while the totals still
+ * read green. Membership is checked in one direction only, because the two directions are not the
+ * same claim: every entry here must still be collected, while an occurrence this list does not hold
+ * is an *addition*, which clause B above already judges on its merits and which no criterion
+ * forbids.
+ *
+ * Sixty of the sixty-one are the measured baseline — 67 per-file-distinct occurrences over 37
+ * distinct literals, less the three literals the census names and the seven occurrences they
+ * carried. The sixty-first, `packages/shared/test/corpus.ts: docs/decisions`, arrived while this
+ * ticket was in flight, with the split of `docs/DECISIONS.md` into a file per entry; it is an
+ * addition of exactly the shape this list permits, and the walk that covers it is in {@link WALKS}.
+ */
+const COLLECTED_BASELINE = [
+  'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
+  'packages/core/src/adapters/adapters.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/adapters/capabilities.source.test.ts: docs/03-adapter-contract.md',
+  'packages/core/src/adapters/capabilities.source.test.ts: docs/04-architecture.md',
+  'packages/core/src/adapters/structured-output.test.ts: contracts/Q-0006/review-artifacts.schema.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/core/package.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/package.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/index.ts',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/project.ts',
+  'packages/core/src/contracts/contracts.source.test.ts: packages/core/package.json',
+  'packages/core/src/contracts/contracts.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/contracts/contracts.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
+  'packages/core/src/contracts/contracts.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
+  'packages/core/src/contracts/run-manifest.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/run-manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/run-manifest.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/contracts/schema-cache.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/schema-cache.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/schema-cache.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/contracts/validate-artifact.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
+  'packages/core/src/contracts/validate-artifact.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/validate-artifact.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
+  'packages/core/src/contracts/validate-artifact.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/validate-artifact.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/corpus.test.ts: packages/core/src',
+  'packages/core/src/fanout/fanout.source.test.ts: packages/core/package.json',
+  'packages/core/src/fanout/fanout.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/fanout/fanout.test.ts: spike/src/fanout.js',
+  'packages/core/src/git/git.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/git/git.source.test.ts: packages/shared/package.json',
+  'packages/core/src/git/git.source.test.ts: packages/shared/src/containment.ts',
+  'packages/core/src/git/git.source.test.ts: packages/shared/src/index.ts',
+  'packages/core/src/lint/lint.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/lint/lint.test.ts: harness/flows',
+  'packages/core/src/lint/lint.test.ts: spike/templates/harness/flows',
+  'packages/core/src/test-command.test.ts: .github/workflows/ci.yml',
+  'packages/core/src/test-command.test.ts: packages/core/src/adapters/real-cli.probe.test.ts',
+  'packages/core/src/test-command.test.ts: spike/src',
+  'packages/core/test/corpus.ts: packages/core/src',
+  'packages/shared/src/docs.test.ts: docs/02-sdlc-pipeline-spec.md',
+  'packages/shared/src/docs.test.ts: docs/03-adapter-contract.md',
+  'packages/shared/src/docs.test.ts: docs/04-architecture.md',
+  'packages/shared/src/docs.test.ts: docs/DECISIONS.md',
+  'packages/shared/src/docs.test.ts: docs/GLOSSARY.md',
+  'packages/shared/src/index.test.ts: packages/core/package.json',
+  'packages/shared/src/index.test.ts: packages/core/src/index.ts',
+  'packages/shared/src/index.test.ts: packages/shared/package.json',
+  'packages/shared/src/project.test.ts: harness/harness.yaml',
+  'packages/shared/src/project.test.ts: packages/core/src/backlog/project.ts',
+  'packages/shared/src/project.test.ts: packages/shared/src/index.ts',
+  'packages/shared/src/project.test.ts: spike/templates/harness/harness.yaml',
+  'packages/shared/src/role.test.ts: harness/architecture.md',
+  'packages/shared/src/role.test.ts: packages/core',
+  'packages/shared/src/role.test.ts: packages/shared',
+  'packages/shared/src/step-output.test.ts: spike/src/contracts.js',
+  'packages/shared/test/corpus.ts: docs/decisions',
+  'packages/shared/test/corpus.ts: harness/flows',
+  'packages/shared/test/corpus.ts: harness/roles',
+  'packages/shared/test/corpus.ts: packages/shared/src',
+  'packages/shared/test/corpus.ts: spike/src/lint.js',
+];
+
+describe('Q-0073 — membership is decided from git, so the verdict does not move with the checkout', () => {
+  afterAll(removeTempDirs);
+
+  test('git\'s answer does not move when a working tree gains the directories the product creates', () => {
+    // The two checkout states, built where nothing of the reader's own is touched: a repository
+    // that has never run a flow, and the same one afterwards. `listing` is the function the guard
+    // itself uses, pointed at a sandbox rather than reimplemented, so what passes here is what runs
+    // above — and the sandbox is not a straw man, because the assertion below is over the real
+    // repository's inventory, which holds nothing under either root whatever this checkout has done.
+    const dir = tempDir('q0073-');
+    git(dir, 'init', '-q', '-b', 'main');
+    write(path.join(dir, '.gitignore'), '.harness/\n.quorum/\nnode_modules/\n');
+    write(path.join(dir, 'src/constants.ts'), 'export const ROOT = \'.harness/worktrees\';\n');
+    commitAll(dir, 'init');
+    const clean = listing(dir);
+    expect(clean, 'the sandbox tracks nothing — this test proves nothing over it').toContain('src/constants.ts');
+
+    for (const entry of [...AFTER_A_FLOW, 'node_modules/.bin/turbo']) write(path.join(dir, entry), '{}\n');
+    expect(listing(dir), 'git reports the same set in both states, which is what makes the verdict stable').toEqual(clean);
+
+    for (const root of ['.harness/worktrees', '.quorum/runs', 'node_modules/.bin/turbo']) {
+      expect(INVENTORY.holds(root), `${root} is in this repository's inventory`).toBe(false);
+    }
+  });
+
+  test('the same sources classify identically under two inventories, occurrence for occurrence', () => {
+    // Clause B over both suites' real sources, run once per inventory and compared as lists rather
+    // than as a pass or a fail: two runs could otherwise agree by having skipped the same subject.
+    // The stray pair is what an untracked working tree can add to the inventory — a file git does
+    // not ignore, which turbo would hash and which nothing names.
+    const clean = inventoryOf(listing());
+    const withStrays = inventoryOf([...listing(), 'docs/zz-scratch.md', 'packages/core/src/zz-scratch.ts']);
+    for (const { taskId, directory } of SUITES) {
+      expect(undeclaredPaths(taskId, directory, withStrays)).toEqual(undeclaredPaths(taskId, directory, clean));
+      expect(undeclaredPaths(taskId, directory, clean)).toEqual([]);
+    }
+  });
+
+  test('the clause has a subject — a working-tree inventory reports what a developer\'s machine did', () => {
+    // The difference the fix removes, modelled rather than staged, so it is the same here, in an
+    // integrate worktree and on CI — the two checkout shapes that were structurally blind to it. An
+    // inventory carrying what the working tree holds under the two ignored roots reports six
+    // occurrences in four files, which is the list that stood on `main` while implement and
+    // integrate both reported green (Q-0072); CI never ran that revision.
+    const asWorkingTree = inventoryOf([...listing(), ...AFTER_A_FLOW]);
+    const asDirectory = (literal: string): string => `${literal} (a directory, and no audited walk covers it)`;
+    expect(undeclaredPaths('@quorum/shared#test', 'packages/shared', asWorkingTree).sort()).toEqual([
+      `packages/shared/src/constants.test.ts: ${asDirectory('.harness/worktrees')}`,
+      `packages/shared/src/constants.test.ts: ${asDirectory('.quorum/runs')}`,
+      `packages/shared/src/constants.ts: ${asDirectory('.harness/worktrees')}`,
+      `packages/shared/src/constants.ts: ${asDirectory('.quorum/runs')}`,
+    ]);
+    expect(undeclaredPaths('@quorum/core#test', 'packages/core', asWorkingTree).sort()).toEqual([
+      `packages/core/src/fanout/fanout.source.test.ts: ${asDirectory('.harness/worktrees')}`,
+      `packages/core/src/git/git.source.test.ts: ${asDirectory('.harness/worktrees')}`,
+    ]);
+  });
+
+  test('and nothing is decided by the working tree in either direction', () => {
+    // Both halves of the same statement, and between them they fail the moment anything here
+    // consults the filesystem again. A sparse checkout can track a file it has not materialised
+    // (OQ-2): that literal is still collected, which asks more of the declaration rather than less.
+    const sparse = inventoryOf(['docs/zz-tracked-but-absent.md']);
+    expect(pathLiterals('const f = \'docs/zz-tracked-but-absent.md\';', sparse)).toEqual(['docs/zz-tracked-but-absent.md']);
+    // The other direction is the defect itself: on a machine that has run a flow both of these
+    // name a real directory, and neither is a repository path.
+    expect(pathLiterals('const a = \'.harness/worktrees\'; const b = \'.quorum/runs\';')).toEqual([]);
+    expect(INVENTORY.isDirectory('.harness/worktrees')).toBe(false);
+    expect(INVENTORY.isDirectory('.quorum/runs')).toBe(false);
+  });
+
+  test('every category the filter excludes today is still excluded, each on its own', () => {
+    // A rule that had started promoting every string with a separator in it fails here, and each
+    // category is asserted separately: a demonstration that the filter fires proves the filter
+    // fires, not that each of its cases does (Q-0071). All five are shapes the corpus really holds
+    // — 270 of the 307 distinct literals reaching this decision are one of them.
+    expect(pathLiterals('import { parse } from \'./adapters.js\';'), 'an import specifier').toEqual([]);
+    expect(pathLiterals('errors.push(\'- flow needs consumes/produces\');'), 'a lint message').toEqual([]);
+    expect(pathLiterals('const head = \'#!/bin/sh\';'), 'a shell fragment').toEqual([]);
+    expect(pathLiterals('const argv = \'--add-dir /tmp/a dir\';'), 'an argument carrying a temporary path').toEqual([]);
+    expect(pathLiterals('const note = \'the writer/reviewer rule\';'), 'prose').toEqual([]);
+  });
+
+  test('and a tracked file and a tracked directory are still collected, and told apart', () => {
+    // The other direction of the same criterion: a rule that had stopped consulting the inventory
+    // at all would collect nothing and pass every clause quietly, which is the failure this whole
+    // file exists to close.
+    expect(pathLiterals('const doc = \'docs/GLOSSARY.md\';')).toEqual(['docs/GLOSSARY.md']);
+    expect(INVENTORY.isDirectory('docs/GLOSSARY.md'), 'a tracked file is not a directory').toBe(false);
+    expect(pathLiterals('const dir = \'harness/flows\';')).toEqual(['harness/flows']);
+    expect(INVENTORY.isDirectory('harness/flows'), 'a directory git tracks below is one').toBe(true);
+  });
+
+  test('the collected set has not contracted, occurrence by occurrence', () => {
+    // Every occurrence in the baseline is still collected. Identities and not totals, because a
+    // count compares the wrong thing: 60 >= 60 holds just as well when one literal has been dropped
+    // and another added, and a literal that stops being collected is the classifier losing its
+    // subject — the failure this file exists to close. Additions are allowed by construction, since
+    // membership is only checked one way.
+    const collected = new Set(SUITES.flatMap(({ directory }) =>
+      scanFiles(directory).flatMap(([file, text]) => pathLiterals(text).map((literal) => `${file}: ${literal}`))));
+    expect(COLLECTED_BASELINE.filter((entry) => !collected.has(entry)),
+      'these baseline occurrences are no longer collected').toEqual([]);
+    // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
+    // asserted over the register rather than over the scan.
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(61);
+    expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
+      'distinct literals in the baseline').toBe(35);
+    // And the nine the classifier calls directories, which is the class the defect lived in: a
+    // checkout that had run a flow made it eleven.
+    for (const directory of ['docs/decisions', 'harness/flows', 'harness/roles', 'packages/core',
+      'packages/core/src', 'packages/shared', 'packages/shared/src', 'spike/src',
+      'spike/templates/harness/flows']) {
+      expect(INVENTORY.isDirectory(directory), `${directory} is no longer classified as a directory`).toBe(true);
+    }
+  });
+
+  test('the two product path constants are closed by the mechanism, not by the register', () => {
+    // They were entered in NOT_READ by hand after Q-0072's gate, which closed those two and left
+    // the class open. That register is for a path deliberately named and never opened; it was never
+    // the instrument for deciding whether a literal is a path at all.
+    expect('.harness/worktrees' in NOT_READ).toBe(false);
+    expect('.quorum/runs' in NOT_READ).toBe(false);
+    const named = scanFiles('packages/shared').filter(([file]) => file.endsWith('/constants.ts'));
+    expect(named.length, 'the constants module is not in the scan — this test proves nothing').toBe(1);
+    expect(named[0][1], 'the constant no longer names the directory').toContain('.harness/worktrees');
+    expect(pathLiterals(named[0][1])).not.toContain('.harness/worktrees');
+    expect(pathLiterals(named[0][1])).not.toContain('.quorum/runs');
+  });
+
+  test('no register entry can go dead unnoticed', () => {
+    // A key the classifier can no longer see excuses nothing, and it goes quiet rather than loud —
+    // a check that has stopped having a subject. node_modules/.bin/turbo was exactly that under
+    // this rule, which is why it is not in the register any more.
+    const dead = Object.keys(NOT_READ).filter((key) => pathLiterals(`'${key}'`).length === 0);
+    expect(dead, 'these NOT_READ keys are no longer paths the scan would collect').toEqual([]);
+  });
+
+  test('and the installed toolchain needs no entry, because git ignores it', () => {
+    // Its treatment, asserted rather than left implicit in an absence: the binary is real, it is
+    // read, and it is unhashable, so no declaration could cover it and no register entry should
+    // imply one is owed. What stands in for both is reported()'s refusal to run without it, which
+    // is loud, is unchanged, and is where its absence has always been caught.
+    expect('node_modules/.bin/turbo' in NOT_READ).toBe(false);
+    expect(INVENTORY.holds('node_modules/.bin/turbo'), 'git ignores node_modules').toBe(false);
+    expect(pathLiterals(repoFile('packages/core/src/test-command.test.ts'))).not.toContain('node_modules/.bin/turbo');
   });
 });
 
