@@ -2,6 +2,10 @@
   "$schema": "https://turbo.build/schema.json",
   "extends": ["//"],
   "tasks": {
+    // A hit on this task claims that nothing it READS has changed, so every file this package's
+    // suite opens outside itself is declared here beside `$TURBO_DEFAULT$`, which keeps the
+    // package-relative set rather than replacing it. `packages/core/src/turbo-inputs.test.ts` is
+    // what fails when a read stops being covered. Q-0072.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",

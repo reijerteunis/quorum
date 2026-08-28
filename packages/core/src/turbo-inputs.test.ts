@@ -18,24 +18,41 @@
  * - **B, read → declaration.** Every repository path either suite names is covered: by its own
  *   task's inputs, by the workspace dependency edge, or by {@link NOT_READ}. This is what fails
  *   the first time somebody adds a `repoFile('…')` call no declaration covers.
- * - **C, route → literal.** Clause B can only see a path that is *written down*, so C requires that
- *   every route out of a package hands its path over as a quoted literal, or is entered in
- *   {@link INDIRECT_ROUTES} with the reason its values are literals in the same file. This is what
- *   fails on a helper handed a template literal, and on a raw `path.join(repoRoot, computed)` —
- *   reads that clause B is structurally unable to notice.
+ * - **C, name → route.** Clause B can only see a path written down as a repository-relative
+ *   literal, so C closes every other way a file could name a location outside its own package. It
+ *   has three parts, each failing closed against a register a reviewer approves rather than
+ *   recognising a list of bad shapes:
+ *   **C1**, every call of a route hands over a quoted literal or is entered in
+ *   {@link INDIRECT_ROUTES} — and a route is identified through the calling file's own import
+ *   bindings, so `import { repoFile as read }` is watched under `read`;
+ *   **C2**, no repository root is derived outside the two route modules, per
+ *   {@link ROOT_DERIVATIONS};
+ *   **C3**, no string literal names a location outside its own package, per
+ *   {@link ESCAPING_LITERALS}.
+ *
+ * **Why C's three parts are exhaustive** — stated so the argument can be attacked rather than the
+ * code. To read a file, something must name it, and a name is either a literal or an expression.
+ * A repository-relative literal is collected by clause B and must be declared. An absolute or
+ * `..`-escaping literal is refused by C3, which is what lets clause B go on ignoring both forms.
+ * An expression must be rooted somewhere: at a route, which C1 watches under whatever local name
+ * it was imported as, or at a root the file derived for itself, which C2 refuses. What remains is
+ * a base produced by a primitive C2's list does not name — the residual hole, and the reason C2 is
+ * a register rather than a filter: a new primitive costs somebody an entry and a reason.
  *
  * No clause is a TypeScript parser. Clause B collects quoted string literals that resolve to a real
  * path outside the package naming them, which over-collects rather than under-collects: a path
  * named in an assertion but never opened is refused until it is entered in {@link NOT_READ} with a
- * reason, and entering one is a visible act a reviewer can weigh. Clause C does not interpret an
+ * reason, and entering one is a visible act a reviewer can weigh. C1 does not interpret an
  * expression at all — it decides only whether the path is a quoted literal, and refuses everything
- * else until a human writes down why. Failing closed is what lets it be this small.
+ * else until a human writes down why. Failing closed is what lets all of this be this small.
  *
- * The limit, stated rather than left to be discovered: clause C exempts the two `test/corpus.ts`
+ * Two limits, stated rather than left to be discovered. Clause C exempts the two `test/corpus.ts`
  * modules, because they are where the routes are *defined* and taking a computed path is their
- * whole purpose. A read added there is checked by clause B if it names a literal, and by nothing if
- * it does not — so a new reader in those two files is a reviewed act, which is the same standing
- * they already had.
+ * whole purpose — so a new reader in those two files is a reviewed act, which is the same standing
+ * they already had. And C2's list deliberately omits `os.tmpdir`: a temporary directory is outside
+ * the repository by construction, so reaching repository corpus from one needs a second derivation
+ * that C2 does name, and registering the seven sandbox sites would fill the register with entries
+ * carrying no information.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -281,14 +298,49 @@ function pathLiterals(text: string): string[] {
   return [...found];
 }
 
-/**
- * The corpus helpers — the audited routes out of a package — and `repoRoot`, which is the raw one
- * every helper is built on. A read that reaches outside its package goes through one of these.
- */
-const ROUTES = ['repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'repoRoot'] as const;
+/** A module that defines routes, and is therefore itself exempt from clause C. */
+interface RouteModule {
+  /** Exports that take or yield a filesystem path. Every call of one is a clause C1 site. */
+  readonly routes: readonly string[];
+  /** Every other export, with why reaching it cannot reach a file a declaration must cover. */
+  readonly inert: Record<string, string>;
+}
 
-/** The modules that define the routes, and are therefore not subject to clause C. */
-const ROUTE_MODULES = ['packages/shared/test/corpus.ts', 'packages/core/test/corpus.ts'];
+/**
+ * The two `test/corpus.ts` modules, with every export classified.
+ *
+ * Classification is the half that makes C1 fail closed rather than watch a list of names somebody
+ * remembered to update: an export in neither column is a failure that names it, so a helper added
+ * to a corpus module is a decision about whether it is a route, taken by whoever adds it. A test
+ * below reads the exports back out of both modules and requires the two columns to cover them.
+ *
+ * `sharedSourceFiles`, `sharedAllFiles` and `frontmatterRegexMatchesSpike` are inert because their
+ * subject is fixed in the corpus module itself, so no call site can point one at a new file.
+ */
+const ROUTE_MODULES: Record<string, RouteModule> = {
+  'packages/core/test/corpus.ts': {
+    routes: ['repoRoot', 'repoFile', 'coreSourceFiles'],
+    inert: { SourceCollector: 'a type: it names no path and opens nothing' },
+  },
+  'packages/shared/test/corpus.ts': {
+    routes: ['repoRoot', 'repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'read', 'parseYaml'],
+    inert: {
+      FRONTMATTER: 'a regular expression',
+      parseFrontmatter: 'parses text a caller has already read',
+      sharedSourceFiles: 'reads packages/shared/src, which is inside the only package that can import it, and takes no argument',
+      sharedAllFiles: 'the same directory, likewise fixed',
+      codeLines: 'filters text',
+      importSpecifiers: 'parses text',
+      frontmatterRegexMatchesSpike: 'reads spike/src/backlog.js through spikeSource — a fixed path the spike/src walk covers',
+      spikeLintFlow: 'imports spike/src/lint.js — a fixed path the same walk covers',
+      lintAccepts: 'calls a function the caller already holds',
+    },
+  },
+};
+
+/** The route exports under their own names — how a fixture that declares no import is scanned. */
+const IDENTITY: Binding[] = [...new Set(Object.values(ROUTE_MODULES).flatMap((module) => module.routes))]
+  .map((name) => ({ local: name, exported: name }));
 
 /**
  * Route sites whose path is not a quoted literal, and why the values reaching each one are.
@@ -310,9 +362,19 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/shared/src/role.test.ts': {
     'spikeSource → file': 'the loop iterates a literal array of the four spike modules, in the same test',
+    'read → file': 'the loops iterate roleFiles(), the audited walk of harness/roles',
   },
   'packages/shared/src/index.test.ts': {
     'repoRoot → relative': 'readJson\'s parameter; its three call sites in this file all pass a literal',
+  },
+  'packages/shared/src/flow.test.ts': {
+    'parseYaml → file': 'the loop iterates flowFiles(), the audited walk of harness/flows',
+  },
+  'packages/shared/src/ticket.test.ts': {
+    'read → file': 'the loops iterate ticketFiles(), the audited walk of backlog/*/ticket.md',
+  },
+  'packages/shared/src/project.test.ts': {
+    'parseYaml → path.join(repoRoot, \'harness/harness.yaml\')': 'the path is a literal inside the argument, which clause B collects and the manifest names',
   },
   'packages/core/src/contracts/validate-artifact.test.ts': {
     'repoFile → relative': 'committedSchema\'s parameter; both call sites in this file pass a literal',
@@ -323,10 +385,21 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/core/src/backlog/backlog.test.ts': {
     'repoRoot → file': 'path.relative, which builds a name for a failure message and opens nothing',
   },
+  'packages/core/src/corpus.test.ts': {
+    'coreSourceFiles → missing': 'a path under a temporary directory the test created, asserted to throw',
+    'coreSourceFiles → empty': 'likewise, a temporary directory this test populated',
+    'coreSourceFiles → fixture()': 'a temporary tree the helper above builds and writes two files into',
+    'coreSourceFiles → root': 'likewise, a temporary directory from tempDir',
+    'coreSourceFiles → CORE_SRC': 'the constant is path.join(repoRoot, \'packages/core/src\'), a literal in this file and inside this package',
+  },
+  'packages/core/src/adapters/adapters.source.test.ts': {
+    'coreSourceFiles → root': 'a temporary tree the test builds to prove the corpus reader covers a new adapter folder',
+  },
   'packages/core/src/turbo-inputs.test.ts': {
     'repoRoot → dir': 'typescriptFiles and filesBelow walk a directory from SUITES or WALKS, both audited above',
     'repoFile → key': 'a .ts path typescriptFiles found inside a package it was pointed at, never outside one',
     'repoFile → GUARD': 'the literal naming this file, and its own reads are audited by the three lists above',
+    'repoFile → file': 'a key of ROUTE_MODULES, which is a literal list of the two corpus modules',
     'repoRoot → (bare)': 'the working directory the turbo subprocess is spawned in; nothing is read through it',
     'repoRoot → value': 'existence of a literal clause B already collected, to decide whether it is a path',
     'repoRoot → read': 'existence of a MANIFEST key, so a manifested file that has gone fails loudly',
@@ -334,16 +407,37 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
 };
 
+/** What one pass over a source file yields: its code with everything quoted taken out, and those. */
+interface Scanned {
+  /** `text` with every comment, string body and regular expression body blanked to spaces. */
+  readonly code: string;
+  /**
+   * Every string body the pass blanked, module specifiers excepted, in source order. A template
+   * literal contributes one entry per chunk, because a `..` appended after a hole escapes as
+   * surely as one written at the front.
+   */
+  readonly strings: string[];
+}
+
+/** Where a quote that opens a module specifier sits: after `from`, `import` or `import(`. */
+const SPECIFIER = /\b(?:from|import)\s*\(?\s*$/;
+
 /**
  * `text` with every comment body and every string body blanked to spaces, offsets and newlines
- * preserved, so a route named in prose or quoted as an example is not read as a call.
+ * preserved, so a route named in prose or quoted as an example is not read as a call — and the
+ * string bodies themselves, which clause C3 asks whether any of them escapes its package.
  *
  * Interpolations inside a template literal are left as code, because a call can legitimately live
  * in one. Regular expressions are blanked too: a quote inside one would otherwise open a string
  * that swallows the code after it, and this file contains exactly such a pattern.
+ *
+ * A string nested inside another is not collected separately, because it is not a literal — it is
+ * characters of the outer one. That is why {@link escapes} refuses anything carrying whitespace or
+ * punctuation: an outer string quoting a line of code is not a path, whatever it contains.
  */
-function codeOnly(text: string): string {
+function scanSource(text: string): Scanned {
   const out = text.split('');
+  const strings: string[] = [];
   const blank = (from: number, to: number): void => {
     for (let k = Math.max(from, 0); k < Math.min(to, out.length); k++) if (out[k] !== '\n') out[k] = ' ';
   };
@@ -352,6 +446,7 @@ function codeOnly(text: string): string {
   const quoted = (open: number): number => {
     let i = open + 1;
     while (i < text.length && text[i] !== text[open] && text[i] !== '\n') { i += text[i] === '\\' ? 2 : 1; }
+    if (!SPECIFIER.test(text.slice(Math.max(0, open - 16), open))) strings.push(text.slice(open + 1, i));
     blank(open + 1, i);
     return i + 1;
   };
@@ -376,18 +471,23 @@ function codeOnly(text: string): string {
   const template = (open: number): number => {
     let i = open + 1;
     let chunk = i;
+    /** A template's own characters, which are a literal even though its holes are code. */
+    const chunkOf = (to: number): void => {
+      strings.push(text.slice(chunk, to));
+      blank(chunk, to);
+    };
     while (i < text.length) {
       if (text[i] === '\\') { i += 2; continue; }
       if (text[i] === '`') break;
       if (text[i] === '$' && text[i + 1] === '{') {
-        blank(chunk, i);
+        chunkOf(i);
         i = interpolation(i + 2);
         chunk = i;
         continue;
       }
       i++;
     }
-    blank(chunk, i);
+    chunkOf(i);
     return i + 1;
   };
 
@@ -432,8 +532,11 @@ function codeOnly(text: string): string {
     if (c.trim()) previous = c;
     i++;
   }
-  return out.join('');
+  return { code: out.join(''), strings };
 }
+
+/** {@link scanSource}'s code half, which is what every clause but C3 asks for. */
+const codeOnly = (text: string): string => scanSource(text).code;
 
 /**
  * `code` with module specifiers blanked, so `repoRoot` named in an import is not read as a use.
@@ -464,9 +567,190 @@ function argumentEnd(code: string, start: number): number {
   return -1;
 }
 
+/** A route a file imported, under the name that file calls it by. */
+interface Binding {
+  /** The local name — `read`, where the import reads `repoFile as read`. */
+  readonly local: string;
+  /** The export it names, which is what decides whether `repoRoot`'s special handling applies. */
+  readonly exported: string;
+}
+
+/** A module specifier resolved against the importing file, as a repository-relative `.ts` path. */
+function resolveModule(file: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null;
+  const joined = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+  return joined.endsWith('.js') ? `${joined.slice(0, -3)}.ts` : joined;
+}
+
+/**
+ * The routes `file` imports, under its own names for them, and every import of a route module this
+ * scan will not read.
+ *
+ * Resolving bindings rather than matching a fixed list of names is what closes two holes at once,
+ * and each was a real one in this repository. `import { repoFile as read }` used to be invisible,
+ * which is the review finding of iteration 2. And `import { parse as parseYaml } from 'yaml'` in
+ * `test-command.test.ts` is *not* a route however much it looks like one — a global name list would
+ * have reported its call sites and taught the next reader that the register is noise.
+ *
+ * Every form this scan cannot read is a problem rather than a silence: a namespace import, a
+ * default binding, a re-export, a dynamic import, or a member naming an export
+ * {@link ROUTE_MODULES} does not classify. Each is a way to obtain a route under a name the scan
+ * would not follow, so refusing them is the whole of C1's fail-closed property.
+ */
+function routeImports(file: string, text: string): { bindings: Binding[]; problems: string[] } {
+  const code = codeOnly(text);
+  const bindings: Binding[] = [];
+  const problems: string[] = [];
+  const say = (message: string): number => problems.push(`${file}: ${message}`);
+
+  for (const match of code.matchAll(/\b(import|export)\b(?!\s*\()([^;]{0,400}?)\bfrom\s*(['"])/g)) {
+    const quote = match.index + match[0].length - 1;
+    const close = code.indexOf(match[3], quote + 1);
+    if (close === -1) continue;
+    const specifier = text.slice(quote + 1, close);
+    const resolved = resolveModule(file, specifier);
+    if (resolved === null || !(resolved in ROUTE_MODULES)) continue;
+    if (match[1] === 'export') { say(`re-exports ${specifier}, which would create a route under another module's name`); continue; }
+
+    const clause = match[2].trim().replace(/^type\s+/, '');
+    if (clause.startsWith('*')) { say(`imports ${specifier} as a namespace, so every route reaches it through a member access`); continue; }
+    const open = clause.indexOf('{');
+    const end = clause.lastIndexOf('}');
+    if (open === -1 && /^[A-Za-z_$][\w$]*$/.test(clause)) { say(`takes a default binding from ${specifier}`); continue; }
+    if (open === -1 || end === -1) { say(`imports ${specifier} with a clause this scan cannot read: ${clause}`); continue; }
+    if (clause.slice(0, open).replace(/,\s*$/, '').trim() !== '') { say(`takes a default binding from ${specifier}`); continue; }
+    if (clause.slice(end + 1).trim() !== '') { say(`imports ${specifier} with a trailing binding this scan cannot read: ${clause}`); continue; }
+
+    const module = ROUTE_MODULES[resolved];
+    for (const member of clause.slice(open + 1, end).split(',')) {
+      const [head, tail] = member.trim().replace(/^type\s+/, '').split(/\s+as\s+/);
+      if (!head) continue;
+      const exported = head.trim();
+      const local = (tail ?? head).trim();
+      if (!/^[A-Za-z_$][\w$]*$/.test(exported) || !/^[A-Za-z_$][\w$]*$/.test(local)) {
+        say(`imports a member of ${specifier} this scan cannot read: ${member.trim()}`);
+      } else if (module.routes.includes(exported)) bindings.push({ local, exported });
+      else if (!(exported in module.inert)) {
+        say(`imports ${exported} from ${resolved}, which is classified as neither a route nor inert`);
+      }
+    }
+  }
+
+  for (const match of code.matchAll(/\bimport\s*\(\s*(['"])/g)) {
+    const close = code.indexOf(match[1], match.index + match[0].length);
+    const specifier = close === -1 ? '(computed)' : text.slice(match.index + match[0].length, close);
+    say(`imports ${specifier} dynamically, which no static scan follows`);
+  }
+  return { bindings, problems };
+}
+
+/**
+ * Every way a file can obtain a filesystem base of its own, rather than through a route.
+ *
+ * A closed list checked against {@link ROOT_DERIVATIONS}, not a filter: an occurrence is refused
+ * until somebody writes down why it reaches nothing a declaration must cover. Recognising only
+ * `fileURLToPath` — which is what this was before — left `process.cwd()` as a way to the repository
+ * root that neither clause B nor clause C could see, since under Vitest the working directory is
+ * the package root and `..` from there is the workspace.
+ */
+const DERIVATIONS = [
+  'fileURLToPath', 'pathToFileURL', 'import.meta', '__dirname', '__filename',
+  'process.cwd', 'process.chdir', 'process.argv', 'process.env.INIT_CWD', 'process.env.PWD',
+  'homedir', 'createRequire',
+] as const;
+
+/** The derivations {@link DERIVATIONS} finds in `text`, in the order the list names them. */
+const derivationSites = (text: string): string[] => {
+  const code = codeOnly(text);
+  return DERIVATIONS.filter((token) => new RegExp(`\\b${token.replace(/\./g, '\\.')}\\b`).test(code));
+};
+
+/**
+ * Root derivations outside the route modules, and why each reaches no repository file.
+ *
+ * Keyed by file, then by the token exactly as {@link DERIVATIONS} spells it. Four of these are
+ * product source rather than a suite: `findProject` and the two version probes derive a working
+ * directory because that is the CLI's own behaviour, which is a different thing from a test
+ * reaching for a corpus file.
+ */
+const ROOT_DERIVATIONS: Record<string, Record<string, string>> = {
+  'packages/core/src/backlog/project.ts': {
+    'process.cwd': 'findProject\'s default start directory — it walks upward looking for a marker, and reads no file the corpus covers',
+  },
+  'packages/core/src/backlog/project.test.ts': {
+    'process.cwd': 'path.relative, naming a temporary directory the test itself created, for an argument it then passes',
+  },
+  'packages/core/src/adapters/claude.ts': {
+    'process.cwd': 'the working directory the version probe subprocess is spawned in; nothing is read through it',
+  },
+  'packages/core/src/adapters/codex.ts': {
+    'process.cwd': 'the same probe, on the other adapter',
+  },
+  'packages/core/src/git/git.test.ts': {
+    'process.cwd': 'asserting that a hostile git argument created no file beside the runner — an existence check, not a read',
+  },
+  'packages/core/src/contracts/contracts.source.test.ts': {
+    'import.meta': 'createRequire resolving ajv\'s package.json inside node_modules, which is not repository corpus and is hashed through pnpm-lock.yaml',
+    'createRequire': 'the same call',
+  },
+};
+
+/**
+ * Whether a quoted value is written as a path and climbs out of the directory it is resolved from.
+ *
+ * Punctuation and whitespace disqualify it, which is what keeps a quoted line of code — this file
+ * is full of them — from being read as a path because it happens to contain `../`. A leading `/`
+ * is stripped rather than treated as absolute, for two reasons: after a template's hole it is the
+ * separator in `${dir}/ticket.md`, and an absolute literal cannot portably name *this* repository
+ * anyway — one would be machine-specific and fail loudly on the next checkout, so the thirteen
+ * fabricated `/tmp/…` paths in the adapter suites are noise this clause has nothing to say about.
+ */
+function escapes(value: string): boolean {
+  if (!value || /[\s{}();,'"`<>|*?=]/.test(value)) return false;
+  const relative = value.replace(/^\/+/, '');
+  if (!relative) return false;
+  const normalised = path.posix.normalize(relative);
+  return normalised === '..' || normalised.startsWith('../');
+}
+
+/** The escaping literals `text` holds, deduplicated, module specifiers already excluded. */
+const escapingLiterals = (text: string): string[] => [...new Set(scanSource(text).strings.filter(escapes))];
+
+/**
+ * Escaping or absolute string literals, and why each is data rather than a path handed to a reader.
+ *
+ * This is the clause that lets {@link pathLiterals} go on dropping every value beginning `..` or
+ * `/`. Dropping them was safe only while nothing could read through one, and nothing checked that;
+ * a `fs.readFileSync('../../docs/GLOSSARY.md')` took no route, derived no root, and named a path
+ * clause B discards.
+ */
+const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
+  'packages/core/src/contracts/contracts.source.test.ts': {
+    '../': 'a prefix an import specifier is tested against; nothing is opened',
+  },
+  'packages/core/src/adapters/adapters.source.test.ts': {
+    '../': 'the same assertion, on the adapters folder',
+  },
+  'packages/core/src/fanout/fanout.source.test.ts': {
+    '../git/git.js': 'an entry in the allow-list of specifiers fanout.ts may import, compared as text',
+  },
+  'packages/core/src/git/git.test.ts': {
+    '../../../etc/passwd': 'hostile input handed to the git argument validator, asserted to be refused',
+  },
+  'packages/core/src/turbo-inputs.test.ts': {
+    '..': 'the value `escapes` compares a normalised path against',
+    '../': 'the prefix it compares against, and the key of two entries above',
+    '../git/git.js': 'the key of the fanout entry above',
+    '../../../etc/passwd': 'the key of the git entry above',
+    '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
+    '/../../docs': 'the expected value of the template-chunk fixture below',
+    '../a/b': 'likewise, for the fixture showing a real assertion site is still reported',
+  },
+};
+
 /** One place a file reaches out of its package, and the path expression it reaches with. */
 interface RouteSite {
-  /** The route taken: a corpus helper, or `repoRoot` for the raw one. */
+  /** The route taken, under the local name the file imported it as. */
   readonly route: string;
   /** The path expression handed to it, as written, or `(bare)` where no path is joined to it. */
   readonly argument: string;
@@ -491,8 +775,13 @@ const joinsPath = (code: string, index: number): boolean =>
  *
  * A helper is read at its call site; `repoRoot` is read at the `path.*` call that joins a path to
  * it, and reported as `(bare)` anywhere else, since a root nothing is joined to opens no file.
+ *
+ * @param bindings the routes this file imported, under its own names for them. A file that
+ *   imported none has no route sites, which is why `backlog.ts`'s `read` method is not one.
  */
-function routeSites(text: string): RouteSite[] {
+function routeSites(text: string, bindings: readonly Binding[]): RouteSite[] {
+  if (!bindings.length) return [];
+  const names = new Map(bindings.map((binding) => [binding.local, binding.exported]));
   const code = withoutImports(codeOnly(text));
   /** The argument running from `start`, rendered from the source rather than from the blanks. */
   const render = (start: number): string => {
@@ -502,10 +791,11 @@ function routeSites(text: string): RouteSite[] {
     return end === -1 ? '(unparsed)' : text.slice(start, end).trim();
   };
   const sites: RouteSite[] = [];
-  for (const match of code.matchAll(new RegExp(`\\b(${ROUTES.join('|')})\\b`, 'g'))) {
+  const pattern = new RegExp(`\\b(${[...names.keys()].join('|')})\\b`, 'g');
+  for (const match of code.matchAll(pattern)) {
     const route = match[1];
     const after = match.index + route.length;
-    if (route === 'repoRoot') {
+    if (names.get(route) === 'repoRoot') {
       const rest = code.slice(after);
       // Composed rather than joined: `repoRoot + '/docs/…'`, or `${repoRoot}/docs/…` inside a
       // template, both of which build a path out of pieces clause B never sees whole.
@@ -630,27 +920,59 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
   });
 });
 
-describe('AC-7 clause C — every route out of a package hands over a literal path', () => {
-  /** Both suites' sources and test support, minus the two modules that define the routes. */
-  const scanned = (): [string, string][] =>
-    SUITES.flatMap(({ directory }) => [...typescriptFiles(`${directory}/src`), ...typescriptFiles(`${directory}/test`)])
-      .filter(([file]) => !ROUTE_MODULES.includes(file));
+/** Both suites' sources and test support, minus the two modules that define the routes. */
+const scanned = (): [string, string][] =>
+  SUITES.flatMap(({ directory }) => [...typescriptFiles(`${directory}/src`), ...typescriptFiles(`${directory}/test`)])
+    .filter(([file]) => !(file in ROUTE_MODULES));
 
-  /** The sites clause C must answer for: a path is handed over, and it is not a literal. */
-  const indirect = (text: string): RouteSite[] =>
-    routeSites(text).filter((site) => site.argument !== '' && !isLiteral(site.argument));
+/** The sites clause C1 must answer for: a path is handed over, and it is not a literal. */
+const indirect = (text: string, bindings: readonly Binding[] = IDENTITY): RouteSite[] =>
+  routeSites(text, bindings).filter((site) => site.argument !== '' && !isLiteral(site.argument));
 
+/** A real file's indirect sites, resolved through its own imports rather than a fixed name list. */
+const sitesIn = (file: string, text: string): RouteSite[] => indirect(text, routeImports(file, text).bindings);
+
+/** Every name a route module exports, as its own source declares them. */
+const exportsOf = (text: string): string[] =>
+  [...text.matchAll(/\bexport\s+(?:async\s+)?(?:const|let|var|function|class|type|interface)\s+([A-Za-z_$][\w$]*)/g)]
+    .map((match) => match[1]);
+
+describe('AC-7 clause C1 — every route hands over a literal path, under whatever name it was imported as', () => {
   test('the scan still finds the routes it is looking at', () => {
     // The positive control, and the reason it is first: every failure mode of the blanking above
     // hides sites rather than inventing them, so a clause that had stopped seeing its subject would
     // report success — which is the defect this whole file exists to close, one level in.
-    const literals = scanned().flatMap(([, text]) => routeSites(text)).filter((site) => isLiteral(site.argument));
+    const literals = scanned()
+      .flatMap(([file, text]) => routeSites(text, routeImports(file, text).bindings))
+      .filter((site) => isLiteral(site.argument));
     expect(literals.length, 'the scan sees almost no literal route — the blanking has eaten its subject').toBeGreaterThan(40);
+  });
+
+  test('every import of a route module is one this scan can follow', () => {
+    // The fail-closed half. A namespace import, a default binding, a re-export, a dynamic import or
+    // an unclassified member each yields a route under a name the scan below would not look for,
+    // so each is reported here rather than passing as an absence of sites.
+    expect(scanned().flatMap(([file, text]) => routeImports(file, text).problems)).toEqual([]);
+  });
+
+  test('and every export of a route module is classified as a route or as inert', () => {
+    // What makes the classification a decision rather than a list somebody remembered to update:
+    // a helper added to a corpus module is named here until someone says which column it is in.
+    const unclassified = Object.entries(ROUTE_MODULES).flatMap(([file, module]) =>
+      exportsOf(repoFile(file))
+        .filter((name) => !module.routes.includes(name) && !(name in module.inert))
+        .map((name) => `${file}: ${name}`));
+    expect(unclassified).toEqual([]);
+    for (const [file, module] of Object.entries(ROUTE_MODULES)) {
+      const declared = new Set(exportsOf(repoFile(file)));
+      expect([...module.routes, ...Object.keys(module.inert)].filter((name) => !declared.has(name)),
+        `${file} classifies an export it no longer has`).toEqual([]);
+    }
   });
 
   test('every indirect route is registered with the reason its paths are literals', () => {
     const unregistered = scanned().flatMap(([file, text]) =>
-      indirect(text).filter((site) => INDIRECT_ROUTES[file]?.[siteKey(site)] === undefined)
+      sitesIn(file, text).filter((site) => INDIRECT_ROUTES[file]?.[siteKey(site)] === undefined)
         .map((site) => `${file}: ${siteKey(site)}`));
     expect(unregistered).toEqual([]);
   });
@@ -658,18 +980,10 @@ describe('AC-7 clause C — every route out of a package hands over a literal pa
   test('and the register holds no entry for a site that has gone', () => {
     // A register that outlives its sites decays into a list nobody rereads, and the next reader
     // cannot tell which entries are still load-bearing.
-    const live = new Set(scanned().flatMap(([file, text]) => indirect(text).map((site) => `${file}: ${siteKey(site)}`)));
+    const live = new Set(scanned().flatMap(([file, text]) => sitesIn(file, text).map((site) => `${file}: ${siteKey(site)}`)));
     const stale = Object.entries(INDIRECT_ROUTES).flatMap(([file, sites]) =>
       Object.keys(sites).filter((key) => !live.has(`${file}: ${key}`)).map((key) => `${file}: ${key}`));
     expect(stale).toEqual([]);
-  });
-
-  test('the repository root is derived in the route modules and nowhere else', () => {
-    // Clauses C1 and C2 both watch `repoRoot`. A file that computes its own root from
-    // `import.meta.url` would take neither route and be seen by neither, so the derivation is
-    // confined to the two modules whose reads are audited as a whole.
-    const rogue = scanned().filter(([, text]) => codeOnly(text).includes('fileURLToPath')).map(([file]) => file);
-    expect(rogue).toEqual([]);
   });
 
   test('the clause has a subject — a helper handed a template literal is reported', () => {
@@ -677,37 +991,131 @@ describe('AC-7 clause C — every route out of a package hands over a literal pa
     // the review finding of iteration 1, verbatim — the read a quoted-literal scan cannot see.
     const fixture = 'const text = repoFile(`docs/${slug}.md`);';
     expect(indirect(fixture).map(siteKey)).toEqual(['repoFile → `docs/${slug}.md`']);
-    expect(routeSites(fixture).some((site) => site.route === 'repoRoot')).toBe(false);
+    expect(routeSites(fixture, IDENTITY).some((site) => site.route === 'repoRoot')).toBe(false);
   });
 
-  test('the clause has a subject — a raw root joined to a computed path is reported', () => {
-    // Isolated the other way: no corpus helper appears, so only C2 can fail on it.
-    const fixture = 'const text = fs.readFileSync(path.join(repoRoot, computed), "utf8");';
-    expect(indirect(fixture).map(siteKey)).toEqual(['repoRoot → computed']);
-    expect(routeSites(fixture).every((site) => site.route === 'repoRoot')).toBe(true);
+  test('the clause has a subject — a route imported under an alias is reported', () => {
+    // The review finding of iteration 2, verbatim, and the reason bindings are resolved per file:
+    // under a fixed list of names `readDoc` is not a route, so this read went out of the package
+    // with nothing to say about it. Isolated — the fixture derives no root and its only escaping
+    // literal is the module specifier, which is not a read.
+    const file = 'packages/core/src/aliased.test.ts';
+    const fixture = 'import { repoFile as readDoc } from \'../test/corpus.js\';\nconst text = readDoc(`docs/${slug}.md`);\n';
+    const { bindings, problems } = routeImports(file, fixture);
+    expect(problems).toEqual([]);
+    expect(bindings).toEqual([{ local: 'readDoc', exported: 'repoFile' }]);
+    expect(indirect(fixture, bindings).map(siteKey)).toEqual(['readDoc → `docs/${slug}.md`']);
+    expect(indirect(fixture, IDENTITY), 'a fixed list of names is exactly what this bypass evades').toEqual([]);
+    expect(derivationSites(fixture)).toEqual([]);
+    expect(escapingLiterals(fixture)).toEqual([]);
   });
 
-  test('and a root a path is built out of rather than joined to is reported too', () => {
-    // The two other ways to reach a file from the root. Both would otherwise render as `(bare)`,
-    // which this file registers for the working directory the turbo subprocess runs in.
-    expect(indirect("const text = read(repoRoot + '/docs/GLOSSARY.md');").map(siteKey)).toEqual(['repoRoot → (composed)']);
-    expect(indirect('const text = read(`${repoRoot}/docs/GLOSSARY.md`);').map(siteKey)).toEqual(['repoRoot → (composed)']);
-    expect(indirect('const cwd = { cwd: repoRoot, shell: false };').map(siteKey)).toEqual(['repoRoot → (bare)']);
+  test('and an alias of the same name from another module is not a route', () => {
+    // The over-collection the per-file resolution avoids, taken from real code: `test-command.
+    // test.ts` imports yaml's parser as `parseYaml`, which is the corpus module's route name.
+    const file = 'packages/core/src/test-command.test.ts';
+    const { bindings } = routeImports(file, repoFile(file));
+    expect(bindings.some((binding) => binding.local === 'parseYaml')).toBe(false);
+    expect(bindings.map((binding) => binding.exported).sort()).toEqual(['coreSourceFiles', 'repoFile', 'repoRoot']);
   });
 
-  test('the clause has a subject — a root derived outside the route modules is reported', () => {
-    // Isolated again: no helper, no `repoRoot`, so this can only fail the derivation clause.
-    const fixture = 'const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");';
-    expect(codeOnly(fixture).includes('fileURLToPath')).toBe(true);
-    expect(routeSites(fixture)).toEqual([]);
+  test('and every unfollowable import form is reported rather than passed over', () => {
+    // Each fixture evades the scan a different way, and each is checked on its own — a demonstration
+    // that the clause fires proves the clause fires, not that each of its cases does (Q-0071).
+    const file = 'packages/core/src/aliased.test.ts';
+    const problems = (fixture: string): string[] => routeImports(file, fixture).problems;
+    expect(problems('import * as corpus from \'../test/corpus.js\';\n')[0]).toContain('as a namespace');
+    expect(problems('import corpus from \'../test/corpus.js\';\n')[0]).toContain('default binding');
+    expect(problems('export { repoFile } from \'../test/corpus.js\';\n')[0]).toContain('re-exports');
+    expect(problems('const c = await import(\'../test/corpus.js\');\n')[0]).toContain('dynamically');
+    expect(problems('import { readAnything } from \'../test/corpus.js\';\n')[0]).toContain('neither a route nor inert');
+    expect(problems('import { repoFile } from \'../test/corpus.js\';\n'), 'a form it can follow').toEqual([]);
+    expect(problems('import { parse } from \'yaml\';\n'), 'a module that is not a route module').toEqual([]);
   });
 
   test('and a route named in prose or quoted as an example is not read as a call', () => {
     // The over-collection that would make the register a chore and the reasons meaningless.
-    expect(routeSites('// somebody adds repoFile(`docs/${x}.md`) one day\n')).toEqual([]);
-    expect(routeSites('/** Prose about repoFile(x) and repoRoot. */\n')).toEqual([]);
-    expect(routeSites('const example = "repoFile(computed)";\n')).toEqual([]);
-    expect(routeSites("const pattern = /'repoFile\\(x\\)'/;\nconst after = repoFile('docs/GLOSSARY.md');\n").map(siteKey))
+    expect(routeSites('// somebody adds repoFile(`docs/${x}.md`) one day\n', IDENTITY)).toEqual([]);
+    expect(routeSites('/** Prose about repoFile(x) and repoRoot. */\n', IDENTITY)).toEqual([]);
+    expect(routeSites('const example = "repoFile(computed)";\n', IDENTITY)).toEqual([]);
+    expect(routeSites("const pattern = /'repoFile\\(x\\)'/;\nconst after = repoFile('docs/GLOSSARY.md');\n", IDENTITY).map(siteKey))
       .toEqual(["repoFile → 'docs/GLOSSARY.md'"]);
+  });
+});
+
+describe('AC-7 clause C2 — the repository root is derived in the route modules and nowhere else', () => {
+  test('every derivation outside them is registered with the reason it reaches no corpus file', () => {
+    const unregistered = scanned().flatMap(([file, text]) =>
+      derivationSites(text).filter((token) => ROOT_DERIVATIONS[file]?.[token] === undefined)
+        .map((token) => `${file}: ${token}`));
+    expect(unregistered).toEqual([]);
+  });
+
+  test('and the register holds no entry for a derivation that has gone', () => {
+    const live = new Set(scanned().flatMap(([file, text]) => derivationSites(text).map((token) => `${file}: ${token}`)));
+    const stale = Object.entries(ROOT_DERIVATIONS).flatMap(([file, tokens]) =>
+      Object.keys(tokens).filter((token) => !live.has(`${file}: ${token}`)).map((token) => `${file}: ${token}`));
+    expect(stale).toEqual([]);
+  });
+
+  test('the clause has a subject — a root taken from the working directory is reported', () => {
+    // The second half of iteration 2's finding. Under Vitest the working directory is the package
+    // root, so `..` from it is the workspace; recognising only `fileURLToPath` left this open.
+    // Isolated: no route is named, and the only literal is an encoding.
+    const fixture = 'const root = process.cwd();\nconst text = fs.readFileSync(path.join(root, computed), \'utf8\');\n';
+    expect(derivationSites(fixture)).toEqual(['process.cwd']);
+    expect(routeImports('packages/core/src/rogue.test.ts', fixture).bindings).toEqual([]);
+    expect(routeSites(fixture, IDENTITY)).toEqual([]);
+    expect(escapingLiterals(fixture)).toEqual([]);
+  });
+
+  test('and a root computed from the module URL is reported', () => {
+    // The one shape this clause already refused, kept as a case rather than as the whole list.
+    const fixture = 'const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");';
+    expect(derivationSites(fixture)).toEqual(['fileURLToPath', 'import.meta']);
+    expect(routeSites(fixture, IDENTITY)).toEqual([]);
+  });
+
+  test('and a derivation named in prose is not read as one', () => {
+    expect(derivationSites('// a later reader might reach for process.cwd() here\n')).toEqual([]);
+    expect(derivationSites('const example = "process.cwd()";\n')).toEqual([]);
+  });
+});
+
+describe('AC-7 clause C3 — no string literal names a location outside its own package', () => {
+  test('every escaping literal is registered with the reason it is data rather than a path', () => {
+    const unregistered = scanned().flatMap(([file, text]) =>
+      escapingLiterals(text).filter((value) => ESCAPING_LITERALS[file]?.[value] === undefined)
+        .map((value) => `${file}: ${value}`));
+    expect(unregistered).toEqual([]);
+  });
+
+  test('and the register holds no entry for a literal that has gone', () => {
+    const live = new Set(scanned().flatMap(([file, text]) => escapingLiterals(text).map((value) => `${file}: ${value}`)));
+    const stale = Object.entries(ESCAPING_LITERALS).flatMap(([file, values]) =>
+      Object.keys(values).filter((value) => !live.has(`${file}: ${value}`)).map((value) => `${file}: ${value}`));
+    expect(stale).toEqual([]);
+  });
+
+  test('the clause has a subject — a package-relative escape is reported, and clause B cannot see it', () => {
+    // The third way out, and the one that makes dropping `..` in `pathLiterals` safe rather than
+    // convenient. Isolated: no route is named and no root is derived, so only C3 can fail on it.
+    const fixture = 'const text = fs.readFileSync(\'../../docs/GLOSSARY.md\', \'utf8\');\n';
+    expect(escapingLiterals(fixture)).toEqual(['../../docs/GLOSSARY.md']);
+    expect(pathLiterals(fixture), 'clause B discards every value beginning `..`').toEqual([]);
+    expect(derivationSites(fixture)).toEqual([]);
+    expect(routeSites(fixture, IDENTITY)).toEqual([]);
+  });
+
+  test('and a separator after a template hole is not read as an escape', () => {
+    // The over-collection that would bury the clause: `/` between two holes is punctuation, so a
+    // clause that read it as an absolute path would collect thirteen fabricated /tmp paths from
+    // the adapter suites and teach the next reader that the register is noise.
+    expect(escapingLiterals('const key = `${dir}/${entry.name}`;\n')).toEqual([]);
+    expect(escapingLiterals('const file = `${dir}/ticket.md`;\n')).toEqual([]);
+    expect(escapingLiterals('const out = `${dir}/../../docs`;\n'), 'a `..` after a hole still escapes')
+      .toEqual(['/../../docs']);
+    expect(escapingLiterals('import { repoFile } from \'../test/corpus.js\';\n'), 'a module specifier is not a read').toEqual([]);
+    expect(escapingLiterals('expect(spec.startsWith(\'../a/b\')).toBe(false);\n')).toEqual(['../a/b']);
   });
 });

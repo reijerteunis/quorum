@@ -2,6 +2,10 @@
   "$schema": "https://turbo.build/schema.json",
   "extends": ["//"],
   "tasks": {
+    // As in packages/shared/turbo.json: a hit claims that nothing this task READS has changed.
+    // Note the closure — this suite asserts over `turbo.json` and `.github/workflows/ci.yml`, so
+    // declaring them makes the Q-0065, Q-0071 and Q-0072 guards inputs of the task that runs them.
+    // `src/turbo-inputs.test.ts` is what fails when a read stops being covered. Q-0072.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
