@@ -128,7 +128,9 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     instead — **and round 2's reviewer then blocked its own requests, citing E-1 by name.** That is
     the lesson: *a review loop cannot police charter §2 on its own, because a reviewer approves the
     change it asked for.* The erratum is what gave it a subject, which is Q-0071's guard lesson
-    arriving on the review step itself.
+    arriving on the review step itself. See *"A reviewer approves the change it asked for"*
+    (2026-08-29), which also fixes when the erratum is written — during the loop, as soon as the
+    contradiction is provable, rather than at the exhaustion gate.
     Round 2's reviewer also found a fourth major nobody had raised: `finalise` accepted `'running'`,
     so a caller could write that status beside a non-null `ended_at`. Now
     `Exclude<RunStatus, 'running'>` — the compiler refuses the lifecycle contradiction rather than
