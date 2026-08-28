@@ -72,6 +72,15 @@ double-counted; see `backlog/Q-0047-core-claude-and-codex-adapters/requirements/
 The same erratum also owns `ctx.config.adapterOverride` (`spike/src/engine.js:204`), the fan-out
 half of Q-0047's `overrideAdapters`, which the CLI sets on the same line and this ticket ports.
 
+**Inherited from Q-0049 (merged requirement, 2026-08-28).** This ticket also owns `formatCost`
+(`spike/src/engine.js:533`), whose only non-test call site is the step completion line at `:302`;
+`spike/test/smoke.js:612–618` is its frozen coverage. Q-0049's body lists it among run history's
+functions and its merged requirement declines it as NG-2, on the rule that decides that whole
+boundary: **run history computes, and does not narrate.** `formatCost` produces a string for a human
+to read, so it travels with the step that prints it. Register row 3's *rendering* clause is not
+discharged here either — `formatMoney`, `formatTokens` and `formatVendorSummary` stay in
+`bin/harness.js` until Q-0010.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
