@@ -64,3 +64,100 @@ checkout and on one that has run flows. That is testable directly and is the thi
 
 Needs a `docs/DECISIONS.md` entry only if the chosen shape changes what the guard claims; a
 consistency fix inside one file does not. Belongs to M2.
+
+---
+
+## Measured before the requirements run — 2026-08-28
+
+Performed by hand at `b459b2c`, against the real guard rather than a reconstruction of it, because
+the body above says to re-run the table rather than inherit it. Each command is named with the
+question it answers. **Two of the body's claims did not survive: the CI row was an inference, and
+the mechanism is one function earlier than stated.**
+
+### The three-environment table, re-run
+
+The variable under test is the two `NOT_READ` entries Q-0072 added by hand after its gate; removing
+them restores the state the ticket is about. `packages/core` suite, `vitest run
+src/turbo-inputs.test.ts`:
+
+| environment | `.harness/worktrees`, `.quorum/runs` | guard |
+| --- | --- | --- |
+| this developer checkout, which has run flows | present (directories) | **red — 2 failed, 49 passed** |
+| a fresh `git worktree` of `main`, `pnpm install --frozen-lockfile` | absent | green — 51 passed |
+| a fresh `git clone --no-local` of `main`, same install | absent | green — 51 passed |
+
+The table holds. With the entries restored and the directories present, the guard is green again
+(51 passed), so the register does close the two instances.
+
+### Causation, isolated in one environment
+
+The table above varies environment as well as disk state. In the **same** probe worktree, at the
+same commit, with the same file bytes, `mkdir -p .harness/worktrees .quorum/runs` — two empty
+directories, nothing else — flips it:
+
+    51 passed          →  2 failed, 49 passed
+
+Six occurrences are reported, in four files: `constants.ts` and `constants.test.ts` in `shared`
+(both literals), and `fanout.source.test.ts` and `git.source.test.ts` in `core` (`.harness/worktrees`
+only). So the verdict is a function of disk state, demonstrated rather than argued.
+
+### Correction 1 — the load-bearing check is collection, not directory classification
+
+The body attributes the defect to clause B *"only seeing a literal as a directory when the directory
+exists"* (`turbo-inputs.test.ts:1303`). That is the symptom. Creating the same two paths as **plain
+files** rather than directories reports **the same six occurrences**, losing only the
+`(a directory, and no audited walk covers it)` clause:
+
+    "packages/shared/src/constants.ts: .harness/worktrees"
+
+The existence check that decides whether a literal is seen at all is one function earlier:
+`pathLiterals` at **`turbo-inputs.test.ts:348`**, `if (!fs.existsSync(path.join(repoRoot, value))) continue;`.
+`statSync().isDirectory()` at :1303 only chooses which failure message is printed. This matters
+because shapes (1) and (2) name different lines, and a fix aimed only at :1303 would move the
+message and not the dependence.
+
+### Correction 2 — CI has never run this code
+
+The body's third row says a fresh CI clone is green. **No CI run has seen it.** `main` is **15
+commits ahead of `origin/main`**, and the newest run on `main` is `33126632430` at `928f732`,
+2026-08-27T23:32Z — before Q-0072's merge. The row was an inference from the mechanism, and it is
+almost certainly right; it is recorded here as measured on a fresh clone, which is the same disk
+state, and not as observed on CI. Q-0072's DECISIONS entry says "implement, integrate and CI all
+reported green" — true of the first two, and of CI only in the sense that it never ran.
+
+### The census the body asks for — which literals are classified by existence
+
+Every quoted literal in both audited suites' sources that passes `pathLiterals`'s syntactic filters
+(contains `/`, no leading `/` or `..`, no trailing `/`), compared against `git ls-files`:
+
+| | occurrences | distinct |
+| --- | --- | --- |
+| candidates passing the syntactic filters | 461 | 307 |
+| collected today, because they exist on this checkout | 67 | 37 |
+| dropped today, because they do not | 394 | 270 |
+| collected and classified as a directory | 16 | 10 |
+| **on-disk state differs from git-tracked state** | **7** | **3** |
+
+The three divergent literals are `.harness/worktrees`, `.quorum/runs` (both untracked directories,
+6 occurrences) and `node_modules/.bin/turbo` (untracked file, 1 occurrence, already in `NOT_READ`
+as the installed toolchain). Nothing else in either suite names a path whose existence depends on
+what the checkout has done.
+
+**This is the count that separates shape (1) from shape (2).** Existence is not only classifying
+directories — it is what tells a path from any other string containing a slash, and it drops 270
+distinct literals to do it: lint messages (`- flow needs consumes/produces`), import specifiers
+(`./adapters.js`), shell fragments (`#!/bin/sh`), argv fixtures (`--add-dir /tmp/a dir`), and prose.
+Shape (1) must decide role for all 307; shape (2) changes one line and moves exactly 3 literals,
+leaving the other 34 collected as they are.
+
+### One consequence of shapes (2) and (3) that nothing detects
+
+There is no test asserting a `NOT_READ` entry is still reachable. Under shape (2)
+`node_modules/.bin/turbo` becomes untracked-therefore-uncollected, so its entry goes dead silently
+— a small instance of this repository's own *"a check that skips its subject"*. Whatever shape
+wins, a dead-entry check belongs beside it.
+
+### Baseline
+
+`main` at `b459b2c` is green in this checkout: `npm test --prefix spike` 12/12, and
+`pnpm turbo run test --force` 7/7 with **0 cached**, 27.5 s.
