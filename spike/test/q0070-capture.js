@@ -108,5 +108,36 @@ check('a capture that cannot be created throws, and reports no verdict', () => {
   }
 });
 
+// The two below replace a method on node:fs rather than spying, because this tree has no test
+// framework. The module under test and this file share the default export, so the replacement
+// reaches runCommand's own call, and each is restored in its finally. The core suite's comment
+// against aliasing a read API is a rule about files turbo-inputs.test.ts scans; spike/test is not
+// one, and there is no vi.spyOn here to obey it with.
+
+check('a capture that cannot be read back throws rather than reporting an empty command', () => {
+  const realRead = fs.readFileSync;
+  fs.readFileSync = () => { throw new Error('EIO: simulated capture read failure'); };
+  try {
+    assert.throws(() => runCommand('printf hello', dir), /could not read back what the command wrote/);
+  } finally {
+    fs.readFileSync = realRead;
+  }
+});
+
+check('a close that reports a deferred write failure names the capture, not the command', () => {
+  // Close is where a filesystem that defers write errors reports them, and it is the only place
+  // this code can see one — the child owns the descriptor while it writes. Unwrapped it threw a
+  // bare ENOSPC, which reads as something the command did. Q-0070's hand review.
+  const realClose = fs.closeSync;
+  fs.closeSync = () => { throw new Error('ENOSPC: simulated deferred write failure'); };
+  try {
+    assert.throws(() => runCommand('printf hello', dir), /could not finish writing its capture file for the command's output/);
+    // Still a capture failure and still no verdict, so it can satisfy neither expect.
+    assert.throws(() => runCommand('printf hello', dir), /no result is reported for it/);
+  } finally {
+    fs.closeSync = realClose;
+  }
+});
+
 fs.rmSync(dir, { recursive: true, force: true });
 if (failed) { console.error(`\n✗ ${failed} Q-0070 scenario(s) failed`); process.exit(1); }

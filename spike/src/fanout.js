@@ -131,6 +131,30 @@ const captureFailure = (what, cause) =>
   new Error(`runCommand could not ${what}: ${cause?.message ?? String(cause)}. `
     + "The command's output was not captured, so no result is reported for it.");
 
+// Close both capture descriptors, attempting the second even when the first fails.
+//
+// Close is the only place a write failure can be seen: the child owns the descriptor while it
+// writes, so nothing here observes the write, and a deferred error — a full disk being the ordinary
+// cause — surfaces here on the filesystems that defer it. Unwrapped, it threw a bare ENOSPC, which
+// AC-6 does not accept: a capture failure must name the capture, or it reads as something the
+// command did. What this does not buy: a close that reports nothing is no guarantee the writes
+// landed, and a child that ignores its own write error and exits zero is outside what any file
+// capture can detect. Q-0070's hand review.
+const closeCapture = (out, err) => {
+  let failure;
+  let which = '';
+  for (const [fd, what] of [[out, 'output'], [err, 'errors']]) {
+    try {
+      fs.closeSync(fd);
+    } catch (e) {
+      if (failure === undefined) { failure = e; which = what; }
+    }
+  }
+  if (failure !== undefined) {
+    throw captureFailure(`finish writing its capture file for the command's ${which}`, failure);
+  }
+};
+
 const readCapture = (file) => {
   try {
     return fs.readFileSync(file, 'utf8');
@@ -185,8 +209,7 @@ export function runCommand(cmd, cwd, { timeoutMs = 15 * 60_000 } = {}) {
       const captured = readCapture(outFile) + readCapture(errFile);
       return { code: e.status ?? 1, out: captured, timedOut, timeoutMs };
     } finally {
-      fs.closeSync(out);
-      fs.closeSync(err);
+      closeCapture(out, err);
     }
     return { code: 0, out: readCapture(outFile), timedOut: false };
   } finally {

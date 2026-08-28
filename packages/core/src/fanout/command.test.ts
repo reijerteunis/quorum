@@ -199,6 +199,25 @@ describe('AC-6 — a capture failure stops the run and can never look like a tes
     }
   });
 
+  test('a close that reports a deferred write failure names the capture, not the command', () => {
+    // Close is where a filesystem that defers write errors reports them, and it is the only place
+    // this code can see one — the child owns the descriptor while it writes. Unwrapped it threw a
+    // bare ENOSPC, which reads as something the command did. Q-0070's hand review.
+    const cwd = tempDir('cmd-');
+    const spy = vi.spyOn(fs, 'closeSync').mockImplementation(() => {
+      throw new Error('ENOSPC: simulated deferred write failure');
+    });
+
+    try {
+      expect(() => runCommand('printf hello', cwd))
+        .toThrow(/could not finish writing its capture file for the command's output/);
+      // Still a capture failure and still no verdict, so it can satisfy neither expect.
+      expect(() => runCommand('printf hello', cwd)).toThrow(/no result is reported for it/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('the throw names the capture, so it is never read as something the command did', () => {
     const cwd = tempDir('cmd-');
     const previous = process.env.TMPDIR;

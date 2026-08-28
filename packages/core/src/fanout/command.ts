@@ -72,6 +72,34 @@ const captureFailure = (what: string, cause: unknown): Error =>
     + 'The command\'s output was not captured, so no result is reported for it.',
   );
 
+/**
+ * Close both capture descriptors, attempting the second even when the first fails.
+ *
+ * Close is the only place a write failure can be seen: the child owns the descriptor while it
+ * writes, so nothing here observes the write, and a deferred error — a full disk being the
+ * ordinary cause — surfaces here on the filesystems that defer it. Unwrapped, it threw a bare
+ * `ENOSPC`, which AC-6 does not accept: a capture failure must name the capture, or it reads as
+ * something the command did.
+ *
+ * What this does not buy: a close that reports nothing is no guarantee the writes landed. A child
+ * that ignores its own write error and exits zero is outside what any file capture can detect,
+ * because there is no expected size to compare against. Q-0070's hand review.
+ */
+const closeCapture = (out: number, err: number): void => {
+  let failure: unknown;
+  let which = '';
+  for (const [fd, what] of [[out, 'output'], [err, 'errors']] as const) {
+    try {
+      fs.closeSync(fd);
+    } catch (e) {
+      if (failure === undefined) { failure = e; which = what; }
+    }
+  }
+  if (failure !== undefined) {
+    throw captureFailure(`finish writing its capture file for the command's ${which}`, failure);
+  }
+};
+
 /** Read one capture file back, whole. A capture that cannot be read is not a failing command. */
 const readCapture = (file: string): string => {
   try {
@@ -136,8 +164,7 @@ export function runCommand(cmd: string, cwd: string, { timeoutMs = 15 * 60_000 }
       const captured = readCapture(outFile) + readCapture(errFile);
       return { code: typeof status === 'number' ? status : 1, out: captured, timedOut, timeoutMs };
     } finally {
-      fs.closeSync(out);
-      fs.closeSync(err);
+      closeCapture(out, err);
     }
     return { code: 0, out: readCapture(outFile), timedOut: false };
   } finally {
