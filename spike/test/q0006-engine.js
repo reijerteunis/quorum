@@ -80,12 +80,18 @@ await scenario('EDGE-2/AC-23', 'every frozen verdict-schema clause is enforced w
   const branch = schema.oneOf.find((x) => x.title === 'Verdict output');
   const runtime = { ...verdictSchema, properties: { ...verdictSchema.properties, findings: branch.properties.findings } };
   const bad = [
-    { summary: 'x', document: 'x', verdict: 'approve', findings: ['nit: a.js:1 no'] },
+    { summary: 'x', document: 'x', verdict: 'approve', findings: ['major: a.js:1 no'] },
+    { summary: 'x', document: 'x', verdict: 'approve', findings: ['blocker: a.js:1 no'] },
+    { summary: 'x', document: 'x', verdict: 'approve', findings: ['a.js:1 no severity at all'] },
     { summary: 'x', document: 'x', verdict: 'changes-requested', findings: [] },
     { summary: 'x', document: 'x', verdict: 'changes-requested', findings: ['major: no-line'] },
   ];
   for (const value of bad) assert.notEqual(checkAgainstSchema(value, runtime).length, 0, JSON.stringify(value));
   assert.deepEqual(checkAgainstSchema({ summary: 'x', document: 'x', verdict: 'approve', findings: [] }, runtime), []);
+  // Erratum E-4 (2026-08-28) supersedes the contract's `approve -> maxItems: 0`: a nit accompanies
+  // an approval, because "nits alone approve" is what both shipped flows instruct and a nit does
+  // not contradict the verdict. Everything else the clause refuses is still refused, above.
+  assert.deepEqual(checkAgainstSchema({ summary: 'x', document: 'x', verdict: 'approve', findings: ['nit: a.js:1 no'] }, runtime), []);
 });
 
 await scenario('AC-5/AC-10/AC-11/EDGE-4/EDGE-5', 'buildPrompt materialises the configured three-dot diff safely', () => {

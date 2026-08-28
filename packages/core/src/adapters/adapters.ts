@@ -25,7 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { USAGE_MEASURES } from '@quorum/shared';
-import type { AdapterEvent, UsageMeasure } from '@quorum/shared';
+import type { AdapterEvent, FindingSeverity, UsageMeasure } from '@quorum/shared';
 
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
@@ -520,6 +520,12 @@ export function extractJson(text?: string | null): unknown {
 }
 
 /**
+ * The one severity a finding may carry alongside the approving verdict. Typed from the shared
+ * vocabulary rather than spelled again, so dropping `nit` from it stops compiling here. Q-0073.
+ */
+const NIT: FindingSeverity = 'nit';
+
+/**
  * Checks an agent's answer against the schema QUORUM ITSELF generated from the flow file.
  *
  * Strict on purpose, and deliberately minimal in a different direction: it does not recurse into
@@ -528,10 +534,13 @@ export function extractJson(text?: string | null): unknown {
  * (register row 13; packages/shared/src/step-output.ts:1-26).
  *
  * The last rule is the one that earns the function its place: the first enum value of `verdict`
- * means pass, and a pass carrying findings — or any other verdict carrying none — is reported.
- * Accepting `verdict: "approve"` alongside a list of blockers is not tolerance but a routing bug,
- * which is why this coupling was moved here rather than into the engine ("Step-output validation is
- * Quorum's contract with its own agents", docs/DECISIONS.md 2026-08-22).
+ * means pass, and a pass carrying a finding that is not a nit — or any other verdict carrying no
+ * finding at all — is reported. Accepting `verdict: "approve"` alongside a list of blockers is not
+ * tolerance but a routing bug, which is why this coupling was moved here rather than into the
+ * engine ("Step-output validation is Quorum's contract with its own agents", docs/DECISIONS.md
+ * 2026-08-22). A nit is the exception, because it does not contradict the verdict it accompanies
+ * and both shipped review flows instruct the reviewer to approve carrying one
+ * ("A nit does not contradict an approval", docs/DECISIONS.md 2026-08-28).
  *
  * @returns every problem found, in the order they are pushed — never only the first, and empty when
  *   the answer matches.
@@ -564,8 +573,14 @@ export function checkAgainstSchema(output: unknown, schema: AdapterSchema): stri
   }
   const verdicts = schema.properties?.verdict?.enum;
   if (Array.isArray(verdicts) && Array.isArray(record.findings)) {
-    if (record.verdict === verdicts[0] && record.findings.length) problems.push(`${verdicts[0]} requires empty findings`);
-    if (verdicts.slice(1).includes(record.verdict) && !record.findings.length) problems.push(`${record.verdict} requires findings`);
+    // Why: the approving verdict carries nits and nothing else. Both shipped review flows tell the
+    // reviewer "nits alone approve", and a nit does not contradict an approval the way a blocker
+    // does. A finding carrying no severity is not a nit — the flows that do not use severities keep
+    // the old all-or-nothing rule for free. Q-0073; supersedes Q-0006 E-4.
+    const findings: unknown[] = record.findings;
+    const contradicting = findings.filter((finding) => !String(finding).startsWith(`${NIT}: `));
+    if (record.verdict === verdicts[0] && contradicting.length) problems.push(`${verdicts[0]} permits only ${NIT} findings, got ${JSON.stringify(contradicting[0])}`);
+    if (verdicts.slice(1).includes(record.verdict) && !findings.length) problems.push(`${record.verdict} requires findings`);
   }
   return problems;
 }

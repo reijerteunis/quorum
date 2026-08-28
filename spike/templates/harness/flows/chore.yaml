@@ -40,8 +40,9 @@ steps:
       This is read-only — do not edit any file. Write every finding as
       "blocker: <file>:<line> <what is wrong and what to do>", with the prefix exactly
       blocker, major or nit and the file:line reference always present; output in any other
-      shape is rejected and the run stops. Findings must be empty on approve and non-empty
-      on revise. Approve only when no blocker or major survives; nits alone approve.
+      shape is rejected and the run stops. Approve only when no blocker or major survives;
+      nits alone approve, and a nit you have is reported rather than dropped. On approve every
+      finding must be a nit; on revise there must be at least one finding.
     on_fail: { goto: implement, max_iterations: 2, on_exhausted: gate }
 
   # No on_fail: a conflict with the base branch, or a suite red for a reason this flow did

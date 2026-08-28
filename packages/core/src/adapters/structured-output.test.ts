@@ -85,8 +85,29 @@ describe('AC-7 — checkAgainstSchema reports every problem, in push order', () 
     expect(problems).toStrictEqual([
       'unknown "extra"',
       '"summary" must be a non-empty string',
-      'approve requires empty findings',
+      'approve permits only nit findings, got "x"',
     ]);
+  });
+
+  test('the approving verdict carries nits, and nothing else', () => {
+    // Q-0073. Both shipped review flows instruct "nits alone approve", and the engine refused it,
+    // so a reviewer that obeyed its instructions killed the run. A nit does not contradict the
+    // verdict it accompanies; a blocker, a major and a finding with no severity all do. The
+    // offender is quoted, because "one of your findings is wrong" is not actionable.
+    const schema = generatedSchema({ verdict: 'approve|revise' });
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['nit: a.ts:1 rename this'] }, schema)).toStrictEqual([]);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['nit: a.ts:1 one', 'nit: b.ts:2 two'] }, schema)).toStrictEqual([]);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['major: a.ts:1 real'] }, schema))
+      .toStrictEqual(['approve permits only nit findings, got "major: a.ts:1 real"']);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['blocker: a.ts:1 real'] }, schema))
+      .toStrictEqual(['approve permits only nit findings, got "blocker: a.ts:1 real"']);
+    // A finding carrying no severity is not a nit, which is what keeps `requirements.yaml` and
+    // `qa-red.yaml` — whose findings are plain prose — on the old all-or-nothing rule for free.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'ready', findings: ['the budget question is unanswered'] }, generatedSchema({ verdict: 'ready|needs-input' })))
+      .toStrictEqual(['ready permits only nit findings, got "the budget question is unanswered"']);
+    // The first offender is named even when a later finding is a legitimate nit.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['nit: a.ts:1 ok', 'major: b.ts:2 not'] }, schema))
+      .toStrictEqual(['approve permits only nit findings, got "major: b.ts:2 not"']);
   });
 
   test('a non-pass verdict with no findings is refused by name', () => {
@@ -172,7 +193,8 @@ describe('AC-7 — the frozen Q-0006 verdict clauses, over the committed contrac
   };
 
   test.each([
-    ['a pass verdict carrying a finding', { summary: 'x', document: 'x', verdict: 'approve', findings: ['nit: a.js:1 no'] }],
+    ['a pass verdict carrying a major', { summary: 'x', document: 'x', verdict: 'approve', findings: ['major: a.js:1 no'] }],
+    ['a pass verdict carrying a blocker', { summary: 'x', document: 'x', verdict: 'approve', findings: ['blocker: a.js:1 no'] }],
     ['a rejection carrying none', { summary: 'x', document: 'x', verdict: 'changes-requested', findings: [] }],
     ['a finding with no line number', { summary: 'x', document: 'x', verdict: 'changes-requested', findings: ['major: no-line'] }],
     ['a verdict outside the vocabulary', { summary: 'x', document: 'x', verdict: 'looks-fine', findings: ['major: a.js:1 no'] }],
@@ -184,5 +206,13 @@ describe('AC-7 — the frozen Q-0006 verdict clauses, over the committed contrac
 
   test('and the good answer is accepted with nothing to say about it', () => {
     expect(checkAgainstSchema({ summary: 'x', document: 'x', verdict: 'approve', findings: [] }, runtimeSchema())).toStrictEqual([]);
+  });
+
+  test('a pass carrying a nit is accepted, which is the clause erratum E-4 supersedes', () => {
+    // The committed contract says `approve -> findings.maxItems: 0`; E-4 (2026-08-28) replaces that
+    // with "no finding that is not a nit", because both shipped flows instruct "nits alone approve"
+    // and the old rule turned an obedient reviewer's approval into a failed run. The contract file
+    // stays frozen and is corrected by whichever ticket next opens it legitimately.
+    expect(checkAgainstSchema({ summary: 'x', document: 'x', verdict: 'approve', findings: ['nit: a.js:1 no'] }, runtimeSchema())).toStrictEqual([]);
   });
 });

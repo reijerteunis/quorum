@@ -1,7 +1,8 @@
 # Quorum docs
 
-*Status: index, 2026-08-25. Created because `README.md` and `CLAUDE.md` had pointed here for
-some time and nothing was at the address.*
+*Status: index, 2026-08-28 — the decisions moved into `decisions/`, one file per entry, and
+`DECISIONS.md` became their index; nothing else changed. Created 2026-08-25 because `README.md`
+and `CLAUDE.md` had pointed here for some time and nothing was at the address.*
 
 Read **01, 02, 04, 06** first — in that order. They are the product, the pipeline, the code map
 and the plan. The other three are reference you consult rather than read.
@@ -19,9 +20,11 @@ and the plan. The other three are reference you consult rather than read.
 
 ## The two that outrank the rest
 
-- **[DECISIONS.md](DECISIONS.md)** — every decision and why, append-only, newest last. If code and
-  a numbered doc disagree, the doc is wrong until an entry here says otherwise. Never contradict an
-  entry silently: add a new one, or amend the old one naming the new.
+- **[DECISIONS.md](DECISIONS.md)** — the index of every decision and why, append-only, newest
+  last; each entry is its own file in [`decisions/`](decisions/). If code and a numbered doc
+  disagree, the doc is wrong until an entry there says otherwise. Never contradict an entry
+  silently: add a new one, or amend the old one naming the new. An entry is cited by its title and
+  date, never by its file name.
 - **[GLOSSARY.md](GLOSSARY.md)** — the vocabulary. Use exactly these terms (harness, flow, gate,
   adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule,
   panel, chore flow, occurrence, preflight, dry run, BYOS). A new term goes here before it is used in a second file, and synonyms
@@ -30,6 +33,7 @@ and the plan. The other three are reference you consult rather than read.
 ## Conventions
 
 The numbered docs are living documents: edit in place and bump the status line at the top with the
-date and what changed. DECISIONS.md is append-only. Rules live in `.claude/rules/` and are
+date and what changed. The decisions are append-only: a new one is a new file plus a line in the
+index, and a landed entry is never edited. Rules live in `.claude/rules/` and are
 summarised in `CLAUDE.md`; the canonical per-project context an agent reads at run time is in
 `harness/`.

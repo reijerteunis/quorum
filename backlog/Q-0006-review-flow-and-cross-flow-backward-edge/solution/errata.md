@@ -72,3 +72,55 @@ contract with its own agents", which settles the question the reviewer asked to 
 
 **Boundary unchanged otherwise:** `Q0006-mock-switch` still owns `spike/src/adapters/mock.js` and
 nothing else, so the two tasks remain file-disjoint.
+
+## E-4 — 2026-08-28 — a nit accompanies an approval
+
+**Supersedes** two clauses, which contradict each other and were sealed together:
+
+1. `contracts/Q-0006/review-artifacts.schema.json`, the `Verdict output` branch's
+   `if verdict == "approve" then findings.maxItems: 0`.
+2. `contracts/Q-0006/review-flow.contract.yaml` §verdict-step `instructions`, the sentence
+   *"Findings must be empty on approve and non-empty on changes-requested"*, which sits beside
+   *"Approve exactly when no blocker or major survives; nits alone approve"* in the same paragraph.
+
+**Replacement.** The approving verdict — the first value of a step's `verdict` vocabulary — permits
+findings, and permits **only** findings prefixed `nit: `. A `blocker:`, a `major:` or a finding
+carrying no severity at all is still refused against it, by name and quoting the offender. Every
+other verdict still requires at least one finding. The reviewer instructions in both shipped flows
+read *"nits alone approve, and a nit you have is reported rather than dropped. On approve every
+finding must be a nit; on <other verdict> there must be at least one finding."*
+
+**Why the contract was wrong.** It says both things at once, so no reviewer can satisfy it. Q-0073's
+chore run proved which half the engine enforced: the codex reviewer returned `approve` with two
+nits — obeying *"nits alone approve"* exactly — and `checkAgainstSchema` rejected the output, so the
+run **failed** after its implement step had already been paid for, with the two nits saved only as
+raw text. Both nits were real: one named a claim in durable guard prose that the ticket's own
+requirement had already corrected, the other that an AC-5 assertion used a `toBeGreaterThanOrEqual`
+floor where the criterion asked for identity.
+
+The alternative resolution — delete *"nits alone approve"* and have reviewers put nits in the
+summary — was considered and rejected at Q-0073's recovery gate. It is free and touches no frozen
+artifact, and it makes a nit unroutable and unstructured, which on a review surface is where nits go
+to be forgotten. The rule this restores is the one the 2026-08-22 decision actually argued for: a
+verdict must not contradict its own findings. **A nit does not contradict an approval.** A blocker
+does, and that is untouched.
+
+**What implements it.** `spike/src/adapters/index.js` and `packages/core/src/adapters/adapters.ts`
+together, per *"The port preserves behaviour"* (2026-08-25) — a registered behaviour change lands in
+both trees or the port loses its independent witness. `spike/src/engine.js`'s generated `findings`
+description tells the vendor the amended rule. The two frozen files themselves are **not** edited:
+`spike/test/q0006-engine.js` (EDGE-2/AC-23) and `packages/core/src/adapters/structured-output.test.ts`
+assert the amended clause against the committed schema, and `spike/test/q0033-surface.js`
+(S1.1/S1.2/S1.4) applies this erratum to the expected flow before comparing — and asserts the
+substitution matched, so a moved contract fails loudly rather than silently comparing un-amended
+text. The contract files are corrected by whichever ticket next opens them legitimately, per E-1.
+
+**Not changed, and named so it is not mistaken for having been considered and kept.**
+`schemaFor` applies the `^(blocker|major|nit): …` item pattern only when the verdict vocabulary
+contains `changes-requested`, so `chore.yaml`'s findings are unvalidated strings even though its
+instructions demand the prefix. Widening validation is what just cost a run, so it is left alone.
+The cost is that a chore reviewer writing `nit:` without a `file:line` is accepted where a review
+reviewer would be refused.
+
+**Found by:** Q-0073's chore run 2, 2026-08-28, which failed on it. Decided at that ticket's
+recovery gate; see *"A nit does not contradict an approval"*, docs/DECISIONS.md 2026-08-28.

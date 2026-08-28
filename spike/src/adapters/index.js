@@ -177,6 +177,9 @@ export function extractJson(text) {
   try { return JSON.parse(text.trim()); } catch { return null; }
 }
 
+/** The one severity a finding may carry alongside the approving verdict. Q-0073. */
+const NIT = 'nit';
+
 // Minimal schema check: required keys present, enums honoured. Not a full validator on purpose.
 export function checkAgainstSchema(obj, schema) {
   const problems = [];
@@ -203,7 +206,12 @@ export function checkAgainstSchema(obj, schema) {
   }
   const verdicts = schema.properties?.verdict?.enum;
   if (Array.isArray(verdicts) && Array.isArray(obj.findings)) {
-    if (obj.verdict === verdicts[0] && obj.findings.length) problems.push(`${verdicts[0]} requires empty findings`);
+    // Why: the approving verdict carries nits and nothing else. Both shipped review flows tell the
+    // reviewer "nits alone approve", and a nit does not contradict an approval the way a blocker
+    // does. A finding carrying no severity is not a nit — the flows that do not use severities keep
+    // the old all-or-nothing rule for free. Q-0073; supersedes Q-0006 E-4.
+    const contradicting = obj.findings.filter((f) => !String(f).startsWith(`${NIT}: `));
+    if (obj.verdict === verdicts[0] && contradicting.length) problems.push(`${verdicts[0]} permits only ${NIT} findings, got ${JSON.stringify(contradicting[0])}`);
     if (verdicts.slice(1).includes(obj.verdict) && !obj.findings.length) problems.push(`${obj.verdict} requires findings`);
   }
   return problems;

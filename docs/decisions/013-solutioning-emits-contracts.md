@@ -1,0 +1,4 @@
+# Solutioning emits contracts; red phase tests against contracts — 2026-08-21
+**Decision:** The architect step must produce machine-checkable contracts (interfaces, schemas, stubs, migration skeletons) plus `tasks.yaml` with a `role` per task, all committed to the ticket branch. QA-red writes tests that compile against the stubs and fail on assertions. Development fans out one worktree per task by role; an `integrate` step merges branches and must reach green.
+**Alternatives considered:** Tests written from the prose solution doc (fail on missing symbols, not on behaviour — meaningless red phase); single developer agent (no specialisation, no multi-model development).
+**Why:** Without contracts the red→green mechanism is a hope, not a mechanism; role-tagged tasks are what make specialised multi-vendor developers possible.

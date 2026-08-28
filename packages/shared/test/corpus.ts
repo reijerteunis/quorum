@@ -69,6 +69,13 @@ export function ticketFiles(): string[] {
 export const flowFiles = (): string[] => corpusFiles('harness/flows', (name) => name.endsWith('.yaml'));
 export const roleFiles = (): string[] => corpusFiles('harness/roles', (name) => name.endsWith('.md'));
 
+/**
+ * Every decision entry, sorted by file name, which is also index order — the number prefix exists
+ * for that. Read from disk rather than from the index so the two can be compared against each
+ * other; an index checked against itself would report success over a folder it never opened.
+ */
+export const decisionFiles = (): string[] => corpusFiles('docs/decisions', (name) => name.endsWith('.md'));
+
 export const read = (file: string): string => fs.readFileSync(file, 'utf8');
 
 export const parseYaml = (file: string): unknown => YAML.parse(read(file));

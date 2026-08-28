@@ -685,7 +685,7 @@ export function schemaFor(step) {
     const items = props.verdict.enum.includes('changes-requested')
       ? { type: 'string', pattern: '^(blocker|major|nit): .+:[1-9][0-9]* .+' }
       : { type: 'string' };
-    props.findings = { type: 'array', items, description: 'Concrete, actionable findings. Empty when the verdict is the first option.' };
+    props.findings = { type: 'array', items, description: 'Concrete, actionable findings. With the first verdict, only findings prefixed "nit: " are permitted.' };
     required.push('verdict', 'findings');
   }
   return { type: 'object', properties: props, required, additionalProperties: false };

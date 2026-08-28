@@ -70,8 +70,11 @@ When they disagree, this file wins and the other is the drift.
 
 ## Documentation
 
-- `docs/DECISIONS.md` is append-only: title with date, **Decision**, **Alternatives
-  considered**, **Why**. Reversing a decision is a new entry naming the old one.
+- The decisions are append-only. Each is one file in `docs/decisions/`, named
+  `NNN-slug.md`, opening `# <title> — <YYYY-MM-DD>` and carrying **Decision**,
+  **Alternatives considered**, **Why**; `docs/DECISIONS.md` is the index and gains one line
+  per entry. A landed entry is never edited — reversing one is a new entry naming the old.
+  Cite an entry by its title and date, never by its file name or number.
 - `docs/GLOSSARY.md` is the vocabulary. Add a term there before using it in a second file;
   never introduce a synonym for an existing term.
 - When code and docs disagree, the docs are wrong until a DECISIONS entry says otherwise —
