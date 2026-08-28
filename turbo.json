@@ -3,12 +3,15 @@
   "globalDependencies": ["tsconfig.base.json", "eslint.config.js", "vitest.shared.js", ".nvmrc"],
   "tasks": {
     "lint": {
+      "dependsOn": ["^lint"],
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["^typecheck"],
       "outputs": []
     },
     "test": {
+      "dependsOn": ["^test"],
       "outputs": [],
       "env": ["QUORUM_REAL_CLI"]
     }

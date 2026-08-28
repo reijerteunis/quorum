@@ -1,0 +1,30 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // A hit on this task claims that nothing it READS has changed, so every file this package's
+    // suite opens outside itself is declared here beside `$TURBO_DEFAULT$`, which keeps the
+    // package-relative set rather than replacing it. `packages/core/src/turbo-inputs.test.ts` is
+    // what fails when a read stops being covered. Q-0072.
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../docs/02-sdlc-pipeline-spec.md",
+        "../../docs/03-adapter-contract.md",
+        "../../docs/04-architecture.md",
+        "../../docs/DECISIONS.md",
+        "../../docs/GLOSSARY.md",
+        "../../harness/harness.yaml",
+        "../../harness/flows/*.yaml",
+        "../../harness/roles/*.md",
+        "../../backlog/*/ticket.md",
+        "../../spike/bin/harness.js",
+        "../../spike/src/**",
+        "../../spike/templates/harness/harness.yaml",
+        "../core/package.json",
+        "../core/src/index.ts",
+        "../core/src/backlog/project.ts"
+      ]
+    }
+  }
+}
