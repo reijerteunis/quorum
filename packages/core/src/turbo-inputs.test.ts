@@ -30,7 +30,9 @@
  *   **C3**, no string literal names a location outside its own package, per
  *   {@link ESCAPING_LITERALS};
  *   **C4**, every filesystem read is rooted at a base somebody has accounted for, per
- *   {@link READ_APIS} and {@link READ_BASES}.
+ *   {@link READ_APIS} and {@link READ_BASES} — and a reader, like a route, is identified through
+ *   the calling file's own import bindings, so `import { readFileSync as slurp }` is watched under
+ *   `slurp`.
  *
  * **Why the four parts are exhaustive** — stated so the argument can be attacked rather than the
  * code. To read a file, something must name it, and a name is either a literal or an expression.
@@ -41,6 +43,15 @@
  * obtained some other way — which is where C1 to C3 stopped, and where iteration 3's review walked
  * through. `path.dirname(path.dirname(fs.realpathSync('.')))` names no route, appears in no
  * derivation list, and holds no escaping literal.
+ *
+ * **And the read itself must be named**, which is the half iteration 4 walked through: the same
+ * expression handed to `slurp` rather than to `readFileSync` named no API either, because C4 was
+ * written two iterations *after* the lesson that taught C1 to resolve bindings and still matched
+ * raw names. Both clauses now ask {@link readClause} the same question about an import, so the
+ * lesson cannot be learnt in one and missed in the other. Where they differ is deliberate and is
+ * recorded there: C1 refuses a namespace or default binding, C4 accepts both, because a route
+ * reached through a member access is invisible to it while a read reached that way is still called
+ * under an API name.
  *
  * **C4 anchors on the read rather than on the derivation, and that is the whole of the remedy**
  * (`requirements/errata.md` E-1). Extending C2's list was refused as the fix, because extending it
@@ -58,8 +69,10 @@
  * reason, and entering one is a visible act a reviewer can weigh. C1 does not interpret an
  * expression at all — it decides only whether the path is a quoted literal, and refuses everything
  * else until a human writes down why. C4 unwraps `path.join` and its siblings to find the base and
- * then stops, refusing every base that is not a literal clause B collects or a route C1 governs.
- * Failing closed is what lets all of this be this small.
+ * then stops, refusing every base that is not a literal clause B collects or a route C1 governs;
+ * the names it matches at come from the file's own imports, and every import form and every
+ * value-use it cannot follow is reported rather than skipped. Failing closed is what lets all of
+ * this be this small.
  *
  * **Residual limits, stated rather than left to be discovered** — E-1 item 3, which is the whole
  * distinction this ticket is about: a gap that is registered and stated is acceptable, and the same
@@ -81,6 +94,11 @@
  *    registering the sandbox sites there would fill that register with entries carrying no
  *    information. C4 registers the sandbox *bases* instead, where the entry does carry one — it is
  *    the sentence distinguishing a directory the test created from a root it climbed to.
+ * 5. **{@link READ_APIS} is a list, and a reader `fs` gains that nobody adds to it is not seen.**
+ *    The same shape as limit 1 and deliberate for the same reason: the list is the claim, so
+ *    widening it is a visible act rather than a filter drifting. What the binding resolution
+ *    changes is that the list is consulted under the names a file bound as well as under Node's
+ *    own — not how long the list is.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -610,6 +628,104 @@ function resolveModule(file: string, specifier: string): string | null {
   return joined.endsWith('.js') ? `${joined.slice(0, -3)}.ts` : joined;
 }
 
+/** One `a as b` member of an import clause. */
+interface Member {
+  /** The name the module exports. */
+  readonly exported: string;
+  /** The name the importing file calls it by, which is the same where the clause has no `as`. */
+  readonly local: string;
+}
+
+/** A static `… from '…'` statement, decomposed only as far as this scan reads one. */
+interface Statement {
+  /** `import` or `export`, which is what separates a use from a re-export. */
+  readonly keyword: string;
+  /** The module specifier, exactly as written. */
+  readonly specifier: string;
+  /** Everything between the keyword and `from`, trimmed, a leading `type` removed. */
+  readonly clause: string;
+}
+
+/**
+ * Every static import or re-export in `text`, and the specifier of every dynamic import.
+ *
+ * Comments and strings are blanked first, so a statement quoted as an example is not read as one.
+ * The specifier is rendered from the source because the blanking has emptied it in the code.
+ */
+function statements(text: string): { statics: Statement[]; dynamic: string[] } {
+  const code = codeOnly(text);
+  const statics: Statement[] = [];
+  const dynamic: string[] = [];
+  for (const match of code.matchAll(/\b(import|export)\b(?!\s*\()([^;]{0,400}?)\bfrom\s*(['"])/g)) {
+    const quote = match.index + match[0].length - 1;
+    const close = code.indexOf(match[3], quote + 1);
+    if (close === -1) continue;
+    statics.push({
+      keyword: match[1],
+      specifier: text.slice(quote + 1, close),
+      clause: match[2].trim().replace(/^type\s+/, ''),
+    });
+  }
+  for (const match of code.matchAll(/\bimport\s*\(\s*(['"])/g)) {
+    const close = code.indexOf(match[1], match.index + match[0].length);
+    dynamic.push(close === -1 ? '(computed)' : text.slice(match.index + match[0].length, close));
+  }
+  return { statics, dynamic };
+}
+
+/** The three ways an import clause can bind a name, and the forms this scan will not read. */
+interface Clause {
+  /** The `* as x` binding, or null where the clause has none. */
+  readonly namespace: string | null;
+  /** The default binding, or null. */
+  readonly defaultBinding: string | null;
+  /** The `{ a, b as c }` members, in order. */
+  readonly members: readonly Member[];
+  /** Forms this scan could not read, each phrased for a caller to wrap in its own sentence. */
+  readonly unreadable: readonly string[];
+}
+
+/**
+ * `clause` decomposed into its bindings.
+ *
+ * Shared by C1 and C4 rather than written twice, because both ask the same question of a clause —
+ * *which local names did this file bind, and is there a form I cannot follow?* — and differ only in
+ * what they do with the answer. C1 refuses a namespace or a default binding, since a route reached
+ * through a member access is a route under a name it does not watch; C4 accepts both, since a
+ * filesystem read reached that way is a member call {@link READ_APIS} already names. Answering the
+ * syntax question in one place is what stops the two drifting, which is how iteration 4's alias
+ * survived a clause written after the lesson that produced C1's resolution.
+ */
+function readClause(clause: string): Clause {
+  const unreadable: string[] = [];
+  if (clause.startsWith('*')) {
+    const namespace = /^\*\s+as\s+([A-Za-z_$][\w$]*)$/.exec(clause);
+    if (namespace) return { namespace: namespace[1], defaultBinding: null, members: [], unreadable };
+    return { namespace: null, defaultBinding: null, members: [], unreadable: [`a clause this scan cannot read: ${clause}`] };
+  }
+  const open = clause.indexOf('{');
+  const end = clause.lastIndexOf('}');
+  if (open === -1 && /^[A-Za-z_$][\w$]*$/.test(clause)) {
+    return { namespace: null, defaultBinding: clause, members: [], unreadable };
+  }
+  if (open === -1 || end === -1) {
+    return { namespace: null, defaultBinding: null, members: [], unreadable: [`a clause this scan cannot read: ${clause}`] };
+  }
+  if (clause.slice(end + 1).trim() !== '') unreadable.push(`a trailing binding this scan cannot read: ${clause}`);
+  const head = clause.slice(0, open).replace(/,\s*$/, '').trim();
+  const members: Member[] = [];
+  for (const member of clause.slice(open + 1, end).split(',')) {
+    const [name, alias] = member.trim().replace(/^type\s+/, '').split(/\s+as\s+/);
+    if (!name) continue;
+    const exported = name.trim();
+    const local = (alias ?? name).trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(exported) || !/^[A-Za-z_$][\w$]*$/.test(local)) {
+      unreadable.push(`a member this scan cannot read: ${member.trim()}`);
+    } else members.push({ exported, local });
+  }
+  return { namespace: null, defaultBinding: head === '' ? null : head, members, unreadable };
+}
+
 /**
  * The routes `file` imports, under its own names for them, and every import of a route module this
  * scan will not read.
@@ -626,49 +742,31 @@ function resolveModule(file: string, specifier: string): string | null {
  * would not follow, so refusing them is the whole of C1's fail-closed property.
  */
 function routeImports(file: string, text: string): { bindings: Binding[]; problems: string[] } {
-  const code = codeOnly(text);
   const bindings: Binding[] = [];
   const problems: string[] = [];
   const say = (message: string): number => problems.push(`${file}: ${message}`);
+  const { statics, dynamic } = statements(text);
 
-  for (const match of code.matchAll(/\b(import|export)\b(?!\s*\()([^;]{0,400}?)\bfrom\s*(['"])/g)) {
-    const quote = match.index + match[0].length - 1;
-    const close = code.indexOf(match[3], quote + 1);
-    if (close === -1) continue;
-    const specifier = text.slice(quote + 1, close);
-    const resolved = resolveModule(file, specifier);
+  for (const statement of statics) {
+    const resolved = resolveModule(file, statement.specifier);
     if (resolved === null || !(resolved in ROUTE_MODULES)) continue;
-    if (match[1] === 'export') { say(`re-exports ${specifier}, which would create a route under another module's name`); continue; }
+    if (statement.keyword === 'export') { say(`re-exports ${statement.specifier}, which would create a route under another module's name`); continue; }
 
-    const clause = match[2].trim().replace(/^type\s+/, '');
-    if (clause.startsWith('*')) { say(`imports ${specifier} as a namespace, so every route reaches it through a member access`); continue; }
-    const open = clause.indexOf('{');
-    const end = clause.lastIndexOf('}');
-    if (open === -1 && /^[A-Za-z_$][\w$]*$/.test(clause)) { say(`takes a default binding from ${specifier}`); continue; }
-    if (open === -1 || end === -1) { say(`imports ${specifier} with a clause this scan cannot read: ${clause}`); continue; }
-    if (clause.slice(0, open).replace(/,\s*$/, '').trim() !== '') { say(`takes a default binding from ${specifier}`); continue; }
-    if (clause.slice(end + 1).trim() !== '') { say(`imports ${specifier} with a trailing binding this scan cannot read: ${clause}`); continue; }
+    const clause = readClause(statement.clause);
+    for (const detail of clause.unreadable) say(`imports ${statement.specifier} with ${detail}`);
+    if (clause.namespace !== null) { say(`imports ${statement.specifier} as a namespace, so every route reaches it through a member access`); continue; }
+    if (clause.defaultBinding !== null) { say(`takes a default binding from ${statement.specifier}`); continue; }
 
     const module = ROUTE_MODULES[resolved];
-    for (const member of clause.slice(open + 1, end).split(',')) {
-      const [head, tail] = member.trim().replace(/^type\s+/, '').split(/\s+as\s+/);
-      if (!head) continue;
-      const exported = head.trim();
-      const local = (tail ?? head).trim();
-      if (!/^[A-Za-z_$][\w$]*$/.test(exported) || !/^[A-Za-z_$][\w$]*$/.test(local)) {
-        say(`imports a member of ${specifier} this scan cannot read: ${member.trim()}`);
-      } else if (module.routes.includes(exported)) bindings.push({ local, exported });
-      else if (!(exported in module.inert)) {
-        say(`imports ${exported} from ${resolved}, which is classified as neither a route nor inert`);
+    for (const member of clause.members) {
+      if (module.routes.includes(member.exported)) bindings.push({ local: member.local, exported: member.exported });
+      else if (!(member.exported in module.inert)) {
+        say(`imports ${member.exported} from ${resolved}, which is classified as neither a route nor inert`);
       }
     }
   }
 
-  for (const match of code.matchAll(/\bimport\s*\(\s*(['"])/g)) {
-    const close = code.indexOf(match[1], match.index + match[0].length);
-    const specifier = close === -1 ? '(computed)' : text.slice(match.index + match[0].length, close);
-    say(`imports ${specifier} dynamically, which no static scan follows`);
-  }
+  for (const specifier of dynamic) say(`imports ${specifier} dynamically, which no static scan follows`);
   return { bindings, problems };
 }
 
@@ -863,6 +961,82 @@ const READ_APIS = [
   'copyFileSync', 'copyFile', 'cpSync', 'cp',
 ] as const;
 
+/** Every spelling Node accepts for the two modules {@link READ_APIS} are exported from. */
+const READ_MODULES = ['node:fs', 'fs', 'node:fs/promises', 'fs/promises'];
+
+/** A local name in one file that reaches a filesystem read. */
+interface ReadBinding {
+  /** The name as this file writes it — `slurp` for an alias, `fs` for a whole-module binding. */
+  readonly local: string;
+  /**
+   * The API it reaches, as {@link READ_APIS} spells it, or null for a whole-module binding, whose
+   * reads are member calls on {@link local} and are therefore already matched by the API's own name.
+   */
+  readonly api: string | null;
+}
+
+/**
+ * The filesystem readers `file` imports, under its own names for them, and every import of a read
+ * module this scan will not read.
+ *
+ * The parity half of C4, and the reason it exists: {@link readSites} matches an API under its own
+ * name, so `import { readFileSync as slurp }` reached out of the package with nothing to say about
+ * it — C1 had learnt to resolve bindings two iterations earlier and C4, written after that lesson,
+ * matched raw names. It resolves through {@link readClause} rather than through a second scanner,
+ * so an alias is followed under whatever local name the file bound it to.
+ *
+ * A member that is not in {@link READ_APIS} yields no binding and no problem, because that list is
+ * the standing claim about what can read a file; `promises` and `default` yield a whole-module
+ * binding instead, since both are objects whose members are those same APIs.
+ *
+ * Every form this scan cannot follow is reported rather than passing as an absence of read sites: a
+ * re-export, a dynamic import, a `require`, a clause it cannot parse, and a read taken as a value
+ * rather than called — the last because a name this scan resolved and then saw handed somewhere
+ * else is a read under a name it will not see called. The `require` case is the direct spelling of
+ * a refusal C2 already makes indirectly: this workspace is ESM, so reaching `require` at all needs
+ * `createRequire`, which {@link ROOT_DERIVATIONS} makes somebody answer for.
+ */
+function readImports(file: string, text: string): { bindings: ReadBinding[]; problems: string[] } {
+  const bindings: ReadBinding[] = [];
+  const problems: string[] = [];
+  const say = (message: string): number => problems.push(`${file}: ${message}`);
+  const { statics, dynamic } = statements(text);
+
+  for (const statement of statics) {
+    if (!READ_MODULES.includes(statement.specifier)) continue;
+    if (statement.keyword === 'export') { say(`re-exports ${statement.specifier}, which would create a reader under another module's name`); continue; }
+
+    const clause = readClause(statement.clause);
+    for (const detail of clause.unreadable) say(`imports ${statement.specifier} with ${detail}`);
+    for (const local of [clause.namespace, clause.defaultBinding]) {
+      if (local !== null) bindings.push({ local, api: null });
+    }
+    for (const member of clause.members) {
+      if (READ_APIS.includes(member.exported as (typeof READ_APIS)[number])) bindings.push({ local: member.local, api: member.exported });
+      else if (member.exported === 'promises' || member.exported === 'default') bindings.push({ local: member.local, api: null });
+    }
+  }
+
+  for (const specifier of dynamic) {
+    if (READ_MODULES.includes(specifier)) say(`imports ${specifier} dynamically, which no static scan follows`);
+  }
+  const blanked = codeOnly(text);
+  for (const match of blanked.matchAll(/\brequire\s*\(\s*(['"])/g)) {
+    const close = blanked.indexOf(match[1], match.index + match[0].length);
+    const specifier = close === -1 ? '(computed)' : text.slice(match.index + match[0].length, close);
+    if (READ_MODULES.includes(specifier)) say(`requires ${specifier}, which is a binding no import clause declares`);
+  }
+
+  const code = withoutImports(blanked);
+  for (const binding of bindings) {
+    const value = binding.api === null
+      ? new RegExp(`\\b${binding.local}\\s*\\.\\s*(?:${READ_APIS.join('|')})\\b(?!\\s*\\()`, 'g')
+      : new RegExp(`\\b${binding.local}\\b(?!\\s*\\()`, 'g');
+    for (const match of code.matchAll(value)) say(`takes ${match[0].trim()} as a value rather than calling it`);
+  }
+  return { bindings, problems };
+}
+
 /**
  * The span of a path expression's **base** — what the joining is rooted at.
  *
@@ -916,22 +1090,40 @@ interface ReadSite {
  *
  * What is left is a path computed from a base the file obtained some other way — the shape
  * iteration 3 found no clause could see, and the one this register exists to make a person answer.
+ *
+ * A read is reached by a name, and there are three ways a name can reach one. The API's own name is
+ * matched directly, which covers `fs.readFileSync(` and a bare `readFileSync(` from any module. A
+ * local alias is matched under the name `reads` says this file bound it to, which is iteration 4's
+ * finding. The third — the API taken as a value and called later — is refused by
+ * {@link readImports} rather than matched, because a name this scan cannot follow is not a site it
+ * can render.
+ *
+ * @param routes the routes this file imported, whose calls belong to C1 rather than here.
+ * @param reads the readers this file imported, from {@link readImports}. A fixture that declares no
+ *   import still has its API-named calls matched, so this list only ever adds sites.
  */
-function readSites(text: string, bindings: readonly Binding[]): ReadSite[] {
+function readSites(text: string, routes: readonly Binding[], reads: readonly ReadBinding[] = []): ReadSite[] {
   const code = withoutImports(codeOnly(text));
-  const routes = bindings.map((binding) => binding.local);
-  const sites: ReadSite[] = [];
-  for (const match of code.matchAll(new RegExp(`\\b(${READ_APIS.join('|')})\\s*\\(`, 'g'))) {
-    const start = match.index + match[0].length;
-    const end = argumentEnd(code, start);
-    if (end === -1) { sites.push({ api: match[1], base: '(unparsed)' }); continue; }
-    const [from, to] = baseSpan(code, start, end);
-    const base = text.slice(from, to).trim();
-    if (isLiteral(base) && pathLiterals(base).length > 0) continue;
-    if (routes.some((route) => new RegExp(`\\b${route}\\b`).test(code.slice(from, to)))) continue;
-    sites.push({ api: match[1], base });
+  const names = routes.map((binding) => binding.local);
+  const found = new Map<number, ReadSite>();
+  const patterns: [string | null, RegExp][] = [[null, new RegExp(`\\b(${READ_APIS.join('|')})\\b\\s*\\(`, 'g')]];
+  for (const read of reads) {
+    if (read.api !== null) patterns.push([read.api, new RegExp(`\\b${read.local}\\b\\s*\\(`, 'g')]);
   }
-  return sites;
+  for (const [api, pattern] of patterns) {
+    for (const match of code.matchAll(pattern)) {
+      const start = match.index + match[0].length;
+      const called = api ?? match[1];
+      const end = argumentEnd(code, start);
+      if (end === -1) { found.set(start, { api: called, base: '(unparsed)' }); continue; }
+      const [from, to] = baseSpan(code, start, end);
+      const base = text.slice(from, to).trim();
+      if (isLiteral(base) && pathLiterals(base).length > 0) continue;
+      if (names.some((route) => new RegExp(`\\b${route}\\b`).test(code.slice(from, to)))) continue;
+      found.set(start, { api: called, base });
+    }
+  }
+  return [...found].sort(([a], [b]) => a - b).map(([, site]) => site);
 }
 
 /**
@@ -1353,8 +1545,9 @@ describe('AC-7 clause C3 — no string literal names a location outside its own 
   });
 });
 
-/** A real file's computed reads, resolved through its own imports rather than a fixed name list. */
-const readsIn = (file: string, text: string): ReadSite[] => readSites(text, routeImports(file, text).bindings);
+/** A real file's computed reads, with both its route and its reader imports resolved per file. */
+const readsIn = (file: string, text: string): ReadSite[] =>
+  readSites(text, routeImports(file, text).bindings, readImports(file, text).bindings);
 
 describe('AC-7 clause C4 — every computed read names where its base came from', () => {
   test('every base a read is rooted at is registered with where it comes from', () => {
@@ -1382,6 +1575,64 @@ describe('AC-7 clause C4 — every computed read names where its base came from'
     // not the corpus happening to use three APIs rather than four.
     expect(new Set(sites.map((site) => site.api)).size, 'one API is doing all the work — the alternation is broken')
       .toBeGreaterThan(1);
+  });
+
+  test('every import of a read module is one this scan can follow', () => {
+    // The fail-closed half, and C1's own test one clause over. A re-export, a dynamic import, a
+    // `require` or a clause this scan cannot parse each yields a reader under a name the scan below
+    // would not look for, so each is reported here rather than passing as an absence of sites.
+    expect(scanned().flatMap(([file, text]) => readImports(file, text).problems)).toEqual([]);
+  });
+
+  test('the clause has a subject — a read API imported under an alias is reported', () => {
+    // The review finding of iteration 4, verbatim, and the reason reader bindings are resolved per
+    // file: C1 had learnt this two iterations earlier and C4, written afterwards, matched raw API
+    // names, so an aliased read walked out of the package with nothing to say about it. Isolated —
+    // the fixture takes no route, derives no root, and its only escaping literal would be a module
+    // specifier, which is not a read.
+    const file = 'packages/core/src/rogue.test.ts';
+    const fixture = 'import { realpathSync as canonical, readFileSync as slurp } from \'node:fs\';\n'
+      + 'const root = path.dirname(path.dirname(canonical(\'.\')));\n'
+      + 'const text = slurp(path.join(root, \'docs\', \'GLOSSARY.md\'), \'utf8\');\n';
+    const { bindings, problems } = readImports(file, fixture);
+    expect(problems).toEqual([]);
+    expect(bindings).toEqual([{ local: 'canonical', api: 'realpathSync' }, { local: 'slurp', api: 'readFileSync' }]);
+    expect(readSites(fixture, IDENTITY, bindings).map((site) => `${site.api} → ${site.base}`))
+      .toEqual(['realpathSync → \'.\'', 'readFileSync → root']);
+    expect(readSites(fixture, IDENTITY), 'matching the API\'s own name is exactly what this bypass evades').toEqual([]);
+    expect(derivationSites(fixture), 'C2 names neither realpathSync nor path.dirname').toEqual([]);
+    expect(routeImports(file, fixture).bindings).toEqual([]);
+    expect(routeSites(fixture, IDENTITY)).toEqual([]);
+    expect(escapingLiterals(fixture)).toEqual([]);
+    expect(pathLiterals(fixture), 'the path is assembled from pieces clause B never sees whole').toEqual([]);
+  });
+
+  test('and every unfollowable read-module import form is reported rather than passed over', () => {
+    // Each fixture evades the resolution a different way, and each is checked on its own — a
+    // demonstration that the clause fires proves the clause fires, not that each of its cases does
+    // (Q-0071). The two accepted forms are here for the same reason: a check that refused every
+    // import would report the whole corpus and teach the next reader to widen it.
+    const file = 'packages/core/src/rogue.test.ts';
+    const problems = (fixture: string): string[] => readImports(file, fixture).problems;
+    expect(problems('export { readFileSync } from \'node:fs\';\n')[0]).toContain('re-exports');
+    expect(problems('const fs = await import(\'node:fs\');\n')[0]).toContain('dynamically');
+    expect(problems('const fs = require(\'node:fs\');\n')[0]).toContain('requires');
+    expect(problems('import fs, from \'node:fs\';\n')[0]).toContain('cannot read');
+    expect(problems('import { readFileSync } from \'node:fs\';\nconst alias = readFileSync;\n')[0]).toContain('as a value');
+    expect(problems('import fs from \'node:fs\';\nconst alias = fs.readFileSync;\n')[0]).toContain('as a value');
+    expect(problems('import fs from \'node:fs\';\nfs.readFileSync(name);\n'), 'a default binding is followable here').toEqual([]);
+    expect(problems('import * as fs from \'node:fs\';\nfs.readFileSync(name);\n'), 'and so is a namespace').toEqual([]);
+    expect(problems('import { parse } from \'yaml\';\n'), 'a module that is not a read module').toEqual([]);
+  });
+
+  test('and a whole-module binding is followed under whatever name it was bound to', () => {
+    // The half a raw-name match already covered, asserted rather than assumed, because it is what
+    // lets `readImports` accept the two forms C1 refuses: a read reached through a member access is
+    // reached under an API name, so nothing is resolved away by accepting the object it hangs off.
+    const file = 'packages/core/src/rogue.test.ts';
+    const fixture = 'import * as node from \'node:fs\';\nconst text = node.readFileSync(path.join(root, wanted));\n';
+    expect(readImports(file, fixture).bindings).toEqual([{ local: 'node', api: null }]);
+    expect(readsIn(file, fixture).map((site) => `${site.api} → ${site.base}`)).toEqual(['readFileSync → root']);
   });
 
   test('the clause has a subject — iteration 3\'s bypass is reported, and no earlier clause sees it', () => {
