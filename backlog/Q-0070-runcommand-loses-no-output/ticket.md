@@ -1,14 +1,31 @@
 ---
 id: Q-0070
 title: runCommand loses no output, and an overflow is not reported as a timeout
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0070/integration
 priority: p2
 created: 2026-08-27
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-08-28T09:56:33.784Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-28T10:00:41.488Z
+    cost: 8.31
 ---
 Split from Q-0065 at its requirements gate, 2026-08-27. Q-0065's merged requirement drafted this
 body in full (§8) so the obligation could not expire; the measurements below **supersede that draft
