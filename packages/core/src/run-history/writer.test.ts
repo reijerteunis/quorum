@@ -133,20 +133,22 @@ describe('AC-2 — initialisation is exclusive, ordered, and refuses by name', (
     }
   });
 
-  test('a runs root that is a FILE stops the run, and does so before the refusals do', () => {
-    // Reported rather than fixed. The requirement's test sketch expects the "could not create"
-    // branch here, and the branch it actually takes is the one above it: `mkdirSync(runsRoot,
-    // {recursive: true})` throws EEXIST over a file, and that call has no translation of its own, so
-    // what reaches the caller is the raw error rather than a FlowError sentence. Preserved (charter
-    // §2), asserted so the behaviour is written down, and carried in the implement report.
+  test('a runs root that is a FILE takes the "could not create" branch, naming the path that is not a directory', () => {
+    // The runs root and the run directory refuse the same way and name different paths, because the
+    // one that could not be created is the one worth naming: the collision sentence below would send
+    // a reader to move `.quorum/runs/Q-0049-1`, which does not exist and is not the problem.
     const { start } = project();
     fs.mkdirSync(path.join(start.repoDir, '.quorum'), { recursive: true });
     write(path.join(start.repoDir, '.quorum', 'runs'), 'not a directory');
     let thrown: unknown;
     try { initialiseRunHistory(start, collector()); } catch (error) { thrown = error; }
-    expect(thrown).toBeInstanceOf(Error);
-    expect(thrown, 'the run stops, and not with one of the three refusals').not.toBeInstanceOf(FlowError);
-    expect((thrown as NodeJS.ErrnoException).code).toBe('EEXIST');
+    expect(thrown).toBeInstanceOf(FlowError);
+    expect((thrown as Error).message).toMatch(
+      /^run directory allocation refused: could not create \.quorum\/runs \(.+\)$/,
+    );
+    // The collision sentence is the other branch, and a runs root cannot take it: `recursive: true`
+    // is satisfied by an existing directory, so nothing here is ever a re-used run id.
+    expect((thrown as Error).message).not.toContain('already exists. Run ids are allocated');
     expect(fs.existsSync(runDirOf(start))).toBe(false);
   });
 
@@ -406,17 +408,32 @@ describe('AC-5 — termination is idempotent, guarantees output.txt, and re-deri
     expect(onDisk(history).steps[0]).toMatchObject({ status: 'failed', usage: { cost_usd: 0.5 } });
   });
 
-  test('and an output.txt that is a directory is left alone, silently', () => {
-    // `existsSync` does not distinguish one, so the guarantee is skipped and nothing is written or
-    // said. Preserved, and reported rather than fixed: this ticket ports the writer as it stands.
+  test('and an output.txt that is a DIRECTORY warns by name, and the occurrence still reaches the manifest', () => {
+    // A name in use is not the artifact. The guarantee is a regular `output.txt`, so a directory
+    // wearing the name is not one and the write is attempted — which is what makes the failure
+    // audible instead of leaving an occurrence whose output nothing can ever read.
     const { start } = project();
     const guard = collector();
     const history = initialiseRunHistory(start, guard);
     const occurrence = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
-    fs.mkdirSync(path.join(history.dir, occurrence.occurrence_dir, 'output.txt'));
+    const outputPath = path.join(history.dir, occurrence.occurrence_dir, 'output.txt');
+    fs.mkdirSync(outputPath);
+    history.terminal(occurrence, 'completed', { usage: { vendor: 'mock', input_tokens: 8, output_tokens: 2, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 0.25 } });
+    expect(guard.said).toHaveLength(1);
+    expect(guard.said[0].startsWith(`could not persist run history at ${outputPath}: `)).toBe(true);
+    // Warned and continued: the terminal status and the billed usage are on disk either way.
+    expect(onDisk(history).steps[0]).toMatchObject({ status: 'completed', usage: { cost_usd: 0.25 } });
+    expect(fs.statSync(outputPath).isDirectory(), 'nothing repaired it').toBe(true);
+  });
+
+  test('and an output.txt that is already a regular file is neither rewritten nor complained about', () => {
+    const { start } = project();
+    const guard = collector();
+    const history = initialiseRunHistory(start, guard);
+    const occurrence = history.allocate({ id: 'implement' }, 'script');
+    history.persist(occurrence, 'output.txt', '');
     history.terminal(occurrence, 'completed');
     expect(guard.said).toStrictEqual([]);
-    expect(onDisk(history).steps[0].status).toBe('completed');
   });
 
   test('the roll-up is present and correct after every terminal call', () => {
@@ -473,6 +490,22 @@ describe('AC-6 — atomic replacement, byte-exact artifacts, and billed work tha
       const written = fs.readFileSync(path.join(history.dir, occurrence.occurrence_dir, `${name}.txt`));
       expect(written.equals(Buffer.from(text, 'utf8')), name).toBe(true);
     }
+  });
+
+  test('and a value that is not a string is written as String() renders it', () => {
+    // The ported conversion, and not a formality: `writeFileSync` throws on a value that is neither
+    // a string nor a buffer, so a parameter narrowed to `string` turns a JavaScript caller's
+    // artifact into a warning and a lost file. Every call site in the engine passes a string today.
+    const { start } = project();
+    const guard = collector();
+    const history = initialiseRunHistory(start, guard);
+    const occurrence = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    const read = (name: string): string => fs.readFileSync(path.join(history.dir, occurrence.occurrence_dir, name), 'utf8');
+    history.persist(occurrence, 'number.txt', 42);
+    history.persist(occurrence, 'stringable.txt', { toString: () => 'what the agent said' });
+    expect(read('number.txt')).toBe('42');
+    expect(read('stringable.txt')).toBe('what the agent said');
+    expect(guard.said, 'nothing failed, so nothing warned').toStrictEqual([]);
   });
 
   test('an unwritable run directory warns by path and discards no billed work', () => {

@@ -1385,7 +1385,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     runsRoot: 'path.join(repoDir, RUN_HISTORY_ROOT) — inside the repository the caller named',
     'ticket.dir': 'the ticket folder the backlog loaded, re-read for the persisted-stage guard',
     logPath: 'path.join(ticket.dir, RUNS_LOG_FILE) — inside that same ticket folder',
-    outputPath: 'path.join(runDir, occurrence.occurrence_dir, OUTPUT_FILE) — inside the run directory this call created',
+    target: 'isExistingFile\'s parameter, which its one caller roots at path.join(runDir, occurrence.occurrence_dir, OUTPUT_FILE) — inside the run directory this call created',
     temporary: '`${target}.tmp` beside the manifest, in that same run directory',
   },
   'packages/core/src/run-history/reader.test.ts': {
@@ -1400,6 +1400,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',
     'runDirOf(start)': 'the run directory a `start` would allocate, derived from the sandbox repoDir it names',
     stray: 'path.join(history.dir, \'manifest.json.tmp\') — likewise',
+    outputPath: 'path.join(history.dir, occurrence.occurrence_dir, \'output.txt\') — likewise, one level further in',
   },
   'packages/core/src/test-command.test.ts': {
     dir: 'spikeSources\' parameter, defaulting to path.join(repoRoot, \'spike/src\') — the walk WALKS declares above',
