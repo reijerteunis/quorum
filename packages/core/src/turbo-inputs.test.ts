@@ -69,11 +69,13 @@
  * the set turbo can hash. Deciding it from `fs.existsSync` made the verdict a function of what the
  * checkout happened to contain: `.harness/worktrees` and `.quorum/runs` are directories the product
  * creates and `.gitignore` excludes, so the guard was red on a machine that had run a flow and
- * green in a fresh worktree and on a fresh clone — the two environments every gate here runs in,
- * which is why implement, integrate and CI all reported green over a `main` that was red for every
- * developer. Existence used to **classify** is that defect. Existence used to **refuse to run over
- * a missing subject** is the rule, and the four refusals that do it are named in the audit on
- * {@link INVENTORY}, which is also where every remaining working-tree read is accounted for.
+ * green in a fresh worktree — which is why implement and integrate both reported green over a
+ * `main` that was red for every developer. **CI is named here as a checkout shape and not as an
+ * observation:** no CI run executed the revision that carried the defect, and a fresh clone, which
+ * holds neither directory, is the measured proxy for what CI would have seen. Existence used to
+ * **classify** is that defect. Existence used to **refuse to run over a missing subject** is the
+ * rule, and the four refusals that do it are named in the audit on {@link INVENTORY}, which is also
+ * where every remaining working-tree read is accounted for.
  *
  * No clause is a TypeScript parser. Clause B collects quoted string literals that name a path the
  * inventory holds, outside the package naming them, which over-collects rather than under-collects:
@@ -1496,6 +1498,88 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
 /** What a checkout that has run a flow holds under the two roots `.gitignore` excludes. */
 const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manifest.json'];
 
+/**
+ * Every `file: literal` the classifier collects from the two audited suites — AC-5's baseline,
+ * pinned as a set of identities rather than as a count.
+ *
+ * A count is the wrong instrument here, which is what iteration 1's review found: a floor lets an
+ * unrelated addition pay for a removal, so a literal could stop being collected — the classifier
+ * quietly losing its subject, the failure this whole file exists to close — while the totals still
+ * read green. Membership is checked in one direction only, because the two directions are not the
+ * same claim: every entry here must still be collected, while an occurrence this list does not hold
+ * is an *addition*, which clause B above already judges on its merits and which no criterion
+ * forbids.
+ *
+ * Sixty of the sixty-one are the measured baseline — 67 per-file-distinct occurrences over 37
+ * distinct literals, less the three literals the census names and the seven occurrences they
+ * carried. The sixty-first, `packages/shared/test/corpus.ts: docs/decisions`, arrived while this
+ * ticket was in flight, with the split of `docs/DECISIONS.md` into a file per entry; it is an
+ * addition of exactly the shape this list permits, and the walk that covers it is in {@link WALKS}.
+ */
+const COLLECTED_BASELINE = [
+  'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
+  'packages/core/src/adapters/adapters.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/adapters/capabilities.source.test.ts: docs/03-adapter-contract.md',
+  'packages/core/src/adapters/capabilities.source.test.ts: docs/04-architecture.md',
+  'packages/core/src/adapters/structured-output.test.ts: contracts/Q-0006/review-artifacts.schema.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/core/package.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/package.json',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/index.ts',
+  'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/project.ts',
+  'packages/core/src/contracts/contracts.source.test.ts: packages/core/package.json',
+  'packages/core/src/contracts/contracts.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/contracts/contracts.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
+  'packages/core/src/contracts/contracts.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
+  'packages/core/src/contracts/run-manifest.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/run-manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/run-manifest.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/contracts/schema-cache.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/schema-cache.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/schema-cache.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/contracts/validate-artifact.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
+  'packages/core/src/contracts/validate-artifact.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
+  'packages/core/src/contracts/validate-artifact.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
+  'packages/core/src/contracts/validate-artifact.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/contracts/validate-artifact.test.ts: harness/flows/chore.yaml',
+  'packages/core/src/corpus.test.ts: packages/core/src',
+  'packages/core/src/fanout/fanout.source.test.ts: packages/core/package.json',
+  'packages/core/src/fanout/fanout.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/fanout/fanout.test.ts: spike/src/fanout.js',
+  'packages/core/src/git/git.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/git/git.source.test.ts: packages/shared/package.json',
+  'packages/core/src/git/git.source.test.ts: packages/shared/src/containment.ts',
+  'packages/core/src/git/git.source.test.ts: packages/shared/src/index.ts',
+  'packages/core/src/lint/lint.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/lint/lint.test.ts: harness/flows',
+  'packages/core/src/lint/lint.test.ts: spike/templates/harness/flows',
+  'packages/core/src/test-command.test.ts: .github/workflows/ci.yml',
+  'packages/core/src/test-command.test.ts: packages/core/src/adapters/real-cli.probe.test.ts',
+  'packages/core/src/test-command.test.ts: spike/src',
+  'packages/core/test/corpus.ts: packages/core/src',
+  'packages/shared/src/docs.test.ts: docs/02-sdlc-pipeline-spec.md',
+  'packages/shared/src/docs.test.ts: docs/03-adapter-contract.md',
+  'packages/shared/src/docs.test.ts: docs/04-architecture.md',
+  'packages/shared/src/docs.test.ts: docs/DECISIONS.md',
+  'packages/shared/src/docs.test.ts: docs/GLOSSARY.md',
+  'packages/shared/src/index.test.ts: packages/core/package.json',
+  'packages/shared/src/index.test.ts: packages/core/src/index.ts',
+  'packages/shared/src/index.test.ts: packages/shared/package.json',
+  'packages/shared/src/project.test.ts: harness/harness.yaml',
+  'packages/shared/src/project.test.ts: packages/core/src/backlog/project.ts',
+  'packages/shared/src/project.test.ts: packages/shared/src/index.ts',
+  'packages/shared/src/project.test.ts: spike/templates/harness/harness.yaml',
+  'packages/shared/src/role.test.ts: harness/architecture.md',
+  'packages/shared/src/role.test.ts: packages/core',
+  'packages/shared/src/role.test.ts: packages/shared',
+  'packages/shared/src/step-output.test.ts: spike/src/contracts.js',
+  'packages/shared/test/corpus.ts: docs/decisions',
+  'packages/shared/test/corpus.ts: harness/flows',
+  'packages/shared/test/corpus.ts: harness/roles',
+  'packages/shared/test/corpus.ts: packages/shared/src',
+  'packages/shared/test/corpus.ts: spike/src/lint.js',
+];
+
 describe('Q-0073 — membership is decided from git, so the verdict does not move with the checkout', () => {
   afterAll(removeTempDirs);
 
@@ -1536,10 +1620,10 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
 
   test('the clause has a subject — a working-tree inventory reports what a developer\'s machine did', () => {
     // The difference the fix removes, modelled rather than staged, so it is the same here, in an
-    // integrate worktree and on CI — the two environments that were structurally blind to it. An
+    // integrate worktree and on CI — the two checkout shapes that were structurally blind to it. An
     // inventory carrying what the working tree holds under the two ignored roots reports six
-    // occurrences in four files, which is the list that stood on `main` while implement, integrate
-    // and CI all reported green (Q-0072).
+    // occurrences in four files, which is the list that stood on `main` while implement and
+    // integrate both reported green (Q-0072); CI never ran that revision.
     const asWorkingTree = inventoryOf([...listing(), ...AFTER_A_FLOW]);
     const asDirectory = (literal: string): string => `${literal} (a directory, and no audited walk covers it)`;
     expect(undeclaredPaths('@quorum/shared#test', 'packages/shared', asWorkingTree).sort()).toEqual([
@@ -1589,20 +1673,26 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
     expect(INVENTORY.isDirectory('harness/flows'), 'a directory git tracks below is one').toBe(true);
   });
 
-  test('the collected set has not contracted', () => {
-    // Measured over both suites' sources minus this file: 34 distinct literals in 60
-    // per-file-distinct occurrences, which is the pre-change baseline of 37 and 67 less exactly the
-    // three the census names — .harness/worktrees, .quorum/runs and node_modules/.bin/turbo, all
-    // three gitignored and so unhashable. A floor rather than an equality, because a later ticket
-    // naming a new path is an addition clause B already judges on its merits, while a set that
-    // quietly shrinks is the classifier losing its subject.
-    const collected = SUITES.flatMap(({ directory }) => scanFiles(directory).flatMap(([, text]) => pathLiterals(text)));
-    expect(collected.length, 'per-file-distinct occurrences').toBeGreaterThanOrEqual(60);
-    expect(new Set(collected).size, 'distinct literals').toBeGreaterThanOrEqual(34);
-    // And the eight the classifier calls directories, which is the class the defect lived in: a
-    // checkout that had run a flow made it ten.
-    for (const directory of ['harness/flows', 'harness/roles', 'packages/core', 'packages/core/src',
-      'packages/shared', 'packages/shared/src', 'spike/src', 'spike/templates/harness/flows']) {
+  test('the collected set has not contracted, occurrence by occurrence', () => {
+    // Every occurrence in the baseline is still collected. Identities and not totals, because a
+    // count compares the wrong thing: 60 >= 60 holds just as well when one literal has been dropped
+    // and another added, and a literal that stops being collected is the classifier losing its
+    // subject — the failure this file exists to close. Additions are allowed by construction, since
+    // membership is only checked one way.
+    const collected = new Set(SUITES.flatMap(({ directory }) =>
+      scanFiles(directory).flatMap(([file, text]) => pathLiterals(text).map((literal) => `${file}: ${literal}`))));
+    expect(COLLECTED_BASELINE.filter((entry) => !collected.has(entry)),
+      'these baseline occurrences are no longer collected').toEqual([]);
+    // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
+    // asserted over the register rather than over the scan.
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(61);
+    expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
+      'distinct literals in the baseline').toBe(35);
+    // And the nine the classifier calls directories, which is the class the defect lived in: a
+    // checkout that had run a flow made it eleven.
+    for (const directory of ['docs/decisions', 'harness/flows', 'harness/roles', 'packages/core',
+      'packages/core/src', 'packages/shared', 'packages/shared/src', 'spike/src',
+      'spike/templates/harness/flows']) {
       expect(INVENTORY.isDirectory(directory), `${directory} is no longer classified as a directory`).toBe(true);
     }
   });
