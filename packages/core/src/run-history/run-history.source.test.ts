@@ -163,7 +163,7 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
       });
     }
     // The walk itself is the fragile part: an interface it failed to enter would assert nothing and
-    // still report green. Forty-three across eight interfaces — RunError 2, OccurrenceUsage 1,
+    // still report green. Fifty-six across eleven interfaces — RunError 2, OccurrenceUsage 1,
     // VendorRollup 3, Occurrence 15 and RunManifest 13 in manifest.ts; RunStart 5, RunHistoryHost 1,
     // OccurrenceFields 5 and RunHistory 6 in writer.ts; RunEntry 3 and RunWarning 2 in reader.ts.
     expect(fields.length).toBe(56);

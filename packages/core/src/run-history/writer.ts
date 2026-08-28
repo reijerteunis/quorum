@@ -111,20 +111,20 @@ export interface RunHistory {
    *
    * @param occurrence the occurrence whose directory it belongs in.
    * @param name the file name — `prompt.txt` or `output.txt`.
-   * @param text the exact bytes, as `String(text)` renders them. A string is written unchanged:
-   *   nothing is normalised, trimmed, truncated or re-serialised. It is `unknown` rather than
-   *   `string` because the ported conversion is the behaviour — a caller that reaches this from
-   *   JavaScript with a string-convertible value writes its text, and does not fail the write.
+   * @param text the exact bytes. Nothing is normalised, trimmed, truncated or re-serialised.
    */
-  persist(occurrence: Occurrence, name: string, text: unknown): void;
+  persist(occurrence: Occurrence, name: string, text: string): void;
   /**
    * Ends the run: `status`, `ended_at`, `duration_ms` and `stage.after`, then the roll-up and the
    * manifest.
    *
-   * @param status the run's outcome, whichever of the seven it is.
+   * @param status the run's outcome, whichever of the six terminal statuses it is. `running` is the
+   *   seventh and is not one of them: a manifest carrying it beside a non-null `ended_at` is the
+   *   lifecycle contradiction this subsystem exists to make impossible, so the compiler refuses it
+   *   rather than the semantic pass reporting it after the run is over.
    * @param stageAfter the stage the ticket was left at.
    */
-  finalise(status: RunStatus, stageAfter: string | null): void;
+  finalise(status: Exclude<RunStatus, 'running'>, stageAfter: string | null): void;
 }
 
 /**
@@ -162,22 +162,6 @@ const messageText = (error: unknown): string => String(errorProperty(error, 'mes
  */
 const persistedStageOf = (meta: unknown): unknown =>
   typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>).stage : undefined;
-
-/**
- * Whether an artifact is already there — a **regular file**, and not merely a name in use.
- *
- * `existsSync` answers true for a directory, and a directory called `output.txt` is not the
- * `output.txt` every occurrence is guaranteed. Any other stat failure answers false as well, so the
- * write is attempted and the write's own failure is what warns: this predicate is called from the
- * one funnel every terminal outcome passes through, and it must not be able to throw.
- */
-const isExistingFile = (target: string): boolean => {
-  try {
-    return fs.statSync(target).isFile();
-  } catch {
-    return false;
-  }
-};
 
 /**
  * The working directory as the manifest carries it: relative, and `null` for the repository root.
@@ -230,9 +214,10 @@ export function nextRunId(ticket: TicketRecord): number {
  * @param start what the run is.
  * @param host where a later non-fatal warning goes.
  * @returns the handle every subsequent write goes through.
- * @throws {FlowError} on a stage conflict, a runs root that could not be created, an existing or
- *   uncreatable run directory, or a first write that fails — each naming what it refused, and the
- *   paths in each message POSIX-separated whatever the platform.
+ * @throws {FlowError} on a stage conflict, an existing or uncreatable run directory, or a first
+ *   write that fails — each naming what it refused, and the paths in each message POSIX-separated
+ *   whatever the platform. The history root's own creation is bare, so a `.quorum/runs` that is not
+ *   a directory stops the run with the raw errno instead.
  */
 export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): RunHistory {
   const started = new Date();
@@ -257,16 +242,12 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
     throw new FlowError(`run directory allocation refused: ticket stage conflicts with persisted run history (${String(persistedStage)} != ${ticket.meta.stage})`);
   }
 
-  // `recursive: true` is satisfied by a directory that already exists, so a failure here is the path
-  // not being a directory at all, or the filesystem refusing — never the collision the next refusal
-  // describes, whose sentence would send a reader to move the wrong path. It refuses by name for the
-  // same reason that one does: an untranslated errno reaches the caller as a stack trace rather than
-  // as a sentence it can act on.
-  try {
-    fs.mkdirSync(runsRoot, { recursive: true });
-  } catch (error) {
-    throw new FlowError(`run directory allocation refused: could not create ${relative(repoDir, runsRoot)} (${messageText(error)})`);
-  }
+  // Bare, and the run directory below is not: only the second failure is translated into a sentence,
+  // so a `.quorum/runs` that is a file stops the run with the raw errno rather than with one of the
+  // three refusals.
+  // Why: preserved behaviour, see Q-0049 requirements erratum E-1 — the criterion's own numbered
+  // body binds "could not create" to the run directory.
+  fs.mkdirSync(runsRoot, { recursive: true });
   try {
     fs.mkdirSync(runDir, { recursive: false });
   } catch (error) {
@@ -367,8 +348,12 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
       // here rather than in each writer of one: every previous writer sat behind something that
       // could throw first. Guarded like `persist`, so a broken history directory warns and never
       // discards a step the vendor has already billed.
+      //
+      // `existsSync` answers true for a directory, so a directory wearing the name skips the
+      // guarantee in silence rather than warning.
+      // Why: preserved behaviour, see Q-0049 requirements erratum E-1.
       const outputPath = path.join(runDir, occurrence.occurrence_dir, OUTPUT_FILE);
-      if (!isExistingFile(outputPath)) {
+      if (!fs.existsSync(outputPath)) {
         try {
           fs.writeFileSync(outputPath, '');
         } catch (error) {
@@ -385,10 +370,10 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
       const target = path.join(runDir, occurrence.occurrence_dir, name);
       try {
         // Exactly the bytes it was given, and nothing else done to them: an occurrence's
-        // `prompt.txt` and `output.txt` are what was sent and what came back. `String` is the
-        // ported conversion rather than a formality — `writeFileSync` throws on a value that is not
-        // a string or a buffer, so narrowing it away would turn a JavaScript caller's artifact into
-        // a lost one.
+        // `prompt.txt` and `output.txt` are what was sent and what came back. `String` has no work
+        // left to do on a parameter the compiler has already refused a non-string for — the type is
+        // the guard, and the conversion is what was ported.
+        // Why: see Q-0049 requirements erratum E-2.
         fs.writeFileSync(target, String(text));
       } catch (error) {
         host.warn(`could not persist run history at ${target}: ${messageText(error)}`);
