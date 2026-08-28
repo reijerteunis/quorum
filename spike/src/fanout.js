@@ -1,6 +1,7 @@
 // fan_out: expand solution/tasks.yaml into one worktree step per task, in dependency waves.
 // integrate: merge branches into the ticket branch in a worktree and run the test command.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execSync, execFileSync } from 'node:child_process';
 import YAML from 'yaml';
@@ -117,19 +118,81 @@ export function mergeInto(dir, branch) {
   }
 }
 
+// The capture directory's name prefix. Named rather than inlined: it is what packages/core's
+// turbo-inputs guard registers the twin's reads against, and the two trees stay legible together.
+const CAPTURE_PREFIX = 'quorum-command-';
+
+// A capture failure, as one error that can never be mistaken for something the command did. It
+// throws rather than reporting: a new result field would be ignored by the one line that decides
+// tests=ok, and reusing code/timedOut makes an infrastructure failure indistinguishable from a
+// verdict. The engine's tests= line is never reached on a throw, so a broken capture can satisfy
+// neither `expect: pass` nor `expect: fail`. See Q-0070.
+const captureFailure = (what, cause) =>
+  new Error(`runCommand could not ${what}: ${cause?.message ?? String(cause)}. `
+    + "The command's output was not captured, so no result is reported for it.");
+
+const readCapture = (file) => {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    throw captureFailure(`read back what the command wrote to ${path.basename(file)}`, e);
+  }
+};
+
 // A project's own test command runs here, and a hung one used to hang the whole flow forever with
 // no output: Q-0011's integrate sat on a blocked suite for 24 minutes and would still be sitting
 // there. A timeout is not a nicety — an orchestrator that can wait indefinitely cannot be trusted
 // to run unattended. stdin is /dev/null so a command that prompts fails fast instead of waiting.
+//
+// The child writes into two files rather than through two pipes, so there is no ceiling and no
+// shape of writing that can lose a byte. A pipe imposed both: Node's 1 MiB default killed a
+// progressive writer mid-run and reported the kill as a timeout, and an explicit exit discarded a
+// monolithic writer's own unflushed bytes, delivering 64 KiB of whatever it produced and — when it
+// exited zero — a clean result that satisfied `expect: pass`. Writes to a file are synchronous, so
+// neither can happen. Two files rather than one, because interleaving them would change what a
+// green run reports. See Q-0070.
 export function runCommand(cmd, cwd, { timeoutMs = 15 * 60_000 } = {}) {
+  let dir;
   try {
-    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: process.env, timeout: timeoutMs, killSignal: 'SIGKILL' });
-    return { code: 0, out, timedOut: false };
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), CAPTURE_PREFIX));
   } catch (e) {
-    // execSync reports a timeout as a kill, not a status; without this it looks like an ordinary
-    // non-zero exit, which `expect: fail` would happily bank as proof of red.
-    const timedOut = e.killed === true || e.signal === 'SIGKILL' || e.code === 'ETIMEDOUT';
-    return { code: e.status ?? 1, out: (e.stdout ?? '') + (e.stderr ?? ''), timedOut, timeoutMs };
+    throw captureFailure('create the directory it captures output into', e);
+  }
+  const outFile = path.join(dir, 'stdout');
+  const errFile = path.join(dir, 'stderr');
+  try {
+    let out, err;
+    try {
+      out = fs.openSync(outFile, 'w');
+    } catch (e) {
+      throw captureFailure("open its capture file for the command's output", e);
+    }
+    try {
+      err = fs.openSync(errFile, 'w');
+    } catch (e) {
+      fs.closeSync(out);
+      throw captureFailure("open its capture file for the command's errors", e);
+    }
+    try {
+      execSync(cmd, { cwd, stdio: ['ignore', out, err], env: process.env, timeout: timeoutMs, killSignal: 'SIGKILL' });
+    } catch (e) {
+      // execSync reports a timeout as a kill, not a status; without this it looks like an ordinary
+      // non-zero exit, which `expect: fail` would happily bank as proof of red. Since Q-0070 a kill
+      // can only mean the timeout: no volume of output kills anything.
+      const timedOut = e.killed === true || e.signal === 'SIGKILL' || e.code === 'ETIMEDOUT';
+      // Read before either finally runs. The error carries no streams now that the child wrote
+      // through descriptors, so the files are the only account of what it produced.
+      const captured = readCapture(outFile) + readCapture(errFile);
+      return { code: e.status ?? 1, out: captured, timedOut, timeoutMs };
+    } finally {
+      fs.closeSync(out);
+      fs.closeSync(err);
+    }
+    return { code: 0, out: readCapture(outFile), timedOut: false };
+  } finally {
+    // Not wrapped: a capture directory that cannot be removed is surfaced rather than swallowed,
+    // and it invents no verdict to say so.
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 

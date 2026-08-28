@@ -1326,6 +1326,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
   'packages/core/src/contracts/contracts.ts': {
     file: 'readData\'s parameter — the artifact path the caller named',
   },
+  'packages/core/src/fanout/command.ts': {
+    file: 'readCapture\'s parameter, rooted by both callers at the temp directory this invocation created and removes again',
+    outFile: 'path.join(dir, \'stdout\') — inside that same directory, never a path in the repository',
+    errFile: 'path.join(dir, \'stderr\') — likewise',
+  },
   'packages/core/src/corpus.test.ts': {
     dir: 'listing\'s parameter, which its two callers root at CORE_SRC or at a temporary tree',
     CORE_SRC: 'path.join(repoRoot, \'packages/core/src\'), a literal in this file and inside this package',

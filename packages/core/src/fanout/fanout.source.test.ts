@@ -111,7 +111,9 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
     // house style, and a check that forbade the word would forbid the citations. The freeze itself
     // is not asserted here — it is evidence, per requirements/errata.md E-1, and CI's `port freeze
     // (branch scope)` job is the enforcement.
-    const allowed = ['node:child_process', 'node:fs', 'node:path', 'yaml', '@quorum/shared', '../git/git.js'];
+    // node:os is Q-0070's, and deliberate: the capture directory belongs under os.tmpdir() because
+    // anywhere inside the worktree would be committed onto the step branch by commitAll's git add -A.
+    const allowed = ['node:child_process', 'node:fs', 'node:os', 'node:path', 'yaml', '@quorum/shared', '../git/git.js'];
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
         expect(allowed.includes(specifier), `${name} imports ${specifier}`).toBe(true);
@@ -142,7 +144,9 @@ describe('AC-13 — the shell appears in exactly one file in core', () => {
   test('command.ts keeps the fifteen-minute default as that expression, and ignores stdin', () => {
     const text = sourceOf(COMMAND_SOURCE);
     expect(text).toContain('timeoutMs = 15 * 60_000');
-    expect(text).toContain("stdio: ['ignore', 'pipe', 'pipe']");
+    // Since Q-0070 the child writes through descriptors rather than pipes, which is what removes
+    // the ceiling: maxBuffer bounds a pipe and bounds nothing here. stdin stays ignored.
+    expect(text).toContain("stdio: ['ignore', out, err]");
     expect(text).toContain("killSignal: 'SIGKILL'");
     // All three ways a kill shows up. Dropping one makes a timeout look like an ordinary failure.
     for (const disjunct of ["'killed'", "'signal'", "'ETIMEDOUT'"]) expect(text).toContain(disjunct);
@@ -213,11 +217,23 @@ describe('AC-13 — no schema, no worktree lifecycle, and one write', () => {
     expect(sourceOf(FANOUT_SOURCE)).toContain("import { ensureWorktree } from '../git/git.js';");
   });
 
-  test('the folder performs exactly one filesystem write, and it is loadTasks\'s', () => {
+  test('the folder writes in exactly two places: loadTasks\'s artifact, and a capture it removes', () => {
     // AC-11: every other write this module makes goes into a worktree or a ref, through git.
+    //
+    // Q-0070 adds the second surface — one directory per invocation under os.tmpdir(), created by
+    // runCommand and removed on every exit path. `mkdtemp` and `open` join the verbs because that
+    // is how the capture writes: a pin that cannot see the write it exists to bound would report
+    // success over the very thing it was meant to examine. Neither verb matches anything in
+    // fanout.ts, so the widening costs no precision.
     const writes = moduleSources().flatMap(([name, text]) =>
-      [...text.matchAll(/fs\.(\w*(?:write|append|rm|mkdir|rename|copy|cp|unlink|chmod)\w*)\(/gi)].map((m) => `${name}: fs.${m[1]}`));
-    expect(writes).toStrictEqual([`${FANOUT_SOURCE}: fs.writeFileSync`]);
+      [...text.matchAll(/fs\.(\w*(?:write|append|rm|mkdir|mkdtemp|open|rename|copy|cp|unlink|chmod)\w*)\(/gi)].map((m) => `${name}: fs.${m[1]}`));
+    expect(writes).toStrictEqual([
+      `${COMMAND_SOURCE}: fs.mkdtempSync`,
+      `${COMMAND_SOURCE}: fs.openSync`,
+      `${COMMAND_SOURCE}: fs.openSync`,
+      `${COMMAND_SOURCE}: fs.rmSync`,
+      `${FANOUT_SOURCE}: fs.writeFileSync`,
+    ]);
   });
 
   test('each preserved defect names its authority on one line', () => {
