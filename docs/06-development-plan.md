@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -273,6 +273,45 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   from `os.tmpdir()`, so `turbo-inputs.test.ts`'s `READ_BASES` gains an entry — Q-0072's guard and
   the rule Q-0073 closed.
 
+  **Implemented by hand on 2026-08-28, both trees in one change.** Two capture files in a directory
+  per invocation under `os.tmpdir()`, the result built from the complete files, the directory
+  removed on every exit path; a capture failure throws, which is the one deliberate break in
+  `runCommand`'s documented never-throws contract. The red phase was demonstrated rather than
+  claimed in both trees: 8 of 8 matrix cells fail against the unchanged function and reproduce the
+  requirement's table to the byte — 1,114,112 monolithic/natural, **65,536** in the false-green
+  cell, ~1,050,000 progressive — and the spike suite fails 10 of 14 against `HEAD`'s function and
+  passes 14/14 against the new one, checked by restoring the old file rather than trusting a green
+  run. Risk 3 was confirmed by reading the engine rather than assumed: there is no `catch` between
+  the integrate step and `runFlow`'s handler at `engine.js:161`, so run history still finalises and
+  `backlog.log(… tests=…)` at `:1062` is never reached — which is what makes "a broken capture can
+  satisfy neither `expect: pass` nor `expect: fail`" structural rather than asserted.
+
+  **Three things the implementation found that the requirement did not.** There are **eight** landed
+  pins, not seven: the eighth — `fanout.source.test.ts`'s *"the folder performs exactly one
+  filesystem write"* — is invisible to reading and only appears when it is run, and it needed more
+  than a bumped count. Its verb regex matched the new `fs.rmSync` while being blind to `mkdtempSync`
+  and `openSync`, which are the capture's actual writes, so accepting a longer list would have left
+  a pin that could not see the write surface it exists to bound. Second, Q-0073's guard **refused
+  the first read-failure test**, which aliased `fs.readFileSync` to build a passthrough spy — an
+  alias is exactly what its scan cannot follow — on the first change to touch that file after it
+  landed. Third and most valuable, **the hand review found a gap neither the requirement, the
+  four-times-measured matrix, nor the implementation saw**: with descriptors rather than pipes, a
+  deferred write error surfaces only at `close()`, a full disk being the ordinary cause, and
+  unwrapped it threw a bare `ENOSPC` — which AC-6 refuses, because a capture failure must name the
+  capture or it reads as something the command did. `closeCapture` wraps it and attempts the second
+  descriptor even when the first fails. That is *"review the fix round, not only the feature round"*
+  (Q-0034) landing on a fix written against the requirement that had thought hardest about this
+  subject of any in the repository.
+
+  **A residual limit, stated rather than implied:** a close that reports nothing is no guarantee the
+  writes landed, and a child that ignores its own write error and exits zero is outside what any
+  file capture can detect, because there is no expected size to compare against. **Carried:** OQ-5
+  and OQ-6 are opened as **Q-0076** and **Q-0075** from the bodies the requirement wrote out in
+  full. Risk 9 is now unblocked and undone — `harness/port-charter.md:243` still reads `freeze-sha:
+  not-yet-recorded`, so that half of the guard is *skipped* rather than passing, and recording it
+  now would fail the eleven remaining port children the next time Q-0038 or Q-0040 changes
+  `spike/src` legitimately. That is a sequencing decision and deliberately not taken in passing.
+
 - Q-0071 CI can report green from a replay, and its cache outlives its commit. *(`reviewed` and
   `main:contained` 2026-08-27.)* `.github/workflows/ci.yml` restored `.turbo` across runs with
   `restore-keys: turbo-${{ runner.os }}-` and then ran `pnpm lint`, `pnpm
@@ -389,6 +428,31 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   git 2.55, `ls-files --cached` reports two entries over one file on disk, so the audit was right.
   See *"Membership is a git question, not a filesystem one"* (2026-08-28).
 
+- Q-0075 A passing command's stderr is discarded, so a green suite loses its warnings. Opened
+  2026-08-28 from Q-0070's OQ-6. `runCommand` returns stdout only on the success path and stdout
+  then stderr on the failure path; `CommandResult`'s own JSDoc documents the asymmetry and
+  **nothing tested it** until Q-0070's AC-2 did, because `printf hello` writes no stderr. Q-0070
+  preserved it deliberately — changing it inside a capture fix would have been scope creep wearing a
+  bug fix's clothes — and made it visible, written down and tested instead. The question is not
+  whether stderr is useful but **whether `out` is the artifact a human reads or the one a machine
+  parses**, since changing it gives every *green* `integrate` run's `dev/integration.md` all of
+  turbo's and vitest's stderr, which is most of their output; `testReport` already answers that
+  differently for each consumer. Lands in both trees together, and would deliberately change the
+  AC-2 assertions that now pin the current behaviour rather than discover them.
+
+- Q-0076 Nothing in run history has a cap, and prompts are the largest thing in it. Opened
+  2026-08-28 from Q-0070's OQ-5, whose body the merged requirement wrote out in full rather than
+  promising it. Not a defect Q-0070 introduced but a bound it removed: `persistArtifact`
+  (`engine.js:429`) writes the string whole and always did, and the 1 MiB `maxBuffer` was the only
+  thing capping `output.txt` — incidentally, never by design. Measured at that gate, and the numbers
+  redirect the ticket: the largest `output.txt` is **71,318 B**, while the largest run-history file
+  of any kind is a **242,181 B review `prompt.txt`** that nothing bounds either, 3.4× larger; total
+  `.quorum/runs` is 16 MB. So the question is whether run history is **archival** — everything stays
+  whole and the cap belongs on the disk rather than on any one string — or **diagnostic**, in which
+  case the treatment belongs on prompts first and `output.txt` second. `testReport`
+  (`engine.js:505–516`) already keeps 12,000 bytes of head and tail with an omission marker and is
+  the shape to copy if a cap is wanted. Do not re-derive the evidence from Q-0070's headroom
+  numbers, which measure a different thing.
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
 diff at anything but `{base}...integration`, which is why a merged ticket cannot be reviewed; a
