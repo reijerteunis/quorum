@@ -1,0 +1,7 @@
+2026-08-28T13:33:39.502Z run=1 flow=requirements start stage=draft
+2026-08-28T13:37:30.071Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=230552
+2026-08-28T14:00:04.664Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=12.6234605 ms=1585147
+2026-08-28T14:12:53.321Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=3.4296349999999998 ms=768644
+2026-08-28T14:16:28.865Z run=1 gate=human answer=advance
+2026-08-28T14:16:28.873Z run=1 completed stage=draft→requirements cost=16.053 tokens=5266721
+2026-08-28T14:17:35.000Z run=1 note (out-of-band: the two open questions the merged requirement routes to this gate were confirmed with it, so solutioning starts from a settled position and a reviewer cannot reopen either. OQ-4 — the four routed diagnostics are PRESERVED, not fixed here; the successor is written out in full in merged.md's Open questions as Q-0074, which still needs creating as a ticket. OQ-5 — core/src/index.ts stays the one-line scaffold; the barrel waits for the cutover. OQ-1, OQ-2, OQ-3 and OQ-6 are the architect's at solutioning, as charter §8 routes them. Unchanged and still owed: the decision entry named in pre-run action 2, after solutioning decides and before implementation starts — no step on this route can write it.)

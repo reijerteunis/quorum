@@ -1,14 +1,22 @@
 ---
 id: Q-0050
 title: core/engine — the run loop, routing and the event stream
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0050/integration
 priority: p1
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-28T14:16:28.871Z
+    cost: 16.053
 ---
 The spine of the port: `runFlow`, `runStep`, `handleFail`, `finish`, `outcome`, `recordEvent`,
 `loadFlow`, `loadFlowByName`, `loadRole`, `interpolate`, `writesOf` — the run context every other
