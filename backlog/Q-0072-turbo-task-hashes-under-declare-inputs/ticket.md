@@ -1,14 +1,22 @@
 ---
 id: Q-0072
 title: Turbo's task hashes under-declare their inputs
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0072/integration
 priority: p2
 created: 2026-08-27
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-28T05:24:26.510Z
+    cost: 6.052
 ---
 Found by Q-0071's requirements run, 2026-08-27, which correctly declined to fix it: that ticket's
 subject is CI's tick, this defect is equally present in a developer's local `pnpm test`, and the
