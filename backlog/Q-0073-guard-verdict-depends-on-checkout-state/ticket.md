@@ -1,14 +1,22 @@
 ---
 id: Q-0073
 title: The input guard's verdict depends on checkout state
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0073/integration
 priority: p2
 created: 2026-08-28
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-28T09:14:51.727Z
+    cost: 5.997
 ---
 Found at Q-0072's final gate, 2026-08-28, by re-running the forced suite on `main` after the merge
 rather than trusting `integrate`'s tick. Q-0072 registered the two instances by hand and did not
@@ -161,3 +169,49 @@ wins, a dead-entry check belongs beside it.
 
 `main` at `b459b2c` is green in this checkout: `npm test --prefix spike` 12/12, and
 `pnpm turbo run test --force` 7/7 with **0 cached**, 27.5 s.
+
+### A second measurement, taken after the requirements run started
+
+The body's shape (2) says *"resolve directory-ness against **git** rather than the filesystem"* and
+asks whether `git ls-files` is an acceptable dependency. Measured, the answer sharpens into a
+different and better question — **what set does turbo actually hash?** — because that, not
+existence, is what the guard is trying to decide. Three probes in a worktree, each reading
+`turbo run test --filter @quorum/shared --dry=json`'s reported task hash:
+
+| file added to `packages/shared/src` | git state | task hash |
+| --- | --- | --- |
+| — (baseline) | — | `6a050a11faef7c37` |
+| `zz-probe.txt` | untracked, **not** ignored | `f27ff86727de2f29` — **moved** |
+| `zz-probe.log` | untracked, ignored by `*.log` | `6a050a11faef7c37` — unchanged |
+
+So turbo hashes tracked **and** untracked-but-unignored files, and ignores gitignored ones. The
+hashable set is exactly `git ls-files --cached --others --exclude-standard` (503 entries here, 9 ms).
+That matters twice:
+
+- **`git ls-files` alone would be wrong.** Tracked-only would drop a path turbo genuinely hashes,
+  which is a real read going invisible — the failure the guard exists to prevent, introduced by its
+  fix.
+- **All three divergent literals are gitignored** — `.gitignore` lists `.harness/`, `.quorum/` and
+  `node_modules/` — so they are unhashable, no declaration could ever cover them, and they should
+  never have been candidates. The defect restated: *the guard's question is whether a path is
+  hashable, hashability is a git property, and the guard asks the filesystem.*
+
+**One inventory replaces the existence test; an ignore-rule alone would not.** 270 of the 307
+distinct literals neither exist nor are ignored, so a rule that only asked *is this ignored?* would
+collect every branch name and lint message. The hashable set answers both halves at once: it holds
+tracked files plus untracked unignored ones **that exist**, so `harness/Q-0042/implement` is absent
+from it for the same reason `fs.existsSync` rejects it today, and `.harness/worktrees` is absent
+because git ignores it. That is what lets AC-1's "one inventory, obtained in one place" be literally
+one command.
+
+**Measured directly, which is the property the body asks for.** Running the proposed predicate over
+all 578 raw literal occurrences in three checkouts — this one with 25 worktrees and a run history, a
+clean `git worktree`, and a fresh `git clone` — the decision vector hashes **`f374ec83492deb08` in
+all three**, against a filesystem oracle that differs by 7 decisions between them. It changes
+exactly 7 of 578 decisions versus today, and they are exactly the three known literals. (578 counts
+raw occurrences; the table above counts 461, because `pathLiterals` dedupes per file. Both units
+describe the same scan — a distinction the requirements run caught and is worth keeping straight.)
+
+**Tracked-only and the hashable set agree on all 578 literals today**, so this changes no current
+verdict. It changes what the guard *claims*, which is why it is settled by erratum before the chore
+run rather than left to a review round. See `requirements/errata.md` E-1.
