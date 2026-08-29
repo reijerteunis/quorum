@@ -128,8 +128,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   const backlogView = dry ? readOnlyBacklog(backlog) : backlog;
 
   const runId = nextRunId(ticket);
-  // Why: preserved defect, see Q-0050 AC-10. — the counters ALIAS the frontmatter object rather
-  // than copying it, so a dry run's increments are visible on the in-memory ticket.
+  // Why: preserved defect, see Q-0050 AC-10. (counters alias the frontmatter object)
   const counters = ticket.meta.iterations ?? {};
   const vars: Record<string, unknown> = {
     id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),

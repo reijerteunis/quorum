@@ -110,7 +110,15 @@ export interface RunStats {
   unpriced: number;
 }
 
-/** Everything a step-level module needs to advance one run: identity, state, and every injected capability. */
+/**
+ * Everything a step-level module needs to advance one run: identity, state, and every injected
+ * capability.
+ *
+ * **A step receives this object itself, never a copy.** `engine.ts` used to hand each step a spread
+ * clone so the step id could be bound into `emit`, which silently discarded anything a step
+ * ASSIGNED — the spike's later steps read `ctx.fanned`, `ctx.failingTasks` and `ctx.lastIntegration`
+ * from earlier ones. Q-0051 to Q-0053 may add fields here and assign them across steps.
+ */
 export interface RunContext {
   ticket: TicketRecord;
   flow: Flow;
@@ -173,10 +181,10 @@ export interface RoutingContext extends RunContext {
   /**
    * Allocates the next gate id, unique across the whole run.
    *
-   * A capability rather than a module-level counter because `engine.ts` spreads a fresh context per
-   * step: anything keyed on context identity restarts at 1 for every step and for every re-entry
-   * through a backward edge, which is exactly the collision the stale-answer refusal exists to
-   * catch. Q-0050 review round 1, B-2.
+   * A capability rather than a module-level counter keyed on context identity: that restarted at 1
+   * for every step and every re-entry through a backward edge, which is the collision the
+   * stale-answer refusal exists to catch. Q-0050 review round 1, B-2. It stays a capability now
+   * that the copy is gone, because run-scoped state belongs on the run rather than in a WeakMap.
    */
   nextGateId(): string;
   /** Loads and lints `<harnessDir>/flows/<name>.yaml`, for a cross-flow `goto`'s target. */

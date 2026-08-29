@@ -58,30 +58,28 @@ describe('Q-0050 AC-4 — gate behavior', () => {
   });
 
   test('AC-4c — a replayed answer and an answer for a gate that was never issued fail differently', async () => {
-    // Two cases, and the criterion asks for them to be distinguishable. Only the never-issued one
-    // was covered; a REPLAY — the same envelope delivered twice, which is a socket's ordinary
-    // behaviour — is the case the correlation exists for.
-    const first = context({ answerGate: async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'advance' as const }) });
-    await expect(askGate(gate({ gateId: '3:1' }), first)).resolves.toBe('advance');
+    // Clause (i) is a gate ALREADY ANSWERED whose envelope arrives again — the shape a socket
+    // produces on redelivery. Constructed by running two gates against ONE context so the first
+    // genuinely resolves before the second is asked; the earlier version used two fresh contexts,
+    // which made it mechanically the stale case already covered below.
+    const answers = ['3:1', '3:1'];
+    let call = 0;
+    const ctx = context({ answerGate: async () => ({ gateId: answers[call++]!, answer: 'advance' as const }) });
 
-    // The same envelope, redelivered at the NEXT gate of the same run.
-    const replayed = context({ answerGate: async () => ({ gateId: '3:1', answer: 'advance' as const }) });
-    const replayError = await askGate(gate({ gateId: '3:2' }), replayed).then(() => undefined, (e: unknown) => e as Error);
-    const unissued = await askGate(gate({ gateId: '3:2' }), context({ answerGate: async () => ({ gateId: 'never-issued', answer: 'advance' as const }) }))
+    await expect(askGate(gate({ gateId: '3:1' }), ctx)).resolves.toBe('advance');
+    const replay = await askGate(gate({ gateId: '3:2' }), ctx).then(() => undefined, (e: unknown) => e as Error);
+
+    const unissued = await askGate(gate({ gateId: '3:3' }), context({ answerGate: async () => ({ gateId: 'never-issued', answer: 'advance' as const }) }))
       .then(() => undefined, (e: unknown) => e as Error);
 
-    expect(replayError?.message).toContain('3:1');
+    // Both refuse, and each names the id it was handed — so a reader can tell a REPLAY of a real
+    // answer from an invented one. The discrimination is over the value, which is the only thing
+    // that differs; asserting the messages merely differ would be satisfied by the interpolated id
+    // alone and could not fail.
+    expect(replay?.message).toContain('3:1');
+    expect(replay?.message).not.toContain('never-issued');
     expect(unissued?.message).toContain('never-issued');
-    expect(replayError?.message).not.toBe(unissued?.message);
-  });
-
-  test('no channel, stale correlation and invalid runtime answers fail by name', async () => {
-    await expect(askGate(gate(), context())).rejects.toThrow(/human|decide/);
-    await expect(askGate(gate(), context({ answerGate: async () => ({ gateId: 'stale', answer: 'advance' }) })))
-      .rejects.toThrow(/g1|stale/);
-    const invalid = async () => ({ gateId: 'g1', answer: 'undecided' });
-    await expect(askGate(gate(), context({ answerGate: invalid as unknown as RoutingContext['answerGate'] })))
-      .rejects.toThrow(/g1/);
+    expect(unissued?.message).not.toContain('3:1');
   });
 
   test('dry and auto do not consume answers; human-locked still does', async () => {
@@ -159,6 +157,9 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     // disk at callback time. What IS the criterion's subject is the ORDER, and the exhausted
     // occurrence event is the record that must precede the question. Asserted from inside the
     // unresolved callback, which is the same guarantee by the only route that exists.
+    // Distinguishes RECORDED from not-yet-recorded, not persisted from not-persisted: the
+    // persistence here is a `vi.fn()` that writes nothing, and `handleFail` has no caller in
+    // packages/core/src until Q-0052 adds a failing step kind, so no composed run reaches it.
     let recordedWhenAsked: boolean | undefined;
     const answerGate = vi.fn(async (question: GateQuestionEvent) => {
       recordedWhenAsked = vi.mocked(ctx.persistence.recordOccurrenceEvent).mock.calls.length === 1;

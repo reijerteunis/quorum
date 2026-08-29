@@ -16,9 +16,7 @@ export async function finish(
   const { ticket, persistence } = context;
   const before = ticket.meta.stage;
 
-  // Why: preserved defect, see Q-0050 AC-10. — the in-memory ticket is advanced even under `dry`:
-  // the counters, the stage below and the history entry are all assigned unguarded. Only the
-  // persistent writers are disabled, which is what makes a dry run's ticket object diverge on disk.
+  // Why: preserved defect, see Q-0050 AC-10. (the in-memory ticket advances even under dry)
   ticket.meta.iterations = context.counters;
   // `stage` is a plain string on the contracted signature, which is the spike's own shape:
   // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.

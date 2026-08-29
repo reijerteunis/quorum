@@ -63,7 +63,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-5c/5d | q0050-lifecycle, q0050-event-channel | `channel.test.ts` — return awaits finalisation, and the abandoned channel latches; `engine.test.ts` — a `for await` that breaks at a gate, driving `runFlow`'s own `finaliseAbandonment` | — |
 | AC-5e | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-6a–6c/6e | q0050-routing | `lifecycle-routing.test.ts` — counters, exhaustion | `loopIteration`, `loopExhausted`, `exhaustionReason` |
-| AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` — AC-6d asserts from inside the unresolved `answerGate` that the `exhausted` occurrence event was already recorded, demonstrated red by moving the record after the gate. The criterion's own method (reading `runs.log` from disk in the callback) is **not usable**: `askGate` writes its line after the answer arrives, so nothing is on disk at callback time | `exhaustionReason` |
+| AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` — AC-6d asserts from inside the unresolved `answerGate` that the `exhausted` occurrence event was already recorded, demonstrated red by moving the record after the gate. The criterion's own method — reading the `exhausted` entry and its `runs.log` line from disk inside the callback — is **not usable here for a different reason than first recorded**: that line IS written synchronously before `askGate` is entered (`recordEvent`), so the ordering is real; what is missing is a caller. `handleFail` has none in `packages/core/src` until Q-0052 adds a failing step kind, so no composed run reaches it and the unit test's persistence is a `vi.fn()` that writes nothing. The assertion therefore distinguishes *recorded* from *not yet recorded*, not *persisted* from *not persisted*, and says so. The first version of this row blamed `askGate`'s own `log.gateAnswer` line, which is a different line | `exhaustionReason` |
 | AC-7a–7c | q0050-routing | `lifecycle-routing.test.ts` — retry grant, read whole from `log.retryGrant` rather than as a hand-written literal; AC-7b's re-presented gate is the second `handleFail` call | `log.retryGrant` |
 | AC-8a | q0050-routing, q0050-loaders | `engine.test.ts` — AC-8b asserts the stage equals B's `consumes` and that the step stub records exactly one call, so B's own steps never ran. NOT `lifecycle-routing.test.ts`, whose cross-flow test deliberately proves the opposite — that routing returns a decision and derives no stage | — |
 | AC-8b | q0050-routing, q0050-engine-compose, q0050-loaders | `engine.test.ts` — cross-flow edge, seven fields (hand-written, E-8) | `crossFlowRegression` |
@@ -87,7 +87,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-13a | — | gate action (`pnpm lint` / `pnpm typecheck`), n/a | — |
 | AC-13b | q0050-documentation | `packages/shared/src/docs.test.ts` | — |
 | AC-13c | — (structural) | `q0050.source.test.ts` + `packages/shared/src/index.test.ts` | — |
-| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of **all ten** `Why: preserved …` markers by file, kind and authority — seven `defect/`, which is AC-13d's own enumeration, plus a `design/` and two `behaviour|behavior/` that a defect-only scan could not see (E-20). The "reproduces no sentence" half is now the real substring scan against `docs/DECISIONS.md` and `ticket.md`, both already declared inputs, demonstrated red before being trusted — it replaced a length proxy any short copied sentence passed, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
+| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of **all ten** `Why: preserved …` markers by file, kind and authority — seven `defect/`, which is AC-13d's own enumeration, plus a `design/` and two `behaviour|behavior/` that a defect-only scan could not see (E-20). The "reproduces no sentence" half is now the real substring scan against `docs/DECISIONS.md` and `ticket.md`, both already declared inputs, demonstrated red before being trusted — it replaced a length proxy any short copied sentence passed, asserted as an identity map rather than a count | — |
 | AC-13e | — | gate action (module-header citation review), n/a | — |
 
 ## AC-1 — module shape, no dependency, no output
@@ -309,9 +309,12 @@ per errata E-3).
   terminal `runs.log` line and the ticket's stage is unmoved — the manifest is never finalised because it
   was never initialised, and that alone does not skip the terminal record.
 - **AC-9f** — **Given** a run with a non-integer real cost (e.g. `$1.2345`). **When** compared against
-  `finish()`'s raw value and `outcome()`'s persisted `TicketHistoryEntry`. **Then** `finish()`'s payload
-  (and the terminal event) carries the unrounded figure while the history entry's `cost` is rounded —
-  both asserted, not just the raw half round 3 left standing.
+  `finish()`'s raw value and `outcome()`'s persisted `TicketHistoryEntry`. **Then** `finish()`'s returned
+  payload carries the unrounded figure while the history entry's `cost` **and the terminal event's**
+  are rounded — both asserted, not just the raw half round 3 left standing. *(The terminal event was
+  written here as unrounded; it is rounded, ruled by `solution/errata.md` E-18. Corrected 2026-08-29
+  after round 4 found the body still contradicting the row and the test — E-18's own defect
+  reproduced one section lower, in the commit whose purpose was the row-by-row pass.)*
 
 Test: `lifecycle.test.ts` (9a, 9b, 9c, 9f), `lifecycle.test.ts` + `q0050.source.test.ts` (9d),
 `engine.test.ts` (9e). Task: q0050-lifecycle (9a, 9b, 9c, 9d, 9f), q0050-lifecycle + q0050-engine-compose

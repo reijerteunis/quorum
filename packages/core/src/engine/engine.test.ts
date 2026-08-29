@@ -185,6 +185,9 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     opts.flow.steps = [{ id: 'approve', gate: 'human', reason: 'approve to continue' }] as unknown as typeof opts.flow.steps;
 
     const seen: Event[] = [];
+    // A non-empty value, so identity is distinguishable from an object that was emptied: at `{}`
+    // both the reference check and a deep-equality check pass over a cleared object.
+    opts.ticket.meta.iterations = { 'requirements.approve': 1 };
     const iterations = opts.ticket.meta.iterations;
     const iterable = stream(opts);
     for await (const event of iterable) {
@@ -198,8 +201,10 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(seen.at(-1)).toMatchObject({ type: 'gate' });
     expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'interrupted', stage_after: 'draft' });
     expect(opts.ticket.meta.stage).toBe('draft');
-    // The reference captured BEFORE the run, not the field compared with itself.
+    // The reference captured BEFORE the run, not the field compared with itself, and carrying a
+    // value so that "same object" is not satisfied by an emptied one.
     expect(opts.ticket.meta.iterations).toBe(iterations);
+    expect(opts.ticket.meta.iterations).toStrictEqual({ 'requirements.approve': 1 });
     const log = fs.readFileSync(path.join(opts.ticket.dir, 'runs.log'), 'utf8');
     expect(log).toMatch(/run=1 interrupted stage=draft→draft/);
   });
@@ -378,6 +383,29 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
     });
     expect(opts.ticket.meta.stage).toBe('draft');
     expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'aborted', stage_after: 'draft' });
+  });
+
+  test('an adapter event is stamped with the step running when it is EMITTED, not when emit was bound', async () => {
+    // Round 3's M-1 remedy removed the per-step context copy, which also moved step-id resolution
+    // from bind time to emit time. That is a semantic change and it shipped with coverage in
+    // neither direction — this ticket emits no adapter events, and AC-2b is struck by E-8.
+    //
+    // The discriminating case: step ONE captures its emitter, step TWO calls that same captured
+    // function. Under the old bind-time closure the event carries `first`; under emit-time it
+    // carries `second`. A test that only checked each step stamping its own id passes either way.
+    const opts = options();
+    opts.flow.steps = [{ id: 'first' }, { id: 'second' }] as unknown as typeof opts.flow.steps;
+    let captured: ((event: Event) => void) | undefined;
+    vi.spyOn(routing, 'runStep').mockImplementation(async (step, context) => {
+      if (String(step.id) === 'first') { captured = context.emit; return null; }
+      captured?.({ type: 'stdout', line: 'emitted by second through first\'s emitter' } as unknown as Event);
+      return null;
+    });
+
+    const events = await collect(stream(opts));
+    const stamped = events.filter((event) => event.type === 'stdout') as Array<Event & { stepId?: string }>;
+    expect(stamped).toHaveLength(1);
+    expect(stamped[0]?.stepId).toBe('second');
   });
 
   test('AC-12d — a goto naming no step throws a raw TypeError, not a FlowError', async () => {

@@ -749,3 +749,27 @@ non-empty-corpus assertion, because a scan over zero sentences reports success o
 (*"a check that skips its subject must not report success"*, 2026-08-25), and it was demonstrated
 red by pasting `DECISIONS.md`'s own *"Every decision and why, append-only, newest last."* onto an
 authority line before it was trusted.
+
+## E-21 — `interpolate` does not coerce, and the obligation is here rather than in a comment — 2026-08-29
+
+**Supersedes** nothing in the requirement; it records a deliberate divergence from
+`spike/src/engine.js:740`, which is `String(s).replace(…)`.
+
+The port types the parameter `template: string` and performs no coercion. The spike's call sites
+interpolate values that came out of YAML — `step.run`, `step.branch`, `s.into`, `site.input.diff` —
+and YAML hands back a **number** for `branch: 2`. So the coercion was doing work.
+
+**The divergence is the right one and it changes who owns the problem.** With the parameter typed,
+a number-valued call site is a **compile error in Q-0051 and Q-0052** rather than the spike's silent
+runtime pass-through. That is the port turning a latent defect into a build failure, which is what a
+type system is for. What it costs: a step shape typed `Record<string, unknown>` will need
+`String(step.run)` written deliberately at each site.
+
+**Why this is an erratum and not the JSDoc line it started as.** Round 3's N-1 was closed by adding
+a JSDoc paragraph on `interpolate` addressed to Q-0051 and Q-0052. Round 4 pointed out that this is
+E-11's own finding repeated — *a comment is not a route*. Q-0052's implementer reads
+`solution/errata.md` (`qa-red.yaml:10`, `:23`) and its own requirement; it does not read the JSDoc of
+a function it is about to call for the first time. The obligation is written here so that ticket's
+requirement can carry it as a criterion, which is the same handling E-8 gave the unpinned
+`step`/`done` obligation. The JSDoc stays — it is useful where it is — but it is no longer the only
+record.

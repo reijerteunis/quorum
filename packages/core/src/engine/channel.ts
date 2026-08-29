@@ -11,8 +11,10 @@
  * Iterator `return()` and `throw()` are the abandonment signal: both await `finalise` — the
  * caller's interrupted-run persistence — before resolving or rethrowing, so a consumer that stops
  * early (a `break`, an uncaught error in a `for await` body, or an explicit `return()`) cannot
- * observe completion before that persistence has actually run. Both also latch: a later `next()`
- * is `{ done: true }` and never starts the producer.
+ * observe completion before that persistence has actually run — with one stated exception: a pull
+ * ALREADY in flight is settled `{ done: true }` and detached first, so it cannot be handed an event
+ * finalisation emits. Both also latch: a later `next()` is `{ done: true }` and never starts the
+ * producer.
  */
 import type { Event } from '@quorum/shared';
 
