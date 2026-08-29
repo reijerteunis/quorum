@@ -116,3 +116,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A red tick names what failed, not what was skipped](decisions/064-a-red-tick-names-what-failed.md)
 - [Erratum: two clauses of "What a run's event stream carries" describe a different engine](decisions/065-erratum-two-clauses-of-062-describe-a-different-engine.md)
 - [A check is not established by reading it](decisions/066-a-check-is-not-established-by-reading-it.md)
+
+## 2026-08-30
+
+- [A range is checked one endpoint at a time, because an endpoint is what can be absent](decisions/067-a-range-is-checked-one-endpoint-at-a-time.md)

@@ -147,12 +147,29 @@ land Q-0038 on `spike/src/engine.js` first, which is the sequencing this body's 
 against Q-0038* asks for — *"Land it on the spike first or port the fixed version; doing both means
 porting a file while it is being changed underneath."*
 
-**What that invalidates, precisely, so the rest can still be used.** The document rules in D-5 that
-the wholesale `.find()` over both endpoints (`spike/src/engine.js:133`) ships **unchanged** as a
-registered preserved defect, and AC-12's register carries a `preserved defect, see Q-0038` authority
-line for it. Once Q-0038 lands, that ruling inverts: this ticket ports the **fixed** endpoint-class
-validation, D-5 is wrong, AC-12's first register row goes, and AC-9 clause 5 is rewritten. The
-requirements run is therefore re-run after Q-0038 is contained, not resumed.
+**What that invalidates, enumerated at Q-0038's requirements gate on 2026-08-30 so the rest can
+still be used.** The document rules in D-5 that the wholesale `.find()` over both endpoints
+(`spike/src/engine.js:133`) ships **unchanged** as a registered preserved defect. Q-0038 deletes
+that `.find()`, so the following die with it and nothing else does:
+
+- **D-5 entirely**, and with it AC-12's first register row — the `preserved defect, see Q-0038`
+  authority line. There is no defect left to register.
+- **AC-9 clause 5** — *"records a range whose either endpoint is in the created-so-far map"* — which
+  becomes per-endpoint classification, and **clause 4**, the per-task template skip, which Q-0038's
+  OQ-4 rules per-endpoint on the same principle. Clauses 1, 2, 3, 6, 7 and 8 survive unchanged and
+  are still worth reading rather than re-deriving.
+- **AC-5's endpoint tail**, which gains two things Q-0038 adds: a not-yet-created endpoint is
+  described as not yet created rather than as one that *"does not resolve either"*, and under
+  `--base` an unresolvable override is blamed on the flag rather than on `harness/harness.yaml`.
+- **The coverage table's E16 row.** Q-0038 re-cuts `q0035-empty-range.js` E16(a) under its own AC-6
+  — `calls.includes('implement')` becomes `deepEqual(calls, [])` and the short-SHA assertion goes —
+  so the frozen scenario this ticket ports is not the one that was read.
+
+**AC-3's guard, AC-6, AC-7, AC-8, AC-10 to AC-14 and both source-guard findings are untouched** by
+Q-0038 and hold as written. The authority for the new rule is *"A range is checked one endpoint at a
+time, because an endpoint is what can be absent"* (2026-08-30), written by hand at Q-0038's gate;
+cite it rather than re-arguing the model. The requirements run is re-run after Q-0038 is contained,
+not resumed.
 
 **What survives and is worth re-reading rather than re-deriving.** Everything not about the `.find()`
 was verified against the files at the gate and held: the `merge-base` token in `git.source.test.ts`
