@@ -1,9 +1,9 @@
-# Integration — run 3, iteration 3
+# Integration — run 3, iteration 4
 
 Target: `harness/Q-0050/integration`
 
-Evidence: `harness/Q-0050/integration` at 1993753, base `main`.
-Evidence: `harness/Q-0050/tests` diverges from `harness/Q-0050/integration` at 1993753.
+Evidence: `harness/Q-0050/integration` at 686de87, base `main`.
+Evidence: `harness/Q-0050/tests` diverges from `harness/Q-0050/integration` at 686de87.
 
 - ✓ base `main`
 - ✓ harness/Q-0050/tests

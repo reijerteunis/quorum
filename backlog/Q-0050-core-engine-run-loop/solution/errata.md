@@ -348,3 +348,80 @@ through `test/corpus.ts`'s `repoFile()`, moving AC-13c into `packages/shared`, a
 `engine.test.ts`'s temp-repo `harness/harness.yaml` — are still the six guard failures' remedy, and
 they are still QA's. `--continue` makes a red phase *describable*; it does not make an unsatisfiable
 assertion satisfiable.
+
+## E-8 — the five load-bearing tests, written by hand, and the eight struck — 2026-08-29
+
+**Written at qa-red's third exhaustion gate**, after round 4 returned `revise` having added no
+tests — 37 before, 37 after. Rounds 3 and 4 both named the same five as the ones they would not let
+through; neither round produced them. They are now in the tree, and the eight remaining scenarios
+are struck rather than left as a table row promising coverage that does not exist.
+
+### Why the loop could not write them, which is a fact about the ticket and not about the writer
+
+All five need a step to **fail**, and at this ticket's boundary nothing can. `runStep` dispatches
+agent, script, integrate and fan-out steps to Q-0052 and Q-0053; the only kind Q-0050 owns end to
+end is the gate, and an author-declared gate returns `null` or `{ abort: true }` — it carries no
+retry target, so it can never return a goto. Only the exhaustion gate does, and it is reached from
+`handleFail`, which is called from the step kinds this ticket does not own.
+
+So the observable surface of AC-8b/8c/8d and AC-12d is not "a step fails" but **`engine.ts` acting
+on a `StepResult`**, which E-3 makes its sole responsibility. The tests stub `routing.runStep` to
+return one result and assert what `engine.ts` does with it: nothing about how the result was
+produced, which is the half that belongs to a later ticket. That seam is stated in the test file so
+the next reader does not mistake it for convenience.
+
+### The five
+
+| Criterion | Test | What it pins |
+| --- | --- | --- |
+| AC-8b | `engine.test.ts` | the `crossFlowRegression` warn interpolated from the fixture, and all seven regression fields asserted as one object so a partial payload fails |
+| AC-8c | `engine.test.ts` | an absent target flow fails naming it, and the **stage** does not move |
+| AC-8d | `engine.test.ts` | `remaining` is 0 when the counter has passed the limit — constructed at count 3, limit 2, where an unclamped subtraction reports −1 |
+| AC-12c | `lifecycle-routing.test.ts` | the same gate step asks at the top level and does **not** ask nested in a `parallel` group |
+| AC-12d | `engine.test.ts` | a goto naming no step throws a raw `TypeError`, not a `FlowError` |
+
+All five are red on assertions, `tsc --noEmit` clean. The engine folder goes from 37 tests to 42 and
+from 33 failures to 38.
+
+**AC-12c is written as a pair, deliberately.** A lone *"`answerGate` was not called"* passes against
+a stub that throws before reaching anything, and would keep passing if the dispatch were deleted
+altogether — *"a check that skips its subject must not report success"* (2026-08-25) inside a
+negative assertion. Running the same member both ways makes the difference the subject.
+
+### AC-8c's scenario contains an unsatisfiable clause, and the test does not implement it
+
+**Supersedes** the AC-8c scenario's *"the ticket's stage on disk is unchanged (byte-identical
+`ticket.md` before and after)"*.
+
+`finish` calls `backlog.write(ticket)` on **every** terminal status and appends a history entry
+before it (`engine.js:634`, `:648`), so a failed run necessarily rewrites `ticket.md`. What a
+failure leaves alone is the **stage** — only `completed` and `regressed` move it (`:622-624`). The
+test asserts the stage and the appended `failed` entry instead. Written as specified it would have
+been a sixth unsatisfiable assertion, in the round that existed to remove them.
+
+### The eight struck, with the reason each is struck
+
+Marked `— none (struck, E-8)` in `qa/scenarios.md`'s traceability table rather than left naming a
+test that does not exist. Two groups, and the distinction matters:
+
+**Blocked by the same boundary as the five, without the five's payoff.** AC-2b (the engine adds the
+step id and nothing else), AC-2f (a failed step emits no `done`), AC-5a (a step throws) and AC-9e (a
+run-history initialisation failure) all require a real step to run or fail. Each could be written
+against a stubbed `runStep` like the five, but each would then assert on the stub rather than on the
+enrichment or the failure path it names — a test of the harness. They belong to Q-0052, whose step
+implementations give them a subject.
+
+**Not red-phase material.** AC-2c (no cross-member order in a `parallel` group) asserts the
+*absence* of a guarantee; there is no failing form of it. AC-5b (cancelled mid-step) needs a step
+long enough to cancel, which is Q-0052's. AC-5e (listener count across ten runs) is a property of
+`core` installing no signal handler, already pinned by `q0050.source.test.ts`'s negative scan, and a
+ten-run loop would measure the harness. AC-10d (the `Object.create` view identity built by
+`engine.ts`) is covered behaviourally by AC-10a/10b/10c's on-disk and spy assertions, which is the
+property AC-10 actually names; asserting the prototype identity pins a construction rather than the
+read-only boundary.
+
+**What this costs, stated rather than implied.** The red phase pins 24 of 37 behaviours. Cross-flow
+regression and the two preserved defects are covered — they were the ones with money behind them.
+Step-id enrichment, the failed-step `done` suppression, cancellation and run-history initialisation
+failure enter Q-0052 **unpinned**, and that ticket's requirement should carry them as criteria
+rather than rediscover them.

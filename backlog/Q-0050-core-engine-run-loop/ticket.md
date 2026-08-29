@@ -67,6 +67,14 @@ history:
     stage_after: solutioned
     at: 2026-08-29T08:09:56.941Z
     cost: 0
+  - stage: solutioned
+    run: 3
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-29T08:38:45.572Z
+    cost: 0
 ---
 The spine of the port: `runFlow`, `runStep`, `handleFail`, `finish`, `outcome`, `recordEvent`,
 `loadFlow`, `loadFlowByName`, `loadRole`, `interpolate`, `writesOf` — the run context every other

@@ -5,7 +5,7 @@
 ## Every result line
 
 ```
-[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc
+[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd
 ✓ init
 [32m✓[0m chore.yaml
 [32m✓[0m development.yaml
@@ -363,7 +363,7 @@ SKIP S11.6: baseline 0000000000000000000000000000000000000033 unavailable (guard
 ✓ E7 — unused explicit gate answers are ignored after a gate-free regression
 SKIP S12.1: manual: requires authenticated Claude and Codex subscription evidence
 SKIP E2: forward-looking guarantee covered indirectly by S6.6-S6.10; future flows do not exist yet
-# E8 evidence — merge-base 906ad5cb07575dad4b7b4bf4e24d59d829a169aa; paths: packages/core/src/engine/docs-q0050.test.ts, packages/core/src/engine/engine.test.ts, packages/core/src/engine/lifecycle-routing.test.ts, packages/core/src/engine/lifecycle.test.ts, packages/core/src/engine/loaders.test.ts, packages/core/src/engine/q0050.source.test.ts, packages/shared/src/docs.test.ts
+# E8 evidence — merge-base 26fa2c68b2e33191a5466bd3b80f67db3b5d1eb2; paths: packages/core/src/engine/engine.test.ts, packages/core/src/engine/q0050.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/shared/src/index.test.ts
 SKIP E9: already covered by smoke.js's five truncation assertions
 ✓ S1.1/S1.2/S1.4 review flow matches its fixture and all shipped flow peers are byte-identical
 ✓ S1.3/S3.4/S6.1/S7.8/S8.2/S8.5 the complete shipped flow directory lints clean
@@ -500,7 +500,7 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 
 
 ──── smoke.js ────
-[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc
+[32m✓[0m harness/ and backlog/ created in /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd
   next: harness adapters · harness ticket new "…" · harness run requirements T-0001
 ✓ init
 [32m✓[0m chore.yaml
@@ -537,7 +537,7 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 ✓ stage advanced to requirements
 ✓ backward edge counter persisted (needs-input → retry once)
 [2m·[0m run #2  flow=solutioning  ticket=T-0001  requirements → solutioned
-[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
+[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
 [36m▸[0m [1marchitect[0m [2mmock role=principal-architect[0m
 [2m·[0m architect: wrote solution/draft.md
 [2m·[0m architect: 1 file(s) committed on harness/T-0001/contracts
@@ -547,7 +547,7 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 [32m✓[0m [1marchitecture-review[0m [2mverdict=revise cost=$0.010 20ms[0m
 [33m![0m architecture-review: revise — major: src/mock.ts:1 (mock) placeholder finding
 [33m![0m architecture-review: iteration 1/2 → goto architect
-[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
+[2m·[0m architect: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__contracts (harness/T-0001/contracts)
 [2m·[0m architect: base harness/T-0001/integration does not exist yet — nothing to sync
 [36m▸[0m [1marchitect[0m [2mmock role=principal-architect[0m
 [2m·[0m architect: wrote solution/draft.md
@@ -580,7 +580,7 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 [36m▸[0m [1mscenarios[0m [2mmock/sonnet role=automation-qa[0m
 [2m·[0m scenarios: wrote qa/scenarios.md
 [32m✓[0m [1mscenarios[0m [2mcost=$0.010 20ms[0m
-[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
+[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
 [36m▸[0m [1mwrite-tests[0m [2mmock role=automation-qa[0m
 [2m·[0m write-tests: 1 file(s) committed on harness/T-0001/tests
 [32m✓[0m [1mwrite-tests[0m [2mcost=$0.010 20ms[0m
@@ -598,7 +598,7 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 [36m▸[0m [1mscenarios[0m [2mmock/sonnet role=automation-qa[0m
 [2m·[0m scenarios: wrote qa/scenarios.md
 [32m✓[0m [1mscenarios[0m [2mcost=$0.010 20ms[0m
-[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
+[2m·[0m write-tests: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__tests (harness/T-0001/tests)
 [2m·[0m write-tests: synced to harness/T-0001/integration
 [36m▸[0m [1mwrite-tests[0m [2mmock role=automation-qa[0m
 [2m·[0m write-tests: no file changes on harness/T-0001/tests
@@ -621,13 +621,13 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 [2m·[0m developers: harness/T-0001/integration synced to master before fan-out
 [2m·[0m developers: 2 task(s) in 2 wave(s)
 [2m·[0m developers: wave 1: T-0001.1(backend)
-[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
+[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
 [2m·[0m dev:T-0001.1: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.1[0m [2mmock role=developer-backend[0m
 [2m·[0m dev:T-0001.1: 1 file(s) committed on harness/T-0001/T-0001.1
 [32m✓[0m [1mdev:T-0001.1[0m [2mcost=$0.010 20ms[0m
 [2m·[0m developers: wave 2: T-0001.2(frontend)
-[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
+[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
 [2m·[0m dev:T-0001.2: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.2[0m [2mmock/sonnet role=developer-frontend[0m
 [2m·[0m dev:T-0001.2: no file changes on harness/T-0001/T-0001.2
@@ -643,13 +643,13 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 [2m·[0m developers: harness/T-0001/integration synced to master before fan-out
 [2m·[0m developers: 2 task(s) in 2 wave(s)
 [2m·[0m developers: wave 1: T-0001.1(backend)
-[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
+[2m·[0m dev:T-0001.1: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__T-0001.1 (harness/T-0001/T-0001.1)
 [2m·[0m dev:T-0001.1: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.1[0m [2mmock role=developer-backend[0m
 [2m·[0m dev:T-0001.1: 1 file(s) committed on harness/T-0001/T-0001.1
 [32m✓[0m [1mdev:T-0001.1[0m [2mcost=$0.010 20ms[0m
 [2m·[0m developers: wave 2: T-0001.2(frontend)
-[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-dEBasc/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
+[2m·[0m dev:T-0001.2: worktree /private/var/folders/7j/zkvx86bd4ns6ppww3ddpynj00000gn/T/harness-smoke-e5VgTd/.harness/worktrees/harness__T-0001__T-0001.2 (harness/T-0001/T-0001.2)
 [2m·[0m dev:T-0001.2: synced to harness/T-0001/integration
 [36m▸[0m [1mdev:T-0001.2[0m [2mmock/sonnet role=developer-frontend[0m
 [2m·[0m dev:T-0001.2: 1 file(s) committed on harness/T-0001/T-0001.2
@@ -692,110 +692,136 @@ SKIP E9 already covered by smoke.js's five truncation assertions
 
 [33m■ GATE[0m (human-locked) loop exhausted at h
 
-… 43503 characters of output omitted from the middle …
+… 56069 characters of output omitted from the middle …
 
-[31m+[39m
-@quorum/shared:test: [31m+ **Template library**: Flows that ship with Quorum as starting points, encoding the opinionated SDLC (grill, architecture, development, QA, maintenance). Users copy and adapt them; nothing is enforced.[39m
+ true, and it was still the wrong sentence" (2026-08-25).[39m
+@quorum/shared:test: [31m+ //[39m
+@quorum/shared:test: [31m+ // ---------------------------------------------------------------------------------------------[39m
+@quorum/shared:test: [31m+ // TWO REASON SETS, BECAUSE TWO SURFACES ASK[39m
+@quorum/shared:test: [31m+ // ---------------------------------------------------------------------------------------------[39m
+@quorum/shared:test: [31m+ //[39m
+@quorum/shared:test: [31m+ // The board asks about a ticket branch in a repository it has already probed successfully, so it[39m
+@quorum/shared:test: [31m+ // reaches three reasons. The empty-range diagnostic asks about a range in a repository whose[39m
+@quorum/shared:test: [31m+ // shallow probe may itself have failed, so it reaches a fourth — `shallow state unknown`.[39m
+@quorum/shared:test: [31m+ // GLOSSARY.md lists the board's three for exactly that structural reason, and the difference is[39m
+@quorum/shared:test: [31m+ // recorded here so it reads as structure rather than as an omission.[39m
+@quorum/shared:test: [31m+ //[39m
+@quorum/shared:test: [31m+ // ---------------------------------------------------------------------------------------------[39m
+@quorum/shared:test: [31m+ // THE RESULT SHAPES MAKE THE IMPOSSIBLE COMBINATIONS UNREPRESENTABLE[39m
+@quorum/shared:test: [31m+ // ---------------------------------------------------------------------------------------------[39m
+@quorum/shared:test: [31m+ //[39m
+@quorum/shared:test: [31m+ // A proven state carries no reason, a contained result carries no ahead count, and an[39m
+@quorum/shared:test: [31m+ // indeterminate result carries nothing but a reason from its own set. The `?: never` members are[39m
+@quorum/shared:test: [31m+ // not decoration: without them an object typed as one variant is assignable to another whenever[39m
+@quorum/shared:test: [31m+ // its extra key happens to be absent from the target's declaration, so the claim would hold for[39m
+@quorum/shared:test: [31m+ // object literals and quietly fail for everything else.[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Adapter**: The thin integration layer that lets one CLI agent participate in Quorum: launch headless, stream events, map its output to Quorum's common trace format, stop/abort.[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * Exactly three, and they are selected from git's own exit codes: 0 contained, 1 provably not[39m
+@quorum/shared:test: [31m+  * contained, anything else indeterminate. "Not contained" is never inferred from a failure, a[39m
+@quorum/shared:test: [31m+  * timeout or an absent binary.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ export const CONTAINMENT_STATES = ['contained', 'not-contained', 'indeterminate'] as const;[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Backlog**: The per-project (or central, multi-repo) folder of ticket folders in git. Replaces Jira. Its `stage` fields drive which flow can run next.[39m
+@quorum/shared:test: [31m+ export type ContainmentState = (typeof CONTAINMENT_STATES)[number];[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Ticket**: One folder in the backlog: `ticket.md` (frontmatter state + intent) and per-stage artifact subfolders (requirements/, solution/, qa/, dev/, review/, deploy/).[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * Why the ancestry primitive could not answer.[39m
+@quorum/shared:test: [31m+  *[39m
+@quorum/shared:test: [31m+  * - `git failed` — any exit that is neither 0 nor 1, a signal, a spawn failure, a timeout, or no[39m
+@quorum/shared:test: [31m+  *   git on the path at all.[39m
+@quorum/shared:test: [31m+  * - `shallow clone` — an exit 1 in a repository known to be shallow: history that is absent cannot[39m
+@quorum/shared:test: [31m+  *   disprove ancestry, so a provable negative becomes an honest "don't know".[39m
+@quorum/shared:test: [31m+  * - `shallow state unknown` — an exit 1 when the shallow probe itself could not answer. Reading an[39m
+@quorum/shared:test: [31m+  *   unanswered probe as "not shallow" would hand back the confident negative through the side[39m
+@quorum/shared:test: [31m+  *   door. Reachable only through the empty-range diagnostic; see the note above.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ export const ANCESTRY_REASONS = ['git failed', 'shallow clone', 'shallow state unknown'] as const;[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` a later one — usually the next, though the **chore flow** produces `reviewed` from `requirements`. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `harness board` as **Containment**.[39m
+@quorum/shared:test: [31m+ export type AncestryReason = (typeof ANCESTRY_REASONS)[number];[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Containment**: The git-derived relationship between a ticket branch tip and the configured base[39m
-@quorum/shared:test: [31m+ branch, computed on every `harness board` invocation and never stored. Exactly three states,[39m
-@quorum/shared:test: [31m+ rendered as one token beside the ticket: contained (`main:contained` — the branch tip is an[39m
-@quorum/shared:test: [31m+ ancestor of the base tip), not contained (`main:not-contained(+12)` — with the count of commits[39m
-@quorum/shared:test: [31m+ reachable from the branch and not from the base), and indeterminate (`main:indeterminate(missing[39m
-@quorum/shared:test: [31m+ ref)`, `main:indeterminate(shallow clone)`, `main:indeterminate(git failed)`, `main:indeterminate(no[39m
-@quorum/shared:test: [31m+ branch)` — the board could not answer, which is never reported as either of the other two). The[39m
-@quorum/shared:test: [31m+ first three are git declining to answer; `no branch` is the ticket naming a branch that does not[39m
-@quorum/shared:test: [31m+ exist, so git was never asked. Every ticket names one from creation and most never have one, so the[39m
-@quorum/shared:test: [31m+ board renders `no branch` only where the stage claims the work is done and the branch is the[39m
-@quorum/shared:test: [31m+ evidence for it — `solutioned` onward, never `draft`, `requirements`, `blocked` or `abandoned`.[39m
-@quorum/shared:test: [31m+ An ancestry fact about two refs at the moment of reading, not a claim about how the code arrived —[39m
-@quorum/shared:test: [31m+ and not a synonym-carrier: the board and the docs say "contained", never "merged", "landed" or[39m
-@quorum/shared:test: [31m+ "shipped".[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * Why the board could not answer, which is the ancestry set minus the one reason a probed[39m
+@quorum/shared:test: [31m+  * repository cannot reach, plus the one the board asks about first.[39m
+@quorum/shared:test: [31m+  *[39m
+@quorum/shared:test: [31m+  * - `missing ref` — the configured base branch does not resolve.[39m
+@quorum/shared:test: [31m+  * - `shallow clone` — as above.[39m
+@quorum/shared:test: [31m+  * - `git failed` — as above, including a failure of the ahead count itself.[39m
+@quorum/shared:test: [31m+  * - `no branch` — the ticket names a branch and no local ref of that name exists, so there is[39m
+@quorum/shared:test: [31m+  *   nothing to ask git about. Distinct from `missing ref`, which is about the BASE: one is a[39m
+@quorum/shared:test: [31m+  *   repository the board cannot read, the other a ticket whose work never reached a branch —[39m
+@quorum/shared:test: [31m+  *   a hand-run ticket, or one whose branch was deleted. Whether it is worth rendering is the[39m
+@quorum/shared:test: [31m+  *   board's call and not this vocabulary's: every ticket names a branch from creation[39m
+@quorum/shared:test: [31m+  *   (`spike/src/backlog.js:64`) and most never have one, so a board that showed all of them[39m
+@quorum/shared:test: [31m+  *   would be noise. See Q-0070.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ export const CONTAINMENT_REASONS = ['missing ref', 'shallow clone', 'git failed', 'no branch'] as const;[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Contract**: A machine-checkable artifact emitted by solutioning — interface, schema, stub, migration skeleton — that tests and developers code against.[39m
+@quorum/shared:test: [31m+ export type ContainmentReason = (typeof CONTAINMENT_REASONS)[number];[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Role**: An agent persona file in `harness/roles/` with default adapter, model, write-path allow-list and prompt (product-manager, principal-architect, developer-backend, code-reviewer, …). Tasks reference roles; flows reference roles.[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * What the ancestry primitive returns. Every result carries all four keys, so a caller reading[39m
+@quorum/shared:test: [31m+  * `detail` or `command` never has to test for their presence.[39m
+@quorum/shared:test: [31m+  *[39m
+@quorum/shared:test: [31m+  * `command` is the check that was run, quoted precisely enough for a reader to re-run it by hand.[39m
+@quorum/shared:test: [31m+  * `detail` is git's own first line, normalised, and is never load-bearing: no state and no reason[39m
+@quorum/shared:test: [31m+  * is derived from its text.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ export type AncestryResult =[39m
+@quorum/shared:test: [31m+   | { state: 'contained'; reason: null; detail: null; command: string }[39m
+@quorum/shared:test: [31m+   | { state: 'not-contained'; reason: null; detail: null; command: string }[39m
+@quorum/shared:test: [31m+   | { state: 'indeterminate'; reason: AncestryReason; detail: string | null; command: string };[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Backward edge**: An `on_fail: goto` from a step/route to an earlier step or another flow, always with `max_iterations` and `on_exhausted: gate`.[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * What the board renders beside a ticket, as one of `<base>:contained`,[39m
+@quorum/shared:test: [31m+  * `<base>:not-contained(+12)` or `<base>:indeterminate(<reason>)`. The ahead count is the commits[39m
+@quorum/shared:test: [31m+  * reachable from the branch and not from the base — not the symmetric difference — and exists only[39m
+@quorum/shared:test: [31m+  * on a proven negative.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ export type ContainmentResult =[39m
+@quorum/shared:test: [31m+   | { state: 'contained'; reason?: never; ahead?: never }[39m
+@quorum/shared:test: [31m+   | { state: 'not-contained'; ahead: number; reason?: never }[39m
+@quorum/shared:test: [31m+   | { state: 'indeterminate'; reason: ContainmentReason; ahead?: never };[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Fan-out step**: A step that expands `tasks.yaml` into N parallel worktree steps, one per task, grouped by role.[39m
+@quorum/shared:test: [31m+ /**[39m
+@quorum/shared:test: [31m+  * A compile-time proof that both result shapes draw their `state` from the tuple above and from[39m
+@quorum/shared:test: [31m+  * nowhere else: a variant added with an unlisted state violates `Assert`'s constraint and stops[39m
+@quorum/shared:test: [31m+  * the build here, rather than reaching a renderer that has no token for it. It has to be an[39m
+@quorum/shared:test: [31m+  * unsatisfied constraint — a conditional type that merely evaluates to `never` compiles cleanly[39m
+@quorum/shared:test: [31m+  * and would prove nothing.[39m
+@quorum/shared:test: [31m+  */[39m
+@quorum/shared:test: [31m+ type Assert<T extends true> = T;[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Integrate step**: Merges the fan-out branches onto the ticket branch and runs the test suite; failure loops back to the failing tasks only.[39m
+@quorum/shared:test: [31m+ type StatesAreClosed = [[39m
+@quorum/shared:test: [31m+   Assert<AncestryResult['state'] extends ContainmentState ? true : false>,[39m
+@quorum/shared:test: [31m+   Assert<ContainmentResult['state'] extends ContainmentState ? true : false>,[39m
+@quorum/shared:test: [31m+ ];[39m
 @quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Cross-vendor rule**: `cross_vendor: required` — a lint guaranteeing the reviewer/judge of an artifact runs on a different adapter than its writer.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Panel**: A parallel group of reviewing or judging steps over the same input, spanning more than one[39m
-@quorum/shared:test: [31m+ adapter. The review flow's Claude + Codex reviewers are a panel; `cross_vendor: required` is satisfied[39m
-@quorum/shared:test: [31m+ by the panel spanning vendors, not by writer ≠ reviewer.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Human-locked gate**: A gate that cannot be flipped to `auto` (deploy).[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Event**: One item of the trace a run emits, defined once in `packages/shared` as a discriminated[39m
-@quorum/shared:test: [31m+ union on `type`. Two shapes, because two interfaces exist. An **adapter event** is what an adapter[39m
-@quorum/shared:test: [31m+ passes to `onEvent` — `spawn`, `stdout`, and the `retry` the contract layer adds — carrying no[39m
-@quorum/shared:test: [31m+ identity, because an adapter does not know which step it is running. A **run event** is one of[39m
-@quorum/shared:test: [31m+ those with the step id the engine supplies, or one of the engine's own: `step`, `done`, `info`,[39m
-@quorum/shared:test: [31m+ `warn`, and the gate question, which is the only event that expects an answer. Vendor identity is[39m
-@quorum/shared:test: [31m+ one neutral, open `vendor` label and nothing else in the union is vendor-specific. Not persisted in[39m
-@quorum/shared:test: [31m+ v1 (see **Run history**, which is), and not to be called a "log line" or a "trace message" — the[39m
-@quorum/shared:test: [31m+ trace is the stream, an event is one item of it.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt[39m
-@quorum/shared:test: [31m+ prompts and outputs, errors, usage, and per-vendor roll-up.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Occurrence**: One entry in a run manifest's record of what actually executed — an adapter call, a[39m
-@quorum/shared:test: [31m+ script, or an integrate step — carrying its own usage, errors and retained files. Adapter[39m
-@quorum/shared:test: [31m+ occurrences keep their exact `prompt.txt` and `output.txt`; gates and fan-out parents allocate[39m
-@quorum/shared:test: [31m+ none. The unit a roll-up sums over.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Preflight**: A check a run performs before invoking any adapter, so that bad evidence is found[39m
-@quorum/shared:test: [31m+ before it is paid for. The run-level diff preflight materialises every range a flow's steps will[39m
-@quorum/shared:test: [31m+ need. A preflight that declines to examine something reports that it *skipped* it — reporting[39m
-@quorum/shared:test: [31m+ success for an unexamined subject is the failure recorded in the 2026-08-25 decision.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Dry run** (`--dry`): `harness run … --dry` walks a flow without invoking an adapter or writing[39m
-@quorum/shared:test: [31m+ anything, reporting what each step would do. It is the same run machinery, not a separate code[39m
-@quorum/shared:test: [31m+ path, which is why its preflight must be as honest as a real run's. Not called a "preview" —[39m
-@quorum/shared:test: [31m+ DECISIONS entries before 2026-08-25 use that word for it.[39m
-@quorum/shared:test: [31m+[39m
-@quorum/shared:test: [31m+ **Chore flow**: The short route for machinery and configuration tickets — requirements → one implementer[39m
-@quorum/shared:test: [31m+ in a worktree → cross-vendor review with a bounded revise loop → integrate → human gate. Consumes[39m
-@quorum/shared:test: [31m+ `requirements`, produces `reviewed`, skipping solutioning and qa-red because a scaffold has no[39m
-@quorum/shared:test: [31m+ behaviour a test could fail on before it exists. Not a lighter SDLC; a different one, for work that[39m
-@quorum/shared:test: [31m+ changes what the repository *is* rather than what it *does*. Requires `harness/<id>/integration` to[39m
-@quorum/shared:test: [31m+ exist before its first run — `review` diffs against that branch and only `integrate`, which runs[39m
-@quorum/shared:test: [31m+ later, creates it (see 02-sdlc-pipeline-spec.md §5.8).[39m
+@quorum/shared:test: [31m+ /** Exported so the proof above is not dead code; it carries no runtime value and no information. */[39m
+@quorum/shared:test: [31m+ export type { StatesAreClosed };[39m
 @quorum/shared:test: [31m+[39m
 @quorum/shared:test: 
-@quorum/shared:test: [36m [2m❯[22m src/docs.test.ts:[2m165:43[22m[39m
-@quorum/shared:test:     [90m163|[39m       [35mconst[39m body [33m=[39m [34mrepoFile[39m(file)[33m;[39m
-@quorum/shared:test:     [90m164|[39m       for (const token of ['terminal', 'answerGate', 'AbortSignal', 't…
-@quorum/shared:test:     [90m165|[39m         [34mexpect[39m(body[33m,[39m [32m`[39m[36m${[39mfile[36m}[39m[32m: [39m[36m${[39mtoken[36m}[39m[32m`[39m)[33m.[39m[34mtoContain[39m(token)[33m;[39m
-@quorum/shared:test:     [90m   |[39m                                           [31m^[39m
-@quorum/shared:test:     [90m166|[39m       }
-@quorum/shared:test:     [90m167|[39m       expect(body.toLowerCase(), `${file}: parallel ordering limit`).t…
+@quorum/shared:test: [36m [2m❯[22m src/index.test.ts:[2m50:74[22m[39m
+@quorum/shared:test:     [90m 48|[39m     [35mfor[39m ([35mconst[39m [name[33m,[39m text] [35mof[39m [34msharedSourceFiles[39m()) {
+@quorum/shared:test:     [90m 49|[39m       expect(importSpecifiers(text), `${name} must remain below core`)…
+@quorum/shared:test:     [90m 50|[39m       expect(text, `${name} must not reach core by repository path`).n…
+@quorum/shared:test:     [90m   |[39m                                                                          [31m^[39m
+@quorum/shared:test:     [90m 51|[39m     }
+@quorum/shared:test:     [90m 52|[39m   })[33m;[39m
 @quorum/shared:test: 
-@quorum/shared:test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+@quorum/shared:test: [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
 @quorum/shared:test: 
 @quorum/shared:test: 
-@quorum/shared:test: [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (11)[39m
-@quorum/shared:test: [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m105 passed[39m[22m[90m (106)[39m
-@quorum/shared:test: [2m   Start at [22m 09:50:08
-@quorum/shared:test: [2m   Duration [22m 300ms[2m (transform 388ms, setup 0ms, import 1.11s, tests 170ms, environment 0ms)[22m
+@quorum/shared:test: [2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m9 passed[39m[22m[90m (11)[39m
+@quorum/shared:test: [2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m105 passed[39m[22m[90m (107)[39m
+@quorum/shared:test: [2m   Start at [22m 10:27:34
+@quorum/shared:test: [2m   Duration [22m 231ms[2m (transform 399ms, setup 0ms, import 904ms, tests 171ms, environment 1ms)[22m
 @quorum/shared:test: 
 @quorum/shared:test:  ELIFECYCLE  Test failed. See above for more details.
 
  Tasks:    5 successful, 6 total
 Cached:    0 cached, 6 total
-  Time:    1.101s 
+  Time:    907ms 
 Failed:    @quorum/shared#test
 
 [31m✗ [0mticket T-0001 is at stage "draft", flow "solutioning" consumes "requirements"
