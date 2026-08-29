@@ -48,7 +48,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-1b | — (inherited pattern) | landed `fanout.source.test.ts`, `run-history.source.test.ts` | — |
 | AC-1c | q0050-engine-compose | `q0050.source.test.ts` — no console/ANSI/`spike` import | — |
 | AC-1d | all engine tasks | `q0050.source.test.ts` — JSDoc-per-export scan | — |
-| AC-2a | q0050-routing, q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — banner, terminal info, cross-flow warn; `lifecycle-routing.test.ts` — loop warns, exhaustion reason, both gate infos; `lifecycle.test.ts` — rollback warn and log | 11 of 18 read through the fixture — `runBanner`, `terminalInfo`, `crossFlowRegression`, `loopIteration`, `loopExhausted`, `exhaustionReason`, `gateAutoAdvanced`, `gateDryRun`, `rollback`, `log.recordEvent`, `log.rollback`. `gate` is asserted as a shape rather than a text; `unpricedSuffix`, `log.start`, `log.terminal`, `log.errorSuffix`, `log.gateAnswer` and `log.retryGrant` are matched as literals or not at all, and are named here rather than counted as covered |
+| AC-2a | q0050-routing, q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — banner, terminal info, cross-flow warn; `lifecycle-routing.test.ts` — loop warns, exhaustion reason, both gate infos; `lifecycle.test.ts` — rollback warn and log | **18 of 22 leaf keys** read through the fixture, recounted 2026-08-29 after round 3 closed six of them. Not read: `gate.kind`, `gate.reason`, `gate.ticketDir`, `gate.retry` — the gate question is asserted as a shape rather than as text, which is the right form for an object. Every string key is now read through the oracle |
 | AC-2b | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-2c | q0050-event-channel | — none (struck, E-8) | — |
 | AC-2d | q0050-event-channel | `channel.test.ts` — burst, 500 events | — |
@@ -57,14 +57,14 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-3a | q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — all five statuses driven through `runFlow`: completed (banner test), regressed (AC-8b), aborted (AC-3a), failed (AC-8c), interrupted (AC-5c/5d and the abort-reason test) | `terminalInfo` |
 | AC-3b | q0050-event-channel | `channel.test.ts` — throw-after-terminal | — |
 | AC-3c/3d | q0050-shared-events | `events.q0050.test.ts` (already green, F-1) | — |
-| AC-4a–4h | q0050-routing, q0050-shared-events | `lifecycle-routing.test.ts`, `q0050.source.test.ts` | `gate.*`, `gateAutoAdvanced`, `gateDryRun`, `log.gateAnswer` |
+| AC-4a–4h | q0050-routing, q0050-shared-events | `lifecycle-routing.test.ts` (4a–4g at the `askGate` unit level; 4c now covers both a replayed and a never-issued id and asserts the causes differ; 4g reads `log.gateAnswer` whole), `engine.test.ts` (4a's passive consumer and 4f's `--auto` clause, at the composed level), `q0050.source.test.ts` (4h). **4b's "the run resumes and completes" half is asserted at the unit level only**, and **4d is superseded by `solution/errata.md` E-19** — the code refuses an unparseable answer where the criterion says it aborts | `gateAutoAdvanced`, `gateDryRun`, `log.gateAnswer` |
 | AC-5a | q0050-lifecycle, q0050-engine-compose | — none (struck, E-8) | `log.errorSuffix` |
 | AC-5b | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-5c/5d | q0050-lifecycle, q0050-event-channel | `channel.test.ts` — return awaits finalisation, and the abandoned channel latches; `engine.test.ts` — a `for await` that breaks at a gate, driving `runFlow`'s own `finaliseAbandonment` | — |
 | AC-5e | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-6a–6c/6e | q0050-routing | `lifecycle-routing.test.ts` — counters, exhaustion | `loopIteration`, `loopExhausted`, `exhaustionReason` |
-| AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` + `lifecycle.test.ts` | — |
-| AC-7a–7c | q0050-routing | `lifecycle-routing.test.ts` — retry grant | `log.retryGrant` |
+| AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` — AC-6d asserts from inside the unresolved `answerGate` that the `exhausted` occurrence event was already recorded, demonstrated red by moving the record after the gate. The criterion's own method (reading `runs.log` from disk in the callback) is **not usable**: `askGate` writes its line after the answer arrives, so nothing is on disk at callback time | `exhaustionReason` |
+| AC-7a–7c | q0050-routing | `lifecycle-routing.test.ts` — retry grant, read whole from `log.retryGrant` rather than as a hand-written literal; AC-7b's re-presented gate is the second `handleFail` call | `log.retryGrant` |
 | AC-8a | q0050-routing, q0050-loaders | `engine.test.ts` — AC-8b asserts the stage equals B's `consumes` and that the step stub records exactly one call, so B's own steps never ran. NOT `lifecycle-routing.test.ts`, whose cross-flow test deliberately proves the opposite — that routing returns a decision and derives no stage | — |
 | AC-8b | q0050-routing, q0050-engine-compose, q0050-loaders | `engine.test.ts` — cross-flow edge, seven fields (hand-written, E-8) | `crossFlowRegression` |
 | AC-8c | q0050-engine-compose | `engine.test.ts` — absent target flow (hand-written, E-8) | — |
@@ -87,7 +87,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-13a | — | gate action (`pnpm lint` / `pnpm typecheck`), n/a | — |
 | AC-13b | q0050-documentation | `packages/shared/src/docs.test.ts` | — |
 | AC-13c | — (structural) | `q0050.source.test.ts` + `packages/shared/src/index.test.ts` | — |
-| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of the five preserved-defect sites by file and authority, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
+| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of the **seven** preserved-defect sites by file and authority — five shipped, plus AC-10's two, which round 3 found the criterion mandated and the code omitted, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
 | AC-13e | — | gate action (module-header citation review), n/a | — |
 
 ## AC-1 — module shape, no dependency, no output

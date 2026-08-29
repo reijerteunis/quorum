@@ -50,7 +50,29 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     }));
     const ctx = context({ answerGate });
     await expect(askGate(gate(), ctx)).resolves.toBe('advance');
-    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, expect.stringContaining('answer=advance'));
+    // Full equality through the oracle. AC-4g forbids `stringContaining` by name, and the segment
+    // a prefix match skips is the one the fixture exists to pin.
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.gateAnswer, {
+      runId: 3, kind: 'human', answer: 'advance',
+    }));
+  });
+
+  test('AC-4c — a replayed answer and an answer for a gate that was never issued fail differently', async () => {
+    // Two cases, and the criterion asks for them to be distinguishable. Only the never-issued one
+    // was covered; a REPLAY — the same envelope delivered twice, which is a socket's ordinary
+    // behaviour — is the case the correlation exists for.
+    const first = context({ answerGate: async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'advance' as const }) });
+    await expect(askGate(gate({ gateId: '3:1' }), first)).resolves.toBe('advance');
+
+    // The same envelope, redelivered at the NEXT gate of the same run.
+    const replayed = context({ answerGate: async () => ({ gateId: '3:1', answer: 'advance' as const }) });
+    const replayError = await askGate(gate({ gateId: '3:2' }), replayed).then(() => undefined, (e: unknown) => e as Error);
+    const unissued = await askGate(gate({ gateId: '3:2' }), context({ answerGate: async () => ({ gateId: 'never-issued', answer: 'advance' as const }) }))
+      .then(() => undefined, (e: unknown) => e as Error);
+
+    expect(replayError?.message).toContain('3:1');
+    expect(unissued?.message).toContain('never-issued');
+    expect(replayError?.message).not.toBe(unissued?.message);
   });
 
   test('no channel, stale correlation and invalid runtime answers fail by name', async () => {
@@ -131,13 +153,31 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     }));
   });
 
+  test('AC-6d — the exhausted record is written before the gate promise is awaited', async () => {
+    // The criterion's own method — "read both from disk inside the still-unresolved answerGate" —
+    // cannot be used here: `askGate` writes its log line AFTER the answer arrives, so nothing is on
+    // disk at callback time. What IS the criterion's subject is the ORDER, and the exhausted
+    // occurrence event is the record that must precede the question. Asserted from inside the
+    // unresolved callback, which is the same guarantee by the only route that exists.
+    let recordedWhenAsked: boolean | undefined;
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => {
+      recordedWhenAsked = vi.mocked(ctx.persistence.recordOccurrenceEvent).mock.calls.length === 1;
+      return { gateId: question.gateId, answer: 'advance' as const };
+    });
+    const ctx = context({ counters: { 'f.review': 2 }, answerGate });
+    await handleFail({ id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } }, ctx);
+    expect(recordedWhenAsked, 'the exhausted event must be recorded before the gate is asked').toBe(true);
+  });
+
   test('retry sets only the exhausted counter to the limit and logs the one-traversal grant', async () => {
     const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'retry' as const }));
     const ctx = context({ counters: { sibling: 9, 'f.review': 2 }, answerGate });
     await expect(handleFail({ id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } }, ctx))
       .resolves.toStrictEqual({ goto: 'implement', counter: 'f.review', limit: 2 });
     expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 2 });
-    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, 'run=3 gate=retry counter=f.review set=2 (one further traversal authorised)');
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.retryGrant, {
+      runId: 3, counter: 'f.review', limit: 2,
+    }));
   });
 
   test('retry at an author gate without a target aborts', async () => {

@@ -693,3 +693,30 @@ the code to match it. The row is corrected in the same change.
 This is the *"unstated decision"* shape this ticket's own risk section names, arriving in the
 coverage record rather than in the source: a divergence pinned by a passing test with no sentence
 saying it was chosen.
+
+## E-19 — an unparseable gate answer is refused, not silently treated as `abort` — 2026-08-29
+
+**Supersedes** AC-4d: *"an envelope's `answer` field is a string outside `advance | retry | abort`
+… the run treats it as `{ abort: true }` — preserving `:590`'s behaviour."*
+
+It does not, and should not. `askGate` validates the envelope with `gateAnswerEnvelopeSchema`
+(`packages/shared/src/events.ts:195`, a strict object over a three-value enum) and throws a
+`FlowError` naming the gate. The spike had no envelope: `runGate` took whatever `ctx.ui.gate`
+returned and fell through `advance` and `retry` to `return { abort: true }`
+(`spike/src/engine.js:590`), so an unrecognised answer *silently ended the run*.
+
+**The code is right and the criterion is superseded**, for the reason AC-4d itself gives and then
+argues past. It notes that `core` is now *"a reachable second consumer beside the CLI's exact-match
+validation"* — which is the argument **against** preserving the fall-through, not for it. The CLI
+validated exactly because a typo must not be actionable; `core` taking an unvalidated string and
+choosing the most destructive of the three answers would abort a run that had proven work behind it,
+on a malformed message from a socket. *Errors are explicit* and *never default silently* both point
+one way here, and the landed decision *"What a run's event stream carries, and how a gate answer
+travels back"* (2026-08-28) is what introduced the envelope this validates.
+
+**Recorded because a passing test was pinning an unruled divergence.** `lifecycle-routing.test.ts`'s
+*"no channel, stale correlation and invalid runtime answers fail by name"* asserts the throw — so
+the criterion said one thing, the code did another, the suite ratified the code, and nothing said
+which was intended. That is the third instance of this exact shape on this ticket (E-18 on AC-9f's
+cost, E-17 on the short-circuit sentence), and all three were found by reading the criterion against
+the code rather than by a failing test, because a test written from the code can never find it.
