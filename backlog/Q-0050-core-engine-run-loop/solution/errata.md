@@ -321,3 +321,30 @@ has no failing test to turn green, and its own description — *"replace the Q-0
 declarations with the final strict schemas"* — is already satisfied. Its remaining work is whatever
 the final schemas still lack, not the schemas themselves. Silence here is the one option that would
 leave a reader believing the red phase proved something about that task.
+
+## E-7 — the pruning defect is fixed, not carried — 2026-08-29
+
+**Supersedes** E-6(a)'s successor body and its sentence *"It still needs creating as a ticket."*
+There is no successor. The defect it describes was resolved directly, at this gate, in the file that
+carried it: `harness/harness.yaml`'s `commands.test` now ends `--force --continue`. See
+*"A red tick names what failed, not what was skipped"* (2026-08-29). E-6(a)'s **measurements stand
+unchanged** and remain this ticket's red-phase evidence; only its disposition is superseded.
+
+**Why it could be closed rather than carried.** The measurement was already in hand, the fix is one
+flag in one file, and — the deciding fact — **turbo still exits non-zero with `--continue`**, so no
+`expect: pass` or `expect: fail` verdict changes anywhere. Verified on turbo 2.10.11 against a tree
+with two failing packages: exit 1 with the flag and without it. A change that alters only what a
+report contains, and never what a step decides, does not need a ticket to be made safe.
+
+**It does not affect run 3, and QA should not expect it to.** `runFlow` stores `config` at run start
+and never re-reads it, so round 4's `prove-red` runs the *old* command and its `red-report.md` will
+again show only `@quorum/shared` failing, with `@quorum/core#test` pruned. **That is expected and is
+not a round-4 defect.** E-6(a)'s hand-measured table is the red-phase evidence for this ticket, and
+it stays the evidence; the first artifact to benefit from the fix is a later run's. This is the same
+ordering trap Q-0065's own `integrate` fell into, named here so it is not rediscovered.
+
+**Nothing in the round-4 work list changes.** Items 1 and 2 — routing `q0050.source.test.ts`'s reads
+through `test/corpus.ts`'s `repoFile()`, moving AC-13c into `packages/shared`, and registering
+`engine.test.ts`'s temp-repo `harness/harness.yaml` — are still the six guard failures' remedy, and
+they are still QA's. `--continue` makes a red phase *describable*; it does not make an unsatisfiable
+assertion satisfiable.

@@ -33,4 +33,8 @@ commands:
   # without executing anything, and the flow then advances on a claim this run never made. Make
   # this command defeat your runner's cache; the default below is left as it is because the
   # template cannot know which runner you use, or what its option is called.
+  #
+  # A monorepo runner that skips a package because a package it depends on failed will also hide
+  # failures from an `expect: fail` step, where every failure is the deliverable. If yours has an
+  # option to keep going (turbo's is `--continue`), a red phase wants it.
   test: npm test          # used by integrate steps with run_tests: true

@@ -30,3 +30,22 @@
 2026-08-28T19:17:08.398Z run=2 step=merge-contracts merged=1/1 tests=-
 2026-08-28T19:17:08.422Z run=2 completed stage=requirements→solutioned cost=17.827 tokens=15080906
 2026-08-29T02:20:00.000Z run=2 note (out-of-band: pre-qa-red preparation, by hand, no engine run. (1) `harness/Q-0050/integration` was 14 commits behind `main` and carried no `packages/core/src/run-history/`; `write-tests` cuts its worktree from that branch, so `main` was merged in first (9f18ba3, clean). (2) `solution/errata.md` E-1..E-4 and round 5's loader-order nit had not been transcribed into `contracts/Q-0050/**` or the stubs — verified absent on the merged branch — so qa-red would have written permanent red tests against a superseded contract, and solutioning's stated purpose, "stubs so qa-red fails on behaviour rather than missing symbols", was defeated on those five surfaces. No step on this route can write them: `write-tests` may not touch production code and `q0050-engine-types` runs after qa-red. Transcribed at 7a72797; no clause was decided by hand, the stubs still throw, typecheck and lint green, spike 13/13. (3) Reported, not fixed: with `packages/shared` red, `@quorum/core#test` never executes at all — turbo.json's `dependsOn: ["^test"]` (Q-0072) — so a red report can show only the shared failure unless qa-red repairs `events.test.ts`'s gate sample, which the QA contract already assigns to it.)
+2026-08-29T00:46:20.202Z run=3 flow=qa-red start stage=solutioned
+2026-08-29T00:53:32.357Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=2.2462734999999996 ms=432137
+2026-08-29T00:58:07.092Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=274477
+2026-08-29T00:58:44.260Z run=3 step=prove-red merged=1/1 tests=ok
+2026-08-29T01:06:20.680Z run=3 step=scenario-review vendor=claude model=opus verdict=revise cost=3.553695 ms=456393
+2026-08-29T01:11:52.859Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=1.345234 ms=332164
+2026-08-29T01:16:12.761Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=259785
+2026-08-29T01:17:17.524Z run=3 step=prove-red merged=1/1 tests=ok
+2026-08-29T01:33:00.062Z run=3 step=scenario-review vendor=claude model=opus verdict=revise cost=6.6873955 ms=942526
+2026-08-29T01:33:00.073Z run=3 exhausted stage=solutioned→solutioned cost=0
+2026-08-29T07:37:14.949Z run=3 gate=human-locked answer=retry
+2026-08-29T07:37:14.949Z run=3 gate=retry counter=qa-red.scenario-review set=1 (one further traversal authorised)
+2026-08-29T07:46:26.301Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=2.639145 ms=551347
+2026-08-29T07:49:29.985Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=183533
+2026-08-29T07:50:08.751Z run=3 step=prove-red merged=1/1 tests=ok
+2026-08-29T08:09:56.930Z run=3 step=scenario-review vendor=claude model=opus verdict=revise cost=10.314238 ms=1188147
+2026-08-29T08:09:56.943Z run=3 exhausted stage=solutioned→solutioned cost=0
+2026-08-29T08:16:34.590Z run=3 gate=human-locked answer=retry
+2026-08-29T08:16:34.590Z run=3 gate=retry counter=qa-red.scenario-review set=1 (one further traversal authorised)

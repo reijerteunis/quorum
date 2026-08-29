@@ -38,4 +38,9 @@ commands:
   install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
   # `--force` because turbo replays a cached pass without executing it while `integrate` reads only
   # the exit code, and a worktree shares the main checkout's cache, so this step runs warm (Q-0065).
-  test: npm test --prefix spike && pnpm turbo run test --force
+  # `--continue` because `dependsOn: ["^test"]` prunes a dependent whose dependency failed, which is
+  # right for a green run and backwards for a red one: on Q-0050's qa-red a single red test in
+  # `shared` hid all seven of `core`'s failing files, and `expect: fail` reported a red it could not
+  # describe. Turbo still exits non-zero, so no `expect: pass` or `expect: fail` verdict changes —
+  # only what the report can say.
+  test: npm test --prefix spike && pnpm turbo run test --force --continue
