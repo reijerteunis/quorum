@@ -44,6 +44,6 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
   test('AC-12a/b: both owned branch-head conflations carry authority', () => {
     const engine = source('engine.ts');
     const lifecycle = source('lifecycle.ts');
-    expect(`${engine}\n${lifecycle}`.match(/Why: preserved defect, see Q-0050 AC-12\./g)?.length).toBeGreaterThanOrEqual(2);
+    expect((`${engine}\n${lifecycle}`.match(/Why: preserved defect, see Q-0050 AC-12\./g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });
