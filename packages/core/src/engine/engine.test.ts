@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { Event, Flow } from '@quorum/shared';
 
@@ -9,7 +9,8 @@ import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' wit
 import { loadProject } from '../backlog/project.js';
 import { removeTempDirs, repo, write } from '../../test/repo.js';
 import { runFlow } from './engine.js';
-import type { RunFlowOptions } from './types.js';
+import * as routing from './routing.js';
+import type { RunFlowOptions, StepResult } from './types.js';
 
 function options(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
   const repoDir = repo();
@@ -106,4 +107,101 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(opts.ticket.meta.stage).toBe('requirements');
   });
 
+});
+
+/**
+ * Drive `engine.ts`'s goto resolution without a failing step.
+ *
+ * Why the seam is here and not a real failure: every step kind that can reach `handleFail` —
+ * agent, script, integrate, fan-out — belongs to Q-0052 and Q-0053, and the only step kind this
+ * ticket owns end to end is the gate, which returns `null` or `{ abort: true }` and never a goto
+ * (an author gate carries no retry target). So the observable surface of AC-8b/8c/8d and AC-12d is
+ * `engine.ts` acting on a StepResult, which E-3 makes its sole responsibility. Stubbing `runStep`
+ * tests exactly that and nothing about how the result was produced.
+ */
+const routeOnce = (result: StepResult): void => {
+  let served = false;
+  vi.spyOn(routing, 'runStep').mockImplementation(async () => {
+    if (served) return null;
+    served = true;
+    return result;
+  });
+};
+
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move', () => {
+  const targetFlow = 'development';
+
+  function withTarget(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
+    const opts = options(overrides);
+    write(path.join(opts.project.repoDir, `harness/flows/${targetFlow}.yaml`),
+      `name: ${targetFlow}\nconsumes: red\nproduces: green\nsteps:\n  - id: build\n    role: developer-backend\n`);
+    return opts;
+  }
+
+  test('AC-8b — a cross-flow edge warns with the fixture text and regresses with all seven fields', async () => {
+    const opts = withTarget();
+    opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
+    opts.ticket.meta.iterations = { 'requirements.a': 2 };
+    routeOnce({ goto: `flow:${targetFlow}`, counter: 'requirements.a', limit: 2 });
+
+    const events = await collect(stream(opts));
+
+    expect(events).toContainEqual({
+      type: 'warn',
+      message: render(fixture.crossFlowRegression, { target: targetFlow, stage: 'red' }),
+    });
+    // The seven fields are asserted as a whole object, so a partial payload fails rather than
+    // passing on the subset that happens to be present. AC-3's closed union is what makes that
+    // assertable at all.
+    expect(events.at(-1)).toMatchObject({
+      type: 'terminal', status: 'regressed', runId: 1,
+      targetFlow, stageBefore: 'draft', stageAfter: 'red',
+      counter: 'requirements.a', count: 2, limit: 2, remaining: 0,
+    });
+    expect(opts.ticket.meta.stage).toBe('red');
+  });
+
+  test('AC-8c — a goto naming an absent flow fails by name and moves no stage', async () => {
+    const opts = options();
+    opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
+    routeOnce({ goto: 'flow:doesNotExist', counter: 'requirements.a', limit: 1 });
+
+    const error = await collect(stream(opts)).then(() => undefined, (cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('doesNotExist');
+    // NOT byte-identical `ticket.md`: `finish` writes the ticket on every terminal status, so a
+    // failed run appends its history entry. What a failure leaves alone is the STAGE — only
+    // `completed` and `regressed` move it. Asserting the bytes would be unsatisfiable.
+    expect(opts.ticket.meta.stage).toBe('draft');
+    expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'failed', stage_after: 'draft' });
+  });
+
+  test('AC-8d — remaining clamps at zero when the counter has passed the limit', async () => {
+    const opts = withTarget();
+    opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
+    // count > limit is the boundary the clamp exists for, constructed rather than inferred from
+    // Math.max by reading: an unclamped subtraction reports -1 here.
+    opts.ticket.meta.iterations = { 'requirements.a': 3 };
+    routeOnce({ goto: `flow:${targetFlow}`, counter: 'requirements.a', limit: 2 });
+
+    const events = await collect(stream(opts));
+
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'regressed', count: 3, limit: 2, remaining: 0 });
+  });
+
+  test('AC-12d — a goto naming no step throws a raw TypeError, not a FlowError', async () => {
+    const opts = options();
+    opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
+    routeOnce({ goto: 'no-such-step', counter: 'requirements.a', limit: 1 });
+
+    const error = await collect(stream(opts)).then(() => undefined, (cause: unknown) => cause);
+
+    // Why: preserved defect, see Q-0050 AC-12d — findIndex() === -1 indexes the step array at -1
+    // and the next dispatch dereferences undefined. Pinned so a later fix is deliberate.
+    expect(error).toBeInstanceOf(TypeError);
+    expect((error as Error).name).toBe('TypeError');
+  });
 });

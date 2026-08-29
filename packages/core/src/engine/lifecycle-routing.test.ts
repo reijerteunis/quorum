@@ -118,3 +118,36 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     expect(ctx.finishRun).not.toHaveBeenCalled();
   });
 });
+
+describe('Q-0050 AC-12c — a gate nested in a parallel group is not a gate', () => {
+  test('the same step asks at the top level and does not ask inside a parallel group', async () => {
+    // Why: preserved defect, see Q-0050 AC-12c — runStep's parallel branch maps every member to
+    // the agent path irrespective of declared kind, so a `gate:` member never reaches askGate.
+    //
+    // The pair is the point. A lone "answerGate was not called" assertion passes against a stub
+    // that throws before reaching anything, and would keep passing if the dispatch were removed
+    // altogether — the shape "a check that skips its subject must not report success" (2026-08-25)
+    // takes inside a negative assertion. Running the SAME member both ways makes the difference
+    // the subject: one call must ask, the other must not.
+    const member = { id: 'panel-gate', gate: 'human', reason: 'approve the panel' };
+
+    const asked: Event[] = [];
+    const topLevelAnswers = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'advance' as const }));
+    const topLevel = context({ answerGate: topLevelAnswers, emit: (event) => asked.push(event) });
+    await runStep(member, topLevel);
+
+    const nestedEvents: Event[] = [];
+    const nestedAnswers = vi.fn();
+    const nested = context({ answerGate: nestedAnswers, emit: (event) => nestedEvents.push(event) });
+    // The nested member reaches the agent path, which belongs to Q-0052; whatever it does with it
+    // is not this assertion's subject, so only the gate-side effects are read.
+    await runStep({ id: 'panel', parallel: [member] }, nested).catch(() => undefined);
+
+    expect(topLevelAnswers, 'a top-level gate must ask').toHaveBeenCalledTimes(1);
+    expect(asked.filter((event) => event.type === 'gate')).toHaveLength(1);
+
+    expect(nestedAnswers, 'a nested gate must not ask — it is dispatched as an agent step').not.toHaveBeenCalled();
+    expect(nestedEvents.filter((event) => event.type === 'gate')).toHaveLength(0);
+  });
+});
+
