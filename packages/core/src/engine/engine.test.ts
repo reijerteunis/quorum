@@ -24,7 +24,7 @@ import type { RunFlowOptions, StepResult } from './types.js';
  */
 function options(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
   const repoDir = repo();
-  write(path.join(repoDir, 'harness/harness.yaml'), 'adapterOverride: mock\n');
+  write(path.join(repoDir, 'harness/harness.yaml'), 'adapterOverride: mock\nrepo:\n  base_branch: main\n');
   const project = loadProject(repoDir);
   const flowFile = path.join(repoDir, 'harness/flows/requirements.yaml');
   write(flowFile, 'name: requirements\nconsumes: draft\nproduces: requirements\nsteps: []\n');
@@ -235,6 +235,46 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'interrupted', error: 'received SIGINT' });
     const log = fs.readFileSync(path.join(opts.ticket.dir, 'runs.log'), 'utf8');
     expect(log).toMatch(/run=1 interrupted stage=draft→draft .*error="received SIGINT"/);
+  });
+
+  test('Q-0077 AC-1/AC-4 — base overrides the {base} interpolation value, and its absence changes nothing', async () => {
+    // AC-1: the override reaches `{base}`. AC-4: without it the default path is unchanged.
+    const withOverride = options({ base: 'main~50' });
+    const seen: string[] = [];
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      seen.push(String(context.vars.base));
+      return null;
+    });
+    withOverride.flow.steps = [{ id: 'a' }] as unknown as typeof withOverride.flow.steps;
+    await collect(stream(withOverride));
+
+    const plain = options();
+    plain.flow.steps = [{ id: 'a' }] as unknown as typeof plain.flow.steps;
+    await collect(stream(plain));
+
+    expect(seen).toStrictEqual(['main~50', 'main']);
+  });
+
+  test('Q-0077 AC-3 — base moves the diff anchor and not the branch a run would merge from', async () => {
+    // The whole design in one assertion. `repo.base_branch` is what a rework step and `integrate`
+    // MERGE into the ticket's branch; `{base}` is only what a review compares against. If the flag
+    // moved both, aiming a review at an old revision would write that revision into the branch.
+    // Asserted over the two values a step can actually read, rather than by reading the source.
+    const opts = options({ base: '0f1e40d' });
+    let anchor: unknown;
+    let mergeSource: unknown;
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      anchor = context.vars.base;
+      mergeSource = context.config.repo?.base_branch;
+      return null;
+    });
+    opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
+    await collect(stream(opts));
+
+    expect(anchor).toBe('0f1e40d');
+    // A CONFIGURED value, so "unmoved" is distinguishable from "was never set" — without
+    // `repo.base_branch` in the fixture this assertion passes over `undefined` and proves nothing.
+    expect(mergeSource).toBe('main');
   });
 
   test('rejects a stage mismatch before context construction or any write', async () => {

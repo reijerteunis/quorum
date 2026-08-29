@@ -6,7 +6,7 @@ import type { Occurrence } from '../../packages/core/src/run-history/manifest.js
 export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
 export type StepResult = { goto: string; counter: string; limit: number } | { abort: true } | null;
 export type AnswerGate = (question: GateQuestionEvent) => Promise<GateAnswerEnvelope>;
-export interface RunFlowOptions { ticket: TicketRecord; flow: Flow; project: Project; backlog: Backlog; dry?: boolean; auto?: boolean; answerGate?: AnswerGate; signal?: AbortSignal }
+export interface RunFlowOptions { ticket: TicketRecord; flow: Flow; project: Project; backlog: Backlog; dry?: boolean; auto?: boolean; answerGate?: AnswerGate; signal?: AbortSignal; base?: string }
 export type EmitEvent = (event: Event) => void;
 export type FinaliseAbandonment = () => Promise<void>;
 export type BranchHeadReader = (repoDir: string, branch: string) => string | null;

@@ -50,6 +50,16 @@ export interface RunFlowOptions {
   answerGate?: AnswerGate;
   /** Caller-owned cancellation. The engine installs no process signal handler of its own. */
   signal?: AbortSignal;
+  /**
+   * Overrides the run's `{base}` interpolation value — the **diff anchor** only.
+   *
+   * What a review compares the ticket's work against, which `repo.base_branch` otherwise supplies.
+   * It deliberately does NOT move the branch a rework step or `integrate` merges from: aiming a
+   * review at an old revision must not write that revision into the ticket's branch. Without it a
+   * ticket whose branch is contained in the base has an empty review range and cannot be reviewed
+   * at all. See Q-0077.
+   */
+  base?: string;
 }
 
 /** Enqueues one event on the run's lossless stream. */

@@ -1,7 +1,7 @@
 ---
 id: Q-0077
 title: harness run --base, so a contained ticket can still be reviewed
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0077/integration
@@ -78,6 +78,27 @@ the read-route question E-5(b) closed.
   exists to fix, driven end to end rather than asserted.
 - **AC-6** The flag is documented where `harness run` is documented, and `contracts/Q-0050/run-flow-api.contract.ts`
   gains the field so the typed record does not silently diverge further.
+
+## Implemented by hand, 2026-08-29, both trees in one change
+
+Answering the open question below: `base` is its own field on `RunFlowOptions` and on the spike's
+`runFlow`. The cheaper shape — the CLI overwriting `project.config.repo.base_branch` — is refused,
+and `engine.test.ts`'s AC-3 was **demonstrated red against it** rather than argued about: with that
+shape the merge source reads the override.
+
+Five spike scenarios and three Vitest tests. The fixture had to gain a real `repo.base_branch`
+before AC-3 could discriminate — without one the "unmoved" assertion passes over `undefined` and
+proves nothing, which is this session's most repeated defect caught on its own work.
+
+**B5 found an ordering defect in the implementation.** The bare-`--base` refusal sat after
+`loadProject()`, so a missing project masked it with an `ENOENT` stack. Argument validation now runs
+beside the usage check, before anything is read from disk.
+
+**AC-5 is proved at `materialiseDiff`, not through a full flow run.** The stage precondition fires
+before the diff preflight, so a flow-level proof needs a ticket at `green` and there is none; the
+chain is covered instead by three tests end to end — argv → `runFlow` (B5), `options.base` →
+`vars.base` (core AC-1), `vars.base` → a non-empty range for a contained ticket (B1). Stated rather
+than claimed as end-to-end.
 
 ## Open question for the gate
 

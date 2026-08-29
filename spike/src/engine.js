@@ -34,7 +34,7 @@ function readOnlyBacklog(backlog) {
   return view;
 }
 
-export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false }) {
+export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, config, ui, auto = false, dry = false, base = null }) {
   if (ticket.meta.stage !== flow.consumes) {
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);
   }
@@ -42,7 +42,12 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
     counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
-    vars: { id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
+    // `base` overrides the DIFF ANCHOR only — ctx.vars.base, which `{base}` interpolates and the
+    // range guard treats as related. The three sites that MERGE a base into the ticket's branch
+    // (rework sync, integrate's sync, the evidence note) read config.repo.base_branch directly and
+    // are deliberately not moved: aiming a review at an old revision must not write that revision
+    // into the branch. See Q-0077.
+    vars: { id: ticket.meta.id, iter: 1, base: base ?? config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
     diffInputs: new Map(), deferredDiffs: new Map(),
   };
   // What the ticket branch looked like before this run touched it, so a run that does not

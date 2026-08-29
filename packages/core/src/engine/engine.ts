@@ -118,7 +118,7 @@ function toError(error: unknown): Error {
 
 /** Runs one flow to its terminal state, emitting every event through `emit`. */
 async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent): Promise<void> {
-  const { ticket, flow, project, backlog, dry = false, auto = false, answerGate } = options;
+  const { ticket, flow, project, backlog, dry = false, auto = false, answerGate, base } = options;
 
   if (ticket.meta.stage !== flow.consumes) {
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);
@@ -131,7 +131,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   // Why: preserved defect, see Q-0050 AC-10. (counters alias the frontmatter object)
   const counters = ticket.meta.iterations ?? {};
   const vars: Record<string, unknown> = {
-    id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
+    id: ticket.meta.id, iter: 1, base: base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
   };
   const stats: RunStats = { cost: 0, tokens: 0, unpriced: 0 };
 

@@ -596,7 +596,12 @@ async function main() {
     }
     case 'run': {
       const [flowName, ticketId] = rest;
-      if (!flowName || !ticketId) die('usage: harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--verbose] [--gate-answer advance|retry|abort]');
+      if (!flowName || !ticketId) die('usage: harness run <flow> <ticket> [--auto] [--dry] [--base <ref>] [--adapter mock] [--verbose] [--gate-answer advance|retry|abort]');
+      // `--base <ref>` with no value parses to `true` in the generic flag parser: it names no
+      // revision, so it is refused rather than coerced into the string "true" and interpolated into
+      // a diff range. Checked here, with the other argument validation, so a malformed command
+      // fails before anything is read from disk. See Q-0077.
+      if (flags.base === true) die('--base needs a revision: harness run <flow> <ticket> --base <ref>');
       const proj = loadProject();
       // Reads the flow files fresh from disk, before the ticket is loaded, before anything is
       // written, and before `--adapter mock` rewrites any step's adapter in memory — a directory
@@ -608,7 +613,7 @@ async function main() {
       if (flags.adapter) { overrideAdapters(flow, flags.adapter); proj.config.adapterOverride = flags.adapter; }
       const ticket = proj.backlog.read(ticketId);
       try {
-        const r = await runFlow({ flow, ticket, ...proj, ui, auto: Boolean(flags.auto), dry: Boolean(flags.dry) });
+        const r = await runFlow({ flow, ticket, ...proj, ui, auto: Boolean(flags.auto), dry: Boolean(flags.dry), base: flags.base ?? null });
         process.exit(r.status === 'aborted' ? 2 : 0);
       } catch (e) { if (e instanceof FlowError || e instanceof IntegrationError) die(e.message); throw e; }
     }

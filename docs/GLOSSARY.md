@@ -85,6 +85,13 @@ before it is paid for. The run-level diff preflight materialises every range a f
 need. A preflight that declines to examine something reports that it *skipped* it — reporting
 success for an unexamined subject is the failure recorded in the 2026-08-25 decision.
 
+**Base override** (`--base <ref>`): `harness run … --base <ref>` aims a run's `{base}` at an
+arbitrary revision instead of `repo.base_branch`. It moves the **diff anchor** only — what a review
+compares the ticket's work against — and never the branch a rework step or `integrate` merges from,
+which keeps reading the configured base. Without it a ticket whose branch is contained in the base
+has an empty review range and cannot be reviewed at all, which is why a merged ticket needed a
+hand-run review before Q-0077. Not a way to change what a run writes.
+
 **Dry run** (`--dry`): `harness run … --dry` walks a flow without invoking an adapter or writing
 anything, reporting what each step would do. It is the same run machinery, not a separate code
 path, which is why its preflight must be as honest as a real run's. Not called a "preview" —
