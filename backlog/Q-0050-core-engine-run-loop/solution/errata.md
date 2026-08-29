@@ -227,3 +227,97 @@ The order is `(name, harnessDir)` — the spike's own at `engine.js:727` and `:7
 resolved, what `solution.md` § *Loader argument order* states, and what the typed contract, the stub
 and the tests now carry. The prose was left behind when those were corrected at `7a72797`; it is
 recorded here so a later reader does not "fix" the code to match the document.
+
+## E-6 — the red phase's own evidence, and two things it cannot show — 2026-08-29
+
+**Written at qa-red's second exhaustion gate, after round 3.** Round 3's review splits its work list
+by who can perform each item and puts three under *"Human, at the gate — cannot be produced by any
+step on this route"*. These are those three. Every number below was **re-measured by hand** in
+`.harness/worktrees/harness__Q-0050__integration` before it was written here, per
+*"verify inherited measurements"*; one of the reviewer's figures was wrong and is corrected in (c).
+
+### (a) `prove-red`'s artifact is not sufficient evidence of this ticket's red phase
+
+**The mechanism.** Root `turbo.json` declares `"test": { "dependsOn": ["^test"] }` (Q-0072) and
+`@quorum/core` depends on `@quorum/shared`, so `@quorum/core#test` is the only task in the graph with
+a dependency and is **pruned whenever `@quorum/shared#test` fails**. AC-13b's test is in
+`packages/shared/src/docs.test.ts` — correctly, per E-5(c) — and is red because
+`q0050-documentation` has not written the documents yet. So for as long as the red phase is doing its
+job, the artifact `prove-red` writes can show nothing about the engine.
+
+Round 2 recorded this as closed because shared happened to be green that round. It was not closed; it
+was dormant. **It will recur in development** until the docs task lands, and it is not confined to
+this ticket: any red test in an upstream package hides every downstream package's failures, which is
+backwards for a red phase.
+
+**No step on this route can fix it.** `commands.test` lives in `harness/harness.yaml` and is governed
+by *"The test command defeats its own cache"* (2026-08-27); `qa/red-report.md` is written by
+`prove-red`'s `type: integrate` step from raw `testReport` output, not by an agent.
+
+**The evidence it replaces, measured by hand at the gate rather than taken from the review.** In the
+integration worktree carrying the merged round-3 tests:
+
+| Measurement | Result |
+| --- | --- |
+| `packages/core`: `tsc --noEmit` | exit 0 |
+| `packages/core`: `vitest run` | **39 failed, 835 passed, 2 skipped** (876 tests, 42 files) |
+| failure kinds across those 39 | **34 `AssertionError`, 1 raw stub throw**, 0 transform or import errors |
+| `pnpm turbo run test --force --continue` | core 7 files failed *and* shared 1 file failed — both run |
+| the same without `--continue` | `5 successful, 6 total`; core never executes |
+
+So the suite **is** red on assertions rather than compile errors, which is the question this step
+exists to answer. The engine's four owned behaviours are among the failures by name — the lazy
+lossless channel, terminal-then-throw, gate correlation with out-of-band answers, and the
+one-traversal retry grant.
+
+**The general defect is a successor, and its body is written out here so the obligation cannot
+expire** — *a deferred obligation dies unless it is written into a successor's body*. It still needs
+creating as a ticket.
+
+> **Q-00xx — A package's red hides its dependents', so a red phase cannot report itself.**
+> `turbo.json`'s `test` task declares `dependsOn: ["^test"]`, which is correct for a green run — a
+> dependent's pass is meaningless if its dependency failed — and exactly wrong for a red one, where
+> every failure is the deliverable. `harness.yaml`'s `commands.test` is `pnpm turbo run test
+> --force` with no `--continue`, so an `integrate` step with `expect: fail` reports a red it cannot
+> describe, and one with `expect: pass` is unaffected. Measured on Q-0050 at its qa-red gate: with
+> `--continue`, core reports 7 failing files and shared 1; without it, `5 successful, 6 total` and
+> core never runs, in 1.1 s against core's 26.75 s forced. **This is Q-0071 inverted** — that ticket
+> asked what a green tick was being claimed for; here a red tick claims a suite that never executed,
+> and the gate reads it as proof. The fix is not reflexively adding `--continue` everywhere: it
+> changes what a failing `integrate` means for every flow, so decide whether `expect: fail` and
+> `expect: pass` want different commands, or whether the step should report per-task results rather
+> than an exit code. Do not re-derive the numbers from Q-0050's `red-report.md` — it is the artifact
+> the defect blinds.
+
+### (b) the message oracle is declared as an input, and the guard could not have told us
+
+`packages/core/turbo.json` now declares `../../contracts/Q-0050/run-messages.fixture.json`. Added by
+hand at this gate because **no task in `tasks.yaml` owns that file** and the tests interpolate the
+fixture, so without it `@quorum/core#test` could replay a cached pass after the oracle changed —
+Q-0072's defect one layer over.
+
+**Verified before and after:** `turbo-inputs.test.ts` reports **6 failures both ways**, so the
+declaration closes a hole without moving the guard. Those six are QA's, and round 3's work list items
+1 and 2 name their remedies.
+
+**The hole in the guard is real and outlives this ticket.** `engine.test.ts:7` reaches the fixture by
+`import … with { type: 'json' }`, and `turbo-inputs.test.ts:1985` excludes module specifiers from its
+scan **on purpose** — sound for in-package imports and for workspace dependencies, which
+`dependsOn: ["^test"]` hashes, and blind to an import that leaves the package into a non-package
+directory. That is a successor for Q-0073's line of work, and this paragraph is its record.
+
+### (c) `q0050-shared-events` has no failing test, and that is stated rather than left silent
+
+`packages/shared/src/events.q0050.test.ts` is **green: 3 tests, 3 passing** — *not* the 15 round 3's
+F-1 reports, which counts assertions rather than tests. Re-measured at the gate.
+
+It passes because solutioning already shipped the final schemas in `packages/shared/src/events.ts`:
+`gateId`, `gateAnswerEnvelopeSchema` and `runTerminalEventSchema` with the closed regression group.
+So AC-2e, AC-3c, AC-3d and the schema half of AC-4c/AC-4d **are satisfied by the executable contract
+already on the branch**, and they carry forward as permanent guards rather than as red tests.
+
+**The consequence for the fan-out, stated so nobody discovers it mid-round:** `q0050-shared-events`
+has no failing test to turn green, and its own description — *"replace the Q-0050 contract
+declarations with the final strict schemas"* — is already satisfied. Its remaining work is whatever
+the final schemas still lack, not the schemas themselves. Silence here is the one option that would
+leave a reader believing the red phase proved something about that task.
