@@ -54,6 +54,14 @@ means porting a file while it is being changed underneath.
 **And the rule the whole thing generalises to:** *skipped is not passed*. A preflight, a `--dry` run
 or a lint that declines to examine something says so. Silence must never render as a green tick.
 
+**Inherited from Q-0049 (merged requirement, 2026-08-28).** This ticket also owns
+`trimIncompleteUtf8Suffix` (`spike/src/engine.js:895`), whose only call site in the repository is
+`materialiseDiff` (`:835`), where it trims a truncated diff back to a UTF-8 boundary. Q-0049's body
+lists it among run history's functions, which it is not, and Q-0049's merged requirement declines it
+as NG-2 and re-points it here. **Note where it sits.** The range named above stops at `:894` and the
+function begins at `:895`, so a port that trusts that range takes everything except this one
+function — the adjacency hazard Q-0049 named, arriving as an omission rather than as a theft.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this

@@ -108,3 +108,8 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A nit does not contradict an approval](decisions/059-a-nit-does-not-contradict-an-approval.md)
 - [Membership is a git question, not a filesystem one](decisions/060-membership-is-a-git-question-not-a-filesystem-one.md)
 - [An absent branch is an answer, and the board decides whether it is worth saying](decisions/061-an-absent-branch-is-an-answer.md)
+- [What a run's event stream carries, and how a gate answer travels back](decisions/062-what-a-runs-event-stream-carries.md)
+
+## 2026-08-29
+
+- [A reviewer approves the change it asked for](decisions/063-a-reviewer-approves-the-change-it-asked-for.md)

@@ -5,3 +5,27 @@
 2026-08-28T14:16:28.865Z run=1 gate=human answer=advance
 2026-08-28T14:16:28.873Z run=1 completed stage=draft→requirements cost=16.053 tokens=5266721
 2026-08-28T14:17:35.000Z run=1 note (out-of-band: the two open questions the merged requirement routes to this gate were confirmed with it, so solutioning starts from a settled position and a reviewer cannot reopen either. OQ-4 — the four routed diagnostics are PRESERVED, not fixed here; the successor is written out in full in merged.md's Open questions as Q-0074, which still needs creating as a ticket. OQ-5 — core/src/index.ts stays the one-line scaffold; the barrel waits for the cutover. OQ-1, OQ-2, OQ-3 and OQ-6 are the architect's at solutioning, as charter §8 routes them. Unchanged and still owed: the decision entry named in pre-run action 2, after solutioning decides and before implementation starts — no step on this route can write it.)
+2026-08-28T14:17:42.757Z run=2 flow=solutioning start stage=requirements
+2026-08-28T14:22:24.811Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=281846
+2026-08-28T14:31:21.206Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=3.540464 ms=536383
+2026-08-28T14:34:52.395Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=211093
+2026-08-28T14:43:37.802Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=3.0586325 ms=525397
+2026-08-28T14:49:27.536Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=349627
+2026-08-28T14:58:50.889Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=3.699525999999999 ms=563345
+2026-08-28T14:58:50.896Z run=2 exhausted stage=requirements→requirements cost=0
+2026-08-28T16:39:44.517Z run=2 gate=human-locked answer=retry
+2026-08-28T16:39:44.517Z run=2 gate=retry counter=solutioning.architecture-review set=2 (one further traversal authorised)
+2026-08-28T16:44:21.840Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=277272
+2026-08-28T16:50:55.274Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=2.7718899999999995 ms=393425
+2026-08-28T16:50:55.281Z run=2 exhausted stage=requirements→requirements cost=0
+2026-08-28T16:53:11.070Z run=2 gate=human-locked answer=retry
+2026-08-28T16:53:11.070Z run=2 gate=retry counter=solutioning.architecture-review set=2 (one further traversal authorised)
+2026-08-28T16:57:07.524Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=236388
+2026-08-28T17:07:40.512Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=4.756202 ms=632976
+2026-08-28T17:07:40.527Z run=2 exhausted stage=requirements→requirements cost=0
+2026-08-28T18:24:00.851Z run=2 gate=human-locked answer=advance
+2026-08-28T18:26:06.774Z run=2 step=finalize vendor=codex model=- verdict=- cost=? ms=125920
+2026-08-28T18:26:44.717Z run=2 step=tasks vendor=codex model=- verdict=- cost=? ms=37928
+2026-08-28T19:17:08.161Z run=2 gate=human answer=advance
+2026-08-28T19:17:08.398Z run=2 step=merge-contracts merged=1/1 tests=-
+2026-08-28T19:17:08.422Z run=2 completed stage=requirements→solutioned cost=17.827 tokens=15080906

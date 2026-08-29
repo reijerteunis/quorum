@@ -44,5 +44,23 @@ preserved date order at the cost of position. Worth deciding which property wins
 written on one date lands after entries written later — the two cannot both hold, and the rule
 currently only names one of them.
 
+**Q-0049 ruled at its requirements gate on 2026-08-28, and this ticket got bigger.** Q-0049's body
+offered a choice — land Q-0037 on the spike first, or port the fixed version, but not both - and the
+merged requirement observed that it is a choice which does not exist: neither has happened, so
+charter §2 requires the port to take the **unfixed** code. It does, and every item above is preserved
+and reported in Q-0049's implement report rather than fixed in passing. **The consequence is that
+after Q-0049 lands, this ticket's subject exists in two trees**, so a fix in one leaves the port's
+independent witness disagreeing — the Q-0066/Q-0068 shape, where the change must land in `spike` and
+`packages/core` together. Charter §3's table still lists this ticket as one of five blocking the
+freeze SHA, which is `not-yet-recorded` (`harness/port-charter.md:243`); re-targeting at both trees
+is the recommendation and is Ruud's call, not Q-0049's.
+
+Two of the nine items above are also **re-pointed** by that requirement, and neither is Q-0049's to
+fix: the unreachable stage guard is unreachable *from the CLI* and is reachable for a caller that
+builds a ticket record itself, which is M3's server — so the port preserves it deliberately and it is
+the reason the module imports `parseFrontmatter`; and the `runGate` 1-second timer is already
+invited to be fixed by Q-0052, whose new Vitest fixtures do not inherit the frozen-`spike/test/**`
+constraint that blocked it here.
+
 Belongs to M2 in `docs/06-development-plan.md`. Small and unrelated to each other, so this is a
 good candidate for the chore flow, or for being split further if anyone would rather.

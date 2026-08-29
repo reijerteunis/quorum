@@ -162,7 +162,7 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'docs/04-architecture.md': 'capabilities.source.test.ts — the adapters/* layout',
     'contracts/Q-0006/review-artifacts.schema.json': 'structured-output.test.ts — the frozen verdict contract',
     'contracts/Q-0006/ticket-review-state.schema.json': 'contracts.test.ts — the frozen ticket contract',
-    'contracts/Q-0011/run-manifest.schema.json': 'run-manifest.test.ts, schema-cache.test.ts, validate-artifact.test.ts',
+    'contracts/Q-0011/run-manifest.schema.json': 'run-manifest.test.ts, schema-cache.test.ts, validate-artifact.test.ts, run-history/manifest.test.ts, run-history/writer.test.ts',
   },
 };
 
@@ -1005,10 +1005,18 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   'packages/core/src/git/git.test.ts': {
     '../../../etc/passwd': 'hostile input handed to the git argument validator, asserted to be refused',
   },
+  'packages/core/src/run-history/reader.ts': {
+    '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
+  },
+  'packages/core/src/run-history/reader.test.ts': {
+    '..': 'the same token, handed to the guard and asserted refused',
+    '../secret': 'a hostile run id, asserted refused; its target is built under os.tmpdir by the test itself',
+  },
   'packages/core/src/turbo-inputs.test.ts': {
-    '..': 'the value `escapes` compares a normalised path against',
+    '..': 'the value `escapes` compares a normalised path against, and the key of two entries above',
     '../': 'the prefix it compares against, and the key of two entries above',
     '../git/git.js': 'the key of the fanout entry above',
+    '../secret': 'the key of the run-history reader entry above',
     '../../../etc/passwd': 'the key of the git entry above',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
     '/../../docs': 'the expected value of the template-chunk fixture below',
@@ -1367,6 +1375,32 @@ const READ_BASES: Record<string, Record<string, string>> = {
     directory: 'lintFlowDirectory\'s parameter — the flows directory the caller named',
     file: 'path.join(directory, filename) inside it',
   },
+  'packages/core/src/run-history/reader.ts': {
+    runsRoot: 'readRunsDir\'s and resolveRunDirectory\'s parameter — the runs root the caller named',
+    manifestPath: 'path.join(runsRoot, runId, MANIFEST_FILE) inside it',
+    target: 'realPath\'s parameter, rooted by both of its callers at that same runs root',
+    realDir: 'the realpath of a single-segment child of it, refused unless its real parent IS the real root',
+  },
+  'packages/core/src/run-history/writer.ts': {
+    runsRoot: 'path.join(repoDir, RUN_HISTORY_ROOT) — inside the repository the caller named',
+    'ticket.dir': 'the ticket folder the backlog loaded, re-read for the persisted-stage guard',
+    logPath: 'path.join(ticket.dir, RUNS_LOG_FILE) — inside that same ticket folder',
+    outputPath: 'path.join(runDir, occurrence.occurrence_dir, OUTPUT_FILE) — inside the run directory this call created',
+    temporary: '`${target}.tmp` beside the manifest, in that same run directory',
+  },
+  'packages/core/src/run-history/reader.test.ts': {
+    root: 'a runs root under tempDir(\'runs-\'), built by this file two levels down so a fixture outside it is still inside what removeTempDirs deletes',
+  },
+  'packages/core/src/run-history/writer.test.ts': {
+    'history.dir': 'the run directory initialiseRunHistory created, under the sandbox repository',
+    'first.dir': 'the same, on the run that owns the directory a second one collides with',
+    repoDir: 'repo() — a git repository created under os.tmpdir',
+    worktree: 'a linked worktree of one of those repositories',
+    file: 'git rev-parse --git-path info/exclude, resolved against the sandbox repository',
+    target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',
+    'runDirOf(start)': 'the run directory a `start` would allocate, derived from the sandbox repoDir it names',
+    stray: 'path.join(history.dir, \'manifest.json.tmp\') — likewise',
+  },
   'packages/core/src/test-command.test.ts': {
     dir: 'spikeSources\' parameter, defaulting to path.join(repoRoot, \'spike/src\') — the walk WALKS declares above',
     bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\') — the installed toolchain, which git ignores and turbo therefore cannot hash, so no declaration could cover it and its absence fails loudly instead',
@@ -1524,6 +1558,12 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * carried. The sixty-first, `packages/shared/test/corpus.ts: docs/decisions`, arrived while this
  * ticket was in flight, with the split of `docs/DECISIONS.md` into a file per entry; it is an
  * addition of exactly the shape this list permits, and the walk that covers it is in {@link WALKS}.
+ *
+ * Nine more arrived with Q-0049's `run-history/` suites — four of them naming literals the register
+ * did not hold before: the two ticket folders whose `ticket.md` the fixtures quote as a
+ * `ticket_path`, `harness/flows/development.yaml`, and `packages/core/src/contracts/run-manifest.ts`,
+ * which the source suite reads to assert that neither implementation of the roll-up imports the
+ * other. Seventy over thirty-nine.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
@@ -1562,6 +1602,15 @@ const COLLECTED_BASELINE = [
   'packages/core/src/lint/lint.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/lint/lint.test.ts: harness/flows',
   'packages/core/src/lint/lint.test.ts: spike/templates/harness/flows',
+  'packages/core/src/run-history/manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/run-history/reader.test.ts: backlog/Q-0011-run-history-on-disk/ticket.md',
+  'packages/core/src/run-history/reader.test.ts: harness/flows/development.yaml',
+  'packages/core/src/run-history/run-history.source.test.ts: packages/core/package.json',
+  'packages/core/src/run-history/run-history.source.test.ts: packages/core/src/contracts/run-manifest.ts',
+  'packages/core/src/run-history/run-history.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/run-history/writer.test.ts: backlog/Q-0049-core-run-history/ticket.md',
+  'packages/core/src/run-history/writer.test.ts: contracts/Q-0011/run-manifest.schema.json',
+  'packages/core/src/run-history/writer.test.ts: harness/flows/chore.yaml',
   'packages/core/src/test-command.test.ts: .github/workflows/ci.yml',
   'packages/core/src/test-command.test.ts: packages/core/src/adapters/real-cli.probe.test.ts',
   'packages/core/src/test-command.test.ts: spike/src',
@@ -1694,9 +1743,9 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(61);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(70);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
-      'distinct literals in the baseline').toBe(35);
+      'distinct literals in the baseline').toBe(39);
     // And the nine the classifier calls directories, which is the class the defect lived in: a
     // checkout that had run a flow made it eleven.
     for (const directory of ['docs/decisions', 'harness/flows', 'harness/roles', 'packages/core',
