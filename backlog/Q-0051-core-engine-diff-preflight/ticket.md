@@ -8,7 +8,15 @@ branch: harness/Q-0051/integration
 priority: p2
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: aborted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-08-29T22:24:42.646Z
+    cost: 7.274
 ---
 Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:91–142`) and
 the five functions it and `buildPrompt` reach — `named` (`:769`), `diffSitesOf` (`:781`),
@@ -130,6 +138,36 @@ defect in shipped code and none is visible to a green suite.
    anticipated the flag in as many words, so the guard composes with it; a port that resolves `base`
    from the config inside `materialiseDiff` would silently undo Q-0077 and every existing test would
    stay green except that file's.
+
+## Run 1 aborted at the requirements gate, 2026-08-30 — Q-0038 goes first
+
+`requirements/merged.md` exists, is complete, returned `ready`, and cost **$7.274 plus 5,125,082
+tokens** across three steps. **Do not run the chore flow against it.** Ruud aborted at the gate to
+land Q-0038 on `spike/src/engine.js` first, which is the sequencing this body's own §*Sequencing
+against Q-0038* asks for — *"Land it on the spike first or port the fixed version; doing both means
+porting a file while it is being changed underneath."*
+
+**What that invalidates, precisely, so the rest can still be used.** The document rules in D-5 that
+the wholesale `.find()` over both endpoints (`spike/src/engine.js:133`) ships **unchanged** as a
+registered preserved defect, and AC-12's register carries a `preserved defect, see Q-0038` authority
+line for it. Once Q-0038 lands, that ruling inverts: this ticket ports the **fixed** endpoint-class
+validation, D-5 is wrong, AC-12's first register row goes, and AC-9 clause 5 is rewritten. The
+requirements run is therefore re-run after Q-0038 is contained, not resumed.
+
+**What survives and is worth re-reading rather than re-deriving.** Everything not about the `.find()`
+was verified against the files at the gate and held: the `merge-base` token in `git.source.test.ts`
+that a verbatim comment port would trip; AC-13's measured pair of `TypeError` messages, where the
+spike's preflight iterating `flow.steps` first is what makes `flow.steps is not iterable` externally
+observable and `core` currently says `Cannot read properties of undefined (reading 'length')`;
+`q0050.source.test.ts`'s two pins, the folder array at `:82` **and** the file-keyed register at
+`:160`; and the coverage table's scenario census, checked exact — E1–E17, B1–B5, C1/C1b/C2/C3,
+D1/D2.
+
+**R-1 is the one item that should move rather than wait**, and it is now Q-0038's neighbour rather
+than this ticket's: under `--base`, an unresolvable override is reported as `repo.base_branch in
+harness/harness.yaml names missing ref …`, sending the maintainer to a file the value did not come
+from. It lives in the same `materialiseDiff` tail Q-0038 rewrites and matches the same frozen
+fixtures by substring, so the two are one pass over one function.
 
 ## Port charter
 
