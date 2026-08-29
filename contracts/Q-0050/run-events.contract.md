@@ -69,6 +69,9 @@ events gain exactly `stepId` at the engine boundary.
 ## Ordering and termination
 
 - The first pull starts the producer. One iterator instance supports one consumer.
+- `gateId` is opaque and **not to be parsed**. It is derived from the run id and a run-scoped
+  sequence and renders as `<runId>:<n>`, which is a correlation token rather than an event field —
+  the "no sequence number, no run id" rule governs the payload a consumer reads.
 - The FIFO never drops, coalesces, or deduplicates. Within one step, adapter event order is stable.
   Parallel members have no global ordering promise.
 - A `step` event is queued before observable step execution. `done` is queued only after success.
@@ -97,6 +100,8 @@ settle minutes later. Its envelope must repeat the pending `gateId`; stale or mi
 runtime-invalid answers fail the run by gate kind and reason. Promise settlement supplies exactly
 one answer, so duplicates cannot be applied. A missing callback fails after the question is queued.
 
-`auto`, command-level auto, and dry short-circuits are evaluated before a question is created:
+`auto`, command-level auto, and dry short-circuits are evaluated after the question is built and
+before it is emitted — superseded by solution/errata.md E-17 and by the 2026-08-29 erratum to
+*What a run's event stream carries*. A gate that is never asked still spends an id:
 eligible automatic gates and dry previews emit `info` and consume no answer. `human-locked` never
 auto-advances. An answered gate is logged before its answer is acted on.

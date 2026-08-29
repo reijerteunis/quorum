@@ -102,4 +102,42 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     const lifecycle = source('lifecycle.ts');
     expect((`${engine}\n${lifecycle}`.match(/Why: preserved defect, see Q-0050 AC-12\./g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
+
+  test('AC-13d: every preserved defect is a registered site, and none transcribes a document', () => {
+    // A register of identities, not a count. Q-0073's lesson — a floor passes while a site is
+    // swapped out, so the register names WHICH file carries WHICH authority and pins the
+    // arithmetic. A new preserved defect fails here until it is entered, and a deleted one fails
+    // here too, which a `toBeGreaterThanOrEqual` cannot do in either direction.
+    const REGISTERED: Record<string, readonly string[]> = {
+      'engine.ts': ['AC-10.', 'AC-12.', 'AC-12d'],
+      'lifecycle.ts': ['AC-10.', 'AC-12.'],
+      'routing.ts': ['AC-4.', 'AC-12.'],
+    };
+    const found: Record<string, string[]> = {};
+    for (const name of production) {
+      const hits = [...source(name).matchAll(/Why: preserved defect, see Q-0050 (AC-\d+[a-z]?\.?)/g)].map((m) => m[1]!);
+      if (hits.length > 0) found[name] = hits;
+    }
+    expect(found).toStrictEqual(REGISTERED);
+    // Seven, and AC-10's two are the reason this register must not ratify what shipped: they were
+    // MANDATED by the criterion and absent from the code, so a register written to the shipped set
+    // would have made their absence the oracle. Round 3 caught exactly that.
+    expect(Object.values(found).flat()).toHaveLength(7);
+  });
+
+  test('AC-13d: an authority line is one line, so it cannot be a transcribed paragraph', () => {
+    // The "reproduces no sentence" half, as far as it can be checked from inside this package.
+    // The criterion asks for a substring scan against docs/decisions and this ticket's body;
+    // `docs/decisions` is walked by @quorum/shared#test, not by this task, so a real scan needs a
+    // new route through Q-0072's input guard. What is checked instead is the shape a transcription
+    // would have to take: `harness/rules.md` allows ONE line naming the authority, and a copied
+    // decision paragraph cannot fit in one. Stated as the proxy it is — qa/scenarios.md's AC-13d
+    // row says so too, rather than claiming the scan.
+    for (const name of production) {
+      for (const line of source(name).split('\n')) {
+        if (!line.includes('Why: preserved defect')) continue;
+        expect(line.trim().length, `${name}: ${line.trim()}`).toBeLessThan(120);
+      }
+    }
+  });
 });

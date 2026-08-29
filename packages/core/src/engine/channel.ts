@@ -103,14 +103,32 @@ export function createEventChannel(
     });
   }
 
+  /**
+   * Settles and detaches a pull that was already in flight, before finalisation emits anything.
+   *
+   * The `abandoned` check in `next` only covers pulls made AFTER `return()`. One already waiting
+   * still held its `resolve` in `pending`, and the interrupted finalisation emits — so the consumer
+   * that abandoned could be handed the very terminal event it caused, or, when the run threw, have
+   * a stale pull rejected under it. Unreachable from `for await`, which never has a pull
+   * outstanding when it breaks; reachable from `Promise.race([it.next(), shutdown])`, which is the
+   * shape a daemon uses.
+   */
+  function detachPending(): void {
+    const waiting = pending;
+    pending = undefined;
+    waiting?.resolve({ value: undefined, done: true });
+  }
+
   async function abandon(): Promise<IteratorResult<Event>> {
     abandoned = true;
+    detachPending();
     await finalise();
     return { value: undefined, done: true };
   }
 
   async function abandonWithError(error?: unknown): Promise<IteratorResult<Event>> {
     abandoned = true;
+    detachPending();
     await finalise();
     throw error;
   }

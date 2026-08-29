@@ -85,6 +85,26 @@ describe('Q-0050 AC-2b/AC-2d/AC-3b/AC-5d — event channel', () => {
     expect(start).toHaveBeenCalledTimes(1);
   });
 
+  test('a pull already in flight is settled at abandonment and cannot receive finalisation events', async () => {
+    // The half the latch does not cover. `abandoned` is checked at the top of next(), so it stops
+    // LATER pulls; one already waiting still held its resolve, and finalisation emits. Unreachable
+    // from `for await` — which never has a pull outstanding when it breaks — and reachable from
+    // Promise.race([it.next(), shutdown]) followed by it.return(), which is the daemon's shape.
+    let sink!: ReturnType<typeof createEventChannel>['sink'];
+    const created = channel(() => { /* nothing emitted until finalisation */ }, async () => {
+      sink.emit({ type: 'warn', message: 'rolled back' });
+      sink.emit({ type: 'terminal', runId: 1, status: 'interrupted', stageBefore: 'a', stageAfter: 'a', cost: 0, tokens: 0 });
+    });
+    sink = created.sink;
+    const iterator = created.stream[Symbol.asyncIterator]();
+
+    const inFlight = iterator.next();
+    await iterator.return?.();
+
+    expect(await inFlight).toStrictEqual({ value: undefined, done: true });
+    expect(await iterator.next()).toStrictEqual({ value: undefined, done: true });
+  });
+
   test('return awaits abandonment finalisation', async () => {
     let release!: () => void;
     const finalised = new Promise<void>((resolve) => { release = resolve; });

@@ -69,6 +69,47 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
       .toBeLessThan((ctx.emit as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
   });
 
+  test('AC-9f — the payload carries the raw cost and the history entry carries the rounded one', async () => {
+    const ctx = lifecycle();
+    const result = await finish(ctx, 'red', 'completed', null);
+    // Both halves. The raw one was already asserted by the five-status matrix; the rounded one —
+    // what actually lands in the ticket's frontmatter and is read for months — was not, which the
+    // criterion itself anticipated.
+    expect(result.cost).toBe(1.23456);
+    expect(ctx.ticket.meta.history?.at(-1)).toMatchObject({ cost: 1.235 });
+    expect(ctx.emit).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'terminal', cost: 1.235 }));
+  });
+
+  test('AC-9 — the terminal runs.log line is rendered whole from the oracle, not matched by prefix', async () => {
+    // `log.terminal` was read by NO test: the five-status matrix matched `run=7 <status> stage=` as
+    // a prefix, and the interrupted test's regex stepped over `cost=` and `tokens=` with `.*`. The
+    // enumerated segment was the unchecked segment, on the criterion whose subject it is.
+    const ctx = lifecycle({ stats: { cost: 1.23456, tokens: 42, unpriced: 0 } });
+    await finish(ctx, 'red', 'failed', 'script exited 1: denied');
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.terminal, {
+      runId: 7, status: 'failed', stageBefore: 'solutioned', stageAfter: 'solutioned',
+      roundedCost: 1.235, tokens: 42,
+      errorSuffix: render(fixture.log.errorSuffix, { 'JSON-quoted-note': '"script exited 1: denied"' }),
+    }));
+  });
+
+  test('AC-2a — both unpricedSuffix branches render, singular and plural', async () => {
+    // A string preserved byte-for-byte from engine.js:650, two-space prefix included, whose plural
+    // branch no test had ever reached: every other test runs at `unpriced: 0`.
+    for (const [unpriced, key] of [[1, 'one'], [2, 'many']] as const) {
+      const ctx = lifecycle({ stats: { cost: 0, tokens: 0, unpriced } });
+      await finish(ctx, 'red', 'completed', null);
+      const suffix = render(fixture.unpricedSuffix[key], { count: unpriced });
+      expect(ctx.emit).toHaveBeenCalledWith({
+        type: 'info',
+        message: render(fixture.terminalInfo, {
+          runId: 7, status: 'completed', stageBefore: 'solutioned', stageAfter: 'red',
+          roundedCost: 0, tokens: 0, unpricedSuffix: suffix,
+        }),
+      });
+    }
+  });
+
   test('outcome uses run, duplicates stage/stage_after, and never invents cost', () => {
     const ctx = lifecycle();
     expect(outcome(ctx, 'solutioned', 'red', 'completed', null)).toMatchObject({

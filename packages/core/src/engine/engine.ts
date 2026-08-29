@@ -60,9 +60,19 @@ function categoryOf(occurrence: Occurrence, status: 'failed' | 'interrupted'): E
   return 'unknown';
 }
 
-/** Stamps the current step's id onto an adapter-shaped event; everything else passes through. */
-function withStepId(emit: EmitEvent, stepId: string): EmitEvent {
+/**
+ * Stamps the running step's id onto an adapter-shaped event; everything else passes through.
+ *
+ * `currentStepId` is read at emit time rather than bound per step, because binding it meant handing
+ * each step a spread COPY of the run context — and a copy discards whatever a step assigns. The
+ * spike's later steps read `ctx.fanned`, `ctx.failingTasks` and `ctx.lastIntegration`, all written
+ * by an earlier one (`spike/src/engine.js:940`, `:1074`, `:1071`), so Q-0053 would have found a
+ * failed integrate re-running every task and a wildcard `into` resolving to nothing, silently.
+ */
+function withStepId(emit: EmitEvent, currentStepId: () => string | null): EmitEvent {
   return (event) => {
+    const stepId = currentStepId();
+    if (stepId === null) { emit(event); return; }
     switch (event.type) {
       case 'spawn':
       case 'stdout':
@@ -118,6 +128,8 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   const backlogView = dry ? readOnlyBacklog(backlog) : backlog;
 
   const runId = nextRunId(ticket);
+  // Why: preserved defect, see Q-0050 AC-10. — the counters ALIAS the frontmatter object rather
+  // than copying it, so a dry run's increments are visible on the in-memory ticket.
   const counters = ticket.meta.iterations ?? {};
   const vars: Record<string, unknown> = {
     id: ticket.meta.id, iter: 1, base: config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
@@ -129,6 +141,10 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   // Run-scoped, so a gate id is unique across every step and every re-entry through a backward
   // edge — not per-context, which is what B-2 found. See RoutingContext.nextGateId.
   let gateSequence = 0;
+  // The step the loop is inside, or null between steps. Read by the emitter rather than captured,
+  // so that the context a step receives is the run's own object — see withStepId.
+  let stepId: string | null = null;
+  const stepEmit: EmitEvent = withStepId(emit, () => stepId);
 
   // Assigned once, below; `persistence.recordOccurrenceEvent` and `finishRun` close over this
   // binding and only read it once the step loop is running, well after the assignment.
@@ -176,7 +192,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   context = {
     ticket, flow, repoDir, harnessDir, config, backlog: backlogView,
     runId, counters, vars, stats, dry, auto, signal, answerGate,
-    emit,
+    emit: stepEmit,
     persistence,
     nextGateId: () => `${runId}:${(gateSequence += 1)}`,
     loadNamedFlow: (name, dir) => loadFlowByName(name, dir),
@@ -209,9 +225,13 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
       const step = steps[i];
       // Why: preserved defect, see Q-0050 AC-12d — an out-of-range index (an unknown goto target)
       // dereferences `undefined` here and throws a raw TypeError, not a FlowError.
-      const stepId = String(step.id);
-      const stepContext: EngineContext = { ...context, emit: withStepId(emit, stepId) };
-      const result: StepResult = await runStep(step, stepContext);
+      stepId = String(step.id);
+      let result: StepResult;
+      try {
+        result = await runStep(step, context);
+      } finally {
+        stepId = null;
+      }
 
       if (result && 'goto' in result) {
         const target = result.goto;

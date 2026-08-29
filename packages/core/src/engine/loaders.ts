@@ -41,7 +41,14 @@ export function loadRole(name: string | null | undefined, harnessDir: string): F
   return parseFrontmatter(fs.readFileSync(file, 'utf8'));
 }
 
-/** Flat key substitution; dotted and unknown placeholders are left untouched. */
+/**
+ * Flat key substitution; dotted and unknown placeholders are left untouched.
+ *
+ * `template` is typed `string` where spike/src/engine.js:740 coerces with `String(s)`. YAML hands
+ * back a number for `branch: 2`, so the coercion is the CALLER's from here: a number-valued call
+ * site is a compile error in Q-0051/Q-0052 rather than the spike's runtime pass-through, and a step
+ * shape typed `Record<string, unknown>` must write `String(step.run)` deliberately.
+ */
 export function interpolate(template: string, values: Readonly<Record<string, unknown>>): string {
   return template.replace(/\{([\w.]+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
 }

@@ -90,6 +90,7 @@ async function collect(iterable: AsyncIterable<Event>): Promise<Event[]> {
 describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
   test('is lazy, emits the exact banner, and ends in one terminal event', async () => {
     const opts = options();
+    const logSpy = vi.spyOn(opts.backlog, 'log');
     const iterable = stream(opts);
     const events = await collect(iterable);
     expect(events[0]).toStrictEqual({
@@ -101,6 +102,12 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(events.at(-1)).toMatchObject({
       type: 'terminal', status: 'completed', stageBefore: 'draft', stageAfter: 'requirements', runId: 1,
     });
+    // `log.start` is read by no other test and nextRunId parses this line to allocate the next id.
+    // The oracle describes what the engine HANDS to `log`; `Backlog.log` prefixes the timestamp,
+    // so the spy's argument is the string the fixture is about and the file line is not.
+    expect(logSpy).toHaveBeenCalledWith(opts.ticket, render(fixture.log.start, {
+      runId: 1, flow: 'requirements', stage: 'draft',
+    }));
     expect(events).toContainEqual(expect.objectContaining({
       type: 'info', message: render(fixture.terminalInfo, {
         runId: 1, status: 'completed', stageBefore: 'draft', stageAfter: 'requirements', roundedCost: 0,
@@ -178,6 +185,7 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     opts.flow.steps = [{ id: 'approve', gate: 'human', reason: 'approve to continue' }] as unknown as typeof opts.flow.steps;
 
     const seen: Event[] = [];
+    const iterations = opts.ticket.meta.iterations;
     const iterable = stream(opts);
     for await (const event of iterable) {
       seen.push(event);
@@ -190,7 +198,8 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(seen.at(-1)).toMatchObject({ type: 'gate' });
     expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'interrupted', stage_after: 'draft' });
     expect(opts.ticket.meta.stage).toBe('draft');
-    expect(opts.ticket.meta.iterations).toBe(opts.ticket.meta.iterations);
+    // The reference captured BEFORE the run, not the field compared with itself.
+    expect(opts.ticket.meta.iterations).toBe(iterations);
     const log = fs.readFileSync(path.join(opts.ticket.dir, 'runs.log'), 'utf8');
     expect(log).toMatch(/run=1 interrupted stage=draft→draft/);
   });
@@ -233,6 +242,10 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(message).toContain('requirements');
     expect(message).toContain('draft');
     expect(message).toContain('flow');
+    // "…or any write" — AC-11's Test: line names both, and the refusal happens before any run
+    // bookkeeping rather than merely before the flow's steps.
+    expect(fs.existsSync(path.join(opts.ticket.dir, 'runs.log'))).toBe(false);
+    expect(fs.existsSync(path.join(opts.project.repoDir, '.quorum'))).toBe(false);
   });
 
   test('dry is the same run but all three persistent writers are replaced', async () => {
@@ -312,6 +325,11 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
       counter: 'requirements.a', count: 2, limit: 2, remaining: 0,
     });
     expect(opts.ticket.meta.stage).toBe('red');
+    // AC-8a's second half: B's steps never ran. `development.yaml` declares one step, `build`, and
+    // the cursor returns before it could reach any dispatch — so the stub records exactly the one
+    // call A made. Without this the row claimed a spy that did not exist.
+    expect(vi.mocked(routing.runStep)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(routing.runStep).mock.calls[0]?.[0]).toMatchObject({ id: 'a' });
   });
 
   test('AC-8c — a goto naming an absent flow fails by name and moves no stage', async () => {
@@ -341,6 +359,25 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
     const events = await collect(stream(opts));
 
     expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'regressed', count: 3, limit: 2, remaining: 0 });
+  });
+
+  test('AC-3a — an aborted run ends in one terminal event and moves no stage', async () => {
+    // The fifth status, and the only one no engine-level test drove. AC-3a rules out
+    // lifecycle.test.ts's five-status matrix as a substitute in as many words — calling `finish`
+    // directly "only proves the payload's shape", while the engine-level test proves the terminal
+    // event is actually last on the stream.
+    const opts = options();
+    opts.flow.steps = [{ id: 'a' }, { id: 'b' }] as unknown as typeof opts.flow.steps;
+    routeOnce({ abort: true });
+
+    const events = await collect(stream(opts));
+
+    expect(events.filter((event) => event.type === 'terminal')).toHaveLength(1);
+    expect(events.at(-1)).toMatchObject({
+      type: 'terminal', status: 'aborted', stageBefore: 'draft', stageAfter: 'draft', runId: 1,
+    });
+    expect(opts.ticket.meta.stage).toBe('draft');
+    expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'aborted', stage_after: 'draft' });
   });
 
   test('AC-12d — a goto naming no step throws a raw TypeError, not a FlowError', async () => {
