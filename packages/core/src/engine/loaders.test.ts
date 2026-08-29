@@ -43,9 +43,16 @@ describe('Q-0050 AC-11b..AC-11g — loaders and pure helpers', () => {
     expect(implemented(() => interpolate('{a.b}', { 'a.b': 'flat' }))).toBe('flat');
   });
 
-  test('writesOf prefers singular output.write', () => {
-    expect(implemented(() => writesOf({ output: { write: 'one', writes: ['two'] } }))).toStrictEqual(['one']);
+  test('writesOf returns output.write first, then output.writes in order', () => {
+    // The spike CONCATENATES (spike/src/engine.js:739) and so does the ported lint in this same
+    // package (lint.ts:82-86), whose JSDoc states the rule; shared/src/step-output.ts:33 cites the
+    // spike line by number. AC-11's "singular before plural" is an ORDERING, and a step declaring
+    // both must get both — precedence would write one artifact and skip the rest with no message.
+    expect(implemented(() => writesOf({ output: { write: 'one', writes: ['two'] } }))).toStrictEqual(['one', 'two']);
+    expect(writesOf({ output: { write: 'one', writes: ['two', 'three'] } })).toStrictEqual(['one', 'two', 'three']);
     expect(writesOf({ output: { writes: ['two', 'three'] } })).toStrictEqual(['two', 'three']);
+    expect(writesOf({ output: { write: 'one' } })).toStrictEqual(['one']);
+    expect(writesOf({})).toStrictEqual([]);
   });
 
   test('reviewRound counts only completed verdict rounds', () => {

@@ -48,10 +48,10 @@ export function interpolate(template: string, values: Readonly<Record<string, un
   return template.replace(/\{([\w.]+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
 }
 
-/** The step's output paths: singular `output.write` is preferred over plural `output.writes`. */
+/** Every path a step declares it writes: `output.write` first, then `output.writes` in order. */
 export function writesOf(step: Readonly<Record<string, unknown>>): readonly string[] {
   const output = (step.output ?? {}) as { write?: string; writes?: readonly string[] };
-  return output.write ? [output.write] : (output.writes ?? []);
+  return [...(output.write ? [output.write] : []), ...(output.writes ?? [])];
 }
 
 /** One past the highest review round with a completed `verdict.md`; 1 when review has not started. */

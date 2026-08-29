@@ -74,7 +74,7 @@ both defects: `finish` still mutates the caller's in-memory ticket, and counters
 - `loadRole` returns `{ meta: {}, body: '' }` for a falsy name; a missing named role throws
   `FlowError` containing the full path.
 - `interpolate` performs flat key lookup and leaves unknown placeholders, including dotted keys,
-  literal. `writesOf` prefers singular `output.write` over plural `output.writes`.
+  literal. `writesOf` returns `output.write` first, then `output.writes` in order.
 - `reviewRound` returns one plus the highest review round containing `verdict.md`, or 1 when the
   review directory is absent.
 
