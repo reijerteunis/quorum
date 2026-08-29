@@ -44,13 +44,17 @@ function readOnlyBacklog(backlog: Backlog): Backlog {
 }
 
 /**
- * How an occurrence's own kind classifies the failure that ended it — spike/src/engine.js:165.
+ * How an occurrence's failure is classified: by the run's own status when it was interrupted, and
+ * by the occurrence's kind otherwise.
  *
- * `interrupted` is not among the answers: it describes how the *run* stopped, and hard-coding it
- * here reported every failed adapter call as an interruption. {@link ErrorCategory} admits eight
- * values so that a caller can record its own.
+ * Two entry points in the spike, merged into one catch here and kept distinguishable by `status`.
+ * The run catch derives from the kind (`spike/src/engine.js:165`); the signal handler writes
+ * `interrupted` flat (`:58-61`), and it is the only producer of that {@link ErrorCategory} member.
+ * Deriving on both paths reported a cancelled adapter call as `unknown`, and left `interrupted`
+ * with no producer at all.
  */
-function categoryOf(occurrence: Occurrence): ErrorCategory {
+function categoryOf(occurrence: Occurrence, status: 'failed' | 'interrupted'): ErrorCategory {
+  if (status === 'interrupted') return 'interrupted';
   if (occurrence.kind === 'integrate') return 'integrate';
   if (occurrence.kind === 'script') return 'script';
   return 'unknown';
@@ -80,6 +84,21 @@ function failureMessage(error: unknown): string {
 /** The failure in full, as an occurrence's `error.message` carries it — spike/src/engine.js:165. */
 function occurrenceMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * What an interrupted run records as its note.
+ *
+ * AC-5 preserves the spike's `received SIGINT`, which `core` cannot produce unaided: signal
+ * handling belongs to the CLI (charter §7) and this folder installs none. So the caller supplies
+ * it through `AbortSignal.reason` — the platform's own mechanism for saying *why* — and the run
+ * records whatever it was given. Falls back to the thrown message when the caller aborted without
+ * a reason, which is what the stream's own abandonment does.
+ */
+function interruptionNote(signal: AbortSignal, error: unknown): string {
+  const reason: unknown = signal.reason;
+  if (typeof reason === 'string' && reason.trim() !== '') return reason.split('\n')[0]!.slice(0, 200);
+  return failureMessage(error);
 }
 
 /** Whatever was thrown, as an `Error` — a channel never completes with a non-Error value. */
@@ -123,10 +142,11 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     // each of them twice whenever the exported helper was called with a real context.
     recordOccurrenceEvent: (_ticket, stage, event, cost) => recordEvent(context, stage, event, cost),
     registerOccurrence: (occurrence) => { active.add(occurrence); },
+    finaliseManifest: (status, stageAfter) => { history?.finalise(status, stageAfter); },
     finaliseActiveOccurrences: (status, cause) => {
       if (!history) return;
       for (const occurrence of active) {
-        history.terminal(occurrence, status, { error: { category: categoryOf(occurrence), message: cause } });
+        history.terminal(occurrence, status, { error: { category: categoryOf(occurrence, status), message: cause } });
       }
       active.clear();
     },
@@ -150,9 +170,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   }
 
   async function finishRun(stage: string, status: RunStatus, note: string | null, fields?: RegressionFields): Promise<RunOutcome> {
-    const result = await finish(context, stage, status, note, fields);
-    if (history) history.finalise(status, result.stage);
-    return result;
+    return finish(context, stage, status, note, fields);
   }
 
   context = {
@@ -222,11 +240,12 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     }
     throwIfInterrupted();
   } catch (error) {
-    const status: RunStatus = signal.aborted ? 'interrupted' : 'failed';
+    const status: 'failed' | 'interrupted' = signal.aborted ? 'interrupted' : 'failed';
+    const note = status === 'interrupted' ? interruptionNote(signal, error) : failureMessage(error);
     // Before the terminal record and in that order — spike/src/engine.js:161-168, and the
     // lifecycle-routing contract's "first finalise active occurrences, then persist".
-    await persistence.finaliseActiveOccurrences(status, occurrenceMessage(error));
-    await finishRun(ticket.meta.stage, status, failureMessage(error));
+    await persistence.finaliseActiveOccurrences(status, status === 'interrupted' ? note : occurrenceMessage(error));
+    await finishRun(ticket.meta.stage, status, note);
     throw error;
   }
 

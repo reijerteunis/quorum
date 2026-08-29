@@ -27,7 +27,8 @@ function lifecycle(overrides: Partial<LifecycleContext> = {}): LifecycleContext 
     stats: { cost: 1.23456, tokens: 42, unpriced: 0 }, dry: false, auto: false,
     emit: vi.fn<(event: Event) => void>(),
     persistence: {
-      writeTicket: vi.fn(), appendLog: vi.fn(), recordOccurrenceEvent: vi.fn(), finaliseActiveOccurrences: vi.fn(),
+      writeTicket: vi.fn(), appendLog: vi.fn(), recordOccurrenceEvent: vi.fn(),
+      registerOccurrence: vi.fn(), finaliseManifest: vi.fn(), finaliseActiveOccurrences: vi.fn(),
     },
     branchHeadAtStart: 'aaaaaaaaaaaaaaaa', readBranchHead: vi.fn(() => 'aaaaaaaaaaaaaaaa'), resetBranch: vi.fn(),
     ...overrides,
@@ -58,6 +59,14 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     expect(ctx.persistence.writeTicket).toHaveBeenCalledTimes(1);
     expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, expect.stringMatching(`run=7 ${status} stage=`));
     expect(ctx.emit).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'terminal', status }));
+    // The manifest is finalised with the stage the ticket was LEFT at, and before anything is
+    // emitted or written — spike/src/engine.js:625-632. Asserted through the invocation order
+    // rather than by reading the source, because the whole defect was one `await` too late.
+    expect(ctx.persistence.finaliseManifest).toHaveBeenCalledWith(status, moves ? target : before);
+    expect((ctx.persistence.finaliseManifest as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+      .toBeLessThan((ctx.persistence.writeTicket as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
+    expect((ctx.persistence.finaliseManifest as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+      .toBeLessThan((ctx.emit as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
   });
 
   test('outcome uses run, duplicates stage/stage_after, and never invents cost', () => {

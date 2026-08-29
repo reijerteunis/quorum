@@ -63,7 +63,11 @@ describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
 
   test('engine code prints nothing, exits nowhere, installs no signals and imports no spike', () => {
     const all = production.map(source).join('\n');
-    expect(all).not.toMatch(/console\.|process\.(stdout|stderr|exit|on|once)|\u001b\[/);
+    // Every way to subscribe, not the two names AC-5 happened to spell: `addListener`,
+    // `prependListener` and `prependOnceListener` are the same subscription and passed the
+    // narrower alternation. The rule — a library that exits the process cannot host M3's daemon —
+    // governs every file Q-0051 to Q-0053 will add here, so it is widened while the folder is six.
+    expect(all).not.toMatch(/console\.|process\.(stdout|stderr|exit|on|once|addListener|prependListener|prependOnceListener)\b|\u001b\[/);
     expect(all).not.toMatch(/from ['"][^'"]*spike\//);
   });
 

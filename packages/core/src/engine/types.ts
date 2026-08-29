@@ -86,6 +86,15 @@ export interface RunPersistence {
    */
   registerOccurrence(occurrence: Occurrence): void;
   /**
+   * Finalise the run manifest — status, `ended_at`, duration, stage and roll-up — and replace it.
+   *
+   * Called from inside `finish`, at spike/src/engine.js:625-632's position: after the stage
+   * assignment and before the ticket write, the terminal log line and the terminal event. A failed
+   * manifest write warns through the run-history host, and that warning must reach the stream ahead
+   * of the terminal event AC-3 requires to be last. A no-op under `dry`, which has no manifest.
+   */
+  finaliseManifest(status: RunStatus, stageAfter: string): void;
+  /**
    * Close out every occurrence a run left active when it stopped short of its own terminal state.
    *
    * `cause` is the failure in full, not the truncated terminal note: an occurrence's `error.message`

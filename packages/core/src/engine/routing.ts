@@ -94,7 +94,9 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
       // `retryCounter` would otherwise set counters['undefined'] = NaN, which `finish` persists
       // into the ticket's frontmatter for good.
       if (step.retryCounter != null) context.counters[counter] = limit;
-      context.persistence.appendLog(context.ticket, `run=${context.runId} gate=retry counter=${counter} set=${limit} (one further traversal authorised)`);
+      // `step.retryMax` raw, as spike/src/engine.js:587 interpolates it: absent, the spike's line
+      // reads `set=undefined` and `Number(undefined)` would make this one read `set=NaN`.
+      context.persistence.appendLog(context.ticket, `run=${context.runId} gate=retry counter=${counter} set=${String(step.retryMax)} (one further traversal authorised)`);
       return { goto: retry, counter, limit };
     }
     return { abort: true };

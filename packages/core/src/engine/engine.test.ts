@@ -163,6 +163,66 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'interrupted', stageAfter: 'draft' });
   });
 
+  test('AC-5c/5d — a consumer that breaks gets its interrupted record before return() resolves', async () => {
+    // The failure mode the port INVENTS rather than inherits, and until now the only thing driving
+    // it was channel.test.ts against a hand-written `finalise`. This drives runFlow's own
+    // `finaliseAbandonment`.
+    //
+    // The fixture needs a genuine suspension point and this is why: `finish` is async with no
+    // internal await, so on a short flow the whole terminal record — ticket write, runs.log line,
+    // terminal event — is written during the synchronous prefix of `start()`, before the first
+    // `next()` resolves. "Break after the first event and assert interrupted" therefore reports
+    // `completed` on such a flow, and the naive version of this test would have been read as a bug
+    // in the engine. A gate whose answer never arrives is a real suspension.
+    const opts = options({ answerGate: () => new Promise(() => { /* never answered */ }) });
+    opts.flow.steps = [{ id: 'approve', gate: 'human', reason: 'approve to continue' }] as unknown as typeof opts.flow.steps;
+
+    const seen: Event[] = [];
+    const iterable = stream(opts);
+    for await (const event of iterable) {
+      seen.push(event);
+      if (event.type === 'gate') break;
+    }
+
+    // `for await`'s break awaits return(), so by HERE the record must already exist. That is the
+    // property AC-5 states — an abandoning consumer cannot be released before the persistence has
+    // run — and asserting it right after the loop is what makes the ordering the subject.
+    expect(seen.at(-1)).toMatchObject({ type: 'gate' });
+    expect(opts.ticket.meta.history?.at(-1)).toMatchObject({ status: 'interrupted', stage_after: 'draft' });
+    expect(opts.ticket.meta.stage).toBe('draft');
+    expect(opts.ticket.meta.iterations).toBe(opts.ticket.meta.iterations);
+    const log = fs.readFileSync(path.join(opts.ticket.dir, 'runs.log'), 'utf8');
+    expect(log).toMatch(/run=1 interrupted stage=draft→draft/);
+  });
+
+  test('AC-5 — an interrupted run records the caller\'s own abort reason', async () => {
+    // `core` installs no signal handler, so it cannot write the spike's `received SIGINT` unaided.
+    // AbortSignal.reason is the platform's mechanism for saying why, and Q-0010's CLI is what will
+    // supply it.
+    const abort = new AbortController();
+    const opts = options({
+      signal: abort.signal,
+      answerGate: () => new Promise(() => { /* never answered */ }),
+    });
+    opts.flow.steps = [{ id: 'approve', gate: 'human', reason: 'approve to continue' }] as unknown as typeof opts.flow.steps;
+
+    const events: Event[] = [];
+    const error = await (async () => {
+      try {
+        for await (const event of stream(opts)) {
+          events.push(event);
+          if (event.type === 'gate') abort.abort('received SIGINT');
+        }
+        return undefined;
+      } catch (cause: unknown) { return cause; }
+    })();
+
+    expect(error).toBeInstanceOf(Error);
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'interrupted', error: 'received SIGINT' });
+    const log = fs.readFileSync(path.join(opts.ticket.dir, 'runs.log'), 'utf8');
+    expect(log).toMatch(/run=1 interrupted stage=draft→draft .*error="received SIGINT"/);
+  });
+
   test('rejects a stage mismatch before context construction or any write', async () => {
     const opts = options();
     opts.ticket.meta.stage = 'requirements';

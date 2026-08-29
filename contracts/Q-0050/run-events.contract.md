@@ -80,7 +80,13 @@ events gain exactly `stepId` at the engine boundary.
   AC-12 preserves the unknown-goto `TypeError`, both of which reach the consumer as themselves.
   Superseded by solution/errata.md E-12.
 - Iterator `return()` is the abandonment signal. It closes delivery, cancels active work, and waits
-  for the interrupted terminal record and counters to persist. Async iteration syntax does not
+  for the interrupted terminal record and counters to persist. It also latches: a `next()` after it
+  is `{ done: true }` and never starts the producer.
+- **An abandonment that arrives after a terminal status has already been committed does not retract
+  it.** `finish` runs to completion synchronously, so a flow with no suspension point persists its
+  outcome during the producer's first turn, before the first `next()` resolves; `return()` then
+  aborts a run that has already ended and the record keeps the status the run actually reached. A
+  status describes what happened, not who was still reading. Added by solution/errata.md E-15. Async iteration syntax does not
   expose a value returned from `return()`, so an abandoning consumer cannot observe the terminal
   event it caused; this does not relax the persisted lifecycle contract.
 

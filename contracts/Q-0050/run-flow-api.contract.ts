@@ -11,7 +11,7 @@ export type EmitEvent = (event: Event) => void;
 export type FinaliseAbandonment = () => Promise<void>;
 export type BranchHeadReader = (repoDir: string, branch: string) => string | null;
 export type BranchResetter = (repoDir: string, branch: string, revision: string) => void;
-export interface RunPersistence { writeTicket(ticket: TicketRecord): void; appendLog(ticket: TicketRecord, line: string): void; recordOccurrenceEvent(ticket: TicketRecord, stage: string, event: string, cost: number): void | Promise<void>; registerOccurrence(occurrence: Occurrence): void; finaliseActiveOccurrences(status: 'failed' | 'interrupted', cause: string): void | Promise<void> }
+export interface RunPersistence { writeTicket(ticket: TicketRecord): void; appendLog(ticket: TicketRecord, line: string): void; recordOccurrenceEvent(ticket: TicketRecord, stage: string, event: string, cost: number): void | Promise<void>; registerOccurrence(occurrence: Occurrence): void; finaliseManifest(status: RunStatus, stageAfter: string): void; finaliseActiveOccurrences(status: 'failed' | 'interrupted', cause: string): void | Promise<void> }
 export interface RunStats { cost: number; tokens: number; unpriced: number }
 export interface RunContext { ticket: TicketRecord; flow: Flow; repoDir: string; harnessDir: string; config: ProjectConfig; backlog: Backlog; runId: number; counters: Record<string, number>; vars: Record<string, unknown>; stats: RunStats; dry: boolean; auto: boolean; emit: EmitEvent; answerGate?: AnswerGate; signal?: AbortSignal; persistence: RunPersistence }
 export interface RegressionFields { targetFlow: string; stageBefore: string; stageAfter: string; counter: string; count: number; limit: number; remaining: number }

@@ -11,7 +11,8 @@
  * Iterator `return()` and `throw()` are the abandonment signal: both await `finalise` — the
  * caller's interrupted-run persistence — before resolving or rethrowing, so a consumer that stops
  * early (a `break`, an uncaught error in a `for await` body, or an explicit `return()`) cannot
- * observe completion before that persistence has actually run.
+ * observe completion before that persistence has actually run. Both also latch: a later `next()`
+ * is `{ done: true }` and never starts the producer.
  */
 import type { Event } from '@quorum/shared';
 
@@ -52,6 +53,7 @@ export function createEventChannel(
   let closingError: Error | undefined;
   let pending: PendingPull | undefined;
   let iterated = false;
+  let abandoned = false;
 
   /** Fulfils a pending `next()` once an event arrives or the channel closes, in either order. */
   function settlePending(): void {
@@ -85,6 +87,11 @@ export function createEventChannel(
 
   function next(): Promise<IteratorResult<Event>> {
     if (pending) return Promise.reject(new FlowError('event stream: a pull is already in flight — the stream takes one consumer'));
+    // A returned iterator is done, and stays done. Without this a `next()` after `return()` drained
+    // whatever finalisation had queued — the rollback warn, the terminal event — and, worse, an
+    // abandonment before the FIRST pull left `started` false, so the next pull started the run the
+    // caller had just walked away from and wrote its log line and manifest directory to disk.
+    if (abandoned) return Promise.resolve({ value: undefined, done: true });
     if (!started) {
       started = true;
       start();
@@ -97,11 +104,13 @@ export function createEventChannel(
   }
 
   async function abandon(): Promise<IteratorResult<Event>> {
+    abandoned = true;
     await finalise();
     return { value: undefined, done: true };
   }
 
   async function abandonWithError(error?: unknown): Promise<IteratorResult<Event>> {
+    abandoned = true;
     await finalise();
     throw error;
   }

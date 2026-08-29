@@ -21,6 +21,11 @@ export async function finish(
   // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.
   if (status === 'completed' || status === 'regressed') ticket.meta.stage = stage as typeof ticket.meta.stage;
   const after = ticket.meta.stage;
+  persistence.finaliseManifest(status, after);
+  // Here, not after `finish` returns — spike/src/engine.js:625-632. Everything below emits or
+  // writes, and `replaceManifest`'s failure warns through the stream, so finalising later puts that
+  // warning behind the terminal event and leaves a window in which a consumer acting on `completed`
+  // reads a manifest still saying `running`.
   const roundedCost = round(context.stats.cost);
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(context, before, after, status, roundedCost)];
 

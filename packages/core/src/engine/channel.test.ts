@@ -61,6 +61,30 @@ describe('Q-0050 AC-2b/AC-2d/AC-3b/AC-5d — event channel', () => {
     expect((await first).value).toMatchObject({ type: 'info', message: 'second' });
   });
 
+  test('an abandoned channel latches: no drain of what finalisation queued, and no lazy start', async () => {
+    let sink!: ReturnType<typeof createEventChannel>['sink'];
+    const start = vi.fn(() => { sink.emit({ type: 'info', message: 'started' }); });
+    const created = channel(start, async () => {
+      // What a producer emits DURING finalisation — the rollback warn, the terminal info, the
+      // terminal event. Before the latch a next() after return() handed these to a consumer the
+      // contract says "cannot observe the terminal event it caused".
+      sink.emit({ type: 'terminal', runId: 1, status: 'interrupted', stageBefore: 'a', stageAfter: 'a', cost: 0, tokens: 0 });
+    });
+    sink = created.sink;
+    const iterator = created.stream[Symbol.asyncIterator]();
+    await iterator.next();
+    await iterator.return?.();
+    expect(await iterator.next()).toStrictEqual({ value: undefined, done: true });
+
+    // And the half that reaches disk: return() before the FIRST pull left `started` false, so the
+    // next pull ran the producer for a run the caller had already walked away from.
+    const second = createEventChannel(start, async () => undefined);
+    const neverPulled = second.stream[Symbol.asyncIterator]();
+    await neverPulled.return?.();
+    expect(await neverPulled.next()).toStrictEqual({ value: undefined, done: true });
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   test('return awaits abandonment finalisation', async () => {
     let release!: () => void;
     const finalised = new Promise<void>((resolve) => { release = resolve; });
