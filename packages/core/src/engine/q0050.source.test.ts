@@ -28,60 +28,22 @@ describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
   });
 });
 
-describe('Q-0050 AC-4/AC-6/AC-7/AC-8/AC-12 — routing implementation pins', () => {
+describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
   const routing = (): string => source('routing.ts');
-
-  test('AC-4a..g: gate correlation, no-channel failure, auto/dry policy and logging are implemented', () => {
-    const text = routing();
-    for (const token of ['gateId', 'answerGate', 'human-locked', 'gateAutoAdvanced', 'gateDryRun', 'gateAnswer']) {
-      expect(text, token).toContain(token);
-    }
-    expect(text).toMatch(/emit\s*\(/);
-    expect(text.indexOf('gateAnswer')).toBeLessThan(text.indexOf("answer === 'advance'"));
-  });
 
   test('AC-4h: signalWindow and its authority are preserved together', () => {
     expect(routing()).toMatch(/signalWindow[^\n]*Why: preserved defect, see Q-0050 AC-4\./);
     expect(routing()).toMatch(/1000/);
   });
 
-  test('AC-6/7: bounded exhaustion records before asking and retry changes only one counter', () => {
-    const text = routing();
-    for (const token of ['max_iterations', 'exhausted', 'recordEvent', 'askGate', 'retryGrant']) expect(text).toContain(token);
-    expect(text.indexOf('recordEvent')).toBeLessThan(text.lastIndexOf('askGate'));
-    expect(text).toMatch(/counters\s*\[[^\]]+\]\s*=\s*limit/);
-    expect(text).not.toMatch(/counters\s*=\s*\{\}/);
+  test('AC-9d: no engine helper resets or deletes task branches', () => {
+    const all = ['channel.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts'].map(source).join('\n');
+    expect(all).not.toMatch(/(?:reset|delete|remove)TaskBranch/i);
   });
 
-  test('AC-8/AC-12c: cross-flow is returned, while parallel preserves the legacy agent dispatch', () => {
-    const text = routing();
-    expect(text).toContain("flow:");
-    expect(text).toContain('Promise.allSettled');
-    expect(text).toMatch(/parallel[\s\S]*runAgentStep/);
-  });
-});
-
-describe('Q-0050 AC-9/AC-10/AC-12 — lifecycle and composition pins', () => {
-  test('AC-9: all statuses persist, but only completed/regressed move stage', () => {
-    const text = source('lifecycle.ts');
-    for (const status of ['completed', 'regressed', 'aborted', 'failed', 'interrupted']) expect(text).toContain(status);
-    expect(text).toContain('iterations');
-    expect(text).toContain('history');
-    expect(text).toContain('resetBranch');
-  });
-
-  test('AC-10: dry uses a prototype backlog view with exactly three writer overrides', () => {
-    const text = source('engine.ts');
-    expect(text).toContain('Object.create');
-    for (const writer of ['write', 'writeFile', 'log']) expect(text).toContain(writer);
-    expect(text).toMatch(/counters\s*:\s*ticket\.meta\.iterations/);
-  });
-
-  test('AC-11a/AC-12a/AC-12b/AC-12d: precondition and preserved defects carry authority', () => {
+  test('AC-12a/b: both owned branch-head conflations carry authority', () => {
     const engine = source('engine.ts');
     const lifecycle = source('lifecycle.ts');
-    expect(engine).toMatch(/stage[\s\S]*consumes/);
-    expect(engine).toMatch(/findIndex/);
     expect(`${engine}\n${lifecycle}`.match(/Why: preserved defect, see Q-0050 AC-12\./g)?.length).toBeGreaterThanOrEqual(2);
   });
 });

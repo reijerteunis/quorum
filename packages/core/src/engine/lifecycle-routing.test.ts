@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { Event, Flow, GateQuestionEvent } from '@quorum/shared';
 
-import { askGate, handleFail } from './routing.js';
+import { askGate, handleFail, runStep } from './routing.js';
 import type { RoutingContext } from './types.js';
 
 function context(overrides: Partial<RoutingContext> = {}): RoutingContext {
@@ -24,6 +24,17 @@ const gate = (extra: Partial<GateQuestionEvent> = {}): GateQuestionEvent => ({
 });
 
 describe('Q-0050 AC-4 — gate behavior', () => {
+  test('queues the correlated question before invoking the answer channel', async () => {
+    const observed: Event[] = [];
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => {
+      expect(observed).toContainEqual(question);
+      return { gateId: question.gateId, answer: 'advance' as const };
+    });
+    const ctx = context({ emit: (event) => observed.push(event), answerGate });
+    await expect(askGate(gate(), ctx)).resolves.toBe('advance');
+    expect(observed).toStrictEqual([gate()]);
+  });
+
   test('a later out-of-band answer is awaited and logged before it acts', async () => {
     const answerGate = vi.fn(() => new Promise<{ gateId: string; answer: 'advance' }>((resolve) => {
       setTimeout(() => resolve({ gateId: 'g1', answer: 'advance' }), 20);
@@ -50,6 +61,17 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     await askGate(gate({ kind: 'human-locked' }), context({ auto: true, answerGate }));
     expect(answerGate).toHaveBeenCalledTimes(1);
   });
+
+  test('a pending gate is interrupted and a late answer is not applied', async () => {
+    const abort = new AbortController();
+    let answer!: (value: { gateId: string; answer: 'advance' }) => void;
+    const answerGate = vi.fn(() => new Promise<{ gateId: string; answer: 'advance' }>((resolve) => { answer = resolve; }));
+    const pending = expect(askGate(gate(), context({ answerGate, signal: abort.signal }))).rejects.toThrow(/interrupt|abort/i);
+    abort.abort();
+    await pending;
+    answer({ gateId: 'g1', answer: 'advance' });
+    expect(answerGate).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
@@ -58,6 +80,31 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     const step = { id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } };
     await expect(handleFail(step, ctx)).resolves.toStrictEqual({ goto: 'implement', counter: 'f.review', limit: 2 });
     expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 1 });
+  });
+
+  test('exhaustion records the spend, asks a locked gate, and advance changes no counter', async () => {
+    const events: Event[] = [];
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'advance' as const }));
+    const ctx = context({ counters: { sibling: 9, 'f.review': 2 }, emit: (event) => events.push(event), answerGate });
+    await expect(handleFail({ id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } }, ctx)).resolves.toBeNull();
+    expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 3 });
+    expect(ctx.persistence.recordOccurrenceEvent).toHaveBeenCalledWith(ctx.ticket, 'qa-red', 'exhausted', 0);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'gate', kind: 'human-locked', retry: 'implement' }));
+  });
+
+  test('retry sets only the exhausted counter to the limit and logs the one-traversal grant', async () => {
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'retry' as const }));
+    const ctx = context({ counters: { sibling: 9, 'f.review': 2 }, answerGate });
+    await expect(handleFail({ id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } }, ctx))
+      .resolves.toStrictEqual({ goto: 'implement', counter: 'f.review', limit: 2 });
+    expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 2 });
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, 'run=3 gate=retry counter=f.review set=2 (one further traversal authorised)');
+  });
+
+  test('retry at an author gate without a target aborts', async () => {
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'retry' as const }));
+    await expect(runStep({ id: 'approval', gate: 'human', reason: 'approve' }, context({ answerGate })))
+      .resolves.toStrictEqual({ abort: true });
   });
 
   test('cross-flow returns a routing decision without running the target flow', async () => {

@@ -36,6 +36,8 @@ describe('AC-4/AC-6 — the reader covers the whole tree, keyed by path below sr
   test('and that set holds every module folder this package has today', () => {
     expect(keys()).toEqual(expect.arrayContaining([
       'backlog/backlog.ts', 'backlog/project.ts', 'git/git.ts', 'index.ts',
+      'engine/types.ts', 'engine/channel.ts', 'engine/loaders.ts',
+      'engine/routing.ts', 'engine/lifecycle.ts', 'engine/engine.ts',
     ]));
   });
 
