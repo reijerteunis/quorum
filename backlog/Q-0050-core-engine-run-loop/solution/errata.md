@@ -450,3 +450,66 @@ naming no errata input is a change to `harness/flows/`, and Q-0050's own pre-run
 is not this ticket's to make. It is worth making: ten tickets have needed an erratum, and on this
 route the two stages that *write code* are the two that cannot read one. Recorded so the next flow
 change has the evidence rather than the anecdote.
+
+## E-10 — `writesOf` concatenates: AC-11 stated an ordering and the red phase read it as a precedence — 2026-08-29
+
+**Supersedes three statements and one landed test**, all saying the same wrong thing in four
+places:
+
+- **AC-11** (`requirements/merged.md:214`) — *"`writesOf` returns `output.write` before
+  `output.writes` and invents no path."* The clause stands, read as what it says: an **ordering**
+  of a concatenation, singular first.
+- **`qa/scenarios.md:371`** (AC-11f) — *"returns the singular `output.write` when present, **ahead
+  of** the plural `output.writes`"*, which is the same ordering; and its test, which is not.
+- **`contracts/Q-0050/lifecycle-routing.contract.md:77`** — *"`writesOf` **prefers** singular
+  `output.write` over plural `output.writes`."* This one is unambiguous and is struck. `prefers`
+  is replaced by *"returns `output.write` first, then `output.writes` in order"*.
+- **`packages/core/src/engine/loaders.test.ts:47`**, which asserted
+  `writesOf({ output: { write: 'one', writes: ['two'] } })` is `['one']` — the pin that made the
+  deviation load-bearing.
+
+`contracts/Q-0050/run-flow-api.contract.ts:28` declares the signature only and needs no change.
+
+**The rule is concatenation, and it is stated in three landed places that all agree.** Measured
+against the tree rather than argued:
+
+| site | text |
+| --- | --- |
+| `spike/src/engine.js:739` | `[...(o.write ? [o.write] : []), ...(o.writes ?? [])]` |
+| `packages/core/src/lint/lint.ts:84-87` | the same expression, with the rule in its JSDoc |
+| `packages/shared/src/step-output.ts:33` | *"`writesOf` takes `write` **and** `writes` (spike/src/engine.js:739)"* |
+
+Charter §2 gives this ticket one authorised behaviour change and it is spent on the event stream, so
+the port had no licence to make a second one here. The corrected `loaders.ts` JSDoc is now the same
+sentence as `lint.ts`'s, deliberately — two functions computing one rule should not describe it in
+two voices.
+
+**Why an erratum rather than a revise round.** Round 1's B-1 is correct and the remedy is three
+lines, but one of them **deletes an assertion** in a test file no development task may write, and
+the reading it corrects is the requirement's. A revise round could have changed `loaders.ts` and
+would then have failed its own qa-red pin — the loop spending its budget on work no agent in it can
+perform, for the seventh time. E-5(d) is the precedent and the route is the same: rule it here,
+change it by hand.
+
+**Nothing failed today, and that is the finding rather than the excuse.** Every shipped flow step
+declares `write:` or `writes:`, never both — checked across all six files in `harness/flows/`, where
+`requirements`, `solutioning` and `qa-red` use the singular and `development`, `chore` and `review`
+the plural. So the deviation was invisible to every gate: eight implement tasks, an `integrate`, a
+forced suite and a two-vendor review panel all reported green over it. The failure mode when a step
+does declare both is a missing artifact and no message, while `lint.ts`'s producer map still believes
+both are produced — so the single-owner and cross-vendor rules would be computed over a set the
+engine no longer honours. That is what `.claude/rules/engineering.md` means by *never default
+silently*.
+
+**One correction to the verdict that raised it.** B-1 names `run-flow-api.contract.ts` as declaring
+*"only the signature, not the rule"* — true of that file, and it led the finding to report three
+disagreeing sites when there were four. `lifecycle-routing.contract.md:77` states the precedence
+outright, and it is a contract file qa-red reads. Had the fix been made from the verdict alone, the
+contract would have been left contradicting the code, for a later ticket to cite against it. The
+reviewer read the typed contract and not its prose sibling; both are `contracts/Q-0050/**` and both
+are frozen to this ticket.
+
+**Landed by hand**, in `packages/core/src/engine/loaders.ts` (the expression and its JSDoc at `:51`),
+`packages/core/src/engine/loaders.test.ts` (the pin replaced by five assertions covering both keys,
+each key alone, and neither), and `contracts/Q-0050/lifecycle-routing.contract.md:77`. Verified
+forced on `harness/Q-0050/integration`: 7/7 packages, **0 cached**, 879 passed and 2 skipped.
