@@ -1291,6 +1291,10 @@ function readSites(text: string, routes: readonly Binding[], reads: readonly Rea
  * anchoring happens at the call site, and every call site is in the scanned set above.
  */
 const READ_BASES: Record<string, Record<string, string>> = {
+  'packages/core/src/engine/loaders.ts': {
+    file: "path.join(harnessDir, 'roles', `${name}.md`) and the flow file loadFlow is handed — both under the CALLER'S project, not this repository",
+    dir: "path.join(ticketDir, 'review') — the ticket folder reviewRound counts rounds in, again in the caller's project",
+  },
   'packages/core/src/engine/engine.test.ts': {
     'opts.project.repoDir': "the temp repository repo() created for this test; nothing under it is in the repository",
     'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
