@@ -1,14 +1,22 @@
 ---
 id: Q-0038
 title: Deferred-range failures name their producing step in every case
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0038/integration
 priority: p3
 created: 2026-08-24
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-29T23:16:33.289Z
+    cost: 5.985
 ---
 Opened under AC-2 of Q-0034, which allows a review finding to become a follow-up ticket rather than
 forcing another revise loop. This is the one finding that survived Q-0035's chore review
