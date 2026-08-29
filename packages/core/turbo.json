@@ -17,6 +17,11 @@
         "../../contracts/Q-0006/review-artifacts.schema.json",
         "../../contracts/Q-0006/ticket-review-state.schema.json",
         "../../contracts/Q-0011/run-manifest.schema.json",
+        // Q-0050: src/engine/engine.test.ts IMPORTS this fixture as JSON. The guard in
+        // src/turbo-inputs.test.ts excludes module specifiers by design, so an import that
+        // leaves the package into a non-package directory is invisible to it and nothing
+        // would report the omission. Declared by hand at Q-0050's qa-red gate.
+        "../../contracts/Q-0050/run-messages.fixture.json",
         "../../backlog/*/ticket.md",
         "../../harness/flows/*.yaml",
         "../../spike/src/**",
