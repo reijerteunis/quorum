@@ -1,7 +1,7 @@
 ---
 id: Q-0050
 title: core/engine — the run loop, routing and the event stream
-stage: red
+stage: green
 owner: ruud
 repos: []
 branch: harness/Q-0050/integration
