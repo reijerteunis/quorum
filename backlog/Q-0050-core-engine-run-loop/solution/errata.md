@@ -670,3 +670,26 @@ primitive, in a contract two other tickets code against. Not worth it.
 spends `1:1` and `askGate` short-circuits before emitting it — so the behaviour is stated where a
 reader meets it. What was wrong was a sentence in `solution.md` claiming otherwise, and it is
 corrected here rather than left to contradict the pin.
+
+## E-18 — the terminal event carries the rounded cost, and AC-3's "equal to `finish()`'s values" is bounded by it — 2026-08-29
+
+**Bounds** AC-3's *Test:* clause requiring the terminal event's fields to be *"equal to `finish()`'s
+values for the same run"*. On `cost` they differ, deliberately, and nothing said so.
+
+`lifecycle.ts:57` puts `roundedCost` on the terminal event; `:65` and `:67` return
+`context.stats.cost` raw on the outcome. **The event is rounded.** That is the defensible half of
+the pair: the terminal `info` line a human reads and the `TicketHistoryEntry` that lands in
+frontmatter are both rounded, and an event that disagreed with both would be the odd one out. The
+raw figure stays on the returned outcome, where a caller doing arithmetic wants it.
+
+**Why this needed writing down rather than fixing.** Nothing caught the divergence because every
+engine-level test runs at `stats.cost === 0`, where rounded and raw are the same number — so the
+criterion was green over a value it never varied. Worse, the AC-9f row I wrote at this ticket's own
+coverage audit on 2026-08-29 said the opposite — *"the payload and terminal event carry the raw
+`1.23456`"* — while the test written to satisfy that row correctly asserts `1.235` on the event. The
+row contradicted both the code and its own test, and a reader trusting the row would have "fixed"
+the code to match it. The row is corrected in the same change.
+
+This is the *"unstated decision"* shape this ticket's own risk section names, arriving in the
+coverage record rather than in the source: a divergence pinned by a passing test with no sentence
+saying it was chosen.

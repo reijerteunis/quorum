@@ -54,7 +54,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-2d | q0050-event-channel | `channel.test.ts` — burst, 500 events | — |
 | AC-2e | q0050-shared-events | `events.q0050.test.ts` (already green, F-1) | — |
 | AC-2f | q0050-engine-compose | — none (struck, E-8) | — |
-| AC-3a | q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — terminal event, all 5 statuses | `terminalInfo` |
+| AC-3a | q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — all five statuses driven through `runFlow`: completed (banner test), regressed (AC-8b), aborted (AC-3a), failed (AC-8c), interrupted (AC-5c/5d and the abort-reason test) | `terminalInfo` |
 | AC-3b | q0050-event-channel | `channel.test.ts` — throw-after-terminal | — |
 | AC-3c/3d | q0050-shared-events | `events.q0050.test.ts` (already green, F-1) | — |
 | AC-4a–4h | q0050-routing, q0050-shared-events | `lifecycle-routing.test.ts`, `q0050.source.test.ts` | `gate.*`, `gateAutoAdvanced`, `gateDryRun`, `log.gateAnswer` |
@@ -65,19 +65,19 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-6a–6c/6e | q0050-routing | `lifecycle-routing.test.ts` — counters, exhaustion | `loopIteration`, `loopExhausted`, `exhaustionReason` |
 | AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` + `lifecycle.test.ts` | — |
 | AC-7a–7c | q0050-routing | `lifecycle-routing.test.ts` — retry grant | `log.retryGrant` |
-| AC-8a | q0050-routing, q0050-loaders | `lifecycle-routing.test.ts` — stage derivation | — |
+| AC-8a | q0050-routing, q0050-loaders | `engine.test.ts` — AC-8b asserts the stage equals B's `consumes` and that the step stub records exactly one call, so B's own steps never ran. NOT `lifecycle-routing.test.ts`, whose cross-flow test deliberately proves the opposite — that routing returns a decision and derives no stage | — |
 | AC-8b | q0050-routing, q0050-engine-compose, q0050-loaders | `engine.test.ts` — cross-flow edge, seven fields (hand-written, E-8) | `crossFlowRegression` |
 | AC-8c | q0050-engine-compose | `engine.test.ts` — absent target flow (hand-written, E-8) | — |
 | AC-8d | q0050-routing, q0050-engine-compose | `engine.test.ts` — remaining clamps at 0 (hand-written, E-8) | — |
 | AC-9a–9c | q0050-lifecycle | `lifecycle.test.ts` — 5 statuses | `log.terminal` |
 | AC-9d | q0050-lifecycle | `lifecycle.test.ts` + `q0050.source.test.ts` | `log.rollback`, `rollback` |
 | AC-9e | q0050-lifecycle, q0050-engine-compose | — none (struck, E-8) | — |
-| AC-9f | q0050-lifecycle | `lifecycle.test.ts` — raw vs rounded cost | — |
+| AC-9f | q0050-lifecycle | `lifecycle.test.ts` — AC-9f: the returned outcome carries the raw `1.23456`; the terminal event **and** the history entry carry the rounded `1.235`. The event being rounded bounds AC-3's "equal to `finish()`'s values" clause and is ruled in `solution/errata.md` E-18 — the row previously said the event carried the raw figure, contradicting both the code and the test written to satisfy it | — |
 | AC-10a | q0050-engine-compose | `engine.test.ts` — nothing on disk | — |
 | AC-10b/10c | q0050-engine-compose, q0050-lifecycle | `engine.test.ts` — spies + in-memory mutation | — |
 | AC-10d | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-10e | q0050-routing | `lifecycle-routing.test.ts` — dry gate info | `gateDryRun` |
-| AC-10f | q0050-lifecycle | `lifecycle.test.ts` — counters alias iterations | — |
+| AC-10f | q0050-lifecycle | `engine.test.ts` — the dry test's `toBe(originalIterations)` is the `Object.is` identity half. The criterion's other half, a loop that fails once *during the dry run*, is **not reachable in this ticket**: `askGate`'s dry short-circuit advances before the retry branch can write a counter, and `handleFail` has no caller in `engine.ts` until Q-0052 adds a failing step kind. Named rather than counted as covered | — |
 | AC-11a | q0050-engine-compose | `engine.test.ts` — stage precondition | — |
 | AC-11b–11g | q0050-loaders | `loaders.test.ts` — six helpers | — |
 | AC-12a/12b | q0050-lifecycle | `lifecycle.test.ts` + `q0050.source.test.ts` | — |
@@ -87,7 +87,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-13a | — | gate action (`pnpm lint` / `pnpm typecheck`), n/a | — |
 | AC-13b | q0050-documentation | `packages/shared/src/docs.test.ts` | — |
 | AC-13c | — (structural) | `q0050.source.test.ts` + `packages/shared/src/index.test.ts` | — |
-| AC-13d | all tasks | `q0050.source.test.ts` — `Why:` line scan | — |
+| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of the five preserved-defect sites by file and authority, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
 | AC-13e | — | gate action (module-header citation review), n/a | — |
 
 ## AC-1 — module shape, no dependency, no output

@@ -90,3 +90,8 @@
 2026-08-29T18:05:03.782Z run=6 step=verdict vendor=claude model=- verdict=changes-requested cost=2.8289480000000005 ms=358148
 2026-08-29T18:05:03.796Z run=6 regressed stage=green→red cost=8.752 tokens=6089132
 2026-08-29T18:14:28.000Z note (out-of-band: stage red→green by hand, second time, so review round 3 can run. No history entry — no run advanced this ticket. Round 2's eight findings were closed by hand: four majors, four nits, no blocker. Four of the eight were consequences of round 1's own fixes (M-2, M-3, N-1, N-3), which is why the round was worth its $8.75. Evidence: 8355940 on harness/Q-0050/integration closes all eight, 226c306 carries E-14 to E-17 and the qa/scenarios.md AC-5c/5d coverage correction. M-1's and M-2's new tests were demonstrated red against the unfixed code before being trusted. Verified forced in the integration worktree at 8355940: 21/21 tasks 0 cached, 896 passed / 2 skipped, spike 13/13, nothing under spike/ touched.)
+2026-08-29T18:14:37.000Z run=7 flow=review start stage=green
+2026-08-29T18:15:39.600Z run=7 step=review-codex vendor=codex model=- verdict=- cost=? ms=62549
+2026-08-29T18:31:24.564Z run=7 step=review-claude vendor=claude model=- verdict=- cost=8.634041 ms=1007518
+2026-08-29T18:39:59.077Z run=7 step=verdict vendor=claude model=- verdict=changes-requested cost=4.065384000000001 ms=514496
+2026-08-29T18:39:59.100Z run=7 regressed stage=green→red cost=12.699 tokens=11866016
