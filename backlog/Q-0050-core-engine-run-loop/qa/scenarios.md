@@ -1,840 +1,467 @@
 # QA scenarios — Q-0050: `core/engine`, the run loop, routing and the event stream
 
-*Automation QA · route: full SDLC · grounded against `contracts/Q-0050/**`, `packages/shared/src/events.ts`
-and the six `packages/core/src/engine/*.ts` stubs as they exist in the `harness/Q-0050/tests`
-worktree (they are not on `main`), `contracts/Q-0050/run-messages.fixture.json` as the exact-text
-oracle, `solution/errata.md` E-1–E-5, and the accepted decision "What a run's event stream carries,
-and how a gate answer travels back" (2026-08-28), which settles OQ-1(a), OQ-2, OQ-3 and OQ-6 exactly
-as recommended. Revised at round 3 from `qa/scenario-review.md`'s round-2 verdict (**revise**), which
-read the six actual test files already written from round 2's scenario document
-(`engine.test.ts`, `lifecycle.test.ts`, `loaders.test.ts`, `lifecycle-routing.test.ts`,
-`docs-q0050.test.ts`, `q0050.source.test.ts`) rather than the scenario prose, and found six blockers
-that make specific assertions unsatisfiable by any implementation obeying the contracts, plus two
-class-level findings and three nits. Round 2's own verdict had endorsed the scenario *content* — every
-criterion had a scenario — so round 3, like round 2, is a scoped correction to what was actually
-found broken, not a rewrite. Every fix below was re-verified against the worktree's actual source
-before being written here, not inferred from the review's prose alone. See "Round-2 review findings
-resolved" below.*
-
-## Test-design notes
-
-- **Oracle for exact text, enforced without exception.** Every quoted string below is a placeholder
-  name from `run-messages.fixture.json` (e.g. `runBanner`, `log.terminal`) — tests interpolate the
-  fixture for the run's actual values, never a hand-retyped literal and never a partial/prefix
-  regex, so a fixture edit cannot silently desync from the assertions. **This failed in round 2's own
-  output**, not in the scenario text: `engine.test.ts` retyped the banner as a literal and used a
-  prefix regex for the terminal narration, and five of the seven owned texts
-  (`crossFlowRegression`, `loopIteration`, `loopExhausted`, `exhaustionReason`, `rollback`) were
-  never asserted at all (F-1). AC-2a below restates the rule for all seven sites by name; a test
-  file that imports the seven fixture keys and interpolates each is the only way to satisfy it —
-  `import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json'` (or the package's
-  established JSON-import path) is expected in whichever file carries AC-2a.
-- **Task ownership.** Each scenario is tagged `Tasks:` with the `tasks.yaml` id(s) whose *production*
-  file(s) the scenario exercises. QA owns every `*.test.ts`/`*.source.test.ts` file itself — that
-  ownership is not re-stated per scenario.
-- **A lint-failure fixture must name a rule `lintFlow` actually enforces.** Round 2's `loaders.test.ts`
-  used `steps:\n  - role: x\n` (a step with no `id`) as its "fails lint" example for both AC-11b and
-  AC-11c; `lintFlow` (`packages/core/src/lint/lint.ts:171`) filters id-less steps out of the
-  duplicate-id check *before* it runs and has no other rule an id-less, `on_fail`-less,
-  `output.verdict`-less, `fan_out`-less, non-`integrate` step could trip — the fixture lints clean
-  and the `toThrow(FlowError)` assertion can never fire (B-2; this is Q-0055's own subject, which
-  exists precisely because `lintFlow` requires an `id` on no step kind). A scenario needing "a flow
-  that fails lint" must use a construct `lintFlow` actually rejects: `on_fail` present without
-  `goto`; a `goto` target absent from the flow's own step ids; `on_fail.max_iterations` not a
-  positive integer; an `on_fail.counter` prefixed `iterations.`; `on_exhausted` present and not
-  `'gate'`; two steps sharing one `id`; `fan_out` with no `step` template; `type: integrate` with no
-  `branches`; a step with `output.verdict` but neither `on_fail` nor `route`; or an `input.diff` range
-  that isn't two `...`-joined `{base}`/ticket-prefixed endpoints. AC-11b and AC-11c below now use
-  `on_fail` without `goto` — an id-bearing step, so the fixture is unambiguous about *why* it fails.
-- **Any non-dry run driven through `runFlow` to a terminus needs a real repository, not a placeholder
-  path.** `RunFlowOptions` carries no persistence override (`types.ts`'s contract has none): `engine.ts`
-  builds `RunContext.persistence` itself from `project.repoDir`/`project.harnessDir` and Q-0049's real
-  run-history writer, for every non-dry status, not only `completed` — `finish()` calls
-  `persistence.writeTicket`/`appendLog` regardless of which terminal status it reaches. Round 2's
-  `engine.test.ts` set `project.repoDir = '/repo'` for its non-dry completed-run test, which cannot be
-  created on a read-only root or as a non-root CI user, so that run fails before it ever reaches
-  `completed` and the test can never pass in the one environment it names (B-3). Any scenario driving a
-  non-dry composed run to a terminus (AC-2a, AC-3a's engine-compose half, AC-5a, AC-8a) must back it
-  with a real writable directory — `packages/core/test/repo.ts`'s `repo()` for the git repository, a
-  written `harness/harness.yaml` and either `loadProject(dir)` or an equivalently constructed real
-  `Project`. A run that fails *before* context construction (AC-11a's stage-mismatch rejection) or that
-  never leaves the dry, no-op view (AC-10's scenarios) touches no disk and may keep a placeholder path —
-  say so explicitly in each such scenario so a later round does not add an unneeded repository or, worse,
-  drop the real one where it *is* needed.
-- **`round()`'s output is not two-decimal formatted.** `round = n => Math.round(n * 1000) / 1000`
-  (spike, preserved). A zero-cost run's `terminalInfo` interpolation therefore reads `cost $0  tokens
-  0`, never `cost $0.00  tokens 0` — round 2's `engine.test.ts` asserted the latter and could never
-  pass (B-4). A scenario asserting narration text must interpolate the fixture with the run's actual
-  numeric `stats.cost`/`round()` output, never assume fixed decimal places.
-- **`finish()`'s returned cost is raw; only the persisted history entry rounds.** The requirement's own
-  correction stands: `finish`'s resolved `RunOutcome` — and the terminal *event* built from it — carry
-  the unrounded `ctx.stats.cost` (e.g. `1.23456` stays `1.23456`). The **only** stated rounding clause
-  in `lifecycle-routing.contract.md` is `outcome`'s: `finish` passes a *rounded* cost (three decimals,
-  e.g. `1.235`) into `outcome(ctx, before, after, status, cost)` when building the persisted
-  `TicketHistoryEntry`. Round 2's `lifecycle.test.ts` asserted `finish()`'s own resolved value as
-  `cost: 1.23` — neither the raw figure nor the three-decimal-rounded one — which is unsatisfiable
-  either way (B-5). A scenario testing `finish()`'s return value directly asserts the raw, full-precision
-  figure; a scenario testing the entry `outcome()` builds (or that a completed `finish()` call appended
-  to history) asserts the three-decimal-rounded figure; the two are never interchanged.
-- **`finish()` contains no per-call dry branch; the backlog view is what is dry.** `lifecycle-routing.
-  contract.md`'s Dry view section and every lifecycle task description forbid guarding writers inside
-  `finish` itself — dry-ness travels entirely through which `backlog` (real, or `Object.create`-based
-  no-op) was threaded into the context at construction. Round 2's `lifecycle.test.ts` wired a bare
-  `vi.fn()`-based `persistence` object and then required `persistence.writeTicket` to have been called
-  on a non-dry run and *not* called on a dry one — satisfiable only by adding the very per-call `if
-  (ctx.dry)` branch the contract forbids (B-6). A scenario proving dry behaviour at the `lifecycle.ts`
-  unit level must wire `persistence`'s writers to delegate to `ctx.backlog.write`/`writeFile`/`log`
-  (real for non-dry, the no-op prototype view for dry) and assert on that underlying `backlog` call,
-  never on whether `persistence.writeTicket` itself was invoked — the delegate function runs
-  unconditionally either way.
-- **A source-text count assertion must not let an empty match crash the test.**
-  `` `${a}\n${b}`.match(re)?.length `` yields `undefined` when nothing matches, so a
-  `toBeGreaterThanOrEqual` comparison against `undefined` throws `TypeError: actual value must be
-  number or bigint` rather than failing as a normal assertion (a nit in round 2's own
-  `q0050.source.test.ts:47`). Any scenario counting occurrences via regex uses
-  `(text.match(re) ?? []).length`, which fails the way every other assertion in this document is
-  expected to fail — as a wrong number, not a crash.
-- **A gate scenario asserts correlation, not literal object identity.** `askGate` is contracted to
-  "allocate and emit *a* correlated question" — its `gateId` matching what the eventual answer must
-  repeat — not to echo a caller-constructed event object verbatim. A scenario asserting the emitted
-  gate event must check field-by-field equality/correlation (same `gateId` the answer will need, same
-  `kind`/`reason`/`ticketDir`/`retry` the step declared), never `toStrictEqual` against a hand-built
-  literal constructed independently of the call (a nit in round 2's `lifecycle-routing.test.ts:35`,
-  whose `toStrictEqual([gate()])` happened to pass only because the test's own helper was reused
-  verbatim as the comparison value).
-- **A message-content assertion checks each required value individually, never one alternation
-  regex.** `/Q-0050.*requirements.*requirements.*draft|stage/i` (round 2's `engine.test.ts:64`) is
-  satisfied by any message containing the word "stage" alone, because `|` binds the entire pattern,
-  not just its last term — a nit that let AC-11a's assertion pass over a message naming none of the
-  four required values. A scenario requiring several distinct values to appear in one message (AC-11a's
-  ticket id, actual stage, flow name, consumed stage) asserts each with its own `toContain`/`toMatch`
-  check, never combines them behind a single `|`.
-- **A scenario below is satisfied by exercising the described behaviour, not by scanning for an
-  implementation's own identifiers.** `toContain('completed')`,
-  `toMatch(/counters\[[^\]]+\]\s*=\s*limit/)` and equivalents do not satisfy AC-6d/e, AC-7, AC-8,
-  AC-9 or AC-10 — those criteria are behavioural, and the Given/When/Then below already names the
-  observable each one turns on (a counter's value, a stage on disk, a branch head, a persisted
-  history entry, a `runs.log` line), never a variable name or a call-order idiom in the source.
-  Source-text assertions are the right tool only where the criterion is itself about source shape —
-  AC-1 (folder/exports/dependencies/no-console/JSDoc), AC-4h's preserved-defect comment, AC-9d's
-  *"no such helper exists"* half, AC-13d — and each of those already says so explicitly. AC-12e is a
-  freeze check verified by reading, not a test at all (see below). Where a scenario reads as an
-  ordering claim (AC-4g, AC-6d), the ordering is asserted on the observable effect (the log line
-  exists / the history entry exists at the point checked), never on the relative position of two
-  identifiers inside the source text.
-- **`lifecycle.ts`'s three exports need a test file that actually calls them.** AC-9's scenarios
-  exercise `finish`, `outcome` and `recordEvent` directly; whatever file carries them must `import`
-  from `./lifecycle.js`. Round 2's `lifecycle.test.ts` does this correctly and is the model to keep.
-- **Documentation scenarios live where their inputs are already declared, not in a new
-  `packages/core` file.** AC-13b and AC-12e read `docs/GLOSSARY.md`, `docs/04-architecture.md` and
-  `contracts/Q-0050/lifecycle-routing.contract.md`. `packages/core/turbo.json` declares neither
-  `docs/GLOSSARY.md` nor any `contracts/Q-0050/**` path as a test input, so a `packages/core` test file
-  reading either one — round 2's `docs-q0050.test.ts` read both — makes `pnpm turbo run test --force`
-  report an undeclared read that Q-0072's own guard exists to catch, over a file no task in
-  `tasks.yaml` may edit (`packages/core/turbo.json`) and no task may register (`turbo-inputs.test.ts`'s
-  `READ_BASES`) (B-1). `packages/shared/turbo.json` already declares `docs/GLOSSARY.md` and
-  `docs/04-architecture.md`, and `packages/shared/src/docs.test.ts` already exists and already asserts
-  over GLOSSARY's **Event** term — AC-13b's scenario is implemented there, as a new `describe` block
-  beside the file's existing ones, needing no `turbo.json` or `READ_BASES` edit. AC-12e reads
-  `contracts/Q-0050/lifecycle-routing.contract.md`, which neither package declares; per its own
-  scenario below, it is not implemented as an automated test at all, so the question of which
-  package's `turbo.json` would need to declare it does not arise.
-- **Route-specific exclusion.** This route has no writer for `dev/implement-report.md` (no full-SDLC
-  step produces it). AC-12's six sites inside Q-0052's/Q-0053's not-yet-written code are **not**
-  tested here; they are read from `lifecycle-routing.contract.md`'s "Preserved diagnostic decisions"
-  table, which is the durable enumeration this route substitutes for the report. Only the two sites
-  inside Q-0050's own files are induced and asserted (AC-12a, AC-12b). Per `solution/errata.md`
-  E-5(a), no Q-0050-owned file consumes `mergeFailure`, so the empty-merge-error fallback is not a
-  Q-0050 scenario at all — it stays pinned in Q-0048's landed `fanout.test.ts:405` until Q-0052/Q-0053
-  exercise it as a consumption site.
-- **The decision entry already exists.** `docs/decisions/062-what-a-runs-event-stream-carries.md`
-  is accepted and dated 2026-08-28, so AC-13's documentation scenarios cite it by that exact title
-  and date rather than treating it as still owed.
-- **Two events for one preserved line.** `finish`'s narration (spike `:651`) is **preserved** as an
-  `info` event using the `terminalInfo` fixture text (AC-2). The **new** `terminal` event (AC-3) is
-  an addition carrying the same facts as typed fields for a machine consumer — it does not replace
-  the `info` line, and a scenario asserting one must not assume it subsumes the other.
-- **Every scenario in this document needs exactly one executing test, and the report must say which.**
-  Round 2 wrote scenarios for AC-5a, AC-5b, AC-8b, AC-8c, AC-8d, AC-9e, AC-10d and AC-10e that were
-  never implemented in the six test files actually produced (F-2, F-4) — a gap in execution, not in
-  this document, but one that recurred silently until the reviewer read the files directly rather
-  than trusting the scenario list. `red-report.md` names, per criterion, which test executes it; a
-  criterion present in this document with nothing named against it in the report is this gap
-  recurring and blocks the gate on its own.
-- **A finding, not a scenario:** see the end of this document.
-
-## Round-2 review findings resolved
-
-| Finding | Resolution |
-| --- | --- |
-| B-1: the new tests break Q-0072's input guard; `docs-q0050.test.ts` reads `docs/GLOSSARY.md` and `contracts/Q-0050/lifecycle-routing.contract.md`, neither declared in `packages/core/turbo.json`, and no task owns fixing the guard | AC-13b relocated to `packages/shared/src/docs.test.ts` (already declares both GLOSSARY and architecture docs); AC-12e rewritten as a by-reading freeze check with **no test file** — the read is removed rather than registered |
-| B-2: `loaders.test.ts`'s lint fixture (`steps:\n  - role: x\n`, a step with no `id`) lints clean, so `toThrow(FlowError)` can never fire | New test-design note enumerating rules `lintFlow` actually rejects; AC-11b and AC-11c now use `on_fail` present without `goto` |
-| B-3: `engine.test.ts`'s composed-run tests use `project.repoDir = '/repo'`, which cannot be created, so a non-dry run to `completed` can never pass | New test-design note requiring a real repository (`packages/core/test/repo.ts`'s `repo()` + `loadProject`) for any non-dry composed run to any terminus; explicit exemption stated for pre-context-construction rejections and dry runs |
-| B-4: `engine.test.ts:57` requires `cost $0.00`, which `round()` never produces for zero | New test-design note; `round()`'s exact output (`$0`, not `$0.00`) stated explicitly |
-| B-5: `lifecycle.test.ts:50` pins `finish()`'s returned cost as the three-decimal-rounded `1.23`, which is neither the raw value nor `outcome`'s own rounding | New test-design note splitting raw (`finish()`'s return) from rounded (`outcome`'s persisted entry); new scenario **AC-9f** states both explicitly |
-| B-6: `lifecycle.test.ts:50` and `:106-107` together require a per-call `if (ctx.dry)` guard inside `finish`, which the contract forbids | New test-design note; new scenario **AC-10f** requires the dry proof to run through a delegating `persistence` and assert on the underlying `backlog` call, never on `persistence.writeTicket`'s own call count |
-| F-1: the fixture oracle is read by no test, and five of AC-2a's seven texts are unasserted | Test-design notes' oracle rule strengthened to name all seven sites and forbid hand literals/prefix regexes explicitly; AC-2a restates the same rule inline |
-| F-2: AC-5a and AC-5b have no executed test | Scenarios unchanged (they were already correct); new test-design note makes the report responsible for naming, per criterion, which test executes it, so a silent drop is visible at the gate rather than only at the next review |
-| F-3: AC-13b's adapter-contract premise is false — `docs/03-adapter-contract.md` contains neither `runFlow` nor "event stream" | Resolved by `solution/errata.md` E-5(c): AC-13b's tested scope is `docs/04-architecture.md` and `docs/GLOSSARY.md` only; the adapter contract is out of this criterion's tested claims |
-| F-4: AC-8b, AC-8c, AC-8d, AC-9e, AC-10d, AC-10e have no executed test | Same handling as F-2 — scenarios unchanged, report-naming note added |
-| F-5: E-5 was still owed | `solution/errata.md` already carries E-5(a)–(d) as of this round; this document's route-specific-exclusion note and AC-12e/AC-13b scenarios are written to agree with it |
-| Nit: `q0050.source.test.ts:47`'s `match(...)?.length` crashes instead of failing as a wrong count | New test-design note requiring `(text.match(re) ?? []).length` |
-| Nit: `lifecycle-routing.test.ts:35`'s `toStrictEqual([gate()])` pins object identity, not correlation | New test-design note; AC-4a reworded to assert correlation and field equality |
-| Nit: `engine.test.ts:64`'s alternation regex is satisfied by the word "stage" alone | New test-design note; AC-11a reworded to four discrete checks |
-| Nit: `lifecycle-routing.contract.md`'s Loaders section still reads `loadFlowByName(harnessDir, name)` | Not this document's to fix (a contract-file correction); `solution/errata.md` E-5(d) already records it, and this document's scenarios use `(name, harnessDir)` throughout, matching the stub and the tests |
-
----
-
-## AC-1 — The module lands as `core/engine/`, adds no dependency, and prints nothing
-
-**AC-1a — folder shape and export list**
-Given the six files `types.ts`, `channel.ts`, `loaders.ts`, `routing.ts`, `lifecycle.ts`,
-`engine.ts` exist under `packages/core/src/engine/` with no barrel file,
-When `coreSourceFiles()` walks `packages/core/src`,
-Then the engine folder's keys and `corpus.test.ts`'s module-folder assertion list appear together,
-`engine.ts` exports `runFlow` and nothing else does that engine.ts doesn't also need, and each of
-the other five files exports only the declarations `module-layout.contract.md`'s table names for it.
-**Tasks:** q0050-engine-types, q0050-event-channel, q0050-loaders, q0050-routing, q0050-lifecycle,
-q0050-engine-compose.
-
-**AC-1b — no new dependency**
-Given `packages/core/package.json` before this ticket's tasks run,
-When the six production files are complete,
-Then a dependency diff over `packages/core/package.json` is empty — imports are limited to Node
-builtins, `yaml`, `@quorum/shared` and engine-folder siblings, and no file imports anything under
-`spike/`.
-**Tasks:** q0050-engine-types, q0050-event-channel, q0050-loaders, q0050-routing, q0050-lifecycle,
-q0050-engine-compose.
-
-**AC-1c — nothing writes to a stream**
-Given the complete engine folder's source text,
-When a scan searches for `console.`, `process.stdout`, `process.stderr` and ANSI escape sequences,
-Then none is found anywhere under `packages/core/src/engine/`, matching the spike's own zero-count
-over `engine.js` before the port.
-**Tasks:** q0050-engine-types, q0050-event-channel, q0050-loaders, q0050-routing, q0050-lifecycle,
-q0050-engine-compose.
-
-**AC-1d — JSDoc on every export and non-obvious field**
-Given the six production files,
-When a scan collects every exported symbol and every field of `RunContext`, `RoutingContext` and
-`LifecycleContext` that is not self-explanatory from its name and type,
-Then each carries a `/** … */` comment, and the module-folder assertion is demonstrated to fail
-first against the un-extended corpus so the extension is proven live rather than vacuous.
-**Tasks:** q0050-engine-types, q0050-event-channel, q0050-loaders, q0050-routing, q0050-lifecycle,
-q0050-engine-compose.
-
----
-
-## AC-2 — `runFlow` emits `shared`'s `Event`, byte-identical to the spike's seven owned lines
-
-**AC-2a — the seven owned sites, string-equal, every one interpolated from the fixture**
-Given a mock-adapter fixture flow that exercises a plain step, a `parallel` group, an `on_fail` loop
-and a gate, run to completion as a non-dry run against a real temporary repository (`repo()` +
-`loadProject`, per the test-design note — never a placeholder `repoDir`),
-When the flow is run through `runFlow` to completion,
-Then the run banner (`runBanner`), the backward-edge warning (`crossFlowRegression`), the loop
-iteration and loop-exhausted warnings (`loopIteration`, `loopExhausted`), the gate question, the
-rollback warning (`rollback`) and the terminal narration (`terminalInfo`) each arrive as one event
-of the documented kind whose message is string-equal to the fixture, interpolated for the run's
-actual values — every one of the seven sites is asserted this way, none as a hand-retyped literal
-and none as a prefix or partial regex.
-**Tasks:** q0050-engine-compose, q0050-routing, q0050-event-channel.
-
-**AC-2b — adapter event order and enrichment within a step**
-Given a step whose adapter emits `spawn`, several `stdout` lines and one `retry`,
-When the events are drained from the iterator,
-Then they arrive in their original relative order, each carrying exactly the executing step's id
-added and no other new field.
-**Tasks:** q0050-engine-compose, q0050-event-channel.
-
-**AC-2c — no cross-member order inside a `parallel` group**
-Given a `parallel` group of three steps whose adapters interleave arbitrarily,
-When the group runs under `Promise.allSettled`,
-Then the test asserts only that each member's own events keep their internal order — it does not
-assert, and would fail if it asserted, a fixed order between members.
-**Tasks:** q0050-routing, q0050-event-channel.
-
-**AC-2d — a burst is not dropped, coalesced or reordered**
-Given a step whose adapter synchronously emits 500 `stdout` events in one call-stack turn,
-When the consumer drains the iterator at its own pace,
-Then exactly 500 `stdout` events are yielded, in their original order, within that step.
-**Tasks:** q0050-event-channel.
-
-**AC-2e — no event carries a field beyond the union**
-Given each of the eight event kinds, over samples that include the required `gateId` on every gate
-event,
-When a run-event schema check runs over a captured stream,
-Then every event validates against `eventSchema`, and a key assertion confirms no event has a field
-name outside its own member's declared keys — in particular no timestamp, sequence number or run id
-on any non-terminal event.
-**Tasks:** q0050-shared-events.
-
-**AC-2f — a failed step never emits `done`**
-Given a step whose script or agent invocation fails,
-When the step is run,
-Then a `step` event was queued before execution and no `done` event is ever queued for that step id.
-**Tasks:** q0050-routing, q0050-engine-compose.
-
----
-
-## AC-3 — The terminal outcome is on the stream, and a failure also throws
-
-**AC-3a — one terminal event, last, per status**
-Given five separately constructed runs, one reaching each of `completed`, `regressed`, `aborted`,
-`failed` and `interrupted` — the non-`dry` composed cases backed by a real temporary repository per
-the test-design note, since `finish()` writes real ticket/log state regardless of which terminal
-status it reaches —
-When each run's stream is drained fully,
-Then exactly one `terminal`-typed event is yielded, it is the last value produced, and its
-`stageBefore`/`stageAfter`/`runId` match `finish()`'s own values for that run. `cost` matches
-`finish()`'s own *raw, unrounded* value (see AC-9f) — never the three-decimal figure `outcome()`
-rounds for the persisted history entry. `tokens` and (for `regressed`) the seven regression fields
-are present as the deliberate addition the requirement names, not as inherited spike behaviour.
-**Tasks:** q0050-lifecycle, q0050-engine-compose, q0050-shared-events.
-
-**AC-3b — a failed run's next pull throws**
-Given a run whose second step throws,
-When the terminal event is consumed and the iterator is pulled once more,
-Then that pull rejects with the module's single `FlowError`, re-exported from `../lint/lint.js`, and
-`error.message` is non-empty and names the cause.
-**Tasks:** q0050-event-channel, q0050-lifecycle.
-
-**AC-3c — the terminal schema rejects malformed shapes**
-Given a valid `completed` terminal payload,
-When one unknown key is added, or when a `regressed` payload is built with only three of its five
-regression-only fields present,
-Then `runTerminalEventSchema` rejects both — the discriminated union requires the group complete or
-wholly absent, never partial.
-**Tasks:** q0050-shared-events.
-
-**AC-3d — non-regressed statuses carry no regression fields**
-Given `completed`, `aborted`, `failed` and `interrupted` terminal events,
-When they are checked against the schema's non-regression branch,
-Then none of `targetFlow`, `counter`, `count`, `limit`, `remaining` is present or accepted on them.
-**Tasks:** q0050-shared-events.
-
----
-
-## AC-4 — The gate channel
-
-**AC-4a — a passive consumer sees the question, correlated rather than compared by identity**
-Given a flow with an author-declared human gate and no `answerGate` behaviour attached to the
-consumer beyond draining,
-When the run reaches the gate,
-Then a `gate` event is yielded on the stream carrying `gateId`, `kind`, `reason`, absolute
-`ticketDir` and (only when offered) `retry`, matching the fixture's `gate` shape, whether or not
-anything is ready to answer it yet. The assertion checks that this `gateId` is the one the eventual
-answer must repeat and that `kind`/`reason`/`ticketDir`/`retry` equal the step's own declared
-values — it does not assert deep-equality against a hand-built event literal constructed
-independently of the call, since `askGate` is contracted only to allocate and emit *a* correlated
-question, not to echo a caller-supplied object verbatim.
-**Tasks:** q0050-routing, q0050-event-channel.
-
-**AC-4b — the answer may arrive later, from outside the pull**
-Given a pending gate question and an `answerGate` callback whose promise resolves 200 ms later from
-a timer outside the `for await` loop,
-When that promise resolves with `advance`,
-Then the run continues and completes without the consumer having done anything but keep iterating.
-**Tasks:** q0050-routing.
-
-**AC-4c — correlation, not text-parsing; stale and duplicate answers are refused**
-Given a pending gate with `gateId = g1`,
-When an envelope naming a different or already-resolved `gateId` is delivered, and separately when a
-second envelope for `g1` is delivered after the first was accepted,
-Then both are refused explicitly (the run fails naming the gate) rather than silently applied, and
-the accepted answer is exactly the first one.
-**Tasks:** q0050-routing.
-
-**AC-4d — an answer outside the closed union is rejected, not treated as a default**
-Given a gate awaiting an answer,
-When the callback resolves with an envelope whose `answer` is not one of `advance | retry | abort`,
-Then the run fails naming the gate rather than treating the value as any particular one of the
-three — the shape is a compile-time closed union in `shared` and a runtime-validated boundary in
-`routing.ts`.
-**Tasks:** q0050-routing, q0050-shared-events.
-
-**AC-4e — no channel supplied fails the run by name**
-Given a flow reaching a human gate and `RunFlowOptions.answerGate` left `undefined`,
-When the run reaches that gate,
-Then the run fails naming the gate's kind and reason — it does not advance, abort silently, or hang.
-**Tasks:** q0050-routing.
-
-**AC-4f — auto/`--auto`/`--dry` are evaluated before a question exists**
-Given three flows: one with an `auto`-kind gate, one with an author-declared human gate run under
-`auto: true` on the options, and one run with `dry: true`,
-When each reaches its gate,
-Then the first two emit `info` (`gateAutoAdvanced`) and consume no answer; the dry run emits `info`
-(`gateDryRun`) and consumes no answer; and a fourth flow whose gate is `human-locked` run under
-`auto: true` still asks — it never auto-advances.
-**Tasks:** q0050-routing.
-
-**AC-4g — every answered gate is logged before the answer is acted on**
-Given an author-declared gate answered `advance`,
-When the run continues past it,
-Then `runs.log` carries the `log.gateAnswer` line, and that line is present the moment the answer is
-observed to take effect (never written after) — asserted on the observable order of effects, not on
-the relative position of two identifiers in `routing.ts`'s source text.
-**Tasks:** q0050-routing.
-
-**AC-4h — `signalWindow` is preserved and pinned**
-Given `askGate`'s implementation in `routing.ts`,
-When its source is inspected,
-Then the 1000 ms timer survives with a same-line comment reading `Why: preserved defect, see Q-0050
-AC-4.`, matching the accepted decision's "cost accepted" clause rather than being silently dropped
-or silently kept unremarked.
-**Tasks:** q0050-routing.
-
----
-
-## AC-5 — A run that stops early still writes its terminal record; `core` never exits the process
-
-**AC-5a — a step throws**
-Given a run whose second step's script exits non-zero, driven against a real temporary repository,
-When the run is driven to exhaustion,
-Then every active occurrence is finalised `failed` with its category before `finish(..., 'failed',
-<first 200 chars of the first line>)` runs, `runs.log` gets its terminal line, and the iterator's
-subsequent pull throws — matching AC-3b from the other direction.
-**Tasks:** q0050-lifecycle, q0050-engine-compose.
-
-**AC-5b — cancelled mid-step**
-Given a run with an `AbortSignal` aborted while a step is executing, driven against a real temporary
-repository,
-When the abort fires,
-Then the run's terminal record is `interrupted` with note `received SIGINT`-equivalent text, is
-complete on disk before the caller regains control, and a process-wide check confirms `core`
-installed no `process.on`/`process.once` signal listener and called `process.exit` nowhere.
-**Tasks:** q0050-engine-compose, q0050-lifecycle.
-
-**AC-5c — cancelled while suspended at a gate**
-Given a run awaiting `answerGate`'s promise at a pending gate, with an `AbortSignal` aborted before
-that promise ever resolves,
-When the abort fires,
-Then the run ends `interrupted`, the same terminal record and log line as AC-5b, and no answer is
-ever applied even if the callback later resolves.
-**Tasks:** q0050-routing, q0050-lifecycle.
-
-**AC-5d — the consumer walks away**
-Given a `for await` loop over the stream that executes `break` after its third yielded event, mid-run,
-When the iterator's `return()` is invoked by that `break`,
-Then `return()` does not resolve until the interrupted terminal record and counters are persisted —
-an abandoned run is recorded exactly as AC-5b's cancellation, not silently dropped, which is the
-failure mode the spike's `finally` (removing only signal listeners) does not guard against today.
-**Tasks:** q0050-event-channel, q0050-lifecycle.
-
-**AC-5e — no listener leak across repeated runs**
-Given ten sequential runs against the same process, mixing completed and cancelled outcomes,
-When `process.listenerCount` for every signal is read before the first and after the tenth,
-Then the counts are identical — nothing accumulates.
-**Tasks:** q0050-engine-compose.
-
----
-
-## AC-6 — Counters, the backward edge and the exhaustion gate
-
-**AC-6a — arithmetic across a bounded loop**
-Given a step whose `on_fail` targets an earlier step with `max_iterations: 2` and no explicit
-`counter`,
-When the step fails three times in a row,
-Then the counter key is `` `${flow.name}.${step.id}` ``, its value is 1 then 2 after the first two
-failures (each emitting the exact `loopIteration` text and permitting the goto), and the third
-failure — where the pre-increment value would exceed the limit — instead records `exhausted` and
-presents the synthesised gate.
-**Tasks:** q0050-routing.
-
-**AC-6b — an untouched sibling loop**
-Given a second, independent bounded loop elsewhere in the same flow that never fails,
-When the loop in AC-6a exhausts,
-Then the sibling's counter remains absent/zero throughout.
-**Tasks:** q0050-routing.
-
-**AC-6c — `--auto` cannot bypass the exhaustion gate**
-Given the same flow run with `auto: true`, and containing one author-declared `auto`-kind gate
-elsewhere,
-When the run reaches the author-declared gate and then the loop's exhaustion gate,
-Then the first auto-advances with no answer consumed, and the second still asks — `human-locked`
-regardless of `--auto`.
-**Tasks:** q0050-routing.
-
-**AC-6d — the spend is on disk before the question is asked**
-Given the loop from AC-6a exhausting,
-When the exhaustion gate is presented but not yet answered,
-Then `ticket.md`'s history already carries an `exhausted` entry (via `recordEvent`, cost 0, same
-stage before/after) and `runs.log` already carries its `log.recordEvent` line — both written before
-`askGate` returns, checked by reading disk state at that point in the run, not by a source-order
-assertion.
-**Tasks:** q0050-routing, q0050-lifecycle.
-
-**AC-6e — `advance` changes no counter**
-Given the exhausted gate from AC-6a answered `advance`,
-When the run continues,
-Then every counter (the exhausted one and any sibling) is byte-identical to its pre-answer value —
-`advance` accepts the current result and moves nothing.
-**Tasks:** q0050-routing.
-
----
-
-## AC-7 — `retry` authorises exactly one more traversal
-
-**AC-7a — the retried counter is set to the limit, not cleared**
-Given two independent bounded loops, one exhausted per AC-6a and one untouched,
-When the exhausted gate is answered `retry`,
-Then the retried loop's counter becomes exactly `max_iterations` (not 0, not deleted), the untouched
-loop's counter is unaffected, the retry's own goto is permitted as the one authorised traversal, and
-the next failure of that same loop increments past the limit and re-presents the gate rather than
-looping again.
-**Tasks:** q0050-routing.
-
-**AC-7b — the grant is logged exactly**
-Given the same `retry` answer,
-When `runs.log` is read afterward,
-Then it carries the `log.retryGrant` line naming the counter and the value set.
-**Tasks:** q0050-routing.
-
-**AC-7c — `retry` with no retry target aborts**
-Given an author-declared human gate with no `retry` target configured,
-When it is answered `retry`,
-Then the run ends `aborted` — the spike's actual fallthrough behaviour — rather than being rejected
-as an invalid answer.
-**Tasks:** q0050-routing.
-
----
-
-## AC-8 — Cross-flow regression derives its stage from the target's `consumes`
-
-**AC-8a — the ticket regresses to the target's `consumes`, and the target never runs**
-Given a fixture pair of flows A and B, where one of A's steps has `on_fail: { goto: 'flow:B' }`,
-and B declares `consumes: qa-red`, run against a real temporary repository,
-When that step in A fails,
-Then the run ends `regressed`, the ticket's stage becomes `qa-red` (B's `consumes`, never B's
-`produces`, never a hard-coded value, never A's own `consumes`), and none of B's steps are ever
-invoked.
-**Tasks:** q0050-routing, q0050-engine-compose.
-
-**AC-8b — the exact warning and the seven terminal fields**
-Given the same regression,
-When the stream and the terminal event are inspected,
-Then a `warn` event string-equal to `crossFlowRegression` is yielded before the terminal event, and
-the terminal event's regression fields are B's name, A's pre-mutation stage as `stageBefore`, `qa-red`
-as `stageAfter`, the counter key, count, limit, and `remaining` clamped at zero when count equals
-limit.
-**Tasks:** q0050-lifecycle, q0050-shared-events, q0050-routing.
-
-**AC-8c — a goto to an absent flow fails naming it**
-Given `on_fail: { goto: 'flow:does-not-exist' }`,
-When that step fails,
-Then the run fails naming the flow and the cause, and the ticket's stage is left unchanged — not
-regressed, not advanced.
-**Tasks:** q0050-routing, q0050-engine-compose.
-
-**AC-8d — `remaining` after a retry that consumed the full budget**
-Given a loop retried once per AC-7a so that its counter equals `max_iterations`, which then fails
-again and cross-flow-regresses,
-When the terminal event's regression fields are read,
-Then `remaining` is 0 (count === limit), not negative.
-**Tasks:** q0050-routing.
-
----
-
-## AC-9 — `finish()` moves the stage on two statuses only; task branches are not rolled back
-
-**AC-9a — five runs, one per status**
-Given five separately driven runs reaching `completed`, `regressed`, `aborted`, `failed` and
-`interrupted` respectively, exercised through a test file that imports `finish`, `outcome` and
-`recordEvent` directly from `./lifecycle.js`,
-When each finishes,
-Then `ticket.meta.iterations` is persisted for all five, the ticket's stage changes only for
-`completed` (to `flow.produces`) and `regressed` (to the target's `consumes`), and a history entry
-is appended for every one of the five — including the three that do not advance the stage.
-**Tasks:** q0050-lifecycle.
-
-**AC-9b — the two `runs.log` formats**
-Given a completed run and a run that rolls its branch back,
-When `runs.log` is read,
-Then the terminal line matches `log.terminal` exactly (including the JSON-quoted `errorSuffix` only
-when `note` is non-null) and the rollback line matches `log.rollback` exactly.
-**Tasks:** q0050-lifecycle.
-
-**AC-9c — the rollback's four-way guard**
-Given a run whose ticket branch moved during execution (start head ≠ some later head), tested across
-`dry`/non-`dry`, `completed`/non-`completed`, start-head null/non-null, and current-head equal/
-different,
-When `finish()` runs,
-Then the branch is reset only in the one cell where all four conditions point to it: non-dry,
-non-`completed`/non-`regressed`, start head truthy, and current head differs from it — every other
-cell leaves the branch untouched.
-**Tasks:** q0050-lifecycle.
-
-**AC-9d — task branches survive, and no helper exists to move them**
-Given a failed run where a fan-out-style task branch (created directly by the test fixture, not by
-this ticket's own code) sits beside the ticket branch,
-When `finish()` completes,
-Then the task branch's head is unchanged (a behavioural check, run against the real branch), and a
-source scan of `lifecycle.ts` and its siblings finds no function that resets or deletes a task
-branch in any form (the one half of this scenario a source scan legitimately answers, since it is a
-negative-existence claim about the codebase rather than a claim about runtime behaviour).
-**Tasks:** q0050-lifecycle.
-
-**AC-9e — a run-history initialisation failure still terminates cleanly**
-Given a persistence capability whose initialisation throws,
-When the run is started,
-Then the failed terminal line is written to `runs.log`, the stage is not moved, and no manifest
-finalisation is attempted.
-**Tasks:** q0050-engine-compose, q0050-lifecycle.
-
-**AC-9f — cost precision splits between `finish()`'s return and the persisted history entry**
-Given a `LifecycleContext` whose `stats.cost` is `1.23456`,
-When `finish` resolves for a `completed` run, and separately when the `TicketHistoryEntry` it wrote is
-inspected (or `outcome` is called directly with the same rounded value `finish` would pass it),
-Then `finish`'s resolved `RunOutcome.cost` is the raw `1.23456` — matching AC-3a's terminal-event
-correction, since nothing on the return path rounds it — while the persisted history entry's `cost`,
-built by `outcome`, is rounded to three decimal places (`1.235`). This is `lifecycle-routing.
-contract.md`'s one stated rounding clause ("`finish` supplies distinct stages and rounded run cost");
-it applies to the value fed into the persisted entry, never to `finish`'s own returned object.
-**Tasks:** q0050-lifecycle.
-
----
-
-## AC-10 — `--dry` writes no file; its two preserved mutations are pinned, not fixed
-
-**AC-10a — nothing lands on disk**
-Given a flow with an agent step, a script step and a gate, run with `dry: true`,
-When the run completes,
-Then `ticket.md` and `runs.log` are byte-unchanged on disk, no `.quorum/` directory is created, and
-no worktree is created by anything this ticket owns.
-**Tasks:** q0050-engine-compose, q0050-lifecycle.
-
-**AC-10b — the in-memory ticket still advances (preserved, asserted positively)**
-Given the same dry run,
-When the in-memory `ticket` object passed into `RunFlowOptions` is inspected after the run,
-Then its `meta.stage`, `meta.iterations` and `history` reflect `finish()`'s assignment exactly as a
-non-dry run would — the disk write alone is the no-op, matching `Why: preserved defect, see Q-0050
-AC-10.`
-**Tasks:** q0050-lifecycle.
-
-**AC-10c — counters alias the ticket's iterations object (preserved, asserted positively)**
-Given a dry run over a flow containing a bounded loop that fails once,
-When the run's internal counter object and `ticket.meta.iterations` are compared by reference,
-Then they are the same object — a write through one is visible through the other immediately,
-matching the same preserved-defect line.
-**Tasks:** q0050-engine-compose.
-
-**AC-10d — the dry view is a prototype, not per-call guards**
-Given a dry run's constructed backlog view,
-When `write`, `writeFile` and `log` are called on it, and separately when a read method inherited
-from the prototype is called,
-Then the three writers are no-ops and the read method still executes against the real backlog —
-`Object.create(backlog)` with three own-property overrides, not a guard at each call site.
-**Tasks:** q0050-engine-compose.
-
-**AC-10e — the dry gate consumes no answer**
-Given a dry run reaching a gate,
-When the gate is encountered,
-Then an `info` event string-equal to `gateDryRun` is yielded and `answerGate` is never invoked.
-**Tasks:** q0050-routing.
-
-**AC-10f — `finish()` adds no per-call dry guard of its own; the view is what is dry**
-Given a `LifecycleContext` whose `persistence.writeTicket` (and `appendLog`) delegate to
-`ctx.backlog.write`/`log` — real for a non-dry call, the `Object.create` no-op view for a dry call —
-rather than being an independent bare mock,
-When `finish` is called once non-dry and once dry with everything else identical,
-Then `persistence.writeTicket` (and the ticket-history push, counters, `emit`) run unconditionally in
-both calls — `finish`'s own source contains no `if (ctx.dry)` or ternary switching its own writer
-calls — while the underlying `backlog.write` the delegate reaches is invoked in the non-dry call and
-never invoked in the dry call, because the no-op view absorbs it rather than a guard inside `finish`.
-**Tasks:** q0050-lifecycle.
-
----
-
-## AC-11 — The stage precondition and the six helpers
-
-**AC-11a — the stage precondition fires before anything else, each required value checked on its own**
-Given a ticket whose `meta.stage` does not equal `flow.consumes`,
-When `runFlow` is invoked,
-Then the very first thing observable is a failure whose message is checked with four separate
-assertions — one each for the ticket id, the ticket's actual stage, the flow's name, and the flow's
-`consumes` — never a single regex combining them behind `|`, which a message naming only one of the
-four could satisfy. No dry substitution happened, no context was built, no `runs.log` line was
-written and no run directory exists; this scenario needs no real repository, since the rejection
-happens before any file is touched.
-**Tasks:** q0050-engine-compose.
-
-**AC-11b — `loadFlow` lints before returning**
-Given a flow file that parses as YAML but fails `lintFlow` — an id-bearing step whose `on_fail` has
-no `goto` (never "a step with no `id`", which lints clean per Q-0055 and cannot demonstrate this
-scenario),
-When `loadFlow(file)` is called,
-Then it throws lint's own error rather than returning an unvalidated `Flow`, and for a valid file it
-returns a `Flow` whose `.file` equals the path passed in.
-**Tasks:** q0050-loaders.
-
-**AC-11c — `loadFlowByName`'s two failure shapes**
-Given a harness directory missing `flows/ghost.yaml`, and separately one whose `flows/broken.yaml`
-declares an id-bearing step with `on_fail` and no `goto` (the same lint-failing construct as AC-11b,
-never an id-less step),
-When `loadFlowByName('ghost', harnessDir)` and `loadFlowByName('broken', harnessDir)` are called,
-Then the first throws `ENOENT` (not `FlowError` — it performs no existence check of its own) and the
-second throws the lint `FlowError`.
-**Tasks:** q0050-loaders.
-
-**AC-11d — `loadRole`'s falsy and missing cases**
-Given a step with no `role` property, and separately a step naming a role file that does not exist,
-When `loadRole` is called for each,
-Then the first returns `{ meta: {}, body: '' }` and the second throws `FlowError` whose message
-contains the full path attempted.
-**Tasks:** q0050-loaders.
-
-**AC-11e — `interpolate`'s unknown-key and dotted-key behaviour**
-Given a template containing `{known}`, `{unknown}` and `{a.b}` where only `known` is a top-level key
-in the values object,
-When `interpolate` runs,
-Then `{known}` is substituted, `{unknown}` is left literally as `{unknown}`, and `{a.b}` is looked up
-as the flat key `"a.b"` (which is absent) and also left literal — never treated as a path into a
-nested `a` object, and never substituted with an empty string.
-**Tasks:** q0050-loaders.
-
-**AC-11f — `writesOf` prefers the singular**
-Given a step declaring both `output.write` and `output.writes`,
-When `writesOf(step)` runs,
-Then it returns the singular value only, and for a step declaring only the plural it returns that
-array — inventing no path in either case.
-**Tasks:** q0050-loaders.
-
-**AC-11g — `reviewRound` counts completed rounds only**
-Given a ticket directory with `review/round-1/verdict.md`, `review/round-2/` (no `verdict.md` yet),
-and separately a ticket with no `review/` directory at all,
-When `reviewRound(ticketDir)` runs on each,
-Then the first returns 2 (highest round *containing* `verdict.md`, plus one — round 2 doesn't count
-because it has none) and the second returns 1.
-**Tasks:** q0050-loaders.
-
----
-
-## AC-12 — Git-fails vs. branch-absent, stated everywhere and tested at the two owned sites
-
-**AC-12a — the start-of-run branch-head site**
-Given `LifecycleContext.readBranchHead` injected to return `null` (standing in for both "no such
-branch" and "git failed" — the two are indistinguishable at this boundary today),
-When a run that later needs to roll back is driven to a non-completed, non-regressed, non-dry
-terminus,
-Then the rollback block is skipped with no warning at all — the same behaviour whether the branch
-was truly absent or git itself failed — and the source carries `Why: preserved defect, see Q-0050
-AC-12.` at that call site.
-**Tasks:** q0050-engine-compose.
-
-**AC-12b — the rollback-read site**
-Given a run whose start head was a real, truthy value, but whose `readBranchHead` returns `null`
-specifically at the point `finish()` re-reads the current head,
-When `finish()` runs,
-Then the rollback is skipped with no warning, even though the run genuinely moved the branch and a
-non-null read would have triggered the reset — the same preserved-defect line applies.
-**Tasks:** q0050-lifecycle.
-
-**AC-12c — a gate or script nested in a `parallel` group still dispatches as an agent step**
-Given a `parallel` group containing one member of kind `gate` and one of kind `script`,
-When the group runs,
-Then both are dispatched through `runAgentStep`, not through gate or script handling — the
-preserved defect the requirement names, not a crash and not correct routing.
-**Tasks:** q0050-routing.
-
-**AC-12d — an `on_fail` goto to an unknown step id throws `TypeError`, not `FlowError`**
-Given a step whose `on_fail.goto` names a step id absent from the flow (bypassing lint, which
-normally forbids this),
-When that step fails,
-Then the run dies with a raw `TypeError` from indexing the step list at `-1`, not a `FlowError` —
-preserved because lint protects the normal path and no ticket authorises hardening the engine
-against a lint bypass.
-**Tasks:** q0050-engine-compose.
-
-**AC-12e — each of the eight sites states its disposition somewhere durable (verified by reading, no test file)**
-Given `lifecycle-routing.contract.md`'s "Preserved diagnostic decisions" table, frozen to every
-implement task,
-When it is read against this ticket's owned files at the gate,
-Then all eight sites — the two above plus base/ticket sync, the discard report, five task-branch
-filters and the merge-failure consumers — have a stated disposition (even "exactly what it does
-today"), satisfying AC-12's "for each site, state it" obligation without requiring
-`dev/implement-report.md`, which this route does not produce.
-**This is a freeze check on a landed, implementer-unwritable file, not an acceptance test that starts
-red and turns green, and it is not implemented as a test at all.** All six subject strings the table
-needs are present today, so this scenario can never be red at any point in the loop — and per this
-role's own rule, a check that can never fail is not a scenario to encode as one. Round 2's
-`docs-q0050.test.ts` implemented it as an automated `fs.readFileSync` over
-`contracts/Q-0050/lifecycle-routing.contract.md`, which is exactly the read that escaped Q-0072's
-undeclared-input guard (B-1); the fix is to remove the read, not to register it. Verified once, by
-reading, at the gate — it does not count toward AC-12's *tested* coverage of the eight sites, which
-is AC-12a and AC-12b alone.
-**Tasks:** *(no production task and no test file — verified once at the gate, not run by `pnpm test`.)*
-
----
-
-## AC-13 — House rules, corrected docs, and the freeze
-
-**AC-13a — lint, typecheck and test, forced**
-Given the complete engine folder and its `packages/shared` additions,
-When `pnpm lint`, `pnpm typecheck` and `pnpm test` run forced, in the merge worktree and again in a
-fresh checkout of `main` after merge,
-Then all three pass in both environments with no suppressed diagnostic lacking a same-line reason
-and no new `@typescript-eslint/no-deprecated` finding.
-**Tasks:** q0050-engine-types, q0050-event-channel, q0050-loaders, q0050-routing, q0050-lifecycle,
-q0050-engine-compose, q0050-shared-events.
-
-**AC-13b — the docs describe the terminal member and the channel (tested in `packages/shared/src/docs.test.ts`)**
-Given `docs/GLOSSARY.md`'s **Event** entry and `docs/04-architecture.md` principle 2 and its
-`runFlow` line,
-When they are read after this ticket,
-Then each describes the terminal event, the out-of-band `answerGate` channel, caller-owned
-cancellation, the parallel-group ordering limit and the no-timestamp rule, and cites *"What a run's
-event stream carries, and how a gate answer travels back"* (2026-08-28) by that exact title and
-date — never by file name or number.
-This scenario is implemented as a new `describe` block inside `packages/shared/src/docs.test.ts` —
-already the file asserting over GLOSSARY's **Event** term, and already declared as a turbo input by
-`packages/shared/turbo.json` — not as a new file under `packages/core/src/engine/`; a core-side test
-reading `docs/GLOSSARY.md` with no matching `turbo.json`/`READ_BASES` entry is exactly what B-1
-struck. `docs/03-adapter-contract.md` is **out of this criterion's tested scope**, per
-`solution/errata.md` E-5(c): measured to contain neither `runFlow` nor "event stream" today, so it
-has no existing claim to correct, and the `q0050-documentation` task's edit to it (if any) is not
-separately verified by a scenario.
-**Tasks:** q0050-documentation (doc edits); the test lives in `packages/shared/src/docs.test.ts`,
-owned by QA, not by any production task.
-
-**AC-13c — dependency direction**
-Given `packages/core` and `packages/shared`,
-When the shared-resolution test runs,
-Then `core` imports event/flow/ticket/role/step-output types from `shared`, and `shared` imports
-nothing from `core`.
-**Tasks:** q0050-shared-events, q0050-engine-types.
-
-**AC-13d — preserved-defect comments name their authority, never transcribe it**
-Given every `Why: preserved defect, see Q-0050 AC-<n>.`-style comment added across the six files,
-When the comments are scanned,
-Then each is a single line naming the criterion, and none reproduces a sentence from
-`docs/DECISIONS.md`, the ticket body or the requirement verbatim.
-This scan reads only `packages/core/src/engine/*.ts` — already inside the package, no external doc
-read to register — and belongs beside AC-1's and AC-12's shape checks in `q0050.source.test.ts`, not
-in a separate documentation-testing file.
-**Tasks:** q0050-routing, q0050-lifecycle, q0050-engine-compose.
-
-**AC-13e — the freeze is intact**
-Given the full diff this ticket's tasks produce,
-When it is checked against `spike/**`,
-Then nothing under `spike/` changed, and CI's branch-scoped port-freeze job passes over this
-ticket's branches.
-**Tasks:** *(repo-wide check, not owned by any single task — verified at the gate.)*
-
----
-
-## Findings
-
-**The empty-merge-error clause in `lifecycle-routing.contract.md` names no site inside a
-Q-0050-owned file.** No file `tasks.yaml` assigns to this ticket calls `mergeInto` or consumes
-`mergeFailure`'s result; the fan-out/integrate code that does is Q-0053's, unwritten. Per this role's
-brief — *"if a criterion needs a file no task owns, say so as a finding instead of encoding it as a
-scenario"* — this document does not write a Q-0050 scenario for the empty-error-suffix fallback. It
-does not need one: the behaviour is already pinned in Q-0048's landed
-`packages/core/src/fanout/fanout.test.ts` (`:405`), and it will be exercised again as a *consumption*
-site when Q-0052 and Q-0053 land, which is where `lifecycle-routing.contract.md`'s own table places
-it. **This is now formalised rather than merely recommended:** `solution/errata.md` E-5(a),
-written during round 2's own exhaustion gate at the reviewer's request, strikes
-`lifecycle-routing.contract.md:97-98`'s *"tests the non-empty subject before the empty merge-error
-suffix"* clause and records exactly this disposition, so a future reader has the erratum rather than
-only this document's finding to go on.
-</document>
+*Round 4 · automation QA · 2026-08-29 · responds to `qa/scenario-review.md` round 3 (verdict: **revise**).
+Criterion lettering (AC-1a…AC-13e) is unchanged from round 3 so the traceability table below reads
+directly against that review. Round 3's design-half findings (blockers B-1 through B-5, findings F-1
+through F-6) are each closed or explicitly deferred below, cross-referenced by number. `solution/errata.md`
+E-1–E-6 is binding and is not re-litigated here; where an erratum already settles something, this document
+states the settlement and moves on.*
+
+## What changed since round 3
+
+Round 3's "QA, in this loop — mechanical" list, items 1–6, closed in order:
+
+1. **B-1 (four of six guard failures).** `q0050.source.test.ts`'s three source-scans (root derivation,
+   cross-package literal, computed-read base) now read through `packages/core/test/corpus.ts`'s
+   `repoFile()` — the same helper `adapters.source.test.ts`, `fanout.source.test.ts` and
+   `run-history.source.test.ts` already use — instead of hand-rolled path math. AC-13c's reverse-direction
+   clause ("`shared` imports nothing from `core`") moves to `packages/shared/src/index.test.ts`, which
+   already declares `packages/core/package.json` and `packages/core/src/index.ts` as inputs (line 48), so
+   the assertion costs no new register entry. See AC-13c below.
+2. **B-1 (remaining two).** `engine.test.ts` writes `harness/harness.yaml` into a temporary repository as
+   fixture setup — it is a write of test data, not a read of anything real. Registered in
+   `turbo-inputs.test.ts`'s data-write allowlist beside the existing
+   `packages/shared/src/project.test.ts: harness/harness.yaml` entry.
+3. **B-3.** The three unsatisfiable `expect(opts.backlog.write).not.toHaveBeenCalled()`-style assertions
+   are replaced by `vi.spyOn(project.backlog, 'write' | 'writeFile' | 'log')` installed **before** the run,
+   so the spy observes whether the dry view's `Object.create` shadow ever lets a call reach the prototype
+   method. AC-10a — which had no test at all — now carries the on-disk half of the same scenario.
+4. **B-4.** All fourteen listed scenarios (AC-2b, AC-2c, AC-2f, AC-5a, AC-5b, AC-5e, AC-8b, AC-8c, AC-8d,
+   AC-9e, AC-10a, AC-10d, AC-12c, AC-12d) are written out below with a concrete mechanism, not just a
+   restated criterion.
+5. **B-5.** Every scenario asserting Q-0050-owned narration now names the exact
+   `contracts/Q-0050/run-messages.fixture.json` key it interpolates. The two hand-retyped literals
+   (`log.retryGrant`, `log.recordEvent`) and the two substring/prefix matches (`log.terminal`,
+   `log.gateAnswer`) are replaced with full-string equality against the fixture value.
+6. **F-3.** The traceability table immediately below is new.
+
+Round 3's three "human, at the gate" items are **not** this document's to close and are not re-opened:
+the red-phase-evidence gap is recorded in `solution/errata.md` E-6(a); the fixture's `turbo.json`
+registration is E-6(b); the note that `q0050-shared-events` has no failing test is E-6(c), restated under
+AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at the end of this document.
+
+## Traceability
+
+| Criterion | Task(s) | Test file · test name | Fixture key(s) |
+| --- | --- | --- | --- |
+| AC-1a | q0050-engine-compose (+ all) | `q0050.source.test.ts` — folder shape, export list | — |
+| AC-1b | — (inherited pattern) | landed `fanout.source.test.ts`, `run-history.source.test.ts` | — |
+| AC-1c | q0050-engine-compose | `q0050.source.test.ts` — no console/ANSI/`spike` import | — |
+| AC-1d | all engine tasks | `q0050.source.test.ts` — JSDoc-per-export scan | — |
+| AC-2a | q0050-routing, q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — 7-site fixture equality | all 7 owned keys |
+| AC-2b | q0050-engine-compose | — none (struck, E-8) | — |
+| AC-2c | q0050-event-channel | — none (struck, E-8) | — |
+| AC-2d | q0050-event-channel | `channel.test.ts` — burst, 500 events | — |
+| AC-2e | q0050-shared-events | `events.q0050.test.ts` (already green, F-1) | — |
+| AC-2f | q0050-engine-compose | — none (struck, E-8) | — |
+| AC-3a | q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — terminal event, all 5 statuses | `terminalInfo` |
+| AC-3b | q0050-event-channel | `channel.test.ts` — throw-after-terminal | — |
+| AC-3c/3d | q0050-shared-events | `events.q0050.test.ts` (already green, F-1) | — |
+| AC-4a–4h | q0050-routing, q0050-shared-events | `lifecycle-routing.test.ts`, `q0050.source.test.ts` | `gate.*`, `gateAutoAdvanced`, `gateDryRun`, `log.gateAnswer` |
+| AC-5a | q0050-lifecycle, q0050-engine-compose | — none (struck, E-8) | `log.errorSuffix` |
+| AC-5b | q0050-engine-compose | — none (struck, E-8) | — |
+| AC-5c/5d | q0050-lifecycle, q0050-event-channel | `lifecycle-routing.test.ts`, `channel.test.ts` — abandonment | — |
+| AC-5e | q0050-engine-compose | — none (struck, E-8) | — |
+| AC-6a–6c/6e | q0050-routing | `lifecycle-routing.test.ts` — counters, exhaustion | `loopIteration`, `loopExhausted`, `exhaustionReason` |
+| AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` + `lifecycle.test.ts` | — |
+| AC-7a–7c | q0050-routing | `lifecycle-routing.test.ts` — retry grant | `log.retryGrant` |
+| AC-8a | q0050-routing, q0050-loaders | `lifecycle-routing.test.ts` — stage derivation | — |
+| AC-8b | q0050-routing, q0050-engine-compose, q0050-loaders | `engine.test.ts` — cross-flow edge, seven fields (hand-written, E-8) | `crossFlowRegression` |
+| AC-8c | q0050-engine-compose | `engine.test.ts` — absent target flow (hand-written, E-8) | — |
+| AC-8d | q0050-routing, q0050-engine-compose | `engine.test.ts` — remaining clamps at 0 (hand-written, E-8) | — |
+| AC-9a–9c | q0050-lifecycle | `lifecycle.test.ts` — 5 statuses | `log.terminal` |
+| AC-9d | q0050-lifecycle | `lifecycle.test.ts` + `q0050.source.test.ts` | `log.rollback`, `rollback` |
+| AC-9e | q0050-lifecycle, q0050-engine-compose | — none (struck, E-8) | — |
+| AC-9f | q0050-lifecycle | `lifecycle.test.ts` — raw vs rounded cost | — |
+| AC-10a | q0050-engine-compose | `engine.test.ts` — nothing on disk | — |
+| AC-10b/10c | q0050-engine-compose, q0050-lifecycle | `engine.test.ts` — spies + in-memory mutation | — |
+| AC-10d | q0050-engine-compose | — none (struck, E-8) | — |
+| AC-10e | q0050-routing | `lifecycle-routing.test.ts` — dry gate info | `gateDryRun` |
+| AC-10f | q0050-lifecycle | `lifecycle.test.ts` — counters alias iterations | — |
+| AC-11a | q0050-engine-compose | `engine.test.ts` — stage precondition | — |
+| AC-11b–11g | q0050-loaders | `loaders.test.ts` — six helpers | — |
+| AC-12a/12b | q0050-lifecycle | `lifecycle.test.ts` + `q0050.source.test.ts` | — |
+| AC-12c | q0050-routing | `lifecycle-routing.test.ts` — top-level vs nested pair (hand-written, E-8) | — |
+| AC-12d | q0050-engine-compose | `engine.test.ts` — unknown goto target (hand-written, E-8) | — |
+| AC-12e | — | verified by inspection, no test (E-5b) | — |
+| AC-13a | — | gate action (`pnpm lint` / `pnpm typecheck`), n/a | — |
+| AC-13b | q0050-documentation | `packages/shared/src/docs.test.ts` | — |
+| AC-13c | — (structural) | `q0050.source.test.ts` + `packages/shared/src/index.test.ts` | — |
+| AC-13d | all tasks | `q0050.source.test.ts` — `Why:` line scan | — |
+| AC-13e | — | gate action (module-header citation review), n/a | — |
+
+## AC-1 — module shape, no dependency, no output
+
+**Given** `packages/core/src/engine/` after all eight tasks land.
+
+- **AC-1a** — **When** `q0050.source.test.ts` reads the folder via `coreSourceFiles()` (recursive, per
+  Q-0064) and `test/corpus.ts`'s `repoFile()` for each individual source string, **Then** the file set is
+  exactly `{types,channel,loaders,routing,lifecycle,engine}.ts`, no barrel exists, and every export named
+  in `contracts/Q-0050/run-flow-api.contract.ts` is present. `corpus.test.ts`'s module-folder assertion is
+  extended in the same change and demonstrated failing first over the un-extended corpus.
+- **AC-1b** — **Given** the dependency-diff pattern already landed for `fanout` and `run-history`.
+  **Then** no new test is written; the existing `fanout.source.test.ts`/`run-history.source.test.ts`
+  dependency-diff assertions already cover `packages/core/package.json` as a whole and need no
+  Q-0050-specific duplicate. Stated here so a reviewer does not ask for one.
+- **AC-1c** — **When** `q0050.source.test.ts` greps every engine source file for `console.`,
+  `process.stdout`, `process.stderr`, and ANSI escape sequences (`\x1b\[`), and for any import specifier
+  starting with `../../../spike` or resolving under `spike/`. **Then** zero matches.
+- **AC-1d** — **When** the same file scans each exported symbol and non-obvious interface field for an
+  immediately preceding JSDoc block. **Then** every export has one. *(Nit carried from round 3: the regex
+  must anchor per-export, not per-file — one comment above one export must not satisfy the whole file's
+  export list. Fixed in this round's rewrite of the scanner.)*
+
+Test: `packages/core/src/engine/q0050.source.test.ts`. Task: all eight engine tasks jointly satisfy this;
+no single task is tagged as owner.
+
+## AC-2 — the event stream: shape, ordering, enrichment
+
+**Given** a run over the mock-adapter fixture flow carrying a `parallel` group of two members, an
+`on_fail` loop, and a human gate — the same fixture round 3 already built.
+
+- **AC-2a** — **When** the run executes to completion, **Then** each of the seven owned sites (banner,
+  backward-edge warn, loop-iteration warn, loop-exhausted warn, gate question, rollback warn, terminal
+  info) appears exactly once with a message **string-equal** to
+  `contracts/Q-0050/run-messages.fixture.json`'s `runBanner`, `crossFlowRegression`, `loopIteration`,
+  `loopExhausted`, `gate.*`, `rollback`, and `terminalInfo` values respectively — all interpolated, none
+  hand-retyped.
+- **AC-2b** — **Given** a single agent step whose mock adapter emits a raw `stdout` event carrying no
+  `stepId`. **When** the engine composes the stream (not the channel directly — the previous round's test
+  supplied `stepId` itself, which proves nothing about enrichment), **Then** the yielded event's key set
+  equals the adapter event's key set plus exactly `stepId`, and `stepId` equals the currently executing
+  step's id. Asserted by `Object.keys(...).sort()` equality, not `toMatchObject`.
+- **AC-2c** — **Given** the parallel group's two members configured so member B's mock adapter resolves
+  before member A's (inverting natural declaration order). **When** the run executes, **Then** (i) all of
+  member A's own events keep their relative order, (ii) all of member B's own events keep their relative
+  order, (iii) the total event count for the group equals the sum of both members' counts, and (iv) **no
+  assertion is made about the interleaving between A's and B's events** — the test explicitly checks that
+  such an interleaving is *possible* (B's first event can precede A's first event) rather than asserting
+  a fixed cross-member order, which would over-specify a property the requirement declines to guarantee.
+- **AC-2d** — **When** one step's mock adapter emits 500 `stdout` events synchronously in a tight loop
+  (simulating an un-back-pressured `onEvent` burst). **Then** the consumer receives exactly 500, in
+  emission order, none dropped, coalesced or deduplicated. *(Unchanged from round 3 — already red for the
+  right reason.)*
+- **AC-2e** — **Given** `packages/shared/src/events.ts`'s shipped strict schema. **Then** no new test:
+  `events.q0050.test.ts` already asserts that a key beyond the union's declared set is rejected (3
+  tests, 3 passing, per errata E-6(c)/F-1). This scenario is satisfied by the executable contract already
+  on the branch and carries forward as a permanent guard, not a red test for `q0050-shared-events` to turn
+  green.
+- **AC-2f** — **Given** a step whose mock adapter is configured to throw. **When** the run executes that
+  step, **Then** the stream contains a `step` event for it but **no** `done` event carrying that step's
+  id — a failed step never emits the success marker.
+
+Test: `packages/core/src/engine/engine.test.ts` (AC-2a, 2b, 2c, 2f), `channel.test.ts` (AC-2d),
+`packages/shared/src/events.q0050.test.ts` (AC-2e). Task: q0050-engine-compose (2a enrichment path, 2b,
+2c, 2f), q0050-event-channel (2d), q0050-shared-events (2e, already satisfied).
+
+## AC-3 — the terminal outcome
+
+**Given** five independent fixture flows, one per status (`completed`, `regressed`, `aborted`, `failed`,
+`interrupted`).
+
+- **AC-3a** — **When** each is run to its natural conclusion through `runFlow`/`engine.ts` (not through
+  `lifecycle.ts`'s `finish()` called directly, which only proves the payload's shape — the engine-level
+  test proves it is actually last on the stream). **Then** each stream's final yielded event is the
+  terminal event, exactly one per run, with `status`, `stage` before/after, `runId`, `cost`, `tokens`, and
+  — only for `regressed` — the seven regression fields, matching `finish()`'s values for that run.
+- **AC-3b** — **Given** the `failed` fixture. **When** the consumer calls `.next()` after receiving the
+  terminal event. **Then** the promise rejects with `FlowError`, whose `.cause` is non-empty and equal to
+  the first 200 characters of the first line of the underlying error.
+- **AC-3c/3d** — **Given** the shipped `runTerminalEventSchema`. **Then** no new test: already asserted
+  green in `events.q0050.test.ts` (accepts the shape, rejects an added unknown key, and the regression
+  group is all-or-nothing). Satisfied by the contract, per errata E-6(c)/F-1.
+
+Test: `engine.test.ts` (AC-3a), `channel.test.ts` (AC-3b), `events.q0050.test.ts` (AC-3c/3d). Task:
+q0050-lifecycle + q0050-engine-compose (3a), q0050-event-channel (3b), q0050-shared-events (3c/3d,
+already satisfied).
+
+## AC-4 — the gate channel
+
+**Given** a flow with one author-declared human gate and one loop whose exhaustion presents a second gate.
+
+- **AC-4a** — **When** the run reaches the first gate with no `answerGate` callback wired for the
+  first assertion, and a wired one for the rest. **Then** a passive consumer (a `for await` with no
+  answer logic) still receives the `gate` event on the stream before the run suspends.
+- **AC-4b** — **When** `answerGate` resolves 200 ms after being invoked, from a `setTimeout` outside the
+  iterating call stack. **Then** the run resumes and completes once the promise settles — proving the
+  channel does not require the answer to be ready synchronously or from within the pull.
+- **AC-4c** — **When** (i) a second `advance` envelope is sent for a `gateId` already answered, and (ii)
+  an envelope carries a `gateId` that was never issued. **Then** both are refused explicitly (the run does
+  not silently apply either), distinct from each other in the error's cause.
+- **AC-4d** — **When** an envelope's `answer` field is a string outside `advance | retry | abort`.
+  **Then** the run treats it as `{ abort: true }` — preserving `:590`'s behaviour now that `core` is a
+  reachable second consumer beside the CLI's exact-match validation.
+- **AC-4e** — **When** the same flow is run with **no** `answerGate` supplied at all. **Then** the run
+  fails, naming the pending gate's kind and reason in the error message, rather than advancing, aborting,
+  or hanging.
+- **AC-4f** — **Given** one `auto`-kind gate and one `human-locked` gate in the same flow, run first
+  under `{ auto: true }` and then under `{ dry: true }`. **Then** the `auto` gate advances consuming no
+  answer and emits `info` matching `gateAutoAdvanced`; the `human-locked` gate is unaffected by `auto` and
+  still suspends; under `--dry`, the gate emits `info` matching `gateDryRun` and consumes no answer.
+- **AC-4g** — **When** the first gate is answered `advance`. **Then** `runs.log` gains a line matching
+  `log.gateAnswer` (full string equality, not `stringContaining`) **before** the `advance` branch executes
+  — asserted by having the fake `answerGate` callback read the log file synchronously before resolving.
+- **AC-4h** — **Given** `routing.ts`'s `askGate`. **Then** a source-text assertion confirms the 1000 ms
+  `signalWindow` timer is present and carries the line `Why: preserved defect, see Q-0050 AC-4.` — per
+  OQ-3's resolution (preserve and pin), confirmed at the solutioning gate.
+
+Test: `lifecycle-routing.test.ts` (4a–4g), `q0050.source.test.ts` (4h). Task: q0050-routing (4a–4h),
+q0050-shared-events (the envelope schema 4c/4d rely on).
+
+## AC-5 — early stop still persists
+
+- **AC-5a** — **Given** a two-step flow whose second step's mock adapter throws. **When** run to
+  completion. **Then** every occurrence started before the throw finalises `failed` with its category,
+  `runs.log` gains one terminal line with an `errorSuffix` matching `log.errorSuffix`, and the iterator
+  throws `FlowError` — order asserted: finalisation and the log line happen before the throw is observed
+  by the consumer.
+- **AC-5b** — **Given** an `AbortController` supplied as `signal`. **When** `.abort()` is called (i)
+  while a step's mock adapter is mid-execution and (ii) while the run is suspended awaiting a gate answer.
+  **Then** both cases persist `interrupted` with note `received SIGINT` (byte-identical to the spike's
+  note despite the new caller-driven trigger, per the requirement's explicit preservation), and complete
+  before the caller's `await` on cancellation resolves.
+- **AC-5c/5d** — *(unchanged from round 3, already red for the right reason)* a consumer that `break`s a
+  `for await` after the third event triggers the iterator's `return()`, which persists `interrupted` with
+  the same shape as 5b before `return()`'s promise resolves.
+- **AC-5e** — **Given** ten sequential runs against the fixture flow, each run to completion. **When**
+  `process.listenerCount` for every event name is sampled before the first run and after the tenth.
+  **Then** the counts are identical — no listener leaked, consistent with AC-5's requirement that `core`
+  installs none in the first place.
+
+Test: `engine.test.ts` (5a, 5b, 5e), `lifecycle-routing.test.ts` + `channel.test.ts` (5c/5d). Task:
+q0050-lifecycle + q0050-engine-compose (5a), q0050-engine-compose (5b, 5e), q0050-event-channel (5c/5d).
+
+## AC-6 — counters and the exhaustion gate
+
+*(Unchanged from round 3 except AC-6d, which gains an ordering assertion.)*
+
+- **AC-6a** — a two-iteration loop with an explicit `counter: review` key reaches its bound; the counter
+  after each traversal equals the number of prior failures, keyed by the explicit name, not
+  `${flow}.${step}`.
+- **AC-6b** — a second, independent loop's counter is untouched by the first's traversals.
+- **AC-6c** — `--auto` walks the author-declared human gate but is refused at the synthesised exhaustion
+  gate (still `human-locked`, still suspends).
+- **AC-6d** — **Given** the exhaustion gate synthesised at the bound. **When** inspected. **Then** its
+  `kind` is `human-locked`, `retryTarget`/`retryCounter`/`retryMax` are set, its `reason` string equals
+  `exhaustionReason` interpolated with the step, counter, value and limit, **and** the `exhausted` history
+  entry plus its `runs.log` line are both written **before** the gate's promise is awaited — asserted by
+  reading both from disk inside the (still-unresolved) `answerGate` callback.
+- **AC-6e** — `advance` at the exhaustion gate leaves every counter unchanged.
+
+Test: `lifecycle-routing.test.ts`. Task: q0050-routing (6a–6e), q0050-lifecycle (the `exhausted` entry
+half of 6d).
+
+## AC-7 — retry authorises exactly one traversal
+
+- **AC-7a** — two independent loops, one exhausted; `retry` sets **only** that loop's counter to
+  `max_iterations`, verified by reading the other loop's counter unchanged in the same tick.
+- **AC-7b** — the next failure of the retried loop re-presents the exhaustion gate rather than looping
+  silently; `runs.log`'s grant line matches `log.retryGrant` by full string equality (fixture-interpolated
+  counter name and value — the two hand-retyped instances from round 3 are removed).
+- **AC-7c** — `retry` sent at an author-declared gate with no `retryTarget` ends the run `aborted`:
+  asserted by the terminal event's status, the `runs.log` terminal line, and the ticket's stage left
+  unmoved — observable-behaviour assertions rather than a private call-count on whichever function
+  performs the termination, closing F-4's "unwitnessed caller" concern by construction.
+
+Test: `lifecycle-routing.test.ts`. Task: q0050-routing.
+
+## AC-8 — cross-flow regression
+
+**Given** flow A's `on_fail` targets `flow:B`, and B's `consumes` stage differs from both A's `consumes`
+and A's `produces`.
+
+- **AC-8a** — the ticket's stage after regression equals B's `consumes`, never B's `produces`, A's
+  `consumes`, or a hard-coded value; B's own steps are asserted never to have run (a spy on B's step
+  dispatch records zero calls).
+- **AC-8b** — **Given** the full engine-level run (not `lifecycle-routing.test.ts`'s isolated "returns a
+  decision without running B", which proves nothing about where the ticket lands). **When** A's step
+  fails and the goto resolves. **Then** the warn event's text equals `crossFlowRegression` interpolated
+  with B's name and the target stage, and the terminal event's regression-fields object carries exactly
+  the seven named fields (flow, stage before, stage after, counter, count, limit, remaining) with values
+  matching the run.
+- **AC-8c** — **Given** A's `on_fail` names `flow:doesNotExist`. **When** A's step fails. **Then** the
+  run fails naming `doesNotExist` and the underlying load error as cause, and the ticket's stage on disk
+  is unchanged (byte-identical `ticket.md` before and after).
+- **AC-8d** — **Given** a loop retried once so that `count === limit` exactly at the moment regression is
+  evaluated. **Then** `remaining` is `0`, not negative — proven by constructing the boundary case directly
+  rather than trusting `Math.max` by inspection.
+
+Test: `lifecycle-routing.test.ts` (8a), `engine.test.ts` (8b, 8c, 8d). Task: q0050-routing +
+q0050-loaders (8a, target-flow loading), q0050-engine-compose (8b, 8c, 8d, cursor/regression resolution
+per errata E-3).
+
+## AC-9 — `finish()`: stage, rollback, history
+
+- **AC-9a** — across five runs, one per status, `ticket.meta.iterations` (counters) is persisted to the
+  in-memory ticket for every status, including `aborted`, `failed` and `interrupted`.
+- **AC-9b** — stage is assigned only for `completed` and `regressed`; the other three leave
+  `ticket.meta.stage` exactly as it was at run start.
+- **AC-9c** — a history entry is appended for **every** status, including `failed` and `interrupted` —
+  frontmatter retains failed/interrupted attempts, per the requirement's reading-derived resolution.
+- **AC-9d** — **Given** a real task branch created beside the ticket branch before a run that ends
+  `aborted` after having moved the ticket branch. **When** the run finishes. **Then** the ticket branch is
+  reset to its start-of-run head (warn text equals `rollback`, `runs.log` line equals `log.rollback`,
+  both fixture-interpolated with the real branch name and both short shas), **and** the task branch still
+  exists afterward — a real branch, not an injected stub, so a later change closing row 20 has to argue
+  with an actual branch head rather than a mock's return value.
+- **AC-9e** — **Given** a `RunPersistence` capability whose init throws (simulating a run-history
+  directory that cannot be created). **When** `runFlow` is called. **Then** the run ends with a `failed`
+  terminal `runs.log` line and the ticket's stage is unmoved — the manifest is never finalised because it
+  was never initialised, and that alone does not skip the terminal record.
+- **AC-9f** — **Given** a run with a non-integer real cost (e.g. `$1.2345`). **When** compared against
+  `finish()`'s raw value and `outcome()`'s persisted `TicketHistoryEntry`. **Then** `finish()`'s payload
+  (and the terminal event) carries the unrounded figure while the history entry's `cost` is rounded —
+  both asserted, not just the raw half round 3 left standing.
+
+Test: `lifecycle.test.ts` (9a, 9b, 9c, 9f), `lifecycle.test.ts` + `q0050.source.test.ts` (9d),
+`engine.test.ts` (9e). Task: q0050-lifecycle (9a, 9b, 9c, 9d, 9f), q0050-lifecycle + q0050-engine-compose
+(9e).
+
+## AC-10 — `--dry` writes nothing, and its two preserved mutations are pinned
+
+**Given** a flow with an agent step, a script step and a gate, run with `{ dry: true }`.
+
+- **AC-10a** — **When** the run completes. **Then** `ticket.md` is byte-unchanged on disk, no
+  `runs.log` file is created (or, if one pre-existed, it is byte-unchanged), no `.quorum/` directory
+  appears, and no worktree is created by any step this ticket owns.
+- **AC-10b** — **Given** `vi.spyOn(project.backlog, 'write')`, `'writeFile'` and `'log'` installed on the
+  real, loaded `Backlog` **before** the run starts (not on the dry view — spying the prototype methods the
+  view's own-property no-ops are meant to shadow). **When** the run completes. **Then** none of the three
+  spies was called — proving the dry boundary actually intercepts, not merely that a pre-mocked function
+  went unreached.
+- **AC-10c** — **Given** the same run. **When** `ticket.meta.stage`, `.iterations` and `.history` are
+  read on the **in-memory** ticket object passed into `runFlow`. **Then** they reflect the completed run
+  exactly as a non-dry run would — the preserved defect, asserted positively so a future fix must delete
+  this assertion rather than slip past it.
+- **AC-10d** — **Given** the `Backlog` view `engine.ts` constructs internally for the dry run. **When**
+  its prototype chain and a non-overridden method are inspected (via a diagnostic hook the test injects,
+  or by reading the effect of a read call routed through the context). **Then**
+  `Object.getPrototypeOf(view) === realBacklog`, `view.write !== realBacklog.write` (own-property
+  shadowing), and a read method inherited from the prototype (e.g. listing tickets) returns the same
+  result as calling it on `realBacklog` directly — proving reads still pass through while writers are
+  shadowed.
+- **AC-10e** — **Given** the `human-locked` gate reached under `{ dry: true }`. **Then** its `info` event
+  matches `gateDryRun` exactly, and `answerGate` (if supplied) is never invoked — closing round 3's
+  "no `gateDryRun` event" gap.
+- **AC-10f** — **Given** a ticket whose `meta.iterations` is a specific object reference (not a literal
+  passed inline), and a flow whose loop fails once during the dry run. **When** the run completes.
+  **Then** `ticket.meta.iterations` — the *same object reference*, checked with `Object.is` — carries the
+  incremented counter, proving aliasing by identity rather than by a vacuous spy-on-an-unrelated-mock
+  assertion (F-5's fix: the previous test's `realBacklog.write` check is removed entirely, since it was
+  provably unreachable regardless of correctness).
+
+Test: `engine.test.ts` (10a, 10b, 10c, 10d), `lifecycle-routing.test.ts` (10e), `lifecycle.test.ts`
+(10f). Task: q0050-engine-compose (10a–10d), q0050-routing (10e), q0050-lifecycle (10f).
+
+## AC-11 — stage precondition and the six pure helpers
+
+- **AC-11a** — **Given** a ticket whose stage is not the flow's `consumes`. **When** `runFlow` is called.
+  **Then** the run fails immediately naming the ticket, its stage, the flow, and the stage it consumes,
+  **and** — the half round 3 left untested — no `runs.log` line is appended and no run directory is
+  created under `.quorum/runs/`, proving the refusal happens before any run bookkeeping, not just before
+  the flow's steps.
+- **AC-11b** — `loadFlow` sets `flow.file` on the parsed object and runs `lintFlow` before returning; an
+  unlinted flow throws before it is usable.
+- **AC-11c** — `loadFlowByName(name, harnessDir)` delegates to `loadFlow` (parse and lint apply) but
+  performs no existence check: a missing flow surfaces as `ENOENT`, not `FlowError`.
+- **AC-11d** — `loadRole('', harnessDir)` returns `{ meta: {}, body: '' }`; a named-but-missing role file
+  throws `FlowError` naming the full path.
+- **AC-11e** — `interpolate` leaves an unknown `{key}` literal untouched and treats a dotted key
+  (`a.b`) as one flat lookup key, never as a nested path.
+- **AC-11f** — `writesOf` returns the singular `output.write` when present, ahead of the plural
+  `output.writes`.
+- **AC-11g** — `reviewRound` returns the highest round directory containing a `verdict.md` plus one, and
+  `1` when `review/` is absent entirely.
+
+Test: `engine.test.ts` (11a), `loaders.test.ts` (11b–11g). Task: q0050-engine-compose (11a),
+q0050-loaders (11b–11g).
+
+## AC-12 — routed diagnostics and this ticket's own preserved defects
+
+- **AC-12a** — **Given** a `LifecycleContext.readBranchHead` shim that returns `null` at start-of-run
+  (simulating git failing at `:48`'s equivalent). **When** the run later ends non-`completed`/-`regressed`.
+  **Then** the rollback is silently skipped (no warn, no `runs.log` rollback line) — the same observable
+  behaviour as an absent branch, preserved rather than distinguished, with a source comment naming this
+  criterion.
+- **AC-12b** — **Given** the same shim returning `null` from the **post-run** read instead (simulating
+  git failing at the rollback comparison). **Then** the same silent skip.
+- **AC-12c** — **Given** a `parallel` step group containing one member of kind `gate`. **When** the group
+  runs. **Then** that member is dispatched through the agent-step path (observed via an injected spy that
+  distinguishes "ran as an agent" from "ran as a gate" — e.g. whether `askGate`'s log/event side effects
+  occurred), preserving the defect that `runStep`'s `allSettled` maps every parallel member to
+  `runAgentStep` regardless of declared kind.
+- **AC-12d** — **Given** an `on_fail.goto` naming a step id absent from the flow's step list, constructed
+  directly as a `Flow` object bypassing `lintFlow` (since lint would normally catch this). **When** the
+  step fails and `engine.ts` resolves the goto. **Then** a raw `TypeError` is thrown, not a `FlowError` —
+  preserving `findIndex() === -1` indexing the step array at `-1`.
+- **AC-12e** — **Given** `lifecycle-routing.contract.md`'s table naming its six subject sites. **Then**
+  no test is written. Verified once, by inspection, at this gate: all six strings are present in the
+  landed file today. Per errata E-5(b), any executable version of this check would import
+  `contracts/Q-0050/**` from a `packages/core` test file with no corresponding `turbo.json` declaration,
+  reproducing the escaping-read shape Q-0072/Q-0073 exist to prevent — and the file it would check is
+  frozen prose no development task may edit, so it can never go red. `docs-q0050.test.ts`, which
+  previously implemented it, has already been deleted for exactly this reason; this entry records why it
+  stays deleted.
+
+Test: `lifecycle.test.ts` (12a, 12b), `q0050.source.test.ts` (12b positive scan),
+`lifecycle-routing.test.ts` (12c), `engine.test.ts` (12d). Task: q0050-lifecycle (12a, 12b),
+q0050-routing (12c), q0050-engine-compose (12d).
+
+**Explicitly not tested, per errata E-5(a):** the empty-error `mergeFailure` clause
+(`'git reported no reason'`) is struck from this ticket's scope. No task `tasks.yaml` assigns to Q-0050
+consumes `mergeFailure` — its callers are all in Q-0052's and Q-0053's code, which does not exist in
+`core` yet. It remains pinned by Q-0048's landed `fanout.test.ts:404` and is Q-0074's obligation to fix.
+Encoding it here would be a red test with no task able to turn it green.
+
+## AC-13 — house rules, documentation, freeze
+
+- **AC-13a** — **Given** the standing house rules (strict TS, no `any`, no deprecated API, JSDoc).
+  **Then** no Vitest scenario is written for this criterion: it is verified by `pnpm lint` and
+  `pnpm typecheck` at the gate, which are existing CI gates this ticket does not add to or narrow. Stated
+  as a gate action rather than forced into an unnecessary duplicate test, matching round 3's own
+  classification.
+- **AC-13b** — **Given** `packages/shared/src/docs.test.ts`, which already declares `docs/GLOSSARY.md`
+  and `docs/04-architecture.md` as inputs (per `packages/shared/turbo.json`). **When** extended. **Then**
+  it asserts `docs/GLOSSARY.md`'s **Event** entry mentions the terminal member and `docs/04-architecture.md`
+  principle 2's `:42` line reflects `runFlow(opts): AsyncIterable<Event>` plus the `answerGate` channel.
+  Per errata E-5(c), `docs/03-adapter-contract.md` is **not** part of this criterion — measured to contain
+  zero occurrences of `runFlow` or "event stream" — and no assertion is written against it.
+- **AC-13c** — **Given** the two-directional dependency claim ("`core` imports from `shared`; `shared`
+  imports nothing from `core`"). **When** tested. **Then** the forward direction is unchanged — already
+  pinned by the landed `packages/core/src/shared-resolution.test.ts` — and the reverse direction is a new
+  assertion in `packages/shared/src/index.test.ts` (which already reads `packages/core/package.json` and
+  `src/index.ts` under a declared input): grep every `packages/shared/src/*.ts` file for an import
+  specifier resolving into `packages/core`, and assert none exists. `q0050.source.test.ts` no longer
+  performs this grep itself, closing the last two of B-1's six guard failures.
+- **AC-13d** — **Given** the eight preserved-defect sites across this ticket's code. **When**
+  `q0050.source.test.ts` scans for `Why: preserved defect, see Q-0050` lines. **Then** the count matches
+  the number of preserved defects this ticket's own tasks introduce or carry (AC-4h, AC-10c, AC-10f,
+  AC-12a/b/c/d), and — closing round 3's nit — each such line is checked **not** to contain a verbatim
+  sentence from `docs/DECISIONS.md` or from this ticket's own body (a substring scan against both
+  documents), giving the criterion's "reproduces no sentence" half an actual check rather than only a
+  presence count.
+- **AC-13e** — **Given** the module header's citation of the governing decision entry. **Then** no
+  Vitest scenario: verified by manual gate review that the citation uses "title and date" form
+  (`*"…"* (YYYY-MM-DD)`) and never a file name or number, per `docs-and-decisions.md`. Left as a gate
+  action, consistent with round 3.
+
+Test: `packages/shared/src/docs.test.ts` (13b), `packages/shared/src/index.test.ts` +
+`q0050.source.test.ts` (13c), `q0050.source.test.ts` (13d). Task: q0050-documentation (13b),
+structural/no task (13c), all engine tasks (13d).
+
+## Known limitations carried, not owned
+
+Recorded so round 5 does not reopen either as a QA gap:
+
+- **The `prove-red` artifact cannot show this ticket's own red phase** whenever `@quorum/shared#test` is
+  itself red (as it correctly is while `q0050-documentation` is unimplemented), because root `turbo.json`'s
+  `test` task depends on `^test` and prunes `@quorum/core#test` on a failed dependency. This is
+  `solution/errata.md` E-6(a)'s finding, not a defect in the scenarios above; the direct measurement it
+  records (39 failed / 835 passed / 2 skipped, 34 `AssertionError`, `tsc --noEmit` clean) is the evidence
+  of record until the successor ticket it describes is created and lands.
+- **The message-oracle fixture's registration in `packages/core/turbo.json`** was added by hand at the
+  qa-red gate (errata E-6(b)) because no task in `tasks.yaml` owns that file. This document's scenarios
+  assume that declaration is present; it is not re-derived or re-justified here.
+- **`q0050-shared-events` has no failing test to turn green.** Per errata E-6(c) and F-1, restated at
+  AC-2e/AC-3c/AC-3d above: the final schemas already ship on the branch. Development should read this as
+  "the task's stated goal is already satisfied" rather than infer a missing scenario.

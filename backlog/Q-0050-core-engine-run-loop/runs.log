@@ -49,3 +49,11 @@
 2026-08-29T08:09:56.943Z run=3 exhausted stage=solutioned→solutioned cost=0
 2026-08-29T08:16:34.590Z run=3 gate=human-locked answer=retry
 2026-08-29T08:16:34.590Z run=3 gate=retry counter=qa-red.scenario-review set=1 (one further traversal authorised)
+2026-08-29T08:24:07.550Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=1.3155392 ms=452955
+2026-08-29T08:26:56.286Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=168611
+2026-08-29T08:27:34.455Z run=3 step=prove-red merged=1/1 tests=ok
+2026-08-29T08:38:45.563Z run=3 step=scenario-review vendor=claude model=opus verdict=revise cost=5.737631 ms=671086
+2026-08-29T08:38:45.574Z run=3 exhausted stage=solutioned→solutioned cost=0
+2026-08-29T08:59:38.341Z run=3 gate=human-locked answer=advance
+2026-08-29T08:59:49.994Z run=3 gate=human answer=advance
+2026-08-29T08:59:50.004Z run=3 completed stage=solutioned→red cost=33.839 tokens=35594862
