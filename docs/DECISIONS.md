@@ -114,3 +114,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [A reviewer approves the change it asked for](decisions/063-a-reviewer-approves-the-change-it-asked-for.md)
 - [A red tick names what failed, not what was skipped](decisions/064-a-red-tick-names-what-failed.md)
+- [Erratum: two clauses of "What a run's event stream carries" describe a different engine](decisions/065-erratum-two-clauses-of-062-describe-a-different-engine.md)

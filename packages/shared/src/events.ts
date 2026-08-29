@@ -32,9 +32,9 @@
 // cost of adding them once a producer exists is a type error at build time. The cost of inventing
 // their payloads now, thirteen tickets deep, is not.
 //
-// How a gate's ANSWER travels back is not decided here. Q-0050 owns the channel, along with
-// ordering, terminal semantics and error representation. This file defines payload shapes only,
-// and nothing in this package emits, persists, replays or transports an event.
+// A gate's ANSWER travels through Q-0050's separately validated, correlated envelope. This file
+// defines both payload directions, but nothing in this package emits, persists, replays or
+// transports either one.
 //
 // ---------------------------------------------------------------------------------------------
 // VENDOR IDENTITY: ONE NEUTRAL, OPEN LABEL — AND HOW REGISTER ROW 22 IS TO BE READ
@@ -139,8 +139,8 @@ export const adapterEventSchema = z.discriminatedUnion('type', [
 //
 // The engine knows which step is speaking and supplies it: `ui.trace(step.id, e)`
 // (spike/src/engine.js:247) already carries the id alongside every adapter event, while adapters
-// emit no identity at all. That is the whole envelope — a step id and nothing more. Ordering,
-// timestamps, run ids and terminal events belong to Q-0050.
+// emit no identity at all. That is the whole envelope — a step id and nothing more. Q-0050 adds
+// run identity only to the terminal event and deliberately adds no timestamp or sequence number.
 
 /** A step has started. Payload: `ui.step(step.id, "<adapter>/<model> role=<role>")`. */
 export const stepStartedEventSchema = z.object({
@@ -178,6 +178,8 @@ export const warnEventSchema = z.object({
  */
 export const gateQuestionEventSchema = z.object({
   type: z.literal('gate'),
+  /** Opaque correlation id, unique among the gates asked by one run. */
+  gateId: z.string(),
   kind: z.string(),
   reason: z.string(),
   /** Absolute path of the ticket folder, so a human can go and look. */
@@ -185,6 +187,44 @@ export const gateQuestionEventSchema = z.object({
   /** The step id a `retry` answer would jump back to — spike/src/engine.js:553, :580. */
   retry: z.string().optional(),
 }).strict();
+
+/** The closed set of decisions core accepts for a pending gate. */
+export const gateAnswerSchema = z.enum(['advance', 'retry', 'abort']);
+
+/** An out-of-band answer correlated to exactly one pending gate. */
+export const gateAnswerEnvelopeSchema = z.object({
+  gateId: z.string(),
+  answer: gateAnswerSchema,
+}).strict();
+
+const runTerminalCommonShape = {
+  type: z.literal('terminal'),
+  runId: z.number(),
+  stageBefore: z.string(),
+  stageAfter: z.string(),
+  cost: z.number(),
+  tokens: z.number(),
+  error: z.string().optional(),
+};
+
+const runTerminalStatusSchema = z.discriminatedUnion('status', [
+  z.object({
+    ...runTerminalCommonShape,
+    status: z.literal('regressed'),
+    targetFlow: z.string(),
+    counter: z.string(),
+    count: z.number(),
+    limit: z.number(),
+    remaining: z.number(),
+  }).strict(),
+  z.object({
+    ...runTerminalCommonShape,
+    status: z.enum(['completed', 'aborted', 'failed', 'interrupted']),
+  }).strict(),
+]);
+
+/** The last event of a run; regression-only fields are present as one closed group. */
+export const runTerminalEventSchema = runTerminalStatusSchema;
 
 /**
  * A run event is an adapter event plus the step id, or one of the engine's own. `.extend` carries
@@ -202,6 +242,7 @@ export const eventSchema = z.discriminatedUnion('type', [
   infoEventSchema,
   warnEventSchema,
   gateQuestionEventSchema,
+  runTerminalEventSchema,
 ]);
 
 export type SpawnEvent = z.infer<typeof spawnEventSchema>;
@@ -213,4 +254,7 @@ export type StepDoneEvent = z.infer<typeof stepDoneEventSchema>;
 export type InfoEvent = z.infer<typeof infoEventSchema>;
 export type WarnEvent = z.infer<typeof warnEventSchema>;
 export type GateQuestionEvent = z.infer<typeof gateQuestionEventSchema>;
+export type GateAnswer = z.infer<typeof gateAnswerSchema>;
+export type GateAnswerEnvelope = z.infer<typeof gateAnswerEnvelopeSchema>;
+export type RunTerminalEvent = z.infer<typeof runTerminalEventSchema>;
 export type Event = z.infer<typeof eventSchema>;

@@ -39,8 +39,8 @@ describe('AC-8 — the union is derived from what the product emits', () => {
       { type: 'done', stepId: 'review', message: 'verdict=approve cost=$1.234 4567ms' },
       { type: 'info', message: 'run #2  flow=chore  ticket=Q-0041  requirements → reviewed' },
       { type: 'warn', message: 'review: revise — blocker: a.ts:1 x' },
-      { type: 'gate', kind: 'human', reason: 'Chore owner approves the reviewed change', ticketDir: '/repo/backlog/Q-0041-…' },
-      { type: 'gate', kind: 'human-locked', reason: 'loop exhausted at review', ticketDir: '/repo/backlog/Q-0041-…', retry: 'implement' },
+      { type: 'gate', gateId: 'g1', kind: 'human', reason: 'Chore owner approves the reviewed change', ticketDir: '/repo/backlog/Q-0041-…' },
+      { type: 'gate', gateId: 'g2', kind: 'human-locked', reason: 'loop exhausted at review', ticketDir: '/repo/backlog/Q-0041-…', retry: 'implement' },
       { type: 'stdout', stepId: 'implement', line: 'thinking…' },
       { type: 'retry', stepId: 'review', vendor: 'codex', attempt: 1, of: 5, delayMs: 5000, reason: 'a timeout', message: 'socket hang up' },
     ];
@@ -105,7 +105,7 @@ describe('AC-9 — vendor identity is one neutral, open label', () => {
     expect(adapterEventSchema.safeParse({ type: 'spawn', vendor: 'claude', cmd: 'claude -p', session_id: 'abc' }).success).toBe(false);
     expect(adapterEventSchema.safeParse({ type: 'stdout', line: 'x', total_cost_usd: 0.12 }).success).toBe(false);
     expect(eventSchema.safeParse({ type: 'done', stepId: 'x', message: 'ok', is_error: false }).success).toBe(false);
-    expect(eventSchema.safeParse({ type: 'gate', kind: 'human', reason: 'r', ticketDir: '/d', thread_id: 't' }).success).toBe(false);
+    expect(eventSchema.safeParse({ type: 'gate', gateId: 'g1', kind: 'human', reason: 'r', ticketDir: '/d', thread_id: 't' }).success).toBe(false);
     // The label itself stays open, which is the field AC-9 requires rather than forbids.
     expect(adapterEventSchema.safeParse({ type: 'spawn', vendor: 'gemini', cmd: 'gemini -p' }).success).toBe(true);
   });

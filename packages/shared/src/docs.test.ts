@@ -155,3 +155,16 @@ describe('AC-8 / AC-11 — the documents agree with what shipped', () => {
     expect(glossary).toContain('run event');
   });
 });
+
+describe('Q-0050 AC-13b — run event-stream documentation', () => {
+  test('the glossary and architecture state every accepted stream rule', () => {
+    const title = "What a run's event stream carries, and how a gate answer travels back";
+    for (const file of ['docs/GLOSSARY.md', 'docs/04-architecture.md']) {
+      const body = repoFile(file);
+      for (const token of ['terminal', 'answerGate', 'AbortSignal', 'timestamp', title, '2026-08-28']) {
+        expect(body, `${file}: ${token}`).toContain(token);
+      }
+      expect(body.toLowerCase(), `${file}: parallel ordering limit`).toMatch(/parallel[\s\S]*(order|interleav)/);
+    }
+  });
+});
