@@ -94,6 +94,48 @@ reported, never fixed in passing.
 
 - **Ports:** `engine.js` agent, gate and script steps
 - **Lifts from `spike/bin/harness.js`:** nothing
+## Inherited from Q-0050, 2026-08-29 — seven obligations that die if this body does not carry them
+
+Written here rather than left in `backlog/Q-0050-…/solution/errata.md`, because **this ticket's
+requirement will not read that file**: `qa-red.yaml` reads the errata of the ticket it is running,
+not a sibling's. Q-0050 closed six review rounds and each of these was deferred with a reason; none
+is a defect in shipped code, and all seven are invisible to a green suite.
+
+1. **Four scenarios enter this ticket unpinned** (Q-0050 E-8): step-id enrichment, the failed-step
+   `done` suppression, cancellation, and run-history initialisation failure. E-8 struck their tests
+   knowingly and said in as many words that this requirement should carry them **as criteria rather
+   than rediscover them**.
+2. **`step` and `done` are emitted nowhere.** Q-0050 round 3 confirmed it by grep and ruled it out of
+   scope on ownership: all three spike call sites (`engine.js:234`/`:238`/`:302`, `:595`/`:605`,
+   `:974`/`:1078`) are in `runAgentStep`, `runScript` and `runIntegrate` — this ticket's and
+   Q-0053's. Emitting them around `runStep` instead would fire for gate steps and fan-out parents,
+   which the spike never does.
+3. **`registerOccurrence` cannot be called by anyone** (E-22). `history` is a local in `run()`, it is
+   on none of the three context types, and `RunHistory.allocate` is the only producer of an
+   `Occurrence`. The seam must be widened — `allocateOccurrence(step, kind, fields)` registering as
+   it allocates is the shape Q-0050's round-6 panel and its erratum both expect — **and that design
+   is this ticket's**, deliberately not frozen in advance by a ticket that allocates none.
+4. **`interpolate` no longer coerces** (E-21). `spike/src/engine.js:740` is `String(s).replace(…)`;
+   the port types the parameter `string`. YAML hands back a **number** for `branch: 2`, so every call
+   site here — `step.run`, `step.branch`, `s.into`, `site.input.diff` — writes `String(…)`
+   deliberately. Under a `Record<string, unknown>` step shape this is a compile error rather than the
+   spike's silent pass-through, which is the point.
+5. **A `parallel:` member has no way to carry its own step id.** Q-0050 round 6, Major 1, found
+   independently by both vendors. The loop stamps only the top-level step and a group correctly has
+   no `id`; `withStepId` now preserves an id an event already carries, so the fix here is to give
+   each member an emitter that supplies one. The subject is one assertion: a group with no `id`
+   whose two members each emit, asserted to carry their own ids.
+6. **Two coverage halves become reachable the day this ticket adds a failing step kind.** AC-10f's
+   *"a loop that fails once during the dry run"* — unreachable while `askGate`'s dry short-circuit
+   advances before any counter is written — and AC-6d's disk-level ordering assertion, which needs
+   `handleFail` to have a caller in `packages/core/src`. Both are named as not-covered in Q-0050's
+   `qa/scenarios.md`; neither is a defect there.
+7. **The two gate `info` texts are this ticket's to assert**, per E-4's own note, and
+   `contracts/Q-0050/run-messages.fixture.json` is the oracle to read them through — 18 of its 22
+   leaf keys are read today, and the four that are not are `gate.*`, asserted as a shape.
+
+## Ticket
+
 - **Depends on:** Q-0051 · **Depended on by:** Q-0053
 - **Invariants inherited:** register row 17, and row 2's cross-vendor clause (charter §2, as
   re-pointed by Q-0047 erratum E-1, 2026-08-27)

@@ -148,7 +148,52 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     agent's worktree has no dependencies until it installs them — `commands.install` runs only in an
     `integrate` worktree (`engine.js:1034`), which cost this run's implementer a hand-built
     `spike/node_modules` and would have cost every remaining child the same.
-  - Q-0050 `core/engine` — the run loop, routing, stage transitions, and `runFlow` as an event stream.
+  - Q-0050 `core/engine` — the run loop, routing, stage transitions, and `runFlow` as an event
+    stream. *(`reviewed` and `main:contained` 2026-08-29.)* The port's one authorised behaviour
+    change, spent here: `runFlow` returns a lazy, single-consumer `AsyncIterable<Event>` over a
+    lossless FIFO, cancellation belongs to the caller's `AbortSignal` and `core` installs no signal
+    handler — see *"What a run's event stream carries, and how a gate answer travels back"*
+    (2026-08-28) and its 2026-08-29 erratum, which corrects two clauses of it that were false of the
+    engine that shipped. **Twenty-two errata**, E-1 to E-22, the most of any child.
+    **Six review rounds — 14, 8, 11, 10, 9 and 10 findings — and every round found defects in the
+    previous round's fixes.** The count did not fall and the class never changed: a claim with no
+    executable check behind it, or a check blind to its own subject. Rounds 4 to 6 alone produced
+    **five assertions that could not fail** — a `not.toBe` satisfied by an interpolated id, an
+    identity check run at `{}` twice, a fixture selector satisfied by any line, and a
+    `toBeGreaterThanOrEqual` floor that could not fail unless the register above it failed first.
+    The most instructive sequence is one defect at four depths: a length proxy any short sentence
+    passes → the scan replacing it, blind to soft-wrapped sentences (**65 of 72 invisible**) → the
+    fixture written to prove that fix, satisfied by any whole line → and, one round later, the
+    widened marker regex closing the *spelling* gap while leaving the **word-order** one. Each fix
+    was written by the same hand that had just been shown the same mistake. See *"A check is not
+    established by reading it"* (2026-08-29).
+    **The strongest single finding came from the panel spanning vendors.** Round 6's Major 1 — step-id
+    enrichment held in one mutable slot the run loop owns, so a `parallel:` group stamps the literal
+    `"undefined"` and concurrent members share the slot — was found **independently by both
+    reviewers, from different starting points**, on flows this ticket is itself run under
+    (`requirements.yaml` and `review.yaml` are both `- parallel:`). Nothing was wrong on disk, because
+    `runAgentStep` is a stub; M3's parallel trace columns cannot be derived from one id.
+    **Rounds 4 and 5 could not use the flow at all.** Once the branch was contained in `main`,
+    `review.yaml`'s hard-coded `{base}...harness/{id}/integration` was empty, so a merged ticket was
+    unreviewable — M2's carried `--base` item arriving as a blocker rather than a nicety. Both rounds
+    ran by hand, cross-vendor, on Q-0070's precedent. **Q-0077 was opened and shipped to fix the
+    cause**, and round 6 is its first real use: the configured range empty, `99eb28c...integration`
+    2,869 insertions across 29 files, same flow and one flag.
+    **What is not done, stated rather than implied.** The stage is `reviewed` and cannot advance:
+    there is no `qa-final.yaml` (Q-0012, blocked by Q-0056), so the ticket is parked by a missing
+    flow rather than by completion. Round 6's ten fixes are themselves unreviewed. Eleven criteria
+    have no test by the coverage table's own words — eight struck by E-8, one verified by inspection,
+    one asserted at unit level, one unreachable until Q-0052. Seven obligations are written into
+    **Q-0052's ticket body** rather than left in this ticket's errata, because `qa-red.yaml` reads
+    the errata of the ticket it runs and not a sibling's. And the stage reached `green` three times
+    by hand, each recorded as an out-of-band note with no history entry, because no engine run
+    advanced it — a reader taking `stage: reviewed` at face value is over-reading it.
+    **$131.03 and 131.5M tokens across eight engine runs** — measured from `runs.log`, where the
+    per-run and per-step totals agree — and the most expensive ticket this project has run, past
+    Q-0072's $95.78. Rounds 4 and 5 are **on top of that and unmeasured**: they were direct adapter
+    calls outside any run, so no manifest records them. The
+    honest summary is that the module is sound and its *scaffolding* took six rounds to become
+    trustworthy, which is the opposite of where the effort was expected to go.
   - Q-0051 `core/engine` — diff preflight and materialisation.
   - Q-0052 `core/engine` — agent, gate and script steps.
   - Q-0053 `core/engine` — fan-out and integrate steps.
