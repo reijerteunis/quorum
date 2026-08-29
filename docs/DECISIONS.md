@@ -113,3 +113,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-08-29
 
 - [A reviewer approves the change it asked for](decisions/063-a-reviewer-approves-the-change-it-asked-for.md)
+- [A red tick names what failed, not what was skipped](decisions/064-a-red-tick-names-what-failed.md)

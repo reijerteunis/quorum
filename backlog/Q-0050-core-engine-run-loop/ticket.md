@@ -9,6 +9,7 @@ priority: p1
 created: 2026-08-25
 iterations:
   solutioning.architecture-review: 3
+  qa-red.scenario-review: 2
 history:
   - stage: requirements
     run: 1
@@ -50,6 +51,22 @@ history:
     stage_after: solutioned
     at: 2026-08-28T19:17:08.421Z
     cost: 17.827
+  - stage: solutioned
+    run: 3
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-29T01:33:00.070Z
+    cost: 0
+  - stage: solutioned
+    run: 3
+    flow: qa-red
+    status: exhausted
+    stage_before: solutioned
+    stage_after: solutioned
+    at: 2026-08-29T08:09:56.941Z
+    cost: 0
 ---
 The spine of the port: `runFlow`, `runStep`, `handleFail`, `finish`, `outcome`, `recordEvent`,
 `loadFlow`, `loadFlowByName`, `loadRole`, `interpolate`, `writesOf` — the run context every other
