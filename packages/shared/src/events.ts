@@ -32,9 +32,9 @@
 // cost of adding them once a producer exists is a type error at build time. The cost of inventing
 // their payloads now, thirteen tickets deep, is not.
 //
-// How a gate's ANSWER travels back is not decided here. Q-0050 owns the channel, along with
-// ordering, terminal semantics and error representation. This file defines payload shapes only,
-// and nothing in this package emits, persists, replays or transports an event.
+// A gate's ANSWER travels through Q-0050's separately validated, correlated envelope. This file
+// defines both payload directions, but nothing in this package emits, persists, replays or
+// transports either one.
 //
 // ---------------------------------------------------------------------------------------------
 // VENDOR IDENTITY: ONE NEUTRAL, OPEN LABEL — AND HOW REGISTER ROW 22 IS TO BE READ
@@ -139,8 +139,8 @@ export const adapterEventSchema = z.discriminatedUnion('type', [
 //
 // The engine knows which step is speaking and supplies it: `ui.trace(step.id, e)`
 // (spike/src/engine.js:247) already carries the id alongside every adapter event, while adapters
-// emit no identity at all. That is the whole envelope — a step id and nothing more. Ordering,
-// timestamps, run ids and terminal events belong to Q-0050.
+// emit no identity at all. That is the whole envelope — a step id and nothing more. Q-0050 adds
+// run identity only to the terminal event and deliberately adds no timestamp or sequence number.
 
 /** A step has started. Payload: `ui.step(step.id, "<adapter>/<model> role=<role>")`. */
 export const stepStartedEventSchema = z.object({
@@ -197,7 +197,7 @@ export const gateAnswerEnvelopeSchema = z.object({
   answer: gateAnswerSchema,
 }).strict();
 
-const runTerminalBase = {
+const runTerminalCommonShape = {
   type: z.literal('terminal'),
   runId: z.number(),
   stageBefore: z.string(),
@@ -207,10 +207,9 @@ const runTerminalBase = {
   error: z.string().optional(),
 };
 
-/** The last event of a run; regression-only fields are present as one closed group. */
-export const runTerminalEventSchema = z.discriminatedUnion('status', [
+const runTerminalStatusSchema = z.discriminatedUnion('status', [
   z.object({
-    ...runTerminalBase,
+    ...runTerminalCommonShape,
     status: z.literal('regressed'),
     targetFlow: z.string(),
     counter: z.string(),
@@ -219,10 +218,13 @@ export const runTerminalEventSchema = z.discriminatedUnion('status', [
     remaining: z.number(),
   }).strict(),
   z.object({
-    ...runTerminalBase,
+    ...runTerminalCommonShape,
     status: z.enum(['completed', 'aborted', 'failed', 'interrupted']),
   }).strict(),
 ]);
+
+/** The last event of a run; regression-only fields are present as one closed group. */
+export const runTerminalEventSchema = runTerminalStatusSchema;
 
 /**
  * A run event is an adapter event plus the step id, or one of the engine's own. `.extend` carries
