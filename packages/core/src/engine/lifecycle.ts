@@ -20,7 +20,9 @@ export async function finish(
   }
 
   ticket.meta.iterations = context.counters;
-  if (status === 'completed' || status === 'regressed') ticket.meta.stage = stage;
+  // `stage` is a plain string on the contracted signature, which is the spike's own shape:
+  // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.
+  if (status === 'completed' || status === 'regressed') ticket.meta.stage = stage as typeof ticket.meta.stage;
   const after = ticket.meta.stage;
   const roundedCost = round(context.stats.cost);
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(context, before, after, status, roundedCost)];
@@ -63,7 +65,9 @@ export async function finish(
 /** Construct the byte-compatible eight-field ticket history entry for a run or run event. */
 export function outcome(context: LifecycleContext, before: string, after: string, status: string, cost: number | null): TicketHistoryEntry {
   return {
-    stage: after as TicketHistoryEntry['stage'], run: context.runId, flow: context.flow.name, status,
+    // Flow.name is optional in the schema and required in a history entry; lintFlow rejects a
+    // flow without one, so every flow reaching a run has it. Preserved: the spike writes it raw.
+    stage: after as TicketHistoryEntry['stage'], run: context.runId, flow: context.flow.name as string, status,
     stage_before: before as TicketHistoryEntry['stage_before'],
     stage_after: after as TicketHistoryEntry['stage_after'], at: new Date().toISOString(), cost,
   };

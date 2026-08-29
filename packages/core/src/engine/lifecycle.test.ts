@@ -85,7 +85,16 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     ] as const) {
       const reset = vi.fn();
       const ctx = lifecycle({ dry, branchHeadAtStart: start, readBranchHead: vi.fn(() => current), resetBranch: reset });
-      await expect(finish(ctx, 'solutioned', status, null)).resolves.toBeDefined();
+      // The subject of this matrix is ROLLBACK — whether `reset` is called — and `regressed`
+      // is here only as one of the five statuses. The fields are incidental to that, but
+      // finish() narrows them at the regressed branch, so the row supplies them rather than
+      // asserting a shape it is not testing. Whether that narrowing should be a runtime
+      // throw at all is a charter §2 question for review: the spike spreads `...fields` and
+      // never throws.
+      const fields = status === 'regressed'
+        ? { targetFlow: 'development', stageBefore: 'solutioned', stageAfter: 'red', counter: 'f.x', count: 1, limit: 1, remaining: 0 }
+        : undefined;
+      await expect(finish(ctx, 'solutioned', status, null, fields)).resolves.toBeDefined();
       expect(reset, `${dry}/${status}/${start}/${current}`).toHaveBeenCalledTimes(expected);
       if (expected) expect(reset).toHaveBeenCalledWith('/repo', 'harness/Q-0050/integration', 'aaaaaaaa');
     }
