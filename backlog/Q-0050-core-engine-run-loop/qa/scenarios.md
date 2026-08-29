@@ -48,7 +48,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-1b | — (inherited pattern) | landed `fanout.source.test.ts`, `run-history.source.test.ts` | — |
 | AC-1c | q0050-engine-compose | `q0050.source.test.ts` — no console/ANSI/`spike` import | — |
 | AC-1d | all engine tasks | `q0050.source.test.ts` — JSDoc-per-export scan | — |
-| AC-2a | q0050-routing, q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — 7-site fixture equality | all 7 owned keys |
+| AC-2a | q0050-routing, q0050-lifecycle, q0050-engine-compose | `engine.test.ts` — banner, terminal info, cross-flow warn; `lifecycle-routing.test.ts` — loop warns, exhaustion reason, both gate infos; `lifecycle.test.ts` — rollback warn and log | 11 of 18 read through the fixture — `runBanner`, `terminalInfo`, `crossFlowRegression`, `loopIteration`, `loopExhausted`, `exhaustionReason`, `gateAutoAdvanced`, `gateDryRun`, `rollback`, `log.recordEvent`, `log.rollback`. `gate` is asserted as a shape rather than a text; `unpricedSuffix`, `log.start`, `log.terminal`, `log.errorSuffix`, `log.gateAnswer` and `log.retryGrant` are matched as literals or not at all, and are named here rather than counted as covered |
 | AC-2b | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-2c | q0050-event-channel | — none (struck, E-8) | — |
 | AC-2d | q0050-event-channel | `channel.test.ts` — burst, 500 events | — |

@@ -513,3 +513,72 @@ are frozen to this ticket.
 `packages/core/src/engine/loaders.test.ts` (the pin replaced by five assertions covering both keys,
 each key alone, and neither), and `contracts/Q-0050/lifecycle-routing.contract.md:77`. Verified
 forced on `harness/Q-0050/integration`: 7/7 packages, **0 cached**, 879 passed and 2 skipped.
+
+## E-11 — `loadRole` returns the frontmatter wrapper, and the contract said `Role` — 2026-08-29
+
+**Supersedes** `contracts/Q-0050/run-flow-api.contract.ts:26`, which declared
+`loadRole(name, harnessDir): Role`. It is `Frontmatter` — the `{ meta, body }` wrapper
+`parseFrontmatter` returns, exported from `packages/core/src/backlog/backlog.ts:24`.
+
+**Why the contract is the thing that was wrong.** `Role` (`packages/shared/src/role.ts`) is a role
+file's *frontmatter fields*; what the loader returns is the wrapper around them, whose `meta` is
+deliberately `unknown` because `parseFrontmatter` is also the ticket reader and validates nothing
+(Q-0043 AC-4). The two shapes do not structurally overlap, so honouring the declaration cost two
+`as unknown as` casts — the evasion `.claude/rules/engineering.md` bans under `any` and
+`@ts-ignore` — and handed every caller a type carrying neither the `.meta` nor the `.body` it
+reads. `resolveModel` reads `role.meta?.adapter` and `buildPrompt` reads `role.body`
+(`spike/src/engine.js:668-675`, `:709`); on the declared type both are errors, so Q-0052 would have
+cast a third time on its first day.
+
+**The implementer's handling was right and its route was not.** Following a contract it may not edit
+is correct — no task owns `contracts/**`. But the knowledge went into a twelve-line JSDoc ending
+*"Flagged for the contract to name the wrapper type explicitly"*, and a comment is not a route.
+E-5(d) had shown the route two days earlier on this same ticket: an obligation named in a source
+comment dies there, one written into this file binds. That is the general lesson and it is worth
+more than the type.
+
+## E-12 — the terminal rejection carries what was thrown, not a `FlowError` — 2026-08-29
+
+**Supersedes** `contracts/Q-0050/run-events.contract.md:76-77` — *"the next pull after that value
+rejects with `FlowError`; the failure cause is non-empty."* The rejection carries **whatever the run
+threw, unwrapped**. The non-empty-cause half stands.
+
+**The code is right and the contract is wrong**, which is the unusual direction and the reason this
+is an erratum rather than a fix. Two landed criteria require exactly this: AC-11 preserves
+`loadFlowByName`'s raw `ENOENT` as *"the one loader that does not produce a `FlowError`"*, and
+AC-12 preserves the unknown-goto `TypeError`. E-8 then wrote the pin —
+`engine.test.ts`'s *"AC-12d — a goto naming no step throws a raw TypeError, not a FlowError"*
+asserts `toBeInstanceOf(TypeError)` on the iterator's own rejection. Wrapping ordinary failures
+would fail a landed acceptance test and close two preserved defects in passing, which charter §2
+forbids.
+
+Round 1's codex reviewer asked for the wrapping as a major; the verdict reduced it to a nit against
+the contract, and this entry is that nit closed. The sentence is corrected **before** a later ticket
+cites it against the code, which is the whole value of writing it down now rather than at the
+cutover.
+
+## E-13 — two capabilities the round-1 fixes add to the contracted context — 2026-08-29
+
+**Amends** `contracts/Q-0050/run-flow-api.contract.ts:13` and `:20`, additively. Both members are
+new; nothing declared there is removed or retyped.
+
+- **`RoutingContext.nextGateId(): string`** — B-2. Gate ids were sequenced from a
+  `WeakMap<RoutingContext, number>` while `engine.ts` builds a fresh context per step and per
+  re-entry, so every step's first gate was `<runId>:1`. Allocation moves to a run-scoped capability,
+  which is how every other seam on that interface already works. The alternative — carrying a
+  mutable counter object through the per-step spread — works and hides the run-scoping inside a
+  shared reference; a named capability says it.
+- **`RunPersistence.registerOccurrence(occurrence: Occurrence): void`** — M-3. `finaliseActiveOccurrences`
+  closed over a set nothing could add to, so it was a permanent no-op with no seam for the ticket
+  that would need it. Q-0050 allocates no occurrence and therefore calls this nowhere; it is added
+  now because the same round that taught the finaliser to derive a category is the round that should
+  give it something to finalise. Q-0052 otherwise discovers both.
+
+**What is *not* amended, deliberately.** `finaliseActiveOccurrences`' signature is unchanged. Its
+`cause` is now the failure in full rather than `note ?? status` — the 200-character first line
+belongs to `runs.log` and an occurrence's `error.message` is what a manifest reader has — and the
+call moved from `finish` into `engine.ts`'s catch, where the raw error still exists. Both are
+preservation: `spike/src/engine.js:161-168` finalises in the catch with `String(e.message ?? e)`
+before calling `finish`, AC-5 states that order in as many words, and
+`lifecycle-routing.contract.md:28` already reads *"first finalise active occurrences, then persist
+counters and the terminal record"*.
