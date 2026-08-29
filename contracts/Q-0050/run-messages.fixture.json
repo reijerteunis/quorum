@@ -11,7 +11,11 @@
     "one": "  (+1 unpriced step — vendor reports no price)",
     "many": "  (+<count> unpriced steps — vendor reports no price)"
   },
+  "gateAutoAdvanced": "gate: auto-advanced (<kind>)",
+  "gateDryRun": "gate (<kind>): would pause here",
   "log": {
+    "start": "run=<runId> flow=<flow> start stage=<stage>",
+    "recordEvent": "run=<runId> <status> stage=<stage>→<stage> cost=<cost>",
     "terminal": "run=<runId> <status> stage=<stageBefore>→<stageAfter> cost=<roundedCost> tokens=<tokens><errorSuffix>",
     "errorSuffix": " error=<JSON-quoted-note>",
     "rollback": "run=<runId> rolled-back branch=<branch> from=<shortCurrentSha> to=<shortStartSha>",
