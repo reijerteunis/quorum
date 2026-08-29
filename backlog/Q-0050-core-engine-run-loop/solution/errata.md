@@ -425,3 +425,28 @@ regression and the two preserved defects are covered — they were the ones with
 Step-id enrichment, the failed-step `done` suppression, cancellation and run-history initialisation
 failure enter Q-0052 **unpinned**, and that ticket's requirement should carry them as criteria
 rather than rediscover them.
+
+## E-9 — the documentation task loses a document, because development cannot read this file — 2026-08-29
+
+**Supersedes** `solution/tasks.yaml`'s `q0050-documentation` description, which owned
+`docs/03-adapter-contract.md` alongside the other two. It now owns
+`docs/04-architecture.md` and `docs/GLOSSARY.md` only, and its description carries E-5(c)'s reason
+and names its failing test.
+
+**Why the correction had to be made in `tasks.yaml` rather than left here.**
+`harness/flows/development.yaml`'s fan-out reads `solution/solution.md` and `review/verdict.md`;
+**it does not read `solution/errata.md`.** Only `qa-red.yaml` (`:10`, `:23`) and `chore.yaml`
+(`:13`, `:31`) do. So every ruling in this file — E-5(c) among them — is invisible to the eight
+implement tasks, and a task description is the one artifact the fan-out interpolates verbatim.
+
+Without the edit, `q0050-documentation` would have added run-loop prose to a document E-5(c) ruled
+has nothing to correct: it contains neither `runFlow` nor "event stream", measured at zero
+occurrences, and `packages/shared/src/docs.test.ts` asserts over two documents, not three. Nothing
+would have failed — which is the point. It would have been a silent contradiction of a landed
+ruling, found later by a reviewer or not at all.
+
+**The general gap is real and is deliberately not fixed here.** `development.yaml` and `review.yaml`
+naming no errata input is a change to `harness/flows/`, and Q-0050's own pre-run action 6 says that
+is not this ticket's to make. It is worth making: ten tickets have needed an erratum, and on this
+route the two stages that *write code* are the two that cannot read one. Recorded so the next flow
+change has the evidence rather than the anecdote.
