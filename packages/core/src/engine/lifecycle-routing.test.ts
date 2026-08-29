@@ -57,11 +57,27 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     }));
   });
 
+  test('AC-4e — no answer channel at all fails, naming the gate\'s kind and reason', async () => {
+    // Deleted by accident in round 4's AC-4c fix, which removed the whole neighbouring test when
+    // only one of its three assertions was its subject. AC-4e had no other coverage anywhere in
+    // packages/core; grepped before restoring.
+    await expect(askGate(gate(), context())).rejects.toThrow(/human|decide/);
+  });
+
+  test('AC-4d — an answer outside the enum is refused by name, not silently treated as abort', async () => {
+    // E-19's pin, cited there by title. The spike falls through to `{ abort: true }`
+    // (spike/src/engine.js:590); the port refuses. Without this, a regression to the spike's
+    // silent abort — which would end a run on a malformed socket message — is green everywhere.
+    const invalid = async () => ({ gateId: 'g1', answer: 'undecided' });
+    await expect(askGate(gate(), context({ answerGate: invalid as unknown as RoutingContext['answerGate'] })))
+      .rejects.toThrow(/g1/);
+  });
+
   test('AC-4c — a replayed answer and an answer for a gate that was never issued fail differently', async () => {
     // Clause (i) is a gate ALREADY ANSWERED whose envelope arrives again — the shape a socket
     // produces on redelivery. Constructed by running two gates against ONE context so the first
     // genuinely resolves before the second is asked; the earlier version used two fresh contexts,
-    // which made it mechanically the stale case already covered below.
+    // which made it mechanically the stale case, tested separately below.
     const answers = ['3:1', '3:1'];
     let call = 0;
     const ctx = context({ answerGate: async () => ({ gateId: answers[call++]!, answer: 'advance' as const }) });
@@ -80,6 +96,11 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     expect(replay?.message).not.toContain('never-issued');
     expect(unissued?.message).toContain('never-issued');
     expect(unissued?.message).not.toContain('3:1');
+  });
+
+  test('a stale correlation is refused, naming both the pending gate and the answer it received', async () => {
+    await expect(askGate(gate(), context({ answerGate: async () => ({ gateId: 'stale', answer: 'advance' }) })))
+      .rejects.toThrow(/g1|stale/);
   });
 
   test('dry and auto do not consume answers; human-locked still does', async () => {

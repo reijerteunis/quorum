@@ -54,6 +54,23 @@ function corpusOf(text: string): string[] {
   return [...new Set([...sentences, ...lines].map((t) => t.trim().replace(/\s+/g, ' ')).filter((t) => t.length >= 40))];
 }
 
+/**
+ * The authority a `Why:` clause names, as a stable label — and the check that it names one at all.
+ *
+ * This is AC-13's *"one line naming the authority"* half with teeth: the clause must be
+ * classifiable from the `Why:` line alone, so an authority that only becomes legible on the next
+ * line throws here rather than passing as prose. The deleted 120-character proxy was the only
+ * pressure on that half and it measured length, which is not the same property.
+ */
+function classifyAuthority(clause: string, file: string): string {
+  const text = clause.trim();
+  if (/^behaviour preserved from spike\//.test(text)) return 'behaviour-from-spike';
+  if (/^deliberate addition, not preservation/.test(text)) return 'deliberate addition';
+  const preserved = /^preserved (\w+)(?:, see (?:Q-0050 )?(AC-\d+[a-z]?|Q-\d+))?/.exec(text);
+  if (preserved) return preserved[2] ? `preserved ${preserved[1]!}/${preserved[2]}` : `preserved ${preserved[1]!}`;
+  throw new Error(`${file}: "Why: ${text.slice(0, 60)}" names no authority this check recognises`);
+}
+
 /** The first corpus sentence a comment line reproduces verbatim, or `undefined`. */
 function transcribedIn(line: string, sentences: readonly string[]): string | undefined {
   const text = line.replace(/^\s*(?:\/\/|\*|\/\*\*)\s*/, '').trim().replace(/\s+/g, ' ');
@@ -129,28 +146,30 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // swapped out, so the register names WHICH file carries WHICH authority and pins the
     // arithmetic. A new preserved defect fails here until it is entered, and a deleted one fails
     // here too, which a `toBeGreaterThanOrEqual` cannot do in either direction.
-    // EVERY `Why: preserved …` marker, not only those saying "defect". Three escaped a defect-only
-    // scan — two `preserved behaviour`/`behavior`, spelled differently from each other, and one
-    // `preserved design` belonging to Q-0034 — so a register pinning seven read as complete beside
-    // three sites it could not see. Q-0070's lesson: a scan that cannot see the surface it bounds
-    // is worse than no scan.
+    // EVERY `Why:` line, classified — not "every line saying `preserved`". Round 4 widened a
+    // defect-only scan to a `preserved <word>` scan and left the WORD-ORDER gap: `Why: behaviour
+    // preserved from spike/...` (engine.ts, loaders.ts) and `Why: deliberate addition, not
+    // preservation` (lifecycle.ts) all escaped it, and `loaders.ts` was absent from the register
+    // entirely. That is E-20's own failure mode surviving the fix written to close it, one round
+    // later — which is why the anchor is now `Why:` itself, the one token every authority line must
+    // carry, and an unclassifiable line FAILS rather than being skipped.
     const REGISTERED: Record<string, readonly string[]> = {
-      'engine.ts': ['design/Q-0034', 'defect/AC-10.', 'defect/AC-12.', 'behaviour/-', 'defect/AC-12d'],
-      'lifecycle.ts': ['defect/AC-10.', 'defect/AC-12.'],
-      'routing.ts': ['defect/AC-4.', 'defect/AC-12.', 'behavior/-'],
+      'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved defect/AC-12', 'preserved behaviour', 'preserved defect/AC-12d'],
+      'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
+      'loaders.ts': ['behaviour-from-spike'],
+      'routing.ts': ['preserved defect/AC-4', 'preserved defect/AC-12', 'preserved behavior'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {
-      const hits = [...source(name).matchAll(/Why: preserved (\w+)(?:, see (?:Q-0050 )?(AC-\d+[a-z]?\.?|Q-\d+))?/g)]
-        .map((m) => `${m[1]!}/${m[2] ?? '-'}`);
+      const hits = [...source(name).matchAll(/Why: ([^\n]*)/g)].map(([, clause]) => classifyAuthority(clause!, name));
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Ten markers, of which SEVEN are this ticket's own preserved defects — exactly AC-13d's own
-    // enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d). Its prose says "eight"; the prose is wrong
-    // and its list is right, ruled in solution/errata.md E-20.
-    expect(Object.values(found).flat()).toHaveLength(10);
-    expect(Object.values(found).flat().filter((m) => m.startsWith('defect/'))).toHaveLength(7);
+    // Thirteen authority lines, of which SEVEN are this ticket's own preserved defects — exactly
+    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20.
+    // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
+    // fails if a defect marker is moved between files rather than added or removed.
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(7)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
@@ -168,11 +187,14 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     const sentences = corpusOf(documents);
     expect(sentences.length, 'the scan needs a non-empty corpus, or it reports success over nothing').toBeGreaterThan(60);
 
+    // EVERY line, not only the one carrying the marker. Four authority comments run to two or three
+    // lines, so six continuation lines sat outside the scan — one of them already citing a decision
+    // by title. `harness/rules.md`'s "never transcribe DECISIONS.md or a ticket body" governs the
+    // whole file, so the scan does too.
     for (const name of production) {
       for (const line of source(name).split('\n')) {
-        if (!/Why: preserved/.test(line)) continue;
         const transcribed = transcribedIn(line, sentences);
-        expect(transcribed, `${name}: authority line transcribes "${String(transcribed).slice(0, 60)}…"`).toBeUndefined();
+        expect(transcribed, `${name}: comment transcribes "${String(transcribed).slice(0, 60)}…"`).toBeUndefined();
       }
     }
   });

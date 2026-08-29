@@ -258,6 +258,7 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     const writeSpy = vi.spyOn(opts.backlog, 'write');
     const writeFileSpy = vi.spyOn(opts.backlog, 'writeFile');
     const logSpy = vi.spyOn(opts.backlog, 'log');
+    opts.ticket.meta.iterations = { 'requirements.dry': 2 };
     const originalIterations = opts.ticket.meta.iterations;
     const before = JSON.stringify(opts.ticket);
     const ticketFile = path.join(opts.ticket.dir, 'ticket.md');
@@ -272,6 +273,9 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     expect(fs.existsSync(path.join(opts.ticket.dir, 'runs.log'))).toBe(false);
     expect(fs.existsSync(path.join(opts.project.repoDir, '.quorum'))).toBe(false);
     expect(opts.ticket.meta.iterations).toBe(originalIterations);
+    // Carrying a value, so "same object" is not satisfied by one that was emptied — the other half
+    // of round 4's N4, which was fixed at one of its two sites.
+    expect(opts.ticket.meta.iterations).toStrictEqual({ 'requirements.dry': 2 });
     expect(JSON.stringify(opts.ticket)).not.toBe(before);
     expect(opts.ticket.meta.stage).toBe('requirements');
   });
@@ -406,6 +410,26 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
     const stamped = events.filter((event) => event.type === 'stdout') as Array<Event & { stepId?: string }>;
     expect(stamped).toHaveLength(1);
     expect(stamped[0]?.stepId).toBe('second');
+  });
+
+  test('a field a step assigns on the context survives into the next step', async () => {
+    // The property that MOTIVATED removing the per-step spread, and which nothing asserted: the
+    // emit-time step-id test pins the passenger, not the reason. `types.ts` now promises this in
+    // prose to Q-0051 to Q-0053 — `ctx.fanned`, `ctx.failingTasks` and `ctx.lastIntegration` are
+    // assigned in one step and read in another in the spike — so it is pinned here rather than
+    // trusted. Under the spread it is silently lost, which is the failure Q-0053 would have met.
+    const opts = options();
+    opts.flow.steps = [{ id: 'first' }, { id: 'second' }] as unknown as typeof opts.flow.steps;
+    let observed: unknown = 'never ran';
+    vi.spyOn(routing, 'runStep').mockImplementation(async (step, context) => {
+      const carrier = context as unknown as Record<string, unknown>;
+      if (String(step.id) === 'first') { carrier.assignedByFirst = 'survived'; return null; }
+      observed = carrier.assignedByFirst;
+      return null;
+    });
+
+    await collect(stream(opts));
+    expect(observed).toBe('survived');
   });
 
   test('AC-12d — a goto naming no step throws a raw TypeError, not a FlowError', async () => {
