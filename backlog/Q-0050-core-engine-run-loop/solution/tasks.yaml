@@ -33,11 +33,15 @@ tasks:
     role: backend
     title: Correct event-stream and gate-channel documentation
     description: >
-      Own docs/03-adapter-contract.md, docs/04-architecture.md and docs/GLOSSARY.md
-      only. Document the terminal member, answerGate, caller-owned cancellation,
-      ordering limits and timestamp refusal, citing the accepted decision by title
-      and date. Do not create a decision entry or touch source, tests, contracts/**,
-      backlog/**, harness/** or spike/**.
+      Own docs/04-architecture.md and docs/GLOSSARY.md only — NOT
+      docs/03-adapter-contract.md, which errata E-5(c) removed from AC-13b because it
+      contains neither "runFlow" nor "event stream" (measured, zero occurrences), so
+      there is nothing in it to correct and adding stream prose to a vendor-flag
+      reference is not what AC-13 asks for. Document the terminal member, answerGate,
+      caller-owned cancellation, ordering limits and timestamp refusal, citing the
+      accepted decision by title and date. The failing test is
+      packages/shared/src/docs.test.ts. Do not create a decision entry or touch
+      source, tests, contracts/**, backlog/**, harness/** or spike/**.
     contracts:
       - contracts/Q-0050/run-events.contract.md
       - contracts/Q-0050/run-flow-api.contract.ts
