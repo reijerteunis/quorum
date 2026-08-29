@@ -113,7 +113,11 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
   test('cross-flow returns a routing decision without running the target flow', async () => {
     const target = { name: 'other', consumes: 'requirements', produces: 'qa-red', steps: [{ id: 'never' }] } as unknown as Flow;
     const ctx = context({ loadNamedFlow: vi.fn(() => target) });
-    await expect(handleFail({ id: 'x', on_fail: { goto: 'flow:other' } }, ctx))
+    // max_iterations is required, not decoration: handleFail tests `n <= f.max_iterations`,
+    // and `1 <= undefined` is false — so a fixture without it takes the exhaustion-gate
+    // branch and can never return a goto. Supplied so the test asks for the behaviour the
+    // criterion names rather than for a special case the port may not add.
+    await expect(handleFail({ id: 'x', on_fail: { goto: 'flow:other', max_iterations: 2 } }, ctx))
       .resolves.toMatchObject({ goto: 'flow:other' });
     expect(ctx.finishRun).not.toHaveBeenCalled();
   });
