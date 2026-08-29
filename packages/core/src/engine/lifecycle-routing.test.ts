@@ -32,7 +32,10 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     });
     const ctx = context({ emit: (event) => observed.push(event), answerGate });
     await expect(askGate(gate(), ctx)).resolves.toBe('advance');
-    expect(observed).toStrictEqual([gate()]);
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({
+      type: 'gate', gateId: 'g1', kind: 'human', reason: 'decide', ticketDir: '/ticket',
+    });
   });
 
   test('a later out-of-band answer is awaited and logged before it acts', async () => {

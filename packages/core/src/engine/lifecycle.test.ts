@@ -47,7 +47,7 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     const before = ctx.ticket.meta.stage;
     const fields = status === 'regressed' ? regression : undefined;
     await expect(finish(ctx, target, status as RunStatus, status === 'failed' ? 'script exited 1: denied' : null, fields))
-      .resolves.toMatchObject({ status, stage: target, cost: 1.23, runId: 7 });
+      .resolves.toMatchObject({ status, stage: target, cost: 1.23456, runId: 7 });
     expect(ctx.ticket.meta.stage).toBe(moves ? target : before);
     expect(ctx.ticket.meta.iterations).toStrictEqual({ review: 2 });
     expect(ctx.ticket.meta.history).toHaveLength(1);
@@ -98,13 +98,20 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     expect(ctx.emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'warn' }));
   });
 
-  test('dry preserves in-memory mutations but calls no persistent writer', async () => {
-    const ctx = lifecycle({ dry: true });
+  test('dry preserves in-memory mutations while the prototype view absorbs writes', async () => {
+    const realBacklog = { write: vi.fn(), writeFile: vi.fn(), log: vi.fn() };
+    const dryBacklog = Object.assign(Object.create(realBacklog), {
+      write: vi.fn(), writeFile: vi.fn(), log: vi.fn(),
+    });
+    const ctx = lifecycle({ dry: true, backlog: dryBacklog });
+    ctx.persistence.writeTicket = vi.fn((ticket) => ctx.backlog.write(ticket));
+    ctx.persistence.appendLog = vi.fn((ticket, line) => ctx.backlog.log(ticket, line));
     await expect(finish(ctx, 'red', 'completed', null)).resolves.toBeDefined();
     expect(ctx.ticket.meta.stage).toBe('red');
     expect(ctx.ticket.meta.history).toHaveLength(1);
-    expect(ctx.persistence.writeTicket).not.toHaveBeenCalled();
-    expect(ctx.persistence.appendLog).not.toHaveBeenCalled();
-    expect(ctx.backlog.write).not.toHaveBeenCalled();
+    expect(ctx.persistence.writeTicket).toHaveBeenCalledTimes(1);
+    expect(ctx.persistence.appendLog).toHaveBeenCalled();
+    expect(realBacklog.write).not.toHaveBeenCalled();
+    expect(realBacklog.log).not.toHaveBeenCalled();
   });
 });

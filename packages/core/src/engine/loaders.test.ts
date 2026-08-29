@@ -26,7 +26,7 @@ describe('Q-0050 AC-11b..AC-11g — loaders and pure helpers', () => {
     expect(implemented(() => loadFlow(valid))).toMatchObject({ name: 'ok', file: valid });
     expect(() => loadFlowByName('ghost', harness)).toThrow(expect.objectContaining({ code: 'ENOENT' }));
     const broken = path.join(harness, 'flows', 'broken.yaml');
-    write(broken, 'name: broken\nconsumes: draft\nproduces: requirements\nsteps:\n  - role: x\n');
+    write(broken, 'name: broken\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: x\n    on_fail:\n      max_iterations: 1\n');
     expect(() => loadFlow(broken)).toThrow(FlowError);
   });
 
