@@ -6,12 +6,17 @@
 //
 // The load-bearing scenario is B2: `--base` moves the DIFF ANCHOR and not the branch a run merges
 // from. Those are two different meanings of "base" and the flag must move exactly one of them.
+//
+// B6 and B7 were added by Q-0038: a revision the flag names and git cannot resolve is blamed on
+// the flag, not on the configuration file the value never came from. B1–B5 all pass a real
+// revision or none, which is why that failure had gone unwitnessed.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { Backlog } from '../src/backlog.js';
 import { materialiseDiff } from '../src/engine.js';
 
 const bin = path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), 'bin/harness.js');
@@ -117,6 +122,73 @@ await scenario('B5', 'AC-1 — the CLI threads --base to the run, and refuses th
   // And the flag appears in the usage line, so it is discoverable.
   const usage = cli(root, ['run']);
   assert.match(`${usage.stdout}${usage.stderr}`, /\[--base <ref>\]/, 'the usage string names the flag');
+});
+
+await scenario('B6', 'Q-0038 AC-8 — an unresolvable override is blamed on the flag, and an absent field is no override', async () => {
+  const { root } = contained();
+  // `baseOverride` is what runFlow records when the maintainer typed --base. vars.base cannot
+  // answer that question: it is set from the configured branch when no flag was given.
+  const given = { ...ctxFor(root, { id: 'T-9', base: 'no-such-revision' }), baseOverride: 'no-such-revision' };
+  let refused = null;
+  try { materialiseDiff(STEP, given); } catch (e) { refused = e; }
+  assert.ok(refused, 'a revision git cannot resolve must stop the run');
+  assert.match(refused.message, /--base/, `it names the flag that supplied the value: ${refused?.message}`);
+  assert.ok(refused.message.includes('"no-such-revision"'), `it names the revision supplied: ${refused.message}`);
+  assert.ok(refused.message.includes('left endpoint'), `it says which endpoint it is: ${refused.message}`);
+  assert.match(refused.message, /Neither the diff nor the containment check was run/);
+  assert.doesNotMatch(refused.message, /repo\.base_branch/, 'the value did not come from configuration');
+  assert.doesNotMatch(refused.message, /harness\.yaml/, 'nor from that file');
+
+  // Attribution keys on whether the flag was typed, never on whether its value differs from the
+  // configured branch: an override may legitimately name the same value, and the maintainer still
+  // typed it. Here the two agree and the answer must still be the flag.
+  const same = {
+    ...ctxFor(root, { id: 'T-9', base: 'no-such-revision' }),
+    config: { repo: { base_branch: 'no-such-revision' } }, baseOverride: 'no-such-revision',
+  };
+  let identical = null;
+  try { materialiseDiff(STEP, same); } catch (e) { identical = e; }
+  assert.match(identical.message, /--base/, `an override naming the configured value is still an override: ${identical?.message}`);
+  assert.doesNotMatch(identical.message, /repo\.base_branch/);
+
+  // And an absent field is no override, so every hand-built context — including the ones in this
+  // file and in q0006-engine.js — keeps the configured wording rather than turning red for the
+  // wrong reason.
+  let configured = null;
+  try { materialiseDiff(STEP, ctxFor(root, { id: 'T-9', base: 'no-such-revision' })); } catch (e) { configured = e; }
+  assert.match(configured.message, /repo\.base_branch in harness\/harness\.yaml names missing ref "no-such-revision"/,
+    `a context with no override reads exactly as it did: ${configured?.message}`);
+  assert.doesNotMatch(configured.message, /--base/);
+});
+
+await scenario('B7', 'Q-0038 AC-8 — the CLI blames the flag it was given, end to end', async () => {
+  // The last link, as B5 is for the flag's parsing: argv → runFlow → the diagnostic a maintainer
+  // actually reads. Without it the wording is joined to the command line only by reading.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'q0077-cli-'));
+  git(root, 'init', '-q', '-b', 'main');
+  write(path.join(root, 'README.md'), 'fixture\n');
+  git(root, 'add', '-A'); commit(root, 'base');
+  write(path.join(root, 'harness', 'harness.yaml'), 'repo:\n  base_branch: main\nbacklog: {path: backlog}\n');
+  write(path.join(root, 'harness', 'roles', 'code-reviewer.md'), '---\nadapter: mock\n---\nReviewer.\n');
+  write(path.join(root, 'harness', 'flows', 'probe.yaml'), [
+    'name: probe', 'consumes: requirements', 'produces: reviewed', 'steps:',
+    '  - id: review', '    role: code-reviewer', '    adapter: mock',
+    '    input:', '      backlog: [ticket.md]', '      diff: "{base}...harness/{id}/integration"',
+    '    output: { writes: ["review/iter-{iter}.md"] }',
+  ].join('\n') + '\n');
+  const backlog = new Backlog(path.join(root, 'backlog'));
+  const ticket = backlog.create({ title: 'Base flag', intent: 'Fixture.', owner: 'qa' });
+  ticket.meta.stage = 'requirements'; backlog.write(ticket);
+  // The ticket branch exists, so the only endpoint that can fail is the one the flag names.
+  git(root, 'branch', ticket.meta.branch, 'main');
+
+  const r = cli(root, ['run', 'probe', ticket.meta.id, '--base', 'no-such-revision', '--auto']);
+  const out = `${r.stdout}${r.stderr}`;
+  assert.notEqual(r.status, 0, `the run must fail: ${out}`);
+  assert.match(out, /--base/, `it names the flag: ${out}`);
+  assert.ok(out.includes('no-such-revision'), `it names the revision supplied: ${out}`);
+  assert.doesNotMatch(out, /repo\.base_branch/, 'it must not send the maintainer to a file it did not read the value from');
+  assert.doesNotMatch(out, /harness\.yaml/);
 });
 
 process.exit(failed ? 1 : 0);
