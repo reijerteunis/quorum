@@ -62,10 +62,15 @@ union on `type`. Two shapes, because two interfaces exist. An **adapter event** 
 passes to `onEvent` — `spawn`, `stdout`, and the `retry` the contract layer adds — carrying no
 identity, because an adapter does not know which step it is running. A **run event** is one of
 those with the step id the engine supplies, or one of the engine's own: `step`, `done`, `info`,
-`warn`, and the gate question, which is the only event that expects an answer. Vendor identity is
-one neutral, open `vendor` label and nothing else in the union is vendor-specific. Not persisted in
-v1 (see **Run history**, which is), and not to be called a "log line" or a "trace message" — the
-trace is the stream, an event is one item of it.
+`warn`, the correlated gate question, and the final `terminal` member. The gate question is queued
+before the out-of-band `answerGate` callback is invoked. `runFlow` is a lazy, single-consumer
+`AsyncIterable<Event>` backed by a lossless FIFO: order is stable within one step, but parallel
+members have no global ordering or interleaving promise. Cancellation belongs to the caller through
+an `AbortSignal`, not to a signal handler installed by core. No event gains a timestamp or sequence
+number, and only the terminal event carries run identity. Vendor identity is one neutral, open
+`vendor` label and nothing else in the union is vendor-specific. Not persisted in v1 (see **Run
+history**, which is), and not to be called a "log line" or a "trace message" — the trace is the
+stream, an event is one item of it. See *What a run's event stream carries, and how a gate answer travels back* (2026-08-28).
 
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
