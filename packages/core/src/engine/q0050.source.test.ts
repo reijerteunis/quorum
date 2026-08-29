@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { coreSourceFiles } from '../../test/corpus.js';
+import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 // The corpus already carries every file's text, so the sources are taken from it rather than
 // re-read through a templated path. That is not tidiness: a template handed to a read API is an
@@ -108,35 +108,50 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // swapped out, so the register names WHICH file carries WHICH authority and pins the
     // arithmetic. A new preserved defect fails here until it is entered, and a deleted one fails
     // here too, which a `toBeGreaterThanOrEqual` cannot do in either direction.
+    // EVERY `Why: preserved …` marker, not only those saying "defect". Three escaped a defect-only
+    // scan — two `preserved behaviour`/`behavior`, spelled differently from each other, and one
+    // `preserved design` belonging to Q-0034 — so a register pinning seven read as complete beside
+    // three sites it could not see. Q-0070's lesson: a scan that cannot see the surface it bounds
+    // is worse than no scan.
     const REGISTERED: Record<string, readonly string[]> = {
-      'engine.ts': ['AC-10.', 'AC-12.', 'AC-12d'],
-      'lifecycle.ts': ['AC-10.', 'AC-12.'],
-      'routing.ts': ['AC-4.', 'AC-12.'],
+      'engine.ts': ['design/Q-0034', 'defect/AC-10.', 'defect/AC-12.', 'behaviour/-', 'defect/AC-12d'],
+      'lifecycle.ts': ['defect/AC-10.', 'defect/AC-12.'],
+      'routing.ts': ['defect/AC-4.', 'defect/AC-12.', 'behavior/-'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {
-      const hits = [...source(name).matchAll(/Why: preserved defect, see Q-0050 (AC-\d+[a-z]?\.?)/g)].map((m) => m[1]!);
+      const hits = [...source(name).matchAll(/Why: preserved (\w+)(?:, see (?:Q-0050 )?(AC-\d+[a-z]?\.?|Q-\d+))?/g)]
+        .map((m) => `${m[1]!}/${m[2] ?? '-'}`);
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Seven, and AC-10's two are the reason this register must not ratify what shipped: they were
-    // MANDATED by the criterion and absent from the code, so a register written to the shipped set
-    // would have made their absence the oracle. Round 3 caught exactly that.
-    expect(Object.values(found).flat()).toHaveLength(7);
+    // Ten markers, of which SEVEN are this ticket's own preserved defects — exactly AC-13d's own
+    // enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d). Its prose says "eight"; the prose is wrong
+    // and its list is right, ruled in solution/errata.md E-20.
+    expect(Object.values(found).flat()).toHaveLength(10);
+    expect(Object.values(found).flat().filter((m) => m.startsWith('defect/'))).toHaveLength(7);
   });
 
-  test('AC-13d: an authority line is one line, so it cannot be a transcribed paragraph', () => {
-    // The "reproduces no sentence" half, as far as it can be checked from inside this package.
-    // The criterion asks for a substring scan against docs/decisions and this ticket's body;
-    // `docs/decisions` is walked by @quorum/shared#test, not by this task, so a real scan needs a
-    // new route through Q-0072's input guard. What is checked instead is the shape a transcription
-    // would have to take: `harness/rules.md` allows ONE line naming the authority, and a copied
-    // decision paragraph cannot fit in one. Stated as the proxy it is — qa/scenarios.md's AC-13d
-    // row says so too, rather than claiming the scan.
+  test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
+    // The scan the criterion asked for, replacing a 120-character length proxy that stood here and
+    // that any short copied sentence passed — named by codex in round 4. `docs/DECISIONS.md` and
+    // `backlog/*/ticket.md` are both declared inputs of this task, so this needs no new route
+    // through the turbo input guard.
+    const documents = [
+      repoFile('docs/DECISIONS.md'),
+      repoFile('backlog/Q-0050-core-engine-run-loop/ticket.md'),
+    ].join('\n');
+    const sentences = [...new Set(
+      documents.split(/(?<=[.!?])\s+|\n/).map((t) => t.trim().replace(/\s+/g, ' ')).filter((t) => t.length >= 40),
+    )];
+    expect(sentences.length, 'the scan needs a non-empty corpus, or it reports success over nothing').toBeGreaterThan(20);
+
     for (const name of production) {
       for (const line of source(name).split('\n')) {
-        if (!line.includes('Why: preserved defect')) continue;
-        expect(line.trim().length, `${name}: ${line.trim()}`).toBeLessThan(120);
+        if (!/Why: preserved/.test(line)) continue;
+        const text = line.replace(/^\s*(?:\/\/|\*|\/\*\*)\s*/, '').trim().replace(/\s+/g, ' ');
+        const transcribed = sentences.find((sentence) => text.includes(sentence));
+        expect(transcribed, `${name}: authority line transcribes "${String(transcribed).slice(0, 60)}…"`).toBeUndefined();
       }
     }
   });

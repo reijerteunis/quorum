@@ -12,6 +12,9 @@
         "../../.github/workflows/ci.yml",
         "../../turbo.json",
         "../../pnpm-lock.yaml",
+        // Q-0050 AC-13d: q0050.source.test.ts scans authority lines against the decisions
+        // index and this ticket's body for a transcribed sentence.
+        "../../docs/DECISIONS.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",
         "../../contracts/Q-0006/review-artifacts.schema.json",

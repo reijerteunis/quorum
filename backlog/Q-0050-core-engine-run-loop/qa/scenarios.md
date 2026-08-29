@@ -87,7 +87,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-13a | — | gate action (`pnpm lint` / `pnpm typecheck`), n/a | — |
 | AC-13b | q0050-documentation | `packages/shared/src/docs.test.ts` | — |
 | AC-13c | — (structural) | `q0050.source.test.ts` + `packages/shared/src/index.test.ts` | — |
-| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of the **seven** preserved-defect sites by file and authority — five shipped, plus AC-10's two, which round 3 found the criterion mandated and the code omitted, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
+| AC-13d | all tasks | `q0050.source.test.ts` — AC-13d: a register of **all ten** `Why: preserved …` markers by file, kind and authority — seven `defect/`, which is AC-13d's own enumeration, plus a `design/` and two `behaviour|behavior/` that a defect-only scan could not see (E-20). The "reproduces no sentence" half is now the real substring scan against `docs/DECISIONS.md` and `ticket.md`, both already declared inputs, demonstrated red before being trusted — it replaced a length proxy any short copied sentence passed, asserted as an identity map rather than a count. The "reproduces no sentence" half is a **proxy** — each authority line must fit on one line — because a real substring scan against `docs/decisions` needs a route this task does not have (that folder is walked by `@quorum/shared#test`) | — |
 | AC-13e | — | gate action (module-header citation review), n/a | — |
 
 ## AC-1 — module shape, no dependency, no output
@@ -433,7 +433,8 @@ Encoding it here would be a red test with no task able to turn it green.
   `src/index.ts` under a declared input): grep every `packages/shared/src/*.ts` file for an import
   specifier resolving into `packages/core`, and assert none exists. `q0050.source.test.ts` no longer
   performs this grep itself, closing the last two of B-1's six guard failures.
-- **AC-13d** — **Given** the eight preserved-defect sites across this ticket's code. **When**
+- **AC-13d** — **Given** the seven preserved-defect sites across this ticket's code (corrected from
+  "eight" by `solution/errata.md` E-20; the enumeration below was always right). **When**
   `q0050.source.test.ts` scans for `Why: preserved defect, see Q-0050` lines. **Then** the count matches
   the number of preserved defects this ticket's own tasks introduce or carry (AC-4h, AC-10c, AC-10f,
   AC-12a/b/c/d), and — closing round 3's nit — each such line is checked **not** to contain a verbatim

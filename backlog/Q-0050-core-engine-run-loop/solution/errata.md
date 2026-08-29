@@ -720,3 +720,32 @@ the criterion said one thing, the code did another, the suite ratified the code,
 which was intended. That is the third instance of this exact shape on this ticket (E-18 on AC-9f's
 cost, E-17 on the short-circuit sentence), and all three were found by reading the criterion against
 the code rather than by a failing test, because a test written from the code can never find it.
+
+## E-20 — AC-13d's prose says eight preserved defects; its own enumeration says seven, and seven is right — 2026-08-29
+
+**Corrects** AC-13d's opening — *"Given the **eight** preserved-defect sites across this ticket's
+code"* — against its own next sentence, which enumerates *"(AC-4h, AC-10c, AC-10f,
+AC-12a/b/c/d)"*. That list has **seven** members and it is the accurate one. Counted in the tree:
+`routing.ts:25` (AC-4h) and `:62` (AC-12c); `engine.ts:131` (AC-10f), `:171` (AC-12a) and `:226`
+(AC-12d); `lifecycle.ts:19` (AC-10c) and `:36` (AC-12b).
+
+**The count was never the real defect.** Codex's round-4 review found the mismatch and, chasing it,
+the register's scan turned out to be the weaker half: it matched `Why: preserved **defect**` only,
+so **three markers in the same folder were invisible to it** — `engine.ts:35` (`preserved design`,
+Q-0034's), `engine.ts:218` (`preserved behaviour`) and `routing.ts:126` (`preserved behavior`). Two
+of those three spell the same word differently from each other. A register that pinned seven
+identities therefore read as complete while sitting beside three sites it could never see, which is
+Q-0070's `fs.rmSync` lesson exactly: *a scan that cannot see the surface it bounds is worse than no
+scan.* The register now covers every `Why: preserved <kind>` marker with its kind and authority —
+ten in total, seven of them `defect/`.
+
+**And the "reproduces no sentence" half is now the scan the criterion asked for**, not the
+120-character length proxy that stood in for it after round 3. Codex's objection to the proxy is
+upheld in full: *any short copied sentence passes it*. The scan compares every authority line
+against every sentence of forty characters or more in `docs/DECISIONS.md` and this ticket's
+`ticket.md` — both already declared inputs of `@quorum/core#test`, so it needed no new route
+through Q-0072's guard, which is why the earlier claim that it did was wrong. It carries a
+non-empty-corpus assertion, because a scan over zero sentences reports success over nothing
+(*"a check that skips its subject must not report success"*, 2026-08-25), and it was demonstrated
+red by pasting `DECISIONS.md`'s own *"Every decision and why, append-only, newest last."* onto an
+authority line before it was trusted.
