@@ -57,3 +57,96 @@ ticket and both want their own:
   spent $13.86 in a single step and run 3 spent $22.27, neither interrupted.
 
 Belongs to M2 in `docs/06-development-plan.md`.
+
+## Re-derived and re-scoped, 2026-08-30 — before the requirements run
+
+Written by hand ahead of the flow, because a requirement is composed from this body and cannot
+read a sibling's folder. Q-0051's requirements run was aborted at its gate the same day so that
+this ticket goes first — its body's *Sequencing against Q-0038* asks for exactly that.
+
+### The line map, re-derived
+
+Every position below was written before Q-0077 shifted `spike/src/engine.js` by five lines on
+2026-08-29, and two were wrong beyond the shift. Re-derive from the file, never from this list.
+
+| Subject | Body says | Actually |
+| --- | --- | --- |
+| the reviewer's finding | `:820` | **`:825`** |
+| the wholesale `.find()` | *"a single `find`"*, unlocated | **`:133`**, in the preflight block **`:91–142`** |
+| `materialiseDiff` / `emptyRangeFailure` | — | **`:790`** / **`:865`** |
+| *"`integrate` is the only step that creates the integration branch"* | `:200` | **`:923`**, repeated at **`:226`** |
+| the frontmatter branch name | `backlog.js:64` | **unchanged, still `:64`** |
+
+### The diagnosis half is exactly one ternary, not a pattern
+
+`:825` is the **only** site conditioned on `deferred?.ref === ref`. Every other use of the deferred
+record — `:871`, `:880` and `:893`, all inside `emptyRangeFailure` — is conditioned on `deferred`
+alone and already names the producing step whichever endpoint went bad. So half 1 is one clause in
+one function, and the requirement should not go looking for a general asymmetry: there is none.
+
+### The two halves interact, and half 2 does not subsume half 1
+
+Fixing the timing half removes half 1's *headline* case. Once each endpoint is validated on its own
+class, a missing pre-existing endpoint fails in the preflight — before any adapter — so it never
+reaches `:825` to be explained badly. That is the $13.86 case, and it stops being a diagnosis
+problem by ceasing to be a step-time failure at all.
+
+Half 1 is still needed, for a case the body does not name: a deferred range whose *other* endpoint
+goes missing **during** the run — the base deleted or moved between the preflight and the step. That
+still arrives at `:825`, still with a non-null `deferred`, and still drops the producer clause.
+Rarer, not gone. A requirement that closes half 2 and calls half 1 solved would be wrong.
+
+### R-1 is folded in — ruled by Ruud at Q-0051's gate, 2026-08-30
+
+**Under `--base`, an unresolvable override is blamed on a file that does not name it.** `:793` is
+`const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main'`, so under an override `base`
+*is* the override; `:829` then throws `repo.base_branch in harness/harness.yaml names missing ref
+"<base>"`. `harness run review <id> --base 0f1e40d` against a revision that does not resolve sends
+the maintainer to `harness/harness.yaml`, which is not where the value came from. Q-0077 shipped
+`--base` on 2026-08-29, after this message was written for Q-0035; the two never met.
+
+It joins this ticket because it is **the same tail of the same function** — a third edit to `:815–831`
+rather than a second pass over it weeks later. Two facts bound the risk, both measured today rather
+than assumed:
+
+- **The one fixture that pins this phrase drives it from config, not from an override.**
+  `spike/test/q0006-engine.js:117` sets `f.config.repo.base_branch = 'missing-base'` and `:120`
+  asserts `/repo\.base_branch/i`, `/harness[\/]harness\.yaml/` and `/missing-base/` together. A fix
+  that branches on *whether an override is in force* leaves that path's wording untouched, so the
+  fixture stays green without being edited. `:130` additionally asserts the sibling
+  integration-branch message does **not** mention `repo.base_branch`, which the fix must keep true.
+- **No scenario covers an unresolvable `--base`.** `q0077-base-flag.js` B1–B5 use a real revision or
+  none. So R-1 adds a test rather than changing one — the cheapest shape a message fix can have.
+
+### Sequencing, the freeze, and why now is the cheap moment
+
+This ticket is **not** in charter §3's `children` list, so the port freeze does not apply to it, and
+§3's table names it as one of five tickets that must land before the freeze SHA can be recorded at
+`harness/port-charter.md:243`.
+
+**It is a one-tree change, and this is the last moment it can be.** `packages/core` has no diff
+subsystem: Q-0051 has not run, so there is no ported twin to keep in step and none of the Q-0066 /
+Q-0068 *"lands in both trees together"* cost applies. Every landed port child is untouched, because
+the preflight and `materialiseDiff` are Q-0051's and unstarted. After Q-0051 lands, the same fix is
+two trees, two suites and a divergence risk.
+
+**It must be contained in `main` before Q-0051's requirements run is repeated**, which is the whole
+reason for the abort. Q-0051 then ports the fixed version, and its aborted merged requirement's D-5
+— which rules the `.find()` preserved — is superseded rather than followed.
+
+### Evidence already paid for
+
+`backlog/Q-0051-core-engine-diff-preflight/requirements/merged.md` (2026-08-30, $7.274, aborted at
+its gate) describes this preflight in eight numbered clauses under its AC-9 and was verified against
+the files before the abort. It is the most careful description of the subsystem in the repository.
+Read it; do not re-derive it. Its D-5 is the one section this ticket makes obsolete.
+
+### The two neighbours, re-checked
+
+Both are still open and neither belongs here. **The chore flow cannot run on a ticket's first pass**
+is now mitigated operationally rather than fixed — charter §8's first checklist item says to create
+`harness/<id>/integration` by hand before a child's first chore run, and thirteen children have. It
+is still a statically checkable flow property nothing checks. **`budget.per_run_usd` stops nothing**
+— it is still `10` in `harness/harness.yaml:14`, `packages/shared/src/project.ts:88` types it, and
+`:23` says in a comment that typing a key is not enforcing it.
+
