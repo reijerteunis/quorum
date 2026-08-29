@@ -44,7 +44,14 @@ export interface RunFlowOptions {
   backlog: Backlog;
   /** Preview only. Every persistent writer on {@link RunPersistence} and on {@link Backlog} is disabled. */
   dry?: boolean;
-  /** Authorises the first gates the run meets without a human answer, exhaustion gates included. */
+  /**
+   * Advances author-declared gates without a human answer.
+   *
+   * **Exhaustion gates are excluded**, and deliberately: AC-6 synthesises one as `human-locked`
+   * precisely so `--auto` cannot bypass it — see *"Non-auto exhaustion gates require an explicit
+   * human or scripted answer"* (2026-08-23) and the glossary's **Gate**. A `human-locked` gate
+   * declared by an author is excluded for the same reason.
+   */
   auto?: boolean;
   /** Required to answer any gate that is neither `dry` nor auto-eligible; its absence fails the run at that gate. */
   answerGate?: AnswerGate;

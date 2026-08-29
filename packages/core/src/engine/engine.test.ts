@@ -92,6 +92,11 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     const opts = options();
     const logSpy = vi.spyOn(opts.backlog, 'log');
     const iterable = stream(opts);
+    // The title's own claim, asserted before anything is pulled. `stream()` catches only a
+    // SYNCHRONOUS throw from runFlow, and every assertion below is made after the stream has
+    // drained — so an eager implementation satisfied all of them.
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(opts.project.repoDir, '.quorum'))).toBe(false);
     const events = await collect(iterable);
     expect(events[0]).toStrictEqual({
       type: 'info', message: render(fixture.runBanner, {
@@ -374,6 +379,11 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
       counter: 'requirements.a', count: 2, limit: 2, remaining: 0,
     });
     expect(opts.ticket.meta.stage).toBe('red');
+    // The engine's OWN regressed terminal through the union. events.q0050.test.ts parses a
+    // hand-written one; this member is the one with the nested discriminated union and the only
+    // one whose fields are computed — `count` is an unchecked index and `limit` arrives as
+    // Number(max_iterations), while shared declares both z.number(), which rejects undefined and NaN.
+    expect(() => eventSchema.parse(events.at(-1))).not.toThrow();
     // AC-8a's second half: B's steps never ran. `development.yaml` declares one step, `build`, and
     // the cursor returns before it could reach any dispatch — so the stub records exactly the one
     // call A made. Without this the row claimed a spy that did not exist.
@@ -381,12 +391,52 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
     expect(vi.mocked(routing.runStep).mock.calls[0]?.[0]).toMatchObject({ id: 'a' });
   });
 
+  test('AC-6 — vars.iter increments on the intra-flow branch and not on the cross-flow one', async () => {
+    // Measured before writing: `iter` occurred at three sites in the engine and in NONE of the six
+    // test files, so both halves were free — an increment added to the cross-flow branch, or
+    // removed from the intra-flow one, was green everywhere. It is load-bearing: chore.yaml's
+    // `review/chore-iter-{iter}.md` is the only thing keeping a revise round's artifact off the
+    // previous round's, which is open ticket Q-0057's symptom under a different cause.
+    const intra = options();
+    intra.flow.steps = [{ id: 'a' }, { id: 'b' }] as unknown as typeof intra.flow.steps;
+    const intraSeen: unknown[] = [];
+    let served = false;
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      intraSeen.push(context.vars.iter);
+      if (served) return null;
+      served = true;
+      return { goto: 'a', counter: 'requirements.a', limit: 2 };
+    });
+    await collect(stream(intra));
+    expect(intraSeen).toStrictEqual([1, 2, 2]);
+
+    const cross = withTarget();
+    cross.flow.steps = [{ id: 'a' }] as unknown as typeof cross.flow.steps;
+    const crossSeen: unknown[] = [];
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      crossSeen.push(context.vars.iter);
+      return { goto: `flow:${targetFlow}`, counter: 'requirements.a', limit: 2 };
+    });
+    await collect(stream(cross));
+    expect(crossSeen).toStrictEqual([1]);
+  });
+
   test('AC-8c — a goto naming an absent flow fails by name and moves no stage', async () => {
     const opts = options();
     opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
     routeOnce({ goto: 'flow:doesNotExist', counter: 'requirements.a', limit: 1 });
 
-    const error = await collect(stream(opts)).then(() => undefined, (cause: unknown) => cause);
+    // Collected OUTSIDE the try. `collect` returns its array only on normal completion, so every
+    // `failed` assertion in this file threw the events away — leaving the one status where AC-3's
+    // "additionally throws" has a subject with no composed coverage, on the criterion this port's
+    // single authorised behaviour change was spent on.
+    const seen: Event[] = [];
+    const error = await (async () => {
+      try { for await (const event of stream(opts)) seen.push(event); return undefined; }
+      catch (cause: unknown) { return cause; }
+    })();
+    expect(seen.at(-1)).toMatchObject({ type: 'terminal', status: 'failed', stageAfter: 'draft' });
+    expect(seen.filter((event) => event.type === 'terminal')).toHaveLength(1);
 
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain('doesNotExist');
@@ -470,6 +520,27 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
 
     await collect(stream(opts));
     expect(observed).toBe('survived');
+  });
+
+  test('a parallel group stamps no id, and a member\'s own id is never overwritten', async () => {
+    // Round 6, Major 1 — found independently by both vendors. A `parallel:` group is a container
+    // and correctly carries no `id`, so the loop used to stamp the literal string "undefined";
+    // `requirements.yaml` and `review.yaml` are BOTH `- parallel:`, the flows this ticket runs
+    // under. And the loop cannot know which concurrent member is speaking, so an id a member
+    // supplies must win over the one the loop holds.
+    const opts = options();
+    opts.flow.steps = [{ parallel: [{ id: 'a' }, { id: 'b' }] }] as unknown as typeof opts.flow.steps;
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      context.emit({ type: 'stdout', line: 'from the group itself' } as unknown as Event);
+      context.emit({ type: 'stdout', line: 'from a member', stepId: 'b' } as unknown as Event);
+      return null;
+    });
+
+    const events = await collect(stream(opts));
+    const lines = events.filter((event) => event.type === 'stdout') as Array<Event & { stepId?: string }>;
+
+    expect(lines.map((event) => event.stepId)).toStrictEqual([undefined, 'b']);
+    expect(lines.map((event) => event.stepId)).not.toContain('undefined');
   });
 
   test('AC-12d — a goto naming no step throws a raw TypeError, not a FlowError', async () => {

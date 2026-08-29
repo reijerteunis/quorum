@@ -159,11 +159,22 @@ describe('AC-8 / AC-11 — the documents agree with what shipped', () => {
 describe('Q-0050 AC-13b — run event-stream documentation', () => {
   test('the glossary and architecture state every accepted stream rule', () => {
     const title = "What a run's event stream carries, and how a gate answer travels back";
+    // One assertion per RULE, against the sentence rather than the noun. A word list is satisfied
+    // by a document stating the opposite — a glossary reading "every event carries a timestamp"
+    // contains "timestamp" — and that is not hypothetical here: docs/decisions/065 exists because
+    // two STATEMENTS in 062 were false while every word in them was the right word. This guard was
+    // positioned to catch exactly that and could not.
     for (const file of ['docs/GLOSSARY.md', 'docs/04-architecture.md']) {
       const body = repoFile(file);
-      for (const token of ['terminal', 'answerGate', 'AbortSignal', 'timestamp', title, '2026-08-28']) {
-        expect(body, `${file}: ${token}`).toContain(token);
-      }
+      expect(body, `${file}: cites the decision by title`).toContain(title);
+      expect(body, `${file}: cites the decision's date`).toContain('2026-08-28');
+      // The erratum is cited beside it, so a reader arriving at 062 is pointed away from its two
+      // superseded clauses. 065's own "Alternatives considered" names these citations as its reason.
+      expect(body, `${file}: cites 062's erratum`).toMatch(/2026-08-29 erratum|erratum to \*?What a run/);
+      expect(body, `${file}: the terminal member is last`).toMatch(/terminal[^.]*\b(last|final)\b|\b(last|final)\b[^.]*terminal/i);
+      expect(body, `${file}: the gate question precedes the callback`).toMatch(/(queued|emitted)\s+before[\s\S]{0,80}answerGate/i);
+      expect(body, `${file}: cancellation belongs to the caller`).toMatch(/AbortSignal[\s\S]{0,160}(caller|not to a signal handler)|caller[\s\S]{0,160}AbortSignal/i);
+      expect(body, `${file}: no event gains a timestamp`).toMatch(/(no event[\s\S]{0,60}timestamp|carry no timestamp|gains? no timestamp)/i);
       expect(body.toLowerCase(), `${file}: parallel ordering limit`).toMatch(/parallel[\s\S]*(order|interleav)/);
     }
   });

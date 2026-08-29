@@ -72,12 +72,15 @@ function categoryOf(occurrence: Occurrence, status: 'failed' | 'interrupted'): E
 function withStepId(emit: EmitEvent, currentStepId: () => string | null): EmitEvent {
   return (event) => {
     const stepId = currentStepId();
-    if (stepId === null) { emit(event); return; }
     switch (event.type) {
       case 'spawn':
       case 'stdout':
       case 'retry':
-        emit({ ...event, stepId });
+        // An id the emitter already carries WINS. The loop knows the top-level step; it does not
+        // know which member of a `parallel:` group or which wave of a fan-out is speaking, and
+        // both run concurrently against this one slot. Spreading `stepId` last overwrote a member's
+        // own id, which typed Q-0052 into supplying one and having it discarded.
+        emit(event.stepId !== undefined || stepId === null ? event : { ...event, stepId });
         break;
       default:
         emit(event);
@@ -224,7 +227,9 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
       const step = steps[i];
       // Why: preserved defect, see Q-0050 AC-12d — an out-of-range index (an unknown goto target)
       // dereferences `undefined` here and throws a raw TypeError, not a FlowError.
-      stepId = String(step.id);
+      // `undefined` for a container, not the literal string "undefined". A `parallel:` group carries
+      // no id — correctly, it is not a step — and both flows this ticket runs under are one.
+      stepId = step.id === undefined || step.id === null ? null : String(step.id);
       let result: StepResult;
       try {
         result = await runStep(step, context);

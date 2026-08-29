@@ -773,3 +773,26 @@ a function it is about to call for the first time. The obligation is written her
 requirement can carry it as a criterion, which is the same handling E-8 gave the unpinned
 `step`/`done` obligation. The JSDoc stays — it is useful where it is — but it is no longer the only
 record.
+
+## E-22 — `registerOccurrence` has no reachable caller, and that is recorded rather than fixed — 2026-08-29
+
+**Amends** E-13's account of what adding `RunPersistence.registerOccurrence` bought. The member is
+sound and its JSDoc is honest — it says outright that Q-0050 allocates no occurrence — but round 6
+established something E-13 did not: **nobody can call it.**
+
+`history` is a local in `run()`; it is on none of `RunContext`, `RoutingContext` or
+`RunPersistence`, and `RunHistory.allocate` is the only producer of an `Occurrence`. So no caller
+inside this ticket *or outside it* can obtain the argument the seam takes. Q-0052 must widen the
+capability on its first day regardless — which is exactly the cost E-13 added the member to avoid.
+
+**It stays as it is, and the reason is a rule this ticket has now broken twice.** Widening the seam
+to `allocateOccurrence(step, kind, fields)` is the right shape and it is **Q-0052's design to make**:
+it decides where an occurrence is allocated, and a capability shaped for it in advance by a ticket
+that allocates none is a guess with a compiler behind it. Round 6's panel reached the same place from
+the other side — its own argument is that Q-0052 will *probably* register inside its allocate
+capability, and "probably" is not a basis for freezing an interface two tickets ahead.
+
+**What Q-0052's requirement must carry**, so this does not have to be rediscovered: the seam as
+shipped cannot be reached, and the round that allocates the first occurrence widens it in the same
+change. This is E-8's handling of the unpinned `step`/`done` obligation applied to a capability
+rather than to a test.

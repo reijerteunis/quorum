@@ -70,7 +70,7 @@ an `AbortSignal`, not to a signal handler installed by core. No event gains a ti
 number, and only the terminal event carries run identity. Vendor identity is one neutral, open
 `vendor` label and nothing else in the union is vendor-specific. Not persisted in v1 (see **Run
 history**, which is), and not to be called a "log line" or a "trace message" — the trace is the
-stream, an event is one item of it. See *What a run's event stream carries, and how a gate answer travels back* (2026-08-28).
+stream, an event is one item of it. See *What a run's event stream carries, and how a gate answer travels back* (2026-08-28) and its 2026-08-29 erratum, which corrects two of its clauses.
 
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
