@@ -5,6 +5,7 @@
       "Edit",
       "Write",
       "Bash(pnpm *)",
+      "Bash(npm install --prefix spike*)",
       "Bash(npm test*)",
       "Bash(node spike/*)",
       "Bash(git status*)",
