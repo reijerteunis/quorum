@@ -10,10 +10,20 @@ created: 2026-08-25
 iterations: {}
 history: []
 ---
-Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:95–130`),
-`diffSitesOf`, `materialiseDiff` and `emptyRangeFailure` (785–894). About 120 lines, and the most
-decision-dense of the four engine tickets — it is the whole subject of Q-0035, which cost $36.66 to
-land. Belongs to M2 in `docs/06-development-plan.md`; parent Q-0009.
+Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:91–142`) and
+the five functions it and `buildPrompt` reach — `named` (`:769`), `diffSitesOf` (`:781`),
+`materialiseDiff` (`:790`), `emptyRangeFailure` (`:865`) and `trimIncompleteUtf8Suffix`
+(`:900–908`). 192 lines of which 107 are code; the rest is the comment weight Q-0034 and Q-0035
+paid for. The most decision-dense of the four engine tickets — it is the whole subject of Q-0035,
+which cost $36.66 to land. Belongs to M2 in `docs/06-development-plan.md`; parent Q-0009.
+
+**Every line number above was re-read on 2026-08-30, and every one of them had moved.** This body
+was written against `95–130` and `785–894`, which Q-0077 shifted by five and which was approximate
+before that. Two functions the old range excluded are named above rather than left to be
+discovered: it cut `trimIncompleteUtf8Suffix` off the top — the omission the *Inherited from
+Q-0049* note below is about — and it cut `named` off the bottom, used at `:821` and `:890` and
+nowhere else, so the same hazard in the other direction. Re-derive any line from the file, never
+from this paragraph.
 
 **What it is for.** M1's deepest finding: Q-0006's review spent $5.02 of Claude cost plus an unpriced
 Codex reviewer on a diff that did not exist. `materialiseDiff` embedded the emptiness without
@@ -55,12 +65,71 @@ means porting a file while it is being changed underneath.
 or a lint that declines to examine something says so. Silence must never render as a green tick.
 
 **Inherited from Q-0049 (merged requirement, 2026-08-28).** This ticket also owns
-`trimIncompleteUtf8Suffix` (`spike/src/engine.js:895`), whose only call site in the repository is
-`materialiseDiff` (`:835`), where it trims a truncated diff back to a UTF-8 boundary. Q-0049's body
+`trimIncompleteUtf8Suffix` (`spike/src/engine.js:900`), whose only call site in the repository is
+`materialiseDiff` (`:840`), where it trims a truncated diff back to a UTF-8 boundary. Q-0049's body
 lists it among run history's functions, which it is not, and Q-0049's merged requirement declines it
-as NG-2 and re-points it here. **Note where it sits.** The range named above stops at `:894` and the
-function begins at `:895`, so a port that trusts that range takes everything except this one
-function — the adjacency hazard Q-0049 named, arriving as an omission rather than as a theft.
+as NG-2 and re-points it here. **Note where it sits.** It begins two lines after `emptyRangeFailure`
+ends at `:898`, so a port that trusts a range stopping at the function above it takes everything
+except this one — the adjacency hazard Q-0049 named, arriving as an omission rather than as a theft.
+The opening paragraph now names it, and `named` with it.
+
+## Inherited from Q-0050 and Q-0077, 2026-08-30 — four things this body must carry
+
+Written here rather than left in `backlog/Q-0050-…/solution/errata.md`, for the reason Q-0052's
+identical block gives: **this ticket's requirement will not read that file.** `requirements.yaml`
+feeds a candidate `ticket.md`, `harness/rules.md` and `harness/product-context.md`, and the chore
+steps read the errata of the ticket they are running, never a sibling's. None of the four is a
+defect in shipped code and none is visible to a green suite.
+
+1. **A seventh file in `packages/core/src/engine/` turns a green suite red in a file this ticket
+   does not own.** `packages/core/src/engine/q0050.source.test.ts:82` pins the folder with
+   `toStrictEqual(['channel.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts',
+   'types.ts'])`. That is deliberate and so is the rest of the file: Q-0050's rounds widened its
+   other guards *"while the folder is six"*, in as many words, because they govern what Q-0051 to
+   Q-0053 add. They are — every `export` carries its own JSDoc **anchored on the export**, not on
+   the file; no comment line reproduces a forty-character sentence of `docs/DECISIONS.md` or of the
+   ticket body verbatim; every `Why:` clause is classifiable by `classifyAuthority`, so
+   `behaviour preserved from spike/…`, `deliberate addition, not preservation`, or
+   `preserved <word>, see <AC-n|Q-nnnn>` and nothing else; and no engine file matches `console.`,
+   `process.(stdout|stderr|exit|on|once|addListener|prependListener|prependOnceListener)` or an
+   import from `spike/`. **The requirement decides whether the diff subsystem is a new module or
+   goes into an existing one, and says so** — if new, extending that pin is part of this change
+   rather than a surprise found in review. The file is under `packages`, so the role can write it.
+
+2. **`interpolate` no longer coerces, and the obligation is this ticket's** — Q-0050
+   `solution/errata.md` E-21, which names Q-0051 and Q-0052 by id. `spike/src/engine.js:745` is
+   `String(s).replace(…)` — E-21 cites `:740`, which was true before Q-0077 shifted the file five
+   lines — and `packages/core/src/engine/loaders.ts:52` types the parameter `string`
+   and performs no coercion. The call sites in this ticket's range are `engine.js:125`
+   (`site.input.diff`), `:138` (`s.branch`) and `:139` (`s.into`) — `materialiseDiff` at `:791`
+   already writes `String(step.input.diff)` itself. YAML hands back a **number** for `branch: 2`,
+   so under a step shape typed `Record<string, unknown>` each site writes `String(…)`
+   deliberately. E-21's point is that this is the port turning a latent defect into a **compile
+   error** rather than the spike's silent runtime pass-through: it is not a behaviour change to
+   report under charter §2, and it is not licence to change what the interpolated value means.
+
+3. **The seam this ticket codes against already exists; only the preflight block is missing.**
+   `RunContext` carries `config` (Q-0050 E-1), so `config.repo?.max_diff_bytes` — `engine.js:836`
+   — is reachable without inventing an option. `vars.base` is
+   `base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH` (`engine.ts:137`). And the context
+   handed to a step **is the run's own object, never a spread copy**, so `diffInputs` and
+   `deferredDiffs` added to `RunContext` survive from the preflight into the steps that read them by
+   contract rather than by the accident Q-0050's round 3 noticed. What is absent is the block
+   itself: Q-0050 ported only its *position* — inside the run try, which opens at
+   `packages/core/src/engine/engine.ts:207`, and before the step loop, which reads `flow.steps` at
+   `:223` — so that a failed preflight receives the same terminal record as any other error.
+
+4. **Q-0077 shipped `harness run --base` on 2026-08-29, after charter §6's row for this ticket was
+   written, and it lands inside this ticket's subject.** `spike/test/q0077-base-flag.js` calls
+   `materialiseDiff` directly at six sites and is frozen coverage this ticket preserves alongside
+   `q0035-empty-range.js`, `q0034-chore-preflight.js`, `q0034-dry-run.js`, `q0034-review-fixes.js`,
+   `q0006-engine.js` and `smoke.js`. The flag moves the **diff anchor** and nothing else:
+   `ctx.vars.base`, which `{base}` interpolates and which the range guard treats as related. The
+   three merge-source sites read `config.repo.base_branch` directly and must not move — aiming a
+   review at an old revision must not write that revision into the ticket's branch. `engine.js:800`
+   anticipated the flag in as many words, so the guard composes with it; a port that resolves `base`
+   from the config inside `materialiseDiff` would silently undo Q-0077 and every existing test would
+   stay green except that file's.
 
 ## Port charter
 
