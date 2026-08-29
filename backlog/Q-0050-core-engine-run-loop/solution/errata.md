@@ -582,3 +582,91 @@ preservation: `spike/src/engine.js:161-168` finalises in the catch with `String(
 before calling `finish`, AC-5 states that order in as many words, and
 `lifecycle-routing.contract.md:28` already reads *"first finalise active occurrences, then persist
 counters and the terminal record"*.
+
+## E-14 — `finaliseManifest` joins the persistence seam, so the manifest is written where the spike writes it — 2026-08-29
+
+**Amends** `contracts/Q-0050/run-flow-api.contract.ts:14` additively:
+`RunPersistence.finaliseManifest(status: RunStatus, stageAfter: string): void`. On the E-13
+precedent; nothing declared there is removed or retyped.
+
+**Why a capability rather than the three-line remedy the review offered.** Round 2's M-1 proposed
+recomputing the stage inside `finishRun` and finalising before delegating to `finish`. That works
+and costs a second copy of `finish`'s own stage rule — `status === 'completed' || status ===
+'regressed'` — in a file that does not own it, which two later readers must keep in agreement.
+`spike/src/engine.js:625-632` puts the call **inside** `finish`, between the stage assignment and
+the history push, and the capability is what lets the port put it in the same place. One rule, one
+site.
+
+**What the position is for.** Everything below it emits or writes, and `replaceManifest`'s failure
+is reported non-fatally through the run-history host, which `engine.ts` wires to `emit({ type:
+'warn' })`. Finalising after `finish` returned put that warning **behind** the terminal event AC-3
+requires to be last, and left a window — sub-millisecond in process, a socket wide in M3 — in which
+a consumer acting on `{status: 'completed'}` reads a manifest still saying `running`. Q-0049's own
+JSDoc calls that pairing *"the lifecycle contradiction this subsystem exists to make impossible"*.
+
+Pinned by invocation order rather than by reading the source, because the whole defect was one
+`await` too late: `lifecycle.test.ts` asserts `finaliseManifest` is called with the stage the ticket
+was left at, and before both `writeTicket` and the first `emit`.
+
+## E-15 — an abandonment after a committed terminal status does not retract it — 2026-08-29
+
+**Adds** one clause to `contracts/Q-0050/run-events.contract.md`'s stream section. Nothing is
+superseded; the sentence was simply absent.
+
+`finish` runs to completion synchronously — it is `async` and contains no `await` — so a flow with
+no suspension point persists its whole terminal record during the producer's first turn, before the
+first `next()` resolves. `return()` then aborts a run that has already ended, and the record keeps
+the status the run actually reached.
+
+**This is a clause, not a change.** Round 2's codex reviewer raised it as a blocker whose remedy was
+to couple terminal commitment to delivery state; the verdict demoted it, and the demotion is right
+on both counts. That coupling is the rejected alternative *"execution entirely inside each pull"*,
+ruled at solutioning and contracted — a reviewer may not reverse a ruled design, which is what this
+file is for. And it would make the durable record lie: a run that executed every step, invoked
+adapters, spent money and merged branches would persist as `interrupted` because its consumer
+stopped reading. **A status describes what happened, not who was still watching.**
+
+What was genuinely missing is the sentence, and AC-12's own rule is why it is worth writing:
+*an unstated answer is what lets the next reader assume the question was considered.*
+
+## E-16 — the interrupted note comes from `AbortSignal.reason` — 2026-08-29
+
+**Interprets** AC-5's *"The persisted record is byte-identical to today's (`interrupted`, note
+`received SIGINT`)"*, which the port could not meet as written.
+
+`core` installs no signal handler and calls `process.exit` nowhere — AC-5 requires that in the same
+breath, and charter §7 gives process-exit behaviour to the CLI — so nothing in this folder knows the
+signal's name. The clause is met by the caller supplying it: `runFlow` reads `AbortSignal.reason`
+when it is a non-empty string and records it as the note, falling back to the thrown message when
+the caller aborted without one, which is what the stream's own abandonment does. Q-0010's CLI calls
+`abort('received SIGINT')` and the byte-identical record follows.
+
+**The alternative was to rule the clause unattainable** and record what the note carries instead.
+Rejected because `reason` is the platform's own mechanism for exactly this question, it is read
+nowhere in the folder today, and a daemon cancelling a run for a different cause — a budget cap, a
+user pressing stop in M3's UI — wants to say so in the record. Ruling it unattainable would have
+closed that off to buy nothing.
+
+Round 2's M-3 also found the half that was a plain defect and is fixed rather than interpreted: the
+occurrence category. The port applied the run catch's kind-derived category to the interrupted path
+as well, where `spike/src/engine.js:58-61` writes `interrupted` flat — which left
+`ErrorCategory`'s `interrupted` member with **no producer anywhere in `core`**. `categoryOf` now
+takes the status. Round 1's M-3 was right that the failed path must derive; it overshot by one path.
+
+## E-17 — the short-circuit sentence is corrected, not the allocation — 2026-08-29
+
+**Supersedes** `solution/solution.md`'s *"Automatic and dry short-circuits run before a question is
+allocated."* They do not. `runStep` and `handleFail` build the whole `GateQuestionEvent`, `gateId`
+included, and hand it to `askGate`, which evaluates `auto`, `--auto` and `dry` after that. A gate
+that is never asked spends an id.
+
+**The document is what changes, and the reasoning is worth more than the nit.** Making the code
+match would move allocation inside `askGate`, past the short-circuits — which means `askGate` can no
+longer take a fully-formed `GateQuestionEvent`, because that type requires `gateId`. So a cosmetic
+gap in an opaque, run-scoped correlation token would cost a signature change to the one gate-policy
+primitive, in a contract two other tickets code against. Not worth it.
+
+`engine.test.ts`'s `['1:2', '1:3']` pin already documents the skip in as many words — the auto gate
+spends `1:1` and `askGate` short-circuits before emitting it — so the behaviour is stated where a
+reader meets it. What was wrong was a sentence in `solution.md` claiming otherwise, and it is
+corrected here rather than left to contradict the pin.

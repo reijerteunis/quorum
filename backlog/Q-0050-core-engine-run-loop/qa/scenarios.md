@@ -60,7 +60,7 @@ AC-2e/AC-3c/AC-3d below per F-1. See **Known limitations carried, not owned** at
 | AC-4a–4h | q0050-routing, q0050-shared-events | `lifecycle-routing.test.ts`, `q0050.source.test.ts` | `gate.*`, `gateAutoAdvanced`, `gateDryRun`, `log.gateAnswer` |
 | AC-5a | q0050-lifecycle, q0050-engine-compose | — none (struck, E-8) | `log.errorSuffix` |
 | AC-5b | q0050-engine-compose | — none (struck, E-8) | — |
-| AC-5c/5d | q0050-lifecycle, q0050-event-channel | `lifecycle-routing.test.ts`, `channel.test.ts` — abandonment | — |
+| AC-5c/5d | q0050-lifecycle, q0050-event-channel | `channel.test.ts` — return awaits finalisation, and the abandoned channel latches; `engine.test.ts` — a `for await` that breaks at a gate, driving `runFlow`'s own `finaliseAbandonment` | — |
 | AC-5e | q0050-engine-compose | — none (struck, E-8) | — |
 | AC-6a–6c/6e | q0050-routing | `lifecycle-routing.test.ts` — counters, exhaustion | `loopIteration`, `loopExhausted`, `exhaustionReason` |
 | AC-6d | q0050-routing, q0050-lifecycle | `lifecycle-routing.test.ts` + `lifecycle.test.ts` | — |
