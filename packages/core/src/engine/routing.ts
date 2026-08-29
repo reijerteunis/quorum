@@ -3,14 +3,6 @@ import { gateAnswerEnvelopeSchema, type GateQuestionEvent } from '@quorum/shared
 
 import { FlowError, type RoutingContext, type StepResult } from './types.js';
 
-const gateSequences = new WeakMap<RoutingContext, number>();
-
-function nextGateId(context: RoutingContext): string {
-  const sequence = (gateSequences.get(context) ?? 0) + 1;
-  gateSequences.set(context, sequence);
-  return `${context.runId}:${sequence}`;
-}
-
 function interruptedGate(request: GateQuestionEvent): FlowError {
   return new FlowError(`gate ${request.kind} (${request.reason}) interrupted`);
 }
@@ -89,7 +81,7 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
   if (step.gate) {
     const retry = typeof step.retryTarget === 'string' ? step.retryTarget : undefined;
     const request: GateQuestionEvent = {
-      type: 'gate', gateId: nextGateId(context), kind: String(step.gate),
+      type: 'gate', gateId: context.nextGateId(), kind: String(step.gate),
       reason: String(step.reason ?? step.prompt ?? `${context.flow.name}: approve to advance ticket to "${context.flow.produces}"`),
       ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }),
     };
@@ -98,7 +90,10 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     if (answer === 'retry' && retry !== undefined) {
       const counter = String(step.retryCounter);
       const limit = Number(step.retryMax);
-      context.counters[counter] = limit;
+      // Guarded as spike/src/engine.js:586 guards it. A step carrying `retryTarget` and no
+      // `retryCounter` would otherwise set counters['undefined'] = NaN, which `finish` persists
+      // into the ticket's frontmatter for good.
+      if (step.retryCounter != null) context.counters[counter] = limit;
       context.persistence.appendLog(context.ticket, `run=${context.runId} gate=retry counter=${counter} set=${limit} (one further traversal authorised)`);
       return { goto: retry, counter, limit };
     }
@@ -128,7 +123,7 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
   await context.persistence.recordOccurrenceEvent(context.ticket, context.ticket.meta.stage, 'exhausted', 0);
   /** Why: preserved behavior; `on_fail.on_exhausted` remains unread under Q-0050. */
   const request: GateQuestionEvent = {
-    type: 'gate', gateId: nextGateId(context), kind: 'human-locked',
+    type: 'gate', gateId: context.nextGateId(), kind: 'human-locked',
     reason: `loop exhausted at ${String(step.id)} (${counter} = ${count}, limit ${limit}); choose: advance (accept as is), retry (exactly one more ${target}), abort`,
     ticketDir: context.ticket.dir, retry: target,
   };

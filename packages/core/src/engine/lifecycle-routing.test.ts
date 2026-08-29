@@ -2,11 +2,16 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { Event, Flow, GateQuestionEvent } from '@quorum/shared';
 
+import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
 import { askGate, handleFail, runStep } from './routing.js';
 import type { RoutingContext } from './types.js';
 
+const render = (template: string, values: Record<string, string | number>): string =>
+  template.replace(/<([^>]+)>/g, (whole, key: string) => String(values[key] ?? whole));
+
 function context(overrides: Partial<RoutingContext> = {}): RoutingContext {
   const events: Event[] = [];
+  let gateSequence = 0;
   const flow = { name: 'f', consumes: 'qa-red', produces: 'development', steps: [] } as unknown as Flow;
   return {
     ticket: { meta: { id: 'Q-X', stage: 'qa-red', iterations: {}, history: [] }, dir: '/ticket', folder: 'Q-X', body: '' },
@@ -14,6 +19,7 @@ function context(overrides: Partial<RoutingContext> = {}): RoutingContext {
     counters: {}, vars: {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, dry: false, auto: false,
     emit: (event: Event) => events.push(event),
     persistence: { writeTicket: vi.fn(), appendLog: vi.fn(), recordOccurrenceEvent: vi.fn(), finaliseActiveOccurrences: vi.fn() },
+    nextGateId: () => `3:${(gateSequence += 1)}`,
     loadNamedFlow: vi.fn(() => flow), finishRun: vi.fn(),
     ...overrides,
   } as unknown as RoutingContext;
@@ -58,11 +64,24 @@ describe('Q-0050 AC-4 — gate behavior', () => {
 
   test('dry and auto do not consume answers; human-locked still does', async () => {
     const answerGate = vi.fn(async () => ({ gateId: 'g1', answer: 'advance' as const }));
-    await expect(askGate(gate(), context({ dry: true, answerGate }))).resolves.toBe('advance');
-    await expect(askGate(gate({ kind: 'auto' }), context({ answerGate }))).resolves.toBe('advance');
+    const dryEvents: Event[] = [];
+    const autoEvents: Event[] = [];
+    const flagEvents: Event[] = [];
+
+    await expect(askGate(gate(), context({ dry: true, answerGate, emit: (e) => dryEvents.push(e) }))).resolves.toBe('advance');
+    await expect(askGate(gate({ kind: 'auto' }), context({ answerGate, emit: (e) => autoEvents.push(e) }))).resolves.toBe('advance');
+    // The `--auto` clause itself: `context.auto` with an author-declared `human` gate. The three
+    // rows above it cover dry, `kind: 'auto'` and auto-over-human-locked, and left the disjunct
+    // that the flag exists for untested.
+    await expect(askGate(gate({ kind: 'human' }), context({ auto: true, answerGate, emit: (e) => flagEvents.push(e) }))).resolves.toBe('advance');
     expect(answerGate).not.toHaveBeenCalled();
+
     await askGate(gate({ kind: 'human-locked' }), context({ auto: true, answerGate }));
     expect(answerGate).toHaveBeenCalledTimes(1);
+
+    expect(dryEvents).toContainEqual({ type: 'info', message: render(fixture.gateDryRun, { kind: 'human' }) });
+    expect(autoEvents).toContainEqual({ type: 'info', message: render(fixture.gateAutoAdvanced, { kind: 'auto' }) });
+    expect(flagEvents).toContainEqual({ type: 'info', message: render(fixture.gateAutoAdvanced, { kind: 'human' }) });
   });
 
   test('a pending gate is interrupted and a late answer is not applied', async () => {
@@ -79,10 +98,15 @@ describe('Q-0050 AC-4 — gate behavior', () => {
 
 describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
   test('bounded loop increments only its counter and exhausts at its limit', async () => {
-    const ctx = context({ counters: { sibling: 9 } });
+    const events: Event[] = [];
+    const ctx = context({ counters: { sibling: 9 }, emit: (event) => events.push(event) });
     const step = { id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } };
     await expect(handleFail(step, ctx)).resolves.toStrictEqual({ goto: 'implement', counter: 'f.review', limit: 2 });
     expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 1 });
+    expect(events).toContainEqual({
+      type: 'warn',
+      message: render(fixture.loopIteration, { stepId: 'review', count: 1, limit: 2, target: 'implement' }),
+    });
   });
 
   test('exhaustion records the spend, asks a locked gate, and advance changes no counter', async () => {
@@ -93,6 +117,18 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     expect(ctx.counters).toStrictEqual({ sibling: 9, 'f.review': 3 });
     expect(ctx.persistence.recordOccurrenceEvent).toHaveBeenCalledWith(ctx.ticket, 'qa-red', 'exhausted', 0);
     expect(events).toContainEqual(expect.objectContaining({ type: 'gate', kind: 'human-locked', retry: 'implement' }));
+    // The two texts a human reads while a loop is burning budget. E-4 added them to the oracle
+    // because a check that skips its subject must not report success; they then landed with
+    // nothing asserting them.
+    expect(events).toContainEqual({
+      type: 'warn', message: render(fixture.loopExhausted, { stepId: 'review', limit: 2 }),
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'gate',
+      reason: render(fixture.exhaustionReason, {
+        stepId: 'review', counter: 'f.review', count: 3, limit: 2, target: 'implement',
+      }),
+    }));
   });
 
   test('retry sets only the exhausted counter to the limit and logs the one-traversal grant', async () => {
@@ -108,6 +144,34 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'retry' as const }));
     await expect(runStep({ id: 'approval', gate: 'human', reason: 'approve' }, context({ answerGate })))
       .resolves.toStrictEqual({ abort: true });
+  });
+
+  test('an explicit on_fail.counter is a bare key, not the flow-scoped default', async () => {
+    // `typeof failure.counter === 'string'` is what lets review.yaml bound one edge across two
+    // flows; every fixture in this file omitted `counter:`, so the branch never ran.
+    const ctx = context({ counters: { review: 1 } });
+    await expect(handleFail({ id: 'verdict', on_fail: { goto: 'flow:development', counter: 'review', max_iterations: 3 } }, ctx))
+      .resolves.toStrictEqual({ goto: 'flow:development', counter: 'review', limit: 3 });
+    expect(ctx.counters).toStrictEqual({ review: 2 });
+    expect(ctx.counters['f.verdict']).toBeUndefined();
+  });
+
+  test('after an advance at the exhaustion gate, the next failure re-presents it', async () => {
+    const events: Event[] = [];
+    const answerGate = vi.fn(async (question: GateQuestionEvent) => ({ gateId: question.gateId, answer: 'advance' as const }));
+    const ctx = context({ counters: { 'f.review': 2 }, emit: (event) => events.push(event), answerGate });
+    const step = { id: 'review', on_fail: { goto: 'implement', max_iterations: 2 } };
+
+    await expect(handleFail(step, ctx)).resolves.toBeNull();
+    // `advance` changes no counter, so the count keeps climbing and the gate returns — which is
+    // what makes advance "accept as is" rather than "grant one more". Only the second call proves
+    // it; AC-7b claimed this in a table and never made the call.
+    await expect(handleFail(step, ctx)).resolves.toBeNull();
+
+    expect(ctx.counters).toStrictEqual({ 'f.review': 4 });
+    expect(answerGate).toHaveBeenCalledTimes(2);
+    expect(events.filter((event) => event.type === 'gate')).toHaveLength(2);
+    expect(events.filter((event) => event.type === 'gate').map((event) => event.gateId)).toStrictEqual(['3:1', '3:2']);
   });
 
   test('cross-flow returns a routing decision without running the target flow', async () => {

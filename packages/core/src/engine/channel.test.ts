@@ -40,6 +40,27 @@ describe('Q-0050 AC-2b/AC-2d/AC-3b/AC-5d — event channel', () => {
     await expect(iterator.next()).rejects.toThrow('permission denied');
   });
 
+  test('a second consumer and a re-entrant pull are refused by name, not by hanging', async () => {
+    // "Single-consumer" was stated in the contract and enforced nowhere: a second `for await`
+    // silently SPLIT the stream between two consumers, and two concurrent `next()` calls
+    // overwrote the one `pending` slot, orphaning the first promise for good. Both failures are
+    // silent — a wrong split and a hang — which is what "errors are explicit" argues against.
+    let sink!: ReturnType<typeof createEventChannel>['sink'];
+    const created = channel(() => sink.emit({ type: 'info', message: 'started' }), async () => undefined);
+    sink = created.sink;
+
+    const iterator = created.stream[Symbol.asyncIterator]();
+    expect(() => created.stream[Symbol.asyncIterator]()).toThrow(/one consumer/);
+
+    await iterator.next();
+    const first = iterator.next();
+    await expect(iterator.next()).rejects.toThrow(/one consumer/);
+
+    // The orphaned-promise half: the pull that was already in flight still settles normally.
+    sink.emit({ type: 'info', message: 'second' });
+    expect((await first).value).toMatchObject({ type: 'info', message: 'second' });
+  });
+
   test('return awaits abandonment finalisation', async () => {
     let release!: () => void;
     const finalised = new Promise<void>((resolve) => { release = resolve; });

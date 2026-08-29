@@ -3,22 +3,36 @@ import path from 'node:path';
 
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
+import { eventSchema } from '@quorum/shared';
 import type { Event, Flow } from '@quorum/shared';
 
 import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
 import { loadProject } from '../backlog/project.js';
 import { removeTempDirs, repo, write } from '../../test/repo.js';
 import { runFlow } from './engine.js';
+import { loadFlow } from './loaders.js';
 import * as routing from './routing.js';
 import type { RunFlowOptions, StepResult } from './types.js';
 
+/**
+ * A run over a ticket folder and a flow file that actually exist.
+ *
+ * Both are real because the engine no longer creates either: it used to `mkdirSync(ticket.dir)`
+ * and to fabricate a `flowFile` path, and both existed only to keep a hand-built record and a flow
+ * literal working here. `loadFlow` is what sets `flow.file` in every real caller, so the fixture
+ * goes through it rather than around it.
+ */
 function options(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
   const repoDir = repo();
   write(path.join(repoDir, 'harness/harness.yaml'), 'adapterOverride: mock\n');
   const project = loadProject(repoDir);
-  const flow = { name: 'requirements', consumes: 'draft', produces: 'requirements', steps: [] } as unknown as Flow;
+  const flowFile = path.join(repoDir, 'harness/flows/requirements.yaml');
+  write(flowFile, 'name: requirements\nconsumes: draft\nproduces: requirements\nsteps: []\n');
+  const flow: Flow = loadFlow(flowFile);
+  const ticketDir = path.join(repoDir, 'backlog/Q-0050-engine');
+  write(path.join(ticketDir, 'ticket.md'), '---\nid: Q-0050\n---\nbody\n');
   const ticket = {
-    dir: path.join(repoDir, 'backlog/Q-0050-engine'), folder: 'Q-0050-engine', body: 'body\n',
+    dir: ticketDir, folder: 'Q-0050-engine', body: 'body\n',
     meta: {
       id: 'Q-0050', title: 'engine', stage: 'draft', owner: 'qa', repos: [], branch: 'harness/Q-0050/integration',
       priority: 'p1', created: '2026-08-28', iterations: {}, history: [],
@@ -31,6 +45,29 @@ function options(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
 }
 
 afterAll(removeTempDirs);
+
+/**
+ * A run over three gates: one auto, then one human re-entered once through its own retry target.
+ *
+ * Gates are the only step kind Q-0050 owns end to end, so they are the only way to compose a real
+ * run here — and three of them in two steps is exactly the shape B-2's collision needed.
+ */
+function withGates(): { opts: RunFlowOptions; answers: string[] } {
+  const answers: string[] = [];
+  let asked = 0;
+  const opts = options({
+    answerGate: async (question) => {
+      answers.push(question.gateId);
+      asked += 1;
+      return { gateId: question.gateId, answer: asked === 1 ? ('retry' as const) : ('advance' as const) };
+    },
+  });
+  opts.flow.steps = [
+    { id: 'precheck', gate: 'auto', reason: 'no human needed' },
+    { id: 'approve', gate: 'human', reason: 'approve to continue', retryTarget: 'approve', retryCounter: 'f.approve', retryMax: 1 },
+  ] as unknown as typeof opts.flow.steps;
+  return { opts, answers };
+}
 
 const render = (template: string, values: Record<string, string | number>): string =>
   template.replace(/<([^>]+)>/g, (whole, key: string) => String(values[key] ?? whole));
@@ -70,6 +107,60 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
         tokens: 0, unpricedSuffix: '',
       }),
     }));
+  });
+
+  test('AC-2 — every event a composed run yields passes shared\'s strict schema', async () => {
+    const events = await collect(stream(withGates().opts));
+    // The subject is the run's OWN output, not a hand-written literal: events.q0050.test.ts
+    // validates the union's shape, and until this ran nothing checked that `runFlow` produces
+    // members of it.
+    expect(events.length).toBeGreaterThan(4);
+    for (const event of events) expect(() => eventSchema.parse(event), JSON.stringify(event)).not.toThrow();
+    expect(events.map((event) => event.type)).toEqual(expect.arrayContaining(['info', 'gate', 'terminal']));
+  });
+
+  test('every gate in one run has its own id, including a step re-entered by a retry', async () => {
+    const { opts, answers } = withGates();
+    const events = await collect(stream(opts));
+    const ids = events.filter((event) => event.type === 'gate').map((event) => event.gateId);
+
+    // Two questions reach the stream and three ids are spent: the auto gate allocates `1:1` in
+    // `runStep` and `askGate` short-circuits before emitting it, then `approve` is asked twice
+    // because its own retry target sends the cursor back to it.
+    //
+    // Keyed on context identity all three were `1:1` — engine.ts builds a fresh context for every
+    // step and every re-entry — so an answer redelivered for an earlier gate validated at a later
+    // one and was acted on, which is the whole of what the correlation exists to refuse. The
+    // second element is what makes this a regression test rather than a uniqueness test: `1:2` vs
+    // `1:3` is one step asked twice, and it is the case a per-context counter cannot distinguish.
+    expect(ids).toStrictEqual(['1:2', '1:3']);
+    expect(answers).toStrictEqual(['1:2', '1:3']);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test('a run cancelled between steps stops and does not move the stage', async () => {
+    const abort = new AbortController();
+    const { opts } = withGates();
+    opts.signal = abort.signal;
+    opts.answerGate = async (question) => {
+      abort.abort();
+      return { gateId: question.gateId, answer: 'advance' as const };
+    };
+    const events: Event[] = [];
+    const error = await (async () => {
+      try {
+        for await (const event of stream(opts)) events.push(event);
+        return undefined;
+      } catch (cause: unknown) { return cause; }
+    })();
+
+    // The loop is the subject. Without a cancellation point of its own the only observer is a
+    // SUSPENDED askGate: a signal raised while no gate is pending was never seen, the run walked
+    // to `finishRun(flow.produces, 'completed')` and moved the ticket's stage.
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/interrupted/);
+    expect(opts.ticket.meta.stage).toBe('draft');
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'interrupted', stageAfter: 'draft' });
   });
 
   test('rejects a stage mismatch before context construction or any write', async () => {

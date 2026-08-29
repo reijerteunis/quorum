@@ -2,8 +2,12 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { Event, Flow } from '@quorum/shared';
 
+import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
 import { finish, outcome, recordEvent } from './lifecycle.js';
 import type { LifecycleContext, RegressionFields, RunStatus } from './types.js';
+
+const render = (template: string, values: Record<string, string | number>): string =>
+  template.replace(/<([^>]+)>/g, (whole, key: string) => String(values[key] ?? whole));
 
 function lifecycle(overrides: Partial<LifecycleContext> = {}): LifecycleContext {
   const flow = { name: 'qa-red', consumes: 'solutioned', produces: 'red', steps: [] } as unknown as Flow;
@@ -70,7 +74,35 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     expect(ctx.ticket.meta.history).toContainEqual(expect.objectContaining({
       status: 'exhausted', stage_before: 'solutioned', stage_after: 'solutioned', cost: 0,
     }));
-    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, 'run=7 exhausted stage=solutioned→solutioned cost=0');
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.recordEvent, {
+      runId: 7, status: 'exhausted', stage: 'solutioned', cost: 0,
+    }));
+  });
+
+  test('recordEvent owns the mutation and performs it exactly once through the capability', async () => {
+    // Both layers used to implement these four writes: `recordEvent` did them AND called
+    // `persistence.recordOccurrenceEvent`, whose real implementation in engine.ts did them again.
+    // One exhaustion appended two history entries and two log lines. The composed path is only
+    // observable here because engine.ts's capability is a delegation — asserted as source text in
+    // q0050.source.test.ts — so this test wires it the same way and counts the writes.
+    const ctx = lifecycle();
+    ctx.persistence.recordOccurrenceEvent = vi.fn((_ticket, stage, event, cost) => recordEvent(ctx, stage, event, cost));
+
+    await ctx.persistence.recordOccurrenceEvent(ctx.ticket, 'solutioned', 'exhausted', 0);
+
+    expect(ctx.ticket.meta.history).toHaveLength(1);
+    expect(ctx.persistence.writeTicket).toHaveBeenCalledTimes(1);
+    expect(ctx.persistence.appendLog).toHaveBeenCalledTimes(1);
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.recordEvent, {
+      runId: 7, status: 'exhausted', stage: 'solutioned', cost: 0,
+    }));
+  });
+
+  test('recordEvent does not call the capability it is reached through', async () => {
+    // The other half of the pair, and what makes engine.ts's delegation safe rather than recursive.
+    const ctx = lifecycle();
+    await recordEvent(ctx, 'solutioned', 'exhausted', 0);
+    expect(ctx.persistence.recordOccurrenceEvent).not.toHaveBeenCalled();
   });
 
   test('rollback requires all four guards and never touches a neighbouring task branch', async () => {
@@ -96,7 +128,16 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
         : undefined;
       await expect(finish(ctx, 'solutioned', status, null, fields)).resolves.toBeDefined();
       expect(reset, `${dry}/${status}/${start}/${current}`).toHaveBeenCalledTimes(expected);
-      if (expected) expect(reset).toHaveBeenCalledWith('/repo', 'harness/Q-0050/integration', 'aaaaaaaa');
+      if (expected) {
+        expect(reset).toHaveBeenCalledWith('/repo', 'harness/Q-0050/integration', 'aaaaaaaa');
+        expect(ctx.emit).toHaveBeenCalledWith({
+          type: 'warn',
+          message: render(fixture.rollback, { branch: 'harness/Q-0050/integration', shortStartSha: 'aaaaaaa' }),
+        });
+        expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket, render(fixture.log.rollback, {
+          runId: 7, branch: 'harness/Q-0050/integration', shortCurrentSha: 'bbbbbbb', shortStartSha: 'aaaaaaa',
+        }));
+      }
     }
   });
 

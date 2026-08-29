@@ -15,7 +15,7 @@
  */
 import type { Event } from '@quorum/shared';
 
-import type { FinaliseAbandonment } from './types.js';
+import { FlowError, type FinaliseAbandonment } from './types.js';
 
 /** What a producer holds to drive one channel: enqueue events, then close it once, with or without an error. */
 export interface EventSink {
@@ -29,6 +29,19 @@ interface PendingPull {
   reject(error: Error): void;
 }
 
+/**
+ * Builds one channel: the {@link EventSink} its producer drives, and the stream its one consumer
+ * iterates.
+ *
+ * Single-consumer is enforced rather than documented. A second `[Symbol.asyncIterator]()` and a
+ * re-entrant `next()` each throw a named `FlowError`, because the alternative failures are a stream
+ * silently split between two `for await` loops and a promise that never settles — and *errors are
+ * explicit* is the rule a silent hang breaks.
+ *
+ * @param start the producer, run exactly once on the first pull.
+ * @param finalise the caller's interrupted-run persistence, awaited before an abandoning consumer
+ *   is released.
+ */
 export function createEventChannel(
   start: () => void,
   finalise: FinaliseAbandonment,
@@ -38,6 +51,7 @@ export function createEventChannel(
   let closed = false;
   let closingError: Error | undefined;
   let pending: PendingPull | undefined;
+  let iterated = false;
 
   /** Fulfils a pending `next()` once an event arrives or the channel closes, in either order. */
   function settlePending(): void {
@@ -70,6 +84,7 @@ export function createEventChannel(
   };
 
   function next(): Promise<IteratorResult<Event>> {
+    if (pending) return Promise.reject(new FlowError('event stream: a pull is already in flight — the stream takes one consumer'));
     if (!started) {
       started = true;
       start();
@@ -93,6 +108,8 @@ export function createEventChannel(
 
   const stream: AsyncIterable<Event> = {
     [Symbol.asyncIterator]() {
+      if (iterated) throw new FlowError('event stream: already iterated — the stream takes one consumer');
+      iterated = true;
       return { next, return: abandon, throw: abandonWithError };
     },
   };

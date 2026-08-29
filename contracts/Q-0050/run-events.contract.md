@@ -75,7 +75,10 @@ events gain exactly `stepId` at the engine boundary.
 - A gate question is queued before `answerGate` is invoked. The producer may then await the callback
   while the consumer continues draining the FIFO.
 - One terminal event is produced for every terminal status and is the last value. On failure, the
-  next pull after that value rejects with `FlowError`; the failure cause is non-empty.
+  next pull after that value rejects with **whatever the run threw**, unwrapped, and the failure
+  cause is non-empty. Not always a `FlowError`: AC-11 preserves `loadFlowByName`'s raw `ENOENT` and
+  AC-12 preserves the unknown-goto `TypeError`, both of which reach the consumer as themselves.
+  Superseded by solution/errata.md E-12.
 - Iterator `return()` is the abandonment signal. It closes delivery, cancels active work, and waits
   for the interrupted terminal record and counters to persist. Async iteration syntax does not
   expose a value returned from `return()`, so an abandoning consumer cannot observe the terminal

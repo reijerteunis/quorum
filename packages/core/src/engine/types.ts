@@ -9,6 +9,7 @@ import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig 
 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
+import type { Occurrence } from '../run-history/manifest.js';
 
 /** Re-exported so every engine file shares one `FlowError` identity with `core/lint`. */
 export { FlowError } from '../lint/lint.js';
@@ -75,7 +76,21 @@ export interface RunPersistence {
   appendLog(ticket: TicketRecord, line: string): void;
   /** Record one occurrence-level event — a gate exhaustion, for instance — at its own cost. */
   recordOccurrenceEvent(ticket: TicketRecord, stage: string, event: string, cost: number): void | Promise<void>;
-  /** Close out every occurrence a run left active when it stopped short of its own terminal state. */
+  /**
+   * Adds a freshly allocated occurrence to the set {@link finaliseActiveOccurrences} closes.
+   *
+   * Q-0050 allocates none — gates and fan-out parents allocate no occurrence — so this seam has no
+   * caller inside this ticket. It exists because the finaliser without it is a permanent no-op, and
+   * a later ticket discovering that would have to widen the capability and add registration in the
+   * same round; see Q-0050 review round 1, M-3.
+   */
+  registerOccurrence(occurrence: Occurrence): void;
+  /**
+   * Close out every occurrence a run left active when it stopped short of its own terminal state.
+   *
+   * `cause` is the failure in full, not the truncated terminal note: an occurrence's `error.message`
+   * is what a reader of the manifest has, and the 200-character first line belongs to `runs.log`.
+   */
   finaliseActiveOccurrences(status: 'failed' | 'interrupted', cause: string): void | Promise<void>;
 }
 
@@ -146,6 +161,15 @@ export type RunOutcome = NonRegressionRunOutcome | RegressionRunOutcome;
 
 /** The context `routing.ts` reads and writes: {@link RunContext} plus the lifecycle seams it calls out to without owning them. */
 export interface RoutingContext extends RunContext {
+  /**
+   * Allocates the next gate id, unique across the whole run.
+   *
+   * A capability rather than a module-level counter because `engine.ts` spreads a fresh context per
+   * step: anything keyed on context identity restarts at 1 for every step and for every re-entry
+   * through a backward edge, which is exactly the collision the stale-answer refusal exists to
+   * catch. Q-0050 review round 1, B-2.
+   */
+  nextGateId(): string;
   /** Loads and lints `<harnessDir>/flows/<name>.yaml`, for a cross-flow `goto`'s target. */
   loadNamedFlow(name: string, harnessDir: string): Flow;
   /** Persists a terminal outcome and returns it; `engine.ts` supplies the implementation, over `lifecycle.ts`'s `finish`. */

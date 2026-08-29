@@ -7,9 +7,9 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import type { Flow, Role } from '@quorum/shared';
+import type { Flow } from '@quorum/shared';
 
-import { parseFrontmatter } from '../backlog/backlog.js';
+import { parseFrontmatter, type Frontmatter } from '../backlog/backlog.js';
 import { FlowError, lintFlow } from '../lint/lint.js';
 
 /** Parses a flow file, records the path it was read from, and lints it before returning. */
@@ -28,19 +28,17 @@ export function loadFlowByName(name: string, harnessDir: string): Flow {
 /**
  * Loads a role's frontmatter. A falsy name is the empty role; a missing file names its full path.
  *
- * The contracted return type is the shared `Role` (a role file's typed `meta`), but what this
- * loader actually returns is the untyped `{ meta, body }` frontmatter wrapper `parseFrontmatter`
- * produces — `meta` is deliberately `unknown` there, and each caller narrows it. Every caller of
- * `loadRole` in this port reads `.meta` and `.body` off the result, matching spike/src/engine.js's
- * `loadRole`/`parseFrontmatter(...)`. The two shapes do not structurally overlap, so the boundary
- * is bridged through `unknown` rather than asserted directly. Flagged for the contract to name the
- * wrapper type explicitly instead of `Role`.
+ * Returns the `{ meta, body }` wrapper `parseFrontmatter` produces, not the shared `Role`: `meta`
+ * is deliberately `unknown` there and each caller narrows it, exactly as spike/src/engine.js's
+ * `loadRole` does. The two shapes do not structurally overlap, so declaring `Role` here cost two
+ * `as unknown as` casts and handed every caller a type that has neither the `.meta` nor the `.body`
+ * it reads. Superseded `run-flow-api.contract.ts:26` by solution/errata.md E-11.
  */
-export function loadRole(name: string | null | undefined, harnessDir: string): Role {
-  if (!name) return { meta: {}, body: '' } as unknown as Role;
+export function loadRole(name: string | null | undefined, harnessDir: string): Frontmatter {
+  if (!name) return { meta: {}, body: '' };
   const file = path.join(harnessDir, 'roles', `${name}.md`);
   if (!fs.existsSync(file)) throw new FlowError(`role "${name}" not found at ${file}`);
-  return parseFrontmatter(fs.readFileSync(file, 'utf8')) as unknown as Role;
+  return parseFrontmatter(fs.readFileSync(file, 'utf8'));
 }
 
 /** Flat key substitution; dotted and unknown placeholders are left untouched. */

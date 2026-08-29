@@ -7,21 +7,18 @@
  *
  * Why: behaviour preserved from spike/src/engine.js:37-174 (charter §2, Q-0050).
  */
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { DEFAULT_BASE_BRANCH } from '@quorum/shared';
 import type { Event, Flow } from '@quorum/shared';
 
 import type { Backlog } from '../backlog/backlog.js';
 import { branchHead, resetBranchTo } from '../fanout/fanout.js';
-import type { Occurrence } from '../run-history/manifest.js';
+import type { ErrorCategory, Occurrence } from '../run-history/manifest.js';
 import { initialiseRunHistory, nextRunId } from '../run-history/writer.js';
 import type { RunHistory } from '../run-history/writer.js';
 import { createEventChannel } from './channel.js';
 import type { EventSink } from './channel.js';
 import { loadFlowByName, reviewRound } from './loaders.js';
-import { finish, outcome } from './lifecycle.js';
+import { finish, recordEvent } from './lifecycle.js';
 import { runStep } from './routing.js';
 import {
   FlowError,
@@ -46,6 +43,19 @@ function readOnlyBacklog(backlog: Backlog): Backlog {
   return view;
 }
 
+/**
+ * How an occurrence's own kind classifies the failure that ended it — spike/src/engine.js:165.
+ *
+ * `interrupted` is not among the answers: it describes how the *run* stopped, and hard-coding it
+ * here reported every failed adapter call as an interruption. {@link ErrorCategory} admits eight
+ * values so that a caller can record its own.
+ */
+function categoryOf(occurrence: Occurrence): ErrorCategory {
+  if (occurrence.kind === 'integrate') return 'integrate';
+  if (occurrence.kind === 'script') return 'script';
+  return 'unknown';
+}
+
 /** Stamps the current step's id onto an adapter-shaped event; everything else passes through. */
 function withStepId(emit: EmitEvent, stepId: string): EmitEvent {
   return (event) => {
@@ -67,6 +77,11 @@ function failureMessage(error: unknown): string {
   return raw.split('\n')[0]!.slice(0, 200);
 }
 
+/** The failure in full, as an occurrence's `error.message` carries it — spike/src/engine.js:165. */
+function occurrenceMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Whatever was thrown, as an `Error` — a channel never completes with a non-Error value. */
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -82,10 +97,6 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
 
   const { repoDir, harnessDir, config } = project;
   const backlogView = dry ? readOnlyBacklog(backlog) : backlog;
-  // A ticket created through Backlog.create() already has its folder; a run built directly over a
-  // ticket record (the daemon's shape) does not. Idempotent, and skipped under dry so a preview
-  // creates nothing on disk.
-  if (!dry) fs.mkdirSync(ticket.dir, { recursive: true });
 
   const runId = nextRunId(ticket);
   const counters = ticket.meta.iterations ?? {};
@@ -96,6 +107,9 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
 
   let history: RunHistory | undefined;
   const active = new Set<Occurrence>();
+  // Run-scoped, so a gate id is unique across every step and every re-entry through a backward
+  // edge — not per-context, which is what B-2 found. See RoutingContext.nextGateId.
+  let gateSequence = 0;
 
   // Assigned once, below; `persistence.recordOccurrenceEvent` and `finishRun` close over this
   // binding and only read it once the step loop is running, well after the assignment.
@@ -104,15 +118,16 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   const persistence: RunPersistence = {
     writeTicket: (t) => backlogView.write(t),
     appendLog: (t, line) => backlogView.log(t, line),
-    recordOccurrenceEvent: (t, stage, event, cost) => {
-      t.meta.iterations = context.counters;
-      t.meta.history = [...(t.meta.history ?? []), outcome(context, stage, stage, event, cost)];
-      backlogView.write(t);
-      backlogView.log(t, `run=${runId} ${event} stage=${stage}→${stage} cost=${cost}`);
-    },
+    // Delegates rather than repeating the mutation: `lifecycle.ts` owns the history entry, the
+    // ticket write and the log line for an occurrence event, and owning it in both places wrote
+    // each of them twice whenever the exported helper was called with a real context.
+    recordOccurrenceEvent: (_ticket, stage, event, cost) => recordEvent(context, stage, event, cost),
+    registerOccurrence: (occurrence) => { active.add(occurrence); },
     finaliseActiveOccurrences: (status, cause) => {
       if (!history) return;
-      for (const occurrence of active) history.terminal(occurrence, status, { error: { category: 'interrupted', message: cause } });
+      for (const occurrence of active) {
+        history.terminal(occurrence, status, { error: { category: categoryOf(occurrence), message: cause } });
+      }
       active.clear();
     },
   };
@@ -121,6 +136,18 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   // failed", and this read cannot distinguish them either; see the lifecycle-routing contract's
   // preserved-diagnostics table.
   const branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
+
+  /**
+   * The step loop's one cancellation point.
+   *
+   * Without it the only observer is a suspended `askGate`, so a run cancelled between steps — or
+   * one handed an already-aborted signal — walks to the end and reaches the `completed` finish,
+   * moving the ticket's stage. It throws rather than returning so that the terminal record, the
+   * rollback and the rethrow are the ones the catch already performs.
+   */
+  function throwIfInterrupted(): void {
+    if (signal.aborted) throw new FlowError(`run #${runId} (${flow.name}) interrupted`);
+  }
 
   async function finishRun(stage: string, status: RunStatus, note: string | null, fields?: RegressionFields): Promise<RunOutcome> {
     const result = await finish(context, stage, status, note, fields);
@@ -133,6 +160,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     runId, counters, vars, stats, dry, auto, signal, answerGate,
     emit,
     persistence,
+    nextGateId: () => `${runId}:${(gateSequence += 1)}`,
     loadNamedFlow: (name, dir) => loadFlowByName(name, dir),
     finishRun,
     branchHeadAtStart,
@@ -145,7 +173,10 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     context.persistence.appendLog(ticket, `run=${runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
     if (!dry) {
       history = initialiseRunHistory(
-        { repoDir, ticket, run: runId, flow: flow.name!, flowFile: flow.file ?? path.join(harnessDir, 'flows', `${flow.name}.yaml`) },
+        // `flow.name` and `flow.file` are optional on the schema and present on every flow that
+        // reaches a run: `loadFlow` sets `file` and `lintFlow` rejects a flow without a `name`.
+        // Neither is defaulted here — a fabricated path would name a file the flow was never at.
+        { repoDir, ticket, run: runId, flow: flow.name!, flowFile: flow.file! },
         { warn: (message) => emit({ type: 'warn', message }) },
       );
     }
@@ -156,6 +187,7 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     const steps = flow.steps as unknown as ReadonlyArray<Record<string, unknown>>;
     let i = 0;
     while (i < steps.length) {
+      throwIfInterrupted();
       const step = steps[i];
       // Why: preserved defect, see Q-0050 AC-12d — an out-of-range index (an unknown goto target)
       // dereferences `undefined` here and throws a raw TypeError, not a FlowError.
@@ -188,12 +220,20 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
       }
       i += 1;
     }
-    await finishRun(flow.produces, 'completed', null);
+    throwIfInterrupted();
   } catch (error) {
     const status: RunStatus = signal.aborted ? 'interrupted' : 'failed';
+    // Before the terminal record and in that order — spike/src/engine.js:161-168, and the
+    // lifecycle-routing contract's "first finalise active occurrences, then persist".
+    await persistence.finaliseActiveOccurrences(status, occurrenceMessage(error));
     await finishRun(ticket.meta.stage, status, failureMessage(error));
     throw error;
   }
+
+  // Outside the try, as spike/src/engine.js:174 is. Inside it, anything `finish` or the manifest
+  // replace can throw on the success path re-enters the catch and finishes the run a second time —
+  // a second history entry, a second terminal log line and a second terminal event.
+  await finishRun(flow.produces, 'completed', null);
 }
 
 /**

@@ -1,7 +1,7 @@
 /** Terminal persistence, ticket history, and rollback policy for one flow run. */
 import type { Event, TicketHistoryEntry } from '@quorum/shared';
 
-import type { LifecycleContext, RegressionFields, RunOutcome, RunStatus } from './types.js';
+import { FlowError, type LifecycleContext, type RegressionFields, type RunOutcome, type RunStatus } from './types.js';
 
 const round = (value: number): number => Math.round(value * 1000) / 1000;
 
@@ -15,9 +15,6 @@ export async function finish(
 ): Promise<RunOutcome> {
   const { ticket, persistence } = context;
   const before = ticket.meta.stage;
-  if (status === 'failed' || status === 'interrupted') {
-    await persistence.finaliseActiveOccurrences(status, note ?? status);
-  }
 
   ticket.meta.iterations = context.counters;
   // `stage` is a plain string on the contracted signature, which is the spike's own shape:
@@ -73,17 +70,29 @@ export function outcome(context: LifecycleContext, before: string, after: string
   };
 }
 
-/** Persist a non-terminal occurrence event without moving the ticket's stage. */
+/**
+ * Persist a non-terminal occurrence event without moving the ticket's stage.
+ *
+ * The sole owner of this mutation. `RunPersistence.recordOccurrenceEvent` is the seam `routing.ts`
+ * reaches it through and delegates straight back here; implementing the same four writes on both
+ * sides appended two history entries and two log lines for one exhaustion.
+ */
 export async function recordEvent(context: LifecycleContext, stage: string, status: string, cost: number | null): Promise<void> {
   context.ticket.meta.iterations = context.counters;
   context.ticket.meta.history = [...(context.ticket.meta.history ?? []), outcome(context, stage, stage, status, cost)];
-  await context.persistence.recordOccurrenceEvent(context.ticket, stage, status, cost ?? 0);
   context.persistence.writeTicket(context.ticket);
   context.persistence.appendLog(context.ticket, `run=${context.runId} ${status} stage=${stage}→${stage} cost=${cost}`);
+  return Promise.resolve();
 }
 
-/** Narrow the optional argument at the sole status branch where the contract requires it. */
+/**
+ * Narrow the optional argument at the sole status branch where the contract requires it.
+ *
+ * Why: deliberate addition, not preservation — the spike spreads `...fields` and cannot throw. A
+ * runtime backstop is kept because AC-3's closed union crosses a process boundary in M3, and it
+ * throws the workspace's `FlowError` so a consumer reads a sentence like every other engine failure.
+ */
 function requiredRegressionFields(fields: RegressionFields | undefined): RegressionFields {
-  if (!fields) throw new Error('regressed run requires complete regression fields');
+  if (!fields) throw new FlowError('regressed run requires complete regression fields');
   return fields;
 }
