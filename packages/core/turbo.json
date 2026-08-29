@@ -23,6 +23,13 @@
         // would report the omission. Declared by hand at Q-0050's qa-red gate.
         "../../contracts/Q-0050/run-messages.fixture.json",
         "../../backlog/*/ticket.md",
+        // Q-0050: engine.test.ts writes a `harness/harness.yaml` into a TEMP repository, so
+        // this task does not read the repository's copy. Declared anyway: clause B collects
+        // the literal, and over-declaring can only cost an unnecessary re-run, while the
+        // alternatives — a global NOT_READ entry, or assembling the literal — would either
+        // stop the guard checking this path for `shared`, which does read it, or trade one
+        // clause for another.
+        "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
         "../../spike/src/**",
         "../../spike/templates/harness/flows/*.yaml"

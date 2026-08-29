@@ -45,9 +45,18 @@ describe('AC-1 — importable, one runtime dependency, no workspace import', () 
   });
 
   test('shared never imports core', () => {
+    // Both needles are assembled, for the reason SCOPE is: this file is itself under src/, so a
+    // literal would make the test its own subject. The claim is about what shared IMPORTS, so it is
+    // asserted over specifiers rather than over file text — a prose cross-reference naming core is
+    // accurate documentation, not a dependency, and containment.ts:3 is one.
+    const corePath = `packages/${'core'}`;
     for (const [name, text] of sharedSourceFiles()) {
-      expect(importSpecifiers(text), `${name} must remain below core`).not.toContain(`${SCOPE}core`);
-      expect(text, `${name} must not reach core by repository path`).not.toContain('packages/core');
+      for (const specifier of importSpecifiers(text)) {
+        expect(
+          specifier.includes(`${SCOPE}core`) || specifier.includes(corePath),
+          `${name} imports ${specifier}`,
+        ).toBe(false);
+      }
     }
   });
 

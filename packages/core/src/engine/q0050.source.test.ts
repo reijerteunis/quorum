@@ -1,11 +1,23 @@
 import { describe, expect, test } from 'vitest';
 
-import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+import { coreSourceFiles } from '../../test/corpus.js';
 
-const production = coreSourceFiles()
-  .filter(([name]) => name.startsWith('engine/'))
-  .map(([name]) => name.slice('engine/'.length));
-const source = (name: string): string => repoFile(`packages/core/src/engine/${name}`);
+// The corpus already carries every file's text, so the sources are taken from it rather than
+// re-read through a templated path. That is not tidiness: a template handed to a read API is an
+// indirect route under turbo-inputs.test.ts clause C1, and a route whose paths are computed has to
+// be registered before the guard will accept it. Reading what the corpus already collected leaves
+// no literal to register and no second way for this file to name a path.
+const engine = new Map(
+  coreSourceFiles()
+    .filter(([name]) => name.startsWith('engine/'))
+    .map(([name, text]) => [name.slice('engine/'.length), text] as const),
+);
+const production = [...engine.keys()];
+const source = (name: string): string => {
+  const text = engine.get(name);
+  if (text === undefined) throw new Error(`corpus missing: packages/core/src/engine/${name}`);
+  return text;
+};
 
 describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
   test('the owned folder is exactly six documented modules with the contracted exports', () => {

@@ -1291,6 +1291,11 @@ function readSites(text: string, routes: readonly Binding[], reads: readonly Rea
  * anchoring happens at the call site, and every call site is in the scanned set above.
  */
 const READ_BASES: Record<string, Record<string, string>> = {
+  'packages/core/src/engine/engine.test.ts': {
+    'opts.project.repoDir': "the temp repository repo() created for this test; nothing under it is in the repository",
+    'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
+    ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — the sentinel AC-10a writes and reads back, inside the temp repository",
+  },
   'packages/core/src/adapters/codex.test.ts': {
     seen: 'path.join(tempDir(\'codex-schema-\'), \'schema-seen.json\') — a file the stub copies into a sandbox',
     'tempDirOf(ok.argv())': 'path.dirname of the --output-schema path off the argv the stub recorded, so it is the adapter\'s own temp directory',
@@ -1744,7 +1749,7 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(70);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(71);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
       'distinct literals in the baseline').toBe(39);
     // And the nine the classifier calls directories, which is the class the defect lived in: a
