@@ -39,6 +39,27 @@ function undocumentedExports(files: ReadonlyArray<readonly [string, string]>): s
   return undocumented;
 }
 
+/**
+ * Every sentence of forty characters or more in `text`, with soft wrapping undone first.
+ *
+ * Paragraphs are unwrapped before sentences are split, because the corpus is markdown wrapped at
+ * about a hundred columns and splitting on `\n` shreds a sentence into fragments that then fall
+ * under the floor. Line fragments are kept alongside the sentences so a single copied line is
+ * caught as well as a copied sentence.
+ */
+function corpusOf(text: string): string[] {
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim());
+  const sentences = paragraphs.flatMap((p) => p.split(/(?<=[.!?])\s+/));
+  const lines = text.split('\n');
+  return [...new Set([...sentences, ...lines].map((t) => t.trim().replace(/\s+/g, ' ')).filter((t) => t.length >= 40))];
+}
+
+/** The first corpus sentence a comment line reproduces verbatim, or `undefined`. */
+function transcribedIn(line: string, sentences: readonly string[]): string | undefined {
+  const text = line.replace(/^\s*(?:\/\/|\*|\/\*\*)\s*/, '').trim().replace(/\s+/g, ' ');
+  return sentences.find((sentence) => text.includes(sentence));
+}
+
 describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
   test('the owned folder is exactly six documented modules with the contracted exports', () => {
     expect(production).toStrictEqual(['channel.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts']);
@@ -133,26 +154,45 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
-    // The scan the criterion asked for, replacing a 120-character length proxy that stood here and
-    // that any short copied sentence passed — named by codex in round 4. `docs/DECISIONS.md` and
-    // `backlog/*/ticket.md` are both declared inputs of this task, so this needs no new route
-    // through the turbo input guard.
+    // Round 5, codex: the first version of this scan split on every newline as well as on terminal
+    // punctuation. The corpus files are soft-wrapped markdown, so a sentence spanning two lines was
+    // shredded into fragments and the fragments under the 40-character floor were then dropped
+    // entirely — measured at the time: 195 corpus entries, of which only 7 were whole sentences,
+    // and 65 of 72 real sentences invisible. The scan written to close a fake-coverage finding was
+    // itself ~90% blind. Paragraphs are now unwrapped before sentences are split, and the line
+    // fragments are kept alongside them so a single copied line is caught too.
     const documents = [
       repoFile('docs/DECISIONS.md'),
       repoFile('backlog/Q-0050-core-engine-run-loop/ticket.md'),
     ].join('\n');
-    const sentences = [...new Set(
-      documents.split(/(?<=[.!?])\s+|\n/).map((t) => t.trim().replace(/\s+/g, ' ')).filter((t) => t.length >= 40),
-    )];
-    expect(sentences.length, 'the scan needs a non-empty corpus, or it reports success over nothing').toBeGreaterThan(20);
+    const sentences = corpusOf(documents);
+    expect(sentences.length, 'the scan needs a non-empty corpus, or it reports success over nothing').toBeGreaterThan(60);
 
     for (const name of production) {
       for (const line of source(name).split('\n')) {
         if (!/Why: preserved/.test(line)) continue;
-        const text = line.replace(/^\s*(?:\/\/|\*|\/\*\*)\s*/, '').trim().replace(/\s+/g, ' ');
-        const transcribed = sentences.find((sentence) => text.includes(sentence));
+        const transcribed = transcribedIn(line, sentences);
         expect(transcribed, `${name}: authority line transcribes "${String(transcribed).slice(0, 60)}…"`).toBeUndefined();
       }
     }
+  });
+
+  test('AC-13d: the scan catches a sentence that was soft-wrapped in its source', () => {
+    // The fixture codex asked for, and the case the first version could not see. The sentence is
+    // taken from the real corpus AS IT IS WRAPPED THERE — across two lines — and pasted onto an
+    // authority line as one line, which is exactly what transcribing looks like.
+    const documents = repoFile('docs/DECISIONS.md');
+    const sentences = corpusOf(documents);
+    // The discriminating property: a sentence that does NOT appear verbatim in the raw file. It
+    // exists only because the paragraph was unwrapped — in the source its words are separated by a
+    // newline and indentation, in the corpus by a single space. The first version of this fixture
+    // looked for "a sentence followed by a newline", which every whole LINE also satisfies, so it
+    // passed against the very builder it was written to rule out. Checked below.
+    const multiLine = sentences.find((sentence) => sentence.length >= 60 && !documents.includes(sentence));
+    expect(multiLine, 'the corpus must contain a sentence that is soft-wrapped in the source').toBeDefined();
+    expect(documents.includes(multiLine!), 'the fixture sentence must be absent from the raw text').toBe(false);
+
+    expect(transcribedIn(`  // Why: preserved defect, see Q-0050 AC-1. ${multiLine!}`, sentences)).toBe(multiLine);
+    expect(transcribedIn('  // Why: preserved defect, see Q-0050 AC-1.', sentences)).toBeUndefined();
   });
 });
