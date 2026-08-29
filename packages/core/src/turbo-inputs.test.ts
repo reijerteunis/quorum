@@ -1592,6 +1592,7 @@ const COLLECTED_BASELINE = [
   'packages/core/src/contracts/validate-artifact.test.ts: contracts/Q-0011/run-manifest.schema.json',
   'packages/core/src/contracts/validate-artifact.test.ts: harness/flows/chore.yaml',
   'packages/core/src/corpus.test.ts: packages/core/src',
+  'packages/core/src/engine/engine.test.ts: harness/harness.yaml',
   'packages/core/src/fanout/fanout.source.test.ts: packages/core/package.json',
   'packages/core/src/fanout/fanout.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/fanout/fanout.test.ts: spike/src/fanout.js',

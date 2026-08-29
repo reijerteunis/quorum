@@ -44,6 +44,13 @@ describe('AC-1 — importable, one runtime dependency, no workspace import', () 
     }
   });
 
+  test('shared never imports core', () => {
+    for (const [name, text] of sharedSourceFiles()) {
+      expect(importSpecifiers(text), `${name} must remain below core`).not.toContain(`${SCOPE}core`);
+      expect(text, `${name} must not reach core by repository path`).not.toContain('packages/core');
+    }
+  });
+
   test('core declares the dependency, and nothing else in core changed', () => {
     const core = readJson('packages/core/package.json');
     expect((core.dependencies as Record<string, string>)[`${SCOPE}shared`]).toBe('workspace:*');

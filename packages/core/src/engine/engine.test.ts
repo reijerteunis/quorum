@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterAll, describe, expect, test, vi } from 'vitest';
@@ -84,13 +85,22 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
 
   test('dry is the same run but all three persistent writers are replaced', async () => {
     const opts = options({ dry: true });
+    const writeSpy = vi.spyOn(opts.backlog, 'write');
+    const writeFileSpy = vi.spyOn(opts.backlog, 'writeFile');
+    const logSpy = vi.spyOn(opts.backlog, 'log');
     const originalIterations = opts.ticket.meta.iterations;
     const before = JSON.stringify(opts.ticket);
+    const ticketFile = path.join(opts.ticket.dir, 'ticket.md');
+    write(ticketFile, 'sentinel ticket bytes\n');
+    const beforeFile = fs.readFileSync(ticketFile, 'utf8');
     const events = await collect(stream(opts));
     expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'completed' });
-    expect(opts.backlog.write).not.toHaveBeenCalled();
-    expect(opts.backlog.writeFile).not.toHaveBeenCalled();
-    expect(opts.backlog.log).not.toHaveBeenCalled();
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(writeFileSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(fs.readFileSync(ticketFile, 'utf8')).toBe(beforeFile);
+    expect(fs.existsSync(path.join(opts.ticket.dir, 'runs.log'))).toBe(false);
+    expect(fs.existsSync(path.join(opts.project.repoDir, '.quorum'))).toBe(false);
     expect(opts.ticket.meta.iterations).toBe(originalIterations);
     expect(JSON.stringify(opts.ticket)).not.toBe(before);
     expect(opts.ticket.meta.stage).toBe('requirements');
