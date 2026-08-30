@@ -1,7 +1,7 @@
 ---
 id: Q-0057
 title: A chore run's reviews overwrite the previous run's, and the survivors mix
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0057/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-08-30T11:10:24.252Z
     cost: 6.054
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-30T12:01:41.861Z
+    cost: 14.908
 ---
 Found by Q-0041's fifth implement round, which asked for this ticket by name at its gate: *"the
 review-overwrite defect needs a ticket, and it is not cosmetic. It destroyed one review on this
