@@ -48,6 +48,11 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     // are deliberately not moved: aiming a review at an old revision must not write that revision
     // into the branch. See Q-0077.
     vars: { id: ticket.meta.id, iter: 1, base: base ?? config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
+    // Whether the maintainer typed --base, which vars.base cannot answer: it is set either way,
+    // and an override may legitimately name the configured value. Only a diagnostic reads it, so
+    // that an unresolvable revision is blamed on the flag rather than on a file that never
+    // supplied it. See Q-0038.
+    baseOverride: base ?? null,
     diffInputs: new Map(), deferredDiffs: new Map(),
   };
   // What the ticket branch looked like before this run touched it, so a run that does not
@@ -93,23 +98,25 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
   // discovered, and every panel member receives the exact same bytes. It remains inside the run
   // try block so a failed preflight receives the same terminal audit record as every other error.
   //
-  // Exception: a range naming a branch created by an EARLIER step of this same flow cannot be
-  // evidence yet — the chore flow reviews integration...implement, and implement exists only
-  // after the implement step runs. Those ranges materialise at step time via buildPrompt's
-  // fallback instead. The rule is order-aware on purpose: a ref created only by a LATER step
-  // (integrate's target, after the review that reads it) can never exist when the diff step
-  // runs, so deferring it would just move the failure past a billed step — exactly what the
-  // preflight exists to prevent. For ranges over pre-existing refs, the review flow's case,
-  // the guarantee is unchanged. Found the day the Q-0006 preflight landed: it was written
-  // before chore.yaml existed and never met it. See Q-0034.
+  // The unit judged is the ENDPOINT, not the range, because a ref is what can be absent. An
+  // endpoint an EARLIER step of this same flow creates cannot be evidence yet — the chore flow
+  // reviews integration...implement, and implement exists only after the implement step runs — so
+  // a range holding one is materialised at step time via buildPrompt's fallback instead. Its other
+  // endpoint is still resolved here, where it costs nothing: asking one question of the whole
+  // range is what let a missing integration branch bill an implementer first and fail afterwards.
+  // See Q-0038, and Q-0034 for the deferral itself, found the day the Q-0006 preflight met the
+  // chore flow it was written before.
   //
-  // State the limit rather than implying it is not there: "no adapter is billed before bad
-  // evidence is found" holds for ranges over refs that exist when the run starts, and cannot hold
-  // for the rest. A range whose right endpoint is a branch this run creates has no emptiness to
-  // discover until the step that creates it has run and been billed — the evidence does not exist
-  // before its producer does. What that class gets instead is earliest-possible: the producing
-  // adapter may run, the consuming one may not, and a range that is malformed or out of class is
-  // caught with no run at all by the input.diff rule in lintFlow. See Q-0035 (OQ-1).
+  // The rule is order-aware on purpose: a ref created only by a LATER step (integrate's target,
+  // after the review that reads it) can never exist when the diff step runs, so deferring it would
+  // just move the failure past a billed step — exactly what the preflight exists to prevent.
+  //
+  // State the limit rather than implying it is not there: emptiness cannot be discovered before a
+  // producer has run, so a deferred range's own emptiness still costs the producing adapter. What
+  // that class gets instead is earliest-possible: every ref that is due is proven before anything
+  // is billed, the producing adapter may then run and the consuming one may not, and a range that
+  // is malformed or out of class is caught with no run at all by the input.diff rule in lintFlow.
+  // See Q-0035 (OQ-1).
   {
     // ref → the id of the earliest step that creates it. A Set answered "is this deferred?"; the
     // map also answers "deferred waiting on whom?", which is what lets a deferred range that turns
@@ -122,17 +129,30 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
       // Judge every diff in the group against branches created strictly before the group: a
       // parallel sibling's branch is concurrent, not earlier.
       for (const { site, perTask } of members.flatMap(diffSitesOf)) {
-        const range = interpolate(site.input.diff, ctx.vars);
-        // A template range naming a per-task variable — harness/{id}/{task.id} — has no single
-        // value at run start: it becomes one range per task only when tasks.yaml is expanded, and
-        // ctx.vars cannot resolve it here. Left to step time rather than guessed at, which is the
-        // same earliest-possible limit a deferred range carries; its shape is still checked with
-        // no run at all by lintFlow. Only a template can be in this state, so an outer step's
-        // unresolved range still fails here exactly as it always did. See Q-0035 (OQ-1).
-        if (perTask && /\{[\w.]+\}/.test(range)) continue;
-        const pending = range.split('...').find((ref) => createdSoFar.has(ref));
-        if (pending != null) { ctx.deferredDiffs.set(range, { ref: pending, step: createdSoFar.get(pending) }); continue; }
-        if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(site, ctx));
+        const written = String(site.input.diff);
+        const range = interpolate(written, ctx.vars);
+        const endpoints = classifyEndpoints(range, createdSoFar, perTask);
+        if (endpoints.every((endpoint) => endpoint.class === 'pre-existing')) {
+          if (!ctx.diffInputs.has(range)) ctx.diffInputs.set(range, materialiseDiff(site, ctx));
+          continue;
+        }
+        const producers = endpoints.filter((endpoint) => endpoint.class === 'step-created');
+        // A half-interpolated key can never be looked up at step time, so recording one would be a
+        // record nothing reads. `ref` and `step` mirror the first producer left to right, because
+        // an empty deferred range names one owed branch and always did; `producers` is what lets a
+        // failure name every step that owed an endpoint. See Q-0035, Q-0038.
+        if (producers.length && !endpoints.some((endpoint) => endpoint.class === 'template')) {
+          ctx.deferredDiffs.set(range, { ref: producers[0].ref, step: producers[0].step, producers });
+        }
+        // Every endpoint that is due is proven now, where it costs nothing — one endpoint being
+        // owed by a later step says nothing about the other. See Q-0038.
+        for (const endpoint of endpoints) {
+          if (endpoint.class !== 'pre-existing' || shortSha(ctx.repoDir, endpoint.ref) != null) continue;
+          throw missingEndpointFailure(site, ctx, {
+            side: endpoint.side, ref: endpoint.ref, range, written, base: ctx.vars.base,
+            clauses: [notDueClause(endpoints.find((other) => other !== endpoint), site)],
+          });
+        }
       }
       for (const s of members) {
         if (s.worktree) remember(interpolate(s.branch ?? `harness/${ctx.ticket.meta.id}/${s.id}`, ctx.vars), s.id);
@@ -787,11 +807,72 @@ function diffSitesOf(step) {
   ];
 }
 
+// What the run-level preflight may ask of each endpoint of an interpolated range, left to right.
+// A ref is what can be absent, so a range is judged one endpoint at a time:
+//
+//   step-created  an earlier group of this flow creates it, so it is not due yet and the range is
+//                 deferred to step time. True even when the ref already exists at run start —
+//                 bytes captured before its producer ran are that step's PREVIOUS output.
+//   template      a fan_out step's `step:` template naming a per-task variable, which has no value
+//                 until tasks.yaml is expanded. Only a template can be in this state; an outer
+//                 step's unresolved `{…}` is pre-existing and fails like any other ref that does
+//                 not resolve.
+//   pre-existing  everything else, including a ref only a LATER step creates.
+//
+// A range that is not exactly two endpoints is malformed, and materialiseDiff's shape guard owns
+// that failure: classifying its parts would answer a different question, so none are returned and
+// the caller sends it to that guard unchanged. See Q-0038.
+function classifyEndpoints(range, createdSoFar, perTask) {
+  const refs = range.split('...');
+  if (refs.length !== 2) return [];
+  return refs.map((ref, index) => ({
+    side: index === 0 ? 'left' : 'right',
+    ref,
+    step: createdSoFar.get(ref) ?? null,
+    class: createdSoFar.has(ref) ? 'step-created'
+      : perTask && /\{[\w.]+\}/.test(ref) ? 'template'
+        : 'pre-existing',
+  }));
+}
+
+// What the preflight may say about the endpoint that is NOT due, when the other one fails. It is
+// not supposed to resolve — its producer has not run — so reporting it as one that does not
+// resolve either would be the same category error the diagnosis half exists to remove. Reached
+// only for an endpoint whose class is not `pre-existing`, since that is the class that failed.
+// See Q-0038.
+const notDueClause = (endpoint, site) => endpoint.class === 'step-created'
+  ? `the ${endpoint.side} endpoint ${endpoint.ref} is not created until step "${endpoint.step}" runs`
+  : `the ${endpoint.side} endpoint ${endpoint.ref} is a per-task template with no value until "${site.id}" expands its tasks`;
+
+// The failure for an endpoint that does not resolve, raised by the run-level preflight and by
+// materialiseDiff alike — so which layer noticed does not change what a maintainer reads. The
+// three identifying phrases are chosen by the failing endpoint's own class and are matched by
+// substring in existing fixtures; `clauses` are the evidence added around them, and are the only
+// part the two callers word differently. `base` is the run's effective diff anchor, passed in
+// rather than resolved here so that this file keeps one place where that fallback is written down.
+// See Q-0035 for the phrases, Q-0038 for the second caller.
+function missingEndpointFailure(step, ctx, { side, ref, range, written, clauses, base }) {
+  const integration = `harness/${ctx.ticket.meta.id}/integration`;
+  const tail = [`it is the ${side} endpoint of ${named(range, written)}`, ...clauses]
+    .filter(Boolean).join('; ') + '. Neither the diff nor the containment check was run.';
+  if (ref === base) {
+    // Keyed on whether a run was GIVEN --base, never on whether its value differs from
+    // repo.base_branch: an override may legitimately name the configured value and the maintainer
+    // still typed it. An absent field is no override, so a hand-built context keeps the configured
+    // wording. Why: supersedes the Q-0006 review-runtime contract for the override path only, per
+    // Q-0038 errata E-1.
+    return new FlowError(ctx.baseOverride != null
+      ? `--base names missing ref "${ref}" — ${tail}`
+      : `repo.base_branch in harness/harness.yaml names missing ref "${base}" — ${tail}`);
+  }
+  if (ref === integration) return new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch — ${tail}`);
+  return new FlowError(`${step.id}: input.diff names missing ref "${ref}" — ${tail}`);
+}
+
 export function materialiseDiff(step, ctx) {
   const written = String(step.input.diff);
   const range = interpolate(written, ctx.vars);
   const base = ctx.vars.base ?? ctx.config.repo?.base_branch ?? 'main';
-  const integration = `harness/${ctx.ticket.meta.id}/integration`;
   // The guard forbids a flow file aiming input.diff at refs unrelated to this ticket — a merge
   // commit, another ticket's branch, an arbitrary SHA. It used to demand exactly
   // `{base}...{integration}`, which was the review flow's shape and only that: chore.yaml reviews
@@ -817,18 +898,22 @@ export function materialiseDiff(step, ctx) {
     if (sha[side] != null) continue;
     const other = side === 'left' ? 'right' : 'left';
     const otherRef = other === 'left' ? left : right;
-    const tail = [
-      `it is the ${side} endpoint of ${named(range, written)}`,
-      sha[other] != null
-        ? `the ${other} endpoint ${otherRef} resolves to ${sha[other]}`
-        : `the ${other} endpoint ${otherRef} does not resolve either`,
-      deferred?.ref === ref ? `step "${deferred.step}" was expected to create ${ref}` : null,
-    ].filter(Boolean).join('; ') + '. Neither the diff nor the containment check was run.';
-    // The three identifying phrases below are matched by substring in existing fixtures. The
-    // evidence is added AROUND them; they are never replaced. See Q-0035.
-    if (ref === base) throw new FlowError(`repo.base_branch in harness/harness.yaml names missing ref "${base}" — ${tail}`);
-    if (ref === integration) throw new FlowError(`ticket ${ctx.ticket.meta.id}: expected ${integration}; review requires an integrated branch — ${tail}`);
-    throw new FlowError(`${step.id}: input.diff names missing ref "${ref}" — ${tail}`);
+    throw missingEndpointFailure(step, ctx, {
+      side, ref, range, written, base,
+      clauses: [
+        sha[other] != null
+          ? `the ${other} endpoint ${otherRef} resolves to ${sha[other]}`
+          : `the ${other} endpoint ${otherRef} does not resolve either`,
+        // Which step owed which ref, whichever endpoint went bad. The failing endpoint's own
+        // producer is named as the step that was expected to create it; a producer of the OTHER
+        // endpoint explains why the range was deferred and is never phrased as owing the ref that
+        // failed, because no step owed that one. Both are kept when both endpoints were deferred,
+        // so a reversal of endpoint order cannot hide either. See Q-0038.
+        ...(deferred?.producers ?? []).map((producer) => producer.ref === ref
+          ? `step "${producer.step}" was expected to create ${producer.ref}`
+          : `the range was deferred waiting for step "${producer.step}" to create ${producer.ref}`),
+      ],
+    });
   }
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: ctx.repoDir, encoding: 'utf8' });
   if (!stat.trim()) throw new FlowError(emptyRangeFailure({ step, written, range, left, right, sha, deferred, ctx }));

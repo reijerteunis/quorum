@@ -81,9 +81,14 @@ occurrences keep their exact `prompt.txt` and `output.txt`; gates and fan-out pa
 none. The unit a roll-up sums over.
 
 **Preflight**: A check a run performs before invoking any adapter, so that bad evidence is found
-before it is paid for. The run-level diff preflight materialises every range a flow's steps will
-need. A preflight that declines to examine something reports that it *skipped* it — reporting
-success for an unexamined subject is the failure recorded in the 2026-08-25 decision.
+before it is paid for. The run-level diff preflight materialises every range whose endpoints all
+exist at run start, and its guarantee is **per endpoint, not per range**: where an endpoint is one
+an earlier step of the flow has yet to create, the range is deferred to step time and every
+endpoint beside it that is already due is still resolved at run start, so a branch nobody created
+stops the run before anything is spent. It never resolves an endpoint that is not due, and never
+reports one as having failed to resolve. A preflight that declines to examine something reports that it *skipped*
+it — reporting success for an unexamined subject is the failure recorded in the 2026-08-25
+decision.
 
 **Base override** (`--base <ref>`): `harness run … --base <ref>` aims a run's `{base}` at an
 arbitrary revision instead of `repo.base_branch`. It moves the **diff anchor** only — what a review

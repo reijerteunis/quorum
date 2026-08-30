@@ -622,18 +622,21 @@ await scenario('E16', 'AC-9 — a deferred range whose endpoint does not resolve
   // (a) The realistic shape: chore.yaml reviews integration...implement, and on a ticket's first
   // pass the integration branch does not exist yet — its integrate step runs AFTER the review. The
   // range is still deferred on implement, and the endpoint that fails is the other one.
+  //
+  // Re-cut by Q-0038 AC-6, which authorises the edit rather than leaving a review loop to decide
+  // whether a landed guard is finished. The left endpoint is a ref that exists before any step
+  // runs, so it is now resolved in the preflight and the run refuses for free: the producing
+  // adapter no longer runs, and `harness/<id>/implement` is therefore never created, which is why
+  // the short-SHA assertion on it is gone rather than rewritten. Everything else this scenario
+  // pinned is unchanged, the negative below most of all.
   const first = fixture();
-  const implement = `harness/${first.ticket.meta.id}/implement`;
   const err = await run(first, flowWith('harness/{id}/integration...harness/{id}/implement'));
   assert.ok(err instanceof FlowError, `expected a FlowError, got ${err?.constructor?.name}: ${err?.message}`);
   const calls = adapterCalls(first.root, first.ticket.meta.id);
-  assert.ok(calls.includes('implement'), 'the producing adapter must have run');
-  assert.ok(!calls.includes('review'), 'the consuming adapter must not have been billed against an unresolvable range');
+  assert.deepEqual(calls, [], 'a knowably absent endpoint must cost nothing');
   assert.match(err.message, /review requires an integrated branch/, 'the existing identifying phrase is preserved');
   assert.ok(err.message.includes('left endpoint'), `it says which endpoint failed: ${err.message}`);
-  assert.ok(err.message.includes(git(first.root, 'rev-parse', '--short', implement)),
-    `it gives the short SHA of the endpoint that does resolve: ${err.message}`);
-  assert.ok(err.message.includes(`${first.ticket.meta.branch}...${implement}`), 'it names the complete range');
+  assert.ok(err.message.includes(`${first.ticket.meta.branch}...harness/${first.ticket.meta.id}/implement`), 'it names the complete range');
   assert.match(err.message, /Neither the diff nor the containment check was run/);
   assert.doesNotMatch(err.message, FORBIDDEN);
   assert.doesNotMatch(err.message, /contained/, 'it invents no containment outcome for a ref it could not read');
