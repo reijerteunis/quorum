@@ -10,6 +10,7 @@ import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
 import type { Occurrence } from '../run-history/manifest.js';
+import type { DeferredDiff } from './diff.js';
 
 /** Re-exported so every engine file shares one `FlowError` identity with `core/lint`. */
 export { FlowError } from '../lint/lint.js';
@@ -157,6 +158,24 @@ export interface RunContext {
   answerGate?: AnswerGate;
   signal?: AbortSignal;
   persistence: RunPersistence;
+  /**
+   * Every range the diff preflight materialised at run start, keyed by the interpolated range, so
+   * every panel member and every wave member receives the exact same bytes rather than a re-read.
+   */
+  diffInputs: Map<string, string>;
+  /**
+   * Every range the preflight left to step time because an earlier step of this flow still has to
+   * create an endpoint of it, keyed by the interpolated range.
+   */
+  deferredDiffs: Map<string, DeferredDiff>;
+  /**
+   * The revision `--base` named, or `null` when the maintainer typed no flag.
+   *
+   * Distinct from {@link RunContext.vars}`.base`, which is set either way: only whether the flag was
+   * TYPED can decide whether an unresolvable revision is blamed on the flag or on the configuration
+   * file, and an override may legitimately name the configured value. See Q-0077, Q-0038.
+   */
+  baseOverride: string | null;
 }
 
 /** The seven fields a regressed run's terminal event and history entry both carry, as one closed group. */
