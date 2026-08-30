@@ -1,6 +1,6 @@
 ---
 id: Q-0080
-title: harness ticket new cannot allocate an id, and the second call collides with the first
+title: harness ticket new cannot allocate an id, and collides with itself
 stage: draft
 owner: ruud
 repos: []

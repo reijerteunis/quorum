@@ -121,3 +121,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [A range is checked one endpoint at a time, because an endpoint is what can be absent](decisions/067-a-range-is-checked-one-endpoint-at-a-time.md)
 - [An erratum is the last repair, not the first](decisions/068-an-erratum-is-the-last-repair-not-the-first.md)
+- [A test's verdict is a property of the commit, not of the checkout or the account](decisions/069-a-tests-verdict-is-a-property-of-the-commit.md)
