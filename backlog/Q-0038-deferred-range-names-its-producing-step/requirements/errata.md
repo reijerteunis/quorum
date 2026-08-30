@@ -109,3 +109,60 @@ blockage.
 - **Whether `npm ci` should also be permitted.** Round 3 argues it is the lockfile-exact form and
   therefore the better one; `harness.yaml` specifies `npm install`, so only that is granted. Not
   decided here.
+
+## E-3 — E-2 is withdrawn: AC-12 was met outright, and round 4's new finding is pre-existing — 2026-08-30
+
+**Supersedes E-2 of this file**, and rules the round-4 review finding out of scope. Two separate
+things, in one entry because both come from the same round.
+
+### (a) E-2 is withdrawn. AC-12 stands unamended and is satisfied.
+
+E-2 superseded AC-12's `npm install` clause on the grounds that the implement step could never run
+it and that `integrate` discharges it instead. **Round 4 ran it.** The permission was added to
+`.claude/settings.json` and delivered into the worktree by fast-forwarding
+`harness/Q-0038/integration`, which the implement step merges on every round after the first
+(`spike/src/engine.js:224`). So the clause was satisfiable after all — by fixing the environment
+rather than by amending the criterion — and an erratum saying it is discharged elsewhere would now
+be false. E-2's reasoning was correct for rounds 1 to 3 and is withdrawn for round 4 onward.
+
+**The reviewer was right on the substance, not merely on the letter, and the record must say so.**
+Rounds 1 and 2 argued the pnpm substitution was equivalent, round 2 checking five packages against
+the lockfile and finding five matches. The real install reported `added 4 packages, and changed 3
+packages`, and `spike/node_modules/fast-uri` moved to **3.1.5**, matching
+`spike/package-lock.json:62`, where the pnpm-provided tree differed. A pnpm install ignoring npm's
+lockfile produced a genuinely different tree, exactly as `harness/harness.yaml`'s own comment warns.
+Three rounds of careful measurement reached the wrong conclusion; one execution settled it.
+
+### (b) Round 4's finding is real, pre-existing, and not this ticket's
+
+`review/chore-iter-4.md` reports that `ctx.diffInputs` is keyed only by the interpolated range, so
+a site that materialises a range **before** a later step creates one of its endpoints leaves bytes
+that a second site using the identical range then receives from the cache, even though the preflight
+correctly classified that second site as deferred — `buildPrompt` prefers
+`ctx.diffInputs?.get(range)` unconditionally.
+
+**It is a genuine hazard and it is not introduced here.** `buildPrompt` is byte-identical on `main`
+and on `harness/Q-0038/implement`. Neither the old preflight nor the new one removes a `diffInputs`
+entry when a later site defers the same range: the old code recorded the deferral and `continue`d,
+the new one records it and never materialises. An earlier materialisation survives in both. Stated
+as a reading of both texts rather than as an executed test — the discriminating scenario is the one
+the reviewer asks for, and it belongs with the fix.
+
+**Not reachable in any shipped flow.** It needs one range read both before and after its producing
+step. `chore.yaml:32` has its only diff site after the producer; `review.yaml:12` and `:19` are
+parallel members of one group with no producer between them.
+
+**And the fix is a design question, not a line.** Deleting the cached entry on deferral would make
+the two sites materialise the same range separately, at different moments — which is what AC-10's
+*"every panel member receives identical bytes"* and risk R-D forbid. Choosing between keying the
+cache by site, invalidating on deferral, and accepting the current behaviour needs its own
+requirement.
+
+**Ruled: reported, not fixed.** It is recorded in the implement report and in this file, and it
+needs its own ticket. This is charter §2's *"a defect found while reading is reported, never fixed
+in passing"* applied to a defect found while reviewing.
+
+**What this erratum does not settle.** Whether the ticket for (b) is opened now or at close; the
+allowlist question of whether `npm ci --prefix spike` should also be permitted, which E-2 left open
+and which stays open; and nothing about the change under review, which has been byte-identical
+since round 1 — no review round has found a defect in it.
