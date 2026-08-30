@@ -18,20 +18,22 @@ history:
     at: 2026-08-29T22:24:42.646Z
     cost: 7.274
 ---
-Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:91–142`) and
-the five functions it and `buildPrompt` reach — `named` (`:769`), `diffSitesOf` (`:781`),
-`materialiseDiff` (`:790`), `emptyRangeFailure` (`:865`) and `trimIncompleteUtf8Suffix`
-(`:900–908`). 192 lines of which 107 are code; the rest is the comment weight Q-0034 and Q-0035
-paid for. The most decision-dense of the four engine tickets — it is the whole subject of Q-0035,
-which cost $36.66 to land. Belongs to M2 in `docs/06-development-plan.md`; parent Q-0009.
+Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:96–162`) and
+the eight functions it and `buildPrompt` reach — `named` (`:789`), `diffSitesOf` (`:801`),
+`classifyEndpoints` (`:825`), `notDueClause` (`:843`), `missingEndpointFailure` (`:854`),
+`materialiseDiff` (`:872`), `emptyRangeFailure` (`:950`) and `trimIncompleteUtf8Suffix`
+(`:985–994`). 273 lines of which 148 are code; the rest is the comment weight Q-0034, Q-0035 and
+Q-0038 paid for. The most decision-dense of the four engine tickets — it is the whole subject of
+Q-0035, which cost $36.66 to land, and of Q-0038, which cost $37.46. Belongs to M2 in
+`docs/06-development-plan.md`; parent Q-0009.
 
-**Every line number above was re-read on 2026-08-30, and every one of them had moved.** This body
-was written against `95–130` and `785–894`, which Q-0077 shifted by five and which was approximate
-before that. Two functions the old range excluded are named above rather than left to be
-discovered: it cut `trimIncompleteUtf8Suffix` off the top — the omission the *Inherited from
-Q-0049* note below is about — and it cut `named` off the bottom, used at `:821` and `:890` and
-nowhere else, so the same hazard in the other direction. Re-derive any line from the file, never
-from this paragraph.
+**Every line number above was re-derived on 2026-08-30 after Q-0038 merged, and every one of them
+had moved again.** They were last re-read at 00:02 that morning, against `91–142` and `769–908`;
+Q-0038's merge at 10:41 added 165 lines to this file and shifted the tail by 20 to 85. Three of the
+eight functions above did not exist when this body was first written — `classifyEndpoints`,
+`notDueClause` and `missingEndpointFailure` are Q-0038's, and a port that works from "the five
+functions" this paragraph used to say would leave the endpoint classifier behind. Re-derive any
+line from the file, never from this paragraph.
 
 **What it is for.** M1's deepest finding: Q-0006's review spent $5.02 of Claude cost plus an unpriced
 Codex reviewer on a diff that did not exist. `materialiseDiff` embedded the emptiness without
@@ -61,23 +63,27 @@ the run itself creates — `chore.yaml` reviews `integration...implement`, and t
 no emptiness to discover until its adapter has run and been paid for. That class gets
 earliest-possible instead: the producing adapter may run, the consuming one may not.
 
-**Sequencing against Q-0038, which owns the known hole.** The preflight defers a range whole when
-*either* endpoint is step-created — one `.find()` over both endpoints at `engine.js:118`. On the night
-Q-0035 was implemented the left endpoint was a pre-existing-ref-class branch that simply did not
-exist, nothing checked it, `--dry` reported the range valid, and the run billed $13.86 before failing.
-Q-0038 closes both halves — validate each endpoint on its own class, and name the producing step
-whichever endpoint turns out bad. Land it on the spike first or port the fixed version; doing both
-means porting a file while it is being changed underneath.
+**Sequencing against Q-0038 — settled: it landed first, and this ticket ports the fixed version.**
+The preflight used to defer a range whole when *either* endpoint was step-created, one `.find()`
+over both endpoints. On the night Q-0035 was implemented the left endpoint was a
+pre-existing-ref-class branch that simply did not exist, nothing checked it, `--dry` reported the
+range valid, and the run billed $13.86 before failing. Q-0038 merged on 2026-08-30 at 10:41
+(`a8ddbe3`) and closed both halves — each endpoint is classified on its own by `classifyEndpoints`
+(`:825`), and a failure names the producing step whichever endpoint turns out bad. The instruction
+this paragraph used to carry — *"land it on the spike first or port the fixed version; doing both
+means porting a file while it is being changed underneath"* — is discharged, which is why run 1 was
+aborted rather than resumed. **The subject of the port is `main` as of `a8ddbe3` or later, never
+the pre-merge shape any inherited paragraph describes.**
 
 **And the rule the whole thing generalises to:** *skipped is not passed*. A preflight, a `--dry` run
 or a lint that declines to examine something says so. Silence must never render as a green tick.
 
 **Inherited from Q-0049 (merged requirement, 2026-08-28).** This ticket also owns
-`trimIncompleteUtf8Suffix` (`spike/src/engine.js:900`), whose only call site in the repository is
-`materialiseDiff` (`:840`), where it trims a truncated diff back to a UTF-8 boundary. Q-0049's body
+`trimIncompleteUtf8Suffix` (`spike/src/engine.js:985`), whose only call site in the repository is
+`materialiseDiff` (`:925`), where it trims a truncated diff back to a UTF-8 boundary. Q-0049's body
 lists it among run history's functions, which it is not, and Q-0049's merged requirement declines it
 as NG-2 and re-points it here. **Note where it sits.** It begins two lines after `emptyRangeFailure`
-ends at `:898`, so a port that trusts a range stopping at the function above it takes everything
+ends at `:983`, so a port that trusts a range stopping at the function above it takes everything
 except this one — the adjacency hazard Q-0049 named, arriving as an omission rather than as a theft.
 The opening paragraph now names it, and `named` with it.
 
@@ -105,12 +111,13 @@ defect in shipped code and none is visible to a green suite.
    rather than a surprise found in review. The file is under `packages`, so the role can write it.
 
 2. **`interpolate` no longer coerces, and the obligation is this ticket's** — Q-0050
-   `solution/errata.md` E-21, which names Q-0051 and Q-0052 by id. `spike/src/engine.js:745` is
-   `String(s).replace(…)` — E-21 cites `:740`, which was true before Q-0077 shifted the file five
-   lines — and `packages/core/src/engine/loaders.ts:52` types the parameter `string`
-   and performs no coercion. The call sites in this ticket's range are `engine.js:125`
-   (`site.input.diff`), `:138` (`s.branch`) and `:139` (`s.into`) — `materialiseDiff` at `:791`
-   already writes `String(step.input.diff)` itself. YAML hands back a **number** for `branch: 2`,
+   `solution/errata.md` E-21, which names Q-0051 and Q-0052 by id. `spike/src/engine.js:765` is
+   `String(s).replace(…)` — E-21 cites `:740`, true before Q-0077 shifted the file five lines and
+   before Q-0038 shifted it twenty — and `packages/core/src/engine/loaders.ts:52` types the
+   parameter `string` and performs no coercion. **Q-0038 closed one of the three sites in
+   passing:** `engine.js:132` now reads `String(site.input.diff)`, as `materialiseDiff` at `:873`
+   already did. The two left are `:158` (`s.branch`) and `:159` (`s.into`), both arguments to
+   `interpolate`. YAML hands back a **number** for `branch: 2`,
    so under a step shape typed `Record<string, unknown>` each site writes `String(…)`
    deliberately. E-21's point is that this is the port turning a latent defect into a **compile
    error** rather than the spike's silent runtime pass-through: it is not a behaviour change to
@@ -180,11 +187,25 @@ observable and `core` currently says `Cannot read properties of undefined (readi
 `:160`; and the coverage table's scenario census, checked exact — E1–E17, B1–B5, C1/C1b/C2/C3,
 D1/D2.
 
-**R-1 is the one item that should move rather than wait**, and it is now Q-0038's neighbour rather
-than this ticket's: under `--base`, an unresolvable override is reported as `repo.base_branch in
-harness/harness.yaml names missing ref …`, sending the maintainer to a file the value did not come
-from. It lives in the same `materialiseDiff` tail Q-0038 rewrites and matches the same frozen
-fixtures by substring, so the two are one pass over one function.
+**R-1 is closed and is not this ticket's work.** It moved to Q-0038 as its neighbour — under
+`--base`, an unresolvable override was reported as `repo.base_branch in harness/harness.yaml names
+missing ref …`, sending the maintainer to a file the value did not supply — and Q-0038 shipped the
+fix at `engine.js:864–866`, keyed on `ctx.baseOverride` rather than on whether the override's value
+differs from the configured one. Port the attribution as it stands, with its `Why:` line: it
+supersedes the Q-0006 review-runtime contract for the override path only, per Q-0038 errata E-1.
+
+**Q-0078 is a neighbour inside this ticket's range, and it is a non-goal.** Opened 2026-08-30 from
+Q-0038's round-4 review and ruled there: `ctx.diffInputs` is keyed by the interpolated range alone,
+so a site that materialises `X...Y` before a later group creates `Y` leaves bytes the correctly
+deferred second site then receives from the cache, because `buildPrompt` prefers
+`ctx.diffInputs?.get(range)` unconditionally. It is **pre-existing** — `buildPrompt` is
+byte-identical across Q-0038 and neither preflight ever removed a cached entry on deferral — and
+unreachable in every shipped flow in both trees. Q-0038 registered it reported-not-fixed in its
+`requirements/errata.md` E-3(b) because the obvious fix collides with AC-10's identical-bytes
+guarantee, and its own body rules that **unlike Q-0038 it does not block the port**. Written here
+because this ticket's requirement will not read Q-0078's ticket, for the reason the section above
+gives. Port the keying as it stands and register it; choosing among keying by site, invalidating on
+deferral, and forbidding the shape in `harness lint` is Q-0078's requirement, not a line.
 
 ## Port charter
 
