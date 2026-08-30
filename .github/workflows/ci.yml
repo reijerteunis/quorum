@@ -109,12 +109,71 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      # The suite drives the engine, which commits worktrees with the ambient git identity.
-      # A bare runner has none, so the first commit would fail before a single check ran.
-      - run: |
-          git config --global user.email "ci@quorum.invalid"
-          git config --global user.name "Quorum CI"
+      # No git identity is configured here, and the comment that used to justify one was false:
+      # it claimed the engine commits worktrees with the ambient identity, while
+      # spike/src/fanout.js:92 and :112 both carry explicit -c flags and no other commit path
+      # exists in spike/src, spike/bin or packages/cli/src. Since Q-0079's AC-2 the suite's own
+      # merge calls carry them too.
+      #
+      # This job's resulting strictness is INCIDENTAL — a GitHub runner image happens to ship no
+      # identity and an empty gecos name. That is a property of the image, not of the repository,
+      # so it is not the guard. The guard is the `git identity sweep` jobs below, which construct
+      # the hostile environment deliberately and prove it discriminates before trusting it.
       - run: npm ci
         working-directory: spike
       - run: npm test
         working-directory: spike
+
+  # The oracle half of "A test's verdict is a property of the commit, not of the checkout or the
+  # account" (docs/decisions, 2026-08-30). Both cells run .github/scripts/git-identity-sweep.sh,
+  # which is where the environment is defined — restating it here would drift from what a
+  # maintainer runs, and then a developer could not reproduce what CI claims.
+  #
+  # Two jobs rather than two steps, because they may share no checkout: the populated cell's whole
+  # premise is that pre-existing state changes a verdict, so a shared one would make the bare cell
+  # depend on the other's leftovers.
+  #
+  # The fourth cell — a bare checkout WITH an identity present — is deliberately uncovered. A defect
+  # visible only there is one where HAVING an identity breaks a test: a rarer shape, with no
+  # measured instance in this repository, and covering it costs a further full run of both suites.
+  git-identity-sweep-bare:
+    name: git identity sweep (bare checkout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # It never deletes and continues: if either path is present the premise of this cell is
+      # already broken, and clearing it would hide why.
+      - name: assert the checkout is bare
+        run: |
+          for p in .harness/worktrees .quorum/runs; do
+            if [ -e "$p" ]; then
+              echo "::error::$p exists in a checkout this cell requires to be bare" >&2
+              exit 1
+            fi
+          done
+      - run: bash .github/scripts/git-identity-sweep.sh
+
+  # The cell nothing covered until now, and where Q-0072's instance lived: the two gitignored
+  # directories that a working checkout has and a fresh clone does not.
+  git-identity-sweep-populated:
+    name: git identity sweep (populated checkout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: populate the two directories use creates
+        run: mkdir -p .harness/worktrees .quorum/runs
+      - run: bash .github/scripts/git-identity-sweep.sh

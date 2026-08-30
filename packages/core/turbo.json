@@ -10,6 +10,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../.github/workflows/ci.yml",
+        // Q-0079: test-command.test.ts asserts over the sweep script's own text, so this
+        // task reads it and a cached pass must not stand over an edited sweep.
+        "../../.github/scripts/**",
         "../../turbo.json",
         "../../pnpm-lock.yaml",
         // Q-0050 AC-13d: q0050.source.test.ts scans authority lines against the decisions

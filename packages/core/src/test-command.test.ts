@@ -410,3 +410,66 @@ describe('Q-0072 AC-9 — package.json and CI name the same task set', () => {
     expect(namedBy(Object.values(scripts()))).toStrictEqual(['lint', 'test', 'typecheck']);
   });
 });
+
+/**
+ * Q-0079 — the sweep's static shape. These assertions live here rather than beside
+ * `port-freeze-guard.test.mjs`, whose sibling would have been the obvious home: that file is
+ * executed by nothing — not CI, not `pnpm test`, not the spike suite — so the guard against
+ * machine-dependent tests would itself have been unrun. This ticket's own class, one degree worse
+ * than its three instances. `pnpm test` runs this file, and it already reads `ci.yml`.
+ */
+describe('Q-0079 — the hostile-environment sweep is defined once and CI runs both cells', () => {
+  const sweep = (): string => repoFile('.github/scripts/git-identity-sweep.sh');
+  const ciText = (): string => repoFile('.github/workflows/ci.yml');
+  const workflow = (text: string): Workflow => parseYaml(text) as Workflow;
+
+  test('the environment is defined in the script and restated nowhere', () => {
+    const script = sweep();
+    for (const token of ['user.useConfigOnly', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL']) {
+      expect(script, `${token} belongs in the sweep script`).toContain(token);
+      expect(ciText(), `${token} in ci.yml would drift from what a maintainer runs`).not.toContain(token);
+    }
+    const pkg = JSON.parse(repoFile('package.json')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['sweep:git-identity'], 'one invocation, restating nothing')
+      .toBe('bash .github/scripts/git-identity-sweep.sh');
+    for (const [name, body] of [['lint', 'turbo run lint'], ['typecheck', 'turbo run typecheck'], ['test', 'turbo run test']] as const) {
+      expect(pkg.scripts[name], `${name} stays ambient and cached — the inner loop does not get slower`).toBe(body);
+    }
+  });
+
+  test('the environment proves itself before it certifies anything', () => {
+    const script = sweep();
+    expect(script, 'the negative probe').toMatch(/git var "\$\{var\}"/);
+    expect(script, 'the positive probe uses -c flags').toContain('-c user.email=probe@sweep');
+    expect(script, 'an empty GIT_COMMITTER_NAME outranks a -c flag and would reject corrected code too')
+      .not.toMatch(/GIT_COMMITTER_NAME=(''|""|\s*$)/m);
+    expect(script, 'a local or worktree identity would make the sweep permissive').toContain('--"${scope}" --get');
+  });
+
+  test('each of the five phases is named, so a failure says which one', () => {
+    const script = sweep();
+    for (const phase of ['isolation', 'probe', 'install', 'spike suite', 'workspace suite']) {
+      expect(script, `phase '${phase}'`).toContain(`phase="${phase}"`);
+    }
+    expect(script, 'an install that did not complete leaves its suite UNRUN, not passing').toContain('UNRUN');
+  });
+
+  test('CI runs both cells from their own checkouts, and the spike job configures no identity', () => {
+    const wf = workflow(ciText());
+    const jobs = wf.jobs as unknown as Record<string, { steps?: { run?: string; name?: string }[] }>;
+    expect(Object.keys(jobs)).toEqual(expect.arrayContaining([
+      'git-identity-sweep-bare', 'git-identity-sweep-populated',
+    ]));
+    for (const id of ['git-identity-sweep-bare', 'git-identity-sweep-populated']) {
+      const runs = (jobs[id]?.steps ?? []).map((step) => step.run ?? '');
+      expect(runs, `${id} invokes the one script`).toContain('bash .github/scripts/git-identity-sweep.sh');
+    }
+    const populated = (jobs['git-identity-sweep-populated']?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    expect(populated, 'the populated cell creates the two paths Q-0072 registered by hand')
+      .toContain('mkdir -p .harness/worktrees .quorum/runs');
+    const spikeRuns = (jobs['spike']?.steps ?? []).map((step) => step.run ?? '').join('\n');
+    expect(spikeRuns, 'the spike job no longer supplies an ambient identity').not.toContain('git config --global');
+    expect(ciText(), 'the uncovered fourth cell is named in the workflow rather than left to be inferred')
+      .toContain('deliberately uncovered');
+  });
+});

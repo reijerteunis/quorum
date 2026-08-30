@@ -10,7 +10,8 @@
   "scripts": {
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "sweep:git-identity": "bash .github/scripts/git-identity-sweep.sh"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
