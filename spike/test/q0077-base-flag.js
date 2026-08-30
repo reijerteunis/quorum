@@ -49,7 +49,7 @@ function contained() {
   git(root, 'checkout', '-q', BRANCH);
   write(path.join(root, 'a.txt'), 'one\ntwo\n'); git(root, 'add', '-A'); commit(root, 'the ticket\'s work');
   git(root, 'checkout', '-q', 'main');
-  git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+  git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
   return { root, beforeWork };
 }
 

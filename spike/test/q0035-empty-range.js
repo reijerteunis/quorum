@@ -71,7 +71,7 @@ await scenario('E1', 'AC-1/AC-2/AC-4.1 — right contained in left: the failure 
   git(root, 'checkout', '-q', BRANCH);
   write(path.join(root, 'a.txt'), 'one\ntwo\n'); git(root, 'add', '-A'); commit(root, 'work');
   git(root, 'checkout', '-q', 'main');
-  git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+  git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
 
   const err = failure(STEP, ctxFor(root, { base: 'main', id: 'T-9' }));
   assert.ok(err instanceof FlowError, `expected a FlowError, got ${err?.constructor?.name}`);
@@ -188,7 +188,7 @@ await scenario('E6', 'AC-6 — every remedy passes the guard, and a guard failur
   git(root, 'checkout', '-q', BRANCH);
   write(path.join(root, 'a.txt'), 'one\ntwo\n'); git(root, 'add', '-A'); commit(root, 'work');
   git(root, 'checkout', '-q', 'main');
-  git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+  git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
   const ctx = ctxFor(root, { base: 'main', id: 'T-9' });
 
   const messages = [

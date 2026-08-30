@@ -187,6 +187,12 @@ interface Walk {
  */
 const WALKS: readonly Walk[] = [
   {
+    taskId: '@quorum/core#test',
+    dir: 'spike/test',
+    collects: (below) => below.endsWith('.js') && !below.includes('/'),
+    why: 'corpusFiles() — git-identity.test.ts, which scans the spike test tree for commit-creating git calls',
+  },
+  {
     taskId: '@quorum/shared#test',
     dir: 'harness/flows',
     collects: (below) => below.endsWith('.yaml') && !below.includes('/'),
@@ -584,6 +590,12 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/adapters/adapters.source.test.ts': {
     'coreSourceFiles → root': 'a temporary tree the test builds to prove the corpus reader covers a new adapter folder',
+  },
+  'packages/core/src/git-identity.test.ts': {
+    'repoRoot → dir': 'CORPUS, a literal array of the two directories this guard walks, in the same file',
+    'repoRoot → f': 'a path walk() found beneath one of those two literal directories',
+    'repoRoot → rel': 'a member of corpusFiles(), which is the audited spike/test walk plus the packages walk within this package',
+    'repoRoot → SELF': 'the literal naming this file, excluded from its own corpus so its fixtures are not read as violations',
   },
   'packages/core/src/turbo-inputs.test.ts': {
     'repoRoot → dir': 'typescriptFiles and filesBelow walk a directory from SUITES or WALKS, both audited above',
@@ -1291,6 +1303,9 @@ function readSites(text: string, routes: readonly Binding[], reads: readonly Rea
  * anchoring happens at the call site, and every call site is in the scanned set above.
  */
 const READ_BASES: Record<string, Record<string, string>> = {
+  'packages/core/src/git-identity.test.ts': {
+    dir: "walk()'s parameter — path.join(repoRoot, d) for each d in CORPUS, a literal array of the two directories in the same file, and the directory entries recursed into beneath them",
+  },
   'packages/core/src/engine/loaders.ts': {
     file: "path.join(harnessDir, 'roles', `${name}.md`) and the flow file loadFlow is handed — both under the CALLER'S project, not this repository",
     dir: "path.join(ticketDir, 'review') — the ticket folder reviewRound counts rounds in, again in the caller's project",

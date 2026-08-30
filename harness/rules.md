@@ -15,6 +15,14 @@ When they disagree, this file wins and the other is the drift.
   --no-audit --no-fund` before either suite, and run both — `npm test --prefix spike` and
   `pnpm turbo run test --force`. Reporting a suite as unrun is honest and reporting it as green
   without installing is not, and a reviewer cannot tell an uninstalled suite from a red one.
+- **A test's verdict is a property of the commit, not of the checkout or the account** (see that
+  decision, 2026-08-30). A test may read the tracked-and-unignored inventory, its own package, a
+  repository it built itself, and values it set itself; it may not let its verdict depend on git's
+  identity resolution in any config scope, on a git config value it did not set, or on the existence
+  of a gitignored directory that use creates. A machine property may shape a fixture or refuse a
+  run; it may never be the oracle. `packages/core/src/git-identity.test.ts` enforces one corner of
+  this — commit-creating git calls in tests — and **is not coverage for the rest of it**: it sees
+  literals only, so a subcommand in a variable is invisible to it.
 - **No deprecated API.** A symbol a dependency marks `@deprecated` is not used in new code, and
   one found in code you are already changing is reported rather than migrated in passing — the
   migration is its own change, because it is workspace-wide and the replacement is a decision.

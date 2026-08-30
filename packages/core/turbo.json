@@ -35,6 +35,12 @@
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
         "../../spike/src/**",
+        // Q-0081: src/git-identity.test.ts scans the spike TEST tree for commit-creating git
+        // calls, so this task reads it. The accepted cost is stated rather than discovered:
+        // seventeen spike test files now invalidate `@quorum/core#test`. That is the price of
+        // the guard being able to see the tree it polices — Q-0051's red CI was three merge
+        // calls in a file no core task declared.
+        "../../spike/test/**",
         "../../spike/templates/harness/flows/*.yaml"
       ]
     }
