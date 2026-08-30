@@ -1,14 +1,22 @@
 ---
 id: Q-0080
 title: harness ticket new cannot allocate an id, and collides with itself
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0080/integration
 priority: p1
 created: 2026-08-30
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-30T18:25:47.389Z
+    cost: 6.101
 ---
 Opened 2026-08-30, split from Q-0079's body where it was reported and not fixed. Created by hand,
 like Q-0074 and Q-0079, because the command this ticket is about is the one that would have created
