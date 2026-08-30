@@ -120,3 +120,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-08-30
 
 - [A range is checked one endpoint at a time, because an endpoint is what can be absent](decisions/067-a-range-is-checked-one-endpoint-at-a-time.md)
+- [An erratum is the last repair, not the first](decisions/068-an-erratum-is-the-last-repair-not-the-first.md)

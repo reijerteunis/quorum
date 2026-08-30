@@ -236,7 +236,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `spike/package-lock.json`. A pnpm install ignoring npm's lockfile produced a genuinely different
   tree, exactly as `harness.yaml`'s own comment warns. The fix was to the environment, not to the
   criterion: erratum E-2 amended AC-12 and **E-3 withdrew that amendment** once the permission
-  landed and round 4 ran the command — AC-12 stands unamended and satisfied.
+  landed and round 4 ran the command — AC-12 stands unamended and satisfied. See *"An erratum is
+  the last repair, not the first"* (2026-08-30).
   **Round 4, once that blocker stopped absorbing the reviewer's attention, produced the first real
   review of the code** and found a pre-existing hazard nobody had considered: `ctx.diffInputs` is
   keyed by range alone, so a site materialising before a producer leaves bytes a later *deferred*
