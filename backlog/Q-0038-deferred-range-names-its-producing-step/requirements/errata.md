@@ -48,3 +48,64 @@ soon as the contradiction is provable** rather than at an exhaustion gate.
 - **The sibling clause at `:130` of the same fixture** — that the integration-branch message does
   *not* mention `repo.base_branch` — stays true and is not superseded.
 - **No other clause of any contract under `contracts/`.** This entry names one sentence in one file.
+
+## E-2 — AC-12 asks the implement step for evidence only `integrate` can produce — 2026-08-30
+
+**Supersedes** `requirements/merged.md` AC-12, the clause *"The implement report states, per
+environment row, that `pnpm install --frozen-lockfile` and `npm install --prefix spike --no-audit
+--no-fund` were run first"*, **for the `npm install` half only.**
+
+**Replacement.** The implement report states which commands it ran and which its environment
+refused, with the outcome of each — which rounds 2 and 3 already do, in a measured table. **AC-12's
+`npm install` clause is discharged by the `integrate` step**, whose `dev/integration.md` carries
+`Install: <commands.install> → exit <code>` written by the engine. That is the evidence the
+criterion wanted and it is worth more than an agent's report, because it is the engine's own record
+of a command it executed rather than an account of one.
+
+The `pnpm install --frozen-lockfile` half is **not** superseded: it is permitted, it was run every
+round, and it stays reported. Nor is anything about the two suites — `npm test --prefix spike` and
+`pnpm turbo run test --force` are permitted and their counts are still required, with the method
+that produced them stated.
+
+**Why the requirement was wrong.** `harness/harness.yaml:38` declares
+
+```yaml
+install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
+```
+
+— AC-12's two commands, verbatim, in one line — and `spike/src/engine.js:1039` runs it through
+`runCommand`, a subprocess the engine spawns directly, so no Bash permission allowlist applies to
+it. It runs where `run_tests` is set, which is the `integrate` worktree, and `chore.yaml` orders
+`implement → review → integrate`. So the install AC-12 requires runs, by the engine, **in the step
+after the review that was blocking on it**. Verified against `main` at the gate, not taken from the
+implement report that first identified it.
+
+The implement step cannot run it. `.claude/settings.json`'s `permissions.allow` grants npm per
+verb and grants only `test`; `install`, `ci` and even the read-only `ls` are refused. Round 3
+separated the two hypotheses by re-attempting with the sandbox override set — refused identically —
+so it is the allowlist and not a sandbox. The allowlist gap is a real defect and **is now fixed on
+`main`** (`Bash(npm install --prefix spike*)`), but it cannot reach this run: an implement worktree
+is cut from `harness/Q-0038/integration`, which predates the fix, so every round read the old file.
+
+**The general shape, which is why this is an erratum and not a concession.** A requirement may not
+ask a step for evidence only a later step can produce. That is the 2026-08-25 surface rule — *a
+requirement may not name a surface its flow cannot write* — one axis over: not *which file*, but
+*which step*. Three rounds and roughly $24 were spent proving it, and each round was correct: the
+implementer reported honestly and refused to route around a refused command or to grant itself the
+permission it was blocked by, which would have meant writing outside its role to satisfy a criterion
+about its own verification; the reviewer refused to approve an unmet criterion. **More rounds buy
+more correct refusals** — and round 3 is the one that found the resolution rather than restating the
+blockage.
+
+**What this erratum does not settle.**
+
+- **It is not a judgement on the change under review.** The three review rounds raised this one
+  finding and never engaged with the 165-line engine change; that is a gap in the review, not
+  evidence of quality either way, and the human at the gate reads the diff.
+- **Whether the exhaustion should be answered `advance` or `retry`** — the human's, at the gate.
+  `advance` continues to `integrate`, which is precisely the step that discharges this clause.
+- **The allowlist fix's reach.** It is on `main` and will apply to the next ticket whose integration
+  branch is cut after it. Nothing here back-ports it into a live worktree.
+- **Whether `npm ci` should also be permitted.** Round 3 argues it is the lockfile-exact form and
+  therefore the better one; `harness.yaml` specifies `npm install`, so only that is granted. Not
+  decided here.
