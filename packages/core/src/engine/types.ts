@@ -149,7 +149,12 @@ export interface RunContext {
   runId: number;
   /** Loop counters, the same object as `ticket.meta.iterations` — an alias, not a copy. */
   counters: Record<string, number>;
-  /** Interpolation values available to steps, `base` and `iter` among them. */
+  /**
+   * Interpolation values available to steps, `base`, `iter` and `run` among them.
+   *
+   * `run` is {@link RunContext.runId}, so a write path can be named after the run that produced it
+   * rather than after a counter that restarts every run. See Q-0057.
+   */
   vars: Record<string, unknown>;
   stats: RunStats;
   dry: boolean;

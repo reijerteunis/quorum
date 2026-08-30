@@ -39,15 +39,22 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);
   }
   if (dry) backlog = readOnlyBacklog(backlog);
+  // Hoisted out of the ctx literal below so that `vars.run` can reference it: a property of an
+  // object literal cannot read a sibling property of the same literal. See Q-0057.
+  const runId = nextRunId(ticket);
   const ctx = {
     flow, ticket, backlog, harnessDir, repoDir, config, ui, auto, dry,
-    counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId: nextRunId(ticket),
+    counters: ticket.meta.iterations ?? {}, stats: { cost: 0, tokens: 0, unpriced: 0 }, runId,
     // `base` overrides the DIFF ANCHOR only — ctx.vars.base, which `{base}` interpolates and the
     // range guard treats as related. The three sites that MERGE a base into the ticket's branch
     // (rework sync, integrate's sync, the evidence note) read config.repo.base_branch directly and
     // are deliberately not moved: aiming a review at an old revision must not write that revision
     // into the branch. See Q-0077.
-    vars: { id: ticket.meta.id, iter: 1, base: base ?? config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
+    //
+    // `run` is this run's id — the number runs.log carries as `run=N` and `.quorum/runs/<id>-N/` is
+    // named after. It lets a flow name a ticket-scoped path after the run that wrote it, which
+    // `iter` cannot: `iter` restarts at 1 on every run. See Q-0057.
+    vars: { id: ticket.meta.id, iter: 1, run: runId, base: base ?? config.repo?.base_branch ?? 'main', round: reviewRound(ticket) },
     // Whether the maintainer typed --base, which vars.base cannot answer: it is set either way,
     // and an override may legitimately name the configured value. Only a diagnostic reads it, so
     // that an unresolvable revision is blamed on the flag rather than on a file that never

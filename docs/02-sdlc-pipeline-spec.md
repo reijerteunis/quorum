@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -424,6 +424,18 @@ max_iterations: 2`, then `type: integrate` onto the ticket branch with `run_test
 dropped is solutioning's contracts and qa-red's failing suite, because work that changes what
 the repository *is* has no behaviour a test could fail on before it exists. The reasoning is in
 the DECISIONS entry of 2026-08-24; the shipped file is `harness/flows/chore.yaml`.
+
+**A review artifact is named by the run that wrote it.** The review step writes
+`review/chore/run-<run>/chore-iter-<iter>.md`, and the implement step reads
+`review/chore/run-<run>/chore-iter-*.md` — so a revision round is fed its own run's reviews and no
+others, while every earlier run's reviews stay on disk under their own directory. `{run}` is the
+run's id: the number `runs.log` carries as `run=N` and `.quorum/runs/<id>-N/` is named after.
+`{iter}` still counts backward edges inside one run and still restarts at 1 in each run, which is
+why it cannot name the path on its own — until Q-0057 it did, and a second run of the flow on a
+ticket overwrote the first run's reviews and fed the surviving mixture back to the implementer. A
+finding that must outlive the run it was made in belongs in `requirements/errata.md`, which the
+implement step reads on every run. Reviews written before Q-0057 keep their flat
+`review/chore-iter-<iter>.md` names; nothing moves them and no glob reads them.
 
 **Prerequisite, and a known gap.** `review` diffs against `harness/<id>/integration` and
 `implement` bases its worktree on it, but `integrate` — the only step that creates that branch —
