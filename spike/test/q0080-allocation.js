@@ -139,6 +139,22 @@ scenario('A6', 'AC-9 — an explicit id goes through every check and skips none'
   }
 });
 
+scenario('A6b', 'AC-8 — a control character in a rejected id is escaped, so the error stays one line', () => {
+  const backlog = backlogOf([]);
+  // The value is whatever `--id` was given, and the message is one line by contract. Unescaped, a
+  // newline splits it into three and the second reads like harness output. Q-0080 review nit.
+  const injected = 'Q-0099\nFAKE: injected';
+  assert.throws(() => backlog.create({ title: 't', intent: 'i', id: injected }), (e) => {
+    assert.equal(e.message.split('\n').length, 1, 'the refusal is one line');
+    assert.ok(e.message.includes('\\x0a'), 'the newline is rendered as an escape');
+    assert.ok(!e.message.includes('\nFAKE'), 'and never written through');
+    return true;
+  });
+  // An ANSI escape is the same defect wearing colour.
+  assert.throws(() => backlog.create({ title: 't', intent: 'i', id: 'Q-0099\u001b[31m' }),
+    (e) => e.message.includes('\\x1b') && !e.message.includes('\u001b'), 'ESC is escaped');
+});
+
 scenario('A7', 'AC-3 — init then three ticket new gives T-0001, T-0002, T-0003, each its own folder', () => {
   const dir = project();
   for (const expected of ['T-0001', 'T-0002', 'T-0003']) {

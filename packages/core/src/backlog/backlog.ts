@@ -263,9 +263,22 @@ const FORM = '<PREFIX>-nnnn';
 /** At most this many ids are quoted back, so a hundred-ticket backlog still prints one line. */
 const SAMPLE = 3;
 
+/**
+ * A control character in a value this message quotes back, rendered as an escape rather than
+ * written through.
+ *
+ * Why: the value is attacker-controlled — it is whatever `--id` was given — and the message is one
+ * line by contract. A newline splits it into three, and the second reads like harness output; an
+ * ANSI escape colours the terminal. Reported as a nit by Q-0080's reviewer and reproduced before
+ * it was believed.
+ */
+const printable = (value: string): string =>
+  // eslint-disable-next-line no-control-regex -- the class being escaped is exactly the control range
+  value.replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.codePointAt(0)!.toString(16).padStart(2, '0')}`);
+
 /** An `--id` the grammar does not recognise, named with the shape it should have had. */
 const notATicketId = (given: string): string =>
-  `not a ticket id: '${given}' — an id is ${FORM}, like Q-0081`;
+  `not a ticket id: '${printable(given)}' — an id is ${FORM}, like Q-0081`;
 
 /**
  * Tickets are there and not one of their ids parses. Sorted before it is cut, so the sample is the

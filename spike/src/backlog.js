@@ -41,7 +41,12 @@ const exhaustedPrefix = (prefix, highest, next) =>
   `cannot allocate a ticket id: the next id after ${prefix}-${String(highest).padStart(4, '0')} `
   + `would be ${next}, which is not of the form ${FORM}; ${ACTION}`;
 
-const notATicketId = (given) => `not a ticket id: '${given}' — an id is ${FORM}, like Q-0081`;
+// A control character in a value quoted back is rendered as an escape rather than written through:
+// the value is whatever `--id` was given, and the message is one line by contract. A newline splits
+// it into three and the second reads like harness output. See Q-0080's review nit.
+const printable = (value) => String(value).replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.codePointAt(0).toString(16).padStart(2, '0')}`);
+
+const notATicketId = (given) => `not a ticket id: '${printable(given)}' — an id is ${FORM}, like Q-0081`;
 
 export function parseFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);

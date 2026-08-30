@@ -487,6 +487,23 @@ describe('Q-0080 — one backlog, one prefix, and an allocator that refuses rath
       .toBe('ticket id already taken: Q-0006 already belongs to Q-0006-a');
   });
 
+  // The value is whatever `--id` was given, and the message is one line by contract. Unescaped, a
+  // newline splits it into three and the second reads like harness output. Q-0080 review nit.
+  test('AC-8 — a control character in a rejected id is escaped, so the refusal stays one line', () => {
+    const backlog = backlogOf([]);
+    const message = refusal(() => backlog.create({ title: 't', intent: 'i', id: 'Q-0099\nFAKE: injected' }));
+    // Asserted rather than defaulted: a create() that did not refuse at all would otherwise read
+    // as a one-line message and pass.
+    expect(message, 'create must refuse an id the grammar rejects').not.toBeNull();
+    expect(message!.split('\n')).toHaveLength(1);
+    expect(message!).toContain('\\x0a');
+    expect(message!).not.toContain('\nFAKE');
+    const ansi = refusal(() => backlog.create({ title: 't', intent: 'i', id: 'Q-0099\u001b[31m' }));
+    expect(ansi, 'create must refuse this one too').not.toBeNull();
+    expect(ansi!, 'an ANSI escape is the same defect wearing colour').toContain('\\x1b');
+    expect(ansi!).not.toContain('\u001b');
+  });
+
   test('AC-7 — reading is untouched: a mixed, partly unreadable backlog still lists and reads', () => {
     const backlog = backlogOf([['Q-0006-a', 'Q-0006'], ['T-0007-b', 'T-0007'], ['damaged-x', 'not-an-id']]);
     expect(backlog.list().map((t) => t.folder).sort()).toStrictEqual(['Q-0006-a', 'T-0007-b', 'damaged-x']);
