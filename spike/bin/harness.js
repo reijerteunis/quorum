@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // harness — spike CLI. Commands:
 //   harness init [dir]                      copy templates into <dir>/harness and create backlog/
-//   harness ticket new "<title>" [--intent "..."] [--owner name]
+//   harness ticket new "<title>" [--intent "..."] [--owner name] [--id Q-0081]
 //   harness board                           kanban of tickets by stage
 //   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--gate-answer advance|retry|abort]
 //   harness lint                            lint the whole flow directory (structure + cross-flow edges)
@@ -14,7 +14,7 @@ import readline from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
-import { Backlog, STAGES } from '../src/backlog.js';
+import { Backlog, STAGES, parseTicketId } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 import { validateFile, readData } from '../src/contracts.js';
@@ -127,7 +127,8 @@ function die(m) { console.error(c.red('✗ ') + m); process.exit(1); }
 // contracts/Q-0011/runs-cli.contract.md. Deliberately not in spike/src: the reader is scheduled
 // to be replaced during the M2 TypeScript port and would otherwise be a cross-role dependency.
 
-const TICKET_ID_PATTERN = /^[A-Z]+-[0-9]{4}$/;
+// The ticket-id grammar is parseTicketId in spike/src/backlog.js — one spelling per tree, so the
+// token `harness runs` resolves and the id `ticket new` allocates cannot drift apart. See Q-0080.
 const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
 
 // Resolves symlinks and returns null when the path does not exist or cannot be resolved. Used for
@@ -414,9 +415,14 @@ async function main() {
     }
     case 'ticket': {
       const { backlog } = loadProject();
-      if (rest[0] !== 'new') die('usage: harness ticket new "<title>" --intent "..."');
+      if (rest[0] !== 'new') die('usage: harness ticket new "<title>" --intent "..." [--id Q-0081]');
       const title = rest[1]; if (!title) die('title required');
-      const t = backlog.create({ title, intent: flags.intent ?? title, owner: flags.owner });
+      // An id the backlog refuses to allocate, or a folder it refuses to overwrite, is a sentence
+      // and an exit code — not the Node stack the catch on the last line of this file would print.
+      let t;
+      try {
+        t = backlog.create({ title, intent: flags.intent ?? title, owner: flags.owner, id: flags.id === undefined ? undefined : String(flags.id) });
+      } catch (e) { die(e.message); }
       console.log(c.green('✓') + ` ${t.meta.id} created at ${path.relative(process.cwd(), t.dir)} (stage: draft)`);
       return;
     }
@@ -566,7 +572,7 @@ async function main() {
           else printRunDetailHuman(token, manifest, manifestPath, repoDir);
           return;
         }
-        if (TICKET_ID_PATTERN.test(token)) {
+        if (parseTicketId(token)) {
           // A syntactically valid ticket id with zero matches exits 0; rendered warnings are a
           // separate question. runs-cli.contract.md states both rules and did not say which governs
           // when both apply, which is why the implementation and its test read it one way and both

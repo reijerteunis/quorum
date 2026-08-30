@@ -1,0 +1,90 @@
+{
+  "about": [
+    "Q-0080: what a backlog allocates, as one table both trees assert over — spike/test/q0080-allocation.js",
+    "and packages/core/src/backlog/backlog.test.ts. A fix in one tree alone passes its own suite and",
+    "leaves the other handing out T-0001; two transcriptions of a table drift the same way, so there",
+    "is one. Each row builds a backlog from `tickets` ([folder, id]) and asks nextId() for `id`, or",
+    "expects it to throw `throws` — the whole message, because a refusal that names no evidence is",
+    "the defect this ticket is about. It is a .json rather than a .js so spike/test/run.js, which",
+    "discovers *.js, does not try to execute it."
+  ],
+  "rows": [
+    {
+      "name": "an empty backlog starts where harness init says it does",
+      "criterion": "AC-3",
+      "tickets": [],
+      "id": "T-0001"
+    },
+    {
+      "name": "the prefix comes from the ids on disk",
+      "criterion": "AC-2",
+      "tickets": [["Q-0006-something", "Q-0006"], ["Q-0043-something", "Q-0043"]],
+      "id": "Q-0044"
+    },
+    {
+      "name": "an adopter's own prefix needs no configuration",
+      "criterion": "AC-2",
+      "tickets": [["PROJ-0001-first", "PROJ-0001"]],
+      "id": "PROJ-0002"
+    },
+    {
+      "name": "the counter still works when the prefix matches",
+      "criterion": "AC-2",
+      "tickets": [["T-0006-a", "T-0006"], ["T-0007-b", "T-0007"]],
+      "id": "T-0008"
+    },
+    {
+      "name": "a gap is not filled",
+      "criterion": "AC-2",
+      "tickets": [["Q-0001-a", "Q-0001"], ["Q-0003-c", "Q-0003"]],
+      "id": "Q-0004"
+    },
+    {
+      "name": "the maximum is numeric, not lexicographic",
+      "criterion": "AC-2",
+      "tickets": [["Q-0002-a", "Q-0002"], ["Q-0010-b", "Q-0010"]],
+      "id": "Q-0011"
+    },
+    {
+      "name": "matching is exact and case-sensitive, so no near miss advances the counter",
+      "criterion": "AC-2",
+      "tickets": [
+        ["Q-0005-real", "Q-0005"],
+        ["Q-12-x", "Q-12"],
+        ["Q-00081-x", "Q-00081"],
+        ["q-0081-x", "q-0081"],
+        ["Q-0002-extra-x", "Q-0002-extra"],
+        ["Q-ABCD-x", "Q-ABCD"]
+      ],
+      "id": "Q-0006"
+    },
+    {
+      "name": "tickets are there and no id parses: refuse, with the count and a sample",
+      "criterion": "AC-4(a)",
+      "tickets": [["q-0011-a", "q-0011"], ["Q-12-b", "Q-12"], ["T-1-c", "T-1"]],
+      "throws": "cannot allocate a ticket id: read 3 tickets and none has an id of the form <PREFIX>-nnnn (saw 'Q-12', 'T-1', 'q-0011'); pass --id <ID> or reconcile the backlog"
+    },
+    {
+      "name": "the sample is bounded, so a large damaged backlog still prints one line",
+      "criterion": "AC-4(a)",
+      "tickets": [["a-1-w", "a-1"], ["b-2-x", "b-2"], ["c-3-y", "c-3"], ["d-4-z", "d-4"]],
+      "throws": "cannot allocate a ticket id: read 4 tickets and none has an id of the form <PREFIX>-nnnn (saw 'a-1', 'b-2', 'c-3', …); pass --id <ID> or reconcile the backlog"
+    },
+    {
+      "name": "more than one prefix parses: refuse, naming every prefix and its count",
+      "criterion": "AC-4(b)",
+      "tickets": [["Q-0006-a", "Q-0006"], ["Q-0043-b", "Q-0043"], ["T-0007-c", "T-0007"]],
+      "throws": "cannot allocate a ticket id: the backlog uses more than one prefix — Q- (2), T- (1); pass --id <ID> or reconcile the backlog"
+    },
+    {
+      "name": "the prefix is full: a five-digit id is not one harness runs could resolve",
+      "criterion": "AC-4(c)",
+      "tickets": [["T-9998-a", "T-9998"], ["T-9999-b", "T-9999"]],
+      "throws": "cannot allocate a ticket id: the next id after T-9999 would be T-10000, which is not of the form <PREFIX>-nnnn; pass --id <ID> or reconcile the backlog"
+    }
+  ],
+  "grammar": {
+    "accepts": ["Q-0011", "QA-0049", "ABC-1234"],
+    "rejects": ["q-0011", "Q-11", "Q-00111", "Q-0011-1", " Q-0011", "Q-0011 ", "Q0011", "0011-Q"]
+  }
+}
