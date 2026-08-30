@@ -206,9 +206,53 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `main:contained` 2026-08-25.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
 - Q-0037 Run-history review remainder — one major and eight nits.
-- Q-0038 Deferred-range failures name their producing step in every case. Its body also records
-  two neighbours it explicitly does not own — the chore flow cannot run on a ticket's first pass,
-  and `budget.per_run_usd` stops nothing — each of which still needs its own ticket.
+- Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
+  `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
+  step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint
+  is still deferred while its pre-existing endpoints are resolved at run start anyway. One
+  modelling error had produced three defects in eighteen lines: the wholesale `.find()` over both
+  endpoints, the diagnosis ternary that named the producing step only when the *failing* endpoint
+  was the deferred one, and a not-yet-created endpoint reported as one that *"does not resolve
+  either"*. Q-0077's `--base` attribution was folded in at the requirements gate, so an
+  unresolvable override is blamed on the flag rather than on `harness/harness.yaml`, which never
+  supplied the value. See *"A range is checked one endpoint at a time, because an endpoint is what
+  can be absent"* (2026-08-30).
+  **What the $13.86 actually bought, which decision 044 did not know.** `ensureWorktree`
+  (`spike/src/git.js`) cuts a worktree from `HEAD` when a step's declared `base:` does not resolve,
+  silently, and `chore.yaml` declares `base: "harness/{id}/integration"` — the branch that did not
+  exist. The implementer was not stopped by the missing ref; it was handed a worktree from
+  somewhere else and paid to work in it. Named as a non-goal with its evidence, not fixed: it is
+  another module, it governs fan-out task bases too, and *throw, warn, or which callers* is
+  unasked.
+  **Five implement rounds, and the code was byte-identical from round 1 onward** — no review round
+  found a defect in the change. Rounds 1–3 went entirely on a harness misconfiguration:
+  `.claude/settings.json` granted npm per verb and granted only `test`, while `harness/harness.yaml`
+  mandates `npm install --prefix spike …`, so AC-12 required a command the harness's own permission
+  config refused. Round 3 proved it was the allowlist rather than a sandbox by re-attempting with
+  the override set, and found the resolution the earlier rounds had missed. **The reviewer was right
+  on substance and the implementer's measurements were wrong**: rounds 1–2 argued the pnpm
+  substitution equivalent, checking five packages against the lockfile and finding five matches; the
+  real install reported `added 4 packages, and changed 3`, moving `fast-uri` to 3.1.5 to match
+  `spike/package-lock.json`. A pnpm install ignoring npm's lockfile produced a genuinely different
+  tree, exactly as `harness.yaml`'s own comment warns. The fix was to the environment, not to the
+  criterion: erratum E-2 amended AC-12 and **E-3 withdrew that amendment** once the permission
+  landed and round 4 ran the command — AC-12 stands unamended and satisfied.
+  **Round 4, once that blocker stopped absorbing the reviewer's attention, produced the first real
+  review of the code** and found a pre-existing hazard nobody had considered: `ctx.diffInputs` is
+  keyed by range alone, so a site materialising before a producer leaves bytes a later *deferred*
+  site reads from the cache. Ruled reported-not-fixed by E-3(b) — it is unreachable in every shipped
+  flow and its fix collides with AC-10's identical-bytes guarantee — and opened as **Q-0078**.
+  Round 5 changed no code, cited the erratum, was approved, and re-derived E-3(b)'s claims rather
+  than inheriting them, catching that the check had covered `harness/flows/` but not
+  `spike/templates/harness/flows/`.
+  **$37.46 billed across both runs** — $5.99 requirements, $31.48 chore — and 44.7M tokens across
+  five unpriced codex reviews. Verified forced in both environment rows: `integrate` ran
+  `commands.install` → exit 0 and both suites → exit 0 in its worktree, then spike 15/15 and
+  workspace 7/7 with 0 cached re-run on `main` after the merge, per Q-0072's closing finding. The
+  two neighbours it does not own are unchanged and still want tickets — the chore flow cannot run on
+  a ticket's first pass (mitigated by charter §8's checklist, and now load-bearing rather than
+  advisory, because a first-pass run refuses in the preflight instead of billing), and
+  `budget.per_run_usd` still stops nothing.
 - Q-0039 One run at a time per ticket. Open since M1, where two runs overlapped twice in one night
   and one run's rollback moved a branch another live run was holding.
 - Q-0040 A gate can say "undecided". A non-interactive run that reaches an unanswerable gate
@@ -535,6 +579,19 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   turbo's and vitest's stderr, which is most of their output; `testReport` already answers that
   differently for each consumer. Lands in both trees together, and would deliberately change the
   AC-2 assertions that now pin the current behaviour rather than discover them.
+
+- Q-0078 A deferred diff site can be served an earlier site's cached materialisation. Opened
+  2026-08-30 from Q-0038's round-4 review and its erratum E-3(b). `ctx.diffInputs` is keyed by the
+  interpolated range alone, so a site that materialises `X...Y` before a later group creates `Y`
+  leaves bytes that the correctly-deferred second site then receives from the cache, because
+  `buildPrompt` prefers `ctx.diffInputs?.get(range)` unconditionally. Pre-existing — `buildPrompt`
+  is byte-identical across Q-0038 and neither preflight ever removed a cached entry on deferral —
+  and unreachable in every shipped flow in both trees, which is why it is p3 and why keeping it out
+  of Q-0038 was right. It needs a requirement rather than a line: the obvious fix, invalidating on
+  deferral, makes two sites materialise the same range at different moments, which Q-0038's AC-10
+  (*"every panel member receives identical bytes"*) forbids, so the choice among keying by site,
+  invalidating, and forbidding the shape in `harness lint` is the work. One tree until Q-0051 ports
+  the diff subsystem; unlike Q-0038 it does not block the port.
 
 - Q-0076 Nothing in run history has a cap, and prompts are the largest thing in it. Opened
   2026-08-28 from Q-0070's OQ-5, whose body the merged requirement wrote out in full rather than
