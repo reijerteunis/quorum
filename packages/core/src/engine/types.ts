@@ -9,7 +9,8 @@ import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig 
 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
-import type { Occurrence } from '../run-history/manifest.js';
+import type { Occurrence, OccurrenceKind, RunStatus as OccurrenceStatus } from '../run-history/manifest.js';
+import type { OccurrenceFields } from '../run-history/writer.js';
 import type { DeferredDiff } from './diff.js';
 
 /** Re-exported so every engine file shares one `FlowError` identity with `core/lint`. */
@@ -95,14 +96,22 @@ export interface RunPersistence {
   /** Record one occurrence-level event — a gate exhaustion, for instance — at its own cost. */
   recordOccurrenceEvent(ticket: TicketRecord, stage: string, event: string, cost: number): void | Promise<void>;
   /**
-   * Adds a freshly allocated occurrence to the set {@link finaliseActiveOccurrences} closes.
+   * Allocates one occurrence, **registers it as it allocates**, and returns it.
    *
-   * Q-0050 allocates none — gates and fan-out parents allocate no occurrence — so this seam has no
-   * caller inside this ticket. It exists because the finaliser without it is a permanent no-op, and
-   * a later ticket discovering that would have to widen the capability and add registration in the
-   * same round; see Q-0050 review round 1, M-3.
+   * Registration is not a second call, which is what Q-0050's `registerOccurrence` seam left to a
+   * caller and no caller could reach: an occurrence this returns is already in the set
+   * {@link finaliseActiveOccurrences} closes, so an interrupted adapter call cannot be left
+   * permanently `running` in the manifest by a step that forgot.
+   *
+   * @returns `null` where the run keeps no history — the dry case, whose two callers short-circuit
+   *   above this line. Nullable rather than throwing so that case is representable in the type
+   *   rather than discovered as a crash on an absent manifest.
    */
-  registerOccurrence(occurrence: Occurrence): void;
+  allocateOccurrence(step: { id: string }, kind: OccurrenceKind, fields?: OccurrenceFields): Occurrence | null;
+  /** Writes one artifact beside an occurrence, byte for byte; a broken history directory warns and never throws. */
+  persistArtifact(occurrence: Occurrence, name: string, text: string): void;
+  /** Closes one occurrence out, de-registers it, and replaces the manifest. */
+  terminalOccurrence(occurrence: Occurrence, status: OccurrenceStatus, fields?: Partial<Occurrence>): void;
   /**
    * Finalise the run manifest — status, `ended_at`, duration, stage and roll-up — and replace it.
    *
