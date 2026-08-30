@@ -1,14 +1,22 @@
 ---
 id: Q-0052
 title: core/engine — agent, gate and script steps
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0052/integration
 priority: p2
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-30T21:55:57.932Z
+    cost: 12.35
 ---
 Ports the three simple step kinds: `runAgentStep` with `buildPrompt`, `schemaFor`, `resolveModel` and
 `reviewRound`; `runGate`; `runScript`. Roughly 250 lines of `spike/src/engine.js`. The fan-out and
