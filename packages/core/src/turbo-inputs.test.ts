@@ -1310,6 +1310,33 @@ const READ_BASES: Record<string, Record<string, string>> = {
     file: "path.join(harnessDir, 'roles', `${name}.md`) and the flow file loadFlow is handed — both under the CALLER'S project, not this repository",
     dir: "path.join(ticketDir, 'review') — the ticket folder reviewRound counts rounds in, again in the caller's project",
   },
+  'packages/core/src/engine/prompt.ts': {
+    file: "path.join(harnessDir, name) for each input.harness entry a step declares — under the CALLER'S project, and the harnessDir is the one loadProject resolved for it",
+  },
+  'packages/core/test/run-fixture.ts': {
+    'runDir(repoDir, run)': "path.join(repoDir, RUN_HISTORY_ROOT, runIdOf(…)) inside the temp repository repo() created for the test; every fixture in this file is under os.tmpdir",
+  },
+  'packages/core/src/engine/agent-run.test.ts': {
+    file: "occurrenceFile(fixture.repoDir, …) — inside the run history of the temp repository runFixture() built, read from inside the adapter call to prove the prompt was persisted first",
+    "occurrenceFile(fixture.repoDir, 1, 'implement', OUTPUT_FILE)": 'the same occurrence artifact, read back after the run',
+    'fixture.ticketDir': "the ticket folder inside that temp repository, for the runs.log line the step appended",
+    'dump!': "the path the FlowError itself named — inside the ticket folder's .harness/, which is under the same temp repository",
+    occurrenceDir: 'path.dirname of one of those occurrence artifacts, listed to show what the run wrote beside it',
+  },
+  'packages/core/src/engine/agent-step.test.ts': {
+    repoDir: 'repo() — a git repository created under os.tmpdir for this test',
+    "worktreeOf(repoDir, 'harness/Q-0052/implement')": 'a worktree inside that repository, where the step ran',
+    worktree: 'the same worktree, bound once where the test reads it twice',
+    ticketDir: 'the ticket folder inside that repository',
+  },
+  'packages/core/src/engine/run-composition.test.ts': {
+    'fixture.ticketDir': 'the ticket folder inside the temp repository runFixture() built',
+    'fixture.repoDir': 'that temp repository itself, for the directories a dry run must not create',
+    'gate.ticketDir': "the ticket folder the gate event named, asserted to be the one the fixture built — the check is that the path a human is sent to exists",
+  },
+  'packages/core/src/engine/steps.test.ts': {
+    ticketDir: "the ticket folder inside tempDir('script-'), where the script step's declared output landed",
+  },
   'packages/core/src/engine/engine.test.ts': {
     'opts.project.repoDir': "the temp repository repo() created for this test; nothing under it is in the repository",
     'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
