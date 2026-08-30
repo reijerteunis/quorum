@@ -11,7 +11,7 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import { RUNS_LOG_FILE, integrationBranch } from '@quorum/shared';
+import { RUNS_LOG_FILE, integrationBranch, parseTicketId } from '@quorum/shared';
 import type { Ticket } from '@quorum/shared';
 
 /**
@@ -49,6 +49,12 @@ export interface NewTicket {
   intent: string;
   owner?: string;
   repos?: string[];
+  /**
+   * The id to use, instead of the one {@link Backlog.nextId} would allocate. It is checked against
+   * the grammar and against the backlog exactly as an allocated id is — it supplies the number and
+   * skips no check, which is what makes a refusal from `nextId()` survivable rather than a dead end.
+   */
+  id?: string;
 }
 
 /**
@@ -133,30 +139,72 @@ export class Backlog {
   }
 
   /**
-   * One more than the highest ticket number on disk, zero-padded to `T-nnnn`.
+   * The id the next ticket takes: the one prefix this backlog's tickets already carry, and one
+   * more than the highest number under it. An empty backlog allocates `T-0001`.
    *
-   * Why: it strips a leading `T-` and nothing else, so every `Q-nnnn` id in this repository yields
-   * `NaN` and is filtered out — `nextId()` returns `T-0001` here, and `create()` would then
-   * overwrite an existing folder without a word. Carried, not fixed, and asserted as it is so that
-   * a later fix has to be deliberate (charter §2, Q-0043).
+   * A backlog it cannot read is refused rather than reported as empty — "no tickets" and "no id I
+   * recognise" are different answers, and returning the first for the second is what let two
+   * invocations collide on one id and {@link create} overwrite the ticket before it (Q-0080).
+   *
+   * @throws {Error} when tickets exist and no id among them parses; when the ids that parse carry
+   *   more than one prefix; or when the next number would leave the grammar. Each message names
+   *   what it found and ends with the action.
    */
   nextId(): string {
-    const nums = this.list().map((t) => parseInt(String(t.meta.id).replace(/^T-/, ''), 10)).filter(Number.isFinite);
-    return `T-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0')}`;
+    const tickets = this.list();
+    // Why: `harness init` prints `harness run requirements T-0001` as the next command, so this is
+    // the id the product already advertises for a fresh backlog (Q-0080 AC-3).
+    if (!tickets.length) return 'T-0001';
+
+    const ids = tickets.map((t) => parseTicketId(t.meta.id)).filter((id) => id !== null);
+    if (!ids.length) throw new Error(unreadableBacklog(tickets));
+
+    const counts = new Map<string, number>();
+    for (const { prefix } of ids) counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+    if (counts.size > 1) throw new Error(mixedPrefixes(counts));
+
+    const { prefix } = ids[0];
+    const highest = Math.max(...ids.map((id) => id.number));
+    const next = `${prefix}-${String(highest + 1).padStart(4, '0')}`;
+    // The grammar is the oracle rather than a second spelling of "four digits": one past the last
+    // id a backlog can hold is exactly the string it rejects.
+    if (!parseTicketId(next)) throw new Error(exhaustedPrefix(prefix, highest, next));
+    return next;
   }
 
   /**
    * Allocate a ticket folder and write its `ticket.md`. The frontmatter key order below is the
    * file's key order: not alphabetised, not sorted, not "tidied".
    *
+   * It refuses a taken id and an occupied folder rather than allocating around either: allocating
+   * around one papers over an allocator that produced an id already in use, which is the state this
+   * refusal exists to make impossible. Every check runs before anything is created, and the ticket
+   * directory is then created exclusively, so a refusal leaves the backlog byte for byte as it was.
+   *
    * Why: `branch` is a NAME and nothing here creates the ref, which is half of why the chore flow
    * cannot run on a ticket's first pass — Q-0038 carries that (register row 19).
+   *
+   * @throws {Error} when `id` is not of the form `<PREFIX>-nnnn`, when the id already belongs to a
+   *   folder, or when the target folder exists. `nextId`'s refusals reach the caller unchanged.
    */
-  create({ title, intent, owner = process.env.USER ?? 'unknown', repos = [] }: NewTicket): TicketRecord {
-    const id = this.nextId();
+  create({ title, intent, owner = process.env.USER ?? 'unknown', repos = [], id: given }: NewTicket): TicketRecord {
+    if (given !== undefined && !parseTicketId(given)) throw new Error(notATicketId(given));
+    const id = given ?? this.nextId();
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
-    const dir = path.join(this.root, `${id}-${slug}`);
-    fs.mkdirSync(dir, { recursive: true });
+    const folder = `${id}-${slug}`;
+    const dir = path.join(this.root, folder);
+    const entries = fs.existsSync(this.root) ? fs.readdirSync(this.root) : [];
+    if (entries.includes(folder)) throw new Error(`ticket folder already exists: ${folder}`);
+    // The same resolution dirOf uses, so "the id already belongs to a folder" means what a reader
+    // of this backlog would mean by it — a differing slug included.
+    const taken = entries.find((name) => name === id || name.startsWith(`${id}-`));
+    if (taken !== undefined) throw new Error(`ticket id already taken: ${id} already belongs to ${taken}`);
+    // Two jobs, deliberately two calls: the root is created if it is missing, and the ticket
+    // directory is created EXCLUSIVELY, so `ticket.md` is opened only once this call owns the
+    // folder. One `recursive: true` over the whole path would do both and silently accept an
+    // existing ticket folder, which is the overwrite (Q-0080 AC-5, AC-6).
+    fs.mkdirSync(this.root, { recursive: true });
+    fs.mkdirSync(dir);
     const ticket: TicketRecord = {
       dir, folder: path.basename(dir), body: intent.trim() + '\n',
       meta: {
@@ -202,6 +250,44 @@ export class Backlog {
     fs.appendFileSync(path.join(ticket.dir, RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
   }
 }
+
+/**
+ * What every allocation refusal ends with. A refusal that names no way forward reads as a wall,
+ * and `--id` is the way past all three of them.
+ */
+const ACTION = 'pass --id <ID> or reconcile the backlog';
+
+/** How the grammar is described to whoever has to fix an id by hand. */
+const FORM = '<PREFIX>-nnnn';
+
+/** At most this many ids are quoted back, so a hundred-ticket backlog still prints one line. */
+const SAMPLE = 3;
+
+/** An `--id` the grammar does not recognise, named with the shape it should have had. */
+const notATicketId = (given: string): string =>
+  `not a ticket id: '${given}' — an id is ${FORM}, like Q-0081`;
+
+/**
+ * Tickets are there and not one of their ids parses. Sorted before it is cut, so the sample is the
+ * same sentence whatever order the filesystem listed the folders in.
+ */
+function unreadableBacklog(tickets: readonly TicketRecord[]): string {
+  const seen = [...new Set(tickets.map((t) => String(t.meta.id)))].sort();
+  const quoted = seen.slice(0, SAMPLE).map((id) => `'${id}'`).join(', ');
+  const sample = seen.length > SAMPLE ? `${quoted}, …` : quoted;
+  return `cannot allocate a ticket id: read ${tickets.length} tickets and none has an id of the form ${FORM} (saw ${sample}); ${ACTION}`;
+}
+
+/** More than one prefix parses, so there is no one backlog to count within. */
+function mixedPrefixes(counts: ReadonlyMap<string, number>): string {
+  const named = [...counts].sort(([a], [b]) => (a < b ? -1 : 1)).map(([prefix, n]) => `${prefix}- (${n})`);
+  return `cannot allocate a ticket id: the backlog uses more than one prefix — ${named.join(', ')}; ${ACTION}`;
+}
+
+/** The prefix is full: a five-digit id is not one `harness runs` could resolve afterwards. */
+const exhaustedPrefix = (prefix: string, highest: number, next: string): string =>
+  `cannot allocate a ticket id: the next id after ${prefix}-${String(highest).padStart(4, '0')} `
+  + `would be ${next}, which is not of the form ${FORM}; ${ACTION}`;
 
 /** Every file under `dir`, recursively, in the filesystem's own order. Module-private. */
 function walk(dir: string): string[] {
