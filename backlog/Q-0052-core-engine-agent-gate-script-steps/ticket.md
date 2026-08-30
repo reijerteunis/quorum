@@ -134,6 +134,49 @@ is a defect in shipped code, and all seven are invisible to a green suite.
    `contracts/Q-0050/run-messages.fixture.json` is the oracle to read them through — 18 of its 22
    leaf keys are read today, and the four that are not are `gate.*`, asserted as a shape.
 
+## Inherited from Q-0051 and Q-0057, 2026-08-30 — two more that die if this body does not carry them
+
+Here for the same reason as the seven above: `requirements.yaml` reads this ticket's own folder and
+not a sibling's, so an obligation left in Q-0051's open questions or Q-0057's implement report is
+not read again after that ticket's gate.
+
+**Q-0057's `{run}`, and the write loop that must use it.** Q-0057 made a chore run's review artifact
+run-scoped — `review/chore/run-{run}/chore-iter-{iter}.md` is the write path in both shipped copies
+(`harness/flows/chore.yaml:34`, `spike/templates/harness/flows/chore.yaml:34`) and the input glob at
+`:13` of each — and added `{run}` as an interpolation variable to **both** engine trees
+(`spike/src/engine.js:57`, `packages/core/src/engine/engine.ts:141`, whose JSDoc at `:137–139` names
+the reason: `iter` restarts at 1 on every run, so it cannot name a ticket-scoped path after the run
+that wrote it). **`core` got the variable and not the behaviour**, because `runAgentStep` is still
+`unavailableStep(step, 'Q-0052')` (`packages/core/src/engine/routing.ts:56–58`) — which is why
+Q-0057's AC-1 core half is a spy assertion rather than a file assertion. So when this ticket ports
+the agent step's declarative write loop (`spike/src/engine.js:315–318`, `for (const rel of
+writesOf(step))`), it interpolates the write path with `vars.run` in scope and **must not
+reintroduce a ticket-scoped path named by a run-scoped counter**. The evidence that this is live
+rather than theoretical is one directory: `backlog/Q-0080-…/review/chore/run-2/` is the only
+run-scoped review in the backlog, so a port that drops `{run}` sends the next chore ticket's reviews
+back to the flat path beside the 57 legacy files and re-opens the defect in silence. Stated rather
+than assumed: `{run}` inherits `nextRunId`'s weaknesses (`spike/src/engine.js:776–784`) — it derives
+from `runs.log` and `ticket.meta.history`, so two concurrent runs collide (Q-0039) and a hand-edited
+`runs.log` moves it. Neither is new; `reviewRound` reads the ticket folder with the same exposure.
+
+**Q-0051's OQ-1 — does the `--dry` placeholder discharge the skipped-subject rule on its own?**
+Q-0051 asked whether `preflightDiffs` should emit an `info` event naming what it skipped, and ruled
+**not there**: an added event is new behaviour under charter §2 and needs its own authority, so the
+preflight ported as-is. It raised the question here because the only text that reports a deferral
+today is `buildPrompt`'s, which is this ticket's — `spike/src/engine.js:747–749` answers a range
+absent from `ctx.diffInputs` with *"(dry run: `<range>` is produced by an earlier step of this flow
+and is materialised when that step has run)"*. Everything else about a deferral is implicit: the
+range sits in `deferredDiffs` and nothing says so until step time. The rule it is measured against
+is *"Q-0035 accepted: a check that skips its subject must not report success"* (`docs/DECISIONS.md`,
+2026-08-25), which `docs/GLOSSARY.md`'s **Preflight** entry states as reporting a declined
+examination as *skipped*; Q-0051's merged requirement calls it invariant 11. **This ticket's
+requirement must rule the question rather than inherit the deferral** — either the placeholder is
+the report, said in as many words, or a report is owed. If it is owed, what that costs is known in
+advance: an added event is new behaviour wanting a decision entry, which no step in the chore flow
+may write, so the answer is a successor ticket and a gate obligation and never a criterion this run
+can satisfy. That is the pattern Q-0070's requirement named and Q-0079's run hit again — a loop
+spending its budget on work no agent in it can perform — and naming it here is how it is avoided.
+
 ## Ticket
 
 - **Depends on:** Q-0051 · **Depended on by:** Q-0053
