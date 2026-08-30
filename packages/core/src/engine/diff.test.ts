@@ -244,7 +244,7 @@ function containedTicket(): { root: string; beforeWork: string } {
   write(path.join(root, 'a.txt'), 'one\ntwo\n');
   commitAll(root, 'the ticket\'s work');
   git(root, 'checkout', '-q', 'main');
-  git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+  git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
   return { root, beforeWork };
 }
 
@@ -414,7 +414,7 @@ describe('Q-0051 AC-6 — the empty-range diagnostic quotes evidence and claims 
     write(path.join(root, 'a.txt'), 'one\ntwo\n');
     commitAll(root, 'work');
     git(root, 'checkout', '-q', 'main');
-    git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+    git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
 
     const error = failure(STEP, contextFor(root, { base: 'main', id: TICKET }));
     expect(error).toBeInstanceOf(FlowError);
@@ -506,7 +506,7 @@ describe('Q-0051 AC-7 — a deferred range\'s remedy is about the state that act
       write(path.join(root, 'a.txt'), 'one\ntwo\n');
       commitAll(root, 'work');
       git(root, 'checkout', '-q', 'main');
-      git(root, 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
+      git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'merge', '-q', '--no-ff', '-m', 'take the branch', BRANCH);
     } else {
       write(path.join(root, 'b.txt'), 'on main\n');
       commitAll(root, 'main moves');
