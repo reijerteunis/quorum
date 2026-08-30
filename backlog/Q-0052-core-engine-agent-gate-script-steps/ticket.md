@@ -177,6 +177,51 @@ may write, so the answer is a successor ticket and a gate obligation and never a
 can satisfy. That is the pattern Q-0070's requirement named and Q-0079's run hit again — a loop
 spending its budget on work no agent in it can perform — and naming it here is how it is avoided.
 
+## Preserved defect: Q-0078 becomes reachable in `core` on this branch and on no other
+
+**This ticket writes the first consumer of `ctx.diffInputs` in `packages/core`.** Q-0051 ported the
+producer — `preflightDiffs` materialises a resolvable range once into `context.diffInputs`
+(`packages/core/src/engine/diff.ts:445`), keyed by the **interpolated range alone**
+(`packages/core/src/engine/types.ts:170`) — and `core` has no reader at all: `buildPrompt` appears
+there only in two comments (`diff.ts:136`, `lint/lint.ts:141`). The read that holds the defect is
+`spike/src/engine.js:747`, `ctx.diffInputs?.get(range) ?? (ctx.dry ? … : materialiseDiff(step,
+ctx))`, which prefers the cache **unconditionally** — so a site correctly classified as deferred is
+handed bytes captured before its producer ran.
+
+**Port it as it stands and pin it; do not fix it here.** The authority is Q-0038's
+`requirements/errata.md` **E-3(b)** (2026-08-30), which ruled it *reported, not fixed* — charter §2's
+*"a defect found while reading is reported, never fixed in passing"* applied to a defect found while
+reviewing — and **Q-0078**, which carries it forward. The reason it is a ticket rather than a line:
+the obvious fix, dropping the cached entry on deferral, makes two sites materialise one range
+separately at different moments, which Q-0038's AC-10 (*"every panel member receives identical
+bytes"*) and its risk R-D forbid, and the once-per-distinct-range guarantee is load-bearing — it is
+what stops one range costing n git spawns across a fan-out wave. Q-0078 sets out three candidate
+shapes (key by site, invalidate on deferral, forbid the shape in `harness lint`) and says the choice
+is the work.
+
+**It is unreachable in every shipped flow in both trees**, which is why it is p3 and why keeping it
+out of Q-0038 was right: it needs one range read both **before and after** its producing step, and
+`chore.yaml:32`'s only diff site follows its producer while `review.yaml:12` and `:19` are parallel
+members of one group with no producer between them — the same in `spike/templates/harness/flows/`.
+
+**What this requirement must therefore do is name it, so a reviewer meets a citation rather than an
+undocumented hazard.** That is the Q-0066/Q-0068 shape: a defect pinned in both trees is a
+deliberate act, and a reviewer who finds one unannounced spends a round on it.
+`.claude/rules/engineering.md` says what that looks like in the source — one line naming the
+authority at the call site (`Why: preserved defect, see Q-0038 E-3(b) / Q-0078`) and never the
+ticket body transcribed into a comment. Whether the pin is also a test is this requirement's call,
+with one thing to weigh: a pin asserts the current behaviour deliberately and comes out with the
+defect later (Q-0080's precedent), while the *discriminating* scenario — one flow consuming a range
+before and after its producer, the second consumer asserted to receive the producer's work — is
+Q-0078's to write and to demonstrate red, per *"a check is not established by reading it"*
+(2026-08-29).
+
+**One correction to Q-0078's own body, which was written before Q-0051 landed.** Its **Sequencing**
+paragraph says the ticket becomes a two-tree change once Q-0051 has ported the diff subsystem. Half
+of that is now true: Q-0051 ported the *producer*, and the *reader* that holds the defect is this
+ticket's and is still one tree. Q-0078 becomes a two-tree ticket when **this** ticket lands, not
+when Q-0051 did.
+
 ## Ticket
 
 - **Depends on:** Q-0051 · **Depended on by:** Q-0053
