@@ -1,7 +1,7 @@
 ---
 id: Q-0051
 title: core/engine — diff preflight and materialisation
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0051/integration
@@ -17,6 +17,14 @@ history:
     stage_after: draft
     at: 2026-08-29T22:24:42.646Z
     cost: 7.274
+  - stage: requirements
+    run: 2
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-30T09:33:17.521Z
+    cost: 6.968
 ---
 Ports the diff subsystem: the run-level preflight in `runFlow` (`spike/src/engine.js:96–162`) and
 the eight functions it and `buildPrompt` reach — `named` (`:789`), `diffSitesOf` (`:801`),
