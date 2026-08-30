@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. Q-0051's entry was rewritten on 2026-08-30 to what shipped — the port's eleventh child, and the first whose requirement was run twice because Q-0038 landed on its subject between the two, the aborted document archived rather than resumed. Q-0057's entry was rewritten the same day to what shipped, taken in the gap between port children because the chore flow it fixes is what every remaining child runs. The working agreement on ticket ids was corrected on 2026-08-30 by Q-0080, which fixed an allocator that read every `Q-` id as unparseable and answered `T-0001` on every call: the prefix is the adopter's and is derived from the backlog, so stating this repository's convention as the product's was the same mistake one layer up. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+*Status: v1 plan, 2026-08-28 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. Q-0051's entry was rewritten on 2026-08-30 to what shipped — the port's eleventh child, and the first whose requirement was run twice because Q-0038 landed on its subject between the two, the aborted document archived rather than resumed. Q-0057's entry was rewritten the same day to what shipped, taken in the gap between port children because the chore flow it fixes is what every remaining child runs. The working agreement on ticket ids was corrected on 2026-08-30 by Q-0080, which fixed an allocator that read every `Q-` id as unparseable and answered `T-0001` on every call: the prefix is the adopter's and is derived from the backlog, so stating this repository's convention as the product's was the same mistake one layer up. Q-0079 and Q-0080 were opened and closed the same day, 2026-08-30 — the first from the third instance in three days of a test whose verdict depended on the machine rather than the commit, implemented by hand rather than ticketed further; the second split from its body and run through the flows, because it changes product behaviour on the cold-clone path. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -706,6 +706,109 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   (`engine.js:505–516`) already keeps 12,000 bytes of head and tail with an omission marker and is
   the shape to copy if a cap is wanted. Do not re-derive the evidence from Q-0070's headroom
   numbers, which measure a different thing.
+- Q-0079 A test may not depend on the machine's git configuration. *(Implemented by hand
+  2026-08-30, `main:contained`; the ticket stays at `requirements` because no engine run advanced
+  it.)* Opened from the third instance of one class in three days, each found only **after**
+  merging and each having passed implement, a cross-vendor review, `integrate`'s `tests=ok` and at
+  least one hand verification: Q-0072's two directories a working checkout has and a fresh clone
+  does not, Q-0073's `fs.existsSync` used to *classify*, and `git merge --no-ff` resolving a
+  committer identity — which macOS derives from the OS user record and a Linux runner cannot, so
+  Q-0051's merge turned CI red four hours after Q-0038 closed a different defect in the same
+  subsystem.
+  **The rule is one sentence and names no mechanism**, because the three instances share a shape and
+  nothing else — a guard aimed at any one would have missed the other two: *a test's verdict must be
+  a function of the commit under test, not of the checkout it runs in or the account it runs as*.
+  It completes the ruling Q-0073 made half of: a machine property may shape a fixture or refuse a
+  run, and may never be the oracle. See *"A test's verdict is a property of the commit, not of the
+  checkout or the account"* (2026-08-30).
+  **Two enforcers with different reach, which is the design and not a compromise.** The **oracle** is
+  `.github/scripts/git-identity-sweep.sh` — both suites run with no resolvable identity, in a bare
+  checkout and again in one carrying `.harness/worktrees` and `.quorum/runs`, the cell nothing
+  covered and where instance 1 lived. `pnpm sweep:git-identity` is byte-identically what CI runs,
+  because a definition restated in `ci.yml` would drift and a developer could then not reproduce
+  what CI claims. The **tripwire** is `packages/core/src/git-identity.test.ts`, inside the ordinary
+  suite and therefore visible at `integrate`; it sees **literals only** and says so in its own
+  header and in `harness/rules.md`, so it cannot be read as coverage for the checkout-shaped
+  instances.
+  **The highest-value criterion was that the environment proves itself before it certifies
+  anything**, and the drafting is the argument for it: three separate times the fix had to be
+  defended against the defect it fixes. An exported `EMAIL` survives every `GIT_CONFIG_*` variable;
+  `user.useConfigOnly` forbids git from *inferring* an identity but not from *reading a configured*
+  one, so a contributor's checkout with a local `[user]` section is permissive while a bare one is
+  strict; and one candidate proposed putting the guard beside
+  `.github/scripts/port-freeze-guard.test.mjs`, **a file nothing executes** — this ticket's class,
+  one degree worse than its three instances. A permissive sweep is green over everything, so the
+  negative probe must fail and the positive must resolve before a suite runs. `git var
+  GIT_COMMITTER_IDENT` is the probe: it answers without a repository, a temp directory or a commit
+  object. The measured table of what does **not** discriminate lives in the script's header, where
+  the next person editing it will look.
+  **Both halves were demonstrated to have a subject rather than asserted.** Reverting the fix under
+  the sweep fails **the same nine tests CI reported** — reproducing locally what two attempts that
+  morning could not, one of which passed either way and one of which failed either way. The tripwire
+  names the exact three sites when they are reverted, and each of its exemption clauses —
+  `merge`/`rebase`/`am`/`cherry-pick`/`revert --abort`, `stash list` versus bare `stash`, a
+  lightweight `tag` versus `-a`/`-s`/`-m` — has its own fixture, because showing a guard has a
+  subject proves it fires and not that each clause does (Q-0071). Its one exclusion is itself, and
+  the exclusion is asserted load-bearing.
+  **What it cost and what it corrected.** $9.14 for the requirements run — **both** head-of-product
+  attempts returned `needs-input` and the loop exhausted at limit 1, advanced rather than retried
+  because all three blockers were work no step in that flow may perform. Sixth appearance of the
+  pattern Q-0070 named. The implementation was by hand and free of adapter cost. `cf3b2e6` had
+  fixed one file of four: `q0035-empty-range.js:74`, `:191` and `q0077-base-flag.js:52` carried the
+  same defect, masked by a CI step whose stated justification was **false** — it claimed the engine
+  commits with the ambient identity while `fanout.js:92` and `:112` both carry `-c`. That step is
+  deleted and the job's remaining strictness is labelled incidental, a property of the runner image.
+  Q-0072's guard cost four earned registrations on the way in and refused a hand-rolled repository
+  root, which is the machinery working as designed. **The fourth cell — a bare checkout *with* an
+  identity — is deliberately uncovered and says so in the workflow**, with its reason: a defect
+  visible only there is one where *having* an identity breaks a test, a rarer shape with no measured
+  instance, costing a further full run.
+
+- Q-0080 `harness ticket new` cannot allocate an id, and collides with itself. *(`reviewed` and
+  `main:contained` 2026-08-30.)* `nextId()` stripped a leading `T-` and nothing else before
+  `parseInt`, so all 53 `Q-nnnn` ids yielded `NaN`, the filter emptied the list, and it returned
+  `T-0001` on **every** call — no `T-` ticket ever persisting to raise the maximum. `create()` then
+  `mkdirSync`'d with `recursive: true` and replaced `ticket.md`, so two invocations collided on the
+  id always and overwrote the folder silently whenever two titles slugged the same. Not a new
+  discovery: Q-0043 carried it under charter §2 and **pinned it in both trees**, which is what made
+  the fix a deliberate act rather than an incidental one.
+  **The prefix now comes from the ids on disk**, parsed with the product's own grammar: this
+  repository allocates `Q-0081` and an adopter's `PROJ-0042` backlog allocates `PROJ-0043`, both
+  with **no configuration**. An empty backlog still allocates `T-0001`. A backlog the allocator
+  cannot read **refuses** and names what it found rather than picking a winner, with `--id` as the
+  escape hatch, and `create()` refuses a taken id or an occupied folder rather than allocating
+  around one — which would paper over the state the ticket exists to make impossible.
+  **The requirements run refused the ticket body's own recommendation, on measurement.** The body
+  called a `harness.yaml` key *"the only shape that survives both"*; it survives neither cheaply.
+  It fixes nothing until someone edits a file, so all 53 tickets here and every adopter's backlog
+  stay broken until configured — a silent wrong answer replaced by a silent wrong answer *unless
+  configured*. `Backlog`'s constructor is `(root: string)` and `create()` is called with no project
+  in **nine** spike test files. And `backlog.source.test.ts:115` asserts `loadProject` does *not*
+  call `projectConfigSchema.parse(`, so a p1 fix would have dragged Q-0058's whole decision in as
+  its vehicle. It also found the codex candidate contradicting itself — its AC-4 wanted an empty
+  backlog to allocate `Q-0001` while its AC-15 wanted a test asserting `harness/T-0001/integration`
+  to stay green. The key stays available as a later refinement over a working allocator.
+  **The pins came out with the defect**, including the `T-0007` half, whose arithmetic is preserved
+  in a new single-prefix row rather than deleted with the rest — it is the only evidence the counter
+  is right when the prefix matches. The requirement stated that cost plainly against the ticket
+  body's *"both halves are load-bearing"*, and anticipated that a reviewer would correctly block a
+  deliberate pin change.
+  **$21.70 across two runs** — $6.10 requirements, $15.60 chore — and 355,507 codex tokens across
+  two unpriced steps. Ready on the first pass, one implement round, and the reviewer approved
+  carrying one nit. **The nit was real and is fixed**: `--id` is attacker-controlled and AC-8 makes
+  the refusal one line, but `notATicketId` interpolated it verbatim, so an id carrying a newline
+  printed a three-line error whose second line read like harness output, and an ANSI escape was the
+  same defect in colour. Reproduced before it was believed, fixed in both trees, and demonstrated
+  red before green in both suites. Fixed **after** the gate rather than by editing the branch the
+  gate was approving, on Q-0073's precedent.
+  **Three of the session's own fixes proved themselves on this one run.** The review landed at
+  `review/chore/run-2/chore-iter-1.md` — the first run-scoped review directory in the backlog, which
+  is Q-0057 working on a real run rather than in a test. The engine accepted an `approve` carrying
+  findings instead of failing the run, which is Q-0073's nit rule closing the defect that cost that
+  ticket an $18.57 implement step it had just approved. And Q-0079's sweep and tripwire ran green
+  over all of it. The proof that matters is not a test: `harness ticket new` now answers `Q-0081`
+  in this repository, run and the probe deleted.
+
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
 diff at anything but `{base}...integration`, which is why a merged ticket cannot be reviewed; a
