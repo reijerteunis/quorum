@@ -115,11 +115,12 @@ export function formatCost(
 /**
  * Which model, if any, is named to the adapter.
  *
- * The step's own always wins. A role's default is inherited **only** when the role names the
- * adapter that resolved: a role naming a different adapter — or naming none at all, and so claiming
- * no vendor its model could be right for — passes nothing, and the CLI picks a model its own login
- * supports. A default carried across vendors sends `opus` to codex, which fails or silently
- * degrades (Q-0001); this is register row 2's third clause, re-pointed here by Q-0047 erratum E-1.
+ * The step's own always wins. A role's default is suppressed when the role names a **different**
+ * adapter than the one that resolved, so `opus` does not reach a codex step (Q-0001). A role naming
+ * **no** adapter is not suppressed, and lends its model to whichever adapter resolved.
+ *
+ * That last clause is narrower than register row 2's third clause reads, and the divergence is
+ * deliberate rather than overlooked — see the authority line in the body.
  *
  * @param step the step, as the flow file wrote it.
  * @param role the role file's frontmatter.
@@ -133,8 +134,12 @@ export function resolveModel(
 ): string | undefined {
   if (step.model) return step.model as string;
   const meta = block<{ adapter?: string; model?: string }>(role.meta);
-  if (meta?.adapter !== adapterName) return undefined;
-  return meta.model;
+  const roleAdapter = meta?.adapter;
+  // Why: preserved defect, see Q-0052 errata E-1 — the spike suppresses on inequality, never on
+  // absence, so a role naming a model but no adapter lends it to any vendor. Restoring the strict
+  // form is a behaviour change this route may not make; Q-0081 owns it for both trees.
+  if (roleAdapter && roleAdapter !== adapterName) return undefined;
+  return meta?.model;
 }
 
 /**

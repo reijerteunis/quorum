@@ -13,7 +13,7 @@ import type { RoutingContext } from './types.js';
 
 afterAll(removeTempDirs);
 
-describe('Q-0052 AC-4a — a role\'s default model never crosses vendors', () => {
+describe('Q-0052 AC-4a — which vendors a role\'s default model may reach', () => {
   // spike/test/smoke.js:620-626, the frozen coverage for register row 2's third clause, re-pointed
   // to this ticket by Q-0047 erratum E-1. `model: opus` reached a codex step once already (Q-0001).
   const role = { meta: { adapter: 'claude', model: 'opus' }, body: '' };
@@ -38,13 +38,12 @@ describe('Q-0052 AC-4a — a role\'s default model never crosses vendors', () =>
 
   // The row the frozen coverage leaves out, and the one that discriminates between the two readings
   // of AC-4(a). `spike/src/engine.js:702-707` suppresses a role default on INEQUALITY and not on
-  // ABSENCE, so there an adapter-less role's model reaches whichever adapter resolved. AC-4(a)
-  // requires the strict form — inherit only on equality — and a role naming no adapter names no
-  // vendor its model could be right for, so there is nothing to inherit from. Both assertions
-  // return `'sonnet'` under the spike's guard, which is what makes them the discriminating ones.
-  test('a role naming no adapter names no vendor, so it lends its model to none', () => {
-    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'codex')).toBeUndefined();
-    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'claude')).toBeUndefined();
+  // ABSENCE, so an adapter-less role's model reaches whichever adapter resolved. Errata E-1 rules
+  // that the criterion's prose is what moves and not the ported code, so this pins the spike and
+  // goes red if either tree drifts. Q-0081 carries the strict form into both trees together.
+  test('a role naming no adapter lends its model to any vendor, which E-1 preserves', () => {
+    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'codex')).toBe('sonnet');
+    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'claude')).toBe('sonnet');
   });
 });
 
