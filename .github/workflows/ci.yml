@@ -50,10 +50,18 @@ jobs:
       freeze_sha: ${{ steps.policy.outputs.freeze_sha }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
       - id: policy
         run: bash .github/scripts/port-freeze-guard.sh
         env:
           HALF: policy
+      # The guard's own suite, which until now was executed by nothing — not CI, not `pnpm test`,
+      # not the spike suite. It builds a throwaway repository and exercises every direction of both
+      # halves. It caught a real regression the day the freeze SHA was recorded, having been red in
+      # the meantime with nobody to see it; a guard nobody runs is a guard nobody has.
+      - run: node .github/scripts/port-freeze-guard.test.mjs
 
   # Deliberately not `needs: port-freeze-policy`. It parses the charter itself and uses none of
   # that job's outputs, so a dependency would only delay it — and worse, an unparseable charter

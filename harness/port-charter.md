@@ -172,7 +172,7 @@ a claim and one job cannot make it for a half it did not run:
 | --- | --- | --- |
 | `port freeze (policy)` | what does the charter authorise? | always runs |
 | `port freeze (branch scope)` | did *this branch* touch `spike/src` since it forked from the base? | **active** |
-| `port freeze (base unchanged since the freeze SHA)` | has the base acquired a `spike/src` change since the freeze? | **skipped** until a SHA is recorded |
+| `port freeze (base unchanged since the freeze SHA)` | has the base acquired a `spike/src` change since the freeze? | **active** since 2026-08-30 |
 
 Any branch `harness/<id>/*` whose `<id>` is in the `children` list and whose diff against `main`
 touches `spike/src/` fails the branch-scope job. Branches for any other ticket are out of the
@@ -186,6 +186,28 @@ requirement specifies the guard to key on. Q-0009's own compliance rests on its 
 — it writes no code in `packages/**` and does not change `spike/` — and not on the guard. That
 is a deliberate, narrow gap: the ticket that wrote the freeze is not policed by it. Adding
 `Q-0009` to the list would close it, and would need saying out loud rather than doing quietly.
+
+**What a red freeze-SHA job means, and how it is answered.** A `spike/src` change landing on the
+base after the freeze fails this half **by design**: that is the whole question it asks. The answer
+is **not** an exemption trailer — that path exists for a child's branch, and this half is about the
+base. It is:
+
+1. **Mirror the change into `packages/core`** wherever the module is ported, so the port and its
+   witness say the same thing. Q-0057 and Q-0080 both did this without being asked, landing in both
+   trees in one commit — the Q-0066 / Q-0068 / Q-0070 shape.
+2. **Re-record `freeze-sha` in the same commit**, at the tip that carries the mirrored change.
+
+**Until the port completes, the half cannot tell two causes apart, and that is stated rather than
+discovered.** A change to a **ported** module means the port is genuinely stale. A change to one
+Q-0052, Q-0053 or Q-0054 has not reached has nothing to mirror *into*, so step 1 is empty and the
+re-record is the whole answer — the job is then recording movement rather than proving divergence.
+Both reset identically, so a red says *"the witness moved, go and look"* and never *"the port is
+wrong"*. When those three children land, every `spike/src` module has a counterpart and a red means
+the stronger thing.
+
+*Recorded 2026-08-30 at `7b6bc70`, replacing an earlier precondition that named Q-0037 to Q-0040 —
+Q-0039 and Q-0040 were never created as tickets, so the condition could not be met and the half
+stayed skipped indefinitely. A guard nobody can switch on is not a guard.*
 
 **The exemption path.** An exemption is a human act, recorded in git forever. Add a commit on
 the child's branch whose message carries the trailer
@@ -240,7 +262,7 @@ change since it — otherwise the job fails and names the files that moved.
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
 children: Q-0041 Q-0042 Q-0043 Q-0044 Q-0045 Q-0046 Q-0047 Q-0048 Q-0049 Q-0050 Q-0051 Q-0052 Q-0053 Q-0054
-freeze-sha: not-yet-recorded
+freeze-sha: 7b6bc70421094ae31eb44257807f84b8f732a20a
 exemption-trailer: Port-freeze-exemption
 ```
 <!-- port-freeze:end -->

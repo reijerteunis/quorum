@@ -149,7 +149,7 @@ freeze-sha)
     # The workflow conditions this job on a SHA existing, so reaching here means it was invoked
     # anyway. Refuse: an unrun check is not a clean one, and reporting success for it is the exact
     # failure this guard was written to avoid.
-    fail "no freeze SHA is recorded in $CHARTER, so this half has nothing to verify. It is SKIPPED, not passed — and this script will not exit 0 to say otherwise. Record a SHA in the charter's port-freeze block once Q-0037..Q-0040 are settled."
+    fail "no freeze SHA is recorded in $CHARTER, so this half has nothing to verify. It is SKIPPED, not passed — and this script will not exit 0 to say otherwise. Record a SHA in the charter's port-freeze block; \$CHARTER §3 says when, and how it is re-recorded after a legitimate spike/src change."
   fi
 
   require_history

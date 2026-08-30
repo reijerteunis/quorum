@@ -65,6 +65,11 @@ function touchSpikeOn(branch, message) {
 const scope = (branch) => ({ HALF: 'branch-scope', BRANCH: branch, BASE: 'main' });
 
 console.log('== policy ==');
+// Set the state this section is about, rather than inheriting whatever the repository's charter
+// currently holds. Seeded from the real file, these three checks passed only while the SHA was
+// unrecorded and went red the day it was — a verdict that was a property of the checkout and not
+// of the behaviour, which is the class decision 069 (2026-08-30) forbids.
+record('not-yet-recorded');
 expect('policy parses the charter', 0, { HALF: 'policy' });
 says('SKIPPED, not passed');
 const OUT = path.join(SCRATCH, 'gh-output.txt');
@@ -117,6 +122,7 @@ says('the ported module needs a shared constant');
 
 console.log('\n== the freeze-SHA half ==');
 git(['checkout', '-q', 'main']);
+record('not-yet-recorded');
 expect('no SHA recorded -> refuses; it never exits 0', 1, { HALF: 'freeze-sha', BASE: 'main' });
 says('SKIPPED, not passed');
 
