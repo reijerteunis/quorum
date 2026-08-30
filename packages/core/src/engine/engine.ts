@@ -134,8 +134,11 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   const runId = nextRunId(ticket);
   // Why: preserved defect, see Q-0050 AC-10. (counters alias the frontmatter object)
   const counters = ticket.meta.iterations ?? {};
+  // `run` is this run's id — the number runs.log carries as `run=N` and `.quorum/runs/<id>-N/` is
+  // named after. It lets a flow name a ticket-scoped path after the run that wrote it, which `iter`
+  // cannot: `iter` restarts at 1 on every run. See Q-0057.
   const vars: Record<string, unknown> = {
-    id: ticket.meta.id, iter: 1, base: base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
+    id: ticket.meta.id, iter: 1, run: runId, base: base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
   };
   const stats: RunStats = { cost: 0, tokens: 0, unpriced: 0 };
 

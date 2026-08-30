@@ -421,6 +421,34 @@ describe('Q-0050 AC-8b/AC-8c/AC-8d/AC-12d — engine.ts owns every cursor move',
     expect(crossSeen).toStrictEqual([1]);
   });
 
+  test('Q-0057 AC-1 — vars.run is the id this run was allocated, and it does not move when vars.iter does', async () => {
+    // The core half of Q-0057: `core` cannot write a step artifact at all yet — `runAgentStep`
+    // returns `unavailableStep(step, 'Q-0052')` — so the variable is what is portable here, and the
+    // path that consumes it is Q-0052's. Observed through the same spy as AC-6 above, across the
+    // same backward edge, because the two facts are one: `{iter}` restarts every run and `{run}`
+    // does not, which is what lets a flow name a ticket-scoped path after the run that wrote it.
+    const opts = options();
+    // A ticket whose runs.log already ends at run=2, so a hard-coded 1 — or a value tracking the
+    // iteration counter — cannot pass. This is nextRunId's own input, not a second source.
+    fs.writeFileSync(path.join(opts.ticket.dir, 'runs.log'),
+      'ts run=1 flow=requirements start stage=draft\nts run=2 flow=requirements start stage=draft\n');
+    opts.flow.steps = [{ id: 'a' }, { id: 'b' }] as unknown as typeof opts.flow.steps;
+    const seen: Array<[unknown, unknown]> = [];
+    let served = false;
+    vi.spyOn(routing, 'runStep').mockImplementation(async (_step, context) => {
+      seen.push([context.vars.run, context.vars.iter]);
+      if (served) return null;
+      served = true;
+      return { goto: 'a', counter: 'requirements.a', limit: 2 };
+    });
+
+    const events = await collect(stream(opts));
+
+    expect(seen).toStrictEqual([[3, 1], [3, 2], [3, 2]]);
+    // …and it is the run id the rest of the record is keyed by, not merely some stable number.
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'completed', runId: 3 });
+  });
+
   test('AC-8c — a goto naming an absent flow fails by name and moves no stage', async () => {
     const opts = options();
     opts.flow.steps = [{ id: 'a' }] as unknown as typeof opts.flow.steps;
