@@ -8,6 +8,41 @@ export const STAGES = [
   'blocked', 'abandoned',
 ];
 
+/**
+ * A ticket id as `<PREFIX>-nnnn`, taken apart — or `null`, which is "this is not a ticket id".
+ *
+ * The one spelling of the grammar in this tree: `harness runs <token>` resolves through it too, so
+ * the CLI cannot drift from the allocator. Pure, and tolerant of a non-string, because a damaged
+ * `ticket.md` carries no id at all and an allocator has to count that as unreadable.
+ */
+export function parseTicketId(value) {
+  const found = /^([A-Z]+)-([0-9]{4})$/.exec(String(value));
+  return found === null ? null : { prefix: found[1], number: Number(found[2]) };
+}
+
+// What an allocation refusal names: the grammar, and the way past it.
+const ACTION = 'pass --id <ID> or reconcile the backlog';
+const FORM = '<PREFIX>-nnnn';
+const SAMPLE = 3;
+
+function unreadableBacklog(tickets) {
+  const seen = [...new Set(tickets.map((t) => String(t.meta.id)))].sort();
+  const quoted = seen.slice(0, SAMPLE).map((id) => `'${id}'`).join(', ');
+  const sample = seen.length > SAMPLE ? `${quoted}, …` : quoted;
+  return `cannot allocate a ticket id: read ${tickets.length} tickets and none has an id of the form ${FORM} (saw ${sample}); ${ACTION}`;
+}
+
+function mixedPrefixes(counts) {
+  const named = [...counts].sort(([a], [b]) => (a < b ? -1 : 1)).map(([prefix, n]) => `${prefix}- (${n})`);
+  return `cannot allocate a ticket id: the backlog uses more than one prefix — ${named.join(', ')}; ${ACTION}`;
+}
+
+const exhaustedPrefix = (prefix, highest, next) =>
+  `cannot allocate a ticket id: the next id after ${prefix}-${String(highest).padStart(4, '0')} `
+  + `would be ${next}, which is not of the form ${FORM}; ${ACTION}`;
+
+const notATicketId = (given) => `not a ticket id: '${given}' — an id is ${FORM}, like Q-0081`;
+
 export function parseFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!m) return { meta: {}, body: text };
@@ -47,16 +82,46 @@ export class Backlog {
     fs.writeFileSync(path.join(ticket.dir, 'ticket.md'), renderFrontmatter(ticket.meta, ticket.body));
   }
 
+  // The prefix this backlog's tickets already carry, and one more than the highest number under
+  // it; an empty backlog allocates T-0001, which is the id `harness init` advertises. A backlog
+  // whose ids it cannot read is refused rather than reported as empty — that answer is what let
+  // two invocations collide on one id and create() overwrite the ticket before it. See Q-0080.
   nextId() {
-    const nums = this.list().map((t) => parseInt(String(t.meta.id).replace(/^T-/, ''), 10)).filter(Number.isFinite);
-    return `T-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0')}`;
+    const tickets = this.list();
+    if (!tickets.length) return 'T-0001';
+
+    const ids = tickets.map((t) => parseTicketId(t.meta.id)).filter((id) => id !== null);
+    if (!ids.length) throw new Error(unreadableBacklog(tickets));
+
+    const counts = new Map();
+    for (const { prefix } of ids) counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+    if (counts.size > 1) throw new Error(mixedPrefixes(counts));
+
+    const { prefix } = ids[0];
+    const highest = Math.max(...ids.map((id) => id.number));
+    const next = `${prefix}-${String(highest + 1).padStart(4, '0')}`;
+    // The grammar is the oracle rather than a second spelling of "four digits".
+    if (!parseTicketId(next)) throw new Error(exhaustedPrefix(prefix, highest, next));
+    return next;
   }
 
-  create({ title, intent, owner = process.env.USER ?? 'unknown', repos = [] }) {
-    const id = this.nextId();
+  // Refuses a taken id and an occupied folder rather than allocating around either, before
+  // anything is created; the ticket directory is then created EXCLUSIVELY, so a single
+  // `recursive: true` can no longer accept an existing folder and let write() replace its
+  // ticket.md. The backlog root is still created when it is missing. See Q-0080.
+  create({ title, intent, owner = process.env.USER ?? 'unknown', repos = [], id: given }) {
+    if (given !== undefined && !parseTicketId(given)) throw new Error(notATicketId(given));
+    const id = given ?? this.nextId();
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
-    const dir = path.join(this.root, `${id}-${slug}`);
-    fs.mkdirSync(dir, { recursive: true });
+    const folder = `${id}-${slug}`;
+    const dir = path.join(this.root, folder);
+    const entries = fs.existsSync(this.root) ? fs.readdirSync(this.root) : [];
+    if (entries.includes(folder)) throw new Error(`ticket folder already exists: ${folder}`);
+    // The same resolution dirOf uses, so a differing slug is still the same id.
+    const taken = entries.find((n) => n === id || n.startsWith(`${id}-`));
+    if (taken !== undefined) throw new Error(`ticket id already taken: ${id} already belongs to ${taken}`);
+    fs.mkdirSync(this.root, { recursive: true });
+    fs.mkdirSync(dir);
     const ticket = {
       dir, folder: path.basename(dir), body: intent.trim() + '\n',
       meta: {

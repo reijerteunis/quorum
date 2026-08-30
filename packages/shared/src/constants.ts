@@ -76,6 +76,31 @@ export function occurrenceDirName(sequence: number, stepId: string): string {
   return `${OCCURRENCE_DIR}/${String(sequence).padStart(OCCURRENCE_SEQUENCE_PAD, '0')}-${safeId}`;
 }
 
+// ---------- the ticket id ----------
+
+/** A ticket id taken apart: what {@link parseTicketId} answers with when the value is one. */
+export interface TicketIdParts {
+  /** The letters before the hyphen — `Q`, `PROJ`. Exact and case-sensitive. */
+  prefix: string;
+  /** The four digits after it, as a number: `Q-0043` is 43, and `Q-0007` is 7. */
+  number: number;
+}
+
+/**
+ * A ticket id as `<PREFIX>-nnnn`, taken apart — or `null`, which is "this is not a ticket id".
+ *
+ * The capturing form of the grammar `harness runs <token>` already resolves against
+ * (packages/core/src/run-history/reader.ts, spike/src/backlog.js). Pure: it reads nothing, spawns
+ * nothing and takes no configuration, so the same string is a ticket id in every project.
+ *
+ * Non-string input is not an error — a `ticket.md` the frontmatter reader falls open on carries no
+ * `id` at all, and an allocator has to be able to count that as unreadable rather than crash on it.
+ */
+export function parseTicketId(value: unknown): TicketIdParts | null {
+  const found = /^([A-Z]+)-([0-9]{4})$/.exec(String(value));
+  return found === null ? null : { prefix: found[1], number: Number(found[2]) };
+}
+
 // ---------- the ticket's branches ----------
 //
 // Git refs are files in directories, so `harness/<id>` cannot exist alongside `harness/<id>/x`:
@@ -91,7 +116,7 @@ export function ticketBranchPrefix(ticketId: string): string {
 }
 
 /**
- * The ticket's integration branch. Spike: `` `harness/${id}/integration` `` — spike/src/backlog.js:64,
+ * The ticket's integration branch. Spike: `` `harness/${id}/integration` `` — spike/src/backlog.js:129,
  * and again as a literal in spike/src/engine.js:789.
  */
 export function integrationBranch(ticketId: string): string {
@@ -116,7 +141,7 @@ export const DEFAULT_BASE_BRANCH = 'main';
 
 // ---------- the ticket folder's append-only log ----------
 
-/** Spike: `path.join(ticket.dir, 'runs.log')` — spike/src/backlog.js:94, spike/src/engine.js:747. */
+/** Spike: `path.join(ticket.dir, 'runs.log')` — spike/src/backlog.js:159, spike/src/engine.js:747. */
 export const RUNS_LOG_FILE = 'runs.log';
 
 // ---------- vocabularies ----------

@@ -16,10 +16,13 @@ import path from 'node:path';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { YAMLParseError } from 'yaml';
 
+import { parseTicketId } from '@quorum/shared';
+
 import { Backlog, parseFrontmatter, renderFrontmatter } from './backlog.js';
 import type { TicketRecord } from './backlog.js';
+import { TICKET_ID_PATTERN } from '../run-history/reader.js';
 import { removeTempDirs, tempDir, walk, write } from '../../test/repo.js';
-import { repoRoot } from '../../test/corpus.js';
+import { repoFile, repoRoot } from '../../test/corpus.js';
 
 afterAll(removeTempDirs);
 
@@ -53,6 +56,26 @@ const FIXTURE = [
   'Body text.',
   '',
 ].join('\n');
+
+/** One row of the allocation table: a backlog to build, and the id or the refusal it must answer. */
+interface AllocationRow {
+  name: string;
+  criterion: string;
+  tickets: [string, string][];
+  id?: string;
+  throws?: string;
+}
+
+/**
+ * The allocation table, READ rather than transcribed. `spike/test/q0080-allocation.js` drives the
+ * same rows through the spike's own `Backlog`, and the spike is what runs every flow in this
+ * repository today — a fix that lands in `core` alone passes here and leaves that tree handing out
+ * `T-0001`. Two copies of a table drift; there is one (Q-0080 AC-11).
+ */
+const TABLE = JSON.parse(repoFile('spike/test/q0080-allocation.json')) as {
+  rows: AllocationRow[];
+  grammar: { accepts: string[]; rejects: string[] };
+};
 
 /**
  * Every `ticket.md` in a `backlog/` subdirectory of THIS repository, and a loud failure when there
@@ -242,7 +265,9 @@ describe('AC-5 — Backlog stays Object.create-compatible, because --dry is buil
     expect(readOnly.read('Q-0001').meta.id).toBe('Q-0001');
     expect(readOnly.list().map((t) => t.folder)).toStrictEqual(['Q-0001-a-ticket']);
     expect(readOnly.dirOf('Q-0001')).toBe(ticket.dir);
-    expect(readOnly.nextId()).toBe('T-0001');
+    // Q-0080: the backlog here is one Q-0001, so the allocator answers within its prefix. What this
+    // test exists to prove — a stubbed Backlog writes nothing — is unaffected by which id it names.
+    expect(readOnly.nextId()).toBe('Q-0002');
     expect(readOnly.readFiles(ticket, 'notes.md')).toStrictEqual([{ rel: 'notes.md', text: 'note\n' }]);
 
     const stubbed = readOnly.read('Q-0001');
@@ -282,7 +307,7 @@ describe('AC-6 — ticket resolution and listing, including the error text', () 
   });
 });
 
-describe('AC-7 — create() and nextId(), with both known defects pinned as they are', () => {
+describe('AC-7 — create() and nextId(), with Q-0038\'s branch-ref defect pinned as it is', () => {
   afterEach(() => { vi.useRealTimers(); });
 
   /** `create()` reads the clock and the environment; both are controlled here, then restored. */
@@ -345,14 +370,19 @@ describe('AC-7 — create() and nextId(), with both known defects pinned as they
     }
   });
 
-  test('nextId counts only T- ids, so a Q- backlog restarts at T-0001 — carried, not fixed', () => {
+  test('nextId counts the ids on disk, so a Q- backlog allocates a Q- id — Q-0080 inverts this pin', () => {
+    // This test read `T-0001` over the first two tickets and `T-0008` once a T-0007 joined them,
+    // which is the defect Q-0043 carried and Q-0080 fixes. The first half INVERTS. The second half
+    // is rewritten rather than kept, because the mixed Q-/T- backlog it built is what the allocator
+    // now refuses — what it proved, that the counter works when the prefix matches, is preserved by
+    // the T-0006/T-0007 → T-0008 row of the shared table below (Q-0080 AC-10).
     const backlog = emptyBacklog();
     ticketAt(backlog, 'Q-0006-something', FIXTURE.replace('id: Q-0001', 'id: Q-0006'));
     ticketAt(backlog, 'Q-0043-something', FIXTURE.replace('id: Q-0001', 'id: Q-0043'));
-    expect(backlog.nextId()).toBe('T-0001');
+    expect(backlog.nextId()).toBe('Q-0044');
 
     ticketAt(backlog, 'T-0007-something', FIXTURE.replace('id: Q-0001', 'id: T-0007'));
-    expect(backlog.nextId()).toBe('T-0008');
+    expect(() => backlog.nextId()).toThrow('the backlog uses more than one prefix — Q- (2), T- (1)');
   });
 
   test('create writes a branch NAME and makes no ref, no worktree and no second directory', () => {
@@ -362,6 +392,107 @@ describe('AC-7 — create() and nextId(), with both known defects pinned as they
     const ticket = creating(() => backlog.create({ title: 'branchless', intent: 'i' }));
     expect(ticket.meta.branch).toBe('harness/T-0001/integration');
     expect(walk(backlog.root)).toStrictEqual(['T-0001-branchless', 'T-0001-branchless/ticket.md']);
+  });
+});
+
+describe('Q-0080 — one backlog, one prefix, and an allocator that refuses rather than guessing', () => {
+  /** A backlog holding exactly the `[folder, id]` pairs a table row names. */
+  const backlogOf = (tickets: readonly (readonly [string, string])[]): Backlog => {
+    const backlog = emptyBacklog();
+    for (const [folder, id] of tickets) ticketAt(backlog, folder, FIXTURE.replace('id: Q-0001', `id: ${id}`));
+    return backlog;
+  };
+
+  /** The message a call threw, or `null` when it returned — so a row asserts the WHOLE sentence. */
+  function refusal(call: () => unknown): string | null {
+    try { call(); return null; } catch (error) { return (error as Error).message; }
+  }
+
+  test('AC-2/AC-3/AC-4 — every row of the shared table, and every criterion it claims to cover', () => {
+    for (const row of TABLE.rows) {
+      const backlog = backlogOf(row.tickets);
+      const label = `${row.criterion} — ${row.name}`;
+      if (row.throws === undefined) expect(backlog.nextId(), label).toBe(row.id);
+      else expect(refusal(() => backlog.nextId()), label).toBe(row.throws);
+    }
+    // An identity, not a count: a row silently retitled leaves this red rather than passing on 11.
+    expect([...new Set(TABLE.rows.map((row) => row.criterion))].sort())
+      .toStrictEqual(['AC-2', 'AC-3', 'AC-4(a)', 'AC-4(b)', 'AC-4(c)']);
+  });
+
+  test('AC-1 — one grammar: what shared parses is what harness runs resolves, over one corpus', () => {
+    /** The id put back together from its parts, which is `null` exactly when it was not an id. */
+    const roundTrip = (value: unknown): string | null => {
+      const parts = parseTicketId(value);
+      return parts === null ? null : `${parts.prefix}-${String(parts.number).padStart(4, '0')}`;
+    };
+    for (const id of TABLE.grammar.accepts) {
+      expect(roundTrip(id), id).toBe(id);
+      expect(TICKET_ID_PATTERN.test(id), `${id}: run history agrees`).toBe(true);
+    }
+    for (const not of TABLE.grammar.rejects) {
+      expect(roundTrip(not), not).toBeNull();
+      expect(TICKET_ID_PATTERN.test(not), `${not}: run history agrees`).toBe(false);
+    }
+    // A ticket.md the frontmatter reader fell open on carries no id at all, and AC-4(a) counts it.
+    expect(roundTrip(undefined)).toBeNull();
+    expect(roundTrip(null)).toBeNull();
+  });
+
+  test('AC-5 — a taken id and an occupied folder are refused, and the refusal writes nothing', () => {
+    const backlog = emptyBacklog();
+    const taken = FIXTURE.replace('id: Q-0001', 'id: Q-0081');
+    const ticket = ticketAt(backlog, 'Q-0081-taken', taken);
+    backlog.writeFile(ticket, 'requirements/merged.md', 'merged\n');
+    const before = walk(backlog.root);
+
+    expect(refusal(() => backlog.create({ title: 'taken', intent: 'i', id: 'Q-0081' })))
+      .toBe('ticket folder already exists: Q-0081-taken');
+    expect(refusal(() => backlog.create({ title: 'a different title', intent: 'i', id: 'Q-0081' })))
+      .toBe('ticket id already taken: Q-0081 already belongs to Q-0081-taken');
+
+    expect(walk(backlog.root)).toStrictEqual(before);
+    expect(fs.readFileSync(path.join(ticket.dir, 'ticket.md'), 'utf8')).toBe(taken);
+  });
+
+  test('AC-3/AC-5 — three tickets with one title get three ids and three folders', () => {
+    const backlog = emptyBacklog();
+    for (const expected of ['T-0001', 'T-0002', 'T-0003']) {
+      expect(backlog.create({ title: 'The same title', intent: 'i' }).meta.id).toBe(expected);
+    }
+    expect(backlog.list().map((t) => t.folder).sort()).toStrictEqual([
+      'T-0001-the-same-title', 'T-0002-the-same-title', 'T-0003-the-same-title',
+    ]);
+    for (const t of backlog.list()) expect(t.body, t.folder).toBe('i\n');
+  });
+
+  test('AC-6 — a backlog root that does not exist is still created, ticket folder and all', () => {
+    // mkdirSync(dir, { recursive: true }) was doing two jobs. Only one of them was the defect, and
+    // no test covered the other: missingBacklog() reached list() and dirOf() and never create().
+    const backlog = missingBacklog();
+    expect(backlog.create({ title: 'First ticket', intent: 'i' }).folder).toBe('T-0001-first-ticket');
+    expect(backlog.read('T-0001').meta.id).toBe('T-0001');
+  });
+
+  test('AC-9 — an explicit id supplies the number and skips no check', () => {
+    const backlog = backlogOf([['Q-0006-a', 'Q-0006'], ['T-0007-b', 'T-0007']]);
+    expect(refusal(() => backlog.nextId())).toContain('more than one prefix');
+    // The point of the flag: a backlog allocation refuses is inconvenient, not blocked.
+    expect(backlog.create({ title: 'explicit', intent: 'i', id: 'Q-0081' }).meta.id).toBe('Q-0081');
+    for (const bad of ['q-1', 'Q-81', 'Q-00081']) {
+      expect(refusal(() => backlog.create({ title: 't', intent: 'i', id: bad })), bad)
+        .toBe(`not a ticket id: '${bad}' — an id is <PREFIX>-nnnn, like Q-0081`);
+    }
+    expect(refusal(() => backlog.create({ title: 'again', intent: 'i', id: 'Q-0006' })))
+      .toBe('ticket id already taken: Q-0006 already belongs to Q-0006-a');
+  });
+
+  test('AC-7 — reading is untouched: a mixed, partly unreadable backlog still lists and reads', () => {
+    const backlog = backlogOf([['Q-0006-a', 'Q-0006'], ['T-0007-b', 'T-0007'], ['damaged-x', 'not-an-id']]);
+    expect(backlog.list().map((t) => t.folder).sort()).toStrictEqual(['Q-0006-a', 'T-0007-b', 'damaged-x']);
+    expect(backlog.read('Q-0006').meta.id).toBe('Q-0006');
+    expect(backlog.read('damaged-x').meta.id).toBe('not-an-id');
+    expect(() => backlog.dirOf('Q-9999')).toThrow('ticket not found: Q-9999');
   });
 });
 
