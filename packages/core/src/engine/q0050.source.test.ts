@@ -168,7 +168,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'loaders.ts': ['behaviour-from-spike'],
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
       'routing.ts': ['preserved defect/AC-4', 'preserved defect/AC-12', 'preserved behavior'],
-      'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052', 'preserved defect/Q-0052'],
+      'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {
@@ -179,13 +179,14 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // Seventeen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
     // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 added one:
     // `diff.ts`'s Q-0078 cache keying, which it registers rather than disguises as newly correct.
-    // Q-0052 adds three: `prompt.ts`'s read of that same cache, which is where the keying is
-    // actually consumed, `steps.ts`'s unguarded `usage` in the step's runs.log line, and
-    // `resolveModel`'s adapter guard, which suppresses a role model on inequality rather than on
-    // absence — registered in run 2 after a reviewer met it undocumented and read it as a defect.
+    // Q-0052 adds two: `prompt.ts`'s read of that same cache, which is where the keying is actually
+    // consumed, and `steps.ts`'s unguarded `usage` in the step's runs.log line. A third was
+    // registered in run 2 for `resolveModel`'s adapter guard and withdrawn in run 3, which
+    // implements AC-4(a)'s strict form instead — a marker registers a preservation and there is no
+    // longer one to register.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(11)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(10)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {

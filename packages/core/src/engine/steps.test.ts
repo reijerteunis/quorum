@@ -36,25 +36,15 @@ describe('Q-0052 AC-4a — a role\'s default model never crosses vendors', () =>
     expect(resolveModel({}, { meta: {}, body: '' }, 'claude')).toBeUndefined();
   });
 
-  // A PIN OF A PRESERVED DEFECT, NOT AN ENDORSEMENT — and the distinction is the point.
-  //
-  // `spike/src/engine.js`'s guard is `roleAdapter && roleAdapter !== adapterName`, so it suppresses
-  // a role default on INEQUALITY and not on ABSENCE: a role carrying `model:` and no `adapter:`
-  // passes that model to whichever adapter resolved, codex included. AC-4(a)'s prose says a role
-  // default is inherited "only when `role.meta.adapter` equals the resolved adapter name", which
-  // reads as the strict form and is what run 2's reviewer asked for.
-  //
-  // The port preserves the spike. `resolveModel`'s return IS "what an adapter is invoked with",
-  // which charter §2 names as externally observable, and AC-4(a) cites `smoke.js:620-626` as its
-  // oracle — three rows that pass under both forms, so the frozen coverage does not discriminate
-  // and the prose is a paraphrase silent on an uncovered row. Changing it is a behaviour change
-  // this route may not make in passing (merged.md non-goal 3). Measured: all 29 role files in both
-  // trees that declare `model:` also declare `adapter:`, so no shipped flow reaches this branch.
-  //
-  // This assertion comes OUT with the defect when a successor fixes it (Q-0080's precedent).
-  test('PIN: a role naming no adapter passes its model to any vendor, as the spike does', () => {
-    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'codex')).toBe('sonnet');
-    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'claude')).toBe('sonnet');
+  // The row the frozen coverage leaves out, and the one that discriminates between the two readings
+  // of AC-4(a). `spike/src/engine.js:702-707` suppresses a role default on INEQUALITY and not on
+  // ABSENCE, so there an adapter-less role's model reaches whichever adapter resolved. AC-4(a)
+  // requires the strict form — inherit only on equality — and a role naming no adapter names no
+  // vendor its model could be right for, so there is nothing to inherit from. Both assertions
+  // return `'sonnet'` under the spike's guard, which is what makes them the discriminating ones.
+  test('a role naming no adapter names no vendor, so it lends its model to none', () => {
+    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'codex')).toBeUndefined();
+    expect(resolveModel({}, { meta: { model: 'sonnet' }, body: '' }, 'claude')).toBeUndefined();
   });
 });
 
