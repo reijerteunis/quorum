@@ -1,7 +1,7 @@
 ---
 id: Q-0079
 title: A test may not depend on the machine's git configuration
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0079/integration
