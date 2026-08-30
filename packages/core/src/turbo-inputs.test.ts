@@ -1300,6 +1300,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
     ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — the sentinel AC-10a writes and reads back, inside the temp repository",
   },
+  'packages/core/src/engine/diff.test.ts': {
+    'opts.project.repoDir': 'the throwaway repository repoWith() built for this test; nothing under it is in the repository',
+    ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — the ticket P6 reads back to show a dry run mutated nothing, inside that repository",
+    runsLog: "path.join(opts.ticket.dir, 'runs.log') — the truncation notices AC-9.5 counts materialisations from, likewise",
+  },
   'packages/core/src/adapters/codex.test.ts': {
     seen: 'path.join(tempDir(\'codex-schema-\'), \'schema-seen.json\') — a file the stub copies into a sandbox',
     'tempDirOf(ok.argv())': 'path.dirname of the --output-schema path off the argv the stub recorded, so it is the adapter\'s own temp directory',

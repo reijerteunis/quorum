@@ -17,6 +17,7 @@ import { initialiseRunHistory, nextRunId } from '../run-history/writer.js';
 import type { RunHistory } from '../run-history/writer.js';
 import { createEventChannel } from './channel.js';
 import type { EventSink } from './channel.js';
+import { preflightDiffs } from './diff.js';
 import { loadFlowByName, reviewRound } from './loaders.js';
 import { finish, recordEvent } from './lifecycle.js';
 import { runStep } from './routing.js';
@@ -194,6 +195,9 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   context = {
     ticket, flow, repoDir, harnessDir, config, backlog: backlogView,
     runId, counters, vars, stats, dry, auto, signal, answerGate,
+    // The two maps the diff preflight fills and the steps that read them share, and whether `--base`
+    // was typed at all — which `vars.base` above cannot answer, because it is set either way.
+    diffInputs: new Map(), deferredDiffs: new Map(), baseOverride: base ?? null,
     emit: stepEmit,
     persistence,
     nextGateId: () => `${runId}:${(gateSequence += 1)}`,
@@ -216,6 +220,12 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
         { warn: (message) => emit({ type: 'warn', message }) },
       );
     }
+
+    // Inside the run try and before the step loop, so a failed preflight receives the same terminal
+    // record as any other error: active occurrences are finalised, the run is recorded failed,
+    // rollback applies and the original error is rethrown. It adds no second run path, and it is the
+    // earlier of this function's two reads of `flow.steps`.
+    preflightDiffs(context);
 
     // Why: preserved behaviour — `flow.steps` is read directly, uncoalesced, so a flow with no
     // `steps` key throws a raw TypeError here rather than running zero steps; see flow.ts's own

@@ -78,8 +78,8 @@ function transcribedIn(line: string, sentences: readonly string[]): string | und
 }
 
 describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
-  test('the owned folder is exactly six documented modules with the contracted exports', () => {
-    expect(production).toStrictEqual(['channel.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts']);
+  test('the owned folder is exactly seven documented modules with the contracted exports', () => {
+    expect(production).toStrictEqual(['channel.ts', 'diff.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts']);
     expect(source('engine.ts')).toMatch(/export function runFlow/);
   });
 
@@ -131,7 +131,11 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
   });
 
   test('AC-9d: no engine helper resets or deletes task branches', () => {
-    const all = ['channel.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts'].map(source).join('\n');
+    // Derived from `production`, as every other check in this file is. The hard-coded six-name array
+    // that stood here failed OPEN: it stayed green while the seventh file went unscanned, which is a
+    // check blind to its own subject in a guard written to catch exactly that. Q-0051's own suite
+    // demonstrates the difference rather than asserting it.
+    const all = production.map(source).join('\n');
     expect(all).not.toMatch(/(?:reset|delete|remove)TaskBranch/i);
   });
 
@@ -158,6 +162,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // later — which is why the anchor is now `Why:` itself, the one token every authority line must
     // carry, and an unclassifiable line FAILS rather than being skipped.
     const REGISTERED: Record<string, readonly string[]> = {
+      'diff.ts': ['behaviour-from-spike', 'deliberate addition', 'behaviour-from-spike', 'preserved behaviour/Q-0038', 'preserved defect/Q-0078'],
       'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved defect/AC-12', 'preserved behaviour', 'preserved defect/AC-12d'],
       'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
@@ -169,11 +174,12 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Thirteen authority lines, of which SEVEN are this ticket's own preserved defects — exactly
-    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20.
+    // Thirteen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
+    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 adds one:
+    // `diff.ts`'s Q-0078 cache keying, which it registers rather than disguises as newly correct.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(7)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(8)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
