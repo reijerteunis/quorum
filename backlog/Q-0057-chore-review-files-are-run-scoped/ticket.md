@@ -17,17 +17,19 @@ thirteen remaining children of Q-0009, every one of which runs this flow."* Reco
 stop-and-report under *"The port preserves behaviour"* (`docs/DECISIONS.md`, 2026-08-25).
 
 **The defect.** `chore.yaml:34` writes `review/chore-iter-{iter}.md`. `{iter}` is `ctx.vars.iter`,
-initialised to `1` at **run** start (`spike/src/engine.js:45`) and incremented per backward-edge
-traversal (`:155`). It is **run-scoped**, so every new run restarts the numbering and its first
+initialised to `1` at **run** start (`spike/src/engine.js:50`) and incremented per backward-edge
+traversal (`:180`). It is **run-scoped**, so every new run restarts the numbering and its first
 review lands on `chore-iter-1.md` again, on top of whatever was there.
 
 **Two flows, two conventions, and only one of them survives a second run.** `review.yaml` uses
-`{round}` — `reviewRound(ticket)` at `engine.js:753–760`, which reads the ticket folder and returns
+`{round}` — `reviewRound(ticket)` at `engine.js:778–785`, which reads the ticket folder and returns
 one more than the highest completed round. That is ticket-scoped and correct. `chore.yaml` is the
 one that is not.
 
-**The evidence is this ticket's own folder.** Run 2 wrote `chore-iter-1.md`, `-2` and `-3`. Run 3
-wrote `-1` and `-2`, over the top. What is on disk now is a *mixture*:
+**The evidence is Q-0041's folder, not this one** — this ticket has never run. Run 2 wrote
+`chore-iter-1.md`, `-2` and `-3`. Run 3 wrote `-1` and `-2`, over the top. What is on disk now is
+a *mixture*, and mtimes confirm it independently of the reports: `-3` is stamped 20:55 while
+`-1` and `-2` are 21:39 and 22:02, so the highest-numbered file is the oldest.
 
 | file | written by |
 | --- | --- |
@@ -50,15 +52,16 @@ implementer may not.
 
 **The obvious fix does not work, and this is the point of the ticket.** Swapping `{iter}` for
 `{round}` in `chore.yaml` reproduces the bug under a new name. `reviewRound` counts **directories**
-matching `review/round-N/` that contain a `verdict.md` (`engine.js:756–758`); chore writes flat files
+matching `review/round-N/` that contain a `verdict.md` (`engine.js:781–783`); chore writes flat files
 and creates no such directory, so `reviewRound` would return `1` on every chore run forever. Only
-tickets that ran `review.yaml` have `round-N/` directories today — Q-0006 and Q-0011, and no chore
-ticket.
+tickets that ran `review.yaml` have `round-N/` directories today — **Q-0006, Q-0011 and Q-0050,
+whose six rounds landed after this ticket was written** — and no chore ticket, which is what makes
+the claim hold.
 
 **Three shapes worth costing, none of them decided here.**
 
 1. Make the write path run-unique — `review/run-{run}/chore-iter-{iter}.md`. `ctx.runId` is already
-   allocated at `engine.js:44` and would need exposing as a var. Cheapest, and it changes where a
+   allocated at `engine.js:49` and would need exposing as a var. Cheapest, and it changes where a
    human looks for a review.
 2. Generalise `reviewRound` so it recognises chore's artifacts as completed rounds, and give chore
    `{round}`. Keeps one convention across both flows; needs care, since `reviewRound`'s current
@@ -70,9 +73,25 @@ reviews, or every review the ticket has accumulated? Q-0041 argues both sides �
 were noise on the retry, but a run started after an erratum genuinely benefits from seeing what
 earlier runs found. Whichever way it goes, the files need to say which run wrote them.
 
-**Scope.** `spike/src` is frozen for the port (`harness/port-charter.md` §3), so this lands against
-`packages/core` after Q-0052 (`core/engine` — agent, gate and script steps) and Q-0044, or against
-the spike before the port reaches them. The flow-file half (`chore.yaml`) is not frozen. Sequencing
+**Scope — re-derived 2026-08-30, and the 2026-08-25 sequencing above it is stale.** Every line
+number in this body had moved and is corrected above; the sequencing had moved further. Measured
+against `main` at `6a13d29`:
+
+| surface | where it is now |
+| --- | --- |
+| `reviewRound` | **ported** — `packages/core/src/engine/loaders.ts:63`, called from `engine.ts:137`. Q-0050's, landed and contained 2026-08-29 |
+| the `vars` literal carrying `iter: 1` | **ported** — `packages/core/src/engine/engine.ts:138` |
+| `ctx.vars.iter += 1` on a backward edge | **not ported** — `spike/src/engine.js:180` has no counterpart in `routing.ts` |
+| `chore.yaml` | never frozen |
+
+So this ticket's original *"lands against `packages/core` after Q-0052"* is **not the current
+answer**: two of its three engine surfaces are already in `core` and belong to Q-0050, not Q-0052,
+and Q-0044 is closed. What that leaves is a genuinely mixed sequencing question — two surfaces want
+the Q-0066/Q-0068/Q-0070 shape of landing in **both trees together**, while the third exists in one
+tree only. **That is for the requirements gate to settle, and it is named here rather than
+answered.** `spike/src` is still frozen for the port (`harness/port-charter.md` §3), which is the
+constraint the answer has to satisfy, and the flow-file half is not frozen. Sequencing
 is the first thing to settle at its requirements gate — **and it is worth settling early**, because
-every one of Q-0009's thirteen remaining children runs this flow, and each one that exhausts and is
-re-run loses a review. Belongs to M2 in `docs/06-development-plan.md`.
+every remaining child of Q-0009 runs this flow, and each one that exhausts and is re-run loses a
+review. **The thirteen the quote above names are now three** — Q-0052, Q-0053 and Q-0054 — which
+cuts the remaining exposure but does not change the defect, and the flow outlives the port. Belongs to M2 in `docs/06-development-plan.md`.
