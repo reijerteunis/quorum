@@ -163,7 +163,17 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     // ticket write and the log line for an occurrence event, and owning it in both places wrote
     // each of them twice whenever the exported helper was called with a real context.
     recordOccurrenceEvent: (_ticket, stage, event, cost) => recordEvent(context, stage, event, cost),
-    registerOccurrence: (occurrence) => { active.add(occurrence); },
+    allocateOccurrence: (step, kind, fields) => {
+      if (!history) return null;
+      const occurrence = history.allocate(step, kind, fields);
+      active.add(occurrence);
+      return occurrence;
+    },
+    persistArtifact: (occurrence, name, text) => { history?.persist(occurrence, name, text); },
+    terminalOccurrence: (occurrence, status, fields) => {
+      history?.terminal(occurrence, status, fields);
+      active.delete(occurrence);
+    },
     finaliseManifest: (status, stageAfter) => { history?.finalise(status, stageAfter); },
     finaliseActiveOccurrences: (status, cause) => {
       if (!history) return;

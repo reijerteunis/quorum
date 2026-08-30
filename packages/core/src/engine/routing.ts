@@ -1,6 +1,7 @@
 /** Gate policy, step dispatch, and bounded backward-edge decisions for one running flow. */
 import { gateAnswerEnvelopeSchema, type GateQuestionEvent } from '@quorum/shared';
 
+import { runAgentStep, runScript } from './steps.js';
 import { FlowError, type RoutingContext, type StepResult } from './types.js';
 
 function interruptedGate(request: GateQuestionEvent): FlowError {
@@ -51,16 +52,12 @@ function unavailableStep(step: Readonly<Record<string, unknown>>, owner: string)
   return Promise.reject(new FlowError(`${String(step.id ?? 'step')}: execution belongs to ${owner}`));
 }
 
-async function runAgentStep(step: Readonly<Record<string, unknown>>): Promise<StepResult> {
-  return unavailableStep(step, 'Q-0052');
-}
-
 /** Dispatches a step in spike order without taking ownership of the engine's cursor. */
 export async function runStep(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<StepResult> {
   if (step.parallel) {
     const members = step.parallel as ReadonlyArray<Readonly<Record<string, unknown>>>;
     // Why: preserved defect, see Q-0050 AC-12.
-    const settled = await Promise.allSettled(members.map((member) => runAgentStep(member)));
+    const settled = await Promise.allSettled(members.map((member) => runAgentStep(member, context)));
     const failed = settled
       .map((result, index) => ({ result, step: members[index] }))
       .filter((entry): entry is { result: PromiseRejectedResult; step: Readonly<Record<string, unknown>> } => entry.result.status === 'rejected');
@@ -101,10 +98,10 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     }
     return { abort: true };
   }
-  if (step.type === 'script') return unavailableStep(step, 'Q-0052');
+  if (step.type === 'script') return runScript(step, context);
   if (step.type === 'integrate') return unavailableStep(step, 'Q-0053');
   if (step.fan_out) return unavailableStep(step, 'Q-0053');
-  return runAgentStep(step);
+  return runAgentStep(step, context);
 }
 
 /** Charges one failed traversal and returns its bounded routing decision or exhaustion answer. */

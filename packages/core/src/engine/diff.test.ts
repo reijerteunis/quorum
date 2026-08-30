@@ -152,7 +152,10 @@ describe('Q-0051 AC-1/AC-2 — the module boundary', () => {
       .map(([name, text]) => [name.slice('engine/'.length), text] as const));
     const production = [...engine.keys()];
     expect(production).toContain('diff.ts');
-    expect(production.length).toBe(SIX.length + 1);
+    // An identity, not a floor: `SIX` is frozen as the array the old guard named, so what this
+    // states is exactly which files the folder has gained since and which that array cannot see.
+    // Q-0052 adds two more, and a length check would have absorbed them silently.
+    expect(production.filter((name) => !SIX.includes(name))).toStrictEqual(['diff.ts', 'prompt.ts', 'steps.ts']);
 
     // The violation the guard exists to catch, injected into the one file the old array cannot see.
     const violating = (name: string): string =>

@@ -78,8 +78,8 @@ function transcribedIn(line: string, sentences: readonly string[]): string | und
 }
 
 describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
-  test('the owned folder is exactly seven documented modules with the contracted exports', () => {
-    expect(production).toStrictEqual(['channel.ts', 'diff.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'routing.ts', 'types.ts']);
+  test('the owned folder is exactly nine documented modules with the contracted exports', () => {
+    expect(production).toStrictEqual(['channel.ts', 'diff.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'prompt.ts', 'routing.ts', 'steps.ts', 'types.ts']);
     expect(source('engine.ts')).toMatch(/export function runFlow/);
   });
 
@@ -166,7 +166,9 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved defect/AC-12', 'preserved behaviour', 'preserved defect/AC-12d'],
       'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
+      'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
       'routing.ts': ['preserved defect/AC-4', 'preserved defect/AC-12', 'preserved behavior'],
+      'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {
@@ -174,12 +176,14 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Thirteen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
-    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 adds one:
+    // Seventeen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
+    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 added one:
     // `diff.ts`'s Q-0078 cache keying, which it registers rather than disguises as newly correct.
+    // Q-0052 adds two: `prompt.ts`'s read of that same cache, which is where the keying is actually
+    // consumed, and `steps.ts`'s unguarded `usage` in the step's runs.log line.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(8)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(10)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
