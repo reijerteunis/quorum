@@ -1,14 +1,31 @@
 ---
 id: Q-0079
 title: A test may not depend on the machine's git configuration
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0079/integration
 priority: p1
 created: 2026-08-30
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-08-30T12:48:28.581Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-30T13:08:10.909Z
+    cost: 9.135
 ---
 Opened 2026-08-30 from the third instance of one class in three days. Created by hand rather than
 through `harness ticket new`, which allocates `T-0001` — see *The allocator*, below, which is a
