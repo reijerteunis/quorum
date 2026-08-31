@@ -45,6 +45,8 @@ function gitReason(error: unknown): string {
  * `warn` and nothing more. A run that has otherwise completed keeps the status, the stage
  * transition, the manifest, the history entry, the terminal event and the exit code it had already
  * earned — a throw from here would corrupt the terminal record of a run that succeeded.
+ *
+ * See Q-0062, and *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
  */
 function returnObtainedWorktrees(context: LifecycleContext): void {
   const obtained = context.worktrees === undefined ? [] : [...context.worktrees];

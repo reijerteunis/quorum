@@ -691,7 +691,7 @@ function worktreeChanges(dir) {
 // review after the run reads. Each worktree is guarded on its own so that a directory which cannot
 // be read or removed costs one warning and nothing else: a run that has otherwise completed keeps
 // the status, the stage transition, the manifest, the history entry and the exit code it earned.
-// See Q-0062.
+// See Q-0062, and *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
 function returnObtainedWorktrees(ctx) {
   const obtained = [...(ctx.worktrees ?? new Map())];
   if (!obtained.length) return;
