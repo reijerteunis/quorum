@@ -1,14 +1,22 @@
 ---
 id: Q-0062
 title: Worktrees are never removed — removeWorktree has no callers
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0062/integration
 priority: p2
 created: 2026-08-26
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-31T19:18:30.028Z
+    cost: 8.445
 ---
 Raised by Ruud on 2026-08-26: *"worktrees are not automatically cleared after they have finished"*.
 
