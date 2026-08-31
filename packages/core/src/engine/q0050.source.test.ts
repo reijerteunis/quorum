@@ -78,8 +78,8 @@ function transcribedIn(line: string, sentences: readonly string[]): string | und
 }
 
 describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
-  test('the owned folder is exactly nine documented modules with the contracted exports', () => {
-    expect(production).toStrictEqual(['channel.ts', 'diff.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'prompt.ts', 'routing.ts', 'steps.ts', 'types.ts']);
+  test('the owned folder is exactly eleven documented modules with the contracted exports', () => {
+    expect(production).toStrictEqual(['channel.ts', 'composite.ts', 'diff.ts', 'engine.ts', 'lifecycle.ts', 'loaders.ts', 'prompt.ts', 'routing.ts', 'steps.ts', 'suite-output.ts', 'types.ts']);
     expect(source('engine.ts')).toMatch(/export function runFlow/);
   });
 
@@ -162,6 +162,12 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // later — which is why the anchor is now `Why:` itself, the one token every authority line must
     // carry, and an unclassifiable line FAILS rather than being skipped.
     const REGISTERED: Record<string, readonly string[]> = {
+      'composite.ts': [
+        'behaviour-from-spike', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
+        'preserved behaviour/Q-0053', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
+        'preserved defect/Q-0053', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
+        'preserved defect/Q-0053',
+      ],
       'diff.ts': ['behaviour-from-spike', 'deliberate addition', 'behaviour-from-spike', 'preserved behaviour/Q-0038', 'preserved defect/Q-0078'],
       'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved defect/AC-12', 'preserved behaviour', 'preserved defect/AC-12d'],
       'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
@@ -169,6 +175,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
       'routing.ts': ['preserved defect/AC-4', 'preserved defect/AC-12', 'preserved behavior'],
       'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052', 'preserved defect/Q-0052'],
+      'suite-output.ts': ['behaviour-from-spike', 'preserved behaviour/Q-0053'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {
@@ -176,7 +183,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Eighteen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
+    // Nineteen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
     // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 added one:
     // `diff.ts`'s Q-0078 cache keying, which it registers rather than disguises as newly correct.
     // Q-0052 adds three: `prompt.ts`'s read of that same cache, which is where the keying is
@@ -184,9 +191,22 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // `usage` in the step's runs.log line. The guard's marker was registered in run 2, withdrawn in
     // run 3 when the loop shipped AC-4(a)'s strict form, and restored by hand after the gate:
     // errata E-1 rules the criterion's prose the thing that moves, not the ported code.
+    // Q-0053 adds eight, all in `composite.ts`. Five are AC-14's: the branch-existence filters and
+    // the merge-failure fallback, both file-wide and both in the module header; the inter-wave
+    // merge's re-derived branch name; that merge only warning when it fails; and the evidence loop
+    // reading the unfiltered branch list. THREE were found by porting rather than inherited from
+    // the criterion — the `tests=ok` a conflicted integrate logs for a command it never ran, the
+    // task branch the fan-out records without ever writing it onto the child template, and the
+    // base-conflict throw leaving its occurrence at `running` with no `output.txt`, which review
+    // round 1 asked to be repaired and charter §2 refuses. Its other two authority lines are not
+    // defects: the module header's provenance, and the JSON round trip AC-6 requires.
+    // `suite-output.ts` adds two, neither a defect — its provenance, and the two deliberately
+    // distinct result-line regexes AC-10 forbids unifying.
+    // The one marker this ticket wrote that this count CANNOT see is `git/git.ts`'s errata E-1
+    // divergence, because this register is scoped to `engine/`; `q0053.source.test.ts` pins it.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(11)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(19)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {

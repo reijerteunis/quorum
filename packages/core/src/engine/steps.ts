@@ -68,8 +68,14 @@ interface ThrownAdapterCall extends AdapterError {
 const block = <T>(value: unknown): T | undefined =>
   typeof value === 'object' && value !== null ? value as T : undefined;
 
-/** What `commands.timeout_ms` says, or fifteen minutes. A project's command can hang as a suite can. */
-const commandTimeout = (context: RunContext): number => context.config.commands?.timeout_ms ?? 15 * 60_000;
+/**
+ * What `commands.timeout_ms` says, or fifteen minutes. A project's command can hang as a suite can.
+ *
+ * Exported for `composite.ts`, whose two `integrate` call sites are the spike's other two readers of
+ * the same default. Duplicating it there would put two copies of one number in the folder, and
+ * nothing would fail when they drifted.
+ */
+export const commandTimeout = (context: RunContext): number => context.config.commands?.timeout_ms ?? 15 * 60_000;
 
 /** Adds one call's billed usage to the run's running totals. */
 function bill(context: RunContext, usage: RetriedAdapterResult['usage'] | AdapterError['usage']): void {

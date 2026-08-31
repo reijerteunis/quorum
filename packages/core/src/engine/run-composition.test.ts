@@ -7,7 +7,7 @@ import { eventSchema } from '@quorum/shared';
 import type { Event, GateQuestionEvent } from '@quorum/shared';
 
 import fixtureText from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
-import { removeTempDirs, walk, write } from '../../test/repo.js';
+import { git, removeTempDirs, walk, write } from '../../test/repo.js';
 import { manifestOf, runFixture, stubAdapter } from '../../test/run-fixture.js';
 
 afterAll(removeTempDirs);
@@ -159,14 +159,43 @@ describe('Q-0052 AC-9 — step and done gain their first producers in core', () 
     expect(events.filter((event) => event.type === 'done')).toStrictEqual([]);
   });
 
-  test('AC-9b — a fan-out parent emits neither, because it is still another ticket\'s step kind', async () => {
+  test('AC-9b — a fan-out parent emits neither, because it is a container and its members speak', async () => {
+    // Replaced at Q-0053 AC-1. It used to assert the dispatch REFUSAL — `(error as Error).message`
+    // containing `'Q-0053'` — which the moment dispatch landed could only go red. What it was
+    // standing in for is the property below: the parent is not a step, so nothing announces it, and
+    // each child announces itself under its own interpolated id.
     const fixture = runFixture();
-    fixture.steps([{ id: 'dev', fan_out: true, step: { id: 'dev:{task}' } }]);
+    fixture.role('developer-backend', '---\nadapter: mock\n---\nA developer.\n');
+    fixture.ticketFile('solution/tasks.yaml', 'tasks:\n  - id: t1\n    role: backend\n    title: first\n');
+    // `branch` is declared, as every shipped fan-out declares it. Without it the child falls back to
+    // `harness/<id>/<step id>` and the default step id carries a colon, which git refuses as a
+    // refname — reported by Q-0053 and preserved, since development.yaml spells the branch itself.
+    fixture.steps([{ id: 'dev', fan_out: {}, step: { id: 'dev:{task.id}', branch: 'harness/{id}/{task.id}' } }]);
+    stubAdapter(() => ({ output: { summary: 's' }, raw: '{}', usage: BILLED }));
 
     const { events, error } = await fixture.settle();
 
-    expect((error as Error).message).toContain('Q-0053');
-    expect(events.filter((event) => event.type === 'step' || event.type === 'done')).toStrictEqual([]);
+    expect(error).toBeUndefined();
+    const announced = events.filter((event) => event.type === 'step' || event.type === 'done');
+    expect(announced.map((event) => event.stepId)).toStrictEqual(['dev:t1', 'dev:t1']);
+    expect(announced.map((event) => event.stepId)).not.toContain('dev');
+  });
+
+  test('AC-9b — an integrate step announces itself and its result under its own id', async () => {
+    // The other composite kind through the same composed run: `integrate` IS a step, so unlike a
+    // fan-out parent it emits both, and its `step` event carries the target it resolved.
+    const fixture = runFixture();
+    fixture.steps([{ id: 'integrate', type: 'integrate', branches: [], run_tests: false }]);
+
+    const { events, error } = await fixture.settle();
+
+    expect(error).toBeUndefined();
+    expect(events.filter((event) => event.type === 'step')).toStrictEqual([
+      { type: 'step', stepId: 'integrate', message: 'integrate → harness/Q-0052/integration' },
+    ]);
+    expect(events.filter((event) => event.type === 'done')).toStrictEqual([
+      { type: 'done', stepId: 'integrate', message: '0 branch(es) on harness/Q-0052/integration' },
+    ]);
   });
 
   test('AC-9c — a parallel group carries no id and each member stamps its own', async () => {
@@ -214,6 +243,32 @@ describe('Q-0052 AC-9 — step and done gain their first producers in core', () 
  * prompt that lost every section, which is the number the line exists to report.
  */
 const DRY_PROMPT_LENGTH = 298;
+
+describe('Q-0053 AC-12 — a failed integrate aborts, and the run puts the ticket branch back', () => {
+  test('the merge an aborted run made is rolled back, and the rollback says so', async () => {
+    // The half of AC-12 that only a COMPOSED run can show: `runIntegrate` merges task branches
+    // before anyone knows the outcome, and `lifecycle.finish` is what restores the branch when the
+    // run does not complete. Without it the next stage measures its red phase against a tree that
+    // already holds the implementation.
+    const fixture = runFixture();
+    const branch = 'harness/Q-0052/integration';
+    git(fixture.repoDir, 'branch', branch);
+    git(fixture.repoDir, 'checkout', '-q', '-b', 'harness/Q-0052/t1', branch);
+    write(path.join(fixture.repoDir, 'a.txt'), 'a\n');
+    git(fixture.repoDir, 'add', '--', 'a.txt');
+    git(fixture.repoDir, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '-m', 'task work');
+    git(fixture.repoDir, 'checkout', '-q', 'main');
+    const before = git(fixture.repoDir, 'rev-parse', branch);
+    fixture.steps([{ id: 'integrate', type: 'integrate', branches: ['harness/{id}/t1'], run_tests: 'exit 1' }]);
+
+    const { events, error } = await fixture.settle();
+
+    expect(error).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'aborted', stageAfter: 'requirements' });
+    expect(git(fixture.repoDir, 'rev-parse', branch), 'the merge integrate made must not survive an aborted run').toBe(before);
+    expect(messages(events, 'warn').join('\n')).toContain(`${branch}: rolled back to ${before.slice(0, 7)}`);
+  });
+});
 
 describe('Q-0052 AC-11 — a dry run resolves everything and invokes nothing', () => {
   test('AC-11b/11c/11d — it announces the step, writes nothing, and leaves the ticket byte-identical', async () => {

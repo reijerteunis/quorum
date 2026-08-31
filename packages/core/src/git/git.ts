@@ -88,6 +88,23 @@ export function removeWorktree(
   if (deleteBranch) safe(() => git(['branch', '-D', branch], repoDir));
 }
 
+/**
+ * Where `a` and `b` forked, as a sha, or `null` when git could not answer — a ref that does not
+ * exist being one of the reasons, which this deliberately does not tell apart from the others.
+ *
+ * It lives here rather than in the engine because a landed guard permits `merge-base` in exactly one
+ * file, and {@link ancestry} is not a substitute: that one asks a yes/no/unknown question and this
+ * one is read for the revision it names, in an integration step's evidence line.
+ *
+ * Why: deliberate addition, not preservation — see Q-0053 errata E-1, which accepts the one
+ * divergence it carries. The spike's `safeMergeBase` runs with git's stderr inherited, so a failing
+ * call printed git's own `fatal:` line to the terminal; this module has one runner, it pipes, and a
+ * library M3's daemon hosts has no terminal to print to.
+ */
+export function mergeBase(repoDir: string, a: string, b: string): string | null {
+  return safe(() => git(['merge-base', a, b], repoDir));
+}
+
 /** What a caller already knows about the repository's history when it asks {@link ancestry}. */
 export interface AncestryOptions {
   /** `true` shallow, `false` not shallow, `null` the probe could not answer — see {@link ancestry}. */

@@ -1329,6 +1329,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
     worktree: 'the same worktree, bound once where the test reads it twice',
     ticketDir: 'the ticket folder inside that repository',
   },
+  'packages/core/src/engine/composite.test.ts': {
+    'f.repoDir': 'repo() — a git repository created under os.tmpdir for one test, and the root every other base here is joined from',
+    'f.ticketDir': 'the ticket folder inside that repository, for the artifacts an integrate step declared it writes',
+    'f.worktree(INTEGRATION)': "path.join(f.repoDir, '.harness', 'worktrees', worktreeDirName(…)) — the integration worktree inside that same repository, where the merges and the test command happened",
+  },
   'packages/core/src/engine/run-composition.test.ts': {
     'fixture.ticketDir': 'the ticket folder inside the temp repository runFixture() built',
     'fixture.repoDir': 'that temp repository itself, for the directories a dry run must not create',
