@@ -163,6 +163,7 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'contracts/Q-0006/review-artifacts.schema.json': 'structured-output.test.ts — the frozen verdict contract',
     'contracts/Q-0006/ticket-review-state.schema.json': 'contracts.test.ts — the frozen ticket contract',
     'contracts/Q-0011/run-manifest.schema.json': 'run-manifest.test.ts, schema-cache.test.ts, validate-artifact.test.ts, run-history/manifest.test.ts, run-history/writer.test.ts',
+    'pnpm-workspace.yaml': 'test-discovery.test.ts — the globs the workspace package list is expanded from, so a package added or removed moves this task\'s hash',
   },
 };
 
@@ -245,6 +246,26 @@ const WALKS: readonly Walk[] = [
     dir: 'spike/templates/harness/flows',
     collects: (below) => below.endsWith('.yaml') && !below.includes('/'),
     why: 'lintFlowDirectory over SHIPPED — lint.test.ts',
+  },
+  {
+    taskId: '@quorum/core#test',
+    dir: 'spike/test',
+    collects: () => true,
+    why: 'readdirSync — spike-parity.test.ts, whose register is keyed by every entry in the directory rather than only by the .js files, so the fixture beside them is hashed too',
+  },
+  {
+    taskId: '@quorum/core#test',
+    dir: 'packages',
+    collects: (below) => !below.split('/').includes('node_modules')
+      && (/^[^/]+\/(?:package\.json|vitest\.config\.js)$/.test(below) || below.endsWith('.test.ts')),
+    why: 'test-discovery.test.ts — each workspace package\'s manifest and Vitest configuration, and every test file the include must collect. node_modules is excluded because the walk skips it, as Vitest does',
+  },
+  {
+    taskId: '@quorum/core#test',
+    dir: 'apps',
+    collects: (below) => !below.split('/').includes('node_modules')
+      && (/^[^/]+\/(?:package\.json|vitest\.config\.js)$/.test(below) || below.endsWith('.test.ts')),
+    why: 'the same walk, over the second glob pnpm-workspace.yaml declares',
   },
 ];
 
@@ -596,6 +617,18 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoRoot → f': 'a path walk() found beneath one of those two literal directories',
     'repoRoot → rel': 'a member of corpusFiles(), which is the audited spike/test walk plus the packages walk within this package',
     'repoRoot → SELF': 'the literal naming this file, excluded from its own corpus so its fixtures are not read as violations',
+  },
+  'packages/core/src/spike-parity.test.ts': {
+    'repoFile → counterpart': 'a member of an entry\'s carriedBy list, every one of which is a literal in the register at the top of that file',
+    'repoRoot → SPIKE_TESTS': "the constant is 'spike/test', a literal in the same file, and the walk WALKS declares above",
+    'repoFile → `${SPIKE_TESTS}/${entry.name}`': 'that same literal joined to a name readdir returned from it — the walk, again',
+  },
+  'packages/core/src/test-discovery.test.ts': {
+    'repoRoot → relative': "entriesIn's parameter: a workspace glob's parent, a package below it, or a directory found beneath one — all inside the two walks WALKS declares above",
+    'repoFile → `${pkg}/${name}`': "a package from that expansion joined to 'package.json' or 'vitest.config.js', both literals in the same file",
+    'repoRoot → pkg': 'the existence check that decides workspace membership, over a directory from that same expansion',
+    'repoFile → helper': 'a member of the literal list of test-support modules in the test that reads them',
+    'repoFile → guard': 'a member of the literal two-name list naming this ticket\'s own guards, in the test.each above the call',
   },
   'packages/core/src/turbo-inputs.test.ts': {
     'repoRoot → dir': 'typescriptFiles and filesBelow walk a directory from SUITES or WALKS, both audited above',
@@ -1020,6 +1053,9 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   'packages/core/src/run-history/reader.ts': {
     '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
   },
+  'packages/core/src/spike-parity.test.ts': {
+    '../src/': 'the prefix a spike test file\'s own import specifiers are compared against, to decide whether it imports the spike\'s source; nothing is opened through it',
+  },
   'packages/core/src/run-history/reader.test.ts': {
     '..': 'the same token, handed to the guard and asserted refused',
     '../secret': 'a hostile run id, asserted refused; its target is built under os.tmpdir by the test itself',
@@ -1028,6 +1064,7 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '..': 'the value `escapes` compares a normalised path against, and the key of two entries above',
     '../': 'the prefix it compares against, and the key of two entries above',
     '../git/git.js': 'the key of the fanout entry above',
+    '../src/': 'the key of the spike-parity entry above',
     '../secret': 'the key of the run-history reader entry above',
     '../../../etc/passwd': 'the key of the git entry above',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',

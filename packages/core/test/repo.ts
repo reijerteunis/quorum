@@ -1,8 +1,9 @@
 // Test support for `core`: throwaway git repositories, and a `git` first on PATH that can count
 // or break invocations.
 //
-// It lives OUTSIDE `src/` because Vitest is configured to collect `src/**/*.test.ts` and this is
-// not a suite. Every fixture below builds the topology it asserts: no test in this package may
+// It lives OUTSIDE `src/` because this is not a suite — which since Q-0054 is a statement about its
+// NAME rather than about its directory: the include is Vitest's own default and reaches every
+// `*.test.ts` below a package. Every fixture below builds the topology it asserts: no test in this package may
 // assert the containment state of a branch in THIS repository, which would be red until the next
 // landing and green forever after — the failure the permanent-acceptance-test decision
 // (docs/DECISIONS.md, 2026-08-23) exists to prevent.
