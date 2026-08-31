@@ -3,8 +3,9 @@
 // recording, because Q-0047 has to assert argv element for element and has to prove that a refusal
 // happened BEFORE anything was spawned.
 //
-// It lives outside `src/` for the reason `repo.ts` does: Vitest collects `src/**/*.test.ts` and this
-// is support, not a suite.
+// It lives outside `src/` for the reason `repo.ts` does: this is support, not a suite. Since Q-0054
+// that is a statement about its NAME and no longer about its directory — the include is Vitest's own
+// default, so `test/` is not a place a file is safe by virtue of being in.
 import fs from 'node:fs';
 import path from 'node:path';
 

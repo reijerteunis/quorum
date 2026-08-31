@@ -44,7 +44,19 @@
         // the guard being able to see the tree it polices — Q-0051's red CI was three merge
         // calls in a file no core task declared.
         "../../spike/test/**",
-        "../../spike/templates/harness/flows/*.yaml"
+        "../../spike/templates/harness/flows/*.yaml",
+        // Q-0054: src/test-discovery.test.ts expands the workspace globs and then asks, of every
+        // package, whether its Vitest configuration collects each of its test files. So this task
+        // reads every package's manifest and configuration, and its verdict depends on which test
+        // files exist. `vitest.shared.js` is not here because root turbo.json already hashes it as a
+        // globalDependency, which is the same claim by a different route.
+        "../../pnpm-workspace.yaml",
+        "../../packages/*/package.json",
+        "../../packages/*/vitest.config.js",
+        "../../packages/*/**/*.test.ts",
+        "../../apps/*/package.json",
+        "../../apps/*/vitest.config.js",
+        "../../apps/*/**/*.test.ts"
       ]
     }
   }
