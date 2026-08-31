@@ -152,6 +152,7 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'spike/templates/harness/harness.yaml': 'project.test.ts — the shipped template config',
     'packages/core/package.json': 'index.test.ts — core declares shared as a workspace dependency',
     'packages/core/src/index.ts': 'index.test.ts — the entry point is byte-pinned',
+    'packages/core/src/adapters/adapters.ts': 'project.test.ts — Q-0058 AC-2, withRetry\'s defaults are the oracle for the shipped example, so a change to one must move this task\'s hash',
     'packages/core/src/backlog/project.ts': 'project.test.ts — loadProject runs no schema',
   },
   '@quorum/core#test': {
@@ -1662,6 +1663,11 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * `ticket_path`, `harness/flows/development.yaml`, and `packages/core/src/contracts/run-manifest.ts`,
  * which the source suite reads to assert that neither implementation of the roll-up imports the
  * other. Seventy over thirty-nine.
+ *
+ * One more arrived with Q-0058, on a literal the register did not hold before:
+ * `packages/core/src/adapters/adapters.ts`, which `project.test.ts` reads so that `withRetry`'s
+ * destructured defaults are the oracle for the commented example in both shipped `harness.yaml`
+ * files rather than three numbers retyped into a test. Seventy-one over forty.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
@@ -1723,6 +1729,7 @@ const COLLECTED_BASELINE = [
   'packages/shared/src/index.test.ts: packages/core/src/index.ts',
   'packages/shared/src/index.test.ts: packages/shared/package.json',
   'packages/shared/src/project.test.ts: harness/harness.yaml',
+  'packages/shared/src/project.test.ts: packages/core/src/adapters/adapters.ts',
   'packages/shared/src/project.test.ts: packages/core/src/backlog/project.ts',
   'packages/shared/src/project.test.ts: packages/shared/src/index.ts',
   'packages/shared/src/project.test.ts: spike/templates/harness/harness.yaml',
@@ -1842,9 +1849,9 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(71);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(72);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
-      'distinct literals in the baseline').toBe(39);
+      'distinct literals in the baseline').toBe(40);
     // And the nine the classifier calls directories, which is the class the defect lived in: a
     // checkout that had run a flow made it eleven.
     for (const directory of ['docs/decisions', 'harness/flows', 'harness/roles', 'packages/core',

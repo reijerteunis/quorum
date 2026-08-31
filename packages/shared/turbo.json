@@ -24,6 +24,7 @@
         "../../spike/templates/harness/harness.yaml",
         "../core/package.json",
         "../core/src/index.ts",
+        "../core/src/adapters/adapters.ts",
         "../core/src/backlog/project.ts"
       ]
     }
