@@ -7,6 +7,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { validateArtifact, validateFile, readData } from '../src/contracts.js';
+
 const spike = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.resolve(spike, '..');
 const bin = path.join(spike, 'bin/harness.js');
@@ -92,6 +94,42 @@ scenario('AC-14/EDGE-13', 'annotation activates roll-up semantics and generic sc
   for (const annotation of [undefined, 'unknown-v1']) { const s = { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' }; if (annotation) s['x-quorum-contract'] = annotation; const sf = path.join(root, `generic-${annotation ?? 'none'}.json`); const df = path.join(root, 'data.json'); write(sf, s); write(df, {}); const x = cli(root, ['validate', sf, df]); assert.equal(x.status, 0); assert.match(x.stdout + x.stderr, /semantic.*skip|skip.*semantic/i); }
 });
 
+// The notice's five clauses, as literal assertions rather than as one loose regex. The scenario
+// above pins that a notice appears at all; this pins what it says, which is the part that was
+// wrong: opening with "run-manifest semantic checks skipped" over somebody else's contract reads
+// as a check that was owed and missed. See Q-0037 AC-10.
+scenario('AC-14/EDGE-13', 'the skipped-check notice leads with inapplicability and still names what did not run', () => {
+  const root = fixture();
+  const sf = path.join(root, 'other.schema.json'); const df = path.join(root, 'artifact.json');
+  write(sf, { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' }); write(df, {});
+  const out = cli(root, ['validate', sf, df]).stdout;
+  const notice = out.split('\n').find(l => l.includes(df) && !l.includes('matches'));
+  assert.ok(notice, `no notice line for ${df}; got: ${out}`);
+
+  // (1) it names the file.
+  assert.ok(notice.includes(df), 'the notice must name the file it is about');
+  // (3) it leads with inapplicability: the text before the first dash names the missing annotation,
+  //     and does not open with "run-manifest".
+  const lead = notice.slice(0, notice.indexOf('—'));
+  assert.ok(lead.includes('x-quorum-contract'), `the lead must name the missing annotation; got: ${lead}`);
+  assert.doesNotMatch(lead.replace(df, '').replace(/^[^\w]*/, ''), /^run-manifest/, 'the notice must not open with run-manifest');
+  // (4) it still states explicitly that no run-manifest semantic checks ran, and names the one
+  //     contract that is defined — which is what keeps the frozen runs-cli contract satisfied.
+  assert.match(notice, /no run-manifest semantic checks ran/);
+  assert.match(notice, /run-manifest-v1 is the only contract defined/);
+  // (2) and never that any passed.
+  assert.doesNotMatch(notice, /pass(ed|es)?\b/i, 'a skip is not a pass');
+  // (5) and it is not the phrasing that reads as a missing check.
+  assert.ok(!notice.includes('run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)'),
+    'the superseded wording is still being printed');
+
+  // The run-manifest path is untouched: a clean manifest earns its green tick and no notice.
+  const good = path.join(root, 'clean.json'); write(good, manifest('Q-0011-1', 'Q-0011'));
+  const ok = cli(root, ['validate', schema, good]);
+  assert.equal(ok.status, 0); assert.match(ok.stdout, /✓/);
+  assert.doesNotMatch(ok.stdout, /x-quorum-contract|checks ran/, 'a recognised contract prints no skip notice');
+});
+
 scenario('EDGE-15/EDGE-16', 'semantic validation rejects duplicate occurrence directories and vendors', () => {
   const root = fixture();
   for (const [name, mutate, expected] of [
@@ -111,6 +149,57 @@ scenario('EDGE-17/EDGE-18', 'semantic validation rejects lifecycle and kind/null
     ['script-adapter', m => { m.steps[0] = { ...m.steps[0], kind: 'script', role: null, adapter: 'mock', model: null, attempts: 0, usage: null }; m.rollup = [m.rollup[0]]; }, /adapter|kind|null/i],
   ];
   for (const [name, mutate, expected] of cases) { const m = manifest('Q-0011-1', 'Q-0011'); mutate(m); const f = path.join(root, `${name}.json`); write(f, m); const r = cli(root, ['validate', schema, f]); assert.equal(r.status, 1); assert.match(r.stdout + r.stderr, expected); }
+});
+
+// validateArtifact is the single-read entry point the CLI now calls; validateFile is kept, unchanged
+// and still called by q0034-review-fixes.js. Their structural halves must not drift apart, which is
+// the whole risk of having two of them. See Q-0037 AC-9.
+scenario('Q-0037 AC-9', 'an artifact is read once per validate, and the two functions agree structurally', () => {
+  const root = fixture();
+  const generic = path.join(root, 'generic.schema.json');
+  write(generic, { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', required: ['a'] });
+  const clean = path.join(root, 'clean.json'); write(clean, manifest('Q-0011-1', 'Q-0011'));
+  const valid = path.join(root, 'valid.json'); write(valid, { a: 1 });
+  const invalid = path.join(root, 'invalid.json'); write(invalid, { b: 1 });
+  const notAManifest = path.join(root, 'not-a-manifest.json'); write(notAManifest, { run_id: 5 });
+  // The real contract, minus its `$id`. The one ajv instance caches every compiled schema by `$id`
+  // for the life of the process — a preserved defect (Q-0045 AC-8 defect 1), which is why the CLI
+  // spawns per invocation and why compiling the committed file more than once in THIS process
+  // throws "already exists". Dropping the key is enough: every `$ref` in it is an internal
+  // `#/$defs/…` pointer resolved against the document, and `x-quorum-contract` is what selects the
+  // pass. The committed file itself is still exercised once below, so the annotation that matters
+  // is read from the real thing rather than only from a copy.
+  const { $id: _unused, ...annotated } = readData(schema);
+  const rmSchema = path.join(root, 'run-manifest-noid.schema.json'); write(rmSchema, annotated);
+
+  // The CLI used to call validateFile and then readData(dataFile) again a line later, so every
+  // artifact was opened and parsed twice and the two reads could disagree if the file moved between
+  // them. Counted here rather than reasoned about, because "reads once" is invisible in the output.
+  const real = fs.readFileSync;
+  const reads = [];
+  fs.readFileSync = (p, ...rest) => { reads.push(String(p)); return real(p, ...rest); };
+  try { validateArtifact(schema, clean); } finally { fs.readFileSync = real; }
+  assert.equal(reads.filter((p) => p === clean).length, 1, `the artifact must be read exactly once; got ${reads.filter((p) => p === clean).length}`);
+  assert.equal(reads.filter((p) => p === schema).length, 1, `the schema must be read exactly once; got ${reads.filter((p) => p === schema).length}`);
+
+  // Every combination in which the semantic pass does not run or finds nothing — which is every
+  // combination in which the two functions are comparable at all. A divergence here means the
+  // convergence went wrong.
+  for (const [schemaFile, dataFile, note] of [
+    [generic, valid, 'generic schema, valid data — no pass selected'],
+    [generic, invalid, 'generic schema, invalid data — no pass selected'],
+    [rmSchema, notAManifest, 'run-manifest schema, structurally invalid — pass skipped'],
+    [rmSchema, clean, 'run-manifest schema, clean — pass runs and finds nothing'],
+  ]) {
+    const a = validateArtifact(schemaFile, dataFile);
+    const v = validateFile(schemaFile, dataFile);
+    assert.deepEqual({ ok: a.ok, errors: a.errors, schema: a.schema, data: a.data }, v, `${note}: structural halves must agree`);
+  }
+
+  // And the three-state outcome is the thing a caller reads, never `ok`: a skip is not a pass.
+  assert.deepEqual(validateArtifact(generic, valid).semantic, { contract: null, ran: false, reason: 'unrecognised-annotation' });
+  assert.deepEqual(validateArtifact(rmSchema, notAManifest).semantic, { contract: 'run-manifest-v1', ran: false, reason: 'structurally-invalid' });
+  assert.deepEqual(validateArtifact(rmSchema, clean).semantic, { contract: 'run-manifest-v1', ran: true });
 });
 
 if (failed) { console.error(`\n✗ ${failed} Q-0011 CLI scenario group(s) failed`); process.exit(1); }

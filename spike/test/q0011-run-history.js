@@ -222,7 +222,17 @@ await scenario('AC-4/AC-5', 'gates allocate nothing and script output is capture
 });
 
 await scenario('AC-3/AC-10/EDGE-9', 'signal finalisation records interruption while hard-kill state remains honestly running', async () => {
-  const source = `import { runFlow, loadFlow } from ${JSON.stringify(path.join(spike, 'src/engine.js'))};\nimport { Backlog } from ${JSON.stringify(path.join(spike, 'src/backlog.js'))};\nconst root=process.argv[1], h=root+'/harness', b=new Backlog(root+'/backlog'), t=b.list()[0];\nconst ui={info(){},warn(){},step(){},done(){},trace(){},gate:()=>new Promise(()=>{})};\nawait runFlow({flow:loadFlow(h+'/flows/history.yaml'),ticket:t,backlog:b,harnessDir:h,repoDir:root,config:{adapterOverride:'mock',adapters:{},repo:{base_branch:'main'}},ui,auto:false});`;
+  // The gate promise owns its own libuv handle, which is what keeps the child alive long enough to
+  // receive the SIGTERM below. It used to own none, and `runGate` carried a one-second setTimeout
+  // that held the loop open on its behalf — a test fixture's prop living in production code, where
+  // it made a race look like a guarantee. The prop is gone (Q-0037 AC-1); the handle belongs here.
+  //
+  // The ceiling is what stops this becoming worse than the defect: spike/test/run.js has no
+  // per-scenario timeout, so an unbounded handle would turn a broken engine from a failing suite
+  // into a hanging one. Ten seconds is far beyond the milliseconds the SIGTERM actually takes, and
+  // if it is ever reached the rejection ends the run and the child exits non-zero, so the assertions
+  // below fail rather than never arriving.
+  const source = `import { runFlow, loadFlow } from ${JSON.stringify(path.join(spike, 'src/engine.js'))};\nimport { Backlog } from ${JSON.stringify(path.join(spike, 'src/backlog.js'))};\nconst root=process.argv[1], h=root+'/harness', b=new Backlog(root+'/backlog'), t=b.list()[0];\nconst ui={info(){},warn(){},step(){},done(){},trace(){},gate:()=>new Promise((_,reject)=>{setTimeout(()=>reject(new Error('gate ceiling reached')),10000);})};\nawait runFlow({flow:loadFlow(h+'/flows/history.yaml'),ticket:t,backlog:b,harnessDir:h,repoDir:root,config:{adapterOverride:'mock',adapters:{},repo:{base_branch:'main'}},ui,auto:false});`;
   const f = fixture(`name: history\nconsumes: draft\nproduces: requirements\nsteps:\n  - {id: waiting, gate: human}\n`);
   const child = spawn(process.execPath, ['--input-type=module', '-e', source, f.root], { stdio: 'ignore' });
   await waitFor(() => manifests(f).length === 1, 'harness process never initialised its manifest'); child.kill('SIGTERM');

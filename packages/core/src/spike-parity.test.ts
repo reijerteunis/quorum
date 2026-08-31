@@ -133,10 +133,13 @@ const REGISTER: Record<string, Entry> = {
     binaryHalf: '`harness runs` reading that history back at the command line — Q-0010',
   },
   'q0011-runs-cli.js': {
-    verdict: 'cli',
-    carriedBy: [],
-    note: 'it spawns the binary and imports nothing from the spike\'s src, so there is no library half to carry',
-    binaryHalf: '`harness runs` listing and detail, including its exit codes — Q-0010',
+    verdict: 'split',
+    carriedBy: [
+      'packages/core/src/contracts/contracts.test.ts',
+      'packages/core/src/contracts/validate-artifact.test.ts',
+    ],
+    note: 'it was `cli` until Q-0037, on the true statement that it imported nothing from the spike\'s src — that stopped being true when AC-9 gave the spike a validateArtifact and this file began asserting over it directly, because "the artifact is read once" is invisible from outside the process. Its library half is that convergence: validateArtifact\'s three-state semantic outcome, and its structural half agreeing with validateFile over every combination in which the two are comparable',
+    binaryHalf: '`harness runs` listing and detail, including its exit codes, and the skipped-check notice as the CLI actually prints it — Q-0010',
   },
   'q0033-surface.js': {
     verdict: 'split',
@@ -1032,9 +1035,9 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
   });
 
   test('the three-way classification is an identity, not a count', () => {
-    expect(named('binary-only')).toStrictEqual(['q0011-runs-cli.js', 'q0036-board-containment.js']);
+    expect(named('binary-only')).toStrictEqual(['q0036-board-containment.js']);
     expect(named('both')).toStrictEqual([
-      'q0011-run-history.js', 'q0033-surface.js', 'q0034-review-fixes.js',
+      'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
       'q0077-base-flag.js', 'q0080-allocation.js', 'smoke.js',
     ]);
     expect(named('library-only')).toStrictEqual([
@@ -1055,14 +1058,23 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // terminal statuses the review found untested, and again in its fifth, 345 → 401, widening the
     // AC-4 scan to every spelling of a ref deletion — the same file both times, so only its own
     // column moves, and the rounded share crossed from 50% to 49% on the second of them.
+    //
+    // Re-measured again 2026-09-01 for Q-0037, and this time the CLASSIFICATION moved rather than
+    // only the arithmetic: `q0011-runs-cli.js` was `cli`/binary-only on the true statement that it
+    // imported nothing from the spike's src, and AC-9's read-count assertion had to import
+    // `validateArtifact` to make "the artifact is read once" observable at all. So it is `split`
+    // now, binary-only is one file, and 336 / 2026 / 2463 / 4825 became 220 / 2264 / 2469 / 4953.
+    // The share went 49% → 50%, which is the opposite direction from Q-0062's move and for the
+    // opposite reason: every line added here landed in an entangled file. Nothing was adjusted to
+    // fit — the four numbers are `wc -l` over the three buckets as the recomputation sorts them.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
-    expect(linesOf(named('binary-only'))).toBe(336);
-    expect(linesOf(named('both'))).toBe(2026);
-    expect(linesOf(named('library-only'))).toBe(2463);
-    expect(total).toBe(4825);
-    // 49% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
-    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(49);
+    expect(linesOf(named('binary-only'))).toBe(220);
+    expect(linesOf(named('both'))).toBe(2264);
+    expect(linesOf(named('library-only'))).toBe(2469);
+    expect(total).toBe(4953);
+    // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
+    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });
 
   test('the two spellings are both resolved, and neither carries the other', () => {
@@ -1302,8 +1314,12 @@ describe('Q-0054 AC-3 — a ported or split entry names counterparts that exist 
     // A register whose counterpart column had collapsed to a single popular file would satisfy every
     // clause above while saying nothing about the union it exists to describe.
     const all = Object.values(REGISTER).flatMap((entry) => entry.carriedBy);
+    // Q-0037 moved `q0011-runs-cli.js` from `cli` to `split`, so it names two counterparts where it
+    // named none. Both were already named by other rows, which is why the distinct count is
+    // unmoved and only the total is — the register getting wider without getting more varied, and
+    // exactly the case this clause exists to be able to see.
     expect(new Set(all).size, 'distinct counterparts named').toBe(29);
-    expect(all.length, 'counterpart namings in total').toBe(49);
+    expect(all.length, 'counterpart namings in total').toBe(51);
   });
 });
 
@@ -1314,8 +1330,8 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     expect(Object.keys(NOT_A_SUITE).length, 'entries that are not test files').toBe(2);
     expect(Object.keys(FILES).length, 'entries in spike/test').toBe(20);
     const verdicts = Object.values(REGISTER).map((entry) => entry.verdict);
-    expect(verdicts.filter((verdict) => verdict === 'cli').length).toBe(2);
-    expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(6);
+    expect(verdicts.filter((verdict) => verdict === 'cli').length).toBe(1);
+    expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(7);
     expect(verdicts.filter((verdict) => verdict === 'ported').length).toBe(10);
     expect(verdicts.filter((verdict) => verdict === 'uncovered').length).toBe(0);
   });
@@ -1360,7 +1376,11 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
   test('(e) an entry that names no counterpart, or names one it may not have, fails', () => {
     expect(audit(mutated('q0070-capture.js', { carriedBy: [] }), FILES))
       .toContain("q0070-capture.js: 'ported' names no counterpart");
-    expect(audit(mutated('q0011-runs-cli.js', { carriedBy: ['packages/core/src/index.test.ts'] }), FILES))
-      .toContain("q0011-runs-cli.js: 'cli' names counterparts it may not have");
+    // Re-aimed at the one remaining `cli` row by Q-0037, which moved `q0011-runs-cli.js` to
+    // `split`. Left where it was, the mutation would have produced no message at all and this half
+    // would have passed over nothing — a negative control quietly losing its subject, which is the
+    // failure this whole file is built to make impossible.
+    expect(audit(mutated('q0036-board-containment.js', { carriedBy: ['packages/core/src/index.test.ts'] }), FILES))
+      .toContain("q0036-board-containment.js: 'cli' names counterparts it may not have");
   });
 });

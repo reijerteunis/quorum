@@ -140,14 +140,20 @@ describe('AC-7 — three states, and `ran: true` is the only one that means the 
 
 describe('AC-9 — nothing in core prints, and the CLI\'s four lines are reproducible from what it returns', () => {
   /**
-   * The renderer that belongs to the CLI, transcribed from spike/bin/harness.js:488–516 and driven
+   * The renderer that belongs to the CLI, transcribed from spike/bin/harness.js:425–454 and driven
    * entirely by `validateArtifact`'s return value. It lives here, in a test, because an escape byte
    * in `core` is a bug in M4's browser and on M3's WebSocket.
+   *
+   * The citation is re-derived rather than carried: the range moved when Q-0037 took the semantic
+   * checker out of the CLI and into spike/src/contracts.js. The notice below moved with it, and
+   * this helper is only worth having while it still reproduces what the CLI prints — a copy that
+   * has stopped matching its subject is a green test of a string nobody sees, which is the failure
+   * this file exists to avoid rather than to commit.
    */
   const render = (file: string, result: ArtifactValidationResult): string[] => {
     const lines: string[] = [];
     if (!result.semantic.ran && result.semantic.reason === 'unrecognised-annotation') {
-      lines.push(`\x1b[2m·\x1b[0m ${file}: run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)`);
+      lines.push(`\x1b[2m·\x1b[0m ${file}: no x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`);
     }
     lines.push(result.ok
       ? `\x1b[32m✓\x1b[0m ${file} matches ${result.schema}`
@@ -170,7 +176,7 @@ describe('AC-9 — nothing in core prints, and the CLI\'s four lines are reprodu
   test('a generic schema prints the skip line first, then the verdict', () => {
     const [schemaFile, dataFile] = pair(GENERIC_SCHEMA, { b: 1 }, 'other.schema.json', 'artifact.json');
     expect(render(dataFile, validateArtifact(schemaFile, dataFile))).toStrictEqual([
-      `\x1b[2m·\x1b[0m ${dataFile}: run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)`,
+      `\x1b[2m·\x1b[0m ${dataFile}: no x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`,
       `\x1b[31m✗\x1b[0m ${dataFile} violates other.schema.json:\n    /: must have required property 'a'`,
     ]);
   });

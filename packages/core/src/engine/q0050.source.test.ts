@@ -125,9 +125,22 @@ describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
 describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
   const routing = (): string => source('routing.ts');
 
-  test('AC-4h: signalWindow and its authority are preserved together', () => {
-    expect(routing()).toMatch(/signalWindow[^\n]*Why: preserved defect, see Q-0050 AC-4\./);
-    expect(routing()).toMatch(/1000/);
+  test('Q-0037 AC-4: routing.ts holds no timer, and nothing stands in for the one it held', () => {
+    // The inverse of the AC-4h pin that stood here, which asserted the `signalWindow` marker and
+    // the literal `1000` were preserved together. It is replaced rather than weakened: an assertion
+    // that merely stopped requiring the marker would have been satisfied by a timer carrying no
+    // authority line at all, which is the worse of the two states.
+    //
+    // In this package the timer's stated purpose never existed. Its comment said it held libuv open
+    // so a signal could reach the finaliser, and AC-5 removed signal handling from `core` entirely —
+    // cancellation is the caller's `AbortSignal`. The spike's copy is gone in the same change, where
+    // it did have a purpose: holding a test fixture's process alive. That fixture owns its own
+    // bounded handle now (Q-0037 AC-2).
+    //
+    // The second clause is AC-5's no-lifecycle-masking half: no interval, no keep-alive and no
+    // second timer may replace what was removed. The fixture is the only thing that gains a handle.
+    expect(routing()).not.toMatch(/signalWindow/);
+    expect(routing()).not.toMatch(/setTimeout|setInterval|setImmediate/);
   });
 
   test('AC-9d: no engine helper resets or deletes task branches', () => {
@@ -173,7 +186,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
-      'routing.ts': ['preserved defect/AC-4', 'preserved defect/AC-12', 'preserved behavior'],
+      'routing.ts': ['preserved defect/AC-12', 'preserved behavior'],
       'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052', 'preserved defect/Q-0052'],
       'suite-output.ts': ['behaviour-from-spike', 'preserved behaviour/Q-0053'],
     };
@@ -183,8 +196,16 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       if (hits.length > 0) found[name] = hits;
     }
     expect(found).toStrictEqual(REGISTERED);
-    // Nineteen authority lines, of which SEVEN are Q-0050's own preserved defects — exactly
-    // AC-13d's enumeration (AC-4h, AC-10c, AC-10f, AC-12a/b/c/d), ruled in E-20. Q-0051 added one:
+    // Eighteen authority lines, of which SIX are Q-0050's own preserved defects: AC-10c, AC-10f
+    // and AC-12a/b/c/d. Re-derived from the register above rather than decremented from the
+    // nineteen-and-SEVEN that stood here, because this narration is cumulative and already trailed
+    // the map — subtracting one from a sentence that was itself a sum produces a differently stale
+    // number, and a true record made false is what nothing here catches. Q-0037 removed AC-4h:
+    // `routing.ts`'s one-second `signalWindow`, whose comment said it held libuv open for a signal
+    // path that AC-5 had already removed from this package. It went from the spike in the same
+    // change, where it did have a purpose — holding a test fixture's process alive — and that
+    // fixture now owns its own bounded handle. E-20's enumeration is therefore one shorter than
+    // the sentence it ruled on; the ruling stands, its subject list does not. Q-0051 added one:
     // `diff.ts`'s Q-0078 cache keying, which it registers rather than disguises as newly correct.
     // Q-0052 adds three: `prompt.ts`'s read of that same cache, which is where the keying is
     // actually consumed, and two in `steps.ts` — `resolveModel`'s adapter guard, and the unguarded
@@ -206,7 +227,7 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // divergence, because this register is scoped to `engine/`; `q0053.source.test.ts` pins it.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(19)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(18)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {
