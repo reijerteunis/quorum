@@ -1,14 +1,22 @@
 ---
 id: Q-0054
 title: The regression suite on Vitest, and CI gating the port
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0054/integration
 priority: p1
 created: 2026-08-25
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-31T10:30:08.026Z
+    cost: 6.308
 ---
 The last ticket of Q-0009's port and the only one that can prove any of the others. M2's done-when
 asks for *"the 30-check smoke test passes as a Vitest suite; CI runs it on every push"*. Today that
@@ -93,11 +101,19 @@ consecutive decline. `packages/core/src/engine/routing.ts:27` still carries
 **This ticket inherits no authorised behaviour change of any kind.** A Vitest fixture that "no
 longer needs" the timer is a behaviour change like any other and takes charter §2's route.
 
-**CI has five jobs, not two.** `workspace`, `port-freeze-policy`, `port-freeze-branch-scope`,
-`port-freeze-sha`, and `spike` — which is the **last**, not "CI's second job". The freeze-SHA job
-is live and green as of `95079ac`, so anything this ticket does to `spike/**` turns it red until
-the SHA is re-recorded. The body's non-goals already forbid editing `spike/**`; the point here is
-that the guard now enforces it rather than merely asking.
+**CI has seven jobs, not two** — `workspace`, `port-freeze-policy`, `port-freeze-branch-scope`,
+`port-freeze-sha`, `spike`, `git-identity-sweep-bare` and `git-identity-sweep-populated`. The
+`spike` job is neither the second nor the last; the two sweep jobs follow it. The freeze-SHA job is
+live and green as of `95079ac`, so anything this ticket does to `spike/**` turns it red until the
+SHA is re-recorded. The body's non-goals already forbid editing `spike/**`; the point here is that
+the guard now enforces it rather than merely asking.
+
+*Corrected 2026-08-31, after the requirements run reported seven. The first pass of this section
+said **five** and named the spike job as last: the two `git-identity-sweep-*` jobs were missed
+because the command that enumerated them was truncated by a `head`. They are Q-0079's, added the
+same day and run by hand an hour before this section was written. A count taken from a truncated
+listing is the failure this repository keeps recording, arriving inside a correction written to
+prevent it.*
 
 **`run.js` behaves exactly as the body describes** — verified rather than assumed. It reads the
 directory, filters `*.js`, excludes itself, and sorts `smoke.js` first with `localeCompare` for the
