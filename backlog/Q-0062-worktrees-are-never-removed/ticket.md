@@ -1,13 +1,14 @@
 ---
 id: Q-0062
 title: Worktrees are never removed — removeWorktree has no callers
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0062/integration
 priority: p2
 created: 2026-08-26
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,30 @@ history:
     stage_after: requirements
     at: 2026-08-31T19:18:30.028Z
     cost: 8.445
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-31T20:32:27.341Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-31T20:53:36.357Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-31T21:24:11.978Z
+    cost: 80.042
 ---
 Raised by Ruud on 2026-08-26: *"worktrees are not automatically cleared after they have finished"*.
 

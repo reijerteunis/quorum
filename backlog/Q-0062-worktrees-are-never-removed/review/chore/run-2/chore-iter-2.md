@@ -1,0 +1,5 @@
+# Review — Q-0062, round 2
+
+blocker: docs/04-architecture.md:37 The worktree lifecycle cites *“A run removes the worktrees it made, and never the refs”* (2026-08-31), but the corresponding decision file and `docs/DECISIONS.md` index entry still do not exist. GO-1 requires that decision to be recorded by the maintainer before implementation can be approved. Have the maintainer add and index the decision under the cited title, or update all six citations if the recorded title or date differs.
+
+major: packages/core/src/engine/worktree-lifecycle.test.ts:71 The lifecycle tests exercise cleanup only for `completed` and retention only for `failed`/`aborted`; they never prove that `regressed` removes obtained worktrees or that `interrupted` retains them. The spike suite has the same omission at `spike/test/q0062-worktree-lifecycle.js:82`. AC-1, AC-2, and AC-8 require every behavioral criterion in both trees, including these explicitly named terminal statuses. Add automated cases in both suites covering `regressed` cleanup and `interrupted` retention.
