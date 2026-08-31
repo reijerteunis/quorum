@@ -22,7 +22,13 @@ advance. The fourth round changed no files and found that the guard protecting t
 safety property was blind to three spellings of a ref deletion, which is why the second `retry` is
 what made the ticket sound. It is also the first ticket to walk charter §3's re-record path, and the
 first whose leftovers were cleared by hand at the close — 555 MB of worktrees removed with every
-branch kept, the successor's job done once manually.
+branch kept, the successor's job done once manually. **Q-0039 and Q-0040 were created as folders the
+same evening**, at the ids this page has cited since 2026-08-24 — they had entries here and nothing
+in `backlog/` for a week, which is the Q-0074 drift running the other way, and the second instance
+recorded in four days. Both bodies were written against the tree rather than transcribed from these
+two lines: there is no lock of any kind in either tree, and an unanswerable gate's `FlowError` is
+classified as a failed run, so `finish()` rolls the ticket branch back because `'failed'` is not
+`finished()`. Nothing yet checks this page against `backlog/`, which is why the gap keeps recurring.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
@@ -482,11 +488,24 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   a ticket's first pass (mitigated by charter §8's checklist, and now load-bearing rather than
   advisory, because a first-pass run refuses in the preflight instead of billing), and
   `budget.per_run_usd` still stops nothing.
-- Q-0039 One run at a time per ticket. Open since M1, where two runs overlapped twice in one night
-  and one run's rollback moved a branch another live run was holding.
-- Q-0040 A gate can say "undecided". A non-interactive run that reaches an unanswerable gate
-  currently fails, and `finish()` then rolls back work the run had already proven green — it has
-  cost Q-0036 and Q-0035 their merges on consecutive nights.
+- Q-0039 One run at a time per ticket. *(Folder created 2026-08-31, `draft`.)* Open since M1, where
+  two runs overlapped twice in one night and one run's rollback moved a branch another live run was
+  holding. Its body records the three shared resources measured today — the run id `nextRunId`
+  computes from `runs.log`, the ticket branch `finish()` resets to `branchHeadAtStart`, and the one
+  worktree per branch — that there is **no lock of any kind** in either tree, and that
+  `engine.js:383–390`'s `EEXIST` guard disclaims in its own message that it makes the engine safe
+  for concurrent runs. Q-0057's OQ-4 and Q-0062's RK-1 are both deferred to it; RK-1 is a deliberate
+  widening, since a finished run now removes a directory a concurrent run may be writing in.
+- Q-0040 A gate can say "undecided". *(Folder created 2026-08-31, `draft`.)* A non-interactive run
+  that reaches an unanswerable gate currently fails, and `finish()` then rolls back work the run had
+  already proven green — it has cost Q-0036 and Q-0035 their merges on consecutive nights. Traced
+  end to end in its body: `harness.js:95` throws, `engine.js:201–207` calls `finish(…, 'failed', …)`,
+  and `'failed'` is not `finished()`, so `resetBranchTo` fires. The rollback is correct behaviour
+  answering the wrong question — *"nobody was there"* is not *"the work is bad"* — and the real work
+  is that `finished()` is one predicate three behaviours read, so a fourth status splits the stage
+  rule, the branch rollback and Q-0062's worktree cleanup, which no longer want the same answer.
+  Owes a decision entry before code, against the two gate-model entries of 2026-08-06 and
+  2026-08-23.
 - Q-0055 Lint requires a step id wherever the engine interpolates one. `lintFlow` requires an `id`
   on no step kind; `engine.js:211` names a worktree branch after it and `engine.js:541` keys a loop
   counter with it, so an id-less step lints clean and creates `harness/<ticket>/undefined`. Lands
