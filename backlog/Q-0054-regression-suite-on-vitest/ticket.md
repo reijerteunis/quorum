@@ -1,13 +1,14 @@
 ---
 id: Q-0054
 title: The regression suite on Vitest, and CI gating the port
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0054/integration
 priority: p1
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-08-31T10:30:08.026Z
     cost: 6.308
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-08-31T12:16:27.041Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-31T13:24:48.845Z
+    cost: 51.391
 ---
 The last ticket of Q-0009's port and the only one that can prove any of the others. M2's done-when
 asks for *"the 30-check smoke test passes as a Vitest suite; CI runs it on every push"*. Today that
