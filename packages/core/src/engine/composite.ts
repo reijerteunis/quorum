@@ -257,6 +257,9 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
         context.backlog.writeFile(ticket, interpolate(String(target), context.vars), notes.join('\n'));
       }
       context.persistence.appendLog(ticket, `run=${context.runId} step=${stepId} base-conflict base=${base} files=${merged.conflicts.join(',') || '?'}`);
+      // Why: preserved defect, see Q-0053 AC-8 — this exit closes neither the occurrence allocated
+      // above nor its `output.txt`, so the finalised manifest keeps an integrate step at `running`
+      // with no artifact beside it. Reported at the gate rather than repaired here.
       throw new FlowError(
         `${stepId}: cannot sync ${into} with ${base} — ${mergeFailure(merged)}.\n`
         + `  This is a conflict between the ticket branch and ${base}, so re-running the developers cannot fix it:\n`
@@ -313,10 +316,13 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
   }
 
   for (const target of writesOf(step)) {
+    // One coercion serves both uses of the entry: a path is routed by the same string it is
+    // written to, so a flow-authored non-string cannot be interpolated and then fail the routing.
+    const writePath = String(target);
     context.backlog.writeFile(
       ticket,
-      interpolate(String(target), context.vars),
-      target.includes('report') ? testReport(cmd, out) : notes.join('\n'),
+      interpolate(writePath, context.vars),
+      writePath.includes('report') ? testReport(cmd, out) : notes.join('\n'),
     );
   }
   context.persistence.persistArtifact(occurrence, OUTPUT_FILE, out);

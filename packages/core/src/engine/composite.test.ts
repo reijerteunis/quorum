@@ -638,6 +638,29 @@ describe('Q-0053 AC-8 — a base conflict stops the run rather than looping', ()
     expect(warns(f.events)).toContain('integrate: could not sync base main — conflicts: shared.txt');
   });
 
+  test('AC-14(7) — the throw leaves its occurrence open, which review round 1 asked to be closed', async () => {
+    // Pinned rather than argued. The spike does the same (spike/src/engine.js:1113-1120: the
+    // artifacts and the log line, then the throw), and `finalise` sweeps nothing, so the manifest
+    // keeps this step at `running` with no `output.txt`. AC-12's clauses are scoped by their own
+    // citation to the tail block and its `merged=…` line, which this path does not reach — it
+    // writes `base-conflict` instead, per AC-8. Charter §2 therefore refuses the repair and this
+    // test is what makes a later one deliberate. See the implement report.
+    const f = fixture();
+    git(f.repoDir, 'checkout', '-q', INTEGRATION);
+    write(path.join(f.repoDir, 'shared.txt'), 'ticket side\n');
+    commitTree(f.repoDir, 'ticket edit');
+    git(f.repoDir, 'checkout', '-q', 'main');
+    write(path.join(f.repoDir, 'shared.txt'), 'base side\n');
+    commitTree(f.repoDir, 'base edit');
+
+    await expect(runIntegrate({ id: 'integrate', type: 'integrate', branches: [], output: { write: 'dev/i.md' } }, f.context))
+      .rejects.toThrow(/cannot sync/);
+
+    expect(vi.mocked(f.context.persistence.allocateOccurrence)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(f.context.persistence.persistArtifact)).not.toHaveBeenCalled();
+    expect(vi.mocked(f.context.persistence.terminalOccurrence)).not.toHaveBeenCalled();
+  });
+
   test('the base is merged before any source branch', async () => {
     const f = fixture();
     write(path.join(f.repoDir, 'landed.txt'), 'landed on main\n');
@@ -894,6 +917,21 @@ describe('Q-0053 AC-13 — every value that arrives from a flow file is coerced 
     const f = fixture();
     await runIntegrate({ id: 'integrate', type: 'integrate', branches: [], output: { write: 'dev/run-{run}-{iter}.md' } }, f.context);
     expect(fs.existsSync(path.join(f.ticketDir, 'dev/run-4-1.md'))).toBe(true);
+  });
+
+  test('a non-string write path is coerced once, so it is routed by the string it is written to', async () => {
+    // Both uses of the entry, not just the interpolation: the routing predicate reads the coerced
+    // value, so a numeric path writes a file rather than throwing on `includes` one line later.
+    const f = fixture();
+
+    await runIntegrate({
+      id: 'integrate', type: 'integrate', branches: [], run_tests: 'printf "✓ one check\\n"',
+      output: { write: 2, writes: ['dev/{run}-report.md'] },
+    }, f.context);
+
+    // `2` carries no `report`, so it takes the notes; the sibling path still takes the report.
+    expect(fs.readFileSync(path.join(f.ticketDir, '2'), 'utf8')).toContain('# Integration — run 4');
+    expect(fs.readFileSync(path.join(f.ticketDir, 'dev/4-report.md'), 'utf8')).toContain('✓ one check');
   });
 
   test('a numeric template field on the fan-out child is coerced rather than passed through', async () => {
