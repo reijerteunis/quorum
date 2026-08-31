@@ -143,13 +143,18 @@ inherits the row and must name it among its own invariants.
 | 17 | An exhaustion gate cannot be bypassed by `--auto`; answers are full words consumed in order; a missing, empty, invalid or disallowed answer fails rather than inventing a decision; `human-locked` cannot be flipped | Q-0050, Q-0052 | *Non-auto exhaustion gates require an explicit human or scripted answer* (2026-08-23) |
 | 18 | The cross-vendor rule is satisfied by a panel spanning vendors, not by writer ≠ reviewer | Q-0044 | *Cross-vendor rule refined* (2026-08-21) |
 | 19 | A flow never writes to the user's working tree; worktrees live under `.harness/worktrees/`, run history under `.quorum/`; `finish()` rolls the ticket branch back on failure | Q-0042, Q-0048, Q-0050 | *Git worktrees are the execution model* (2026-08-06); *Branch layout* (2026-08-21) |
-| 20 | `finish()` does **not** roll back task branches. This is a known gap carried into M2, and the port preserves it rather than fixing it in passing — a fix is its own ticket under §2 | Q-0050 | *M1 closed* (2026-08-24) |
+| 20 | `finish()` does **not** roll back task branches — **settled rather than carried** since Q-0062: refs are kept deliberately, because the ticket-branch rollback is safe only *because* each task's work stays on its own branch, and a removed worktree is re-creatable from its branch while a deleted branch is not. `finish()` now gives back the **worktrees** the run obtained, which is the complement of the same predicate | Q-0050, Q-0062 | *M1 closed* (2026-08-24); *A run removes the worktrees it made, and never the refs* (2026-08-31) |
 | 21 | Invalid structured output saves the raw text beside the ticket and stops the run with a clear message; nothing is silently defaulted | Q-0046, Q-0050 | `harness/rules.md` — *"Errors are explicit"* |
 | 22 | No vendor-specific event field or branching logic exists outside its adapter; every adapter maps onto `shared`'s one event schema and nothing downstream learns which vendor produced an event | Q-0041, Q-0046, Q-0047 | `docs/04-architecture.md:28`; `harness/rules.md` |
 
 Row 20 is the shape to watch generally: a port is a tempting place to fix a known defect
 quietly. Row 1 is the shape to watch specifically — a rewrite that probes first and refuses
 second passes every test that checks only the refusal.
+
+Row 20 held while the port ran and was settled after it, by a ticket outside the freeze. The
+lesson survives the row: it was decided by a requirement that asked whether the gap should be
+closed at all, and the answer was *no for the refs and yes for the directories* — which is not
+the answer a port child would have reached in passing.
 
 ## 3. The freeze
 

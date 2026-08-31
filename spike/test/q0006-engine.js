@@ -221,11 +221,14 @@ await scenario('AC-20/AC-21/AC-27', 'rework task starts from integration and rec
   );
   assert.match(prompt, /major: unicode\.txt:1 fix it/, 'latest verdict did not reach the developer prompt');
   await runFlow({ flow: loadFlow(path.join(f.harnessDir, 'flows', 'development.yaml')), ...f, repoDir: f.root, auto: true });
-  const wt = path.join(f.root, '.harness', 'worktrees', 'harness__T-0001__task-a');
-  assert.equal(fs.existsSync(path.join(wt, 'unicode.txt')), true, 'integration content was merged before the agent');
-  const taskCommit = git(wt, 'show', '-s', '--format=%B', 'HEAD');
+  // Read from the branch, not from the worktree. The fixture pre-created that directory and the run
+  // reused it, so the run finished with it and gave it back (Q-0062) — while the branch, which the
+  // run never deletes, is where the work has to be for any of this to mean anything.
+  const taskBranch = 'harness/T-0001/task-a';
+  assert.match(git(f.root, 'show', `${taskBranch}:unicode.txt`), /first review/, 'integration content was merged before the agent');
+  const taskCommit = git(f.root, 'show', '-s', '--format=%B', taskBranch);
   assert.match(taskCommit, /develop:task-a/);
-  const taskDoc = git(wt, 'show', 'HEAD:src/task-a.ts');
+  const taskDoc = git(f.root, 'show', `${taskBranch}:src/task-a.ts`);
   assert.match(taskDoc, /ok/);
   assert.match(f.messages.join('\n'), /synced to harness\/T-0001\/integration/);
   assert.match(f.messages.join('\n'), /develop:task-a/);

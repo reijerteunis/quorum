@@ -207,8 +207,11 @@ describe('AC-13 — no schema, no worktree lifecycle, and one write', () => {
   });
 
   test('removeWorktree is not imported, and no task-branch rollback helper is added', () => {
-    // Register row 20 is Q-0050's and stays open: `finish()` does not roll back task branches, and
-    // this module must not close that by accident. Q-0062 owns the worktree lifecycle.
+    // Register row 20 is settled rather than open: task branches are kept, deliberately, and so is
+    // every other ref — see *"A run removes the worktrees it made, and never the refs"*
+    // (2026-08-31), which Q-0062 wrote. That STRENGTHENS these assertions instead of releasing
+    // them: the worktree lifecycle lives on the run's terminal path in `engine/`, this module
+    // obtains worktrees and never gives them back, and nothing anywhere deletes a branch.
     for (const [name, text] of moduleSources()) {
       for (const forbidden of ['removeWorktree', 'for-each-ref', "'-D'", "'branch', '-d'"]) {
         expect(text.includes(forbidden), `${name} must not contain ${forbidden}`).toBe(false);

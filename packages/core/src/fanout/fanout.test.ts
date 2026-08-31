@@ -24,8 +24,9 @@ import {
 } from '../../test/repo.js';
 
 // Every worktree this suite cuts lives inside a temp repository, so removing the temp directories
-// removes them too — Q-0062 records four worktrees already on disk from completed tickets, and a
-// suite must not make an open ticket worse (AC-11).
+// removes them too. Measured for Q-0062 on 2026-08-31: one closed chore ticket had left two
+// worktrees and 277 MB on disk, because nothing had ever removed one. A run gives its own back
+// since that ticket; a suite still has to clean up after itself, because nothing here is a run.
 afterAll(removeTempDirs);
 
 /** Whatever `fn` threw. Fails loudly when it threw nothing, rather than passing over a non-throw. */
