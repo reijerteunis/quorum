@@ -96,8 +96,8 @@ sentence is done; `mergeFailure`'s half travelled with the function.
 **Every other collaborator is already in `core`.** Measured by extracting the call sites from the
 six spans and grepping each: thirteen from Q-0048's fan-out plumbing (`loadTasks`, `waves`,
 `taskVars`, `taskPromptSection`, `scopeToFailing`, `ticketWorktree`, `branchExists`, `branchHead`,
-`mergeInto`, and the rest), `interpolate` and `loadRole` from `loaders.ts`, `handleFail` and
-`failed` from `routing.ts`, `runAgentStep` from `steps.ts`, `runCommand` from `fanout/command.ts`,
+`mergeInto`, and the rest), `interpolate` and `loadRole` from `loaders.ts`, `handleFail` from
+`routing.ts`, `runAgentStep` from `steps.ts`, `runCommand` from `fanout/command.ts`,
 and `writesOf` from `lint.ts`. The occurrence seam is not missing either — `allocateOccurrence`,
 `terminalOccurrence` and `persistArtifact` are `RunHistory.allocate`, `.terminal` and `.persist`
 (`run-history/writer.ts:96/108/116`), widened by Q-0052's R-4. **So this ticket writes the two
@@ -128,10 +128,28 @@ Written here because `requirements.yaml` reads this ticket's folder and not a si
    and this ticket moves it again. Q-0052's R-5 names the trap: the prose comment above the
    assertion enumerates which file contributes what, so a change that moves the number and not the
    comment leaves a comment describing a number that is no longer there. Move both.
-3. **`s.into` is this ticket's coercion site** (`spike/src/engine.js:166`), the last of Q-0050
-   E-21's list. `interpolate`'s parameter is typed `string` while the spike coerces, and YAML hands
-   back a **number** for `into: 2`, so the call writes `String(…)` deliberately — a compile error
-   here rather than the spike's silent pass-through, which is the point of the typing.
+3. ~~**`s.into` is this ticket's coercion site**~~ — **struck 2026-08-31, and it was never
+   this ticket's.** Q-0052's merged requirement said `s.into` was Q-0053's; Q-0051 had already
+   discharged it, and `packages/core/src/engine/diff.ts:472` reads
+   `interpolate(String(s.into), context.vars)` today. Nothing is owed. Left visible rather than
+   deleted, because the obligation was carried here in good faith from a sibling's document and the
+   correction is the useful record.
+
+## Corrections to the section above, 2026-08-31
+
+Two claims in the collaborator sweep were wrong, both found by the requirements run and both
+verified by hand afterwards. **Both were grep false positives, which is this repository's own
+lesson arriving in its own preparation: a grep is not a measurement.**
+
+- **`failed` is not an export of `routing.ts`.** It is a local `const` at `:61` inside `runStep`'s
+  parallel handling; the file exports `askGate`, `runStep` and `handleFail` and nothing else. The
+  sweep matched the local declaration. Corrected in the list above.
+- **`s.into` was already discharged**, as obligation 3 now says.
+
+The sweep's *other* direction failed once too and was caught during the derivation rather than
+after it: `cmdTimeout` first read as unported because Q-0052 had renamed it `commandTimeout`. One
+sweep, three errors, two directions. `requirements/merged.md` supersedes this section wherever they
+disagree, and it was written against the tree rather than against this body.
 
 ## Port charter
 
