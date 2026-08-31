@@ -196,8 +196,11 @@ export async function runFanOut(step: Readonly<Record<string, unknown>>, context
  *
  * Three outcomes never reach a backward edge, and that is the point of them. A base conflict, a
  * killed command and a suite that could not start are all conditions no further agent round can
- * repair, so each stops the run with the work a human has to do — after the artifacts, the log line
- * and the occurrence are all on disk.
+ * repair, so each stops the run with the work a human has to do — after the artifacts and the
+ * `runs.log` line are on disk.
+ *
+ * The occurrence is closed for two of the three. The base conflict leaves it at `running` with no
+ * `output.txt`, which is preserved rather than chosen; the authority line on that path says so.
  *
  * @param step the step, as the flow file wrote it.
  * @param context the run. On failure it gains {@link RoutingContext.failingTasks} and

@@ -214,7 +214,13 @@ export interface RunContext {
 export interface FannedTask {
   /** The task's own id, as `tasks.yaml` spells it — not the interpolated child step id. */
   task: string;
-  /** The branch the task's agent step was given, after interpolation. */
+  /**
+   * The branch this fan-out computed and recorded for the task, after interpolation. **Not** a
+   * branch the child step was handed: the record is never written onto the template, so the agent
+   * step works one out for itself, and the two agree only because every shipped fan-out spells
+   * `branch:`. Read it as what the fan-out believes, which is what `integrate` needs to map a
+   * conflict back to a task.
+   */
   branch: string;
   /** The role `tasks.yaml` named, not the `developer-…` role file the template resolved to. */
   role: string;
