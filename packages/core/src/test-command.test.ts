@@ -507,7 +507,7 @@ const CI_JOBS: Record<string, string> = {
   workspace: 'lint, typecheck and test EXECUTED against this commit — forced, so no task is replayed (Q-0071)',
   'port-freeze-policy': 'the charter parses, and the freeze guard\'s own suite runs (Q-0009 §3)',
   'port-freeze-branch-scope': 'this branch changed no spike/src file it may not (Q-0009 §3)',
-  'port-freeze-sha': 'the base holds no spike/src change since the recorded freeze SHA; skipped, not passed, while none is recorded',
+  'port-freeze-sha': 'the base holds no spike/src change since the freeze SHA harness/port-charter.md records — which it does, so this job is live and its tick is an executed claim; it skips, rather than passing, only while the charter still reads not-yet-recorded (Q-0009 §3)',
   spike: 'the spike suite is green — the harness the port is being developed with, and the port\'s only independent witness. Deleted at the cutover by Q-0009, after Q-0010',
   'git-identity-sweep-bare': 'both suites pass with no resolvable git identity, in a checkout that has neither gitignored directory (Q-0079)',
   'git-identity-sweep-populated': 'the same, in a checkout that has both — the cell Q-0072\'s instance lived in',

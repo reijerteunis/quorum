@@ -20,6 +20,17 @@
  * `258e1ba` the eight entangled files spell the path two ways, four each, so a scan anchored on one
  * literal would silently mis-file half of them.
  *
+ * **Reaching the binary is decided twice, by oracles that share no evidence.** {@link binarySpellings}
+ * reads the file's quoted values, and {@link launchSites} ignores them and reads what each
+ * `node:child_process` call actually starts. Two rather than one because a scan for the contiguous
+ * text `harness.js` is exactly what a name assembled from more than one value walks past — the
+ * defect this file carried into its first review round, where `` path.join(spike, 'bin',
+ * `harness${'.js'}`) `` produced neither a reference nor a problem. {@link binaryAssemblies} now
+ * refuses a spelling that could be completed across an interpolation or a concatenation, and a
+ * launch target that resolves to nothing fails the file. The two agree across the corpus as it
+ * stands and a test asserts it, so a disagreement is a finding rather than something the disjunction
+ * in {@link Facts.reachesBinary} quietly absorbs.
+ *
  * **The keys come from the tree.** A hand-written list is what Q-0051 found failing open in
  * `q0050.source.test.ts`, where a seventh engine file went unscanned while the suite reported green;
  * a register keyed by hand would go stale the first time a spike suite lands and would report green
@@ -250,8 +261,20 @@ const NOT_A_SUITE: Record<string, string> = {
 
 /** What the recomputation decides about one spike test file, from its own text. */
 interface Facts {
-  /** Whether it constructs a path naming the harness binary. */
+  /**
+   * Whether it reaches the harness binary — the disjunction of the two oracles below.
+   *
+   * A disjunction rather than either one alone, because the two answer different halves and each
+   * is the safe direction on its own: a file may name the binary and hand it to a helper that
+   * starts it, and a file may start it through a name whose spelling is nowhere in its own text.
+   * A test below asserts the two agree across the corpus as it stands, so a disagreement is a
+   * finding rather than something the disjunction quietly absorbs.
+   */
   readonly reachesBinary: boolean;
+  /** Whether a quoted value in it spells the binary as a path — {@link binarySpellings}. */
+  readonly spelledBinary: boolean;
+  /** Whether a `node:child_process` call in it starts the binary — {@link launchSites}. */
+  readonly launchesBinary: boolean;
   /** Whether it imports from the spike's `src`, statically or dynamically. */
   readonly importsSource: boolean;
   /** Its length, as `wc -l` counts it. */
@@ -265,6 +288,8 @@ interface Quoted {
   readonly value: string;
   readonly start: number;
   readonly end: number;
+  /** Which of the three quote characters opened it, so a template can be told from a string. */
+  readonly quote: "'" | '"' | '`';
 }
 
 /**
@@ -329,7 +354,7 @@ function scan(text: string): { code: string; quoted: Quoted[] } {
         if (c !== '`' && text[j] === '\n') break;
         j++;
       }
-      quoted.push({ value: text.slice(i + 1, j), start: i, end: j + 1 });
+      quoted.push({ value: text.slice(i + 1, j), start: i, end: j + 1, quote: c });
       previous = c;
       i = j + 1;
       continue;
@@ -346,30 +371,10 @@ const ALLOWED_SPECIFIER = /^(?:node:[a-z_/]+|yaml|\.\.\/src\/[\w./-]+)$/;
 /** The last path segment of the harness binary, which is what a reference must end in. */
 const BINARY = 'harness.js';
 
-/**
- * What `text` does, and everything about it this scan refuses to guess.
- *
- * Two questions, both anchored on something closed rather than on a pattern assumed exhaustive.
- *
- * **Which modules it takes.** Every static import and every dynamic one must name a specifier
- * {@link ALLOWED_SPECIFIER} admits — a Node builtin, `yaml`, or the spike's `src`. Anything else is
- * reported, which is what closes *reaches the binary through a helper*: a file cannot borrow another
- * file's spawn without importing it, and no import this scan cannot read passes silently.
- *
- * **Whether it names the binary.** Every quoted value holding {@link BINARY} outside a comment is
- * one of three things. A value with no whitespace ending in `bin/harness.js` is a reference, and so
- * is a bare `harness.js` immediately preceded by a `bin` literal in the same argument list — the two
- * spellings this corpus uses, four files each. A value carrying whitespace is prose, and must be
- * registered in its entry's {@link Entry.mentions} to say so. Anything else is reported.
- *
- * @param text the file's own source.
- * @param mentions the non-reference spellings this file's register entry accounts for.
- */
-function factsOf(text: string, mentions: Record<string, string> = {}): Facts {
-  const { code, quoted } = scan(text);
-  const problems: string[] = [];
-
+/** Every module specifier `code` takes, and what it could not read about them. */
+function specifiersOf(code: string): { specifiers: string[]; problems: string[] } {
   const specifiers: string[] = [];
+  const problems: string[] = [];
   for (const match of code.matchAll(/^[ \t]*(?:import|export)\b[^\n;]*?\bfrom\s*(['"])([^'"\n]*)\1/gm)) specifiers.push(match[2]);
   for (const match of code.matchAll(/^[ \t]*import\s*(['"])([^'"\n]*)\1/gm)) specifiers.push(match[2]);
   const dynamic = [...code.matchAll(/\bimport\s*\(\s*(['"])([^'"\n]*)\1\s*\)/g)];
@@ -382,26 +387,293 @@ function factsOf(text: string, mentions: Record<string, string> = {}): Facts {
   for (const specifier of specifiers) {
     if (!ALLOWED_SPECIFIER.test(specifier)) problems.push(`it imports '${specifier}', which this scan cannot classify`);
   }
+  return { specifiers, problems };
+}
 
-  let reachesBinary = false;
+/**
+ * Whether the binary's name could survive being extended on its right by text this scan cannot read.
+ *
+ * `harness` can — something appended to it makes `harness.js`. `q0080-` cannot, and neither can a
+ * chunk whose last path segment is empty, because a `/` ends the segment the basename is taken from.
+ */
+const opensBinary = (text: string): boolean => {
+  const tail = text.slice(text.lastIndexOf('/') + 1);
+  return tail !== '' && BINARY.startsWith(tail);
+};
+
+/** The mirror of {@link opensBinary}: `.js` could be completed on its left, `.json` could not. */
+const closesBinary = (text: string): boolean => {
+  const cut = text.indexOf('/');
+  const head = cut === -1 ? text : text.slice(0, cut);
+  return head !== '' && BINARY.endsWith(head);
+};
+
+/** A template body's literal chunks, each saying which of its sides abuts an interpolation. */
+function templateChunks(body: string): { text: string; before: boolean; after: boolean }[] {
+  const parts: { text: string; before: boolean; after: boolean }[] = [];
+  let current = '';
+  let preceded = false;
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] === '$' && body[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      while (j < body.length && depth > 0) {
+        if (body[j] === '{') depth++;
+        else if (body[j] === '}') depth--;
+        j++;
+      }
+      parts.push({ text: current, before: preceded, after: true });
+      current = '';
+      preceded = true;
+      i = j;
+      continue;
+    }
+    current += body[i];
+    i++;
+  }
+  parts.push({ text: current, before: preceded, after: false });
+  return parts;
+}
+
+/**
+ * Spellings of the binary assembled across something this scan cannot read, one sentence each.
+ *
+ * The hole this closes is the one a scan for the contiguous text `harness.js` cannot see: an
+ * interpolation or a concatenation splits the name, so no single quoted value holds it and the file
+ * reads as library-only. Rather than resolve the unreadable part — which is a general dataflow
+ * question — this asks whether the *readable* part could still be completed into the binary by
+ * whatever sits next to it, and refuses where it could. `` `harness${x}` `` is refused and
+ * `` `${name}.json` `` is not, because no value ending `.json` has `harness.js` for a basename.
+ */
+function binaryAssemblies(code: string, quoted: readonly Quoted[]): string[] {
+  const problems: string[] = [];
+  for (const value of quoted) {
+    if (value.quote === '`' && value.value.includes('${')) {
+      for (const chunk of templateChunks(value.value)) {
+        if ((chunk.after && opensBinary(chunk.text)) || (chunk.before && closesBinary(chunk.text))) {
+          problems.push(`it could complete '${BINARY}' around an interpolation, in \`${value.value}\``);
+          break;
+        }
+      }
+    }
+    const abutsAfter = /^\s*\+/.test(code.slice(value.end, value.end + 4));
+    const abutsBefore = /\+\s*$/.test(code.slice(Math.max(0, value.start - 4), value.start));
+    if ((abutsAfter && opensBinary(value.value)) || (abutsBefore && closesBinary(value.value))) {
+      problems.push(`it could complete '${BINARY}' across a concatenation, at '${value.value}'`);
+    }
+  }
+  return problems;
+}
+
+/** What an expression at a launch site turned out to be, or `null` where the scan cannot say. */
+type Launched = { readonly kind: 'node' } | { readonly kind: 'file'; readonly value: string } | null;
+
+/** The `node:child_process` calls whose first argument is a file rather than a shell command line. */
+const FILE_LAUNCHERS = new Set(['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork']);
+
+/** A string literal with nothing interpolated into it, captured per quote so `'a' + 'b'` is not one. */
+const LITERAL = /^(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`)$/s;
+
+/** The names `code` imports from `node:child_process`, which are the only calls that start one. */
+function childProcessNames(code: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]node:child_process['"]/g)) {
+    for (const clause of match[1].split(',')) {
+      const name = clause.trim().split(/\s+as\s+/).pop()?.trim();
+      if (name !== undefined && name !== '') names.add(name);
+    }
+  }
+  return names;
+}
+
+/** The top-level argument texts of the bracket opened at `open`, so a call can be taken apart. */
+function argumentsAt(code: string, open: number): string[] {
+  const args: string[] = [];
+  let current = '';
+  let depth = 1;
+  let inString: string | null = null;
+  for (let i = open + 1; i < code.length; i++) {
+    const c = code[i];
+    if (inString !== null) {
+      if (c === '\\') { current += c + code[i + 1]; i++; continue; }
+      if (c === inString) inString = null;
+      current += c;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') { inString = c; current += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; current += c; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      depth--;
+      if (depth === 0) { args.push(current); break; }
+      current += c;
+      continue;
+    }
+    if (c === ',' && depth === 1) { args.push(current); current = ''; continue; }
+    current += c;
+  }
+  return args.map((argument) => argument.trim()).filter((argument) => argument !== '');
+}
+
+/** Module-scope `const`/`let` initialisers that are unique in the file, so a name resolves at all. */
+function uniqueBindings(code: string): Map<string, string> {
+  const seen = new Map<string, number>();
+  const initialisers = new Map<string, string>();
+  for (const match of code.matchAll(/(?:^|\n)[ \t]*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^\n]*?);?[ \t]*(?=\n)/g)) {
+    seen.set(match[1], (seen.get(match[1]) ?? 0) + 1);
+    initialisers.set(match[1], match[2].trim());
+  }
+  const bindings = new Map<string, string>();
+  for (const [name, initialiser] of initialisers) if (seen.get(name) === 1) bindings.set(name, initialiser);
+  return bindings;
+}
+
+/**
+ * What `expression` starts, resolved through the four shapes this corpus uses and nothing else.
+ *
+ * A string literal is itself; `process.execPath` is node; a `path.join`/`path.resolve` is its **last**
+ * argument, which is what decides the basename however unreadable the directories above it are; and a
+ * name is its unique module-scope initialiser. Everything else — a call, a member, an interpolated
+ * template, a concatenation, a name bound more than once — is `null`, and a `null` at a launch site
+ * is a failure rather than a file quietly classified as starting nothing.
+ */
+function resolveLaunched(expression: string, bindings: Map<string, string>, seen: Set<string> = new Set()): Launched {
+  const text = expression.trim();
+  if (text === 'process.execPath') return { kind: 'node' };
+  const literal = LITERAL.exec(text);
+  if (literal !== null) {
+    const value = literal[1] ?? literal[2] ?? literal[3];
+    return value.includes('${') ? null : { kind: 'file', value };
+  }
+  if (/^path\.(?:join|resolve)\s*\(/.test(text)) {
+    const args = argumentsAt(text, text.indexOf('('));
+    const last = args[args.length - 1];
+    return last === undefined ? null : resolveLaunched(last, bindings, seen);
+  }
+  if (/^[A-Za-z_$][\w$]*$/.test(text)) {
+    if (seen.has(text)) return null;
+    const initialiser = bindings.get(text);
+    return initialiser === undefined ? null : resolveLaunched(initialiser, bindings, new Set([...seen, text]));
+  }
+  return null;
+}
+
+/**
+ * Whether `code` starts the harness binary, decided from what each launch site actually launches.
+ *
+ * The second oracle, and the one that does not read the binary's name out of the file's text at all.
+ * Every call to a name imported from `node:child_process` is taken apart: its first argument is the
+ * file it starts, and where that is node, the first element of its argv array is the script node
+ * runs. Each is resolved by {@link resolveLaunched} or reported.
+ *
+ * **Two bounds, stated rather than left to be discovered.** `exec` and `execSync` take a shell
+ * command line rather than a file, and are deliberately not resolved here: the whole command is one
+ * quoted value, so {@link binarySpellings} reads it entire and {@link binaryAssemblies} covers a
+ * name split across an interpolation inside it. And a process started by a helper the file imports
+ * from the spike's own `src` is the subject under test rather than a launch site — the path handed
+ * to it is still a value both of those two read.
+ */
+function launchSites(code: string): { launchesBinary: boolean; problems: string[] } {
+  const bindings = uniqueBindings(code);
+  const problems: string[] = [];
+  let launchesBinary = false;
+  const starts = (launched: Launched): boolean =>
+    launched !== null && launched.kind === 'file' && path.basename(launched.value) === BINARY;
+
+  for (const name of childProcessNames(code)) {
+    if (!FILE_LAUNCHERS.has(name)) continue;
+    for (const match of code.matchAll(new RegExp(String.raw`\b${name}\s*\(`, 'g'))) {
+      const args = argumentsAt(code, match.index + match[0].length - 1);
+      const first = resolveLaunched(args[0] ?? '', bindings);
+      if (first === null) {
+        problems.push(`${name}() starts a file this scan cannot resolve, from '${args[0] ?? ''}'`);
+        continue;
+      }
+      if (first.kind === 'file' && path.basename(first.value) !== 'node') {
+        if (starts(first)) launchesBinary = true;
+        continue;
+      }
+      const argv = args[1];
+      if (argv === undefined || !argv.startsWith('[')) {
+        problems.push(`${name}() runs node with an argv this scan cannot read, from '${argv ?? ''}'`);
+        continue;
+      }
+      const script = argumentsAt(argv, 0)[0];
+      const resolved = script === undefined ? null : resolveLaunched(script, bindings);
+      if (resolved === null) {
+        problems.push(`${name}() runs a script this scan cannot resolve, from '${script ?? ''}'`);
+        continue;
+      }
+      if (starts(resolved)) launchesBinary = true;
+    }
+  }
+  return { launchesBinary, problems };
+}
+
+/**
+ * Whether a quoted value spells the binary as a path, and every spelling that is neither that nor
+ * registered prose.
+ *
+ * A value with no whitespace ending in `bin/harness.js` is a reference, and so is a bare
+ * `harness.js` immediately preceded by a `bin` literal in the same argument list — the two spellings
+ * this corpus uses, four files each. A value carrying whitespace is prose, and must be registered in
+ * its entry's {@link Entry.mentions} to say so. Anything else is reported.
+ */
+function binarySpellings(
+  text: string,
+  quoted: readonly Quoted[],
+  mentions: Record<string, string>,
+): { spelledBinary: boolean; problems: string[] } {
+  const problems: string[] = [];
+  let spelledBinary = false;
   for (const [index, value] of quoted.entries()) {
     if (!value.value.includes(BINARY)) continue;
     if (/\s/.test(value.value)) {
       if (!(value.value in mentions)) problems.push(`it names the binary in '${value.value}', which its entry does not account for`);
       continue;
     }
-    if (value.value.endsWith(`bin/${BINARY}`)) { reachesBinary = true; continue; }
+    if (value.value.endsWith(`bin/${BINARY}`)) { spelledBinary = true; continue; }
     const before = quoted[index - 1];
     const adjacent = before !== undefined && before.value === 'bin' && text.slice(before.end, value.start).trim() === ',';
-    if (value.value === BINARY && adjacent) { reachesBinary = true; continue; }
+    if (value.value === BINARY && adjacent) { spelledBinary = true; continue; }
     problems.push(`it names the binary as '${value.value}', a spelling this scan cannot resolve`);
   }
+  return { spelledBinary, problems };
+}
+
+/**
+ * What `text` does, and everything about it this scan refuses to guess.
+ *
+ * Three questions, each anchored on something closed rather than on a pattern assumed exhaustive.
+ *
+ * **Which modules it takes** — {@link specifiersOf}. Every static import and every dynamic one must
+ * name a specifier {@link ALLOWED_SPECIFIER} admits: a Node builtin, `yaml`, or the spike's `src`.
+ * Anything else is reported, which is what stops a file borrowing a spawn it does not declare.
+ *
+ * **Whether it names the binary** — {@link binarySpellings}, over the quoted values, and
+ * {@link binaryAssemblies}, over the joins between them, so a name split across an interpolation or
+ * a concatenation fails rather than passing for library-only.
+ *
+ * **Whether it starts the binary** — {@link launchSites}, which reads the argument of each
+ * `node:child_process` call rather than the file's text, and reports every target it cannot resolve.
+ *
+ * @param text the file's own source.
+ * @param mentions the non-reference spellings this file's register entry accounts for.
+ */
+function factsOf(text: string, mentions: Record<string, string> = {}): Facts {
+  const { code, quoted } = scan(text);
+  const modules = specifiersOf(code);
+  const spelled = binarySpellings(text, quoted, mentions);
+  const assemblies = binaryAssemblies(code, quoted);
+  const launched = launchSites(code);
 
   return {
-    reachesBinary,
-    importsSource: specifiers.some((specifier) => specifier.startsWith('../src/')),
+    reachesBinary: spelled.spelledBinary || launched.launchesBinary,
+    spelledBinary: spelled.spelledBinary,
+    launchesBinary: launched.launchesBinary,
+    importsSource: modules.specifiers.some((specifier) => specifier.startsWith('../src/')),
     lines: [...text].filter((character) => character === '\n').length,
-    problems,
+    problems: [...modules.problems, ...spelled.problems, ...assemblies, ...launched.problems],
   };
 }
 
@@ -619,6 +891,85 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     expect(factsOf("assert(x, 'spike/bin/harness.js must not spell the grammar again');").problems.length).toBe(1);
     expect(factsOf("assert(x, 'spike/bin/harness.js must not spell the grammar again');",
       { 'spike/bin/harness.js must not spell the grammar again': 'an assertion message' }).problems).toEqual([]);
+  });
+
+  test('a binary name assembled from more than one value stops the file rather than defaulting it', () => {
+    // Round 1's major, as executable cases. Each of these classified library-only in silence: the
+    // scan read only quoted values already holding the contiguous text `harness.js`, so splitting
+    // the name across an interpolation or a `+` hid it from both the reference test and the
+    // problem list. `reachesBinary` staying false is the point — what must not happen is a *quiet*
+    // false, so every case below is asserted to carry a problem naming the text it could not read.
+    const spawns = (expression: string): string =>
+      `import { spawnSync } from 'node:child_process';\nconst r = spawnSync(process.execPath, [${expression}, 'runs']);\n`;
+
+    const interpolated = spawns("path.join(spike, 'bin', `harness${'.js'}`)");
+    expect(factsOf(interpolated).problems).toStrictEqual([
+      "it could complete 'harness.js' around an interpolation, in `harness${'.js'}`",
+      "spawnSync() runs a script this scan cannot resolve, from 'path.join(spike, 'bin', `harness${'.js'}`)'",
+    ]);
+
+    // The same assembly given a name first, so the launch site sees only an identifier.
+    const bound = "import { spawnSync } from 'node:child_process';\n"
+      + "const bin = path.join(spike, 'bin', `harness${'.js'}`);\n"
+      + "const r = spawnSync(process.execPath, [bin, 'runs']);\n";
+    expect(factsOf(bound).problems).toStrictEqual([
+      "it could complete 'harness.js' around an interpolation, in `harness${'.js'}`",
+      "spawnSync() runs a script this scan cannot resolve, from 'bin'",
+    ]);
+
+    // Concatenation rather than interpolation, and from both sides of the join.
+    expect(factsOf(spawns("path.join(spike, 'bin', 'harness' + '.js')")).problems).toStrictEqual([
+      "it could complete 'harness.js' across a concatenation, at 'harness'",
+      "it could complete 'harness.js' across a concatenation, at '.js'",
+      "spawnSync() runs a script this scan cannot resolve, from 'path.join(spike, 'bin', 'harness' + '.js')'",
+    ]);
+
+    // And the discrimination that keeps it usable: a value that cannot be completed into the binary
+    // is silent, or every `${name}.json` in the corpus would be a problem. `.json` is not a tail of
+    // `harness.js`; `.js` is.
+    expect(factsOf('const p = path.join(d, `${name}.json`);').problems).toEqual([]);
+    expect(factsOf('const p = path.join(d, `generic-${a}.json`);').problems).toEqual([]);
+    expect(factsOf('const p = path.join(d, `${name}.js`);').problems)
+      .toStrictEqual(["it could complete 'harness.js' around an interpolation, in `${name}.js`"]);
+  });
+
+  test('a launch site whose target the scan cannot resolve stops the file', () => {
+    // The other half of the same major: the binary need not be spelled anywhere for a file to start
+    // it, so what each node:child_process call launches is resolved rather than inferred from text.
+    const header = "import { spawnSync } from 'node:child_process';\n";
+    expect(factsOf(`${header}spawnSync(process.execPath, [whatever(), 'runs']);\n`).problems)
+      .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'whatever()'"]);
+    expect(factsOf(`${header}spawnSync(process.execPath, [path.join(spike, 'bin', name)]);\n`).problems)
+      .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'path.join(spike, 'bin', name)'"]);
+    expect(factsOf(`${header}spawnSync(process.execPath, argv);\n`).problems)
+      .toStrictEqual(["spawnSync() runs node with an argv this scan cannot read, from 'argv'"]);
+    expect(factsOf(`${header}spawnSync(whichever, ['x']);\n`).problems)
+      .toStrictEqual(["spawnSync() starts a file this scan cannot resolve, from 'whichever'"]);
+
+    // Resolvable, and each resolving to something that is not the binary: a bare program name, a
+    // node argv whose first element is a flag, and a sibling script.
+    expect(factsOf(`${header}execFileSync('git', args, { cwd });\n`).problems).toEqual([]);
+    expect(factsOf(`${header}spawnSync(process.execPath, ['-e', source]);\n`).launchesBinary).toBe(false);
+    expect(factsOf(`${header}spawnSync(process.execPath, [path.join(rdir, 'run.js')]);\n`).launchesBinary).toBe(false);
+
+    // Resolvable, through a binding, to the binary — both spellings the corpus uses.
+    const through = (init: string): boolean =>
+      factsOf(`${header}const bin = ${init};\nspawnSync('node', [bin, 'runs']);\n`).launchesBinary;
+    expect(through("path.join(spike, 'bin/harness.js')")).toBe(true);
+    expect(through("path.join(spike, 'bin', 'harness.js')")).toBe(true);
+  });
+
+  test('the two oracles agree across the corpus, so neither is carrying the other', () => {
+    // reachesBinary is a disjunction, which is the safe direction and also the one that could hide a
+    // half that had stopped working. Asserting the agreement is what keeps both live: if the text
+    // oracle were deleted tomorrow, or the launch oracle stopped resolving `bin`, this fails.
+    const disagreeing = Object.entries(FACTS)
+      .filter(([, facts]) => facts.spelledBinary !== facts.launchesBinary)
+      .map(([name]) => name);
+    expect(disagreeing, 'one oracle sees a binary the other does not').toEqual([]);
+    const byLaunch = Object.entries(FACTS).filter(([, facts]) => facts.launchesBinary).map(([name]) => name).sort();
+    expect(byLaunch, 'the launch oracle alone reproduces the entangled set')
+      .toStrictEqual([...named('binary-only'), ...named('both')].sort());
   });
 
   test('and a module this scan cannot classify stops the file rather than defaulting it', () => {
