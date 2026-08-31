@@ -66,6 +66,23 @@ const codingFlow = (fixture: RunFixture, integrate: Record<string, unknown> = {}
   ]);
 };
 
+/**
+ * The same two steps, followed by the failing step that takes a cross-flow backward edge.
+ *
+ * `handleFail` returns the `goto` on its first traversal rather than gating, so the run reaches
+ * `engine.ts`'s `flow:` branch — the only route to a `regressed` terminal — with both worktrees
+ * already obtained. The target flow has to exist on disk because `loadNamedFlow` reads it.
+ */
+const regressingFlow = (fixture: RunFixture): void => {
+  write(path.join(fixture.harnessDir, 'flows', 'development.yaml'),
+    'name: development\nconsumes: red\nproduces: green\nsteps:\n  - id: build\n    role: developer-backend\n');
+  fixture.steps([
+    { id: 'implement', worktree: true, branch: IMPLEMENT },
+    { id: 'merge', type: 'integrate', branches: [IMPLEMENT], into: INTEGRATION },
+    { id: 'verdict', type: 'script', run: 'exit 7', on_fail: { goto: 'flow:development', max_iterations: 1 } },
+  ]);
+};
+
 describe('AC-1 — a run that finished gives back the worktrees it obtained, and says so', () => {
   test('both directories and both registrations are gone, with one info each and one runs.log line', async () => {
     const fixture = runFixture();
@@ -106,18 +123,80 @@ describe('AC-1 — a run that finished gives back the worktrees it obtained, and
     fs.appendFileSync(path.join(fixture.ticketDir, 'runs.log'), 'run=9 removed-worktrees=0 kept=0\n');
     expect(nextRunId(ticket), 'every run= in the log is read, so the cleanup line\'s number matters').toBe(10);
   });
+
+  test('regressed removes them too, because a regressed run is one that did what it set out to do', async () => {
+    // OQ-5, and the half of AC-1's disjunct `completed` cannot stand in for. A regression is not a
+    // failure: the run sent its ticket back deliberately, so it gives its worktrees back like any
+    // other run that finished. `finished()` is one predicate and this is its second member — were
+    // cleanup keyed on `completed` alone, everything above would still pass.
+    const fixture = runFixture();
+    regressingFlow(fixture);
+    writing();
+
+    const { events, error } = await fixture.settle();
+    expect(error).toBeUndefined();
+    expect(events.at(-1), 'the flow must actually regress, or this asserts nothing about regressed')
+      .toMatchObject({ type: 'terminal', status: 'regressed', stageAfter: 'red' });
+
+    for (const branch of [IMPLEMENT, INTEGRATION]) {
+      expect(fs.existsSync(worktreeOf(fixture.repoDir, branch)), `${branch}: directory`).toBe(false);
+      expect(registered(fixture.repoDir), `${branch}: registration`).not.toContain(worktreeDirName(branch));
+      // AC-4 holds on this path as much as on the completed one, which is what makes the regressed
+      // ticket's next round free: the work it is being sent back to is still on its branch.
+      expect(git(fixture.repoDir, 'rev-parse', '--verify', branch)).toHaveLength(40);
+    }
+    expect(infos(events)).toContain(`${IMPLEMENT}: worktree removed — ${worktreeOf(fixture.repoDir, IMPLEMENT)}`);
+    expect(runsLog(fixture)).toContain('run=1 removed-worktrees=2 kept=0');
+  });
 });
 
 describe('AC-2 — a run that did not finish leaves everything where it is', () => {
   test.each([
     ['aborted', { id: 'stop', type: 'script', run: 'exit 7' }],
     ['failed', { id: 'stop', type: 'script', run: 'exit 7', on_fail: { goto: 'nowhere', max_iterations: 1 } }],
-  ])('%s: the worktree, its registration and its branch all survive', async (_status, stopper) => {
+  ])('%s: the worktree, its registration and its branch all survive', async (status, stopper) => {
     const fixture = runFixture();
     fixture.steps([{ id: 'implement', worktree: true, branch: IMPLEMENT }, stopper]);
     writing();
 
     const { events } = await fixture.settle();
+
+    // The row's own label, asserted rather than interpolated into the title. Without this the two
+    // rows are one case run twice under two names, and a stopper that quietly changed which status
+    // it produces would leave the other member of the disjunct with no coverage at all.
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status });
+    expect(fs.existsSync(worktreeOf(fixture.repoDir, IMPLEMENT))).toBe(true);
+    expect(registered(fixture.repoDir)).toContain(worktreeDirName(IMPLEMENT));
+    expect(git(fixture.repoDir, 'show', `${IMPLEMENT}:src/work.ts`)).toContain('export const done');
+    expect(infos(events).filter((message) => message.includes('worktree removed'))).toStrictEqual([]);
+    expect(runsLog(fixture).filter((line) => line.includes('removed-worktrees='))).toStrictEqual([]);
+  });
+
+  test('interrupted: a run cancelled at its gate keeps the directory it stopped in', async () => {
+    // The third member of AC-2's disjunct, and the one the maintainer's story is actually about —
+    // the run that stopped is the one whose worktree somebody is about to open. `core` installs no
+    // signal handler, so the cancellation arrives through the caller's own `AbortSignal`, which is
+    // what the spike spells as SIGINT; aborting from inside `answerGate` is how the gate's own
+    // `Promise.race` is made to lose.
+    const abort = new AbortController();
+    const fixture = runFixture({
+      run: {
+        signal: abort.signal,
+        answerGate: () => {
+          abort.abort('received SIGINT');
+          return new Promise(() => { /* never answered */ });
+        },
+      },
+    });
+    fixture.steps([
+      { id: 'implement', worktree: true, branch: IMPLEMENT },
+      { id: 'approve', gate: 'human', reason: 'approve to continue' },
+    ]);
+    writing();
+
+    const { events, error } = await fixture.settle();
+    expect(error).toBeInstanceOf(Error);
+    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'interrupted' });
 
     expect(fs.existsSync(worktreeOf(fixture.repoDir, IMPLEMENT))).toBe(true);
     expect(registered(fixture.repoDir)).toContain(worktreeDirName(IMPLEMENT));

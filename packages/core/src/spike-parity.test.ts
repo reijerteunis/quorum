@@ -1046,17 +1046,19 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
 
   test('and so are its line totals, so the entangled share stops being re-derived by hand', () => {
     // Re-measured 2026-08-31 for Q-0062, which is this register doing exactly what it is for: it
-    // added `q0062-worktree-lifecycle.js` (library-only, 276 lines) and moved two existing files —
-    // `smoke.js` +25 and `q0006-engine.js` +3, both re-aiming assertions that had read a worktree
-    // the run now gives back. Was 336 / 2001 / 2059 / 4396 and 53%. The share is what moved and it
-    // moved for a reason worth stating: a library-only file is one Q-0010 does not inherit, so
-    // every such file makes the transfer smaller.
+    // added `q0062-worktree-lifecycle.js` (library-only, now 345 lines) and moved two existing
+    // files — `smoke.js` +25 and `q0006-engine.js` +3, both re-aiming assertions that had read a
+    // worktree the run now gives back. Was 336 / 2001 / 2059 / 4396 and 53%. The share is what
+    // moved and it moved for a reason worth stating: a library-only file is one Q-0010 does not
+    // inherit, so every such file makes the transfer smaller. Re-measured again in that ticket's
+    // third revision round, which took `q0062-worktree-lifecycle.js` 276 → 345 covering the two
+    // terminal statuses the review found untested — the same file, so only its own column moves.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(336);
     expect(linesOf(named('both'))).toBe(2026);
-    expect(linesOf(named('library-only'))).toBe(2338);
-    expect(total).toBe(4700);
+    expect(linesOf(named('library-only'))).toBe(2407);
+    expect(total).toBe(4769);
     // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Backlog } from '../src/backlog.js';
 import { loadFlow, runFlow } from '../src/engine.js';
@@ -21,6 +21,15 @@ async function scenario(id, title, fn) {
 }
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 const write = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); };
+// Polls until a child process has got far enough to be worth interrupting; q0011's own helper.
+const waitFor = async (predicate, message, timeout = 15000) => {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  return assert.fail(message);
+};
 
 const IMPLEMENT = 'harness/T-0001/implement';
 const INTEGRATION = 'harness/T-0001/integration';
@@ -112,6 +121,33 @@ await scenario('AC-1', 'the cleanup line carries this run\'s number, and one car
   assert.equal(third.runId, 10, 'every run= in the log is read, so a foreign number moves the next id');
 });
 
+await scenario('AC-1', 'a regressed run gives its worktrees back too, because it did what it set out to do', async () => {
+  // OQ-5, and the half of AC-1's disjunct `completed` cannot stand in for. A regression is not a
+  // failure: the run sent its ticket back deliberately. `finished()` is one predicate and this is
+  // its second member — were cleanup keyed on `completed` alone, every scenario above still passes.
+  // handleFail returns the goto on its first traversal rather than gating, so the run reaches the
+  // `flow:` branch with both worktrees already obtained.
+  const f = fixture({
+    flow: `${CODING_FLOW}  - id: verdict\n    type: script\n    run: exit 7\n    on_fail: { goto: "flow:development", max_iterations: 1, on_exhausted: gate }\n`,
+  });
+  write(path.join(f.harnessDir, 'flows', 'development.yaml'),
+    'name: development\nconsumes: red\nproduces: green\nsteps:\n  - id: build\n    role: principal-architect\n    adapter: mock\n');
+
+  const out = await f.run();
+  assert.equal(out.status, 'regressed', 'the flow must actually regress, or this asserts nothing about regressed');
+  assert.equal(f.ticket.meta.stage, 'red');
+
+  for (const branch of [IMPLEMENT, INTEGRATION]) {
+    assert.equal(fs.existsSync(worktreeOf(f.root, branch)), false, `${branch}: directory still on disk`);
+    assert.equal(git(f.root, 'worktree', 'list').includes(branch.replace(/\//g, '__')), false, `${branch}: still registered`);
+    // AC-4 holds on this path as much as on the completed one, which is what makes the regressed
+    // ticket's next round free: the work it is being sent back to is still on its branch.
+    assert.equal(git(f.root, 'rev-parse', '--verify', branch).length, 40);
+  }
+  assert.ok(f.messages.includes(`info ${IMPLEMENT}: worktree removed — ${worktreeOf(f.root, IMPLEMENT)}`));
+  assert.ok(logLines(f).includes('run=1 removed-worktrees=2 kept=0'), 'the cleanup line is missing from runs.log');
+});
+
 await scenario('AC-2', 'a run that did not finish leaves the worktree, its registration and its branch', async () => {
   // The stopper is the LAST step, so both worktrees exist by the time the run gives up on itself.
   const f = fixture({ flow: `${CODING_FLOW}  - id: stop\n    type: script\n    run: exit 7\n` });
@@ -125,6 +161,39 @@ await scenario('AC-2', 'a run that did not finish leaves the worktree, its regis
   assert.match(git(f.root, 'show', `${IMPLEMENT}:contracts/ProrationService.ts`), /ProrationService/);
   assert.equal(f.messages.some((m) => m.includes('worktree removed')), false);
   assert.equal(logLines(f).some((l) => l.includes('removed-worktrees=')), false);
+});
+
+await scenario('AC-2', 'an interrupted run keeps the directory it stopped in', async () => {
+  // The third member of AC-2's disjunct, and the one the maintainer's story is actually about — the
+  // run that stopped is the one whose worktree somebody is about to open. It needs a child process:
+  // the spike reaches `interrupted` only through its SIGINT/SIGTERM handler, which ends in
+  // process.exit(130) and would take this runner with it. Same shape as q0011's EDGE-9.
+  const f = fixture({
+    flow: `${CODING_FLOW}  - id: waiting\n    gate: human\n`,
+  });
+  const source = `import { runFlow, loadFlow } from ${JSON.stringify(path.join(spike, 'src/engine.js'))};\n`
+    + `import { Backlog } from ${JSON.stringify(path.join(spike, 'src/backlog.js'))};\n`
+    + `const root=process.argv[1], h=root+'/harness', b=new Backlog(root+'/backlog'), t=b.list()[0];\n`
+    + `const ui={info(){},warn(){},step(){},done(){},trace(){},gate:()=>new Promise(()=>{})};\n`
+    + `await runFlow({flow:loadFlow(h+'/flows/coding.yaml'),ticket:t,backlog:b,harnessDir:h,repoDir:root,`
+    + `config:{adapterOverride:'mock',adapters:{},repo:{base_branch:'main'}},ui,auto:false});`;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', source, f.root], { stdio: 'ignore' });
+
+  // The gate is the last step, so both worktrees exist by the time the run is waiting at it —
+  // which is what makes the interruption land on a run that is holding something.
+  await waitFor(() => fs.existsSync(worktreeOf(f.root, INTEGRATION)),
+    'the run never reached its gate holding both worktrees');
+  child.kill('SIGTERM');
+  await new Promise((resolve) => child.once('exit', resolve));
+
+  for (const branch of [IMPLEMENT, INTEGRATION]) {
+    assert.equal(fs.existsSync(worktreeOf(f.root, branch)), true, `${branch}: an interrupted run may not remove a worktree`);
+    assert.ok(git(f.root, 'worktree', 'list').includes(branch.replace(/\//g, '__')), `${branch}: still registered`);
+    assert.equal(git(f.root, 'rev-parse', '--verify', branch).length, 40);
+  }
+  const lines = logLines(f);
+  assert.ok(lines.some((l) => l.startsWith('run=1 interrupted')), `the run must record itself interrupted — got ${JSON.stringify(lines)}`);
+  assert.equal(lines.some((l) => l.includes('removed-worktrees=')), false, 'an interrupted run writes no cleanup line');
 });
 
 await scenario('AC-3', 'a bystander survives, a reused worktree does not, and one branch is one entry', async () => {
