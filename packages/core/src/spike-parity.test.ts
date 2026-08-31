@@ -210,6 +210,14 @@ const REGISTER: Record<string, Entry> = {
     ],
     note: 'vars.run is the id this run was allocated and does not move when vars.iter does, and a run-scoped write path lands under it',
   },
+  'q0062-worktree-lifecycle.js': {
+    verdict: 'ported',
+    carriedBy: [
+      'packages/core/src/engine/q0062.source.test.ts',
+      'packages/core/src/engine/worktree-lifecycle.test.ts',
+    ],
+    note: 'a finished run gives back the worktrees it obtained and a stopped one keeps them, registration rather than enumeration, a dirty or unremovable worktree kept with its reason, and no ref deleted by any source file in either tree',
+  },
   'q0063-stdin-epipe.js': {
     verdict: 'ported',
     carriedBy: ['packages/core/src/adapters/exec.test.ts'],
@@ -1032,19 +1040,25 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     expect(named('library-only')).toStrictEqual([
       'q0006-engine.js', 'q0034-chore-preflight.js', 'q0034-dry-run.js', 'q0034-probe-schema.js',
       'q0035-empty-range.js', 'q0038-endpoint-preflight.js', 'q0057-run-scoped-reviews.js',
-      'q0063-stdin-epipe.js', 'q0070-capture.js',
+      'q0062-worktree-lifecycle.js', 'q0063-stdin-epipe.js', 'q0070-capture.js',
     ]);
   });
 
   test('and so are its line totals, so the entangled share stops being re-derived by hand', () => {
+    // Re-measured 2026-08-31 for Q-0062, which is this register doing exactly what it is for: it
+    // added `q0062-worktree-lifecycle.js` (library-only, 276 lines) and moved two existing files —
+    // `smoke.js` +25 and `q0006-engine.js` +3, both re-aiming assertions that had read a worktree
+    // the run now gives back. Was 336 / 2001 / 2059 / 4396 and 53%. The share is what moved and it
+    // moved for a reason worth stating: a library-only file is one Q-0010 does not inherit, so
+    // every such file makes the transfer smaller.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(336);
-    expect(linesOf(named('both'))).toBe(2001);
-    expect(linesOf(named('library-only'))).toBe(2059);
-    expect(total).toBe(4396);
-    // 53% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
-    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(53);
+    expect(linesOf(named('both'))).toBe(2026);
+    expect(linesOf(named('library-only'))).toBe(2338);
+    expect(total).toBe(4700);
+    // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
+    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });
 
   test('the two spellings are both resolved, and neither carries the other', () => {
@@ -1284,21 +1298,21 @@ describe('Q-0054 AC-3 — a ported or split entry names counterparts that exist 
     // A register whose counterpart column had collapsed to a single popular file would satisfy every
     // clause above while saying nothing about the union it exists to describe.
     const all = Object.values(REGISTER).flatMap((entry) => entry.carriedBy);
-    expect(new Set(all).size, 'distinct counterparts named').toBe(27);
-    expect(all.length, 'counterpart namings in total').toBe(47);
+    expect(new Set(all).size, 'distinct counterparts named').toBe(29);
+    expect(all.length, 'counterpart namings in total').toBe(49);
   });
 });
 
 describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and each clause fires', () => {
   test('the register describes this tree with nothing left over', () => {
     expect(audit(REGISTER, FILES)).toEqual([]);
-    expect(Object.keys(REGISTER).length, 'files with a verdict').toBe(17);
+    expect(Object.keys(REGISTER).length, 'files with a verdict').toBe(18);
     expect(Object.keys(NOT_A_SUITE).length, 'entries that are not test files').toBe(2);
-    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(19);
+    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(20);
     const verdicts = Object.values(REGISTER).map((entry) => entry.verdict);
     expect(verdicts.filter((verdict) => verdict === 'cli').length).toBe(2);
     expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(6);
-    expect(verdicts.filter((verdict) => verdict === 'ported').length).toBe(9);
+    expect(verdicts.filter((verdict) => verdict === 'ported').length).toBe(10);
     expect(verdicts.filter((verdict) => verdict === 'uncovered').length).toBe(0);
   });
 

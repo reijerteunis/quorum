@@ -6,7 +6,7 @@ import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from './backlog.js';
 import { getAdapter, checkAgainstSchema, authError, transientError } from './adapters/index.js';
-import { ensureWorktree, ensureExcluded, shortSha, emptyRangeEvidence } from './git.js';
+import { ensureWorktree, removeWorktree, ensureExcluded, shortSha, emptyRangeEvidence } from './git.js';
 import { loadTasks, waves, taskVars, taskPromptSection, commitAll, mergeInto, runCommand, ticketWorktree, branchExists, branchHead, resetBranchTo, IntegrationError , scopeToFailing} from './fanout.js';
 import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
@@ -61,6 +61,14 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     // supplied it. See Q-0038.
     baseOverride: base ?? null,
     diffInputs: new Map(), deferredDiffs: new Map(),
+    // Every worktree this run obtains, branch → directory, filled by the steps that obtain one and
+    // read by finish(). Keyed by branch, so the repeated ticketWorktree calls collapse to one entry
+    // and concurrent fan-out children cannot overwrite each other's bookkeeping. Nothing enumerates
+    // .harness/worktrees or the ref namespace: a worktree this run never touched is never removed,
+    // whoever made it. It is created here rather than lazily because runAgentStep works on a spread
+    // copy of ctx — an assignment there would be lost, while a Map made here is one object both
+    // share. See Q-0062.
+    worktrees: new Map(),
   };
   // What the ticket branch looked like before this run touched it, so a run that does not
   // complete can put it back. See Q-0033.
@@ -244,6 +252,9 @@ async function runAgentStep(step, ctx, extra = {}) {
     const stepBase = interpolate(step.base ?? ticket.meta.branch, ctx.vars);
     const existed = branchExists(ctx.repoDir, branch);
     cwd = ensureWorktree(ctx.repoDir, branch, stepBase);
+    // Registered whether it was cut now or found already there: a run that reused a worktree is the
+    // run that finishes with it. See Q-0062.
+    ctx.worktrees?.set(branch, cwd);
     ui.info(`${step.id}: worktree ${cwd} (${branch})`);
     // A branch created on an earlier round is stale: its base has moved on since. Sync whenever
     // it already existed, not only on fan-out retries, or the agent works against yesterday's
@@ -647,11 +658,74 @@ async function runScript(step, ctx) {
   return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
+// Whether the run did what it set out to do. The one predicate the stage rule, the branch rollback
+// and the worktree cleanup all read: a run that finished advances its stage, leaves its branch
+// where it left it, and gives back the worktrees it obtained; a run that did not finish does none
+// of the three, because the directory it stopped in is the thing somebody is about to open. One
+// condition and three consequences, so the inspection story and the cleanup story cannot drift.
+const finished = (status) => status === 'completed' || status === 'regressed';
+
+// The first four of `paths`, marked when there are more — the shape the discarded-edit warning uses.
+const samplePaths = (paths) => `${paths.slice(0, 4).join(', ')}${paths.length > 4 ? ', …' : ''}`;
+
+// git's own first line of stderr, or the thrown message when it carried none, truncated.
+const gitReason = (e) => {
+  const line = [String(e?.stderr ?? ''), String(e?.message ?? '')]
+    .flatMap((t) => t.split('\n')).map((t) => t.trim()).find(Boolean);
+  return line ? line.slice(0, 200) : 'git reported no reason';
+};
+
+// Everything git can still see in `dir` that is not committed, one path per entry with git's two
+// status columns stripped. Empty means clean; a throw means the question was not answered, which
+// the caller may not read as clean — the removal it guards discards untracked content.
+function worktreeChanges(dir) {
+  return execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    .split('\n').map((l) => l.slice(3).trim()).filter(Boolean);
+}
+
+// Give back the worktrees this run obtained, and say what was given back and what was not. A
+// worktree holding anything uncommitted is kept and its paths are named: removeWorktree runs
+// `git worktree remove --force`, which discards untracked and modified content, and a delete taking
+// a decision on somebody's behalf must at least say it took one. No ref is ever deleted — a removed
+// directory is re-creatable from its branch and a deleted branch is not, and the branch is what a
+// review after the run reads. Each worktree is guarded on its own so that a directory which cannot
+// be read or removed costs one warning and nothing else: a run that has otherwise completed keeps
+// the status, the stage transition, the manifest, the history entry and the exit code it earned.
+// See Q-0062.
+function returnObtainedWorktrees(ctx) {
+  const obtained = [...(ctx.worktrees ?? new Map())];
+  if (!obtained.length) return;
+  let removed = 0, kept = 0;
+  for (const [branch, dir] of obtained) {
+    let changes;
+    // Not established is not clean. Two catches rather than one, so each warning says which of the
+    // two questions git declined to answer.
+    try { changes = worktreeChanges(dir); }
+    catch (e) { kept++; ctx.ui.warn(`${branch}: worktree kept — could not read ${dir}: ${gitReason(e)}`); continue; }
+    if (changes.length) {
+      kept++;
+      ctx.ui.warn(`${branch}: worktree kept — ${dir} holds uncommitted content: ${samplePaths(changes)}`);
+      continue;
+    }
+    try {
+      removeWorktree(ctx.repoDir, branch);
+      removed++;
+      ctx.ui.info(`${branch}: worktree removed — ${dir}`);
+    } catch (e) {
+      kept++;
+      ctx.ui.warn(`${branch}: worktree kept — could not remove ${dir}: ${gitReason(e)}`);
+    }
+  }
+  // This run's own number, which its `start` line already carries, so the maximum nextRunId reads
+  // out of runs.log is where it was. A line carrying any other number moves the next run's id.
+  ctx.backlog.log(ctx.ticket, `run=${ctx.runId} removed-worktrees=${removed} kept=${kept}`);
+}
+
 function finish(ctx, stage, status, note, fields = {}) {
   const { ticket, backlog } = ctx;
   const from = ticket.meta.stage;
   ticket.meta.iterations = ctx.counters;
-  if (status === 'completed' || status === 'regressed') {
+  if (finished(status)) {
     ticket.meta.stage = stage;
   }
   if (ctx.history) {
@@ -664,17 +738,23 @@ function finish(ctx, stage, status, note, fields = {}) {
     replaceManifest(ctx);
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
-  // A run that did not complete leaves the ticket branch as it found it. integrate merges task
-  // branches before anyone knows the outcome, and an exhausted or aborted run used to leave those
-  // merges behind for good — so the next qa-red measured its red phase against a tree that already
-  // contained the implementation, and reported 21 green and nothing red. Nothing is lost: each
-  // task's work stays on its own branch. See Q-0033.
-  if (!ctx.dry && !['completed', 'regressed'].includes(status) && ctx.branchHeadAtStart) {
-    const now = branchHead(ctx.repoDir, ticket.meta.branch);
-    if (now && now !== ctx.branchHeadAtStart) {
-      resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
-      ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
-      backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+  // The two halves of one rule, read through finished() above. A run that did not complete leaves
+  // the ticket branch as it found it: integrate merges task branches before anyone knows the
+  // outcome, and an exhausted or aborted run used to leave those merges behind for good — so the
+  // next qa-red measured its red phase against a tree that already contained the implementation,
+  // and reported 21 green and nothing red. Nothing is lost: each task's work stays on its own
+  // branch. See Q-0033. And a run that DID complete gives back the worktrees it obtained, while one
+  // that did not keeps every one of them, because that is when somebody wants to open them. Q-0062.
+  if (!ctx.dry) {
+    if (finished(status)) {
+      returnObtainedWorktrees(ctx);
+    } else if (ctx.branchHeadAtStart) {
+      const now = branchHead(ctx.repoDir, ticket.meta.branch);
+      if (now && now !== ctx.branchHeadAtStart) {
+        resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);
+        ctx.ui.warn(`${ticket.meta.branch}: rolled back to ${ctx.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`);
+        backlog.log(ticket, `run=${ctx.runId} rolled-back branch=${ticket.meta.branch} from=${now.slice(0, 7)} to=${ctx.branchHeadAtStart.slice(0, 7)}`);
+      }
     }
   }
   backlog.write(ticket);
@@ -1002,6 +1082,17 @@ const round = (n) => Math.round(n * 1000) / 1000;
 
 // ---------- fan_out + integrate ----------
 
+// The ticket branch's worktree, registered on the run as one this run obtained. Registered whether
+// it was cut now or found already there, and keyed by branch, so the three call sites below
+// collapse to the one entry finish() gives back. The optional call is for a caller outside a run:
+// syncBaseIntoTicketBranch is exported and driven directly by the suite, and a hand-built ctx has
+// no registry to fill. See Q-0062.
+function obtainTicketWorktree(ctx, branch) {
+  const dir = ticketWorktree(ctx.repoDir, branch);
+  ctx.worktrees?.set(branch, dir);
+  return dir;
+}
+
 // Catch the ticket branch up with the repository's base BEFORE cutting task worktrees from it.
 // The worktrees sync to the ticket branch, and integrate syncs the ticket branch to base — so
 // with the sync only at the end, every agent works against a base that moves underneath it and
@@ -1015,7 +1106,7 @@ export function syncBaseIntoTicketBranch(step, ctx) {
   // Normal on a ticket's first pass: the integration branch is created by the first integrate.
   if (!branchExists(ctx.repoDir, into)) return { skipped: `${into} does not exist yet` };
   if (!branchExists(ctx.repoDir, base)) return { skipped: `${base} does not exist` };
-  const m = mergeInto(ticketWorktree(ctx.repoDir, into), base);
+  const m = mergeInto(obtainTicketWorktree(ctx, into), base);
   if (m.ok) { ui?.info?.(`${step.id}: ${into} synced to ${base} before fan-out`); return { ok: true }; }
   // Same reasoning as integrate's base conflict: the agents sync to the ticket branch, where
   // nothing is wrong, so they correctly change nothing and the conflict returns unchanged. Stop
@@ -1058,7 +1149,7 @@ async function runFanOut(step, ctx) {
     if (bad) return bad;
     // Later waves build on earlier ones: merge this wave into the ticket branch now.
     if (plan.length > 1 && w < plan.length - 1) {
-      const tw = ticketWorktree(ctx.repoDir, ticket.meta.branch);
+      const tw = obtainTicketWorktree(ctx, ticket.meta.branch);
       for (const t of wave) { const m = mergeInto(tw, `harness/${ticket.meta.id}/${t.id}`); if (!m.ok) ui.warn(`${step.id}: wave merge conflict on ${t.id}: ${m.conflicts.join(',')}`); }
     }
   }
@@ -1071,7 +1162,7 @@ async function runIntegrate(step, ctx) {
   ui.step(step.id, `integrate → ${into}`);
   if (ctx.dry) return null;
   const occurrence = allocateOccurrence(ctx, step, 'integrate');
-  const dir = ticketWorktree(ctx.repoDir, into);
+  const dir = obtainTicketWorktree(ctx, into);
   // Branch list: explicit, or a glob resolved against fan-out results / existing branches.
   const pattern = interpolate(step.branches, ctx.vars);
   let branches;

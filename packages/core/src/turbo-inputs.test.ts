@@ -1380,6 +1380,16 @@ const READ_BASES: Record<string, Record<string, string>> = {
   'packages/core/src/engine/steps.test.ts': {
     ticketDir: "the ticket folder inside tempDir('script-'), where the script step's declared output landed",
   },
+  'packages/core/src/engine/worktree-lifecycle.test.ts': {
+    'fixture.ticketDir': "the ticket folder inside the temp repository runFixture() built, for the runs.log line a finished run's cleanup appended",
+    'worktreeOf(fixture.repoDir, branch)': "path.join(fixture.repoDir, '.harness', 'worktrees', worktreeDirName(branch)) — a worktree inside that same temp repository, asked whether it is still there",
+    'worktreeOf(fixture.repoDir, IMPLEMENT)': 'the step branch\'s worktree in that repository, named directly where the loop above is not the shape wanted',
+    'worktreeOf(fixture.repoDir, INTEGRATION)': 'the integration branch\'s worktree in the same repository',
+    reused: 'worktreeOf(…) again, bound once because the test cuts that worktree by hand before the run and then reads it back',
+    bystander: 'likewise, for the worktree on an unrelated branch that no run may remove',
+    kept: 'likewise, for the worktree an install command dirtied and the run therefore kept',
+    byHand: 'likewise, for the worktree a dry run must leave exactly where it found it',
+  },
   'packages/core/src/engine/engine.test.ts': {
     'opts.project.repoDir': "the temp repository repo() created for this test; nothing under it is in the repository",
     'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
