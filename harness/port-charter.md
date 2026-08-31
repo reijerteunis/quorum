@@ -267,7 +267,7 @@ change since it — otherwise the job fails and names the files that moved.
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
 children: Q-0041 Q-0042 Q-0043 Q-0044 Q-0045 Q-0046 Q-0047 Q-0048 Q-0049 Q-0050 Q-0051 Q-0052 Q-0053 Q-0054
-freeze-sha: 7b6bc70421094ae31eb44257807f84b8f732a20a
+freeze-sha: a6e529a31e84893140cc4b01cc0b2f2013880ca2
 exemption-trailer: Port-freeze-exemption
 ```
 <!-- port-freeze:end -->
