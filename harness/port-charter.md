@@ -427,12 +427,13 @@ should not be.
 
 The cutover — deleting `spike/`, retiring the second CI job and this guard, and rewriting every
 document that tells a reader to run the spike — is drafted as `CO-1`–`CO-4` in Q-0009's merged
-requirement and belongs to a follow-up ticket, proposed **Q-0058**, which runs only after Q-0010
-and Q-0054 both report `main:contained`. Q-0009's merged requirement, and Q-0009's own body,
-propose `Q-0055` for it — the next free id the night they were written. `Q-0055` has since been
-opened as *"Lint requires a step id wherever the engine interpolates one"*, from Q-0041's chore
-run. The cutover ticket is unopened either way; this file carries the current id, and a reader who
-arrives here from either of those two documents should follow this one. The event stream's shape
+requirement and belongs to a follow-up ticket that **is unopened and has no id**, and which runs
+only after Q-0010 and Q-0054 both report `main:contained`. Q-0009's merged requirement and Q-0009's
+own body propose `Q-0055` for it, and the status line above records that this file then proposed
+`Q-0058`; both ids have since been opened for other work — `Q-0055` as *"Lint requires a step id
+wherever the engine interpolates one"*, and `Q-0058` as *"`harness.yaml` documents a retry key
+nothing reads"*, which is where this correction comes from. A reader arriving here from any of
+those documents should take none of the three as the cutover's id. The event stream's shape
 belongs to Q-0050. The four machinery defects belong to Q-0037–Q-0040. This charter works around
 them and fixes none.
 
@@ -490,8 +491,8 @@ Q-0050's block differs in one line only: its route is the full SDLC
 (`requirements → solutioning → qa-red → development → review`), per the same entry.
 
 Q-0009's own body needs the reverse edit — its cutover claim removed, since the cutover is §10's
-follow-up, proposed **Q-0058**, which runs only after Q-0010 and Q-0054 both report
-`main:contained`.
+follow-up, which is **unopened and has no id**, and which runs only after Q-0010 and Q-0054 both
+report `main:contained`.
 
 ### Until then
 

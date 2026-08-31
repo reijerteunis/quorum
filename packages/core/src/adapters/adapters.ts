@@ -189,9 +189,9 @@ export interface RetryingAdapter extends Adapter {
 /**
  * How many times a failing call is retried and how far apart.
  *
- * Declared here rather than imported: `retryPolicySchema` is a module-private const in
- * packages/shared/src/project.ts:36, and adding an export to a landed, declarations-only package is
- * a non-goal of this ticket (AC-2).
+ * Declared here rather than imported: no file in `packages/core` may import zod, which
+ * backlog.source.test.ts asserts over every file the corpus reader returns. `packages/shared`
+ * exports `retryPolicySchema` since Q-0058, so its visibility is no longer the reason; the ban is.
  */
 export interface RetryPolicy {
   attempts?: number;
@@ -201,8 +201,8 @@ export interface RetryPolicy {
 
 /**
  * One adapter's entry in `harness.yaml`'s `adapters` map, as {@link getAdapter} reads it and as each
- * factory receives it. Declared here for the same reason {@link RetryPolicy} is — its zod
- * counterpart, `adapterConfigSchema`, is module-private in packages/shared/src/project.ts:50.
+ * factory receives it. Declared here for the same reason {@link RetryPolicy} is — the zod ban on
+ * `packages/core`, not the visibility of `adapterConfigSchema`, which shared exports since Q-0058.
  */
 export interface AdapterConfig {
   /** The executable name an adapter spawns. */

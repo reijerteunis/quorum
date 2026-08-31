@@ -364,3 +364,29 @@ describe('AC-11 — preserved defects, pinned so a later cleanup turns this suit
     expect(authError('x', '401 Unauthorized')).toBe('x login expired or missing — run: x login');
   });
 });
+
+describe('Q-0058 AC-7 — a configured retry policy reaches the delay arithmetic', () => {
+  test('all three fields arrive from `adapters.<vendor>.retry`, at values no default could produce', async () => {
+    // NON-DEFAULT VALUES ARE THE WHOLE POINT. What kept this defect invisible for months is that
+    // the discarded `base_delay_ms` and the default were both 5000, so a test written with 5000
+    // cannot tell a working configuration path from a broken one — it passes either way. Every
+    // number here differs from the default it replaces: 3 for 5, 7 for 5000, 9 for 60000.
+    //
+    // MOCK_FAIL_WRITE makes the mock throw a message `transientError` recognises, which is the only
+    // way to make it exercise the retry loop; the values are single digits so nothing waits.
+    const events: AdapterEvent[] = [];
+    const error = await withEnv({ MOCK_FAIL_WRITE: 'socket hang up' }, () => thrown(() => getAdapter('mock', {
+      mock: { delayMs: 0, retry: { attempts: 3, baseDelayMs: 7, maxDelayMs: 9 } },
+    }).run(runOptions({ prompt: '# Role: q0058-retry-config — socket hang up', onEvent: (event) => events.push(event) }))));
+
+    // `attempts` bounds the attempt count: three invocations, not the default five.
+    expect(error.attempts).toBe(3);
+    expect(error.message).toMatch(/\(gave up after 3 attempts\)$/);
+
+    const delays = events.filter((event) => event.type === 'retry').map((event) => event.delayMs);
+    // `baseDelayMs` is the first delay, and `maxDelayMs` caps the second, which the exponent would
+    // otherwise put at 14. Both are read off the same configured object, through getAdapter.
+    expect(delays).toStrictEqual([7, 9]);
+    expect(7 * 2, 'the cap is what makes the second delay 9, not the exponent').toBeGreaterThan(9);
+  });
+});
