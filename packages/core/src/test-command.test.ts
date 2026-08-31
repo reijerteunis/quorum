@@ -206,6 +206,22 @@ interface Workflow {
 }
 
 /**
+ * One job's steps, by id. An absent job throws rather than yielding a passing empty list.
+ *
+ * Q-0054 AC-8: `(jobs['spike']?.steps ?? [])` reads as a check on the `spike` job and is satisfied
+ * by its removal — the empty string contains no `git config --global`, so the one assertion that
+ * mentions the job cannot fail once the job is gone. That is *"a check that skips its subject must
+ * not report success"* (2026-08-25) inside a guard written after it landed, and {@link CI_JOBS} is
+ * the other half: this refuses to answer for a job that is not there, and the register refuses to
+ * let one leave unnoticed.
+ */
+function jobSteps(flow: Workflow, id: string): WorkflowStep[] {
+  const steps = flow.jobs?.[id]?.steps;
+  if (!steps?.length) throw new Error(`the workflow declares no \`${id}\` job with steps`);
+  return steps;
+}
+
+/**
  * Whether `steps` invoke `task` in a form no cache entry can satisfy.
  *
  * Word-wise rather than by substring, so `--force-something` is not read as the flag and a task
@@ -456,20 +472,115 @@ describe('Q-0079 — the hostile-environment sweep is defined once and CI runs b
 
   test('CI runs both cells from their own checkouts, and the spike job configures no identity', () => {
     const wf = workflow(ciText());
-    const jobs = wf.jobs as unknown as Record<string, { steps?: { run?: string; name?: string }[] }>;
-    expect(Object.keys(jobs)).toEqual(expect.arrayContaining([
+    expect(Object.keys(wf.jobs ?? {})).toEqual(expect.arrayContaining([
       'git-identity-sweep-bare', 'git-identity-sweep-populated',
     ]));
     for (const id of ['git-identity-sweep-bare', 'git-identity-sweep-populated']) {
-      const runs = (jobs[id]?.steps ?? []).map((step) => step.run ?? '');
+      const runs = jobSteps(wf, id).map((step) => step.run ?? '');
       expect(runs, `${id} invokes the one script`).toContain('bash .github/scripts/git-identity-sweep.sh');
     }
-    const populated = (jobs['git-identity-sweep-populated']?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    const populated = jobSteps(wf, 'git-identity-sweep-populated').map((step) => step.run ?? '').join('\n');
     expect(populated, 'the populated cell creates the two paths Q-0072 registered by hand')
       .toContain('mkdir -p .harness/worktrees .quorum/runs');
-    const spikeRuns = (jobs['spike']?.steps ?? []).map((step) => step.run ?? '').join('\n');
+    const spikeRuns = jobSteps(wf, 'spike').map((step) => step.run ?? '').join('\n');
     expect(spikeRuns, 'the spike job no longer supplies an ambient identity').not.toContain('git config --global');
     expect(ciText(), 'the uncovered fourth cell is named in the workflow rather than left to be inferred')
       .toContain('deliberately uncovered');
+  });
+});
+
+/**
+ * Every job `.github/workflows/ci.yml` declares, and what its green tick claims.
+ *
+ * Q-0054 AC-8. Until now nothing asserted the job **set**: each block above reached for the job it
+ * cared about, and `(jobs['spike']?.steps ?? [])` was satisfied by that job's removal. A register
+ * makes adding or removing one a visible act — the test names what is gone rather than passing over
+ * it — and it is what the two suites' division of labour rests on, since the `workspace` job proves
+ * the port at library level and the `spike` job proves the harness the port is developed with.
+ *
+ * **This register pins a job the cutover will delete**, which is deliberate rather than a guard
+ * resisting its own removal: Q-0009 drops the `spike` job together with `spike/` and
+ * `src/spike-parity.test.ts`, and updating one line here is how that becomes a decision instead of
+ * a silence.
+ */
+const CI_JOBS: Record<string, string> = {
+  workspace: 'lint, typecheck and test EXECUTED against this commit — forced, so no task is replayed (Q-0071)',
+  'port-freeze-policy': 'the charter parses, and the freeze guard\'s own suite runs (Q-0009 §3)',
+  'port-freeze-branch-scope': 'this branch changed no spike/src file it may not (Q-0009 §3)',
+  'port-freeze-sha': 'the base holds no spike/src change since the freeze SHA harness/port-charter.md records — which it does, so this job is live and its tick is an executed claim; it skips, rather than passing, only while the charter still reads not-yet-recorded (Q-0009 §3)',
+  spike: 'the spike suite is green — the harness the port is being developed with, and the port\'s only independent witness. Deleted at the cutover by Q-0009, after Q-0010',
+  'git-identity-sweep-bare': 'both suites pass with no resolvable git identity, in a checkout that has neither gitignored directory (Q-0079)',
+  'git-identity-sweep-populated': 'the same, in a checkout that has both — the cell Q-0072\'s instance lived in',
+};
+
+/**
+ * The `workspace` job with `spike` removed, and nothing else changed.
+ *
+ * Q-0054 AC-8 asks for the defect to be exhibited rather than asserted: the existing assertion is
+ * shown **passing** over this fixture, which is what makes the register the thing that catches it.
+ */
+const WITHOUT_SPIKE = `name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    name: workspace (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm turbo run lint --force
+      - run: pnpm turbo run typecheck --force
+      - run: pnpm turbo run test --force
+`;
+
+describe('Q-0054 AC-8 — the workflow\'s job set is a register, and no job leaves unnoticed', () => {
+  const workflow = (text: string): Workflow => parseYaml(text) as Workflow;
+
+  test('the workflow declares exactly the registered jobs', () => {
+    expect(Object.keys(workflow(repoFile('.github/workflows/ci.yml')).jobs ?? {}).sort())
+      .toStrictEqual(Object.keys(CI_JOBS).sort());
+  });
+
+  test.each(Object.keys(CI_JOBS))('%s declares steps, so no assertion about it can pass over nothing', (id) => {
+    expect(jobSteps(workflow(repoFile('.github/workflows/ci.yml')), id).length).toBeGreaterThan(0);
+  });
+
+  test('the register has a subject — a workflow missing the spike job fails it', () => {
+    expect(Object.keys(workflow(WITHOUT_SPIKE).jobs ?? {}).sort()).not.toStrictEqual(Object.keys(CI_JOBS).sort());
+    expect(() => jobSteps(workflow(WITHOUT_SPIKE), 'spike')).toThrow(/no `spike` job with steps/);
+  });
+
+  test('and the assertion it replaces passes over that same fixture, which is why it was replaced', () => {
+    // The defect exhibited rather than described: the old expression yields an empty list for a job
+    // that is not there, an empty string contains no `git config --global`, and the one check that
+    // mentions the spike job reports success over its absence.
+    const jobs = workflow(WITHOUT_SPIKE).jobs as Record<string, { steps?: WorkflowStep[] } | undefined>;
+    const asItWas = (jobs['spike']?.steps ?? []).map((step) => step.run ?? '').join('\n');
+    expect(asItWas).toBe('');
+    expect(asItWas).not.toContain('git config --global');
+  });
+
+  test('no job is filtered, conditioned away or allowed to fail — except the one that says why', () => {
+    // A path or branch filter, or `continue-on-error`, turns a required tick into a claim about a
+    // subset nobody named. `port-freeze-sha`'s `if:` is the one condition kept, and it is kept
+    // because a skipped job renders grey rather than green: its subject does not exist until a SHA
+    // is recorded, which is "skipped is not passed" applied rather than broken.
+    const text = repoFile('.github/workflows/ci.yml');
+    for (const marker of ['continue-on-error', 'paths:', 'paths-ignore:', 'branches:', 'branches-ignore:']) {
+      expect(text, `${marker} would narrow what a green tick claims`).not.toContain(marker);
+    }
+    expect([...text.matchAll(/^ {4}if:/gm)].length, 'exactly one job is conditioned, and it is port-freeze-sha').toBe(1);
+    expect(text).toContain("if: needs.port-freeze-policy.outputs.freeze_sha != 'not-yet-recorded'");
+  });
+
+  test('the workspace job still installs frozen and runs on both events', () => {
+    const text = repoFile('.github/workflows/ci.yml');
+    const runs = jobSteps(workflow(text), 'workspace').map((step) => step.run ?? '');
+    expect(runs).toContain('pnpm install --frozen-lockfile');
+    for (const task of WORKSPACE_TASKS) expect(runs).toContain(`pnpm turbo run ${task} --force`);
+    expect(text).toMatch(/^on:\n {2}push:\n {2}pull_request:$/m);
   });
 });

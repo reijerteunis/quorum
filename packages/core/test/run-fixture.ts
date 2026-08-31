@@ -1,8 +1,8 @@
 // Composed-run support for Q-0052's two step kinds: a real repository, a real ticket folder, a
 // real flow file, and a stub adapter the run resolves through `getAdapter`.
 //
-// It lives OUTSIDE `src/` for the reason `repo.ts` does — Vitest collects `src/**/*.test.ts` and
-// this is not a suite. Everything it builds is under `os.tmpdir()`, so no test written against it
+// It lives OUTSIDE `src/` for the reason `repo.ts` does — this is not a suite, and since Q-0054
+// that rests on its name rather than on its directory. Everything it builds is under `os.tmpdir()`, so no test written against it
 // can read or write a path in this repository.
 //
 // The flow file is loaded through `loadFlow` and its `steps` are then replaced, which is
