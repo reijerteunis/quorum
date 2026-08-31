@@ -1,8 +1,10 @@
 # The port charter — Q-0009
 
 *Status: written 2026-08-25 by Q-0009; the cutover follow-up's proposed id corrected the same day
-from `Q-0055` to `Q-0058`, `Q-0055` having been opened for other work in the meantime (§10). The
-ground rules for porting `spike/` into `packages/core` and `packages/shared` across fourteen child
+from `Q-0055` to `Q-0058`, `Q-0055` having been opened for other work in the meantime (§10);
+§3's "the freeze SHA is not yet named" block corrected 2026-09-01, a day after the SHA was
+recorded and the precondition it described was abandoned rather than met. The ground rules for
+porting `spike/` into `packages/core` and `packages/shared` across fourteen child
 tickets, Q-0041 to Q-0054. Q-0009 ports nothing; this document and the guard beside it are its
 output. Read with `harness/rules.md` and `harness/architecture.md`, which points here.*
 
@@ -240,29 +242,29 @@ freeze-SHA half asks a question about the base branch, which no commit trailer o
 answer; if the base legitimately acquires a `spike/src` change after the freeze, what changes is
 the recorded SHA, deliberately and in this file.
 
-**The freeze SHA is not yet named.** The SHA-anchored half of the freeze — that `main` acquired
-no `spike/src` change after the port began — cannot be recorded until five open tickets that
-legitimately edit `spike/src` are settled:
+**The freeze SHA is recorded, and this section used to say it could not be.** It was first written
+at `7b6bc70` on 2026-08-30 and re-recorded at `a6e529a` on 2026-08-31 by Q-0062, the first ticket to
+walk the two numbered steps above. What it replaced was a precondition naming five open tickets that
+legitimately edit `spike/src`, each of which had to be settled first. That table is kept rather than
+deleted, because four of the five are still live and a reader arriving at one of them needs to know
+the route it was told to take no longer exists:
 
-| Ticket | Subject | Must |
+| Ticket | The precondition said | What holds now |
 | --- | --- | --- |
-| Q-0037 | Run-history review remainder — one major, eight nits | land in the spike before the freeze, or be re-targeted at `core` |
-| Q-0038 | Deferred-range failures name their producing step | as above |
-| Q-0039 | One run at a time per ticket *(no folder yet)* | as above |
-| Q-0040 | A gate can say "undecided" *(no folder yet)* | as above |
-| Q-0063 | A CLI that exits before reading its prompt crashes the run with EPIPE | authorised to fix `exec()` in the spike, 2026-08-26 — see `backlog/Q-0009-…/requirements/errata.md` E-2. Not a freeze exemption: Q-0063 is not in `children`. Q-0047 must port the **fixed** `exec()` |
+| Q-0037 | land in the spike before the freeze, or be re-targeted at `core` | **the first option is gone.** A `spike/src` change lands in both trees and re-records the SHA in the same commit — the path above, which is a procedure and not a choice |
+| Q-0038 | as above | settled 2026-08-30, in both trees |
+| Q-0039 | as above *(no folder yet)* | folder created 2026-08-31; `draft`, and the re-record path is what it will take |
+| Q-0040 | as above *(no folder yet)* | as Q-0039 |
+| Q-0063 | authorised to fix `exec()` in the spike, 2026-08-26 — see `backlog/Q-0009-…/requirements/errata.md` E-2. Not a freeze exemption: Q-0063 is not in `children`. Q-0047 must port the **fixed** `exec()` | settled, in both trees. Q-0047 shipped first, so the port carried the unfixed `exec()` and Q-0063 fixed both copies rather than one |
 
-Re-targeting any of them at `core` makes it a port-plus-feature and larger than it currently
-looks. Until all four are settled and the SHA is written into the block below, **the SHA-anchored
-half is SKIPPED, not passed** — the 2026-08-25 rule applied to the guard itself. Its job is
-conditioned on a SHA existing, so GitHub renders it as skipped rather than as a green tick over a
-check nobody ran, and the script refuses to exit 0 if it is invoked in that state anyway. Its
-branch-scope half is live now, because fourteen child runs start long before the SHA exists and
-an inert guard would protect none of them.
-
-Once a SHA *is* recorded, that half stops being a printed reminder and becomes a check: the
-recorded commit must exist, must be an ancestor of the base, and the base must hold no `spike/src`
-change since it — otherwise the job fails and names the files that moved.
+**Waiting for all five was abandoned rather than met**, and the note above §3's job table says why:
+two of them had no folder, so the condition could not be met and the half stayed skipped
+indefinitely. What replaced it is not a weaker precondition but a different mechanism. The half is a
+check now, not a printed reminder: the recorded commit must exist, must be an ancestor of the base,
+and the base must hold no `spike/src` change since it — otherwise the job fails and names the files
+that moved. A legitimate `spike/src` change on the base turns it red **by design**, and the answer is
+the mirror-and-re-record above. Neither half is skipped, and the 2026-08-25 rule that a skipped check
+must not report success no longer has a subject here.
 
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
