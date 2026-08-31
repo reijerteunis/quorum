@@ -51,6 +51,18 @@ function report(context: RoutingContext, ok: boolean, message: string): void {
   context.emit(ok ? { type: 'info', message } : { type: 'warn', message });
 }
 
+/**
+ * The worktree for a ticket branch, registered on the run as one this run obtained.
+ *
+ * Registered whether it was cut now or found already there, and keyed by branch, so the three call
+ * sites below collapse to the one entry `finish` then gives back. See Q-0062.
+ */
+function obtainTicketWorktree(context: RoutingContext, branch: string): string {
+  const dir = ticketWorktree(context.repoDir, branch);
+  context.worktrees?.set(branch, dir);
+  return dir;
+}
+
 /** A role file's frontmatter as a fan-out template reads it: an adapter, a model, or neither. */
 function roleDefaults(meta: unknown): { adapter?: string; model?: string } {
   return typeof meta === 'object' && meta !== null ? meta as { adapter?: string; model?: string } : {};
@@ -83,7 +95,7 @@ export function syncBaseIntoTicketBranch(
   if (!base || base === into) return { skipped: 'base is the ticket branch' };
   if (!branchExists(context.repoDir, into)) return { skipped: `${into} does not exist yet` };
   if (!branchExists(context.repoDir, base)) return { skipped: `${base} does not exist` };
-  const merged = mergeInto(ticketWorktree(context.repoDir, into), base);
+  const merged = mergeInto(obtainTicketWorktree(context, into), base);
   if (merged.ok) {
     context.emit({ type: 'info', message: `${stepId}: ${into} synced to ${base} before fan-out` });
     return { ok: true };
@@ -173,7 +185,7 @@ export async function runFanOut(step: Readonly<Record<string, unknown>>, context
     if (decided) return decided;
     // Later waves build on earlier ones, so this wave lands on the ticket branch before the next.
     if (plan.length > 1 && index < plan.length - 1) {
-      const worktree = ticketWorktree(context.repoDir, ticket.meta.branch);
+      const worktree = obtainTicketWorktree(context, ticket.meta.branch);
       for (const task of wave) {
         // Why: preserved defect, see Q-0053 AC-14(1) — the branch name is re-derived here rather
         // than taken from `fanned`, and the target is the ticket branch rather than the template's
@@ -219,7 +231,7 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
   // The dry case, which returned above, is the only one that allocates nothing — the seam answers
   // `null` where a run has no history rather than crashing on an absent one.
   if (occurrence === null) return null;
-  const dir = ticketWorktree(context.repoDir, into);
+  const dir = obtainTicketWorktree(context, into);
 
   // Evaluated whatever `branches` is, as the spike evaluates it: for an array `String(['a','b'])` is
   // `'a,b'`, and the value is discarded by the first branch below.

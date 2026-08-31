@@ -7,7 +7,14 @@ own header was found to answer the question it had been opened on; the fix lande
 which is *"resolve rather than open a successor"* applied to a ticket that had already been opened. Q-0058 is also where the
 question *what is a `harness.yaml` key called?* was settled, by a census rather than by taste, and
 recorded as a decision written by hand at the requirements gate because no step on the chore route
-may write one. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
+may write one. **Q-0062's entry was rewritten on 2026-08-31** to what its implement step built —
+the worktree lifecycle, the ruling that no ref is ever deleted, and the silent-skip guard the
+re-aimed spike assertions exposed; it also records the one landed pin that moved as a consequence
+rather than by authorisation, which is the sort of thing a plan should say out loud. That pin moved
+twice more inside the same ticket's review loop, so its entry now carries the final measured totals
+and **M2's done-when carries 49% rather than the 53% Q-0054 counted** — the same figure, re-derived
+rather than transcribed, which is the whole reason `spike-parity.test.ts` computes it.
+Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
 resolved: contracts are executable (`ajv` + `harness validate`), and M1's dogfood ticket is
@@ -92,8 +99,9 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   through the binary** — `spike/test/smoke.js`, 151 assertions, the "30-check smoke test" this line
   said until 2026-08-31, counted when it was 30 by *"`integrate` is one generic step type used by
   three stages"* (2026-08-21) — is **Q-0010's**, together with the other seven files that spawn
-  `spike/bin/harness.js`: 53% of the suite by line, which cannot be aimed at a `packages/cli` that
-  does not exist. Until then both CI jobs stay green and both are required.
+  `spike/bin/harness.js`: 49% of the suite by line — 53% when Q-0054 counted it, and re-derived by
+  `spike-parity.test.ts` on every ticket that adds a library-only file — which cannot be aimed at a
+  `packages/cli` that does not exist. Until then both CI jobs stay green and both are required.
 - `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
 - `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.
 
@@ -630,10 +638,59 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - ~~Q-0061 The containment "writes nothing" test snapshots `.git`~~ — **absorbed into Q-0064**
   2026-08-26. Same surface: Q-0064 already moves `git.test.ts` and rewrites `packages/core/test/`,
   where `walk` lives beside `coreSourceFiles`. Its body stays as the evidence.
-- Q-0062 Worktrees are never removed. `removeWorktree` exists, is exported and was ported with four
-  tests by Q-0042, and has **zero call sites** — four worktrees from two completed, contained
-  tickets are on disk now. Decide the lifecycle together with the open M1 item *"`finish()` does not
-  roll back task branches"*; they are the same question.
+- Q-0062 Worktrees are never removed. **Implemented; awaiting review.** `removeWorktree` had been
+  exported and tested by Q-0042 and had **zero call sites**, so every worktree a run had ever made
+  was still on disk — one closed chore ticket leaving two directories and 277 MB, 250 MB of it
+  `node_modules`, measured 2026-08-31. `finish()` now reads the disjunct it already had, the other
+  way round: **a run that finished gives back the worktrees it obtained, and one that did not keeps
+  every one of them**, because the directory a run stopped in is the thing a maintainer is about to
+  open. One predicate, three consequences — the stage rule, the branch rollback and the cleanup —
+  so the inspection story and the cleanup story cannot drift apart. Lands in `spike/src/engine.js`
+  and `packages/core/src/engine/` together: no file in the repository imports `@quorum/core`, so a
+  `core`-only fix would have removed nothing until the cutover, which sits behind Q-0010.
+  **The requirement's decisive ruling was to delete no ref, ever**, against a candidate that
+  proposed deleting contained `harness/<id>/*` branches after a successful run. On a completed chore
+  run `harness/<id>/implement` is contained in `harness/<id>/integration` by construction, so that
+  rule would have deleted, on every single run, exactly the branch this repository reads *after* a
+  run ends — Q-0050's rounds 4 and 6, Q-0077's `--base` flag and Q-0079's three hand reviews all
+  read one. Removing a directory is reversible from its branch; deleting the branch is not. That
+  strike is also what kept the ticket at thirteen criteria rather than twenty, and it turns register
+  row 20 (`harness/port-charter.md`) from a carried gap into decided behaviour.
+  **Cleanup is registration, never enumeration.** The run keeps a branch → directory map filled at
+  the `ensureWorktree` and `ticketWorktree` call sites it actually reaches; nothing walks
+  `.harness/worktrees/` or the ref namespace. A worktree the run **reused** is registered, because a
+  run that reused it is the run that finished with it; a worktree anyone else left is removed by
+  nothing. A worktree holding uncommitted content is **kept**, and the run names the paths that kept
+  it — `removeWorktree` runs `git worktree remove --force`, and a delete taking a decision on
+  somebody's behalf must at least say it took one. A removal or a status read that fails costs one
+  `warn` and nothing else: the status, the stage transition, the manifest, the history entry, the
+  terminal event and the exit code are what they would have been.
+  **The four spike assertions that read a worktree the run now gives back are re-aimed at evidence
+  that survives it**, and one of them is why the re-aim matters more than the removal.
+  `smoke.js`'s `commitAll` block was guarded by `if (fs.existsSync(wt))`, so the moment worktrees
+  started being cleaned it would have become a silent no-op — ten assertions skipped and the suite
+  still green, which is *"a check that skips its subject must not report success"* (2026-08-25)
+  inside the regression suite. It now asserts the branch survives, re-creates the worktree from it,
+  and goes **red** when the branch is gone; demonstrated by deleting the branch, at which point
+  smoke reports exactly that one failure. The smoke fixture's install marker also moved out of the
+  integration worktree: written inside it, it left that worktree permanently dirty, so the suite
+  would have exercised removal on every worktree except the one every code-writing flow makes.
+  **Registered and not fixed:** nothing removes what earlier runs left, by design — this ticket is
+  prospective and takes none of the 277 MB off disk. The successor, `harness worktrees` (list,
+  prune stale registrations, remove what is contained), lands with or after Q-0010 and is written
+  out in full in the merged requirement. Q-0039 is unchanged and named as a risk: two concurrent
+  runs on one ticket already share a worktree, and a removal makes that collision slightly worse
+  rather than creating one.
+  **One guard the requirement did not enumerate moved**, and it is stated here rather than left to
+  be discovered: `spike-parity.test.ts` pins the spike suite's line totals, so re-aiming assertions
+  in two files and adding one moved four measured numbers — 336 / 2001 / 2059 / 4396 became
+  336 / 2026 / 2463 / 4825, and the share of the suite that transfers at Q-0010 fell from 53% to
+  **49%**, because a library-only file is one Q-0010 does not inherit. A measurement re-derived, not
+  an assertion weakened — and re-derived three times, because the review loop kept growing the one
+  new library-only file: 2338 / 4700 after the implement round, 2407 / 4769 after the round that
+  covered `regressed` and `interrupted`, and these after the round that widened the AC-4 scan. The
+  figures above are the ones the guard pins; the two superseded pairs appear in this ticket's
+  earlier implement reports and are not what shipped.
 - Q-0063 A vendor CLI that exits before reading its prompt crashes the run with an unhandled
   `EPIPE`. `exec()` (`spike/src/adapters/claude.js:70–83`, shared by both adapters) attaches no
   `'error'` handler to `p.stdin` and then writes the whole prompt to it. Prompts are 54–133 KB

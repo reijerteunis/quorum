@@ -84,6 +84,23 @@ export type BranchHeadReader = (repoDir: string, branch: string) => string | nul
 export type BranchResetter = (repoDir: string, branch: string, revision: string) => void;
 
 /**
+ * Removes the worktree a branch is checked out in, and only that.
+ *
+ * It takes no options, so no call site can ask it to delete the branch as well: a run removes the
+ * directories it obtained and never a ref, because a removed directory is re-creatable from its
+ * branch and a deleted branch is not. See Q-0062.
+ */
+export type WorktreeRemover = (repoDir: string, branch: string) => void;
+
+/**
+ * Every path `git status --porcelain` reports in a worktree, with git's status columns stripped.
+ *
+ * An empty array is a clean worktree. A throw means the question was not answered, which a caller
+ * may never read as clean — the removal it guards discards uncommitted content.
+ */
+export type WorktreeChangeReader = (dir: string) => string[];
+
+/**
  * The concrete writes a run performs, behind one seam, so `routing.ts` and `lifecycle.ts` depend on
  * capabilities rather than reaching into `Backlog` and run history directly. A dry run supplies a
  * no-op implementation; a real run adapts Q-0049's writer.
@@ -208,6 +225,20 @@ export interface RunContext {
   failingTasks?: Set<string> | null;
   /** The last failed integration's notes and the tail of its output, appended to a retry's prompt. */
   lastIntegration?: string;
+  /**
+   * Every worktree this run obtained, keyed by branch and valued by its directory.
+   *
+   * Keyed by branch so that the repeated ticket-worktree calls collapse to one entry and concurrent
+   * fan-out children cannot overwrite one another's bookkeeping. A worktree the run REUSED is in
+   * here too, because a run that reused it is the run that finished with it; a worktree the run
+   * never touched is in nobody's, whoever created it.
+   *
+   * Optional for the reason {@link RunContext.fanned} is: a context built to drive one step in
+   * isolation carries no registry, and a step registering into it must not require one. `engine.ts`
+   * creates it for every run, and a dry run fills it with nothing because no step obtains a
+   * worktree under `dry`.
+   */
+  worktrees?: Map<string, string>;
 }
 
 /** One task a fan-out expanded, as the `integrate` step that follows reads it back. */
@@ -283,4 +314,8 @@ export interface LifecycleContext extends RunContext {
   branchHeadAtStart: string | null;
   readBranchHead: BranchHeadReader;
   resetBranch: BranchResetter;
+  /** Removes one worktree this run obtained. Injected, so this module reaches for no git of its own. */
+  removeWorktree: WorktreeRemover;
+  /** What a worktree is holding uncommitted, so a dirty one is kept instead of forced away. */
+  readWorktreeChanges: WorktreeChangeReader;
 }

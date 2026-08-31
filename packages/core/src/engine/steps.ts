@@ -201,6 +201,9 @@ export async function runAgentStep(
     const stepBase = interpolate(String(step.base ?? ticket.meta.branch), vars);
     const existed = branchExists(context.repoDir, branch);
     cwd = ensureWorktree(context.repoDir, branch, stepBase);
+    // Registered whether it was cut now or found already there: a run that reused a worktree is the
+    // run that finishes with it, and `finish` gives back only what this map names. See Q-0062.
+    context.worktrees?.set(branch, cwd);
     context.emit({ type: 'info', message: `${stepId}: worktree ${cwd} (${branch})` });
     // A branch created on an earlier round is stale: its base has moved on since. Syncing only on a
     // fan-out retry left the agent working against yesterday's tree, appearing to revert whatever

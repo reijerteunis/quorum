@@ -7,11 +7,14 @@
  *
  * Why: behaviour preserved from spike/src/engine.js:37-174 (charter §2, Q-0050).
  */
+import { execFileSync } from 'node:child_process';
+
 import { DEFAULT_BASE_BRANCH } from '@quorum/shared';
 import type { Event, Flow } from '@quorum/shared';
 
 import type { Backlog } from '../backlog/backlog.js';
 import { branchHead, resetBranchTo } from '../fanout/fanout.js';
+import { removeWorktree } from '../git/git.js';
 import type { ErrorCategory, Occurrence } from '../run-history/manifest.js';
 import { initialiseRunHistory, nextRunId } from '../run-history/writer.js';
 import type { RunHistory } from '../run-history/writer.js';
@@ -115,6 +118,19 @@ function interruptionNote(signal: AbortSignal, error: unknown): string {
   return failureMessage(error);
 }
 
+/**
+ * Every path `git status --porcelain` reports in `dir`, with git's two status columns stripped.
+ *
+ * The runner is spelled here rather than borrowed: `git/git.ts` and `fanout/fanout.ts` each keep
+ * theirs module-private behind an export surface a landed guard fixes, and this folder may gain no
+ * module for the sake of one command. It throws whatever git threw, which `lifecycle.ts` reads as
+ * "not established" and never as a clean worktree.
+ */
+function worktreeChanges(dir: string): string[] {
+  return execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    .split('\n').map((line) => line.slice(3).trim()).filter(Boolean);
+}
+
 /** Whatever was thrown, as an `Error` — a channel never completes with a non-Error value. */
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -211,6 +227,9 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     // The two maps the diff preflight fills and the steps that read them share, and whether `--base`
     // was typed at all — which `vars.base` above cannot answer, because it is set either way.
     diffInputs: new Map(), deferredDiffs: new Map(), baseOverride: base ?? null,
+    // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
+    // back exactly what it made. Nothing enumerates the worktree root or the ref namespace.
+    worktrees: new Map(),
     emit: stepEmit,
     persistence,
     nextGateId: () => `${runId}:${(gateSequence += 1)}`,
@@ -219,6 +238,8 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     branchHeadAtStart,
     readBranchHead: branchHead,
     resetBranch: resetBranchTo,
+    removeWorktree,
+    readWorktreeChanges: worktreeChanges,
   };
 
   try {

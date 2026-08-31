@@ -23,12 +23,18 @@ const assert = (cond, msg) => {
 execSync('git init -q && git -c user.email=a@b -c user.name=t commit -q --allow-empty -m init', { cwd: tmp });
 assert(run(['init']).status === 0, 'init');
 // This fixture repo is not a node project, so point both commands at something it can run. The
-// install command writes a marker, which lets the assertions below prove it ran in the
-// integration worktree and ran *before* the tests.
+// install command records the directory it ran in, which lets the assertion below prove it ran in
+// the integration worktree.
+//
+// The marker is written OUTSIDE that worktree, two levels up into .harness/, and that is the whole
+// point of the path: it used to be `date > .installed` inside the worktree, which since Q-0062
+// leaves an untracked file there on every integrate — so the worktree is permanently dirty, the run
+// keeps it rather than removing it, and this suite would never exercise removal on the one worktree
+// every code-writing flow makes. Its contents are the evidence now, not its location.
 {
   const hy = path.join(tmp, 'harness/harness.yaml');
   fs.writeFileSync(hy, fs.readFileSync(hy, 'utf8')
-    .replace(/install: npm install.*/, 'install: sh -c "date > .installed"')
+    .replace(/install: npm install.*/, 'install: sh -c "pwd > ../../install-cwd"')
     .replace(/test: npm test.*/, 'test: sh tests/check.sh'));
 }
 assert(run(['lint']).status === 0, 'lint passes on shipped flows');
@@ -56,8 +62,17 @@ assert(r.status === 0, 'solutioning flow completes');
 assert(r.stdout.includes('iteration 1/2 → goto architect'), 'review loop bounced back to architect once');
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'solution/solution.md')), 'solution.md written');
 assert(ticket().includes('stage: solutioned'), 'stage advanced to solutioned');
-const wt = execSync('git worktree list', { cwd: tmp, encoding: 'utf8' });
-assert(wt.includes('harness/T-0001/contracts'), 'architect ran in its own worktree/branch');
+// The branch and the step's own line are the durable evidence for "it ran in its own worktree on
+// its own branch": since Q-0062 the run gives the directory back when it finishes, and the branch
+// it was checked out on is what it never deletes.
+const contractsWorktree = path.join(tmp, '.harness/worktrees/harness__T-0001__contracts');
+assert(execSync('git branch --list harness/T-0001/contracts', { cwd: tmp, encoding: 'utf8' }).trim() !== '',
+  'architect ran on its own branch, which the run keeps');
+assert(/architect: worktree .*\(harness\/T-0001\/contracts\)/.test(r.stdout),
+  'and in its own worktree, which the step said as it cut it');
+assert(!fs.existsSync(contractsWorktree)
+  && !execSync('git worktree list', { cwd: tmp, encoding: 'utf8' }).includes('harness__T-0001__contracts'),
+  'and the finished run gave that worktree back, directory and registration together');
 assert(execSync('git status --porcelain', { cwd: tmp, encoding: 'utf8' }).split('\n').every((l) => !l || l.includes('backlog') || l.includes('harness/') ), 'user working tree untouched except backlog/');
 
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'solution/tasks.yaml')), 'tasks.yaml emitted');
@@ -80,8 +95,11 @@ const tree = execSync('git ls-tree -r --name-only harness/T-0001/integration', {
 assert(tree.includes('src/T-0001.1.ts') && tree.includes('src/T-0001.2.ts') && tree.includes('tests/check.sh') && tree.includes('contracts/ProrationService.ts'), 'ticket branch holds contracts, tests and both implementations');
 assert(!fs.existsSync(path.join(tmp, 'src')), 'user working tree still untouched');
 // The integrate step must prepare the worktree before testing it: a fresh checkout has no
-// dependencies, and a suite that cannot start would otherwise satisfy expect: fail (Q-0004).
-assert(fs.existsSync(path.join(tmp, '.harness/worktrees/harness__T-0001__integration/.installed')),
+// dependencies, and a suite that cannot start would otherwise satisfy expect: fail (Q-0004). The
+// evidence is the directory the install command reported as its own cwd, written outside the
+// worktree so that it survives the removal a finished run performs (Q-0062).
+assert(path.basename(fs.readFileSync(path.join(tmp, '.harness/install-cwd'), 'utf8').trim())
+  === 'harness__T-0001__integration',
   'integrate runs commands.install in the integration worktree before the tests');
 
 // An exhausted loop lands on a human-locked gate that --auto may NOT walk through. This check
@@ -375,7 +393,14 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
 {
   const { commitAll } = await import('../src/fanout.js');
   const wt = path.join(tmp, '.harness/worktrees/harness__T-0001__contracts');
-  if (fs.existsSync(wt)) {
+  // The subject is asserted rather than tested for. `if (fs.existsSync(wt))` stood here, and the
+  // moment a finished run started giving its worktrees back (Q-0062) the whole block below became a
+  // silent no-op — every assertion in it skipped and the suite still green. The worktree is
+  // re-created from the branch, which the run never deletes; if the BRANCH has gone too there is no
+  // subject and that is a failure, not a skip.
+  const contractsSurvives = execSync('git branch --list harness/T-0001/contracts', { cwd: tmp, encoding: 'utf8' }).trim() !== '';
+  if (assert(contractsSurvives, 'the commitAll block has a subject: the contracts branch outlives its run')) {
+    if (!fs.existsSync(wt)) execSync('git worktree add -q ' + JSON.stringify(wt) + ' harness/T-0001/contracts', { cwd: tmp });
     // Set up the real-world shape: a ticket tracked on the branch, as it is in a live repo.
     const dir = path.join(wt, 'backlog', td);
     fs.mkdirSync(dir, { recursive: true });
