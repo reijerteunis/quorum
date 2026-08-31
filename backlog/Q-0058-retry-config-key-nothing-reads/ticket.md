@@ -1,7 +1,7 @@
 ---
 id: Q-0058
 title: harness.yaml documents a retry key nothing reads
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0058/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-08-31T16:39:09.674Z
     cost: 6.477
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-31T17:40:58.625Z
+    cost: 12.072
 ---
 Found by Q-0043's implement step while reading the adapter contract layer, reported and not fixed
 per *"The port preserves behaviour; one exception is authorised and everything else stops the
