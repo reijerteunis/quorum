@@ -1,7 +1,7 @@
 ---
 id: Q-0084
 title: The git-identity sweep cannot run in a linked worktree
-stage: draft
+stage: abandoned
 owner: ruud
 repos: []
 branch: harness/Q-0084/integration
@@ -11,6 +11,31 @@ iterations: {}
 history: []
 ---
 git-identity-sweep.sh points GIT_CONFIG_GLOBAL at ${repo_root}/.git/sweep-gitconfig-absent, which cannot exist in a linked worktree because .git is a file there — so Q-0079's oracle is unrunnable in the one environment every chore implement step runs in.
+
+**WITHDRAWN 2026-08-31, the same day it was opened — the defect was fixed by hand at Q-0058's close
+rather than run through the flows, and this ticket never ran.** The body below is kept as the
+evidence and as the record of why it was opened at all; it is not a description of open work.
+
+**What changed the routing.** This ticket was opened on the reasoning in its "what the fix has to be
+argued against" paragraph — that the obvious repair moves the absent config file out of the tree the
+sweep isolates, which is a property Q-0079's measured table was built around, so it wanted
+re-measuring rather than a substitution. Re-reading `git-identity-sweep.sh`'s own header answered
+that: *"The probe below is the oracle, so this is a question of what the environment achieves and
+not of how it is spelled: if any of this stops neutralising identity, the negative probe resolves and
+the run stops there."* Only the file's **absence** is load-bearing; nothing reads it and nothing
+creates it, so which directory holds it is not a property any guarantee rests on, and no row of that
+table depends on it. The caution below was mine and was unfounded — recorded rather than deleted,
+because a ticket opened on a worry the existing documentation already answers is worth being able to
+see.
+
+**What shipped.** `GIT_CONFIG_GLOBAL` now names
+`git rev-parse --path-format=absolute --git-common-dir` — the one real shared `.git` directory,
+identical from the main checkout and from every worktree — with the reasoning in the script's header
+beside Q-0079's. `rm -f` stays, because it is what turns "the parent is not a directory" into a stop
+rather than a permissive environment. Demonstrated red before green from the linked worktree, and
+re-run on `main`: both exit 0, both printing the script's own *"environment discriminates"* line.
+
+---
 
 Found by Q-0058's chore implement step on 2026-08-31, reported and not fixed — correctly, because
 no criterion of that ticket names `.github/` and changing an enforcement script's isolation

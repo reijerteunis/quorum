@@ -285,3 +285,26 @@ disagreement is visible rather than buried:
 2. **AC-5(c)'s second pin (the template at 6) is mine, not the criterion's.** The criterion names
    only `harness/harness.yaml`. If a reviewer thinks a second brittle count is not worth its
    maintenance, it is one assertion to delete and the demonstration survives on the first file alone.
+
+---
+
+## Correction, added by hand after the gate — 2026-08-31
+
+**"2 — GO-2 is still open" above is wrong, and the sentence is left standing rather than edited
+because how it got there is the point.** `harness/Q-0058/integration` was created by hand from
+`main` before this run started, and re-pointed at `main` again after the decision entry landed. The
+claim that `git branch --list 'harness/*'` returns nothing was transcribed from the merged
+requirement's R-4 and GO-2 — true when the requirement was written, false by the time the chore run
+began — rather than re-measured in the worktree, where the command answers.
+
+**The run itself disproves it.** `chore.yaml`'s `review` step diffs
+`harness/{id}/integration...harness/{id}/implement`. That step ran, produced a diff and returned
+`approve`, which it could not have done against a branch that did not exist — and since Q-0038 the
+preflight refuses a missing endpoint before billing anything, so the run would have stopped rather
+than reached this report.
+
+Nothing in the change is affected: this is a claim in a report, not a defect in the code, and every
+criterion was verified independently at the gate. It is recorded because it is *"verify inherited
+measurements"* arriving one layer down — the same class as the requirement's own Correction 1, which
+caught the recommended candidate inheriting a restoration rule nobody had executed. A measurement
+copied from a document that was true when written is not a measurement.

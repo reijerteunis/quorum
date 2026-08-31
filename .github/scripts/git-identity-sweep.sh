@@ -66,7 +66,18 @@ done
 # and would want to delete the developer's node_modules. The probe below is the oracle, so this is
 # a question of what the environment achieves and not of how it is spelled: if any of this stops
 # neutralising identity, the negative probe resolves and the run stops there.
-export GIT_CONFIG_GLOBAL="${repo_root}/.git/sweep-gitconfig-absent"
+# The path only has to be ABSENT — nothing reads it and nothing creates it — so which directory
+# holds it is not a property this script's guarantees rest on: "the probe below is the oracle"
+# applies here too. It is named `--git-common-dir` rather than `${repo_root}/.git` because in a
+# LINKED WORKTREE `.git` is a *file* holding `gitdir: …`, so that path could never exist and the
+# `rm -f` below failed with `Not a directory` — which made the sweep unrunnable in exactly the
+# environment every chore implement step runs in (found by Q-0058's implementer, 2026-08-31).
+# `--git-common-dir` is the one real, shared `.git` directory, absolute and identical from the main
+# checkout and from every worktree. `rm -f` stays: it is what turns "the parent is not a directory"
+# into a stop rather than a silently permissive environment.
+git_common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
+  || fail "cannot locate the repository's common git directory"
+export GIT_CONFIG_GLOBAL="${git_common_dir}/sweep-gitconfig-absent"
 rm -f "${GIT_CONFIG_GLOBAL}" || fail "cannot ensure ${GIT_CONFIG_GLOBAL} is absent"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.useConfigOnly GIT_CONFIG_VALUE_0=true

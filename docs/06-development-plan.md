@@ -1,8 +1,10 @@
 # Quorum — Development Plan
 
 *Status: v1 plan, 2026-08-31 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. Q-0051's entry was rewritten on 2026-08-30 to what shipped — the port's eleventh child, and the first whose requirement was run twice because Q-0038 landed on its subject between the two, the aborted document archived rather than resumed. Q-0057's entry was rewritten the same day to what shipped, taken in the gap between port children because the chore flow it fixes is what every remaining child runs. The working agreement on ticket ids was corrected on 2026-08-30 by Q-0080, which fixed an allocator that read every `Q-` id as unparseable and answered `T-0001` on every call: the prefix is the adopter's and is derived from the backlog, so stating this repository's convention as the product's was the same mistake one layer up. Q-0079's entry gained its three cross-vendor review rounds the same evening, run by hand before its stage could honestly read `reviewed` and returning `revise` every time. Q-0079 and Q-0080 were opened and closed the same day, 2026-08-30 — the first from the third instance in three days of a test whose verdict depended on the machine rather than the commit, implemented by hand rather than ticketed further; the second split from its body and run through the flows, because it changes product behaviour on the cold-clone path. Q-0052's entry was written on 2026-08-31 when it shipped as the port's twelfth child, and five tickets were folded into this list in the same edit: Q-0074 and Q-0077, which had been open and shipped respectively while appearing nowhere in it — Q-0074 not at all, Q-0077 only inside Q-0050's prose — and Q-0081, Q-0082 and Q-0083, opened from Q-0052's own run. The gap is worth naming rather than quietly closing: a ticket can exist in `backlog/` for three days without this page knowing, because nothing checks the two against each other, which is the same class as the defects Q-0072 and Q-0073 closed one layer down. **M2's smoke-test done-when was split on 2026-08-31 by Q-0054**, the port's last child: the library half is Q-0054's and is done, the mock end-to-end through the binary is Q-0010's, and the "30-check" figure — a 2026-08-21 count repeated here as a present-tense requirement while the file holds 151 assertions — is corrected in this page and in `04-architecture.md` while the append-only entry it came from is left alone. Q-0054's own entry was rewritten in the same edit to what shipped. Q-0009's port closed on 2026-08-31 with all fourteen children contained, and Q-0053's entry and the parent's were written the same evening, together with charter §9's cost checkpoint — performed at the close rather than after the first three children, which is recorded as a process failure rather than presented as compliance. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. **Q-0058 shipped on 2026-08-31** as the first ticket run through the flows after the port closed, and
-its entry was rewritten in the same edit, together with **Q-0084**, opened from the defect its
-implement step found in Q-0079's sweep and correctly declined to fix. Q-0058 is also where the
+its entry was rewritten in the same edit. **Q-0084** was opened from the defect its implement step
+found in Q-0079's sweep and correctly declined to fix, and withdrawn the same day once the sweep's
+own header was found to answer the question it had been opened on; the fix landed by hand instead,
+which is *"resolve rather than open a successor"* applied to a ticket that had already been opened. Q-0058 is also where the
 question *what is a `harness.yaml` key called?* was settled, by a census rather than by taste, and
 recorded as a decision written by hand at the requirements gate because no step on the chore route
 may write one. Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
@@ -575,14 +577,39 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   including that removing the new turbo input fails four clauses of `turbo-inputs.test.ts`, and that
   dropping `cfg.retry` from `getAdapter` fails AC-7's non-default 3/7/9 check, whose delays are
   `[7, 9]` where the exponent alone would give 14.
-  **It also found a defect nobody was looking for, and refused it correctly: Q-0084.**
-  `pnpm sweep:git-identity` — Q-0079's oracle — **cannot run in a linked worktree at all**, because
-  `git-identity-sweep.sh:69` points `GIT_CONFIG_GLOBAL` at `${repo_root}/.git/sweep-gitconfig-absent`
-  and `.git` is a *file* there. Every chore implement step runs in a linked worktree, so the oracle is
-  unreachable in exactly the environment the flow creates; the tripwire half still runs but sees
-  literals only. It fails loudly rather than passing vacuously, which is Q-0079's design working, and
-  the implementer reported the sweep as **skipped** rather than green. Run on `main` at the gate:
-  green.
+  **It also found a defect nobody was looking for, refused it correctly, and it was fixed by hand at
+  this ticket's close rather than run through the flows.** `pnpm sweep:git-identity` — Q-0079's
+  oracle — **could not run in a linked worktree at all**: `git-identity-sweep.sh:69` pointed
+  `GIT_CONFIG_GLOBAL` at `${repo_root}/.git/sweep-gitconfig-absent`, and in a linked worktree `.git`
+  is a *file* holding `gitdir: …`, so the path could never exist and the `rm -f` guarding it failed
+  with `Not a directory` in the `isolation` phase. Every `chore.yaml` implement step runs in a linked
+  worktree, so the oracle was unreachable in exactly the environment the flow creates, while the
+  tripwire half — literals only, and it says so — could not stand in for it. It failed loudly rather
+  than passing vacuously, which is Q-0079's design working, and the implementer reported the sweep as
+  **skipped** rather than green.
+  **The fix is one line, and the reasoning sits in the script's header beside Q-0079's.**
+  `GIT_CONFIG_GLOBAL` now names `git rev-parse --path-format=absolute --git-common-dir` — the one
+  real shared `.git` directory, identical from the main checkout and from every worktree. It was
+  opened as **Q-0084** at this ticket's gate, on the worry that moving the file would disturb
+  Q-0079's measured table of what does and does not neutralise an identity; that ticket was withdrawn
+  the same day, because the header answers the worry — *"the probe below is the oracle … a question
+  of what the environment achieves and not of how it is spelled"*. Only the file's **absence** is
+  load-bearing, and nothing reads or creates it, so which directory holds it is not a property any
+  guarantee rests on. `rm -f` stays: it is what turns "the parent is not a directory" into a stop.
+  **Demonstrated red before green in the environment that matters, which is the only check that the
+  fix is real.** The previous script, run from the linked worktree, fails at `isolation` with the
+  `Not a directory` message; the fixed one runs there to completion, exit 0, printing its own
+  *"environment discriminates (negative and positive probes both as expected)"* — the script
+  asserting that both probes still fire, rather than the maintainer asserting it — then both suites
+  green. Re-run on `main` afterwards: exit 0, same two lines. The new `|| fail` on the `rev-parse` is
+  defensive and unreachable in practice, since `--show-toplevel` fails first outside a repository; it
+  is not claimed as tested.
+  **The report's own nit was corrected in place rather than edited away.** Its "still open" item 2
+  states GO-2 is open and `git branch --list 'harness/*'` returns nothing — transcribed from the
+  requirement, true when that was written, false by the time the run began, and disproved by the run
+  itself, since `review` diffed against a branch that had to exist for the step to return `approve`.
+  A correction is appended to `dev/implement-report.md` and the sentence left standing, because how
+  the claim got there is the point: a measurement copied from a document is not a measurement.
   **$18.55 across two runs** — $6.48 requirements, $12.07 chore — and 19.4M tokens across two unpriced
   codex steps. Verified in both environment rows per Q-0072's closing finding: the integrate worktree
   had neither `.harness/worktrees` nor `.quorum/runs` and ran both suites to exit 0, then forced on
@@ -1112,10 +1139,12 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   lint can tell an authority appeal from work an agent finds hard**, which argues for keeping the
   gate human rather than for validating the reason. Whether it runs before Q-0053 and Q-0054 — which
   run this exact flow — is the Q-0057 question and is left for its requirements gate.
-- Q-0084 The git-identity sweep cannot run in a linked worktree. Opened 2026-08-31 by Q-0058's chore
+- ~~Q-0084 The git-identity sweep cannot run in a linked worktree~~ — **withdrawn and fixed by hand
+  at Q-0058's close** 2026-08-31, the same day it was opened; it never ran, and its body stays as the
+  evidence. What it described: opened by Q-0058's chore
   implement step, which reported it and correctly refused to fix it — no criterion of that ticket
   names `.github/`, and changing an enforcement script's isolation mechanism is a decision rather
-  than machinery. `git-identity-sweep.sh:69` sets
+  than machinery. `git-identity-sweep.sh:69` set
   `GIT_CONFIG_GLOBAL="${repo_root}/.git/sweep-gitconfig-absent"`, and in a linked worktree `.git` is
   a **file** holding `gitdir: …`, so that path can never exist and the `rm -f` guarding it fails with
   `Not a directory` in the sweep's `isolation` phase. Reproduced both ways by hand before the ticket
@@ -1124,11 +1153,12 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   runs in the ordinary suite but sees literals only and says so, and is therefore not coverage for
   the checkout-shaped instances. It fails loudly rather than passing vacuously — Q-0079's design
   working — so the ticket is about *reach*, not a false pass, and CI has never been affected because
-  it checks out a normal clone. The fix is not a one-line substitution: moving the file to `$TMPDIR`
-  or to `git rev-parse --git-common-dir` takes it out of the tree the sweep is isolating, which is a
-  property Q-0079's measured table was built around, so both probes must be shown to still
-  discriminate and the four cells still reachable. The check that the fix is real is that the sweep
-  runs to completion **in a linked worktree** and still fails when an identity is restored.
+  it checks out a normal clone. **Why it was withdrawn rather than run:** the ticket was opened on
+  the worry that moving the absent file out of the tree would disturb Q-0079's measured table, and
+  the script's own header already answers it — *"the probe below is the oracle … a question of what
+  the environment achieves and not of how it is spelled"*. Only the file's absence is load-bearing,
+  so no row of that table is touched. `GIT_CONFIG_GLOBAL` now names
+  `git rev-parse --path-format=absolute --git-common-dir`; the demonstration is in Q-0058's entry.
 
 **Carried into M2 by the M1 and Q-0034 closing entries, not yet ticketed.** `finish()` does not roll
 back task branches, so a failed run leaves work the next run syncs into. `harness run` cannot aim a
