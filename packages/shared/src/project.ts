@@ -28,12 +28,17 @@ import { z } from 'zod';
 /**
  * Per-adapter retry policy — `adapters.<vendor>.retry` (spike/src/adapters/index.js:31, :68).
  *
- * The key names are CAMEL CASE because that is what `withRetry` destructures. Both shipped
- * `harness.yaml` files show `base_delay_ms` in a commented example instead, which nothing reads;
- * that mismatch is reported rather than repaired, since correcting either side is a behaviour
- * change this ticket is not authorised to make.
+ * The key names are CAMEL CASE because that is what `withRetry` destructures, identically in both
+ * trees: spike/src/adapters/index.js:68 and packages/core/src/adapters/adapters.ts:345. Both
+ * shipped `harness.yaml` files spell the commented example that way since Q-0058, which also states
+ * the rule the spelling follows — a key under `adapters.<vendor>` is a JavaScript property name,
+ * because `getAdapter` hands that block to the adapter unread.
+ *
+ * Exported for the parity guard in `project.test.ts`, which walks a shipped config's key paths
+ * against the schema that declares each one; reaching this from `projectConfigSchema` alone would
+ * make the guard's subject zod's wrapper internals. Q-0058 AC-3.
  */
-const retryPolicySchema = z.looseObject({
+export const retryPolicySchema = z.looseObject({
   attempts: z.number().optional(),
   baseDelayMs: z.number().optional(),
   maxDelayMs: z.number().optional(),
@@ -46,8 +51,11 @@ const retryPolicySchema = z.looseObject({
  * `gemini` adapter must not need this package edited before its config can be typed, and an
  * unknown name is already refused with a good message by `getAdapter`
  * (spike/src/adapters/index.js:29).
+ *
+ * Exported for the same reason {@link retryPolicySchema} is: it is the value schema of a
+ * `z.record`, and the guard reaches it by name rather than through the record's wrapper. Q-0058 AC-3.
  */
-const adapterConfigSchema = z.looseObject({
+export const adapterConfigSchema = z.looseObject({
   bin: z.string().optional(),
   extraArgs: z.array(z.string()).optional(),
   retry: retryPolicySchema.optional(),
