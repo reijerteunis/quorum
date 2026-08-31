@@ -23,11 +23,13 @@ const gitSource = (): string => {
   return found[1];
 };
 
-describe('AC-1 — the module exports eight functions, and core reads ancestry in one file', () => {
-  test('exactly the eight functions the port names', () => {
+describe('AC-1 — the module exports nine functions, and core reads ancestry in one file', () => {
+  test('exactly the nine functions this module owns', () => {
+    // Eight at Q-0042. `mergeBase` is the ninth, and it is here rather than in the engine because
+    // the guard below permits `merge-base` in this file alone — Q-0053 AC-3a and OQ-1.
     expect(Object.keys(gitModule).sort()).toEqual([
       'ancestry', 'containment', 'emptyRangeEvidence', 'ensureExcluded', 'ensureWorktree',
-      'removeWorktree', 'shallowState', 'shortSha',
+      'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
     ]);
     for (const value of Object.values(gitModule)) expect(typeof value).toBe('function');
   });

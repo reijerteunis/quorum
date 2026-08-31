@@ -154,8 +154,10 @@ describe('Q-0051 AC-1/AC-2 — the module boundary', () => {
     expect(production).toContain('diff.ts');
     // An identity, not a floor: `SIX` is frozen as the array the old guard named, so what this
     // states is exactly which files the folder has gained since and which that array cannot see.
-    // Q-0052 adds two more, and a length check would have absorbed them silently.
-    expect(production.filter((name) => !SIX.includes(name))).toStrictEqual(['diff.ts', 'prompt.ts', 'steps.ts']);
+    // Q-0052 adds two more and Q-0053 two more again, and a length check would have absorbed every
+    // one of them silently. Entering them here is the deliberate act this identity exists to force.
+    expect(production.filter((name) => !SIX.includes(name)))
+      .toStrictEqual(['composite.ts', 'diff.ts', 'prompt.ts', 'steps.ts', 'suite-output.ts']);
 
     // The violation the guard exists to catch, injected into the one file the old array cannot see.
     const violating = (name: string): string =>

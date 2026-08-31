@@ -10,8 +10,8 @@ import path from 'node:path';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import {
-  ancestry, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, removeWorktree,
-  shallowState, shortSha,
+  ancestry, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, mergeBase,
+  removeWorktree, shallowState, shortSha,
 } from './git.js';
 import {
   commit, commitAll, counting, git, installGitShim, notARepo, removeTempDirs, repo, shallowCloneOf,
@@ -404,6 +404,45 @@ describe('AC-8 — shortSha returns git\'s own abbreviation, or null', () => {
   test('a ref that does not resolve is null, and so is a directory git cannot read', () => {
     expect(shortSha(repo(), 'no/such/ref')).toBeNull();
     expect(shortSha(notARepo(), 'main')).toBeNull();
+  });
+});
+
+describe('Q-0053 AC-3a — mergeBase answers with a revision, or with nothing', () => {
+  // Ported from spike/src/engine.js's `safeMergeBase`, which lives in the engine and may not be
+  // written there in `core`: a landed Q-0042 guard permits `merge-base` in this file alone.
+  test('two divergent branches fork at the commit git itself names', () => {
+    const dir = forked();
+    git(dir, 'checkout', '-q', 'feature');
+    commit(dir, 'feature moves on too');
+    git(dir, 'checkout', '-q', 'main');
+
+    expect(mergeBase(dir, 'main', 'feature')).toBe(git(dir, 'merge-base', 'main', 'feature'));
+    // The whole sha, trimmed — `git()`'s own `.trim()` discharges that half.
+    expect(mergeBase(dir, 'main', 'feature')).toMatch(/^[0-9a-f]{40}$/);
+    // Symmetric, as git is.
+    expect(mergeBase(dir, 'feature', 'main')).toBe(mergeBase(dir, 'main', 'feature'));
+  });
+
+  test('a ref that does not exist is null, and so is a directory that is not a repository', () => {
+    const dir = forked();
+    expect(mergeBase(dir, 'main', 'no/such/branch')).toBeNull();
+    expect(mergeBase(dir, 'no/such/branch', 'main')).toBeNull();
+    expect(mergeBase(notARepo(), 'main', 'feature')).toBeNull();
+  });
+
+  test('two unrelated histories are null rather than an invented ancestor', () => {
+    const dir = repo();
+    git(dir, 'checkout', '-q', '--orphan', 'other');
+    write(path.join(dir, 'other.txt'), 'other\n');
+    commitAll(dir, 'an unrelated root');
+    git(dir, 'checkout', '-q', 'main');
+
+    expect(mergeBase(dir, 'main', 'other')).toBeNull();
+  });
+
+  test('it is the branch ahead of the fork that identifies it: an ancestor is its own merge base', () => {
+    const dir = forked();
+    expect(mergeBase(dir, 'main', 'feature')).toBe(git(dir, 'rev-parse', 'feature'));
   });
 });
 

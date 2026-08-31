@@ -1,6 +1,7 @@
 /** Gate policy, step dispatch, and bounded backward-edge decisions for one running flow. */
 import { gateAnswerEnvelopeSchema, type GateQuestionEvent } from '@quorum/shared';
 
+import { runFanOut, runIntegrate } from './composite.js';
 import { runAgentStep, runScript } from './steps.js';
 import { FlowError, type RoutingContext, type StepResult } from './types.js';
 
@@ -46,10 +47,6 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
     removeAbort();
     clearTimeout(signalWindow);
   }
-}
-
-function unavailableStep(step: Readonly<Record<string, unknown>>, owner: string): Promise<StepResult> {
-  return Promise.reject(new FlowError(`${String(step.id ?? 'step')}: execution belongs to ${owner}`));
 }
 
 /** Dispatches a step in spike order without taking ownership of the engine's cursor. */
@@ -99,8 +96,8 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     return { abort: true };
   }
   if (step.type === 'script') return runScript(step, context);
-  if (step.type === 'integrate') return unavailableStep(step, 'Q-0053');
-  if (step.fan_out) return unavailableStep(step, 'Q-0053');
+  if (step.type === 'integrate') return runIntegrate(step, context);
+  if (step.fan_out) return runFanOut(step, context);
   return runAgentStep(step, context);
 }
 

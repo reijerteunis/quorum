@@ -190,6 +190,34 @@ export interface RunContext {
    * file, and an override may legitimately name the configured value. See Q-0077, Q-0038.
    */
   baseOverride: string | null;
+  /**
+   * Every task this run's fan-out expanded, appended one per task before its step runs.
+   *
+   * Optional and assigned by the step rather than initialised by `engine.ts`, mirroring the spike:
+   * a run whose flow declares no fan-out never carries the key at all, and `integrate` reads it
+   * back to resolve a `*` branch pattern and to map a conflicted branch to the task that made it.
+   */
+  fanned?: FannedTask[];
+  /**
+   * The tasks a failed `integrate` wants re-run, or `null` once one succeeded.
+   *
+   * `null` and absent are deliberately different: absent means no integrate has spoken, `null`
+   * means one has and found nothing failing. A fan-out declaring `scope: failing-tasks-only`
+   * narrows to this set only when it is non-empty.
+   */
+  failingTasks?: Set<string> | null;
+  /** The last failed integration's notes and the tail of its output, appended to a retry's prompt. */
+  lastIntegration?: string;
+}
+
+/** One task a fan-out expanded, as the `integrate` step that follows reads it back. */
+export interface FannedTask {
+  /** The task's own id, as `tasks.yaml` spells it — not the interpolated child step id. */
+  task: string;
+  /** The branch the task's agent step was given, after interpolation. */
+  branch: string;
+  /** The role `tasks.yaml` named, not the `developer-…` role file the template resolved to. */
+  role: string;
 }
 
 /** The seven fields a regressed run's terminal event and history entry both carry, as one closed group. */
