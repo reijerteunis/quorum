@@ -229,18 +229,45 @@ await scenario('AC-4', 'no ref is deleted: both branches still resolve, and both
   assert.match(git(f.root, 'show', `${INTEGRATION}:contracts/ProrationService.ts`), /ProrationService/);
 });
 
+// The argv-shaped tokens of `text`, the same reading `packages/core/src/engine/q0062.source.test.ts`
+// takes of its own tree. A quote is a property of the spelling and not of the command, so quotes
+// are separators: ['branch', '-d', b], ["branch", "-d", b], a template literal and a plain shell
+// line all reduce to the same two adjacent tokens. A property access stays one token, because `.`
+// is part of a token, so `list.push` is never the verb `push` — which is what lets the push clauses
+// exist at all. A colon ending a token is JavaScript punctuation and is dropped; one beginning it
+// is a refspec and is kept.
+const argv = (text) => text.split(/[^\w.:/@-]+/)
+  .map((token) => (/^:+$/.test(token) ? token : token.replace(/:+$/, '')))
+  .filter(Boolean);
+const is = (...flags) => (token) => flags.includes(token);
+const near = (tokens, verb, matches) =>
+  tokens.some((token, index) => token === verb && tokens.slice(index + 1, index + 4).some(matches));
+
+// Every way a source could delete a ref, or ask removeWorktree to delete one for it, read as
+// tokens so no clause depends on quote style or on whether the command was built as an argv array
+// or written out as a shell line. The last clause is the backstop: no source outside the primitive
+// carries a -d, -D or --delete token at all, so a deletion flag on a verb nobody anticipated is
+// still reported. What no scan of the text can see is a flag assembled at run time, which is why
+// core's two-parameter WorktreeRemover is the other half of this pin.
+const REF_DELETIONS = [
+  ['deleteBranch', (t) => t.includes('deleteBranch')],
+  ['branch -d', (t) => near(t, 'branch', is('-d'))],
+  ['branch -D', (t) => near(t, 'branch', is('-D'))],
+  ['branch --delete', (t) => near(t, 'branch', is('--delete'))],
+  ['tag -d', (t) => near(t, 'tag', is('-d', '-D', '--delete'))],
+  ['update-ref', (t) => t.includes('update-ref')],
+  ['push --delete', (t) => near(t, 'push', is('-d', '--delete'))],
+  ['push :ref', (t) => near(t, 'push', (token) => token.startsWith(':'))],
+  ['a delete flag', (t) => t.some(is('-d', '-D', '--delete'))],
+];
+const refDeletions = (text) => {
+  const tokens = argv(text);
+  return REF_DELETIONS.filter(([, fires]) => fires(tokens)).map(([label]) => label);
+};
+
 await scenario('AC-4', 'no source file asks for a ref to be deleted, and the scan fires over one that does', () => {
   // The property cannot be observed by running a flow that never deletes a ref, which is every
   // flow. What stops the next change trying is this.
-  const refDeletions = (text) => [
-    ['deleteBranch', /deleteBranch/],
-    ['branch -d', /'branch',\s*'-d'/],
-    ['branch -D', /'-D'/],
-    ['branch --delete', /'--delete'/],
-    ['update-ref -d', /update-ref/],
-    ['push --delete', /'push'/],
-  ].filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
-
   const srcDir = path.join(spike, 'src');
   const sources = fs.readdirSync(srcDir, { recursive: true })
     .filter((rel) => rel.endsWith('.js'))
@@ -251,23 +278,52 @@ await scenario('AC-4', 'no source file asks for a ref to be deleted, and the sca
   const offenders = sources.filter(([rel]) => rel !== 'git.js')
     .flatMap(([rel, text]) => refDeletions(text).map((label) => `${rel}: ${label}`));
   assert.deepEqual(offenders, [], `a source file asks for a ref deletion: ${offenders.join(', ')}`);
-  assert.deepEqual(refDeletions(fs.readFileSync(path.join(srcDir, 'git.js'), 'utf8')), ['deleteBranch', 'branch -D'],
-    'the positive control: without it this scan would pass over patterns that match nothing');
+  assert.deepEqual(refDeletions(fs.readFileSync(path.join(srcDir, 'git.js'), 'utf8')),
+    ['deleteBranch', 'branch -D', 'a delete flag'],
+    'the positive control: without it this scan would pass over clauses that match nothing');
+});
 
-  // And it fires over the call site edited to ask for one, which is the mutation a reviewer wants
-  // to see rather than be told about.
-  const engine = fs.readFileSync(path.join(srcDir, 'engine.js'), 'utf8');
-  assert.ok(engine.includes('removeWorktree(ctx.repoDir, branch)'), 'the call site the mutation rewrites has moved');
-  const mutated = engine.replace('removeWorktree(ctx.repoDir, branch)', 'removeWorktree(ctx.repoDir, branch, { deleteBranch: true })');
-  assert.notEqual(mutated, engine);
-  assert.deepEqual(refDeletions(mutated), ['deleteBranch']);
-  for (const [verb, snippet] of [
-    ['branch -d', "git(['branch', '-d', b], repo)"],
-    ['branch -D', "git(['branch', '-D', b], repo)"],
-    ['branch --delete', "git(['branch', '--delete', b], repo)"],
-    ['update-ref -d', "git(['update-ref', '-d', ref], repo)"],
-    ['push --delete', "git(['push', 'origin', ':' + b], repo)"],
-  ]) assert.ok(refDeletions(snippet).includes(verb), `${verb} must be seen`);
+await scenario('AC-4', 'the scan fires over the call site edited to ask for a deletion, in either spelling', () => {
+  // The mutation a reviewer wants to see rather than be told about, performed on the real file in
+  // both spellings: the one an earlier round's scan could see, and the one it could not.
+  const engine = fs.readFileSync(path.join(spike, 'src', 'engine.js'), 'utf8');
+  assert.ok(engine.includes('removeWorktree(ctx.repoDir, branch)'), 'the call site the mutations rewrite has moved');
+
+  const asked = engine.replace('removeWorktree(ctx.repoDir, branch)', 'removeWorktree(ctx.repoDir, branch, { deleteBranch: true })');
+  assert.notEqual(asked, engine);
+  assert.deepEqual(refDeletions(asked), ['deleteBranch']);
+
+  const tidied = engine.replace('removeWorktree(ctx.repoDir, branch)',
+    'removeWorktree(ctx.repoDir, branch); git(["branch", "-d", branch], ctx.repoDir)');
+  assert.notEqual(tidied, engine);
+  assert.deepEqual(refDeletions(tidied), ['branch -d', 'a delete flag']);
+});
+
+await scenario('AC-4', 'every spelling of a deletion is seen, and nothing that is not one', () => {
+  // Quote style and command construction are properties of the spelling; the clause set is a
+  // property of the command. Each row is the positive control for one clause.
+  for (const [form, snippet, clause] of [
+    ['a single-quoted argv', "git(['branch', '-d', b], repo)", 'branch -d'],
+    ['a double-quoted argv', 'git(["branch", "-d", b], repo)', 'branch -d'],
+    ['a shell line in a template literal', 'runCommand(`git branch -D ${b}`, repo)', 'branch -D'],
+    ['a shell line built by concatenation', 'exec("git branch --delete " + b)', 'branch --delete'],
+    ['a tag, which is a ref too', 'git(["tag", "-d", name], repo)', 'tag -d'],
+    ['plumbing', "git(['update-ref', '-d', ref], repo)", 'update-ref'],
+    ['a double-quoted push deletion', 'git(["push", "origin", "--delete", b], repo)', 'push --delete'],
+    ['a colon refspec assembled', "git(['push', 'origin', ':' + b], repo)", 'push :ref'],
+    ['a colon refspec written out', 'exec(`git push origin :refs/heads/${b}`)', 'push :ref'],
+    ['the primitive asked to do it', 'removeWorktree(dir, branch, { deleteBranch: true })', 'deleteBranch'],
+  ]) assert.ok(refDeletions(snippet).includes(clause), `${form} must be seen as ${clause}`);
+
+  // And the other half, which is what makes the first half mean anything: a scan that fires over
+  // the whole corpus reports nothing. `x.push` is not the verb `push`.
+  for (const [what, snippet] of [
+    ['an array push carrying a colon', 'messages.push(`${branch}: worktree removed — ${dir}`)'],
+    ['an array push carrying a flag', "args.push('--force', dir)"],
+    ['the removal this ticket adds', "git(['worktree', 'remove', '--force', dir], repo)"],
+    ['listing the branches it keeps', "git(['branch', '--list', 'harness/*'], repo)"],
+    ['the call site as it ships', 'removeWorktree(ctx.repoDir, branch)'],
+  ]) assert.deepEqual(refDeletions(snippet), [], `${what} is not a ref deletion`);
 });
 
 await scenario('AC-5', 'a worktree holding uncommitted content is kept, and the warning names the paths', async () => {

@@ -1052,15 +1052,17 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // moved and it moved for a reason worth stating: a library-only file is one Q-0010 does not
     // inherit, so every such file makes the transfer smaller. Re-measured again in that ticket's
     // third revision round, which took `q0062-worktree-lifecycle.js` 276 → 345 covering the two
-    // terminal statuses the review found untested — the same file, so only its own column moves.
+    // terminal statuses the review found untested, and again in its fifth, 345 → 401, widening the
+    // AC-4 scan to every spelling of a ref deletion — the same file both times, so only its own
+    // column moves, and the rounded share crossed from 50% to 49% on the second of them.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(336);
     expect(linesOf(named('both'))).toBe(2026);
-    expect(linesOf(named('library-only'))).toBe(2407);
-    expect(total).toBe(4769);
-    // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
-    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
+    expect(linesOf(named('library-only'))).toBe(2463);
+    expect(total).toBe(4825);
+    // 49% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
+    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(49);
   });
 
   test('the two spellings are both resolved, and neither carries the other', () => {

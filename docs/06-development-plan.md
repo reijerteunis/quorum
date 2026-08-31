@@ -10,7 +10,10 @@ recorded as a decision written by hand at the requirements gate because no step 
 may write one. **Q-0062's entry was rewritten on 2026-08-31** to what its implement step built —
 the worktree lifecycle, the ruling that no ref is ever deleted, and the silent-skip guard the
 re-aimed spike assertions exposed; it also records the one landed pin that moved as a consequence
-rather than by authorisation, which is the sort of thing a plan should say out loud.
+rather than by authorisation, which is the sort of thing a plan should say out loud. That pin moved
+twice more inside the same ticket's review loop, so its entry now carries the final measured totals
+and **M2's done-when carries 49% rather than the 53% Q-0054 counted** — the same figure, re-derived
+rather than transcribed, which is the whole reason `spike-parity.test.ts` computes it.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
@@ -96,8 +99,9 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   through the binary** — `spike/test/smoke.js`, 151 assertions, the "30-check smoke test" this line
   said until 2026-08-31, counted when it was 30 by *"`integrate` is one generic step type used by
   three stages"* (2026-08-21) — is **Q-0010's**, together with the other seven files that spawn
-  `spike/bin/harness.js`: 53% of the suite by line, which cannot be aimed at a `packages/cli` that
-  does not exist. Until then both CI jobs stay green and both are required.
+  `spike/bin/harness.js`: 49% of the suite by line — 53% when Q-0054 counted it, and re-derived by
+  `spike-parity.test.ts` on every ticket that adds a library-only file — which cannot be aimed at a
+  `packages/cli` that does not exist. Until then both CI jobs stay green and both are required.
 - `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
 - `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.
 
@@ -680,9 +684,13 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   **One guard the requirement did not enumerate moved**, and it is stated here rather than left to
   be discovered: `spike-parity.test.ts` pins the spike suite's line totals, so re-aiming assertions
   in two files and adding one moved four measured numbers — 336 / 2001 / 2059 / 4396 became
-  336 / 2026 / 2338 / 4700, and the share of the suite that transfers at Q-0010 fell from 53% to
-  50%, because a library-only file is one Q-0010 does not inherit. A measurement re-derived, not an
-  assertion weakened.
+  336 / 2026 / 2463 / 4825, and the share of the suite that transfers at Q-0010 fell from 53% to
+  **49%**, because a library-only file is one Q-0010 does not inherit. A measurement re-derived, not
+  an assertion weakened — and re-derived three times, because the review loop kept growing the one
+  new library-only file: 2338 / 4700 after the implement round, 2407 / 4769 after the round that
+  covered `regressed` and `interrupted`, and these after the round that widened the AC-4 scan. The
+  figures above are the ones the guard pins; the two superseded pairs appear in this ticket's
+  earlier implement reports and are not what shipped.
 - Q-0063 A vendor CLI that exits before reading its prompt crashes the run with an unhandled
   `EPIPE`. `exec()` (`spike/src/adapters/claude.js:70–83`, shared by both adapters) attaches no
   `'error'` handler to `p.stdin` and then writes the whole prompt to it. Prompts are 54–133 KB
