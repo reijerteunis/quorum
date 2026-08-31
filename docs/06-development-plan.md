@@ -28,7 +28,15 @@ in `backlog/` for a week, which is the Q-0074 drift running the other way, and t
 recorded in four days. Both bodies were written against the tree rather than transcribed from these
 two lines: there is no lock of any kind in either tree, and an unanswerable gate's `FlowError` is
 classified as a failed run, so `finish()` rolls the ticket branch back because `'failed'` is not
-`finished()`. Nothing yet checks this page against `backlog/`, which is why the gap keeps recurring.
+`finished()`. **Something checks this page against `backlog/` from 2026-09-01**, which is what the two instances
+above were evidence for: `packages/shared/src/plan-backlog.test.ts`, asymmetric on purpose — every
+folder must be named here, while only the current milestone's bullets must have folders, and those
+that deliberately do not (Q-0010, Q-0012) are a register carrying the reason rather than a silence.
+See *"The plan and the backlog are checked against each other, and the two directions are not the
+same"* (2026-09-01). The `owner:` split was closed in the same edit: five tickets carried the OS
+user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
+`process.env.USER`, which is a product-behaviour question this repository is not the right place to
+answer by hand.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now

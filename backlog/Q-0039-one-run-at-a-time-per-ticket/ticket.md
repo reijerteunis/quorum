@@ -2,7 +2,7 @@
 id: Q-0039
 title: One run at a time per ticket
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0039/integration
 priority: p2

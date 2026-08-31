@@ -12,6 +12,7 @@
         "../../docs/02-sdlc-pipeline-spec.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",
+        "../../docs/06-development-plan.md",
         "../../docs/DECISIONS.md",
         "../../docs/decisions/*.md",
         "../../docs/GLOSSARY.md",

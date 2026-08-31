@@ -575,6 +575,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoFile → file': 'the loop iterates a literal array of the three documents, in the same test',
     'read → file': 'the map is built from decisionFiles(), the audited walk of docs/decisions',
   },
+  'packages/shared/src/plan-backlog.test.ts': {
+    'repoFile → PLAN': 'the constant is \'docs/06-development-plan.md\', a literal at the top of that file, which clause B collects',
+  },
   'packages/shared/src/events.test.ts': {
     'spikeSource → file': 'the loop iterates a literal array of the four adapter sources, in the same test',
   },

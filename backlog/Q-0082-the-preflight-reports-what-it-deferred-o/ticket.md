@@ -2,7 +2,7 @@
 id: Q-0082
 title: The preflight reports what it deferred, or the rule is amended
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0082/integration
 priority: p3

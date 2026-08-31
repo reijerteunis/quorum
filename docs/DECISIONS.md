@@ -129,3 +129,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [The port is closed, and what it cost was scaffolding](decisions/071-the-port-is-closed-and-its-cost-was-scaffolding.md)
 - [A config key is camelCase under `adapters.<vendor>` and snake_case everywhere else](decisions/072-a-config-key-is-camelcase-under-adapters.md)
 - [A run removes the worktrees it made, and never the refs](decisions/073-a-run-removes-the-worktrees-it-made.md)
+
+## 2026-09-01
+
+- [The plan and the backlog are checked against each other, and the two directions are not the same](decisions/074-the-plan-and-the-backlog-are-checked-against-each-other.md)

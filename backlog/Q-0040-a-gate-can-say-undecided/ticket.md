@@ -2,7 +2,7 @@
 id: Q-0040
 title: A gate can say undecided
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0040/integration
 priority: p2

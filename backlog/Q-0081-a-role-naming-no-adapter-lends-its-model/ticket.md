@@ -2,7 +2,7 @@
 id: Q-0081
 title: A role naming no adapter lends its model to any vendor
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0081/integration
 priority: p3
