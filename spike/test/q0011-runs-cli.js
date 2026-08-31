@@ -98,30 +98,45 @@ scenario('AC-14/EDGE-13', 'annotation activates roll-up semantics and generic sc
 // above pins that a notice appears at all; this pins what it says, which is the part that was
 // wrong: opening with "run-manifest semantic checks skipped" over somebody else's contract reads
 // as a check that was owed and missed. See Q-0037 AC-10.
+//
+// Both shapes of the one outcome are driven through it, because `unrecognised-annotation` is
+// returned for an absent annotation and for a present-but-unsupported value alike, and a notice
+// asserted over only the first can claim absence of something the schema is carrying. Q-0037
+// review round 1.
 scenario('AC-14/EDGE-13', 'the skipped-check notice leads with inapplicability and still names what did not run', () => {
   const root = fixture();
-  const sf = path.join(root, 'other.schema.json'); const df = path.join(root, 'artifact.json');
-  write(sf, { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' }); write(df, {});
-  const out = cli(root, ['validate', sf, df]).stdout;
-  const notice = out.split('\n').find(l => l.includes(df) && !l.includes('matches'));
-  assert.ok(notice, `no notice line for ${df}; got: ${out}`);
+  for (const annotation of [undefined, 'unknown-v1']) {
+    const label = annotation ?? 'absent';
+    const s = { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' };
+    if (annotation) s['x-quorum-contract'] = annotation;
+    const sf = path.join(root, `other-${label}.schema.json`); const df = path.join(root, `artifact-${label}.json`);
+    write(sf, s); write(df, {});
+    const out = cli(root, ['validate', sf, df]).stdout;
+    const notice = out.split('\n').find(l => l.includes(df) && !l.includes('matches'));
+    assert.ok(notice, `no notice line for ${df} (annotation ${label}); got: ${out}`);
 
-  // (1) it names the file.
-  assert.ok(notice.includes(df), 'the notice must name the file it is about');
-  // (3) it leads with inapplicability: the text before the first dash names the missing annotation,
-  //     and does not open with "run-manifest".
-  const lead = notice.slice(0, notice.indexOf('—'));
-  assert.ok(lead.includes('x-quorum-contract'), `the lead must name the missing annotation; got: ${lead}`);
-  assert.doesNotMatch(lead.replace(df, '').replace(/^[^\w]*/, ''), /^run-manifest/, 'the notice must not open with run-manifest');
-  // (4) it still states explicitly that no run-manifest semantic checks ran, and names the one
-  //     contract that is defined — which is what keeps the frozen runs-cli contract satisfied.
-  assert.match(notice, /no run-manifest semantic checks ran/);
-  assert.match(notice, /run-manifest-v1 is the only contract defined/);
-  // (2) and never that any passed.
-  assert.doesNotMatch(notice, /pass(ed|es)?\b/i, 'a skip is not a pass');
-  // (5) and it is not the phrasing that reads as a missing check.
-  assert.ok(!notice.includes('run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)'),
-    'the superseded wording is still being printed');
+    // (1) it names the file.
+    assert.ok(notice.includes(df), `the notice must name the file it is about (annotation ${label})`);
+    // (3) it leads with inapplicability: the text before the first dash names the annotation that
+    //     selects a pass, and does not open with "run-manifest".
+    const lead = notice.slice(0, notice.indexOf('—'));
+    assert.ok(lead.includes('x-quorum-contract'), `the lead must name the annotation (annotation ${label}); got: ${lead}`);
+    assert.doesNotMatch(lead.replace(df, '').replace(/^[^\w]*/, ''), /^run-manifest/, `the notice must not open with run-manifest (annotation ${label})`);
+    // (4) it still states explicitly that no run-manifest semantic checks ran, and names the one
+    //     contract that is defined — which is what keeps the frozen runs-cli contract satisfied.
+    assert.match(notice, /no run-manifest semantic checks ran/);
+    assert.match(notice, /run-manifest-v1 is the only contract defined/);
+    // (2) and never that any passed.
+    assert.doesNotMatch(notice, /pass(ed|es)?\b/i, `a skip is not a pass (annotation ${label})`);
+    // (5) and it is not the phrasing that reads as a missing check.
+    assert.ok(!notice.includes('run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)'),
+      `the superseded wording is still being printed (annotation ${label})`);
+    // (6) and it does not claim the annotation is absent, because for `unknown-v1` it is present
+    //     and merely unsupported. This is the clause that discriminates the two shapes: it is the
+    //     only assertion here that fails against the wording this scenario shipped with.
+    assert.ok(!notice.includes('no x-quorum-contract annotation'),
+      `the notice claims the annotation is missing, which is false when it is present and unrecognised (annotation ${label}); got: ${notice}`);
+  }
 
   // The run-manifest path is untouched: a clean manifest earns its green tick and no notice.
   const good = path.join(root, 'clean.json'); write(good, manifest('Q-0011-1', 'Q-0011'));

@@ -1067,12 +1067,18 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // The share went 49% → 50%, which is the opposite direction from Q-0062's move and for the
     // opposite reason: every line added here landed in an entangled file. Nothing was adjusted to
     // fit — the four numbers are `wc -l` over the three buckets as the recomputation sorts them.
+    //
+    // Re-measured a second time within the same ticket, in its review round 1, which widened
+    // `q0011-runs-cli.js`'s notice scenario to drive both shapes of the `unrecognised-annotation`
+    // outcome through it: 2264 → 2279 and 4953 → 4968, one entangled file and nothing else. The
+    // rounded share is 50% before and after — stated rather than skipped, because "it did not move"
+    // is a measurement and assuming it did not is how a stale pin survives.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2264);
+    expect(linesOf(named('both'))).toBe(2279);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(4953);
+    expect(total).toBe(4968);
     // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });

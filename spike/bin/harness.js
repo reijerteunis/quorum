@@ -445,8 +445,13 @@ async function main() {
         // It still says in as many words that run-manifest semantic checks were skipped and that
         // none ran, which is what contracts/Q-0011/runs-cli.contract.md:46-48 requires of it, and
         // it never says any passed: a skip is not a pass (DECISIONS 2026-08-25). See Q-0037.
+        //
+        // "no RECOGNISED annotation" rather than "no annotation": this one outcome covers an absent
+        // annotation and a present-but-unsupported value alike — the reason is named for the
+        // annotation being unrecognised, not for it being missing — so a notice claiming absence is
+        // false over `x-quorum-contract: unknown-v1`. Q-0037 review round 1.
         if (!r.semantic.ran && r.semantic.reason === 'unrecognised-annotation') {
-          console.log(c.dim('·') + ` ${f}: no x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`);
+          console.log(c.dim('·') + ` ${f}: no recognised x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`);
         }
         if (r.ok) console.log(c.green('✓') + ` ${f} matches ${r.schema}`);
         else { bad += 1; console.log(c.red('✗') + ` ${f} violates ${r.schema}:\n    ${r.errors.join('\n    ')}`); }
