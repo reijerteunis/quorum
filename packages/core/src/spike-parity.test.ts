@@ -31,6 +31,15 @@
  * stands and a test asserts it, so a disagreement is a finding rather than something the disjunction
  * in {@link Facts.reachesBinary} quietly absorbs.
  *
+ * **A second oracle is only as wide as the calls it can see, which is the second round's finding.**
+ * The launch oracle read `import { … } from 'node:child_process'` and nothing else, so a namespace
+ * import, a default import and an aliased named import each reached the same launchers with the
+ * scan inspecting no call at all — and a file starting an unresolvable path through one produced no
+ * problem and could be accepted as `ported`. {@link childProcessBindings} now reads the module's
+ * bindings rather than one clause shape: the forms that bind it are followed, and the forms that
+ * bind it in a way this scan cannot follow are reported. Both halves of the same rule as the first
+ * round's — what cannot be resolved fails the file rather than falling to a default class.
+ *
  * **The keys come from the tree.** A hand-written list is what Q-0051 found failing open in
  * `q0050.source.test.ts`, where a seventh engine file went unscanned while the suite reported green;
  * a register keyed by hand would go stale the first time a spike suite lands and would report green
@@ -475,16 +484,128 @@ const FILE_LAUNCHERS = new Set(['spawn', 'spawnSync', 'execFile', 'execFileSync'
 /** A string literal with nothing interpolated into it, captured per quote so `'a' + 'b'` is not one. */
 const LITERAL = /^(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`)$/s;
 
-/** The names `code` imports from `node:child_process`, which are the only calls that start one. */
-function childProcessNames(code: string): Set<string> {
-  const names = new Set<string>();
-  for (const match of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]node:child_process['"]/g)) {
-    for (const clause of match[1].split(',')) {
-      const name = clause.trim().split(/\s+as\s+/).pop()?.trim();
-      if (name !== undefined && name !== '') names.add(name);
-    }
+/** The module every binding below comes from, and the only one this scan reads clauses for. */
+const CHILD_PROCESS = 'node:child_process';
+
+/** A name that may be bound, which is what tells a clause this scan can read from one it cannot. */
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+/**
+ * How a file binds {@link CHILD_PROCESS}, and every binding of it this scan will not follow.
+ *
+ * Round 2's major. Reading only `import { … } from 'node:child_process'` left three routes to the
+ * same launchers invisible: `import * as cp` and a default `import cp` bind the module whole and
+ * call through a member, and `{ spawnSync as run }` binds a launcher under a name the launcher set
+ * does not contain. A file taking any of them could start an unresolvable path while
+ * {@link launchSites} inspected nothing, which is a silent library-only classification — the class
+ * this file exists to stop.
+ */
+interface ChildProcess {
+  /** Local name → the export it names, for every launcher bound directly. Aliases are why it maps. */
+  readonly functions: ReadonlyMap<string, string>;
+  /** Local names bound to the module as a whole: `import * as cp`, and a default import. */
+  readonly namespaces: ReadonlySet<string>;
+  /** `code` with those import statements blanked, so a clause is never read as a use of its own name. */
+  readonly rest: string;
+  /** Bindings this scan cannot follow, each of which fails the file. */
+  readonly problems: readonly string[];
+}
+
+/**
+ * What an import clause binds, or `null` where this scan cannot read it.
+ *
+ * The four forms a module can be bound by, and nothing else: a named list with optional aliases, a
+ * namespace, a default, and a default beside either. A clause outside them — a string import name,
+ * anything this does not parse — returns `null` and is reported by its caller rather than read as
+ * binding nothing, because binding nothing is what makes a launch site invisible.
+ *
+ * A **default** import counts as a namespace: Node's builtins expose the whole module object as
+ * their default, so `import cp from 'node:child_process'` reaches `cp.spawnSync` exactly as
+ * `import * as cp` does.
+ */
+function parseImportClause(clause: string): { functions: Map<string, string>; namespaces: Set<string> } | null {
+  const functions = new Map<string, string>();
+  const namespaces = new Set<string>();
+  let rest = clause.trim();
+  const withDefault = /^([A-Za-z_$][\w$]*)\s*,\s*([\s\S]+)$/.exec(rest);
+  if (withDefault !== null) {
+    namespaces.add(withDefault[1]);
+    rest = withDefault[2].trim();
   }
-  return names;
+  if (IDENTIFIER.test(rest)) {
+    namespaces.add(rest);
+    return { functions, namespaces };
+  }
+  const star = /^\*\s+as\s+([A-Za-z_$][\w$]*)$/.exec(rest);
+  if (star !== null) {
+    namespaces.add(star[1]);
+    return { functions, namespaces };
+  }
+  const braced = /^\{([^{}]*)\}$/.exec(rest);
+  if (braced === null) return null;
+  for (const part of braced[1].split(',')) {
+    const text = part.trim();
+    if (text === '') continue;
+    const aliased = /^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/.exec(text);
+    if (aliased !== null) {
+      functions.set(aliased[2], aliased[1]);
+      continue;
+    }
+    if (!IDENTIFIER.test(text)) return null;
+    functions.set(text, text);
+  }
+  return { functions, namespaces };
+}
+
+/**
+ * A static import of {@link CHILD_PROCESS}, capturing its clause.
+ *
+ * Two alternatives rather than one, and the braced one is first: a named list is what a formatter
+ * wraps over several lines, and it is bounded by its own braces, so it may span them. Everything
+ * else — a namespace, a default — is bounded to its line instead, because an unbounded clause would
+ * run from an earlier `import` on another line straight through to this specifier and capture both.
+ */
+const CHILD_PROCESS_IMPORT = new RegExp(
+  String.raw`^[ \t]*import\s+((?:[A-Za-z_$][\w$]*\s*,\s*)?\{[^{}]*\}|[^\n;{}]*?)\s*from\s*(['"])${CHILD_PROCESS}\2`,
+  'gm');
+
+/**
+ * Every binding of {@link CHILD_PROCESS} in `code`, with the clauses that made them blanked out.
+ *
+ * A **dynamic** import of it is refused rather than followed. Its binding is an expression — the
+ * awaited value, a destructuring of it, a member of it inline — so following one is the general
+ * dataflow question this file declines everywhere else; refusing is the same fail-closed direction
+ * as an unresolvable launch target, and no file in the corpus takes it that way.
+ */
+function childProcessBindings(code: string): ChildProcess {
+  const functions = new Map<string, string>();
+  const namespaces = new Set<string>();
+  const problems: string[] = [];
+  const out = code.split('');
+  for (const match of code.matchAll(CHILD_PROCESS_IMPORT)) {
+    for (let k = match.index; k < match.index + match[0].length; k++) if (out[k] !== '\n') out[k] = ' ';
+    const parsed = parseImportClause(match[1]);
+    if (parsed === null) {
+      problems.push(`it binds ${CHILD_PROCESS} as '${match[1].trim()}', a clause this scan cannot read`);
+      continue;
+    }
+    for (const [local, exported] of parsed.functions) functions.set(local, exported);
+    for (const name of parsed.namespaces) namespaces.add(name);
+  }
+  const dynamic = new RegExp(String.raw`\bimport\s*\(\s*['"]${CHILD_PROCESS}['"]\s*\)`);
+  if (dynamic.test(code)) {
+    problems.push(`it takes ${CHILD_PROCESS} through a dynamic import, whose binding this scan cannot follow`);
+  }
+  return { functions, namespaces, rest: out.join(''), problems };
+}
+
+/** `text` with each quoted body spaced out, length preserved, so prose is not read as code. */
+function blankQuoted(text: string, quoted: readonly Quoted[]): string {
+  const out = text.split('');
+  for (const value of quoted) {
+    for (let k = value.start + 1; k < Math.min(value.end - 1, out.length); k++) if (out[k] !== '\n') out[k] = ' ';
+  }
+  return out.join('');
 }
 
 /** The top-level argument texts of the bracket opened at `open`, so a call can be taken apart. */
@@ -566,45 +687,75 @@ function resolveLaunched(expression: string, bindings: Map<string, string>, seen
  * file it starts, and where that is node, the first element of its argv array is the script node
  * runs. Each is resolved by {@link resolveLaunched} or reported.
  *
- * **Two bounds, stated rather than left to be discovered.** `exec` and `execSync` take a shell
+ * **Three bounds, stated rather than left to be discovered.** `exec` and `execSync` take a shell
  * command line rather than a file, and are deliberately not resolved here: the whole command is one
  * quoted value, so {@link binarySpellings} reads it entire and {@link binaryAssemblies} covers a
- * name split across an interpolation inside it. And a process started by a helper the file imports
+ * name split across an interpolation inside it. A process started by a helper the file imports
  * from the spike's own `src` is the subject under test rather than a launch site — the path handed
- * to it is still a value both of those two read.
+ * to it is still a value both of those two read. And a namespace binding is followed only through a
+ * direct member call: handed anywhere else — to a helper, through a computed member, into a
+ * destructuring — it is reported, because what it is then called as is unreadable from here.
+ *
+ * @param quoted the file's string literals, whose bodies are spaced out before the namespace
+ *   bindings are looked for. A binding's name occurring inside prose is not a use of it, and the
+ *   corpus has such prose: `q0063-stdin-epipe.js` carries the word `spawn` inside an assertion
+ *   message.
  */
-function launchSites(code: string): { launchesBinary: boolean; problems: string[] } {
+function launchSites(code: string, quoted: readonly Quoted[]): { launchesBinary: boolean; problems: string[] } {
   const bindings = uniqueBindings(code);
-  const problems: string[] = [];
+  const imported = childProcessBindings(code);
+  const problems = [...imported.problems];
   let launchesBinary = false;
   const starts = (launched: Launched): boolean =>
     launched !== null && launched.kind === 'file' && path.basename(launched.value) === BINARY;
 
-  for (const name of childProcessNames(code)) {
-    if (!FILE_LAUNCHERS.has(name)) continue;
-    for (const match of code.matchAll(new RegExp(String.raw`\b${name}\s*\(`, 'g'))) {
-      const args = argumentsAt(code, match.index + match[0].length - 1);
-      const first = resolveLaunched(args[0] ?? '', bindings);
-      if (first === null) {
-        problems.push(`${name}() starts a file this scan cannot resolve, from '${args[0] ?? ''}'`);
+  /** Resolve what one call starts, `open` being the index in `code` of its opening bracket. */
+  const inspect = (label: string, open: number): void => {
+    const args = argumentsAt(code, open);
+    const first = resolveLaunched(args[0] ?? '', bindings);
+    if (first === null) {
+      problems.push(`${label}() starts a file this scan cannot resolve, from '${args[0] ?? ''}'`);
+      return;
+    }
+    if (first.kind === 'file' && path.basename(first.value) !== 'node') {
+      if (starts(first)) launchesBinary = true;
+      return;
+    }
+    const argv = args[1];
+    if (argv === undefined || !argv.startsWith('[')) {
+      problems.push(`${label}() runs node with an argv this scan cannot read, from '${argv ?? ''}'`);
+      return;
+    }
+    const script = argumentsAt(argv, 0)[0];
+    const resolved = script === undefined ? null : resolveLaunched(script, bindings);
+    if (resolved === null) {
+      problems.push(`${label}() runs a script this scan cannot resolve, from '${script ?? ''}'`);
+      return;
+    }
+    if (starts(resolved)) launchesBinary = true;
+  };
+
+  // A launcher bound directly is called by its local name, which an alias makes different from the
+  // export it names — so membership of FILE_LAUNCHERS is asked of the export and the call site is
+  // found under the local name.
+  for (const [local, exported] of imported.functions) {
+    if (!FILE_LAUNCHERS.has(exported)) continue;
+    for (const match of imported.rest.matchAll(new RegExp(String.raw`\b${local}\s*\(`, 'g'))) {
+      inspect(local, match.index + match[0].length - 1);
+    }
+  }
+
+  const uses = blankQuoted(imported.rest, quoted);
+  for (const namespace of imported.namespaces) {
+    for (const match of uses.matchAll(new RegExp(String.raw`\b${namespace}\b`, 'g'))) {
+      const after = /^\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/.exec(uses.slice(match.index + namespace.length));
+      if (after === null) {
+        const excerpt = code.slice(match.index, match.index + 28).split('\n')[0].trim();
+        problems.push(`'${namespace}' holds ${CHILD_PROCESS} and is used other than as a direct call, at '${excerpt}'`);
         continue;
       }
-      if (first.kind === 'file' && path.basename(first.value) !== 'node') {
-        if (starts(first)) launchesBinary = true;
-        continue;
-      }
-      const argv = args[1];
-      if (argv === undefined || !argv.startsWith('[')) {
-        problems.push(`${name}() runs node with an argv this scan cannot read, from '${argv ?? ''}'`);
-        continue;
-      }
-      const script = argumentsAt(argv, 0)[0];
-      const resolved = script === undefined ? null : resolveLaunched(script, bindings);
-      if (resolved === null) {
-        problems.push(`${name}() runs a script this scan cannot resolve, from '${script ?? ''}'`);
-        continue;
-      }
-      if (starts(resolved)) launchesBinary = true;
+      if (!FILE_LAUNCHERS.has(after[1])) continue;
+      inspect(`${namespace}.${after[1]}`, match.index + namespace.length + after[0].length - 1);
     }
   }
   return { launchesBinary, problems };
@@ -655,7 +806,9 @@ function binarySpellings(
  * a concatenation fails rather than passing for library-only.
  *
  * **Whether it starts the binary** — {@link launchSites}, which reads the argument of each
- * `node:child_process` call rather than the file's text, and reports every target it cannot resolve.
+ * `node:child_process` call rather than the file's text, reports every target it cannot resolve,
+ * and — through {@link childProcessBindings} — every binding of that module it cannot follow to a
+ * call in the first place.
  *
  * @param text the file's own source.
  * @param mentions the non-reference spellings this file's register entry accounts for.
@@ -665,7 +818,7 @@ function factsOf(text: string, mentions: Record<string, string> = {}): Facts {
   const modules = specifiersOf(code);
   const spelled = binarySpellings(text, quoted, mentions);
   const assemblies = binaryAssemblies(code, quoted);
-  const launched = launchSites(code);
+  const launched = launchSites(code, quoted);
 
   return {
     reachesBinary: spelled.spelledBinary || launched.launchesBinary,
@@ -936,7 +1089,10 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
   test('a launch site whose target the scan cannot resolve stops the file', () => {
     // The other half of the same major: the binary need not be spelled anywhere for a file to start
     // it, so what each node:child_process call launches is resolved rather than inferred from text.
-    const header = "import { spawnSync } from 'node:child_process';\n";
+    // Both launchers are bound, because a call to a name the file never imported is not inspected
+    // at all — so a fixture importing only `spawnSync` would assert nothing about the `execFileSync`
+    // line below, which is what it read until round 3.
+    const header = "import { execFileSync, spawnSync } from 'node:child_process';\n";
     expect(factsOf(`${header}spawnSync(process.execPath, [whatever(), 'runs']);\n`).problems)
       .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'whatever()'"]);
     expect(factsOf(`${header}spawnSync(process.execPath, [path.join(spike, 'bin', name)]);\n`).problems)
@@ -957,6 +1113,73 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
       factsOf(`${header}const bin = ${init};\nspawnSync('node', [bin, 'runs']);\n`).launchesBinary;
     expect(through("path.join(spike, 'bin/harness.js')")).toBe(true);
     expect(through("path.join(spike, 'bin', 'harness.js')")).toBe(true);
+  });
+
+  test('a launcher reached through an import form other than a plain named one is read, not missed', () => {
+    // Round 2's major, and the two forms it names. A namespace import and a default import both
+    // bind the module whole, so the launcher is reached through a member call that the old scan —
+    // which read `import { … }` and nothing else — never looked at: the launch site was invisible,
+    // an unresolvable path produced no problem, and the file could be accepted as `ported`.
+    const launches = (header: string, call: string, target: string): Facts =>
+      factsOf(`${header}\nconst r = ${call}(process.execPath, [${target}, 'runs']);\n`);
+
+    // Fails closed: the target does not resolve, and the file now says so instead of nothing.
+    for (const header of ["import * as cp from 'node:child_process';", "import cp from 'node:child_process';"]) {
+      expect(launches(header, 'cp.spawnSync', 'candidate').problems)
+        .toStrictEqual(["cp.spawnSync() runs a script this scan cannot resolve, from 'candidate'"]);
+    }
+    // And resolves when it can: the member call is a launch site like any other, both spellings.
+    const found = (init: string): boolean =>
+      factsOf("import * as cp from 'node:child_process';\n"
+        + `const bin = ${init};\ncp.execFileSync(bin, ['runs']);\n`).launchesBinary;
+    expect(found("path.join(spike, 'bin/harness.js')")).toBe(true);
+    expect(found("path.join(spike, 'bin', 'harness.js')")).toBe(true);
+    expect(factsOf("import * as cp from 'node:child_process';\n"
+      + "cp.execFileSync('git', ['status']);\n").launchesBinary).toBe(false);
+
+    // The third route the same clause-shaped read missed: an alias binds a launcher under a name
+    // the launcher set does not contain, so `run` was neither recognised nor reported.
+    expect(factsOf("import { spawnSync as run } from 'node:child_process';\n"
+      + "run(process.execPath, [candidate]);\n").problems)
+      .toStrictEqual(["run() runs a script this scan cannot resolve, from 'candidate'"]);
+  });
+
+  test('and a binding of node:child_process this scan cannot follow stops the file', () => {
+    // The other half of "support them or reject them". Each of these binds the module in a way the
+    // scan will not follow to a call site, and each is a problem rather than a quiet library-only.
+    expect(factsOf("import * as cp from 'node:child_process';\nconst r = cp['spawnSync'](bin, []);\n").problems)
+      .toStrictEqual(["'cp' holds node:child_process and is used other than as a direct call, at 'cp['spawnSync'](bin, []);'"]);
+    expect(factsOf("import * as cp from 'node:child_process';\nlaunch(cp, bin);\n").problems)
+      .toStrictEqual(["'cp' holds node:child_process and is used other than as a direct call, at 'cp, bin);'"]);
+    expect(factsOf("import * as cp from 'node:child_process';\nconst { spawnSync } = cp;\nspawnSync(bin, []);\n").problems)
+      .toStrictEqual(["'cp' holds node:child_process and is used other than as a direct call, at 'cp;'"]);
+    expect(factsOf("const cp = await import('node:child_process');\ncp.spawnSync(bin, []);\n").problems)
+      .toStrictEqual(['it takes node:child_process through a dynamic import, whose binding this scan cannot follow']);
+    expect(factsOf("import { 'spawnSync' as run } from 'node:child_process';\nrun(bin, []);\n").problems)
+      .toStrictEqual(["it binds node:child_process as '{ 'spawnSync' as run }', a clause this scan cannot read"]);
+
+    // And the discriminations that keep it usable, or the corpus itself would fail: a member call
+    // that is not a launcher is not a use to report, prose holding the binding's name is not a use
+    // at all, and a named import — what all fifteen corpus files take — is unchanged.
+    expect(factsOf("import * as cp from 'node:child_process';\ncp.exec('ls', () => {});\n").problems).toEqual([]);
+    expect(factsOf("import * as cp from 'node:child_process';\n"
+      + "cp.execFileSync('git', ['x']);\nassert(y, 'cp is what copies it');\n").problems).toEqual([]);
+    expect(factsOf("import { execFileSync } from 'node:child_process';\nexecFileSync('git', ['x']);\n").problems)
+      .toEqual([]);
+
+    // A wrapped named list is still one clause. Reading it line by line would bind nothing and put
+    // the launch site back out of sight — the same fail-open under a formatter rather than under an
+    // import form, which is why the clause is bounded by its own braces and not by its line.
+    expect(factsOf('import {\n  execFileSync,\n  spawnSync,\n} from \'node:child_process\';\n'
+      + "spawnSync(process.execPath, [candidate]);\n").problems)
+      .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'candidate'"]);
+    // And the bound that keeps that from over-reaching: an earlier import on another line is not
+    // swallowed into this clause, whether or not the file terminates its statements.
+    for (const first of ["import fs from 'node:fs';\n", "import fs from 'node:fs'\n"]) {
+      expect(factsOf(`${first}import { spawnSync } from 'node:child_process';\n`
+        + 'spawnSync(process.execPath, [candidate]);\n').problems)
+        .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'candidate'"]);
+    }
   });
 
   test('the two oracles agree across the corpus, so neither is carrying the other', () => {
