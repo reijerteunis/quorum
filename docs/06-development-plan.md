@@ -36,7 +36,12 @@ See *"The plan and the backlog are checked against each other, and the two direc
 same"* (2026-09-01). The `owner:` split was closed in the same edit: five tickets carried the OS
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
-answer by hand.
+answer by hand. **Q-0037 reached `requirements` on 2026-09-01**, the first ticket run through the
+flows after Q-0058, and **Q-0085** was opened from its OQ-1 at that gate; both entries below are
+written to what happened rather than to what was planned, and Q-0037's records a requirements run
+correcting a body that had been re-measured against the tree hours earlier — which is the same
+lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
+against a measurement that was not copied.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
@@ -447,7 +452,51 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` and
   `main:contained` 2026-08-25.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
-- Q-0037 Run-history review remainder — one major and eight nits.
+- Q-0037 Run-history review remainder — one major and eight nits. *(`requirements` 2026-09-01.)*
+  Ready on the first pass, twelve criteria, $8.587 and 6,279,293 tokens across three steps. **Its
+  body was re-measured against both trees before the run and the merge then corrected the
+  re-measurement**, which is the record worth keeping: two of the corrections reduce scope and one
+  of them changes the ticket's shape. `packages/shared/src/docs.test.ts` **does** assert order —
+  file order at `:100` and *"the dates never go backwards"* at `:112` — so the append-only
+  contradiction the ticket has carried since 2026-08-24 is **already enforced closed**, a
+  back-dated entry turning the suite red today. What is missing is a sentence, not a guard, which
+  demoted it from a blocker to a ratification and routed it to **Q-0085**. And nits 2 and 3 are
+  documented in `core` as well as nit 1 (`writer.ts:363`, `writer.test.ts:507`, both naming this
+  ticket), so they are spike-side documentation alignment rather than code in two trees.
+  **Two collisions neither candidate found are now criteria**, both re-verified by hand at the
+  gate. `printRunDetailHuman` never renders the roll-up, so `q0034-review-fixes.js` B2's
+  `tokens=1100` reads the **per-step** usage line nit 5 rewrites — Q-0034's double-count guard,
+  which AC-8 re-aims rather than breaks. And `validate-artifact.test.ts:150,173` transcribes the
+  skip notice **verbatim**, so nit 8 is not spike-only: changing the CLI alone leaves a green test
+  that no longer reproduces it, which is this repository's most-recorded defect class.
+  **Nit 2 is measured for the first time and is a ruling rather than an optimisation.** Over all 71
+  run directories the largest manifest is 13,924 B across 18 occurrences on a run whose own
+  `duration_ms` is 3,755,327 — so replaying the whole-manifest re-serialise costs ~3 ms against 63
+  minutes, and the batched-persistence alternative is a behaviour change to the one write path that
+  must never lose a billed step, bought for a measured nothing.
+  **The escape route for the major is closed**: the `signalWindow` invitation Q-0052 was offered is
+  **spent**, declined three times (Q-0050, R-7, then Q-0052's gate), and `Q-0052/runs.log:17` says
+  in as many words that *"Q-0037 still carries the underlying finding"*. Six of the round-2 nits
+  survive, one was closed with major 11 before Q-0011 landed, and one dissolved when the decisions
+  became files.
+  **Which trees was settled by events rather than chosen.** The port closed 2026-08-31 and the
+  freeze SHA is recorded, so neither option the charter offered — *"land in the spike before the
+  freeze, or be re-targeted at `core`"* — exists; what applies is §3's mirror-and-re-record, walked
+  as a procedure in one commit. §3's stale block naming this ticket as one of five blockers was
+  corrected the same day, a week after the precondition it described had been **abandoned rather
+  than met**. Kept as one ticket at the gate (OQ-4), and `harness/Q-0037/integration` cut
+  deliberately from the requirements tip rather than from whatever `HEAD` held (GA-2).
+- Q-0085 An entry's date is the date it takes its place in the index. *(Folder created 2026-09-01,
+  `draft`.)* Split from Q-0037's OQ-1 at its requirements gate, with that run's Appendix A
+  transcribed into the body in full rather than referenced. `docs/DECISIONS.md` is called
+  *"append-only, newest last"* in three places and is also grouped by date, and the two cannot both
+  hold for an entry decided on one date and landed after entries decided later. The ruling is owed
+  in one direction or the other — the landing date wins and the body carries the deciding date, or
+  the prose is amended and `docs.test.ts`'s date assertion deleted, trading the only mechanical
+  append-only check for a sentence. The first is recommended because it is what shipped. **The
+  whole deliverable is a decision entry**, so it is the human's work directly and there is no flow
+  to route it through — which is the point of splitting it out rather than carrying it as a
+  criterion of a chore ticket whose implement step could then never satisfy it.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint
