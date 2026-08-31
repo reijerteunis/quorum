@@ -13,7 +13,16 @@ re-aimed spike assertions exposed; it also records the one landed pin that moved
 rather than by authorisation, which is the sort of thing a plan should say out loud. That pin moved
 twice more inside the same ticket's review loop, so its entry now carries the final measured totals
 and **M2's done-when carries 49% rather than the 53% Q-0054 counted** — the same figure, re-derived
-rather than transcribed, which is the whole reason `spike-parity.test.ts` computes it.
+rather than transcribed, which is the whole reason `spike-parity.test.ts` computes it. **Q-0062
+closed the same evening** and its entry was rewritten again to what shipped: five implement rounds
+reached through two `retry` answers, of which the first three went on a decision entry GO-1 had said
+must exist before the run and which the run was launched without — the eighth appearance of a loop
+handed work no step in it can perform, and the first where the requirement named the hazard in
+advance. The fourth round changed no files and found that the guard protecting the ticket's one
+safety property was blind to three spellings of a ref deletion, which is why the second `retry` is
+what made the ticket sound. It is also the first ticket to walk charter §3's re-record path, and the
+first whose leftovers were cleared by hand at the close — 555 MB of worktrees removed with every
+branch kept, the successor's job done once manually.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
@@ -638,7 +647,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - ~~Q-0061 The containment "writes nothing" test snapshots `.git`~~ — **absorbed into Q-0064**
   2026-08-26. Same surface: Q-0064 already moves `git.test.ts` and rewrites `packages/core/test/`,
   where `walk` lives beside `coreSourceFiles`. Its body stays as the evidence.
-- Q-0062 Worktrees are never removed. **Implemented; awaiting review.** `removeWorktree` had been
+- Q-0062 Worktrees are never removed. *(`reviewed` and `main:contained` 2026-08-31.)* `removeWorktree` had been
   exported and tested by Q-0042 and had **zero call sites**, so every worktree a run had ever made
   was still on disk — one closed chore ticket leaving two directories and 277 MB, 250 MB of it
   `node_modules`, measured 2026-08-31. `finish()` now reads the disjunct it already had, the other
@@ -676,11 +685,57 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   integration worktree: written inside it, it left that worktree permanently dirty, so the suite
   would have exercised removal on every worktree except the one every code-writing flow makes.
   **Registered and not fixed:** nothing removes what earlier runs left, by design — this ticket is
-  prospective and takes none of the 277 MB off disk. The successor, `harness worktrees` (list,
-  prune stale registrations, remove what is contained), lands with or after Q-0010 and is written
-  out in full in the merged requirement. Q-0039 is unchanged and named as a risk: two concurrent
-  runs on one ticket already share a worktree, and a removal makes that collision slightly worse
-  rather than creating one.
+  prospective and its own run could not benefit from it, because `runFlow` loads the engine at run
+  start, so `finish()` here was pre-fix code and the run left all four worktrees standing. The
+  successor, `harness worktrees` (list, prune stale registrations, remove what is contained), lands
+  with or after Q-0010 and is written out in full in the merged requirement. Q-0039 is unchanged and
+  named as a risk: two concurrent runs on one ticket already share a worktree, and a removal makes
+  that collision slightly worse rather than creating one.
+  **The backlog of directories was cleared by hand at the close**, which is the successor's job done
+  once manually rather than the ticket quietly widening: 555 MB across four worktrees from Q-0058 and
+  Q-0062, each checked clean first under the ticket's own AC-5 rule rather than forced, each removed
+  with `git worktree remove` and **no** `deleteBranch`. All four branches still resolve at their
+  original tips afterwards — `85467fd`, `dc22890`, `a48fa1c`, `4295010` — which is the decision's
+  central property demonstrated on real directories rather than in a fixture. The refs are kept
+  deliberately: a maintainer deleting one by hand is a different act from a command doing it on their
+  behalf, and they are what a post-hoc review reads.
+
+  **What the run cost, and what of it was avoidable. $88.49** — $8.45 requirements, $80.04 chore —
+  and 128.6M tokens across six unpriced codex steps, the second most expensive ticket in the project
+  after Q-0050's $131.03. **Five implement rounds and five reviews inside one chore run**, reached
+  through two answers of `retry` at the exhaustion gate, so charter §9's third threshold is untouched.
+  **Rounds 1 to 3 were spent on a blocker no agent on the route could clear**, and the requirement had
+  predicted it by name: GO-1 said the decision entry must exist *before* the implement step ran, and
+  the run was launched without it. That is the **eighth** appearance of a loop handed work no step in
+  it can perform, and the first where the requirement named the hazard in advance and was ignored
+  rather than unheard. Round 2 is the sharpest illustration of Q-0083's absence: handed a blocker it
+  could not clear and given only prose as a channel, it answered by adding a **sixth** citation of the
+  absent entry, making the finding larger. Round 3 refused correctly on the role's own wording, cited
+  *"A refused finding is a gate, not another round"* (2026-08-31), changed no citation, and supplied
+  the entry as a draft — landed by hand on Q-0069's precedent after verifying the numbering, the index
+  heading and that all six citation sites spell the title verbatim.
+  **The second `retry` is why the ticket is sound, and it bought the finding the first four rounds
+  missed.** Round 4 changed **no files** and reported that AC-4's ref-deletion pin — the guard
+  protecting this ticket's one safety property — was anchored on single quotes in every clause
+  (`/'-D'/`, `/'--delete'/`, `/'push'/`), so `git(["branch", "-D", b])`, a shell-form line and a
+  colon-refspec push all passed it unseen. Three earlier reviews had read that guard and approved
+  around it, and **RK-7 had named this exact hazard in advance**. Round 5 replaced the quoted regexes
+  with an argv tokeniser in **both** trees, which normalises quote style and argv-versus-shell-line
+  away; verified at the gate by re-running the probes rather than from the report, with the benign
+  `git(['worktree','remove','--force',dir])` row confirming it discriminates rather than merely
+  fires. *"A check is not established by reading it"* (2026-08-29), found inside the guard this
+  ticket exists to install.
+  **GO-2 is the first walk of charter §3's re-record path.** `spike/src/engine.js` moved, so the
+  freeze-SHA half went red on `main` by design; step 1 was already satisfied by R-1's both-trees rule
+  — 107 insertions in the spike against 592 across four core engine modules — and `freeze-sha` was
+  re-recorded at `a6e529a`. Demonstrated red before green: the guard named `spike/src/engine.js` and
+  exited 1 at `7b6bc70`, exits 0 at the new tip, with all three halves and the guard's own 43 checks
+  clear afterwards.
+  Verified forced in both environment rows per Q-0072's closing finding — the integrate worktree had
+  neither `.harness/worktrees` nor `.quorum/runs` and ran install and both suites to exit 0, then
+  re-run on `main` after the merge: spike 18/18, workspace 7/7 tasks 0 cached and 1250 passed, lint
+  and typecheck 14/14 tasks 0 cached, `harness lint` 6/6, and Q-0079's git-identity sweep green in
+  both rows.
   **One guard the requirement did not enumerate moved**, and it is stated here rather than left to
   be discovered: `spike-parity.test.ts` pins the spike suite's line totals, so re-aiming assertions
   in two files and adding one moved four measured numbers — 336 / 2001 / 2059 / 4396 became
