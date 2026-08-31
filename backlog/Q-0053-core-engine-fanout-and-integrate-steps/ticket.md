@@ -52,6 +52,79 @@ here — but this is where the budget gets burned when they are missed.
 **`testReport` truncates on purpose** (24 KB), because a suite's output goes into the next agent's
 prompt. `mergeFailure` and `IntegrationError` must keep printing sentences rather than stacks.
 
+## Line map re-derived 2026-08-31, before the requirements run
+
+The body above was written 2026-08-25. Q-0048, Q-0050, Q-0051 and Q-0052 have landed on its subject
+since, and Q-0052's own run showed what a stale body costs: its port list was wrong in four places
+and the requirement had to correct it before an implementer could use it. Re-derived here rather
+than left for the run to discover. **Line numbers are given because they were measured today; they
+were wrong within ten hours on Q-0051, so re-derive them at the branch's own SHA rather than
+trusting this section.**
+
+**The list of seven is a list of six, and one it names is already ported.** `mergeFailure` is
+`packages/core/src/engine/steps.ts` — Q-0052 took it, because its first caller is `runAgentStep`'s
+base-sync warning and whoever ports the first caller ports the function. Its other four call sites
+are this ticket's, so what remains here is *calling* it, not writing it.
+
+**`cmdTimeout` is ported too, and that is the finding worth the most.** Q-0052 ported it as
+`commandTimeout` (`steps.ts:72`) — renamed, and a **module-private `const`, not an export**. It has
+three call sites in the spike: `:632` in `runScript`, which is the one Q-0052 ported, and **`:1133`
+and `:1139`, both inside `runIntegrate`**, which is this ticket's. So this ticket needs a value that
+exists in `core` and cannot reach it. Export it from `steps.ts`, relocate it, or duplicate it — and
+duplicating is the one to refuse, because two copies of a default drift silently and nothing here
+would fail. **Decide it in the requirement rather than in the implementer's head.**
+
+**`safeMergeBase` is a seventh function the body does not name at all**, and it would be lost.
+`spike/src/engine.js:550–553` returns the merge-base **sha** or `null` on failure, and
+`runIntegrate:1092` is its only caller. `packages/core/src/git/git.ts` has `ancestry`, which runs
+`merge-base --is-ancestor` and answers a **boolean** — not the same primitive, and not a substitute.
+It sits between `testReport` and the fan-out block rather than inside either, which is how a port
+working from "the two composite steps plus five helpers" walks past it.
+
+**`IntegrationError` is already ported** (`packages/core/src/fanout/fanout.ts:32`, Q-0048), and its
+JSDoc already states the sentence-not-stack rule the last paragraph above asks for. Half of that
+sentence is done; `mergeFailure`'s half travelled with the function.
+
+**Every other collaborator is already in `core`.** Measured by extracting the call sites from the
+six spans and grepping each: thirteen from Q-0048's fan-out plumbing (`loadTasks`, `waves`,
+`taskVars`, `taskPromptSection`, `scopeToFailing`, `ticketWorktree`, `branchExists`, `branchHead`,
+`mergeInto`, and the rest), `interpolate` and `loadRole` from `loaders.ts`, `handleFail` and
+`failed` from `routing.ts`, `runAgentStep` from `steps.ts`, `runCommand` from `fanout/command.ts`,
+and `writesOf` from `lint.ts`. The occurrence seam is not missing either — `allocateOccurrence`,
+`terminalOccurrence` and `persistArtifact` are `RunHistory.allocate`, `.terminal` and `.persist`
+(`run-history/writer.ts:96/108/116`), widened by Q-0052's R-4. **So this ticket writes the two
+composite steps and almost nothing else**, which is the same shape Q-0052 turned out to have.
+
+**The size is 200 lines, not "roughly 250".** Measured: `syncBaseIntoTicketBranch` `:1010–1024`
+(15), `runFanOut` `:1026–1066` (41), `runIntegrate` `:1068–1179` (112), `environmentFailure`
+`:1193–1208` (16), `testReport` `:537–548` (12), `safeMergeBase` `:550–553` (4). The dispatch stubs
+to replace are `routing.ts:102–103`, both `unavailableStep(step, 'Q-0053')` — one for
+`step.type === 'integrate'` and one for `step.fan_out`.
+
+**`testReport`'s one-line summary above understates it.** `maxBytes = 24000` is split as head and
+tail of 12,000 with an omission marker naming the character count — but the part that matters is
+the **separate roster of every result line**, matched by `RESULT_LINE` and emitted whole regardless
+of truncation. That is Q-0033's actual finding: the previous shape kept the last 8,000 characters
+and seven of nineteen failing groups had no line at all, so the reviewer judging the red phase never
+saw them. Port the roster and the reasoning, not the byte count.
+
+## Inherited from Q-0052, 2026-08-31 — three obligations this body must carry
+
+Written here because `requirements.yaml` reads this ticket's folder and not a sibling's.
+
+1. **`runAgentStep`'s `extra` parameter is already there and this ticket is its only caller.**
+   Q-0052 ported all three fields — `extra.vars`, `extra.syncBase`, `extra.promptSuffix` —
+   deliberately, with no caller of its own, precisely so this ticket does not change a landed
+   exported signature and every test written against it. Supply them; do not reshape it.
+2. **The `preserved defect/` count in `q0050.source.test.ts` is cross-file arithmetic, now `11`**,
+   and this ticket moves it again. Q-0052's R-5 names the trap: the prose comment above the
+   assertion enumerates which file contributes what, so a change that moves the number and not the
+   comment leaves a comment describing a number that is no longer there. Move both.
+3. **`s.into` is this ticket's coercion site** (`spike/src/engine.js:166`), the last of Q-0050
+   E-21's list. `interpolate`'s parameter is typed `string` while the spike coerces, and YAML hands
+   back a **number** for `into: 2`, so the call writes `String(…)` deliberately — a compile error
+   here rather than the spike's silent pass-through, which is the point of the typing.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
