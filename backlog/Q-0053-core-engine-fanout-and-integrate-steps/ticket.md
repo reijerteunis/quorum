@@ -1,13 +1,14 @@
 ---
 id: Q-0053
 title: core/engine — fan-out and integrate steps
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0053/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 1
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-08-31T06:35:21.177Z
     cost: 8.414
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-08-31T09:10:29.985Z
+    cost: 33.038
 ---
 Ports the two composite step kinds — `runFanOut` and `runIntegrate` — plus
 `syncBaseIntoTicketBranch`, `environmentFailure`, `testReport`, `mergeFailure` and `cmdTimeout`.
