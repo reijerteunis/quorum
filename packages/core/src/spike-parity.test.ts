@@ -384,8 +384,22 @@ const BINARY = 'harness.js';
 function specifiersOf(code: string): { specifiers: string[]; problems: string[] } {
   const specifiers: string[] = [];
   const problems: string[] = [];
-  for (const match of code.matchAll(/^[ \t]*(?:import|export)\b[^\n;]*?\bfrom\s*(['"])([^'"\n]*)\1/gm)) specifiers.push(match[2]);
-  for (const match of code.matchAll(/^[ \t]*import\s*(['"])([^'"\n]*)\1/gm)) specifiers.push(match[2]);
+  const fromClauses = [...code.matchAll(/^[ \t]*(?:import|export)\b[^\n;]*?\bfrom\s*(['"])([^'"\n]*)\1/gm)];
+  for (const match of fromClauses) specifiers.push(match[2]);
+  const bare = [...code.matchAll(/^[ \t]*import\s*(['"])([^'"\n]*)\1/gm)];
+  for (const match of bare) specifiers.push(match[2]);
+  // Fail closed on an import statement the two clauses above could not read. Both are bounded by
+  // `[^\n…]`, so a clause wrapped across lines matches neither and is omitted in SILENCE — which is
+  // the one failure direction the rest of this scan does not have, and it makes `importsSource`
+  // false for a file that does import the library. Counting is sound rather than approximate: by
+  // the grammar every `import` statement carries a module specifier, so a statement with no match
+  // was missed and never one that had nothing to say. The technique is the dynamic-import count
+  // four lines below, which had it right. Round 3, major 1.
+  const readable = fromClauses.filter((match) => match[0].trimStart().startsWith('import')).length + bare.length;
+  const statements = [...code.matchAll(/^[ \t]*import\b(?!\s*\()/gm)].length;
+  if (statements > readable) {
+    problems.push(`${statements - readable} import statement(s) name a specifier this scan cannot read`);
+  }
   const dynamic = [...code.matchAll(/\bimport\s*\(\s*(['"])([^'"\n]*)\1\s*\)/g)];
   for (const match of dynamic) specifiers.push(match[2]);
   const dynamicCalls = [...code.matchAll(/\bimport\s*\(/g)].length;
@@ -738,14 +752,26 @@ function launchSites(code: string, quoted: readonly Quoted[]): { launchesBinary:
   // A launcher bound directly is called by its local name, which an alias makes different from the
   // export it names — so membership of FILE_LAUNCHERS is asked of the export and the call site is
   // found under the local name.
+  const uses = blankQuoted(imported.rest, quoted);
   for (const [local, exported] of imported.functions) {
     if (!FILE_LAUNCHERS.has(exported)) continue;
-    for (const match of imported.rest.matchAll(new RegExp(String.raw`\b${local}\s*\(`, 'g'))) {
-      inspect(local, match.index + match[0].length - 1);
+    // Every use, not only the calls. `const run = spawnSync` binds the launcher to a name this loop
+    // never searches for, so `run(process.execPath, [candidate])` is inspected by nothing and the
+    // file passes with its target unresolved. The namespace branch below has always refused a
+    // non-call use; this is the same rule, owed to the direct binding and missing from it.
+    // Round 3, major 2.
+    for (const match of uses.matchAll(new RegExp(String.raw`\b${local}\b`, 'g'))) {
+      const after = uses.slice(match.index + local.length);
+      const call = /^\s*\(/.exec(after);
+      if (call === null) {
+        const excerpt = code.slice(match.index, match.index + 28).split('\n')[0].trim();
+        problems.push(`'${local}' is bound to ${exported} and is used other than as a direct call, at '${excerpt}'`);
+        continue;
+      }
+      inspect(local, match.index + local.length + call[0].length - 1);
     }
   }
 
-  const uses = blankQuoted(imported.rest, quoted);
   for (const namespace of imported.namespaces) {
     for (const match of uses.matchAll(new RegExp(String.raw`\b${namespace}\b`, 'g'))) {
       const after = /^\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/.exec(uses.slice(match.index + namespace.length));
@@ -1086,6 +1112,38 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
       .toStrictEqual(["it could complete 'harness.js' around an interpolation, in `${name}.js`"]);
   });
 
+  test('AC-2: a static import wrapped across lines is read, not skipped', () => {
+    // Round 3, major 1. `specifiersOf`'s static clause is `[^\n;]*?`, which cannot cross a newline,
+    // and — unlike the dynamic-import clause four lines below it — nothing counts what it missed. So
+    // a formatter-wrapped source import is invisible rather than refused, `importsSource` is false,
+    // and a binary-spawning mixed file is admitted as `cli`. Fails open, where every other unreadable
+    // shape in this scan fails closed.
+    const wrapped = "import {\n  runFlow,\n} from '../src/engine.js';\n";
+    expect(factsOf(wrapped).problems).toStrictEqual([
+      '1 import statement(s) name a specifier this scan cannot read',
+    ]);
+
+    // Closed rather than complete, and the difference is deliberate: the clause is still not read,
+    // so `importsSource` stays false — but the file now carries a problem, and a file with problems
+    // takes no verdict. Silence was the defect; refusing is the fix.
+    expect(factsOf(wrapped).importsSource).toBe(false);
+
+    // And the discrimination that keeps it usable: the single-line form was never in doubt, and a
+    // failure here would mean the oracle had been broken rather than closed.
+    expect(factsOf("import { runFlow } from '../src/engine.js';\n").importsSource).toBe(true);
+    expect(factsOf("import { runFlow } from '../src/engine.js';\n").problems).toStrictEqual([]);
+  });
+
+  test('AC-2: a launcher reached through an alias is inspected, not ignored', () => {
+    // Round 3, major 2. A directly bound launcher is inspected only where the imported identifier is
+    // itself the callee, so binding it to another name walks past both oracles and the file can be
+    // accepted as `ported` with its binary target unresolved.
+    const aliased = "import { spawnSync } from 'node:child_process';\n"
+      + 'const run = spawnSync;\n'
+      + "run(process.execPath, [candidate, 'runs']);\n";
+    expect(factsOf(aliased).problems, 'an aliased launcher must stop the file').not.toStrictEqual([]);
+  });
+
   test('a launch site whose target the scan cannot resolve stops the file', () => {
     // The other half of the same major: the binary need not be spelled anywhere for a file to start
     // it, so what each node:child_process call launches is resolved rather than inferred from text.
@@ -1170,9 +1228,19 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // A wrapped named list is still one clause. Reading it line by line would bind nothing and put
     // the launch site back out of sight — the same fail-open under a formatter rather than under an
     // import form, which is why the clause is bounded by its own braces and not by its line.
+    //
+    // This fixture also carries round 3's first finding, which is how that defect survived: the
+    // binding clause is read here, and `specifiersOf` — four hundred lines away, written in the same
+    // run by the same hand that wrote the sentence above — kept a line-bounded regex and omitted the
+    // very same statement in silence. One hazard, reasoned about in one place and not the other. The
+    // import-statement problem below is that refusal, and it belongs to a fixture that was already
+    // proving the point before anyone noticed.
     expect(factsOf('import {\n  execFileSync,\n  spawnSync,\n} from \'node:child_process\';\n'
       + "spawnSync(process.execPath, [candidate]);\n").problems)
-      .toStrictEqual(["spawnSync() runs a script this scan cannot resolve, from 'candidate'"]);
+      .toStrictEqual([
+        '1 import statement(s) name a specifier this scan cannot read',
+        "spawnSync() runs a script this scan cannot resolve, from 'candidate'",
+      ]);
     // And the bound that keeps that from over-reaching: an earlier import on another line is not
     // swallowed into this clause, whether or not the file terminates its statements.
     for (const first of ["import fs from 'node:fs';\n", "import fs from 'node:fs'\n"]) {
