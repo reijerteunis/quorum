@@ -52,6 +52,69 @@ fixed width; a Vitest rewrite reaching for snapshots would undo both.
 Q-0009, after Q-0010. Until then both CI jobs stay green: the workspace job proves the port, the spike
 job proves the harness the port is being developed with still works.
 
+## Line map re-derived 2026-08-31, before the requirements run
+
+The body above was written 2026-08-25, when four children had landed. Thirteen have now, and this
+ticket's whole subject is *what the suites contain* — so it is the child a stale body hurts most.
+Measured today at `adf091e`. **Re-derive at the branch's own SHA rather than trusting these
+numbers**: Q-0051's were wrong within ten hours, and this ticket's inputs move every time a child
+lands a new suite.
+
+**The suite is half again as big as the body says.** Not "2,400 lines across eleven other files"
+but **3,657 lines across sixteen**, plus `smoke.js` at 739 — which is the one figure above that
+still holds — and `run.js` at 37. **4,396 lines of tests in eighteen files.** `q0035-empty-range.js`
+alone is **730 lines**, all but level with `smoke.js`, which matters because the body singles it out
+as the file a snapshot-happy rewrite would break.
+
+**The entanglement is worse than the body states, and now it has a number.** Classified by whether
+a file spawns `bin/harness.js`, imports from `../src/`, or both:
+
+| | files | lines | |
+| --- | --- | --- | --- |
+| **binary-only** | 3 | 1,075 | `smoke.js`, `q0011-runs-cli.js`, `q0036-board-containment.js` |
+| **both** | 5 | 1,262 | `q0011-run-history.js`, `q0033-surface.js`, `q0034-review-fixes.js`, **`q0077-base-flag.js`**, **`q0080-allocation.js`** |
+| **library-only** | 9 | 2,059 | the rest |
+
+The body's binary-only trio is exactly right. Its "both" list is **missing two**, and both are new:
+`q0077-base-flag.js` and `q0080-allocation.js` landed in the last four days. So **53% of the suite
+is entangled with the binary**, not the ~half of eleven files the body implies — and route 1 (*port
+the library-level suites first, leave the CLI-driven ones on the spike until Q-0010*) now leaves
+**2,337 lines across eight files** behind rather than six. That percentage is the fact the routing
+decision turns on and it has never been computed before; compute it again at the branch, because
+two of the eight arrived while this body sat unread.
+
+**The `runGate` signal-window exception no longer exists, and this is the correction that would
+otherwise mislead.** The body's last paragraph says *"The exception Q-0052 names is the `runGate`
+signal-window fixture, which exists because the old file was frozen."* Q-0052 **declined it**:
+its R-7 ruled the invitation already spent by the child that ported the gate, and GO-2 recorded
+in that ticket's `runs.log` that it is **spent and the timer permanently preserved** — the third
+consecutive decline. `packages/core/src/engine/routing.ts:27` still carries
+`setTimeout(() => {}, 1000)` with `// Why: preserved defect, see Q-0050 AC-4.`, pinned three ways.
+**This ticket inherits no authorised behaviour change of any kind.** A Vitest fixture that "no
+longer needs" the timer is a behaviour change like any other and takes charter §2's route.
+
+**CI has five jobs, not two.** `workspace`, `port-freeze-policy`, `port-freeze-branch-scope`,
+`port-freeze-sha`, and `spike` — which is the **last**, not "CI's second job". The freeze-SHA job
+is live and green as of `95079ac`, so anything this ticket does to `spike/**` turns it red until
+the SHA is re-recorded. The body's non-goals already forbid editing `spike/**`; the point here is
+that the guard now enforces it rather than merely asking.
+
+**`run.js` behaves exactly as the body describes** — verified rather than assumed. It reads the
+directory, filters `*.js`, excludes itself, and sorts `smoke.js` first with `localeCompare` for the
+rest. The discovery reasoning is in its own header comment, and the body's summary of why it
+matters is accurate.
+
+**Dependencies: all thirteen are `reviewed` and `main:contained`.** Nothing blocks this ticket. It
+is the last child, and `packages/core/src/engine/routing.ts` no longer contains `unavailableStep` at
+all — every step kind dispatches to a real implementation, so there is nothing left for a
+regression suite to find missing.
+
+**One number for the requirement to weigh.** The port has cost **$599.77 billed across thirteen
+children, mean $46.14** — charter §9's per-child threshold is $40 and its fourteen-child projection
+was $550, so both are already exceeded, while the threshold §9 calls the one to watch (*more than
+three chore runs on any one child*) was never tripped. Cost overran; the signal for a child cut
+wrong never fired. This ticket is the largest remaining unknown in that estimate.
+
 ## Port charter
 
 The charter is `harness/port-charter.md`; §6's register is normative for everything below and this
