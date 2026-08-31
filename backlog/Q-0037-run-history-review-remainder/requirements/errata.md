@@ -56,3 +56,42 @@ correction is not mistaken for scope creep when it lands.
 carrying `x-quorum-contract: unknown-v1`. The wording it replaced said *"no **recognised**
 x-quorum-contract annotation"* and was true of both cases; dropping one word introduced the defect.
 That is a real regression, it is the implementer's to fix, and it needs no ruling from here.
+
+---
+
+## E-2 — the implement report is not round-scoped, so a revise round destroys the previous round's evidence
+
+**What review round 2 found, correctly.** Round 2's `dev/implement-report.md` omits the measured
+evidence AC-3, AC-4, AC-5 and AC-8 require — the timer-removal red-before-green output, the `core`
+inverse failing against an unmodified `routing.ts`, the shipped-path evidence table, and the
+usage-line red-before-green demonstration. Round 2 changed only what round 1's review asked it to,
+and said so; what it could not do is keep round 1's evidence, because it does not own the file.
+
+**The cause is the flow, not the implementer.** `chore.yaml`'s `implement` step declares
+`output: { writes: [dev/implement-report.md] }` — one flat path, rewritten by the engine on every
+traversal. Reviews were exactly this until Q-0057 made them `review/chore/run-{run}/chore-iter-{iter}.md`;
+**the implement report was left flat in the same change**, so the defect Q-0057 closed on one side of
+the loop is still open on the other. A criterion whose evidence is produced in round 1 and whose fix
+is reviewed in round 3 therefore has no artifact a reviewer can read, and the reviewer is right that
+a general reference to *"round 1's work"* preserves nothing.
+
+**Recovered rather than re-run.** Round 1's report survives at `dc673dd` — 471 lines, committed by
+the E-1 commit's `git add -A` rather than by design, which is luck and is named as luck. Both rounds
+are now durable and precisely citable, written by hand because no step on this route may write under
+`backlog/`:
+
+- `dev/rounds/run-2-implement-round-1.md` — 471 lines, the AC-3/AC-4/AC-5/AC-8 evidence
+- `dev/rounds/run-2-implement-round-2.md` — 366 lines, round 2 as reviewed
+
+**The ruling.** Round 2's major is **satisfied by its own second remedy** — *"or provide a durable,
+precise reference to an artifact containing them"* — and no further implement round is owed for it.
+A round that responds by re-running and re-pasting round 1's measurements is spending a budget to
+reproduce evidence that already exists at a known path; a round that cites the two paths above has
+discharged it. Neither is a code change, and **no acceptance criterion's substance is in question**:
+the finding is about where the evidence lives, not whether it was produced.
+
+**Not fixed here.** Making `implement` round-scoped is a change to `chore.yaml` in both shipped
+copies plus both templates, and to the engine's write path if the report is to carry `{iter}` — which
+is Q-0057's shape and Q-0057's argument, and is not this ticket's subject. It is recorded so the next
+chore ticket with a multi-round loop does not rediscover it at the same cost. The successor is worth
+opening at this ticket's close rather than now.
