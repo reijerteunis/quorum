@@ -1,14 +1,22 @@
 ---
 id: Q-0037
 title: Run-history review remainder — one major and eight nits
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0037/integration
 priority: p3
 created: 2026-08-24
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-08-31T22:40:57.336Z
+    cost: 8.587
 ---
 Opened under AC-2 of Q-0034, which allows review findings to become follow-up tickets rather than
 forcing another revise loop on a branch that is already stale. These are what survived Q-0011's two
