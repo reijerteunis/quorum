@@ -128,3 +128,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A refused finding is a gate, not another round](decisions/070-a-refused-finding-is-a-gate-not-another-round.md)
 - [The port is closed, and what it cost was scaffolding](decisions/071-the-port-is-closed-and-its-cost-was-scaffolding.md)
 - [A config key is camelCase under `adapters.<vendor>` and snake_case everywhere else](decisions/072-a-config-key-is-camelcase-under-adapters.md)
+- [A run removes the worktrees it made, and never the refs](decisions/073-a-run-removes-the-worktrees-it-made.md)
