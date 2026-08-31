@@ -414,6 +414,15 @@ remaining eleven are **re-cut or re-routed rather than continued** if any of the
 The third is the one to watch: a child that loops is a child cut wrong, and cost is the symptom
 rather than the disease.
 
+**Performed 2026-08-31, at the close rather than after the first three — which is itself the
+finding, since an early checkpoint exists to catch a bad cut while children remain.** $657.47
+billed across fourteen, mean $46.96, range $16.87 to $131.03; one chore run for twelve children,
+two for Q-0041, and none for Q-0050, which §1 routes differently. The first two thresholds are
+exceeded and the third — the one this section calls decisive — was never approached. The result and
+what it means live in *"The port is closed, and what it cost was scaffolding"*
+(`docs/DECISIONS.md`, 2026-08-31), because this file is retired at the cutover and the numbers
+should not be.
+
 ## 10. What this charter does not own
 
 The cutover — deleting `spike/`, retiring the second CI job and this guard, and rewriting every

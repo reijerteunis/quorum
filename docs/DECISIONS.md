@@ -126,3 +126,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-08-31
 
 - [A refused finding is a gate, not another round](decisions/070-a-refused-finding-is-a-gate-not-another-round.md)
+- [The port is closed, and what it cost was scaffolding](decisions/071-the-port-is-closed-and-its-cost-was-scaffolding.md)
