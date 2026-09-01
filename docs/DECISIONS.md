@@ -134,3 +134,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [The plan and the backlog are checked against each other, and the two directions are not the same](decisions/074-the-plan-and-the-backlog-are-checked-against-each-other.md)
 - [An entry's date is the date it takes its place in the index](decisions/075-an-entrys-date-is-the-date-it-takes-its-place.md)
+- [A run nobody answered is undecided, and keeps the branch it proved](decisions/076-a-run-that-nobody-answered-is-undecided.md)
