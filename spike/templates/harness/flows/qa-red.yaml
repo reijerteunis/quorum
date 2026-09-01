@@ -20,7 +20,7 @@ steps:
     worktree: true
     branch: "harness/{id}/tests"
     base: "harness/{id}/integration"
-    input: { backlog: [qa/scenarios.md, solution/tasks.yaml, solution/errata.md, qa/scenario-review.md, qa/red-report.md], harness: [architecture.md], repo: true }
+    input: { backlog: [qa/scenarios.md, solution/tasks.yaml, solution/errata.md, qa/scenario-review.md, "qa/red/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
     instructions: >
       Implement automated tests for every scenario against the contracts under contracts/.
       Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
@@ -32,14 +32,14 @@ steps:
     into: "harness/{id}/integration"
     run_tests: true
     expect: fail
-    output: { writes: [qa/red-integration.md, qa/red-report.md] }
+    output: { writes: ["qa/red/run-{run}/red-integration-iter-{iter}.md", "qa/red/run-{run}/red-report-iter-{iter}.md"] }
     on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
 
   - id: scenario-review
     role: architecture-reviewer
     adapter: claude
     model: opus
-    input: { backlog: [requirements/merged.md, qa/scenarios.md, qa/red-report.md] }
+    input: { backlog: [requirements/merged.md, qa/scenarios.md, "qa/red/run-{run}/red-report-iter-*.md"] }
     output: { write: qa/scenario-review.md, verdict: approve|revise }
     instructions: >
       Check coverage: every acceptance criterion has at least one scenario and the red

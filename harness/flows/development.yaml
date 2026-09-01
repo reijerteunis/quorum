@@ -24,7 +24,7 @@ steps:
     into: "harness/{id}/integration"
     run_tests: true
     expect: pass
-    output: { writes: [dev/integration.md, dev/green-report.md] }
+    output: { writes: ["dev/development/run-{run}/integration-iter-{iter}.md", "dev/development/run-{run}/green-report-iter-{iter}.md"] }
     on_fail: { goto: developers, max_iterations: 3, on_exhausted: gate }
 
   - gate: human

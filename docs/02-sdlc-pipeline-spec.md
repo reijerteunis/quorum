@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 (Q-0037) to both sides of the revise loop: the implement report is `dev/chore/run-<run>/implement-iter-<iter>.md` and the reviewer globs it, because Q-0057 scoped the review path and left the report flat beside it. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 to both sides of the revise loop (Q-0086) and then to a rule covering every flow (Q-0087): a write path carries `{run}`, and one a bounded loop can re-enter within a run carries `{iter}` too, which moved the `integrate` artifacts in `chore.yaml`, `development.yaml` and `qa-red.yaml`; it also records that an `integrate` step's content is chosen by whether its path contains `report`. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -292,7 +292,7 @@ steps:
     branches: "harness/{id}/*"
     into: "harness/{id}/integration"
     run_tests: true
-    output: { writes: [dev/integration.md, dev/green-report.md] }
+    output: { writes: ["dev/development/run-{run}/integration-iter-{iter}.md", "dev/development/run-{run}/green-report-iter-{iter}.md"] }
     on_fail:                              # conflicts or still-red tests
       goto: developers
       scope: failing-tasks-only
@@ -426,7 +426,25 @@ dropped is solutioning's contracts and qa-red's failing suite, because work that
 the repository *is* has no behaviour a test could fail on before it exists. The reasoning is in
 the DECISIONS entry of 2026-08-24; the shipped file is `harness/flows/chore.yaml`.
 
-**Every artifact the revise loop rewrites is named by the run and the iteration that wrote it.**
+**Every artifact a run can rewrite is named by what makes it unique.** The rule is one sentence
+and applies to every flow: a write path carries `{run}`, and one a bounded loop can **re-enter
+within a run** additionally carries `{iter}`. `{run}` alone lets iteration 2 overwrite iteration 1;
+`{iter}` alone lets run 2 overwrite run 1, and it restarts at 1 in each run, which is why it can
+never name a path by itself. Whether a step is loop-reachable is a property of the flow's own
+`on_fail` edges — everything from a `goto` target through the edge that names it — so
+`chore.yaml`'s `integrate`, which sits after its loop, is named by the run alone, while
+`development.yaml`'s and `qa-red.yaml`'s sit **inside** theirs and carry both.
+`packages/shared/src/flow.test.ts` derives that from each shipped flow rather than listing paths,
+and holds the paths still flat as a register with a reason each — most of them because another file
+names them by hand.
+
+**A caution for anyone renaming one of these.** Both engines choose an `integrate` step's *content*
+by whether its write path contains the substring `report` — the captured test output if it does,
+the integration notes if it does not (`spike/src/engine.js:1241`,
+`packages/core/src/engine/composite.ts:340`). A rename across that boundary silently swaps what the
+file holds, and the same test pins the class each shipped path selects.
+
+**In the chore flow specifically:**
 The review step writes `review/chore/run-<run>/chore-iter-<iter>.md` and the implement step reads
 `review/chore/run-<run>/chore-iter-*.md`; the implement step writes
 `dev/chore/run-<run>/implement-iter-<iter>.md` and the review step reads

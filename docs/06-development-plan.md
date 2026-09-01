@@ -37,7 +37,7 @@ same"* (2026-09-01). The `owner:` split was closed in the same edit: five ticket
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
 answer by hand. **Q-0037 shipped on 2026-09-01**, the first ticket run through the
-flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, and **Q-0086**, from its erratum E-2, neither of which any flow could have run: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
+flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, **Q-0086**, from its erratum E-2, and **Q-0087**, from re-measuring a claim Q-0086 itself had made and got wrong; none of the three could have been run by any flow: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
@@ -608,10 +608,44 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `chore.yaml` itself and `runFlow` loads the flow at run start, so a chore run fixing this flow
   could not benefit from its own fix — Q-0057's position exactly — and an implement step editing the
   file that governs its own output path is a hazard, not a demonstration.
-  **Reported and not fixed:** `dev/integration.md` is run-scoped only by accident, because
-  `integrate` runs once per run and no revise loop rewrites it; a second run on a ticket still
-  replaces the first's. Same class, far lower frequency, and it spans `development.yaml` and
-  `qa-red.yaml` too, so it wants its own requirement rather than being widened into this one.
+  **Reported here and fixed the same day by Q-0087**, whose measurement corrected this paragraph:
+  it said the `integrate` artifacts were the same class *at a lower frequency* because `integrate`
+  runs once per run. That is true of `chore.yaml` alone. `development.yaml`'s `integrate` and
+  `qa-red.yaml`'s `prove-red` sit **inside** their own loops — `max_iterations` 3 and 2 — so each
+  traversal overwrote the last, which is the acute defect rather than the mild one.
+- Q-0087 Every artifact a run can rewrite is named by what makes it unique. *(`reviewed`
+  2026-09-01, implemented by hand.)* Opened because re-measuring Q-0086's own *"reported and not
+  fixed"* paragraph disproved it. That paragraph called the `integrate` artifacts the same class
+  *at a lower frequency*, on the reasoning that `integrate` runs once per run. **True of
+  `chore.yaml` alone**: `development.yaml`'s `integrate` carries `max_iterations: 3` and
+  `qa-red.yaml`'s `prove-red` carries `max_iterations: 2`, both **inside** their own loops, so every
+  traversal overwrote the previous one's integration notes and test report — the acute defect, in
+  the two flows whose entire purpose is to show what failed on attempt 1 against attempt 2.
+  Convergence to green is what `development.yaml` exists to demonstrate and it was keeping only the
+  last attempt.
+  **The rule was generalised rather than a third instance patched**: a write path carries `{run}`,
+  and one a bounded loop can re-enter within a run additionally carries `{iter}`. Loop-reachability
+  is derived from each flow's own `on_fail` edges, so `chore.yaml`'s `integrate` being named by the
+  run alone falls out of the rule rather than standing as an exception to it, and a flow that gains
+  a step or an edge is covered without anyone remembering. `qa/red-report.md`'s **two** readers both
+  became globs; the other four artifacts are read by no flow.
+  **Fourteen write paths are still flat and are a register with a reason each** — `requirements/merged.md`,
+  `solution/tasks.yaml`, `qa/scenarios.md` and the rest — because scoping those moves paths other
+  files name by hand. A second test asserts every registered path is still written by some flow, so
+  the register cannot end up excusing nothing while reading as coverage, which is Q-0073's finding
+  about `NOT_READ`. The remaining work is visible rather than quietly closed.
+  **The guard found two defects in itself before it found any in the flows.** Its first run reported
+  an `integrate` step in `solutioning.yaml` the draft register had not accounted for; registering it
+  then failed differently, because the check read only `writes:` while `merge-contracts` uses the
+  singular `write:` — the one shipped integrate step that does. It now mirrors the engine's
+  `writesOf` exactly. A check blind to half its subject, caught by the register beside it rather
+  than by a reviewer.
+  **One trap was walked past deliberately and is now pinned**: both engines choose an `integrate`
+  step's content by whether its write path contains the substring `report` — test output if it does,
+  integration notes if it does not — tested against the pre-interpolation template. Every new path
+  was checked against it before being chosen, and renaming `red-integration` to
+  `red-integration-report` now turns the suite red. Five clauses were each demonstrated red on their
+  own. No engine change in either tree and `spike/src` untouched, so no freeze re-record is owed.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint
@@ -1232,7 +1266,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   preserved it deliberately — changing it inside a capture fix would have been scope creep wearing a
   bug fix's clothes — and made it visible, written down and tested instead. The question is not
   whether stderr is useful but **whether `out` is the artifact a human reads or the one a machine
-  parses**, since changing it gives every *green* `integrate` run's `dev/integration.md` all of
+  parses**, since changing it gives every *green* `integrate` run's integration notes all of
   turbo's and vitest's stderr, which is most of their output; `testReport` already answers that
   differently for each consumer. Lands in both trees together, and would deliberately change the
   AC-2 assertions that now pin the current behaviour rather than discover them.

@@ -54,7 +54,9 @@ Flags: `--auto` advances human gates (never `human-locked`), `--dry` prints what
    better, or do they oscillate? Read `solution/review.md` round by round.
 3. Cost per ticket through two stages on real subscriptions.
 4. Development on a real repo (pick the smallest of your SaaS repos first): do two vendors' worktrees merge cleanly, and does the
-   `failing-tasks-only` retry converge within 3 iterations? Read `dev/integration.md` per round.
+   `failing-tasks-only` retry converge within 3 iterations? Read
+   `dev/development/run-<run>/integration-iter-<iter>.md` — one per round, kept rather than overwritten
+   since Q-0087.
 
 ## Design notes surfaced by the spike
 

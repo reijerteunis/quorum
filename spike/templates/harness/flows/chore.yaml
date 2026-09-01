@@ -54,7 +54,7 @@ steps:
     into: "harness/{id}/integration"
     run_tests: true
     expect: pass
-    output: { writes: [dev/integration.md] }
+    output: { writes: ["dev/chore/run-{run}/integration.md"] }
 
   - gate: human
     reason: Chore owner approves the reviewed change now on the ticket branch, with the suite green

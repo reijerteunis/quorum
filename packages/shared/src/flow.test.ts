@@ -14,6 +14,75 @@ function loadAsTheEngineDoes(file: string): Record<string, unknown> {
   return flow;
 }
 
+/**
+ * Write paths that are still flat, each with why. A register rather than a silence: a path that
+ * gains `{run}` must be removed from here, and a NEW flat path fails until someone classifies it,
+ * so this cannot quietly stop covering anything (Q-0054's spike-parity shape, Q-0073's `NOT_READ`).
+ *
+ * Every entry below is the same latent defect as the ones Q-0057, Q-0086 and Q-0087 closed — a
+ * second run of the flow on a ticket replaces the first run's copy — and each is left alone
+ * deliberately, because scoping it moves a path that other files name by hand.
+ */
+const FLAT_BY_DESIGN: Record<string, string> = {
+  'qa/scenarios.md': 'read by name from qa-red.yaml write-tests and scenario-review, and cited by path across docs/ and backlog/',
+  'qa/scenario-review.md': 'read by name from qa-red.yaml write-tests',
+  'requirements/candidate-claude.md': 'not loop-reachable — the pm group runs before head-of-product\'s self-loop — and read by chore.yaml and review.yaml as a literal',
+  'requirements/candidate-codex.md': 'as candidate-claude.md',
+  'requirements/merged.md': 'loop-reachable, and the most-cited path in the repository: every flow reads it as a literal and dozens of documents name it',
+  'review/round-{round}/claude.md': 'scoped by {round}, which is derived from the ticket directory and persists across runs, so it does not collide the way {iter} does',
+  'review/round-{round}/codex.md': 'as claude.md',
+  'review/round-{round}/verdict.md': 'as claude.md',
+  'review/verdict.md': 'the pointer to the current verdict, read as a literal by development.yaml; its per-round copy beside it is what history needs',
+  'solution/draft.md': 'loop-reachable; read by name from solutioning.yaml architecture-review and finalize',
+  'solution/review.md': 'loop-reachable; read by name from solutioning.yaml finalize',
+  'solution/solution.md': 'read as a literal by qa-red.yaml and development.yaml',
+  'solution/tasks.yaml': 'the fan_out `from:` target; moving it changes what a fan-out reads',
+  'solution/integration.md': 'written after solutioning\'s loop, and read by nothing',
+};
+
+/**
+ * Every path a step writes, in the engine's own terms.
+ *
+ * Mirrors `writesOf` (`spike/src/engine.js:844`, and `routing.ts`'s port) exactly: BOTH the
+ * singular `write:` and the plural `writes:`, in that order. Reading only `writes:` is how the
+ * first draft of this guard went blind to `solutioning.yaml`'s `merge-contracts`, which is the only
+ * shipped integrate step using the singular — a check that cannot see half its subject, found by
+ * the register beside it rather than by review.
+ */
+function writePathsOf(step: Record<string, unknown>): string[] {
+  const output = step.output as { write?: unknown; writes?: unknown } | undefined;
+  return [...(output?.write ? [output.write] : []), ...((output?.writes as unknown[]) ?? [])].map(String);
+}
+
+/**
+ * The ids a backward edge can re-enter, so their steps may be written more than once in one run.
+ *
+ * A `goto` naming another flow ends this run and is not a loop here. Everything from the target's
+ * position through the edge's own position is re-runnable, which is what makes `{iter}` load-bearing
+ * rather than decorative.
+ */
+function loopReachable(flow: Record<string, unknown>): Set<string> {
+  const top = (flow.steps ?? []) as Record<string, unknown>[];
+  const idsAt = top.map((s) => (s.parallel ? (s.parallel as Record<string, unknown>[]).map((m) => m.id) : [s.id]));
+  const positionOf = new Map<string, number>();
+  idsAt.forEach((ids, index) => ids.forEach((id) => { if (typeof id === 'string') positionOf.set(id, index); }));
+
+  const reachable = new Set<string>();
+  top.forEach((step, index) => {
+    const members = (step.parallel ? (step.parallel as Record<string, unknown>[]) : [step]);
+    for (const member of members) {
+      const target = (member.on_fail as Record<string, unknown> | undefined)?.goto;
+      if (typeof target !== 'string' || target.startsWith('flow:')) continue;
+      const from = positionOf.get(target);
+      expect(from, `${String(flow.name)}: on_fail goto names ${target}, which is not a step`).toBeDefined();
+      for (let at = from!; at <= index; at += 1) {
+        for (const id of idsAt[at]!) if (typeof id === 'string') reachable.add(id);
+      }
+    }
+  });
+  return reachable;
+}
+
 describe('AC-3 — the flow schema describes the format as it is', () => {
   test('all six shipped flows parse, with the loader-injected `file` key', () => {
     const files = flowFiles();
@@ -454,3 +523,79 @@ describe('Q-0069 AC-7 — the deprecated zod object API is gone, and stays gone'
     }
   });
 });
+
+describe('Q-0087 — every artifact a run can rewrite is named by what makes it unique', () => {
+  // The rule, stated once and applied by derivation rather than by a list of paths: a write path
+  // carries {run}, and one a bounded loop can re-enter within a run additionally carries {iter}.
+  // {run} alone lets iteration 2 overwrite iteration 1; {iter} alone lets run 2 overwrite run 1.
+  // Derived from each flow's own on_fail edges, so a flow that gains a loop or a step is covered
+  // without anyone remembering to come back here.
+  test('a scoped write path carries {run}, and {iter} exactly when a loop can re-enter its step', () => {
+    for (const file of flowFiles()) {
+      const flow = flowSchema.parse(loadAsTheEngineDoes(file));
+      const loops = loopReachable(flow as Record<string, unknown>);
+      for (const step of (flow.steps ?? [])) {
+        const members = ('parallel' in step && Array.isArray(step.parallel) ? step.parallel : [step]) as Record<string, unknown>[];
+        for (const member of members) {
+          for (const target of writePathsOf(member)) {
+            const where = `${path.basename(file)} ${String(member.id)} → ${target}`;
+            if (target in FLAT_BY_DESIGN) {
+              expect(target, `${where} is registered flat; scoping it means removing its entry`).not.toContain('{run}');
+              continue;
+            }
+            expect(target, `${where} must be named by its run`).toContain('{run}');
+            const inLoop = typeof member.id === 'string' && loops.has(member.id);
+            expect(target.includes('{iter}'), `${where}: {iter} is required exactly when a loop re-enters the step (loop-reachable: ${String(inLoop)})`).toBe(inLoop);
+          }
+        }
+      }
+    }
+  });
+
+  // Every registered path must still be one a flow writes. A register excusing something nothing
+  // writes any more reads as coverage while covering nothing — Q-0073's finding about NOT_READ,
+  // which had a key that became uncollectable on day one.
+  test('every registered flat path is still written by some flow', () => {
+    const written = new Set<string>();
+    for (const file of flowFiles()) {
+      const flow = flowSchema.parse(loadAsTheEngineDoes(file));
+      for (const step of (flow.steps ?? [])) {
+        const members = ('parallel' in step && Array.isArray(step.parallel) ? step.parallel : [step]) as Record<string, unknown>[];
+        for (const member of members) {
+          for (const target of writePathsOf(member)) written.add(target);
+        }
+      }
+    }
+    expect(Object.keys(FLAT_BY_DESIGN).filter((target) => !written.has(target))).toEqual([]);
+  });
+
+  // The trap this change had to walk past, pinned so the next rename cannot spring it. Both engines
+  // choose an integrate step's CONTENT by whether its write path contains the substring "report"
+  // (spike/src/engine.js:1241, packages/core/src/engine/composite.ts:340) — the test output if it
+  // does, the integration notes if it does not. So a path renamed across that boundary silently
+  // swaps what the file holds, and nothing else would notice.
+  test('an integrate step\'s write paths keep the content class their spelling selects', () => {
+    const REPORT_CLASS: Record<string, ('notes' | 'report')[]> = {
+      'chore.yaml': ['notes'],
+      'development.yaml': ['notes', 'report'],
+      'qa-red.yaml': ['notes', 'report'],
+      // Registered by the guard's own first run, which found this integrate step where the draft
+      // register had none: `solution/integration.md` is flat, and it stays flat for the reason in
+      // FLAT_BY_DESIGN, but its content class is pinned like the others.
+      'solutioning.yaml': ['notes'],
+    };
+    for (const file of flowFiles()) {
+      const flow = flowSchema.parse(loadAsTheEngineDoes(file));
+      const integrates = (flow.steps ?? []).filter((step) => 'type' in step && step.type === 'integrate') as Record<string, unknown>[];
+      const expected = REPORT_CLASS[path.basename(file)];
+      if (!expected) {
+        expect(integrates, `${path.basename(file)} has an integrate step and no expected content classes`).toHaveLength(0);
+        continue;
+      }
+      expect(integrates, `${path.basename(file)} must still have exactly one integrate step`).toHaveLength(1);
+      const classes = writePathsOf(integrates[0]!).map((target) => (target.includes('report') ? 'report' : 'notes'));
+      expect(classes, `${path.basename(file)}'s integrate writes, by the class its spelling selects`).toStrictEqual(expected);
+    }
+  });
+});
+
