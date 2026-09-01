@@ -46,27 +46,64 @@ const files = (): [string, string][] => fs
 const production = (): [string, string][] => files().filter(([name]) => !name.endsWith('.test.ts'));
 
 /**
- * What git reports for the checkout at `root`, as paths relative to it.
+ * Directory names the walk prunes, and the whole of what {@link inventory} excludes.
  *
- * `-z` because a path holding a quote or a newline comes back quoted and escaped otherwise, and a
- * listing that silently renames its own entries is the wrong foundation for a membership test.
- * Failure is loud rather than an empty inventory, which would report a pass over nothing.
+ * Enumerated rather than delegated to `.gitignore`, because the two guards that ask for an
+ * inventory ask two different questions. `packages/core/src/turbo-inputs.test.ts` asks *what does
+ * turbo hash*, and answers it with `git ls-files --exclude-standard` — see *"Membership is a git
+ * question, not a filesystem one"* (2026-08-28), whose argument is about a build tool's inputs.
+ * AC-12 asks whether a credential is **present in this package's tree**, and a credential in an
+ * ignored file is still on disk, still readable by any agent given `input.repo: true`, and still
+ * one `git add -f` from being published — so the question is what exists, and existence is a
+ * filesystem question. Two questions, two inventories, and neither decision needs amending. Ruled
+ * in `requirements/errata.md` E-1, which exists to pre-empt the reading that would restore
+ * `--exclude-standard` here.
  *
- * @param root the directory to ask about — this package, unless a test hands it a sandbox.
+ * Both entries are installed or generated, nothing under either is authored, and each is
+ * demonstrated below to excuse a real file rather than to sit in the list unexercised.
+ *
+ * **Emitted output is deliberately not among them.** This workspace emits nothing and the output
+ * layout is Q-0096's to choose; naming a directory here now would be this ticket deciding it, which
+ * is the objection review round 2 raised against a `bin` target assumed to end in `.js`.
+ *
+ * **There is no binary exclusion either**, and that direction is deliberate: text is decoded as
+ * UTF-8 unconditionally, and a lossy decode can only make a scan report *more* than it should,
+ * where an exclusion is the only thing that can make it report less.
+ */
+const GENERATED = ['node_modules', '.turbo'];
+
+/**
+ * Every file below `root`, as paths relative to it, with {@link GENERATED} pruned.
+ *
+ * Pruned during the walk rather than filtered after it, so an installed dependency tree is never
+ * read — the exclusion is what keeps this affordable as well as what keeps it narrow.
+ *
+ * An entry that is neither a file nor a directory **stops the guard** rather than being dropped
+ * silently: a third case nobody enumerated is an exclusion nobody wrote down, which is exactly what
+ * E-1 rules against. This package has none today and the refusal is demonstrated over a sandbox
+ * below, so the clause is known to fire rather than assumed to.
+ *
+ * @param root the directory to walk — this package, unless a test hands it a sandbox.
  */
 function inventory(root: string): string[] {
-  let raw: string;
-  try {
-    raw = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
-      cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (cause) {
-    throw new Error(
-      `inventory unavailable: git ls-files failed in ${root} — this guard answers for everything the package carries, so it cannot answer without git`,
-      { cause },
-    );
-  }
-  return raw.split('\0').filter((entry) => entry !== '');
+  const found: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!GENERATED.includes(entry.name)) walk(full);
+      } else if (entry.isFile()) {
+        found.push(path.relative(root, full));
+      } else {
+        throw new Error(
+          `inventory: ${path.relative(root, full)} is neither a file nor a directory — this guard `
+          + 'answers for everything the package carries, so it refuses to drop an entry it cannot classify',
+        );
+      }
+    }
+  };
+  walk(root);
+  return found;
 }
 
 /**
@@ -76,19 +113,15 @@ function inventory(root: string): string[] {
  * configuration files and any fixture or documentation a later ticket adds are all in scope — a
  * credential in `package.json` is a credential.
  *
- * **Membership is git's question, not the filesystem's.** A `readdirSync` walk of the package root
- * also collects `node_modules/` and `.turbo/`, which would then need a hand-written exclusion list —
- * and a list is the wrong instrument twice over: it rots as generated directories appear, and this
- * repository has already found one excusing nothing while reading as coverage (Q-0073).
- * `git ls-files --cached --others --exclude-standard` is the same question turbo asks and gives the
- * same answer: tracked and untracked-unignored in, ignored out. See *"Membership is a git question,
- * not a filesystem one"* (2026-08-28). It is also why no verdict here depends on whether this
- * checkout happens to have run a build: `.turbo/` exists after a test run and not before, and the
- * rule is that a gitignored directory *use* creates may not move an answer.
+ * **Membership is the filesystem's question here**, for the reason {@link GENERATED} gives: an
+ * ignored file is still a file, and a guard enforcing a product boundary answers for what is on
+ * disk. The exclusions are the two names in that list plus this file, all three enumerated and each
+ * asserted to excuse something.
  *
- * Text is decoded as UTF-8 unconditionally and nothing is excluded as binary. That direction is
- * deliberate: a lossy decode can only make a scan report more than it should, where an exclusion is
- * the only thing that could make it report less.
+ * **No verdict below depends on whether this checkout has run a build.** `node_modules/` and
+ * `.turbo/` exist after an install and a test run and not before, so what they contain is asserted
+ * over a directory this file builds rather than over this package — a gitignored directory that
+ * *use* creates may not move an answer (Q-0073).
  */
 const packageFiles = (): [string, string][] => inventory(PACKAGE)
   .map((name) => [name, fs.readFileSync(path.join(PACKAGE, name), 'utf8')]);
@@ -215,27 +248,76 @@ describe('AC-12 — BYOS: no API-key path exists anywhere in this package', () =
     expect(matching).toStrictEqual([GUARD_IN_PACKAGE]);
   });
 
-  test('generated content is excluded by git and not by a list, demonstrated over a repository this test builds', () => {
-    // The exclusion nobody wrote down is the one worth proving: `node_modules/` and `.turbo/` leave
-    // the scan because git ignores them, and asserting that against *this* checkout would make the
-    // verdict depend on whether a build has run here — the defect Q-0073 closed. So the mechanism
-    // is exercised over a repository built for the purpose, where both sides are values this test
-    // set itself.
+  test('an ignored file is scanned, which is the whole of what E-1 ruled', () => {
+    // The finding this replaces: `git ls-files --exclude-standard` drops every ignored file, so a
+    // gitignored fixture, documentation example, shell script or local config carrying a credential
+    // passed a guard whose criterion covers all of `packages/cli/**`. Pinned over a repository this
+    // test builds, where both sides are values it set itself.
+    //
+    // Both halves are asserted, because the first alone could pass over a `.gitignore` that never
+    // ignored anything: git is *shown* to drop the file, and the inventory is shown to carry it.
+    // Restoring `--exclude-standard` turns the second assertion red.
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-inventory-'));
     try {
       execFileSync('git', ['init', '--quiet'], { cwd: sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
-      fs.writeFileSync(path.join(sandbox, '.gitignore'), 'generated/\n');
-      fs.writeFileSync(path.join(sandbox, 'kept.json'), '{}\n');
-      fs.mkdirSync(path.join(sandbox, 'generated'));
-      fs.writeFileSync(path.join(sandbox, 'generated', 'log.txt'), 'ANTHROPIC_API_KEY=x\n');
+      fs.writeFileSync(path.join(sandbox, '.gitignore'), 'ignored/\n');
+      fs.mkdirSync(path.join(sandbox, 'ignored'));
+      fs.writeFileSync(path.join(sandbox, 'ignored', 'notes.txt'), 'ANTHROPIC_API_KEY=x\n');
+      const credential = path.join('ignored', 'notes.txt');
 
-      expect(inventory(sandbox).sort()).toStrictEqual(['.gitignore', 'kept.json']);
-      // And the exclusion excuses something: a walk of the same directory does collect the file git
-      // drops, so this is a member being removed rather than a rule with no subject.
-      const walked = fs.readdirSync(sandbox, { withFileTypes: true, recursive: true })
-        .filter((entry) => entry.isFile())
-        .map((entry) => path.relative(sandbox, path.join(entry.parentPath, entry.name)));
-      expect(walked).toContain(path.join('generated', 'log.txt'));
+      const tracked = execFileSync(
+        'git',
+        ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+        { cwd: sandbox, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ).split('\0').filter((entry) => entry !== '');
+      expect(tracked, 'the fixture is not ignored, so it discriminates nothing').not.toContain(credential);
+      expect(inventory(sandbox), 'an ignored credential is invisible again — E-1').toContain(credential);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('each enumerated exclusion excuses a real file, and nothing else is dropped', () => {
+    // A fixture per entry, derived from the list rather than written out, so a third exclusion added
+    // later arrives with a subject or fails here. Showing that the pruning fires proves the pruning
+    // fires and not that each entry does (Q-0071), which is why this loops.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-generated-'));
+    try {
+      fs.writeFileSync(path.join(sandbox, 'kept.json'), '{}\n');
+      fs.mkdirSync(path.join(sandbox, 'src'));
+      fs.writeFileSync(path.join(sandbox, 'src', 'kept.ts'), 'export const kept = 1;\n');
+      for (const name of GENERATED) {
+        fs.mkdirSync(path.join(sandbox, name, 'nested'), { recursive: true });
+        fs.writeFileSync(path.join(sandbox, name, 'nested', 'output.txt'), 'ANTHROPIC_API_KEY=x\n');
+      }
+
+      // An identity and not a count, because the fixtures are derived from the list: removing an
+      // entry would otherwise remove its own subject, and the behavioural assertion below would
+      // stay green over a shorter rule. A count of two would too. So the list is written out once
+      // more, and that is what makes a removal visible (Q-0073, "a count is not an identity").
+      expect(GENERATED, 'the exclusion list moved — each entry is a named claim').toStrictEqual([
+        'node_modules', '.turbo',
+      ]);
+      expect(inventory(sandbox).sort()).toStrictEqual(['kept.json', path.join('src', 'kept.ts')]);
+      for (const name of GENERATED) {
+        expect(
+          fs.existsSync(path.join(sandbox, name, 'nested', 'output.txt')),
+          `${name} excuses nothing — the fixture it prunes is not there`,
+        ).toBe(true);
+      }
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('an entry it cannot classify stops the walk instead of leaving the scan', () => {
+    // The exclusion that would otherwise be written nowhere. A symlink is neither `isFile` nor
+    // `isDirectory`, so a walk that tested only those two would drop it in silence — an unenumerated
+    // exclusion, which is the shape E-1 forbids.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-unclassified-'));
+    try {
+      fs.symlinkSync(path.join(sandbox, 'nowhere'), path.join(sandbox, 'link'));
+      expect(() => inventory(sandbox)).toThrow(/neither a file nor a directory/);
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });
     }
