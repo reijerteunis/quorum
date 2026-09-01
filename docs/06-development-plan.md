@@ -37,7 +37,7 @@ same"* (2026-09-01). The `owner:` split was closed in the same edit: five ticket
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
 answer by hand. **Q-0037 shipped on 2026-09-01**, the first ticket run through the
-flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, **Q-0086**, from its erratum E-2, and **Q-0087**, from re-measuring a claim Q-0086 itself had made and got wrong; none of the three could have been run by any flow: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
+flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, **Q-0086**, from its erratum E-2, and **Q-0087**, from re-measuring a claim Q-0086 itself had made and got wrong, and **Q-0088**, which closed the fourteen paths Q-0087 had registered as remaining; none of the four could have been run by any flow: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
@@ -629,11 +629,9 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   run alone falls out of the rule rather than standing as an exception to it, and a flow that gains
   a step or an edge is covered without anyone remembering. `qa/red-report.md`'s **two** readers both
   became globs; the other four artifacts are read by no flow.
-  **Fourteen write paths are still flat and are a register with a reason each** — `requirements/merged.md`,
-  `solution/tasks.yaml`, `qa/scenarios.md` and the rest — because scoping those moves paths other
-  files name by hand. A second test asserts every registered path is still written by some flow, so
-  the register cannot end up excusing nothing while reading as coverage, which is Q-0073's finding
-  about `NOT_READ`. The remaining work is visible rather than quietly closed.
+  **Fourteen write paths were left flat behind a register with a reason each**, so the remaining
+  work was visible rather than quietly closed. **Q-0088 closed all fourteen the same day and deleted
+  the register**, because the fourteen reasons turned out to be one property.
   **The guard found two defects in itself before it found any in the flows.** Its first run reported
   an `integrate` step in `solutioning.yaml` the draft register had not accounted for; registering it
   then failed differently, because the check read only `writes:` while `merge-contracts` uses the
@@ -646,6 +644,50 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   was checked against it before being chosen, and renaming `red-integration` to
   `red-integration-report` now turns the suite red. Five clauses were each demonstrated red on their
   own. No engine change in either tree and `spike/src` untouched, so no freeze re-record is owed.
+- Q-0088 The remaining artifacts are scoped, and a flat path must be a pointer. *(`reviewed`
+  2026-09-01, implemented by hand.)* Completes Q-0087.
+  **The finding that decided the shape: `{run}` interpolates to the id of the run doing the
+  reading.** So an artifact its own flow reads can be globbed inside `run-{run}/`, and one a
+  **later** flow reads cannot be scoped at all — by the time `development.yaml` looks for
+  `solution/tasks.yaml`, `{run}` has moved on, and a `run-*` glob both sorts `run-10` before `run-2`
+  and returns every run's copy where a `fan_out: from:` needs exactly one file. That looked like
+  four artifacts which simply could not be fixed. **The first reader map was wrong**: it walked
+  top-level and `parallel` steps and missed the fan-out's `step:` template, which is where
+  `review/verdict.md` and `solution/solution.md` are read. Redoing it is what turned a "cannot" list
+  into a solved problem.
+  **The answer was already in the repository.** `review.yaml`'s `verdict` step writes a per-round
+  copy beside a flat name its consumer reads as a literal, and an agent step writes its document to
+  **every** `writesOf` target (`steps.ts:303`). So the four cross-flow artifacts became **pointers**
+  rather than exceptions, and the rule gained a second sentence instead of a register: a path
+  carrying no scoping variable must be one whose step also writes a scoped copy in the same breath.
+  The four are `requirements/merged.md`, `solution/solution.md`, `solution/tasks.yaml` and
+  `review/verdict.md`, pinned by identity so a fifth is a visible act; every other write path in all
+  six flows is scoped, and `FLAT_BY_DESIGN` is gone.
+  **Proven end to end with the mock adapter rather than from lint.** A throwaway project initialised
+  from the changed templates, the requirements flow run once per shape over the same two-iteration
+  path: **3 files under the old flow against 5 under the new**, the difference being the iteration
+  the old flow destroyed, plus the pointer. A later run then wrote `run-3/` beside an untouched
+  `run-1/`. Also `--dry` on real tickets — `requirements` on Q-0039, and `development` on Q-0011,
+  which expands two tasks in one wave and therefore resolves the `tasks.yaml` pointer through
+  `fan_out: from:`. Four clauses of the new guard demonstrated red on their own.
+  **Three `smoke.js` assertions were re-aimed, and one had already started passing for the wrong
+  reason.** The mock end-to-end suite runs the shipped flows, so moving the candidates broke it —
+  the suite working. Two positive assertions now name `requirements/run-1/` and both go red when the
+  scoping is reverted. The third, *"failed parallel sibling wrote nothing"*, is a **negative** check
+  that passed the moment the path moved, because nothing was at the old address: it proved the
+  writer had failed only by accident. *"A check that skips its subject must not report success"*
+  (2026-08-25), arriving through a rename. It searches `requirements/` recursively now, and was
+  shown to fire by aiming it at a file that does exist there. `spike-parity.test.ts`'s totals were
+  **re-derived rather than adjusted** — 2279 → 2287, 4968 → 4976, one entangled file — with the
+  transfer share 50% before and after, stated rather than skipped.
+  **Q-0087's `qa/red/run-{run}/` was corrected to `qa/run-{run}/`** in the same change: the
+  flow-name level exists only where a directory has more than one writing flow — `dev/` and
+  `review/` — and no real run had used the older spelling.
+  **Not done, and said rather than implied:** §5's flow snippets in `02-sdlc-pipeline-spec.md` still
+  show flat paths. They are abridged and already diverged from the shipped files before this change,
+  so rewriting them is a separate docs job; §5 now says so, and §3.3's folder tree — what a reader
+  actually uses as the layout — is rewritten to the real shape. The engine's `verdict_file` is
+  unscoped too and is invisible to the guard, because it is not a `writes:` target.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint

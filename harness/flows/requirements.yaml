@@ -9,19 +9,19 @@ steps:
       adapter: claude
       model: opus
       input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
-      output: { write: requirements/candidate-claude.md }
+      output: { write: "requirements/run-{run}/candidate-claude.md" }
     - id: pm-codex
       role: product-manager
       adapter: codex
       input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
-      output: { write: requirements/candidate-codex.md }
+      output: { write: "requirements/run-{run}/candidate-codex.md" }
 
   - id: head-of-product
     role: head-of-product
     adapter: claude
     model: opus
-    input: { backlog: [ticket.md, requirements/candidate-*.md, requirements/merged.md, .harness/head-of-product-verdict.json] }
-    output: { write: requirements/merged.md, verdict: ready|needs-input }
+    input: { backlog: [ticket.md, "requirements/run-{run}/candidate-*.md", requirements/merged.md, .harness/head-of-product-verdict.json] }
+    output: { writes: ["requirements/run-{run}/merged-iter-{iter}.md", requirements/merged.md], verdict: ready|needs-input }
     instructions: >
       Judge both candidate requirement documents for completeness, testability and
       scope discipline. Produce ONE merged requirement: user story, acceptance criteria

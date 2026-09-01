@@ -50,7 +50,10 @@ assert(run(['run', 'solutioning', 'T-0001', '--adapter', 'mock', '--auto']).stat
 // Requirements: parallel PMs, head-of-product verdict (mock fails once → loops once → passes), gate auto
 let r = run(['run', 'requirements', 'T-0001', '--adapter', 'mock', '--auto']);
 assert(r.status === 0, 'requirements flow completes');
-assert(fs.existsSync(path.join(tmp, 'backlog', td, 'requirements/candidate-claude.md')) && fs.existsSync(path.join(tmp, 'backlog', td, 'requirements/candidate-codex.md')), 'both PM candidates written');
+// Re-aimed by Q-0088: the candidates are written under `requirements/run-<run>/`, and this is the
+// first run on a fresh ticket. Asserting the scoped path rather than globbing for one keeps the
+// check able to fail — a glob would go on passing if the scoping were reverted.
+assert(fs.existsSync(path.join(tmp, 'backlog', td, 'requirements/run-1/candidate-claude.md')) && fs.existsSync(path.join(tmp, 'backlog', td, 'requirements/run-1/candidate-codex.md')), 'both PM candidates written');
 assert(fs.existsSync(path.join(tmp, 'backlog', td, 'requirements/merged.md')), 'merged requirement written');
 assert(ticket().includes('stage: requirements'), 'stage advanced to requirements');
 assert(/head-of-product: 1/.test(ticket()), 'backward edge counter persisted (needs-input → retry once)');
@@ -132,8 +135,13 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
   const r3 = run(['run', 'requirements', 'T-0003', '--adapter', 'mock', '--auto'], { MOCK_FAIL_WRITE: 'candidate-claude.md' });
   const at = (rel) => path.join(tmp, 'backlog', dir, rel);
   assert(r3.status !== 0, 'a failed parallel branch fails the run');
-  assert(fs.existsSync(at('requirements/candidate-codex.md')), 'surviving parallel sibling keeps its output');
-  assert(!fs.existsSync(at('requirements/candidate-claude.md')), 'failed parallel sibling wrote nothing');
+  assert(fs.existsSync(at('requirements/run-1/candidate-codex.md')), 'surviving parallel sibling keeps its output');
+  // Searched rather than checked at one path. Q-0088 moved these files, and the single-path form of
+  // this NEGATIVE assertion went on passing for the wrong reason — nothing was at the old address,
+  // so it proved the writer had failed only by accident. A search cannot pass that way.
+  const found = (dir, name) => fs.existsSync(dir) && fs.readdirSync(dir, { withFileTypes: true })
+    .some((e) => (e.isDirectory() ? found(path.join(dir, e.name), name) : e.name === name));
+  assert(!found(at('requirements'), 'candidate-claude.md'), 'failed parallel sibling wrote nothing');
   assert(/ failed /.test(fs.readFileSync(at('runs.log'), 'utf8')), 'failed run is recorded in runs.log');
   assert(fs.readFileSync(at('ticket.md'), 'utf8').includes('stage: draft'), 'failed run does not advance the stage');
 

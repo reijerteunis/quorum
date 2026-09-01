@@ -8,8 +8,8 @@ steps:
     adapter: codex
     worktree: true
     branch: "harness/{id}/contracts"
-    input: { backlog: [requirements/merged.md, solution/review.md], harness: [architecture.md, rules.md], repo: true }
-    output: { writes: [solution/draft.md] }
+    input: { backlog: [requirements/merged.md, "solution/run-{run}/review-iter-*.md"], harness: [architecture.md, rules.md], repo: true }
+    output: { writes: ["solution/run-{run}/draft-iter-{iter}.md"] }
     instructions: >
       Produce the solution document for this requirement. It MUST contain: (1) chosen
       approach and rejected alternatives, (2) a "Contracts" section listing every
@@ -23,8 +23,8 @@ steps:
     role: architecture-reviewer
     adapter: claude
     model: opus
-    input: { backlog: [requirements/merged.md, solution/draft.md], harness: [architecture.md, rules.md], repo: true }
-    output: { write: solution/review.md, verdict: approve|revise }
+    input: { backlog: [requirements/merged.md, "solution/run-{run}/draft-iter-*.md"], harness: [architecture.md, rules.md], repo: true }
+    output: { writes: ["solution/run-{run}/review-iter-{iter}.md"], verdict: approve|revise }
     instructions: >
       Review the solution against the requirement and the architecture rules. Check that
       every acceptance criterion maps to a task, every task references a contract, and
@@ -35,15 +35,15 @@ steps:
   - id: finalize
     role: principal-architect
     adapter: codex
-    input: { backlog: [solution/draft.md, solution/review.md] }
-    output: { write: solution/solution.md }
+    input: { backlog: ["solution/run-{run}/draft-iter-*.md", "solution/run-{run}/review-iter-*.md"] }
+    output: { writes: ["solution/run-{run}/solution.md", solution/solution.md] }
     instructions: Produce the final solution document, incorporating the review. Keep the Contracts and Tasks sections verbatim unless the review changed them.
 
   - id: tasks
     role: principal-architect
     adapter: codex
-    input: { backlog: [solution/solution.md] }
-    output: { write: solution/tasks.yaml }
+    input: { backlog: ["solution/run-{run}/solution.md"] }
+    output: { writes: ["solution/run-{run}/tasks.yaml", solution/tasks.yaml] }
     instructions: >
       Extract the Tasks section of the solution as a YAML document with exactly this shape
       and nothing else: tasks: [{id, role, title, description, contracts: [paths], depends_on: [ids]}].
@@ -56,4 +56,4 @@ steps:
     type: integrate
     branches: ["harness/{id}/contracts"]
     into: "harness/{id}/integration"
-    output: { write: solution/integration.md }
+    output: { writes: ["solution/run-{run}/integration.md"] }

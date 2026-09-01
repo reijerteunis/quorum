@@ -7,8 +7,8 @@ steps:
     role: automation-qa
     adapter: claude
     model: sonnet
-    input: { backlog: [requirements/merged.md, solution/solution.md, solution/errata.md, solution/tasks.yaml, qa/scenario-review.md] }
-    output: { write: qa/scenarios.md }
+    input: { backlog: [requirements/merged.md, solution/solution.md, solution/errata.md, solution/tasks.yaml, "qa/run-{run}/scenario-review-iter-*.md"] }
+    output: { writes: ["qa/run-{run}/scenarios-iter-{iter}.md"] }
     instructions: >
       Write the test scenarios for this ticket: one Given/When/Then scenario per acceptance
       criterion, plus edge cases the architecture reviewer or the solution call out. Tag
@@ -20,7 +20,7 @@ steps:
     worktree: true
     branch: "harness/{id}/tests"
     base: "harness/{id}/integration"
-    input: { backlog: [qa/scenarios.md, solution/tasks.yaml, solution/errata.md, qa/scenario-review.md, "qa/red/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
+    input: { backlog: ["qa/run-{run}/scenarios-iter-*.md", solution/tasks.yaml, solution/errata.md, "qa/run-{run}/scenario-review-iter-*.md", "qa/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
     instructions: >
       Implement automated tests for every scenario against the contracts under contracts/.
       Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
@@ -32,15 +32,15 @@ steps:
     into: "harness/{id}/integration"
     run_tests: true
     expect: fail
-    output: { writes: ["qa/red/run-{run}/red-integration-iter-{iter}.md", "qa/red/run-{run}/red-report-iter-{iter}.md"] }
+    output: { writes: ["qa/run-{run}/red-integration-iter-{iter}.md", "qa/run-{run}/red-report-iter-{iter}.md"] }
     on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
 
   - id: scenario-review
     role: architecture-reviewer
     adapter: claude
     model: opus
-    input: { backlog: [requirements/merged.md, qa/scenarios.md, "qa/red/run-{run}/red-report-iter-*.md"] }
-    output: { write: qa/scenario-review.md, verdict: approve|revise }
+    input: { backlog: [requirements/merged.md, "qa/run-{run}/scenarios-iter-*.md", "qa/run-{run}/red-report-iter-*.md"] }
+    output: { writes: ["qa/run-{run}/scenario-review-iter-{iter}.md"], verdict: approve|revise }
     instructions: >
       Check coverage: every acceptance criterion has at least one scenario and the red
       report shows the suite failing on assertions (not compile errors). "revise" lists the

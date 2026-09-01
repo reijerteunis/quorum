@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 to both sides of the revise loop (Q-0086) and then to a rule covering every flow (Q-0087): a write path carries `{run}`, and one a bounded loop can re-enter within a run carries `{iter}` too, which moved the `integrate` artifacts in `chore.yaml`, `development.yaml` and `qa-red.yaml`; it also records that an `integrate` step's content is chosen by whether its path contains `report`. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 to both sides of the revise loop (Q-0086) and then to a rule covering every flow (Q-0087): a write path carries `{run}`, and one a bounded loop can re-enter within a run carries `{iter}` too, which moved the `integrate` artifacts in `chore.yaml`, `development.yaml` and `qa-red.yaml`; it also records that an `integrate` step's content is chosen by whether its path contains `report`; completed the same day (Q-0088) across `requirements.yaml`, `solutioning.yaml` and `qa-red.yaml`, which added the pointer half of the rule and rewrote §3.3's folder tree to the layout that results. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -39,29 +39,52 @@ backlog/
   T-0012-subscription-downgrade/
     ticket.md            # frontmatter = state; body = one-paragraph intent
     requirements/
-      candidate-claude.md
-      candidate-codex.md
-      merged.md          # output of the Head-of-Product judge → the requirement
+      merged.md          # POINTER: the current requirement, read by four later flows
+      run-1/
+        candidate-claude.md
+        candidate-codex.md
+        merged-iter-1.md # the Head-of-Product judge, one file per traversal
+        merged-iter-2.md
     solution/
-      draft.md           # written by Codex
-      review.md          # Claude's review
-      solution.md        # final, after review applied
+      solution.md        # POINTER: read by qa-red, development and review
+      tasks.yaml         # POINTER: development's fan_out reads it by literal name
       contracts/         # interfaces, OpenAPI/JSON schemas, type stubs, migration skeletons
-      tasks.yaml         # work breakdown with role tags
+      run-2/
+        draft-iter-1.md  # written by Codex, one per traversal of the review loop
+        review-iter-1.md # Claude's review of it
+        solution.md      # the run's own copy of what the pointer names
+        tasks.yaml
+        integration.md
     qa/
-      scenarios.md       # Gherkin-ish scenarios
-      red-report.md      # proof that the suite fails before development
-      final-report.md    # final QA verdict
+      run-3/
+        scenarios-iter-1.md      # Gherkin-ish scenarios
+        scenario-review-iter-1.md
+        red-report-iter-1.md     # proof that the suite fails before development
+        red-integration-iter-1.md
     dev/
-      integration.md     # integration agent's merge notes
-      green-report.md    # test output on integrated branch
+      chore/run-4/
+        implement-iter-1.md      # the implementer's report, one per revise round
+        integration.md
+      development/run-5/
+        integration-iter-1.md    # the integrator's merge notes
+        green-report-iter-1.md   # test output on the integrated branch
     review/
+      verdict.md         # POINTER: development's fan-out reads it by literal name
       round-1/claude.md
       round-1/codex.md
       round-1/verdict.md
       round-2/...
     runs.log             # append-only: run id, flow, stage before/after, cost
 ```
+
+**Two shapes appear above, and the difference is which run reads the file.** An artifact its own
+flow reads is named by the run that wrote it — and by the iteration too, where a bounded loop can
+rewrite it — so nothing a run produces is destroyed by the next round or the next run. An artifact a
+**later** flow reads cannot be, because `{run}` interpolates to the *reading* run's id and a
+consumer two runs later would glob an empty directory; those four are written twice, as a per-run
+copy for history and a flat **pointer** at the stable name the consumer knows. `review/verdict.md`
+has been that pattern since the review flow shipped; §5.8 states the rule and
+`packages/shared/src/flow.test.ts` enforces it over the shipped files.
 
 Tests themselves are **not** stored in the backlog: they are committed to the target repo on the ticket branch (`harness/T-0012/tests`, beside the integration branch `harness/T-0012/integration`) so the developers' worktrees inherit them.
 
@@ -164,6 +187,9 @@ Everything else reuses v1 primitives: `adapter`, `model`, `worktree: true`, `par
 ## 5. The seven flows, plus `chore`
 
 All examples use `claude` and `codex` adapters. Model names are placeholders — set them per project.
+**The snippets below are abridged and predate the artifact-naming rule of §5.8**: they show flat write
+paths, and several name inputs the shipped files do not. The shipped flows in `harness/flows/` are
+authoritative for both, and `packages/shared/src/flow.test.ts` is what checks them.
 
 ### 5.1 `requirements.yaml` — PM×2 + Head of Product
 
@@ -426,17 +452,27 @@ dropped is solutioning's contracts and qa-red's failing suite, because work that
 the repository *is* has no behaviour a test could fail on before it exists. The reasoning is in
 the DECISIONS entry of 2026-08-24; the shipped file is `harness/flows/chore.yaml`.
 
-**Every artifact a run can rewrite is named by what makes it unique.** The rule is one sentence
-and applies to every flow: a write path carries `{run}`, and one a bounded loop can **re-enter
-within a run** additionally carries `{iter}`. `{run}` alone lets iteration 2 overwrite iteration 1;
-`{iter}` alone lets run 2 overwrite run 1, and it restarts at 1 in each run, which is why it can
-never name a path by itself. Whether a step is loop-reachable is a property of the flow's own
-`on_fail` edges — everything from a `goto` target through the edge that names it — so
-`chore.yaml`'s `integrate`, which sits after its loop, is named by the run alone, while
-`development.yaml`'s and `qa-red.yaml`'s sit **inside** theirs and carry both.
-`packages/shared/src/flow.test.ts` derives that from each shipped flow rather than listing paths,
-and holds the paths still flat as a register with a reason each — most of them because another file
-names them by hand.
+**Every artifact a run can rewrite is named by what makes it unique.** The rule is two sentences
+and covers every write path in every shipped flow. *A write path carries `{run}` — or `{round}`,
+review's own per-run counter — and one a bounded loop can re-enter within a run additionally carries
+`{iter}`. A path that carries neither must be a **pointer**: the step writing it must write a scoped
+copy in the same breath.* `{run}` alone lets iteration 2 overwrite iteration 1; `{iter}` alone lets
+run 2 overwrite run 1, since it restarts at 1 in each run, which is why it can never name a path by
+itself. Whether a step is loop-reachable is a property of the flow's own `on_fail` edges —
+everything from a `goto` target through the edge that names it — so `chore.yaml`'s `integrate`,
+which sits after its loop, is named by the run alone and is not an exception to the rule but a
+consequence of it.
+
+**The pointer half exists because `{run}` is the *reading* run's id.** An artifact its own flow
+reads can be globbed inside `run-{run}/`, because writer and reader are the same run. An artifact a
+**later flow** reads cannot: by the time `development.yaml` looks for `solution/tasks.yaml`, `{run}`
+has moved on, and a glob over `run-*` would sort `run-10` before `run-2` and return every run's copy
+where a fan-out needs exactly one file. So exactly four artifacts are written twice — a per-run copy
+for history and a flat name their consumer reads as a literal: `requirements/merged.md`,
+`solution/solution.md`, `solution/tasks.yaml` and `review/verdict.md`. The last has been that shape
+since the review flow shipped, which is where the pattern comes from.
+`packages/shared/src/flow.test.ts` derives all of it from each shipped flow rather than listing
+paths, and pins those four by identity so adding a fifth is a visible act.
 
 **A caution for anyone renaming one of these.** Both engines choose an `integrate` step's *content*
 by whether its write path contains the substring `report` — the captured test output if it does,

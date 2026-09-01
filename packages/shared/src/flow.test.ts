@@ -15,30 +15,15 @@ function loadAsTheEngineDoes(file: string): Record<string, unknown> {
 }
 
 /**
- * Write paths that are still flat, each with why. A register rather than a silence: a path that
- * gains `{run}` must be removed from here, and a NEW flat path fails until someone classifies it,
- * so this cannot quietly stop covering anything (Q-0054's spike-parity shape, Q-0073's `NOT_READ`).
+ * The interpolation variables that scope a write path to one execution.
  *
- * Every entry below is the same latent defect as the ones Q-0057, Q-0086 and Q-0087 closed — a
- * second run of the flow on a ticket replaces the first run's copy — and each is left alone
- * deliberately, because scoping it moves a path that other files name by hand.
+ * `{run}` is the id `runs.log` carries as `run=N`, allocated per ticket and monotonic across every
+ * flow, so two flows writing into one directory never collide. `{round}` is `review.yaml`'s own
+ * counter, derived from the ticket directory rather than from the run, and it increments once per
+ * review run — a different variable reaching the same guarantee, which is why it counts here and
+ * why `review/round-<n>/` was never the defect the flat paths were.
  */
-const FLAT_BY_DESIGN: Record<string, string> = {
-  'qa/scenarios.md': 'read by name from qa-red.yaml write-tests and scenario-review, and cited by path across docs/ and backlog/',
-  'qa/scenario-review.md': 'read by name from qa-red.yaml write-tests',
-  'requirements/candidate-claude.md': 'not loop-reachable — the pm group runs before head-of-product\'s self-loop — and read by chore.yaml and review.yaml as a literal',
-  'requirements/candidate-codex.md': 'as candidate-claude.md',
-  'requirements/merged.md': 'loop-reachable, and the most-cited path in the repository: every flow reads it as a literal and dozens of documents name it',
-  'review/round-{round}/claude.md': 'scoped by {round}, which is derived from the ticket directory and persists across runs, so it does not collide the way {iter} does',
-  'review/round-{round}/codex.md': 'as claude.md',
-  'review/round-{round}/verdict.md': 'as claude.md',
-  'review/verdict.md': 'the pointer to the current verdict, read as a literal by development.yaml; its per-round copy beside it is what history needs',
-  'solution/draft.md': 'loop-reachable; read by name from solutioning.yaml architecture-review and finalize',
-  'solution/review.md': 'loop-reachable; read by name from solutioning.yaml finalize',
-  'solution/solution.md': 'read as a literal by qa-red.yaml and development.yaml',
-  'solution/tasks.yaml': 'the fan_out `from:` target; moving it changes what a fan-out reads',
-  'solution/integration.md': 'written after solutioning\'s loop, and read by nothing',
-};
+const SCOPING_VARS = ['{run}', '{round}'];
 
 /**
  * Every path a step writes, in the engine's own terms.
@@ -530,20 +515,26 @@ describe('Q-0087 — every artifact a run can rewrite is named by what makes it 
   // {run} alone lets iteration 2 overwrite iteration 1; {iter} alone lets run 2 overwrite run 1.
   // Derived from each flow's own on_fail edges, so a flow that gains a loop or a step is covered
   // without anyone remembering to come back here.
-  test('a scoped write path carries {run}, and {iter} exactly when a loop can re-enter its step', () => {
+  test('a write path is scoped, or it is a pointer beside a scoped copy written by the same step', () => {
     for (const file of flowFiles()) {
       const flow = flowSchema.parse(loadAsTheEngineDoes(file));
       const loops = loopReachable(flow as Record<string, unknown>);
       for (const step of (flow.steps ?? [])) {
         const members = ('parallel' in step && Array.isArray(step.parallel) ? step.parallel : [step]) as Record<string, unknown>[];
         for (const member of members) {
-          for (const target of writePathsOf(member)) {
+          const paths = writePathsOf(member);
+          const scoped = (target: string): boolean => SCOPING_VARS.some((variable) => target.includes(variable));
+          for (const target of paths) {
             const where = `${path.basename(file)} ${String(member.id)} → ${target}`;
-            if (target in FLAT_BY_DESIGN) {
-              expect(target, `${where} is registered flat; scoping it means removing its entry`).not.toContain('{run}');
+            if (!scoped(target)) {
+              // The pointer case, and the ONLY licence a flat path has. `review.yaml`'s verdict step
+              // is the pattern: a per-round copy for history beside a stable name its consumer in a
+              // LATER run reads as a literal. A later run cannot glob `{run}`, because `{run}` is the
+              // reading run's own id — which is why a cross-flow artifact is a pointer and not a
+              // glob, and why this is a property rather than a list of excused paths.
+              expect(paths.some(scoped), `${where} is flat, so the same step must also write a scoped copy — otherwise a second run replaces it with no history`).toBe(true);
               continue;
             }
-            expect(target, `${where} must be named by its run`).toContain('{run}');
             const inLoop = typeof member.id === 'string' && loops.has(member.id);
             expect(target.includes('{iter}'), `${where}: {iter} is required exactly when a loop re-enters the step (loop-reachable: ${String(inLoop)})`).toBe(inLoop);
           }
@@ -552,21 +543,28 @@ describe('Q-0087 — every artifact a run can rewrite is named by what makes it 
     }
   });
 
-  // Every registered path must still be one a flow writes. A register excusing something nothing
-  // writes any more reads as coverage while covering nothing — Q-0073's finding about NOT_READ,
-  // which had a key that became uncollectable on day one.
-  test('every registered flat path is still written by some flow', () => {
-    const written = new Set<string>();
+  // Every flat path a flow still writes, named, so that adding one is a visible act. This is the
+  // register that used to hold fourteen entries with a prose reason each; the pointer rule above
+  // replaced the reasons, and what is left is an identity check on the four that remain.
+  test('the flat pointers are exactly the four artifacts a later flow reads by literal name', () => {
+    const flat: string[] = [];
     for (const file of flowFiles()) {
       const flow = flowSchema.parse(loadAsTheEngineDoes(file));
       for (const step of (flow.steps ?? [])) {
         const members = ('parallel' in step && Array.isArray(step.parallel) ? step.parallel : [step]) as Record<string, unknown>[];
         for (const member of members) {
-          for (const target of writePathsOf(member)) written.add(target);
+          for (const target of writePathsOf(member)) {
+            if (!SCOPING_VARS.some((variable) => target.includes(variable))) flat.push(target);
+          }
         }
       }
     }
-    expect(Object.keys(FLAT_BY_DESIGN).filter((target) => !written.has(target))).toEqual([]);
+    expect(flat.sort()).toStrictEqual([
+      'requirements/merged.md',
+      'review/verdict.md',
+      'solution/solution.md',
+      'solution/tasks.yaml',
+    ]);
   });
 
   // The trap this change had to walk past, pinned so the next rename cannot spring it. Both engines

@@ -1073,12 +1073,19 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // outcome through it: 2264 → 2279 and 4953 → 4968, one entangled file and nothing else. The
     // rounded share is 50% before and after — stated rather than skipped, because "it did not move"
     // is a measurement and assuming it did not is how a stale pin survives.
+    //
+    // Re-measured a third time 2026-09-01 for Q-0088, which re-aimed three `smoke.js` assertions at
+    // the run-scoped requirements paths and gave the negative one a recursive search: 2279 → 2287
+    // and 4968 → 4976, one entangled file and nothing else, the share 50% before and after. The
+    // numbers are `wc -l` over the three buckets as the recomputation sorts them; nothing was
+    // adjusted to fit, and the share is re-derived rather than transcribed, which is the whole
+    // reason this file computes it.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2279);
+    expect(linesOf(named('both'))).toBe(2287);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(4968);
+    expect(total).toBe(4976);
     // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });
