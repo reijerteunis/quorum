@@ -276,7 +276,7 @@ must not report success no longer has a subject here.
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
 children: Q-0041 Q-0042 Q-0043 Q-0044 Q-0045 Q-0046 Q-0047 Q-0048 Q-0049 Q-0050 Q-0051 Q-0052 Q-0053 Q-0054
-freeze-sha: c0583f31d2ee594570ac05b26a87b273975a0877
+freeze-sha: d50cead3c876173d880825f7611a5262442d3c78
 exemption-trailer: Port-freeze-exemption
 ```
 <!-- port-freeze:end -->
