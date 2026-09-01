@@ -143,6 +143,18 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     expect(routing()).not.toMatch(/setTimeout|setInterval|setImmediate/);
   });
 
+  // The ported twin of the spike assertion in `packages/shared/src/constants.test.ts`. It lives on
+  // this side because `packages/shared` must not read `packages/core`, even in a test — the
+  // dependency direction 04-architecture.md fixes, and the thing Q-0072's input guard refused when
+  // the assertion was first written on the wrong side. See Q-0089.
+  test('Q-0089: the default verdict path is scoped by run and by iteration', () => {
+    const template = /verdict_file \?\? `([^`]+)`/.exec(source('steps.ts'))?.[1];
+    expect(template, 'core must still have a default verdict path').toBeDefined();
+    expect(template, 'scoped to one run').toContain('run-{run}');
+    expect(template, 'scoped to one traversal').toContain('{iter}');
+    expect(template, 'still names the step').toMatch(/\$\{stepId\}/);
+  });
+
   test('AC-9d: no engine helper resets or deletes task branches', () => {
     // Derived from `production`, as every other check in this file is. The hard-coded six-name array
     // that stood here failed OPEN: it stayed green while the seventh file went unscanned, which is a

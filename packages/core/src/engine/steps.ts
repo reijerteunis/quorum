@@ -305,7 +305,11 @@ export async function runAgentStep(
     context.emit({ type: 'info', message: `${stepId}: wrote ${path.relative(ticket.dir, abs)}` });
   }
   if (declared?.verdict) {
-    const verdictPath = interpolate(String(declared.verdict_file ?? `${TICKET_ARTIFACT_DIR}/${stepId}-verdict.json`), vars);
+    // Run- and iteration-scoped by default: this is the one artifact whose path a flow author does
+    // not write, so there is no line for a reviewer to notice missing. `{iter}` is unconditional
+    // rather than loop-aware, because the engine cannot see whether a backward edge reaches this
+    // step. See Q-0089.
+    const verdictPath = interpolate(String(declared.verdict_file ?? `${TICKET_ARTIFACT_DIR}/run-{run}/${stepId}-verdict-iter-{iter}.json`), vars);
     context.backlog.writeFile(ticket, verdictPath, JSON.stringify({ verdict: output.verdict, findings: output.findings ?? [], summary: output.summary }, null, 2));
   }
   if (branch) {

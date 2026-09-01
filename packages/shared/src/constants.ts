@@ -23,9 +23,11 @@ export const REPO_WORKTREE_ROOT = '.harness/worktrees';
 
 /**
  * Engine-written artifacts, inside a TICKET folder — nothing to do with worktrees. Two files land
- * here: `<step>-verdict.json` (spike/src/engine.js:288, read back by harness/flows/requirements.yaml:23)
- * and `<step>-<timestamp>.raw.txt`, the raw text saved when structured output fails validation
- * (spike/src/engine.js:276).
+ * here, and both are unique per write for different reasons: `run-<run>/<step>-verdict-iter-<iter>.json`
+ * (`spike/src/engine.js`, read back by `harness/flows/requirements.yaml`), scoped since Q-0089 because
+ * a flow author never writes this path and so cannot scope it themselves; and
+ * `<step>-<timestamp>.raw.txt`, the raw text saved when structured output fails validation, which was
+ * already unique because a timestamp is in its name.
  */
 export const TICKET_ARTIFACT_DIR = '.harness';
 

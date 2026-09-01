@@ -37,7 +37,7 @@ same"* (2026-09-01). The `owner:` split was closed in the same edit: five ticket
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
 answer by hand. **Q-0037 shipped on 2026-09-01**, the first ticket run through the
-flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, **Q-0086**, from its erratum E-2, and **Q-0087**, from re-measuring a claim Q-0086 itself had made and got wrong, and **Q-0088**, which closed the fourteen paths Q-0087 had registered as remaining; none of the four could have been run by any flow: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
+flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, **Q-0086**, from its erratum E-2, and **Q-0087**, from re-measuring a claim Q-0086 itself had made and got wrong, **Q-0088**, which closed the fourteen paths Q-0087 had registered as remaining, and **Q-0089**, the engine default the flow-derived rule could not see; none of the five could have been run by any flow: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
@@ -695,9 +695,36 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   defect this repository keeps finding. The register closes both ways — a new §5 block fails until
   classified, and a sketch whose flow acquires a file fails until it moves. Q-0056 still owns §5.6's
   separate lint problem.
-  **Not done, and said rather than implied:** the engine's `verdict_file` is unscoped and invisible
-  to the guard, because it is not a `writes:` target. §3.3's folder tree is rewritten to the real
-  layout.
+  **The engine's `verdict_file` was the one artifact this rule could not reach**, being invisible to
+  a flow-derived guard; **Q-0089 closed it the same session.** §3.3's folder tree is rewritten to the
+  real layout.
+- Q-0089 The verdict file is scoped by default, because no flow author writes its path.
+  *(`reviewed` 2026-09-01, implemented by hand.)* The one artifact Q-0087's and Q-0088's rule could
+  not reach, and **the only one of the four tickets that changes `spike/src`**.
+  **Why the flow-level rule could not see it.** `output: { verdict: approve|revise }` declares a
+  vocabulary; the engine invents the filename. So there is no path in a flow file to derive a check
+  from — and the artifact whose path nobody writes is precisely the one where forgetting to scope it
+  is invisible, because there is no line for a reviewer to notice missing. It carried
+  `{verdict, findings, summary}` at one path per step per ticket, rewritten every traversal and every
+  run, so **on a loop that turned, the record of why it turned was destroyed by the round that fixed
+  it**. Measured rather than argued: head-of-product's iteration 1 writes `needs-input` with one
+  finding and iteration 2 writes `ready` with none, and only the second used to survive.
+  **The fix is the default, not a `verdict_file:` per flow**, which would have avoided touching
+  `spike/src` and was rejected on the ground that a rule holding only where somebody remembered the
+  key is not a rule. `{iter}` is **unconditional** rather than loop-aware, because the engine cannot
+  see whether a backward edge reaches a step — the analysis Q-0087's guard performs over a flow file
+  is not available at the point of the write — a deliberate asymmetry, stated rather than left to be
+  found. Pinned as three properties in both trees, each shown red alone: scoped to a run, scoped to a
+  traversal, and still naming the step, since two steps of one flow declaring a verdict collide
+  otherwise.
+  **The pin was first written on the wrong side of the dependency direction**, and Q-0072's input
+  guard is what said so — putting both trees' checks in `packages/shared` made it read a
+  `packages/core` source, which `04-architecture.md` forbids; the guard refused it as an undeclared
+  read, the same finding arriving through a different door. **Verified end to end**: occurrence
+  `004-head-of-product` — iteration 2 — has iteration 1's verdict in its prompt, so the new glob
+  feeds the retry. The `.raw.txt` sibling needed nothing, having a timestamp already; checked rather
+  than assumed. **Charter §3 walked a second time**, with `freeze-sha` re-recorded in a follow-up
+  commit per Q-0037's erratum E-1.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint

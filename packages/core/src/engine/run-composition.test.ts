@@ -67,7 +67,7 @@ describe('Q-0052 AC-6 — the declarative write loop, with {run} in scope', () =
 
     await fixture.settle();
 
-    expect(JSON.parse(fs.readFileSync(path.join(fixture.ticketDir, '.harness/review-verdict.json'), 'utf8')))
+    expect(JSON.parse(fs.readFileSync(path.join(fixture.ticketDir, '.harness/run-1/review-verdict-iter-1.json'), 'utf8')))
       .toStrictEqual({ verdict: 'approve', findings: [], summary: 'a review' });
   });
 
@@ -80,7 +80,7 @@ describe('Q-0052 AC-6 — the declarative write loop, with {run} in scope', () =
 
     await fixture.settle();
 
-    expect(JSON.parse(fs.readFileSync(path.join(fixture.ticketDir, '.harness/gate-check-verdict.json'), 'utf8')))
+    expect(JSON.parse(fs.readFileSync(path.join(fixture.ticketDir, '.harness/run-1/gate-check-verdict-iter-1.json'), 'utf8')))
       .toStrictEqual({ verdict: 'ready', findings: [], summary: 's' });
   });
 

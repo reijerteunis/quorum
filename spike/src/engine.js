@@ -328,7 +328,13 @@ async function runAgentStep(step, ctx, extra = {}) {
     ui.info(`${step.id}: wrote ${path.relative(ticket.dir, abs)}`);
   }
   if (step.output?.verdict) {
-    const vPath = interpolate(step.output.verdict_file ?? `.harness/${step.id}-verdict.json`, ctx.vars);
+    // Run- and iteration-scoped by DEFAULT, because this is the one artifact whose path a flow
+    // author usually does not write: every other output names itself in the flow file, so an author
+    // who forgets to scope one sees it in review. A verdict file has no such line to forget, and
+    // until Q-0089 every traversal and every run overwrote the last one's findings. `{iter}` is
+    // unconditional here rather than loop-aware, because the engine cannot see whether a backward
+    // edge reaches this step and a spurious iteration number costs nothing. See Q-0089.
+    const vPath = interpolate(step.output.verdict_file ?? `.harness/run-{run}/${step.id}-verdict-iter-{iter}.json`, ctx.vars);
     backlog.writeFile(ticket, vPath, JSON.stringify({ verdict: res.output.verdict, findings: res.output.findings ?? [], summary: res.output.summary }, null, 2));
   }
   if (branch) {

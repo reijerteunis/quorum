@@ -20,7 +20,7 @@ steps:
     role: head-of-product
     adapter: claude
     model: opus
-    input: { backlog: [ticket.md, "requirements/run-{run}/candidate-*.md", requirements/merged.md, .harness/head-of-product-verdict.json] }
+    input: { backlog: [ticket.md, "requirements/run-{run}/candidate-*.md", requirements/merged.md, ".harness/run-{run}/head-of-product-verdict-iter-*.json"] }
     output: { writes: ["requirements/run-{run}/merged-iter-{iter}.md", requirements/merged.md], verdict: ready|needs-input }
     instructions: >
       Judge both candidate requirement documents for completeness, testability and

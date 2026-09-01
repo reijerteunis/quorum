@@ -90,12 +90,31 @@ describe('AC-10 — the constants are the one spelling, byte-identical to the sp
     // One is worktrees under the repository root; the other is engine-written artifacts inside a
     // ticket folder. Same prefix, nothing else in common.
     expect(spikeSource('src/engine.js')).toContain('`.harness/${step.id}-${Date.now()}.raw.txt`');
-    expect(spikeSource('src/engine.js')).toContain('`.harness/${step.id}-verdict.json`');
+    expect(spikeSource('src/engine.js')).toContain('`.harness/run-{run}/${step.id}-verdict-iter-{iter}.json`');
 
     expect(TICKET_ARTIFACT_DIR).toBe('.harness');
     expect(REPO_WORKTREE_ROOT.startsWith(`${TICKET_ARTIFACT_DIR}/`)).toBe(true);
     // The names, not the values, are what disambiguates them.
     expect('REPO_WORKTREE_ROOT'.startsWith('REPO_')).toBe(true);
     expect('TICKET_ARTIFACT_DIR'.startsWith('TICKET_')).toBe(true);
+  });
+
+  // The verdict file is the one engine-written artifact a flow author does not name, so the naming
+  // rule of 02-sdlc-pipeline-spec.md §5.8 cannot be enforced on it by reading a flow file — there is
+  // no path there to read. It is enforced on the DEFAULT instead, because a rule that holds only
+  // where somebody remembered to write `verdict_file:` is not a rule. This is the SPIKE half; the
+  // ported twin is asserted in `packages/core/src/engine/q0050.source.test.ts`, because
+  // `packages/shared` must not read `packages/core` even in a test — that is the dependency
+  // direction 04-architecture.md forbids, and Q-0072's input guard is what noticed. See Q-0089.
+  test('the spike\'s default verdict path is scoped by run and by iteration', () => {
+    const template = /verdict_file \?\? `([^`]+)`/.exec(spikeSource('src/engine.js'))?.[1];
+    expect(template, 'the spike must still have a default verdict path').toBeDefined();
+    // The two properties, not the string: a spelling change that keeps the scoping still passes,
+    // and one that drops it cannot.
+    expect(template, 'scoped to one run').toContain('run-{run}');
+    expect(template, 'scoped to one traversal').toContain('{iter}');
+    // The step id stays in it: two steps of one flow both declaring a verdict must not collide,
+    // which run and iteration alone do not prevent.
+    expect(template, 'still names the step').toMatch(/\$\{step\.id\}/);
   });
 });
