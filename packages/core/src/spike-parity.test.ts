@@ -1105,12 +1105,21 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // stated rather than smoothed: an entangled file makes Q-0010's inheritance larger, and this
     // one is entangled because two of its five gate sites are reachable only through the binary —
     // `ui.gate`'s interactive branch lives in `bin/`, so no library test can reach them at all.
+    //
+    // Re-measured again in that ticket's review round 2, which closed the frozen-contract half of
+    // AC-10 and AC-11, and it moved two entangled files. `q0040-undecided.js` gained the run-level
+    // enum assertion and an end-to-end `harness validate` scenario driving both directions of the
+    // boundary, 345 → 380; `q0033-surface.js` gained 24 net, because S11.5 byte-froze
+    // `contracts/Q-0006` and had to be narrowed to admit the one clause an erratum supersedes
+    // rather than re-baselined or deleted. Both land in the same bucket: 2647 → 2706 and
+    // 5336 → 5395, the share 54% either side — stated rather than skipped, because "it did not
+    // move" is a measurement and assuming it did not is how a stale pin survives.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2647);
+    expect(linesOf(named('both'))).toBe(2706);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(5336);
+    expect(total).toBe(5395);
     // 54% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(54);
   });

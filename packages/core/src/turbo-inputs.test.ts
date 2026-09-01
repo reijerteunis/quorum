@@ -600,6 +600,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/shared/src/project.test.ts': {
     'parseYaml → path.join(repoRoot, \'harness/harness.yaml\')': 'the path is a literal inside the argument, which clause B collects and the manifest names',
   },
+  'packages/core/src/contracts/contracts.test.ts': {
+    'repoFile → file': 'frontmatterOf\'s parameter; both call sites in this file pass a literal ticket path, and clause B collects each',
+  },
   'packages/core/src/contracts/validate-artifact.test.ts': {
     'repoFile → relative': 'committedSchema\'s parameter; both call sites in this file pass a literal',
   },
@@ -1689,6 +1692,16 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * `packages/core/src/adapters/adapters.ts`, which `project.test.ts` reads so that `withRetry`'s
  * destructured defaults are the oracle for the commented example in both shipped `harness.yaml`
  * files rather than three numbers retyped into a test. Seventy-one over forty.
+ *
+ * One more arrived with Q-0040, and it names no new literal: `contracts.test.ts` now reads
+ * `backlog/Q-0011-run-history-on-disk/ticket.md`, which the register already held from
+ * `reader.test.ts`, because that ticket's committed history carries the `interrupted` the frozen
+ * Q-0006 schema omitted. **Seventy-three over forty** — an occurrence, not a literal.
+ *
+ * The jump from "seventy-one" to seventy-three is two because the prose above was one behind the
+ * register before this change: the assertion below read 72 while the last paragraph said 71. The
+ * count is re-derived from the array here rather than continued from the sentence, which is the
+ * same reason this file pins identities and not totals.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
@@ -1704,6 +1717,7 @@ const COLLECTED_BASELINE = [
   'packages/core/src/contracts/contracts.source.test.ts: packages/core/package.json',
   'packages/core/src/contracts/contracts.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/contracts/contracts.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
+  'packages/core/src/contracts/contracts.test.ts: backlog/Q-0011-run-history-on-disk/ticket.md',
   'packages/core/src/contracts/contracts.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
   'packages/core/src/contracts/run-manifest.test.ts: backlog/Q-0045-core-contracts-and-manifest-semantics/ticket.md',
   'packages/core/src/contracts/run-manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
@@ -1870,7 +1884,7 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(72);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(73);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
       'distinct literals in the baseline').toBe(40);
     // And the nine the classifier calls directories, which is the class the defect lived in: a

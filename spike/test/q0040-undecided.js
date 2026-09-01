@@ -334,12 +334,47 @@ await scenario('AC-10', 'undecided is a run status, and never a gate answer', ()
 
 await scenario('AC-10', 'the spike\'s terminal vocabulary carries the word, and the occurrence enum does not', () => {
   assert.ok(TERMINAL_STATUSES.includes('undecided'), 'a run may end undecided');
-  // The schema is what keeps it off an occurrence, and it is a frozen contract this ticket may not
-  // edit — see the implement report's GO-2. Asserted here as the state of the tree rather than as
-  // an endorsement, so the day the erratum lands this line is what has to move with it.
+  // The boundary is the whole criterion: `undecided` is what a *run* concluded about itself, and a
+  // step is never undecided because a gate allocates no occurrence. Both halves are asserted over
+  // the frozen schema, because one of them alone is satisfied by a schema that admits the word
+  // everywhere or nowhere.
   const schema = JSON.parse(fs.readFileSync(path.join(spike, '..', 'contracts', 'Q-0011', 'run-manifest.schema.json'), 'utf8'));
+  assert.ok(schema.properties.status.enum.includes('undecided'),
+    'the run-level enum admits it, or harness validate refuses a manifest the engine just wrote');
   assert.equal(schema.$defs.step.properties.status.enum.includes('undecided'), false,
     'an occurrence is never undecided: a gate allocates none');
+});
+
+await scenario('AC-10', 'harness validate agrees with the engine about where the word may appear', () => {
+  // The assertions above read the enums; this one runs the pass a maintainer runs. They are not the
+  // same check: the schema is reachable from `validateArtifact` through a `$defs` indirection and a
+  // semantic pass, and a criterion that only read the file would pass over a validator that never
+  // consulted it. Both directions, because admitting it everywhere satisfies the positive half.
+  const f = cliFixture();
+  const manifest = (status, stepStatus) => ({
+    schema_version: 1, run_id: 'T-0001-1', ticket_id: 'T-0001', ticket_path: 'backlog/T-0001-x/ticket.md',
+    flow: 'requirements', flow_file: 'harness/flows/requirements.yaml',
+    stage: { before: 'draft', after: 'draft' },
+    started_at: '2026-09-01T10:00:00.000Z', ended_at: '2026-09-01T10:00:01.000Z', duration_ms: 1000,
+    status,
+    steps: stepStatus === undefined ? [] : [{
+      step_id: 'head-of-product', occurrence_dir: 'steps/001-head-of-product', kind: 'adapter',
+      role: 'head-of-product', adapter: 'mock', model: null, branch: null, worktree: null,
+      started_at: '2026-09-01T10:00:00.000Z', duration_ms: 500, attempts: 1,
+      status: stepStatus, verdict: null, error: null, usage: null,
+    }],
+    rollup: [],
+  });
+  const check = (name, value) => {
+    const file = path.join(f.root, name);
+    fs.writeFileSync(file, JSON.stringify(value));
+    return f.pipe(['validate', path.join(spike, '..', 'contracts', 'Q-0011', 'run-manifest.schema.json'), file]);
+  };
+  assert.equal(check('run-undecided.json', manifest('undecided')).status, 0,
+    'a run that ended undecided validates');
+  const refused = check('step-undecided.json', manifest('undecided', 'undecided'));
+  assert.equal(refused.status, 1, 'an occurrence carrying it is refused');
+  assert.match(clean(refused), /\/steps\/0\/status/);
 });
 
 process.exit(failed ? 1 : 0);

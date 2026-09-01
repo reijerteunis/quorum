@@ -3,7 +3,13 @@ import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig,
 import type { Backlog, Frontmatter, TicketRecord } from '../../packages/core/src/backlog/backlog.js';
 import type { Project } from '../../packages/core/src/backlog/project.js';
 import type { Occurrence } from '../../packages/core/src/run-history/manifest.js';
-export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
+/**
+ * Both closed status unions in this file gain `undecided` — superseded for Q-0040 by *"A run nobody
+ * answered is undecided, and keeps the branch it proved"* (2026-09-01) and that ticket's
+ * `requirements/errata.md`. `finaliseActiveOccurrences` below is deliberately not widened: an
+ * occurrence is never undecided, because a gate allocates none.
+ */
+export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted' | 'undecided';
 export type StepResult = { goto: string; counter: string; limit: number } | { abort: true } | null;
 export type AnswerGate = (question: GateQuestionEvent) => Promise<GateAnswerEnvelope>;
 export interface RunFlowOptions { ticket: TicketRecord; flow: Flow; project: Project; backlog: Backlog; dry?: boolean; auto?: boolean; answerGate?: AnswerGate; signal?: AbortSignal; base?: string }
@@ -15,7 +21,7 @@ export interface RunPersistence { writeTicket(ticket: TicketRecord): void; appen
 export interface RunStats { cost: number; tokens: number; unpriced: number }
 export interface RunContext { ticket: TicketRecord; flow: Flow; repoDir: string; harnessDir: string; config: ProjectConfig; backlog: Backlog; runId: number; counters: Record<string, number>; vars: Record<string, unknown>; stats: RunStats; dry: boolean; auto: boolean; emit: EmitEvent; answerGate?: AnswerGate; signal?: AbortSignal; persistence: RunPersistence }
 export interface RegressionFields { targetFlow: string; stageBefore: string; stageAfter: string; counter: string; count: number; limit: number; remaining: number }
-export interface NonRegressionRunOutcome { status: 'completed' | 'aborted' | 'failed' | 'interrupted'; stage: string; cost: number; runId: number }
+export interface NonRegressionRunOutcome { status: 'completed' | 'aborted' | 'failed' | 'interrupted' | 'undecided'; stage: string; cost: number; runId: number }
 export interface RegressionRunOutcome extends RegressionFields { status: 'regressed'; stage: string; cost: number; runId: number }
 export type RunOutcome = NonRegressionRunOutcome | RegressionRunOutcome;
 export interface RoutingContext extends RunContext { nextGateId(): string; loadNamedFlow(name: string, harnessDir: string): Flow; finishRun(stage: string, status: RunStatus, note: string | null, fields?: RegressionFields): Promise<RunOutcome> }
