@@ -68,24 +68,34 @@ the binary that M2's done-when names — 151 assertions — and it is `split` ra
 because it also imports from `../src/` fifteen times through `await import()`. Its library half is
 already carried; its binary half is this ticket's.
 
-## 3. The proposed cut — **Ruud's ruling, not settled here**
+## 3. The cut — six children, agreed 2026-09-01 and created
 
-Six children rather than Q-0009's fourteen, because the logic is already ported. **No child folder
-is created until the seam is agreed**, since creating them commits it and obliges six plan entries.
+| child | subject | commands | inherits |
+| --- | --- | --- | --- |
+| **Q-0090** | package skeleton: `bin`, argv, exit codes, `die`, colour, `npx quorum` from a clean clone | — | — |
+| **Q-0091** | read-only commands | `board` 47, `lint` 6, `validate` 36, `adapters` 20 | 698 lines |
+| **Q-0092** | `runs` and the run-history presentation layer | `runs` 72 | 505 lines |
+| **Q-0093** | writing commands | `init` 23, `ticket` 13 | 217 lines |
+| **Q-0094** | `run`, the gate reader and its flags | `run` 35 | 353 lines |
+| **Q-0095** | the mock end-to-end against the binary — M2's done-when | all | 781 lines |
 
-| child | subject | test files it inherits |
-| --- | --- | --- |
-| a | package skeleton: `bin`, argv, exit codes, `die`, colour, `npx quorum` from a clean clone | — |
-| b | read-only commands: `board`, `lint`, `validate`, `adapters` | `q0033-surface.js`, `q0036-board-containment.js` |
-| c | `runs` — the whole run-history presentation layer | `q0011-runs-cli.js`, `q0011-run-history.js` |
-| d | writing commands: `init`, `ticket` | `q0080-allocation.js` |
-| e | `run` — gate reader, `--gate-answer`, `--dry`, `--base`, `--adapter` | `q0077-base-flag.js`, `q0034-review-fixes.js` |
-| f | `smoke.js` re-aimed at the new binary — M2's done-when | `smoke.js` |
+Command sizes are the `case` blocks in `spike/bin/harness.js`, measured today: **252 lines of the
+569 are the eight commands**, and the rest is helpers and scaffolding — which is the same finding as
+§1 from another angle. The inherited figures are `wc -l` over each child's `spike/test/` files.
 
-**a is a hard prerequisite for all of b–f**; b, c, d and e are independent of each other; f is last
-because it exercises all of them. The seam's weakness, stated rather than hidden: the eight test
-files do **not** partition cleanly by command — `smoke.js` touches every one, which is why it is its
-own child rather than being split across five.
+**Q-0090 is a hard prerequisite for all five others**; Q-0091 to Q-0094 are independent of each
+other and can run in any order or in parallel; Q-0095 is last because it exercises every command.
+**Q-0039 (one run at a time per ticket) becomes a blocker if they are ever run concurrently** — it
+is open, and two runs on one ticket already share a worktree and compute the same run id.
+
+**The seam's weakness, stated rather than hidden:** the eight binary-half test files do **not**
+partition cleanly by command. `smoke.js` touches every one, which is why it is its own child instead
+of being split five ways, and it is the reason this cut is six rather than eight.
+
+**Each child body repeats Q-0010's ground rules verbatim**, because `input.backlog` resolves against
+the running ticket's own folder and nothing injects a parent's body into a child's run. That is the
+same constraint that put Q-0009's ground rules in `harness/port-charter.md`; no second charter is
+added here, because five rules fit in a child body and a charter would have to be retired later.
 
 **Child c inherits a decision already made.** Q-0037's OQ-2 was ruled on 2026-09-01: an occurrence's
 usage is not a roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no

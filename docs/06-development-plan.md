@@ -480,11 +480,50 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   this from Q-0009's $657 is sizing the wrong thing, and anyone calling it trivial is forgetting the
   suite: **2,515 lines across eight `spike/test/` files carry a binary half and transfer here**, half
   the spike suite by line, `smoke.js`'s 773 among them.
-  **Six children are proposed, not settled** — skeleton, read-only commands, `runs`, writing
-  commands, `run`, and `smoke.js` — with the skeleton a hard prerequisite and the rest independent
-  until the last. The seam's weakness is stated in the body rather than hidden: the eight test files
-  do not partition cleanly by command, which is why `smoke.js` is its own child. No child folder
-  exists until the seam is agreed, because creating them commits it.
+  **The cut was agreed on 2026-09-01 and the six children exist**, Q-0090 to Q-0095. Measured, the
+  eight `case` blocks are **252 lines of the 569** — the same finding as above from another angle,
+  since the rest is helpers and scaffolding. Q-0090 is a hard prerequisite for all five others;
+  Q-0091 to Q-0094 are independent and can run in any order; Q-0095 is last because it exercises
+  every command. **Q-0039 becomes a blocker the moment two of them run concurrently**, since two
+  runs on one ticket already share a worktree and compute the same run id.
+  The seam's weakness is stated rather than hidden: the eight binary-half files do **not** partition
+  cleanly by command, which is why `smoke.js` is its own child and the cut is six rather than eight.
+  **Each child body repeats Q-0010's ground rules verbatim**, because `input.backlog` resolves
+  against the running ticket's own folder and nothing injects a parent's body into a child's run —
+  the same constraint that put Q-0009's rules in `harness/port-charter.md`. No second charter is
+  added: five rules fit in a body, and a charter would have to be retired later.
+  - Q-0090 CLI package skeleton, `bin` entry and `npx quorum`. The prerequisite, and the only one:
+    argv, the colour helper, `die`, and **exit codes as a single owned table** rather than scattered
+    `process.exit` calls — 0, 1, 2, 130 on signal, and **3 for `undecided`**, which Q-0040 added the
+    same day. No command is implemented; the deliverable is the frame and a binary that runs from a
+    clean clone, which is also M6's cold-clone path.
+  - Q-0091 CLI read-only commands: `board`, `lint`, `validate`, `adapters`. 109 lines of `case`
+    against **698 lines** of inherited coverage, which is the point — these four are thin over
+    `core`, so what transfers is the assertion that the surface behaves. Carries three measured
+    traps: the board's containment vocabulary is fixed by the glossary; `validate`'s skip notice must
+    keep the words a frozen contract requires and a `core` test transcribes; and the API-key refusal
+    still says "Harness", which is Q-0068's and not this child's.
+  - Q-0092 CLI `runs` and the run-history presentation layer. The largest command at 72 lines, over
+    six readers already in `core`. **Inherits Q-0037's OQ-2 ruling**: an occurrence's usage is not a
+    roll-up row and is not rendered as one, and `q0034-review-fixes.js` B2 is the guard that catches
+    a regression, because it reads the per-step line — `printRunDetailHuman` never renders the
+    roll-up.
+  - Q-0093 CLI writing commands: `init` and `ticket`. Small and load-bearing out of proportion,
+    being the first things a stranger runs. `init` must read the shipped templates rather than
+    duplicate them, or every adopter inherits the flat-path defect Q-0086 to Q-0088 closed; `ticket
+    new` carries Q-0080's allocation table exactly, refusals included. One defect it must preserve
+    and report: `create()` defaults `owner` to `process.env.USER`.
+  - Q-0094 CLI `run`, the gate reader and its flags. The command the product exists for. Owns the
+    readline handle, the TTY test, and the five throw sites **Q-0040 classified on 2026-09-01** —
+    three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
+    `AsyncIterable<Event>` and `core` installs no signal handler, so the 130-on-signal exit is this
+    package's to own.
+  - Q-0095 The mock end-to-end suite runs against the CLI binary. **M2's done-when**, 781 lines and
+    151 assertions, and the child that unblocks the cutover. It is `split` and not binary-only —
+    Q-0054's audit found fifteen `await import()` calls a static scan cannot see — so only its binary
+    half transfers. Two of its assertions were re-aimed on 2026-09-01 and **one had been passing for
+    the wrong reason**, so the translated forms must be shown red against a deliberately broken
+    binary rather than observed green.
   **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
   `unpriced_steps` on a single step, summing left to the roll-up. (2) Q-0054's routing: the eight
