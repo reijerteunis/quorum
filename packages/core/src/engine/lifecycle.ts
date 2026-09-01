@@ -1,6 +1,7 @@
 /**
  * Terminal persistence, ticket history, and what a run leaves behind: the branch rollback and the
- * worktree cleanup, which are the two halves of {@link finished} and never disagree.
+ * worktree cleanup, which are two independent questions ({@link restoresBranch},
+ * {@link returnsWorktrees}) that no status answers both ways.
  */
 import type { Event, TicketHistoryEntry } from '@quorum/shared';
 
@@ -9,15 +10,35 @@ import { FlowError, type LifecycleContext, type RegressionFields, type RunOutcom
 const round = (value: number): number => Math.round(value * 1000) / 1000;
 
 /**
- * Whether the run did what it set out to do.
+ * Whether the run did what it set out to do, and may therefore move the ticket's stage.
  *
- * The one predicate the stage rule, the branch rollback and the worktree cleanup all read. A run
- * that finished advances its stage, keeps its branch where the run left it, and gives back the
- * worktrees it obtained; a run that did not finish does none of the three, because the directory it
- * stopped in is the thing somebody is about to open. One condition and three consequences, so the
- * inspection story and the cleanup story cannot drift apart.
+ * One of three questions that used to be one predicate, `finished`. The worktree return and the
+ * branch rollback were its two arms and were mutually exclusive by construction, so "keep the
+ * worktrees *and* leave the branch alone" could not be said however the predicate was widened —
+ * and that combination is exactly what a gate nobody answered wants. The property the single
+ * predicate bought survives as an invariant a test asserts rather than as an `if`/`else`: no status
+ * both returns its worktrees and restores its branch. See Q-0040.
  */
-const finished = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+const advancesStage = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+
+/**
+ * Whether the run gives back the worktrees it obtained.
+ *
+ * A run that stopped keeps every one of them, because the directory it stopped in is the thing
+ * somebody is about to open. See Q-0062.
+ */
+const returnsWorktrees = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+
+/**
+ * Whether the run puts the ticket branch back where it found it.
+ *
+ * `integrate` merges before anyone knows the outcome, so a run that failed, aborted or was
+ * interrupted must not leave those merges behind (Q-0033). `undecided` is the one non-advancing
+ * status that does not restore: nothing was proved wrong, so the work the run had already proven
+ * green is the work it keeps.
+ */
+const restoresBranch = (status: RunStatus): boolean =>
+  status === 'aborted' || status === 'failed' || status === 'interrupted';
 
 /** The first four of `paths`, marked when there are more — the shape a discarded-edit warning uses. */
 const sample = (paths: readonly string[]): string =>
@@ -98,7 +119,7 @@ export async function finish(
   ticket.meta.iterations = context.counters;
   // `stage` is a plain string on the contracted signature, which is the spike's own shape:
   // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.
-  if (finished(status)) ticket.meta.stage = stage as typeof ticket.meta.stage;
+  if (advancesStage(status)) ticket.meta.stage = stage as typeof ticket.meta.stage;
   const after = ticket.meta.stage;
   persistence.finaliseManifest(status, after);
   // Here, not after `finish` returns — spike/src/engine.js:625-632. Everything below emits or
@@ -109,9 +130,10 @@ export async function finish(
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(context, before, after, status, roundedCost)];
 
   if (!context.dry) {
-    if (finished(status)) {
+    if (returnsWorktrees(status)) {
       returnObtainedWorktrees(context);
-    } else if (context.branchHeadAtStart) {
+    }
+    if (restoresBranch(status) && context.branchHeadAtStart) {
       // Why: preserved defect, see Q-0050 AC-12.
       const current = context.readBranchHead(context.repoDir, ticket.meta.branch);
       if (current && current !== context.branchHeadAtStart) {

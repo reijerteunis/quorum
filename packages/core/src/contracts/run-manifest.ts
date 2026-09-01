@@ -21,7 +21,7 @@ import type { UsageMeasure } from '@quorum/shared';
  * Both readers are in this file, which is why it is neither exported nor in `@quorum/shared`: a
  * constant with one consumer does not belong in the package everything imports (Q-0045 OQ-7).
  */
-const TERMINAL_STATUSES: readonly string[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
+const TERMINAL_STATUSES: readonly string[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted', 'undecided'];
 
 /**
  * The seven roll-up fields compared against the persisted row, in the order the comparison walks

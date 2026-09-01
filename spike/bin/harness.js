@@ -3,7 +3,7 @@
 //   harness init [dir]                      copy templates into <dir>/harness and create backlog/
 //   harness ticket new "<title>" [--intent "..."] [--owner name] [--id Q-0081]
 //   harness board                           kanban of tickets by stage
-//   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--gate-answer advance|retry|abort]
+//   harness run <flow> <ticket> [--auto] [--dry] [--adapter mock] [--gate-answer advance|retry|abort]   exits 2 aborted, 3 gate unanswered
 //   harness lint                            lint the whole flow directory (structure + cross-flow edges)
 //   harness adapters [--probe] [--json]     CLIs installed + no API keys; --probe also proves login
 //   harness validate <schema.json> <file…>  check artifacts against a contract; exit 1 on failure
@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Backlog, STAGES, parseTicketId } from '../src/backlog.js';
-import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
+import { loadFlow, loadFlowByName, runFlow, FlowError, GateUnansweredError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
 import { validateArtifact, readData } from '../src/contracts.js';
 import { IntegrationError } from '../src/fanout.js';
@@ -91,9 +91,10 @@ const ui = {
     // Explicit answers are exhausted. A non-interactive run has nowhere left to get a decision
     // from, so it stops here rather than reading whatever happens to be sitting on stdin (which
     // used to resolve as an accidental answer, or as '' → advance) or hanging forever. See
-    // Q-0011 / Q-0033.
+    // Q-0011 / Q-0033. Typed rather than plain since Q-0040: nobody was there, which the engine
+    // classifies `undecided` — the wording below is unchanged and is still what the operator reads.
     if (!process.stdin.isTTY) {
-      throw new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} (repeatable, consumed in order), or run interactively`);
+      throw new GateUnansweredError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — pass --gate-answer ${retry ? 'advance|retry|abort' : 'advance|abort'} (repeatable, consumed in order), or run interactively`, { kind, reason, condition: 'answers-exhausted' });
     }
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     // On a TTY, readline swallows Ctrl-C and emits 'SIGINT' on itself; without this the engine's
@@ -107,7 +108,7 @@ const ui = {
       let answered = false;
       rl.question(`  ${opts} > `, (a) => { answered = true; resolve(a); });
       rl.on('close', () => {
-        if (!answered) reject(new FlowError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — run it interactively, or answer it on stdin`));
+        if (!answered) reject(new GateUnansweredError(`gate (${kind}) "${reason}" needs an answer and stdin closed without one — run it interactively, or answer it on stdin`, { kind, reason, condition: 'stdin-closed' }));
       });
     });
     rl.close();
@@ -550,7 +551,10 @@ async function main() {
       const ticket = proj.backlog.read(ticketId);
       try {
         const r = await runFlow({ flow, ticket, ...proj, ui, auto: Boolean(flags.auto), dry: Boolean(flags.dry), base: flags.base ?? null });
-        process.exit(r.status === 'aborted' ? 2 : 0);
+        // A run nobody answered is neither: 0 would tell a caller the gate was decided, and 1 is
+        // what a genuine error returns, so a script wrapping this command could not tell them
+        // apart. 0, 1, 2 and 130 were taken; 3 was free. See Q-0040.
+        process.exit(r.status === 'aborted' ? 2 : r.status === 'undecided' ? 3 : 0);
       } catch (e) { if (e instanceof FlowError || e instanceof IntegrationError) die(e.message); throw e; }
     }
     default:

@@ -546,15 +546,17 @@ describe('AC-9 — a run that started is a run that ended', () => {
     expect(nextRunId(withLog.ticket), 'the log is ahead of the history').toBe(8);
   });
 
-  test('finalise writes whichever of the six terminal statuses it is given, and only those six', () => {
-    // The parameter is the six, not the seven: `running` beside a non-null `ended_at` is the one
+  test('finalise writes whichever of the seven terminal statuses it is given, and only those seven', () => {
+    // The parameter is the seven, not the eight: `running` beside a non-null `ended_at` is the one
     // manifest this subsystem exists to make impossible, so the compiler refuses it here rather than
-    // the semantic pass reporting it once the run is over.
+    // the semantic pass reporting it once the run is over. `undecided` joined the set in Q-0040 and
+    // is round-tripped here like any other: what makes it unusual is what `finish` does around the
+    // write, not what the writer does with it.
     // @ts-expect-error `running` is not a terminal status, and finalise is where a run ends
     const notTerminal = (history: RunHistory): void => { history.finalise('running', null); };
     expect(typeof notTerminal).toBe('function');
 
-    const statuses: Exclude<RunStatus, 'running'>[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
+    const statuses: Exclude<RunStatus, 'running'>[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted', 'undecided'];
     statuses.forEach((status, index) => {
       const { start } = project('requirements', index + 1);
       const history = initialiseRunHistory(start, collector());

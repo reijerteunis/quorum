@@ -32,9 +32,10 @@ export const ticketHistoryEntrySchema = z.looseObject({
   run: z.number(),
   /** The flow's `name`, not a stage. Hand-written entries name one-off flows too. */
   flow: z.string(),
-  /** completed | regressed | aborted | failed | interrupted | exhausted. Typed open: the run
-   * status vocabulary belongs to whichever package needs it twice (spike/bin/harness.js:131), and
-   * Q-0049 and Q-0050 own that decision. */
+  /** completed | regressed | aborted | failed | interrupted | undecided | exhausted. Typed open: the
+   * run status vocabulary belongs to whichever package needs it twice (spike/bin/harness.js:131),
+   * and Q-0049 and Q-0050 own that decision. `undecided` is Q-0040's: a run that reached a gate no
+   * answer was available for, which moves no stage. */
   status: z.string().optional(),
   stage_before: stageSchema.optional(),
   stage_after: stageSchema.optional(),

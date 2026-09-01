@@ -12,7 +12,8 @@ paraphrase them.
   `runs.log`. Q-0050 owns the rule that every successfully started run reaches one terminal state.
 - Initialise history inside the run `try`. Preflight remains inside that same `try` when Q-0051
   lands. If history initialisation fails, write the terminal `runs.log` line without advancing.
-- Persist counters and one terminal line for completed, regressed, aborted, failed, and interrupted.
+- Persist counters and one terminal line for completed, regressed, aborted, failed, interrupted, and
+  undecided.
   `finish(ctx, stage, status, note, fields)` receives the target stage explicitly: completed callers
   pass `flow.produces`, regressed callers pass the target flow's `consumes`, and other callers pass
   the current stage. Move the stage only for completed and regressed. `note` is the optional failure
@@ -23,6 +24,11 @@ paraphrase them.
   its explicit event cost, including zero for `exhausted`.
 - For non-dry failed, aborted, or interrupted runs, reset the ticket branch when both start and
   current heads are truthy and differ. Do not reset task branches or add a helper to do so.
+  **`undecided` does not reset**, and is the only non-advancing status that does not — superseded by
+  Q-0040's `requirements/errata.md` and by *"A run nobody answered is undecided, and keeps the branch
+  it proved"* (2026-09-01). The clause above stayed literally true when that status was added and
+  was incomplete as a specification, which is the sentence a reviewer would consult to decide the
+  question; it is answered here rather than left to be inferred from a list it is absent from.
 - Cancellation is an `AbortSignal`; core contains no `process.exit`, `process.on`, or `process.once`
   signal path. A throw, cancellation, gate cancellation, and iterator abandonment first finalise
   active occurrences, then persist counters and the terminal record, then release the caller.

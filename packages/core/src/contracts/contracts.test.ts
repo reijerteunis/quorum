@@ -43,13 +43,16 @@ const thrown = (fn: () => unknown): Error => {
  */
 const ticketStateSchema: unknown = JSON.parse(repoFile('contracts/Q-0006/ticket-review-state.schema.json'));
 
-/** Q-0006's committed frontmatter, as `Backlog` reads it: the block between the first two `---`. */
-const q0006Frontmatter = (): Record<string, unknown> => {
-  const text = repoFile('backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md');
-  const match = /^---\n([\s\S]*?)\n---\n?/.exec(text);
-  if (!match) throw new Error('corpus damaged: Q-0006/ticket.md has no frontmatter block');
+/** A committed ticket's frontmatter, as `Backlog` reads it: the block between the first two `---`. */
+const frontmatterOf = (file: string): Record<string, unknown> => {
+  const match = /^---\n([\s\S]*?)\n---\n?/.exec(repoFile(file));
+  if (!match) throw new Error(`corpus damaged: ${file} has no frontmatter block`);
   return YAML.parse(match[1]) as Record<string, unknown>;
 };
+
+/** Q-0006's own, which is the fixture most of this file spoils one field at a time. */
+const q0006Frontmatter = (): Record<string, unknown> =>
+  frontmatterOf('backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md');
 
 /** The same frontmatter with its history replaced, so an error path is `/history/0` whatever Q-0006 accrues. */
 const withHistory = (entry: unknown): Record<string, unknown> => ({ ...q0006Frontmatter(), history: [entry] });
@@ -212,5 +215,30 @@ describe('AC-10 — the real committed artifacts are the fixtures', () => {
     expect(validate(ticketStateSchema, withHistory({ ...TERMINAL_EVENT, at: 'yesterday' }))).toStrictEqual({
       ok: false, errors: ['/history/0/at: must match format "date-time"'],
     });
+  });
+
+  test("Q-0040 — Q-0011's committed frontmatter satisfies it too, `interrupted` and all", () => {
+    // The schema was frozen at Q-0006, before either `interrupted` or `undecided` existed, and the
+    // engine has written `interrupted` since. So this artifact — committed, unedited, and holding
+    // one at `ticket.md:122` — failed the contract that governs it, today and independently of
+    // Q-0040. It is the fixture rather than a synthetic entry precisely because the divergence was
+    // never hypothetical: nothing validated a real ticket against this file, which is how a frozen
+    // schema and the tree it describes drift apart in silence.
+    const q0011 = frontmatterOf('backlog/Q-0011-run-history-on-disk/ticket.md');
+    const statuses = (q0011.history as { status?: string }[]).map((entry) => entry.status);
+    expect(statuses, 'the witness is this ticket carrying one').toContain('interrupted');
+    expect(validate(ticketStateSchema, q0011)).toStrictEqual({ ok: true, errors: [] });
+  });
+
+  test('Q-0040 — both statuses the erratum added are admitted, and the enum is still closed', () => {
+    // Added together because they were missing for one reason — the freeze predates both — so
+    // closing one and leaving the other would ship a known contradiction in a file already open.
+    for (const status of ['interrupted', 'undecided']) {
+      expect(validate(ticketStateSchema, withHistory({ ...TERMINAL_EVENT, status, cost: 1 })), status)
+        .toStrictEqual({ ok: true, errors: [] });
+    }
+    // Widening is not opening: a word nothing writes is still refused, so this is an enumeration
+    // rather than a `type: string` wearing one.
+    expect(validate(ticketStateSchema, withHistory({ ...TERMINAL_EVENT, status: 'paused', cost: 1 })).ok).toBe(false);
   });
 });

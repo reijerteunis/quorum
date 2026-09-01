@@ -203,9 +203,19 @@ describe('AC-8 — classification is delegated, and every category the schema ad
   });
 
   test('and RunStatus admits exactly the statuses the schema does', () => {
+    // The list is a `Record<RunStatus, true>` rather than a `RunStatus[]` because the array form
+    // could not fail in the direction that mattered: a hand-written array is merely *assignable* to
+    // `RunStatus[]`, so widening the type left this green while its own title stopped being true.
+    // A record is exhaustive in both directions — a new member is a missing key and a removed one
+    // is an excess key, each a compile error — so the schema list below is derived from the type
+    // instead of being a second copy of it. Q-0040's `undecided` is what made the old hole visible,
+    // by widening `RunStatus` without turning anything red.
+    const every = {
+      running: true, completed: true, failed: true, aborted: true,
+      regressed: true, exhausted: true, interrupted: true, undecided: true,
+    } satisfies Record<RunStatus, true>;
     const status = (schema().properties as Record<string, { enum?: string[] }>).status;
-    const every: RunStatus[] = ['running', 'completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
-    expect(status.enum).toStrictEqual(every);
+    expect(status.enum).toStrictEqual(Object.keys(every));
     // @ts-expect-error the set is closed: `cancelled` is not a run status (AC-9)
     const outOfSet: RunStatus = 'cancelled';
     expect(outOfSet).toBe('cancelled');

@@ -219,11 +219,16 @@ const runTerminalStatusSchema = z.discriminatedUnion('status', [
   }).strict(),
   z.object({
     ...runTerminalCommonShape,
-    status: z.enum(['completed', 'aborted', 'failed', 'interrupted']),
+    status: z.enum(['completed', 'aborted', 'failed', 'interrupted', 'undecided']),
   }).strict(),
 ]);
 
-/** The last event of a run; regression-only fields are present as one closed group. */
+/**
+ * The last event of a run; regression-only fields are present as one closed group.
+ *
+ * `undecided` is a run status and not a gate answer: {@link gateAnswerSchema} is unchanged, because
+ * a run nobody answered invents no decision — it reports that none was available. See Q-0040.
+ */
 export const runTerminalEventSchema = runTerminalStatusSchema;
 
 /**

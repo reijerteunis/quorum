@@ -243,3 +243,64 @@ describe('Q-0050 AC-13b — run event-stream documentation', () => {
     }
   });
 });
+
+/**
+ * Q-0040 AC-12 — the spec's status list and the shipped vocabulary name the same set.
+ *
+ * §3.3 has carried a hand-written list of statuses since 2026-08-21 and nothing compared it to the
+ * code, which is how a sentence in a document drifts silently from what it describes. The set is
+ * read out of `spike/src/contracts.js` rather than retyped here, so this file adds no third copy to
+ * keep in step; `packages/core/src/contracts/run-manifest.ts` keeps the same seven words and its
+ * own suite pins them.
+ */
+describe('Q-0040 AC-12 — the documented status vocabulary is the shipped one', () => {
+  /**
+   * A document with its line breaks collapsed, for the assertions that are about a sentence.
+   *
+   * These documents are hard-wrapped, so a cited title lands on two lines as often as on one and a
+   * scan for the contiguous string walks past it — the soft-wrap blindness Q-0050's review found
+   * four rounds deep. Reading the flowed text is the fix, not widening the string.
+   */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /** The words §3.3 lists, taken from the sentence that lists them. */
+  const documented = (): string[] => {
+    const spec = repoFile('docs/02-sdlc-pipeline-spec.md');
+    const sentence = /`status` is one of ([^—]+)—/.exec(spec);
+    if (!sentence) throw new Error('docs/02-sdlc-pipeline-spec.md §3.3 no longer states what `status` is one of');
+    return [...sentence[1].matchAll(/`([a-z]+)`/g)].map(([, word]) => word);
+  };
+
+  /** The words the spike ships, read out of its own source rather than imported across the port. */
+  const shipped = (): string[] => {
+    const source = repoFile('spike/src/contracts.js');
+    const declaration = /export const TERMINAL_STATUSES = \[([^\]]+)\]/.exec(source);
+    if (!declaration) throw new Error('spike/src/contracts.js no longer declares TERMINAL_STATUSES');
+    return [...declaration[1].matchAll(/'([a-z]+)'/g)].map(([, word]) => word);
+  };
+
+  test('§3.3 and TERMINAL_STATUSES name the same seven words', () => {
+    // Both lists are read rather than asserted against a literal, so this fails when either side
+    // moves and passes only when they move together.
+    expect([...documented()].sort()).toStrictEqual([...shipped()].sort());
+    expect(shipped()).toContain('undecided');
+    expect(documented()).toHaveLength(7);
+  });
+
+  test('the spec says what undecided does, not only that it exists', () => {
+    // A word list is satisfied by a document stating the opposite, which is the failure 065 records.
+    const spec = flowed('docs/02-sdlc-pipeline-spec.md');
+    expect(spec, 'it moves no stage').toMatch(/`undecided`[\s\S]{0,900}moves no stage/);
+    expect(spec, 'it does not restore the branch').toMatch(/`undecided`[\s\S]{0,900}not\*{0,2} do is restore the ticket branch/);
+    expect(spec, 'it cites the decision').toContain('A run nobody answered is undecided, and keeps the branch it proved');
+  });
+
+  test('the glossary carries the term with its decision, and introduces no synonym for it', () => {
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary).toContain('**Undecided**:');
+    expect(glossary).toContain('A run nobody answered is undecided, and keeps the branch it proved');
+    expect(glossary).toContain('2026-09-01');
+    // The vocabulary rule's own clause: no synonym is introduced for a term that already exists.
+    expect(glossary).toMatch(/Not a synonym for "aborted", "failed" or "paused"/);
+  });
+});

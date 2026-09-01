@@ -42,9 +42,15 @@ type RunTerminalEvent =
       remaining: number;
     })
   | (RunTerminalBase & {
-      status: 'completed' | 'aborted' | 'failed' | 'interrupted';
+      status: 'completed' | 'aborted' | 'failed' | 'interrupted' | 'undecided';
     });
 ```
+
+`undecided` was added to the non-regressed member by Q-0040 — superseded by that ticket's
+`requirements/errata.md` and by *"A run nobody answered is undecided, and keeps the branch it
+proved"* (2026-09-01). The "on failure, the next pull rejects" rule below needs no amendment: it is
+already conditioned on failure, and an undecided run did not fail, so its stream completes and the
+pull after its terminal value is `{ done: true }`.
 
 The regression payload has seven values in the spike: target flow, stage before, stage after,
 counter, count, limit, and remaining. `stageBefore` and `stageAfter` are already required terminal

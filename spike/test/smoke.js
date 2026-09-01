@@ -112,8 +112,12 @@ r = run(['ticket', 'new', 'Second ticket']);
 r = run(['run', 'requirements', 'T-0002', '--adapter', 'mock', '--auto'], { MOCK_ALWAYS_FAIL: '1' });
 assert(r.stdout.includes('loop exhausted'), 'exhausted loop reaches a gate');
 assert(r.stdout.includes('human-locked'), '--auto does not bypass the exhaustion gate');
-assert(r.status !== 0, 'a gate with no answer available fails the run');
+assert(r.status !== 0, 'a gate with no answer available does not exit 0');
+// Exactly 3, not merely non-zero: 1 is what an operator error returns and 2 is a deliberate abort,
+// so a script wrapping `harness run` can tell "nobody was there" from either. See Q-0040.
+assert(r.status === 3, `a gate with no answer available exits 3, not ${r.status}`);
 assert(/stdin closed without one/.test(r.stdout + r.stderr), 'the run says which gate it could not answer, instead of hanging or assuming');
+assert(/nothing was rolled back/.test(r.stdout + r.stderr), 'the run says what it kept, not only what it could not answer');
 assert(!/gate: auto-advanced \(human-locked\)/.test(r.stdout), 'a human-locked gate is never auto-advanced');
 
 assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
@@ -242,7 +246,9 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
 }
 
 // A non-interactive unanswered gate must record a terminal outcome and preserve counters. AC10
-// makes the old pipe-and-SIGINT mechanism unreachable because a pipe is never a TTY.
+// makes the old pipe-and-SIGINT mechanism unreachable because a pipe is never a TTY. Since Q-0040
+// that outcome is `undecided` rather than `failed`: the assertion is re-aimed rather than widened,
+// because "failed or aborted or undecided" would pass over the classification going back.
 {
   const id = run(['ticket', 'new', 'Interrupted at a gate']).stdout.match(/T-\d{4}/)[0];
   const dir = fs.readdirSync(path.join(tmp, 'backlog')).find((d) => d.startsWith(id));
@@ -252,7 +258,9 @@ assert(run(['board']).stdout.includes('T-0001'), 'board lists tickets');
     { cwd: tmp, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 20000 });
   assert(child.status !== 0, 'an unanswered non-TTY gate terminates the run');
   const runs = fs.readFileSync(at('runs.log'), 'utf8');
-  assert(/ (failed|aborted) /.test(runs), 'an unanswered gate records a terminal outcome in runs.log');
+  assert(/ undecided /.test(runs), 'an unanswered gate records a terminal outcome in runs.log');
+  assert(!/ failed /.test(runs), 'an unanswered gate is not recorded as a failure');
+  assert(!/rolled-back/.test(runs), 'an undecided run rolls nothing back');
   const ticket4 = fs.readFileSync(at('ticket.md'), 'utf8');
   assert(ticket4.includes('stage: draft'), 'an unanswered gate does not advance the stage');
   const counter = (text) => text.match(/requirements\.head-of-product: (\d+)/)?.[1] ?? '0';

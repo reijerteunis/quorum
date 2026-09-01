@@ -2,26 +2,65 @@
  * Closed context and capability types for the run loop: the public {@link RunFlowOptions} entry
  * point, the {@link RunContext} every step-level module reads and writes, its two specialised
  * views ({@link RoutingContext}, {@link LifecycleContext}), and the outcome and gate-answer shapes
- * that cross the run/caller boundary. No behaviour is declared here — `channel.ts`, `loaders.ts`,
- * `routing.ts`, `lifecycle.ts` and `engine.ts` each own the function that closes over these types.
+ * that cross the run/caller boundary. No *function* is declared here — `channel.ts`, `loaders.ts`,
+ * `routing.ts`, `lifecycle.ts` and `engine.ts` each own the one that closes over these types.
+ * {@link GateUnansweredError} is the one value, because a classifier that tests `instanceof` needs
+ * a single identity and this is already the file every engine module reads its error identity from.
  */
 import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig } from '@quorum/shared';
 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
+import { FlowError } from '../lint/lint.js';
 import type { Occurrence, OccurrenceKind, RunStatus as OccurrenceStatus } from '../run-history/manifest.js';
 import type { OccurrenceFields } from '../run-history/writer.js';
 import type { DeferredDiff } from './diff.js';
 
 /** Re-exported so every engine file shares one `FlowError` identity with `core/lint`. */
-export { FlowError } from '../lint/lint.js';
+export { FlowError };
+
+/** Which of the three ways a gate had no answer to be had, for the run's report to name. */
+export type GateUnansweredCondition = 'answers-exhausted' | 'stdin-closed' | 'no-answer-channel';
+
+/** The gate a {@link GateUnansweredError} stopped on, and how there was no answer for it. */
+export interface UnansweredGate {
+  /** The gate's kind, as the question carried it: `human`, `human-locked`, `auto`. */
+  readonly kind: string;
+  /** The gate's own `reason`, unchanged — what the operator was being asked. */
+  readonly reason: string;
+  /** Which way there was no answer. Read only by the run's report, never by the classifier. */
+  readonly condition: GateUnansweredCondition;
+}
 
 /**
- * A run's five closed terminal statuses. `exhausted` is not among them — it is a history-only
+ * A gate that stopped the run because no answer was available — nobody was there, rather than
+ * somebody answering wrongly.
+ *
+ * The engine classifies the run `undecided` on this type and on nothing else, so an operator who
+ * supplied a word that is not an answer keeps every consequence a failure has, rollback included.
+ * A subclass rather than a field because the classification must not be a match on message text:
+ * the two spike sites share the first eight words of their message. `gate` tells the run's report
+ * whether the maintainer should supply another answer or run interactively; it decides nothing.
+ * See Q-0040.
+ */
+export class GateUnansweredError extends FlowError {
+  readonly gate: UnansweredGate;
+
+  constructor(message: string, gate: UnansweredGate) {
+    super(message);
+    this.gate = gate;
+  }
+}
+
+/**
+ * A run's six closed terminal statuses. `exhausted` is not among them — it is a history-only
  * status a bounded loop records at its own limit, before the gate it then asks decides whether the
  * run continues; see {@link RunPersistence.recordOccurrenceEvent}.
+ *
+ * `undecided` is a *run* status and never an occurrence status or a gate answer: it says the run
+ * reached a gate no answer was available for, so nothing was decided. See Q-0040.
  */
-export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted';
+export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted' | 'undecided';
 
 /**
  * What a routing decision resolves to, for `engine.ts` alone to act on: an intra- or cross-flow
@@ -270,7 +309,7 @@ export interface RegressionFields {
 
 /** A terminal outcome that does not move the ticket into a different flow's stage. */
 export interface NonRegressionRunOutcome {
-  status: 'completed' | 'aborted' | 'failed' | 'interrupted';
+  status: 'completed' | 'aborted' | 'failed' | 'interrupted' | 'undecided';
   stage: string;
   cost: number;
   runId: number;

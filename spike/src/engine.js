@@ -12,6 +12,30 @@ import { FlowError, lintFlow, flattenSteps } from './lint.js';
 
 export { FlowError, lintFlow, lintFlowDirectory, validateFlowDirectory } from './lint.js';
 
+/**
+ * A gate that stopped the run because no answer was available — nobody was there, rather than
+ * somebody answering wrongly.
+ *
+ * The run is classified `undecided` on this type and on nothing else, so an operator who supplied a
+ * word that is not an answer keeps every consequence a failure has, rollback included. A subclass
+ * rather than a field because the classification must not be a match on message text: the two sites
+ * in bin/harness.js share the first eight words of their message. Declared here rather than in
+ * lint.js — where FlowError lives because the linter throws it — since nothing but a run raises
+ * one; packages/core/src/engine/types.ts holds it for the same reason. See Q-0040.
+ *
+ * @param {string} message the sentence the operator reads, unchanged by this class.
+ * @param {{kind: string, reason: string, condition: 'answers-exhausted'|'stdin-closed'|'no-answer-channel'}} gate
+ *   which gate went unanswered and which of the three ways there was no answer to be had. Read by
+ *   the run's report, so that a maintainer knows whether to supply another answer or to run
+ *   interactively; it decides nothing.
+ */
+export class GateUnansweredError extends FlowError {
+  constructor(message, gate) {
+    super(message);
+    this.gate = gate;
+  }
+}
+
 export function loadFlow(file) {
   const flow = YAML.parse(fs.readFileSync(file, 'utf8'));
   flow.file = file;
@@ -199,6 +223,14 @@ export async function runFlow({ flow, ticket, backlog, harnessDir, repoDir, conf
     i += 1;
   }
   } catch (e) {
+    // Nobody was there to answer is not the work is bad. The run ends `undecided`: no stage moves,
+    // the branch keeps whatever integrate proved, the worktrees stay open for whoever arrives, and
+    // nothing propagates, because nothing failed. A gate allocates no occurrence, so there is none
+    // to close as failed either — asserted by the suite rather than worked around here. See Q-0040.
+    if (e instanceof GateUnansweredError) {
+      reportUndecided(ctx, e);
+      return finish(ctx, ticket.meta.stage, 'undecided', String(e.message ?? e).split('\n')[0].slice(0, 200));
+    }
     // A failed run is part of the ticket's history: record it before it propagates, so runs.log
     // never shows a run that started and then simply stopped existing. See Q-0001.
     for (const occurrence of ctx.activeOccurrences ?? []) {
@@ -657,12 +689,27 @@ async function runScript(step, ctx) {
   return step.on_fail ? handleFail(step, ctx) : { abort: true };
 }
 
-// Whether the run did what it set out to do. The one predicate the stage rule, the branch rollback
-// and the worktree cleanup all read: a run that finished advances its stage, leaves its branch
-// where it left it, and gives back the worktrees it obtained; a run that did not finish does none
-// of the three, because the directory it stopped in is the thing somebody is about to open. One
-// condition and three consequences, so the inspection story and the cleanup story cannot drift.
-const finished = (status) => status === 'completed' || status === 'regressed';
+// What a terminal status decides, as three questions rather than one. They were one predicate,
+// `finished`, and the worktree return and the branch rollback were its two arms — mutually
+// exclusive by construction, so "keep the worktrees AND leave the branch alone" could not be said
+// however the predicate was widened. That combination is exactly what a gate nobody answered
+// wants, which is why the split is the work and the sixth status is the small part. The property
+// the single predicate bought is now an invariant a test asserts: no status both returns its
+// worktrees and restores its branch. See Q-0040, and "A run removes the worktrees it made, and
+// never the refs" (2026-08-31).
+
+// Whether the run did what it set out to do, and may therefore move the ticket's stage.
+const advancesStage = (status) => status === 'completed' || status === 'regressed';
+
+// Whether the run gives back the worktrees it obtained. A run that stopped keeps every one of
+// them, because the directory it stopped in is the thing somebody is about to open.
+const returnsWorktrees = (status) => status === 'completed' || status === 'regressed';
+
+// Whether the run puts the ticket branch back where it found it. `integrate` merges before anyone
+// knows the outcome, so a run that failed, aborted or was interrupted must not leave those merges
+// behind. An undecided run is the one non-advancing status that does not: nothing was proved
+// wrong, so the work the run had already proven green is the work it keeps.
+const restoresBranch = (status) => status === 'aborted' || status === 'failed' || status === 'interrupted';
 
 // The first four of `paths`, marked when there are more — the shape the discarded-edit warning uses.
 const samplePaths = (paths) => `${paths.slice(0, 4).join(', ')}${paths.length > 4 ? ', …' : ''}`;
@@ -720,11 +767,49 @@ function returnObtainedWorktrees(ctx) {
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} removed-worktrees=${removed} kept=${kept}`);
 }
 
+// Why there was no answer, in the words a maintainer acts on: the first two say supply another
+// --gate-answer or run interactively, the third says the caller started a run it could not answer.
+const UNANSWERED_CAUSE = {
+  'answers-exhausted': 'the scripted answers ran out and stdin is not a terminal',
+  'stdin-closed': 'stdin closed while the question was open',
+  'no-answer-channel': 'the run was started with no way to ask',
+};
+
+// What an undecided run is holding, said on the terminal and in runs.log. The diagnostic goes out
+// verbatim, because it is what tells the operator how to answer next time and it used to reach them
+// through the failure path this status no longer takes; the line under it replaces the rollback
+// warning, and is the record a maintainer reads before deciding whether to answer the gate by hand
+// or re-run: which gate went unanswered — by its own reason, which is the question that was asked
+// and the only thing that tells two gates of one flow apart — which of the three ways there was no
+// answer, where the branch stands, and how many worktrees are still there. Emitted before finish()
+// so it precedes the terminal line, as the cleanup count does. See Q-0040.
+//
+// The reason is spelled `(kind) "reason"` here as bin/harness.js:97 spells it, and JSON-encoded in
+// runs.log as an error note is: a reason is flow-authored prose, and runs.log is one line per
+// record.
+//
+// rollback=none states the fact the warning states in prose, because a durable record is read
+// without the terminal beside it and kept-at only implies it — a reader who does not already know
+// that a rollback would have moved the branch cannot tell the two apart. Spelled `rollback` and
+// never `rolled-back`: that token is the opposite record's (engine.js:843), and AC-5's guard
+// asserts no line of an undecided run carries it, so a respelling fails loudly rather than making
+// the two records grep alike.
+function reportUndecided(ctx, error) {
+  const { ticket } = ctx;
+  const head = branchHead(ctx.repoDir, ticket.meta.branch);
+  const kept = ctx.worktrees?.size ?? 0;
+  const cause = UNANSWERED_CAUSE[error.gate.condition] ?? error.gate.condition;
+  const where = head ? `${ticket.meta.branch} stays at ${head.slice(0, 7)}` : `${ticket.meta.branch} does not exist`;
+  ctx.ui.warn(error.message);
+  ctx.ui.warn(`gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${cause}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`);
+  ctx.backlog.log(ticket, `run=${ctx.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} rollback=none branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+}
+
 function finish(ctx, stage, status, note, fields = {}) {
   const { ticket, backlog } = ctx;
   const from = ticket.meta.stage;
   ticket.meta.iterations = ctx.counters;
-  if (finished(status)) {
+  if (advancesStage(status)) {
     ticket.meta.stage = stage;
   }
   if (ctx.history) {
@@ -737,17 +822,20 @@ function finish(ctx, stage, status, note, fields = {}) {
     replaceManifest(ctx);
   }
   ticket.meta.history = [...(ticket.meta.history ?? []), outcome(ctx, from, ticket.meta.stage, status, round(ctx.stats.cost))];
-  // The two halves of one rule, read through finished() above. A run that did not complete leaves
-  // the ticket branch as it found it: integrate merges task branches before anyone knows the
-  // outcome, and an exhausted or aborted run used to leave those merges behind for good — so the
-  // next qa-red measured its red phase against a tree that already contained the implementation,
-  // and reported 21 green and nothing red. Nothing is lost: each task's work stays on its own
-  // branch. See Q-0033. And a run that DID complete gives back the worktrees it obtained, while one
-  // that did not keeps every one of them, because that is when somebody wants to open them. Q-0062.
+  // Two independent questions, asked through the predicates above and no longer through one. A run
+  // that FAILED, aborted or was interrupted leaves the ticket branch as it found it: integrate
+  // merges task branches before anyone knows the outcome, and an exhausted or aborted run used to
+  // leave those merges behind for good — so the next qa-red measured its red phase against a tree
+  // that already contained the implementation, and reported 21 green and nothing red. Nothing is
+  // lost: each task's work stays on its own branch. See Q-0033. An UNDECIDED run is the exception
+  // and the reason these are two questions: nobody answered, so nothing was proved wrong and the
+  // merge stays. See Q-0040. And a run that COMPLETED gives back the worktrees it obtained, while
+  // one that did not keeps every one, because that is when somebody wants to open them. Q-0062.
   if (!ctx.dry) {
-    if (finished(status)) {
+    if (returnsWorktrees(status)) {
       returnObtainedWorktrees(ctx);
-    } else if (ctx.branchHeadAtStart) {
+    }
+    if (restoresBranch(status) && ctx.branchHeadAtStart) {
       const now = branchHead(ctx.repoDir, ticket.meta.branch);
       if (now && now !== ctx.branchHeadAtStart) {
         resetBranchTo(ctx.repoDir, ticket.meta.branch, ctx.branchHeadAtStart);

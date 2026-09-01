@@ -20,7 +20,7 @@
         "properties": {
           "run": { "type": "integer", "minimum": 1 },
           "flow": { "type": "string", "minLength": 1 },
-          "status": { "enum": ["completed", "regressed", "exhausted", "aborted", "failed"] },
+          "status": { "enum": ["completed", "regressed", "exhausted", "aborted", "failed", "interrupted", "undecided"] },
           "stage_before": { "type": "string" },
           "stage_after": { "type": "string" },
           "at": { "type": "string", "format": "date-time" },
