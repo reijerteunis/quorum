@@ -1,15 +1,70 @@
 ---
 id: Q-0090
 title: CLI package skeleton, bin entry and npx quorum
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0090/integration
 priority: p1
 created: 2026-09-01
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-01T19:23:07.465Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-01T19:49:55.505Z
+    cost: 19.068
 ---
+> **RULED AT THE EXHAUSTION GATE, 2026-09-01 — read this before the rest of the body.**
+>
+> This ticket's requirements run returned `needs-input` twice and was right both times. Its
+> surviving blocker is **granted**: the build system is a separate ticket, now **Q-0096 — "The
+> workspace emits JavaScript, and quorum is a runnable binary"**, and Q-0010's cut is seven children
+> rather than six.
+>
+> **What moves to Q-0096:** the emit strategy, `tsconfig` `paths`, package `exports`/`main`/`types`,
+> a `build` task and what `outputs` it declares, the executable the `bin` entry points at, and the
+> meaning of `npx quorum`. All of it needs a decision entry first, because a build task with real
+> outputs replays an **artifact** rather than a verdict, which is a class this repository has never
+> had.
+>
+> **What stays here, and it is smaller than this body's opening sentence claims.** Q-0090 delivers
+> the frame **as importable modules with tests that run in process**, exactly as every other package
+> in this workspace already does: argv parsing, the colour helper, `die`, and the exit-code table
+> below. It declares the package manifest and its `bin` field, and it does **not** have to produce a
+> runnable binary — nothing in this workspace runs outside Vitest today, and making that untrue is
+> Q-0096's subject.
+>
+> **Therefore the acceptance test in this body is withdrawn.** "`npx quorum` works from a clean
+> clone" is not achievable here and is not claimed: every package is `"private": true` and `npx
+> quorum` resolves against the **public registry** today. Q-0096 claims the workspace and packed-tarball
+> paths; registry `npx` is Q-0029's in M6.
+>
+> **Two corrections to the requirement itself, both verified at this gate.** Iteration 1's AC-5(b)
+> named `runTerminalStatusSchema`, which is a module-private `const` at
+> `packages/shared/src/events.ts:210` — the exported symbol is the `runTerminalEventSchema` alias at
+> `:232`, so that check could not have compiled; iteration 2 caught it and retyped the exhaustiveness
+> check off `RunTerminalEvent['status']`, which resolves without `@quorum/core`. And **OQ-4
+> dissolves**: a role's `paths:` list is advisory prompt text and is not mechanically enforced — the
+> only enforced gate is `commitAll`'s revert of `backlog/` — so `pnpm-lock.yaml` moves as the output
+> of an allowed `pnpm install` rather than as an authored edit. That is the same finding Q-0040's
+> E-2 reached independently.
+>
+> **Q-0090 remains the prerequisite for Q-0091 to Q-0094**, which need argv, `die` and the exit
+> table. It is no longer the prerequisite for *running* anything; **Q-0095 depends on Q-0096.**
+
 **The prerequisite for every other child of Q-0010, and the only one that is.** `packages/cli` is a
 stub today: `src/index.ts` is the single line `export const name = '@quorum/cli'`, and
 `package.json` has no `bin`, no dependencies and no runtime entry at all.

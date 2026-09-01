@@ -1,0 +1,12 @@
+2026-09-01T18:47:13.843Z run=1 flow=requirements start stage=draft
+2026-09-01T18:49:31.591Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=137728
+2026-09-01T18:59:18.524Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=6.360112 ms=724663
+2026-09-01T19:08:31.063Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=3.752068 ms=552522
+2026-09-01T19:23:07.456Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=4.8429115 ms=876376
+2026-09-01T19:23:07.469Z run=1 exhausted stage=draft→draft cost=0
+2026-09-01T19:30:43.219Z run=1 gate=human-locked answer=retry
+2026-09-01T19:30:43.220Z run=1 gate=retry counter=requirements.head-of-product set=1 (one further traversal authorised)
+2026-09-01T19:39:22.987Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=4.112572999999999 ms=519762
+2026-09-01T19:49:55.495Z run=1 gate=human answer=advance
+2026-09-01T19:49:55.506Z run=1 completed stage=draft→requirements cost=19.068 tokens=12985869
+2026-09-01T19:52:00.000Z note (out-of-band: the exhaustion-gate ruling in this ticket's body was written by hand at 19:30, between iteration 2 and the retry, and finish() reverted it at 19:49 as expected — the engine snapshots ticket.meta AND ticket.body at run start and backlog.write() renders both back from that snapshot (spike/src/backlog.js:86-88). It was re-applied afterwards onto the run's own frontmatter, so stage=requirements and the history entry are the engine's and only the body is the hand edit. The sequence is deliberate and worth copying: head-of-product reads ticket.md FROM DISK when its prompt is built, so a mid-run body edit does reach the next iteration; it just does not survive the run. That is what made the retry productive rather than a repeat — iteration 2 recorded that it had opened on an unchanged tree and could not rule its own blocker, iteration 3 opened on a changed one and returned ready. Ruud answered retry against a recommendation to advance, and was right: the recommendation assumed the tree would stay unchanged, which was a thing to fix rather than a fact to accept.)

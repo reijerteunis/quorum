@@ -484,7 +484,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   eight `case` blocks are **252 lines of the 569** — the same finding as above from another angle,
   since the rest is helpers and scaffolding. Q-0090 is a hard prerequisite for all five others;
   Q-0091 to Q-0094 are independent and can run in any order; Q-0095 is last because it exercises
-  every command. **Q-0039 becomes a blocker the moment two of them run concurrently**, since two
+  every command, and since 2026-09-01 depends on **Q-0096** as well — the seventh child, opened when
+  Q-0090's requirements run found that the workspace has never emitted JavaScript at all. **Q-0039 becomes a blocker the moment two of them run concurrently**, since two
   runs on one ticket already share a worktree and compute the same run id.
   The seam's weakness is stated rather than hidden: the eight binary-half files do **not** partition
   cleanly by command, which is why `smoke.js` is its own child and the cut is six rather than eight.
@@ -518,6 +519,22 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
     `AsyncIterable<Event>` and `core` installs no signal handler, so the 130-on-signal exit is this
     package's to own.
+  - Q-0096 The workspace emits JavaScript, and `quorum` is a runnable binary. *(Opened 2026-09-01
+    from Q-0090's requirements run, which blocked on it twice and was right both times — **the cut
+    became seven children because a run measured something the cut assumed**.)* This workspace has
+    never emitted JavaScript and nothing in it is arranged to: no `build` task anywhere, no `paths`
+    in `tsconfig.base.json`, no `exports`/`main`/`types` on `@quorum/core` — so it is unresolvable at
+    **typecheck** as well as at runtime — and `@quorum/shared`'s `exports` naming `./src/index.ts`.
+    It works because Vitest transpiles; nothing else runs the code. So a `bin` entry is not
+    scaffolding, which is what Q-0090's body called it: a `bin` pointing at a `.ts` file does not run
+    under Node, and Node's type stripping does not close it either.
+    **It owes a decision entry before code, for Q-0065's reason one layer up.** A `build` task with
+    real `outputs` replays an **artifact**, where all three existing tasks declare `"outputs": []`
+    and replay only a verdict — and a stale `dist/` a downstream task executes is worse than a stale
+    green tick. **`npx quorum` is settled here too**: every package is `"private": true` and `npx
+    quorum` resolves against the public registry today, so the achievable claims are the workspace
+    and packed-tarball paths, and registry `npx` stays Q-0029's in M6.
+    Lands before Q-0095 and may run in parallel with Q-0091 to Q-0094.
   - Q-0095 The mock end-to-end suite runs against the CLI binary. **M2's done-when**, 781 lines and
     151 assertions, and the child that unblocks the cutover. It is `split` and not binary-only —
     Q-0054's audit found fifteen `await import()` calls a static scan cannot see — so only its binary
