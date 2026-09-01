@@ -32,11 +32,22 @@ export function failSoftly(): void {
   process.exitCode = ERROR;
 }
 
-/** An error's stack when it has one, and the value stringified when it does not. */
-const stackOf = (error: unknown): string =>
-  typeof error === 'object' && error !== null && 'stack' in error && typeof error.stack === 'string'
-    ? error.stack
-    : String(error);
+/**
+ * What `e.stack ?? String(e)` yields for a thrown value, as a string.
+ *
+ * The `??` tests whether a `stack` property is *there* and never what type it is, so a thrown
+ * `{ stack: 42 }` is reported as `42` — the spike hands the number to `die`, whose `+` coerces it.
+ * `String()` is that coercion made explicit, because {@link die} takes a string. Reading the
+ * property's *type* instead would report `[object Object]` for that value.
+ * Why: preserved, see Q-0090 AC-3.
+ *
+ * One divergence, deliberate: a thrown `null` or `undefined` is reported as `null` / `undefined`,
+ * where `e.stack` raises a `TypeError` inside the spike's own `catch` handler.
+ */
+const stackOf = (error: unknown): string => {
+  const stack = (error as { stack?: unknown } | null | undefined)?.stack;
+  return String(stack ?? error);
+};
 
 /**
  * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path

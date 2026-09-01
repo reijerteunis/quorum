@@ -105,6 +105,35 @@ describe('AC-3 — the uncaught-rejection path', () => {
     expect(observe(() => dieOnUnexpected('just a string')).stderr).toContain('just a string');
     expect(observe(() => dieOnUnexpected(42)).stderr).toContain('42');
   });
+
+  test('a stack that is present but not a string is still what is reported', () => {
+    // `spike/bin/harness.js:569` is `e.stack ?? String(e)`: the `??` tests whether the property is
+    // there, never what type it is, and `die`'s `+` coerces whatever comes back. Reading the type
+    // instead reports `[object Object]` here, which is the whole difference.
+    const number = observe(() => dieOnUnexpected({ stack: 42 })).stderr;
+    expect(number).toContain('42');
+    expect(number, 'the value was read, not its type').not.toContain('[object Object]');
+  });
+
+  test('and a stack on a thrown function is reported, since typeof answers "function" there', () => {
+    // Its own test rather than a second assertion above: a clause sharing a test with a failing one
+    // is never run, so it would be carried rather than checked (Q-0071).
+    const carrier = Object.assign(() => undefined, { stack: 'a stack on a function' });
+    expect(observe(() => dieOnUnexpected(carrier)).stderr).toContain('a stack on a function');
+  });
+
+  test('and a nullish stack falls back to the value, which is what the ?? is for', () => {
+    expect(observe(() => dieOnUnexpected({ stack: null })).stderr).toContain('[object Object]');
+    expect(observe(() => dieOnUnexpected({ stack: undefined })).stderr).toContain('[object Object]');
+  });
+
+  test('a thrown null is reported as null, the one deliberate divergence', () => {
+    // Why: deliberate divergence, see Q-0090 AC-3. `e.stack` raises a `TypeError` inside the
+    // spike's own `catch` handler for a thrown `null`; the frame reports the value instead of
+    // replacing the crash with a different one.
+    expect(observe(() => dieOnUnexpected(null)).stderr).toContain('null');
+    expect(observe(() => dieOnUnexpected(undefined)).stderr).toContain('undefined');
+  });
 });
 
 describe('AC-5 — the soft path sets the status and returns', () => {
