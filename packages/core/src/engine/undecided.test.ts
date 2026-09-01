@@ -305,7 +305,7 @@ describe('AC-13 — the run says which gate went unanswered and what it kept', (
     );
     expect(runsLog(fixture)).toContain(
       `run=1 undecided-gate kind=human reason="Chore owner approves the review" condition=no-answer-channel`
-      + ` branch=${INTEGRATION} kept-at=${head!.slice(0, 7)} kept-worktrees=2`,
+      + ` rollback=none branch=${INTEGRATION} kept-at=${head!.slice(0, 7)} kept-worktrees=2`,
     );
     // Before the terminal line, as the cleanup count is.
     const lines = runsLog(fixture);
@@ -328,6 +328,28 @@ describe('AC-13 — the run says which gate went unanswered and what it kept', (
     const record = runsLog(fixture).find((line) => line.includes('undecided-gate')) ?? '';
     expect(disposition).toContain('"Chore owner approves the review"');
     expect(record).toContain('reason="Chore owner approves the review"');
+  });
+
+  test('both records state that nothing was rolled back, and neither is the rollback record', async () => {
+    // AC-13 asks the `runs.log` line itself to say the branch was kept, and `kept-at=<sha>` alone
+    // does not: it is a fact about where the branch is, and a reader who does not already know that
+    // a rollback would have moved it cannot infer that none happened. The durable record is also
+    // the one read *without* the disposition warning beside it, which is why the assertion is made
+    // on the line rather than on the pair. Round 3, majors 1 and 2.
+    const fixture = runFixture();
+    provingFlow(fixture);
+    writing();
+
+    const { events } = await fixture.settle();
+    const disposition = warns(events).find((message) => message.includes('went unanswered')) ?? '';
+    const record = runsLog(fixture).find((line) => line.includes('undecided-gate')) ?? '';
+    expect(disposition).toContain('nothing was rolled back');
+    expect(record).toContain('rollback=none');
+    // And the field is spelled so that it cannot be mistaken for the record it is the opposite of.
+    // `rolled-back` belongs to `lifecycle.ts:145`, and AC-5 asserts an undecided run writes no line
+    // carrying it — so a later respelling to `rolled-back=no` turns that guard red rather than
+    // making the two grep alike. Pinned here because the collision is invisible in either file.
+    expect(record).not.toContain('rolled-back');
   });
 
   test('the three conditions produce three distinguishable sentences', async () => {

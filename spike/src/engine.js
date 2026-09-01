@@ -787,6 +787,13 @@ const UNANSWERED_CAUSE = {
 // The reason is spelled `(kind) "reason"` here as bin/harness.js:97 spells it, and JSON-encoded in
 // runs.log as an error note is: a reason is flow-authored prose, and runs.log is one line per
 // record.
+//
+// rollback=none states the fact the warning states in prose, because a durable record is read
+// without the terminal beside it and kept-at only implies it — a reader who does not already know
+// that a rollback would have moved the branch cannot tell the two apart. Spelled `rollback` and
+// never `rolled-back`: that token is the opposite record's (engine.js:843), and AC-5's guard
+// asserts no line of an undecided run carries it, so a respelling fails loudly rather than making
+// the two records grep alike.
 function reportUndecided(ctx, error) {
   const { ticket } = ctx;
   const head = branchHead(ctx.repoDir, ticket.meta.branch);
@@ -795,7 +802,7 @@ function reportUndecided(ctx, error) {
   const where = head ? `${ticket.meta.branch} stays at ${head.slice(0, 7)}` : `${ticket.meta.branch} does not exist`;
   ctx.ui.warn(error.message);
   ctx.ui.warn(`gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${cause}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`);
-  ctx.backlog.log(ticket, `run=${ctx.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+  ctx.backlog.log(ticket, `run=${ctx.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} rollback=none branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
 }
 
 function finish(ctx, stage, status, note, fields = {}) {

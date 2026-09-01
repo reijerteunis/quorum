@@ -128,6 +128,13 @@ const UNANSWERED_CAUSE: Readonly<Record<GateUnansweredError['gate']['condition']
  * The reason is spelled `(kind) "reason"` as `spike/bin/harness.js` spells it, and JSON-encoded in
  * `runs.log` as an error note is: a reason is flow-authored prose, and `runs.log` is one line per
  * record.
+ *
+ * `rollback=none` states the fact the warning states in prose, because a durable record is read
+ * without the stream beside it and `kept-at` only *implies* it — a reader who does not already know
+ * that a rollback would have moved the branch cannot tell the two apart. It is spelled `rollback`
+ * and never `rolled-back`: that token is the opposite record's (`lifecycle.ts:145`), and AC-5's
+ * guard asserts no line of an undecided run carries it, so a respelling fails loudly rather than
+ * making the two records grep alike.
  */
 function reportUndecided(context: EngineContext, error: GateUnansweredError): void {
   const { ticket } = context;
@@ -139,7 +146,7 @@ function reportUndecided(context: EngineContext, error: GateUnansweredError): vo
     type: 'warn',
     message: `gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${UNANSWERED_CAUSE[error.gate.condition]}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`,
   });
-  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} rollback=none branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
 }
 
 /**

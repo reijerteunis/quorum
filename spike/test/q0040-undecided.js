@@ -197,7 +197,7 @@ await scenario('AC-13', 'the diagnostic is verbatim, and the line beside it says
   ), f.messages.join('\n'));
   assert.ok(logLines(f).includes(
     `run=1 undecided-gate kind=human reason=${JSON.stringify(GATE_REASON)} condition=stdin-closed`
-    + ` branch=${INTEGRATION} kept-at=${head} kept-worktrees=2`,
+    + ` rollback=none branch=${INTEGRATION} kept-at=${head} kept-worktrees=2`,
   ), logLines(f).join('\n'));
   // Before the terminal line, as the cleanup count is.
   const lines = logLines(f);
@@ -215,6 +215,25 @@ await scenario('AC-13', 'both records name the gate\'s own reason, not only its 
   const record = logLines(f).find((l) => l.includes('undecided-gate')) ?? '';
   assert.ok(disposition.includes(`"${GATE_REASON}"`), `disposition must name the reason: ${disposition}`);
   assert.ok(record.includes(`reason=${JSON.stringify(GATE_REASON)}`), `runs.log must name the reason: ${record}`);
+});
+
+await scenario('AC-13', 'both records state that nothing was rolled back, and neither is the rollback record', async () => {
+  // AC-13 asks the runs.log line itself to say the branch was kept, and `kept-at=<sha>` alone does
+  // not: it is a fact about where the branch is, and a reader who does not already know that a
+  // rollback would have moved it cannot infer that none happened. The durable record is also the
+  // one read *without* the terminal beside it, which is why this asserts on the line and not on the
+  // pair. Round 3, majors 1 and 2.
+  const f = fixture();
+  await f.run();
+  const disposition = f.messages.find((m) => m.includes('went unanswered')) ?? '';
+  const record = logLines(f).find((l) => l.includes('undecided-gate')) ?? '';
+  assert.ok(disposition.includes('nothing was rolled back'), `disposition must say it: ${disposition}`);
+  assert.ok(record.includes('rollback=none'), `runs.log must say it: ${record}`);
+  // And the field is spelled so it cannot be mistaken for the record it is the opposite of.
+  // `rolled-back` belongs to engine.js:843, and AC-5 asserts an undecided run writes no line
+  // carrying it — so a later respelling to `rolled-back=no` turns that guard red rather than making
+  // the two grep alike. Pinned here because the collision is invisible in either file.
+  assert.ok(!record.includes('rolled-back'), `runs.log must not carry the rollback record's token: ${record}`);
 });
 
 await scenario('AC-13', 'the three conditions read differently, so a maintainer knows what to do next', async () => {

@@ -1119,14 +1119,24 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // both records AC-13 governs: `q0040-undecided.js` gained the scenario asserting it on its own,
     // 380 → 394, so `both` is 2706 → 2720 and the total 5395 → 5409. The share is 54% either side
     // again, and is re-derived rather than carried over.
+    //
+    // Re-measured a fourth time in review round 4, which made the durable record *state* the
+    // rollback preservation `kept-at` had only implied: `q0040-undecided.js` gained the scenario
+    // asserting it on the `runs.log` line alone, 394 → 413, so `both` is 2720 → 2739 and the total
+    // 5409 → 5428. Both numbers were taken from the failing pin rather than from arithmetic on the
+    // diff, which is why they are measurements — and doing it that way is what caught the third
+    // move: 2959 of 5428 rounds to **55%**, so the share went 54% → 55% on nineteen lines. It sat
+    // at 54.13% before this round and 54.51% after, which is a rounding boundary crossed rather
+    // than a real four-point-style shift; it is stated because a share that moves silently is the
+    // thing this register exists to prevent, and Q-0010's inheritance is one point larger.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2720);
+    expect(linesOf(named('both'))).toBe(2739);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(5409);
-    // 54% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
-    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(54);
+    expect(total).toBe(5428);
+    // 55% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
+    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(55);
   });
 
   test('the two spellings are both resolved, and neither carries the other', () => {
