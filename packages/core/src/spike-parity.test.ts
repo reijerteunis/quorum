@@ -205,6 +205,15 @@ const REGISTER: Record<string, Entry> = {
     carriedBy: ['packages/core/src/engine/diff.test.ts'],
     note: 'the preflight classifying each endpoint on its own, the deferred range\'s remedy, and the walk running once in flow order before the step loop',
   },
+  'q0040-undecided.js': {
+    verdict: 'split',
+    carriedBy: [
+      'packages/core/src/engine/undecided.test.ts',
+      'packages/core/src/engine/lifecycle.test.ts',
+    ],
+    note: 'a gate nobody answered ends the run undecided, which moves no stage, keeps every worktree and — alone among the non-advancing statuses — leaves the ticket branch holding the merge it proved; the classification is by error type rather than by message text, and an abort keeps precedence over it',
+    binaryHalf: 'the CLI\'s five gate sites and their exit codes — the two where no answer was available exit 3, the three operator errors exit 1 — reached through `bin/harness.js`, two of them only under a forced TTY — Q-0010',
+  },
   'q0057-run-scoped-reviews.js': {
     verdict: 'ported',
     carriedBy: [
@@ -1038,7 +1047,7 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     expect(named('binary-only')).toStrictEqual(['q0036-board-containment.js']);
     expect(named('both')).toStrictEqual([
       'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
-      'q0077-base-flag.js', 'q0080-allocation.js', 'smoke.js',
+      'q0040-undecided.js', 'q0077-base-flag.js', 'q0080-allocation.js', 'smoke.js',
     ]);
     expect(named('library-only')).toStrictEqual([
       'q0006-engine.js', 'q0034-chore-preflight.js', 'q0034-dry-run.js', 'q0034-probe-schema.js',
@@ -1086,25 +1095,59 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // numbers are `wc -l` over the three buckets as the recomputation sorts them; nothing was
     // adjusted to fit, and the share is re-derived rather than transcribed, which is the whole
     // reason this file computes it.
+    //
+    // Re-measured 2026-09-01 for Q-0040, and this is the largest single move the register has
+    // recorded. It added `q0040-undecided.js` — 345 lines, and `split`, because it drives the
+    // engine directly AND spawns the binary for the five gate sites the CLI owns — and took
+    // `smoke.js` +8, re-aiming the unanswered-gate assertions at the new classification and pinning
+    // exit 3. Both files are entangled, so all 353 lines land in one bucket: 2294 → 2647 and
+    // 4983 → 5336, and the share went 50% → **54%**. That is four points in one ticket and it is
+    // stated rather than smoothed: an entangled file makes Q-0010's inheritance larger, and this
+    // one is entangled because two of its five gate sites are reachable only through the binary —
+    // `ui.gate`'s interactive branch lives in `bin/`, so no library test can reach them at all.
+    //
+    // Re-measured again in that ticket's review round 2, which closed the frozen-contract half of
+    // AC-10 and AC-11, and it moved two entangled files. `q0040-undecided.js` gained the run-level
+    // enum assertion and an end-to-end `harness validate` scenario driving both directions of the
+    // boundary, 345 → 380; `q0033-surface.js` gained 24 net, because S11.5 byte-froze
+    // `contracts/Q-0006` and had to be narrowed to admit the one clause an erratum supersedes
+    // rather than re-baselined or deleted. Both land in the same bucket: 2647 → 2706 and
+    // 5336 → 5395, the share 54% either side — stated rather than skipped, because "it did not
+    // move" is a measurement and assuming it did not is how a stale pin survives.
+    //
+    // Re-measured a third time in review round 3, which put the unanswered gate's own `reason` in
+    // both records AC-13 governs: `q0040-undecided.js` gained the scenario asserting it on its own,
+    // 380 → 394, so `both` is 2706 → 2720 and the total 5395 → 5409. The share is 54% either side
+    // again, and is re-derived rather than carried over.
+    //
+    // Re-measured a fourth time in review round 4, which made the durable record *state* the
+    // rollback preservation `kept-at` had only implied: `q0040-undecided.js` gained the scenario
+    // asserting it on the `runs.log` line alone, 394 → 413, so `both` is 2720 → 2739 and the total
+    // 5409 → 5428. Both numbers were taken from the failing pin rather than from arithmetic on the
+    // diff, which is why they are measurements — and doing it that way is what caught the third
+    // move: 2959 of 5428 rounds to **55%**, so the share went 54% → 55% on nineteen lines. It sat
+    // at 54.13% before this round and 54.51% after, which is a rounding boundary crossed rather
+    // than a real four-point-style shift; it is stated because a share that moves silently is the
+    // thing this register exists to prevent, and Q-0010's inheritance is one point larger.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2294);
+    expect(linesOf(named('both'))).toBe(2739);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(4983);
-    // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
-    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
+    expect(total).toBe(5428);
+    // 55% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
+    expect(Math.round((linesOf(entangled) / total) * 100)).toBe(55);
   });
 
   test('the two spellings are both resolved, and neither carries the other', () => {
     // The measured hazard, as a property rather than as a sentence: four files write the binary as
-    // one literal and four as two adjacent segments, so a scan anchored on either alone mis-files
-    // the other four as library-only.
+    // one literal and five as two adjacent segments, so a scan anchored on either alone mis-files
+    // the others as library-only. Q-0040's `q0040-undecided.js` is the fifth of the second kind.
     const single = Object.entries(SUITES).filter(([, text]) => text.includes(`'bin/${BINARY}'`)).map(([name]) => name);
     const segments = Object.entries(SUITES)
       .filter(([, text]) => /'bin'\s*,\s*'harness\.js'/.test(text)).map(([name]) => name);
     expect(single.length, 'the one-literal spelling').toBe(4);
-    expect(segments.length, 'the two-segment spelling').toBe(4);
+    expect(segments.length, 'the two-segment spelling').toBe(5);
     expect(single.filter((name) => segments.includes(name)), 'no file uses both').toEqual([]);
     expect([...single, ...segments].sort()).toStrictEqual([...named('binary-only'), ...named('both')].sort());
   });
@@ -1336,21 +1379,23 @@ describe('Q-0054 AC-3 — a ported or split entry names counterparts that exist 
     // Q-0037 moved `q0011-runs-cli.js` from `cli` to `split`, so it names two counterparts where it
     // named none. Both were already named by other rows, which is why the distinct count is
     // unmoved and only the total is — the register getting wider without getting more varied, and
-    // exactly the case this clause exists to be able to see.
-    expect(new Set(all).size, 'distinct counterparts named').toBe(29);
-    expect(all.length, 'counterpart namings in total').toBe(51);
+    // exactly the case this clause exists to be able to see. Q-0040's row moves both, by two and
+    // by two: `undecided.test.ts` and `lifecycle.test.ts` are named by no other row, which is the
+    // opposite case and the one that says the audit is still describing two suites.
+    expect(new Set(all).size, 'distinct counterparts named').toBe(31);
+    expect(all.length, 'counterpart namings in total').toBe(53);
   });
 });
 
 describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and each clause fires', () => {
   test('the register describes this tree with nothing left over', () => {
     expect(audit(REGISTER, FILES)).toEqual([]);
-    expect(Object.keys(REGISTER).length, 'files with a verdict').toBe(18);
+    expect(Object.keys(REGISTER).length, 'files with a verdict').toBe(19);
     expect(Object.keys(NOT_A_SUITE).length, 'entries that are not test files').toBe(2);
-    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(20);
+    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(21);
     const verdicts = Object.values(REGISTER).map((entry) => entry.verdict);
     expect(verdicts.filter((verdict) => verdict === 'cli').length).toBe(1);
-    expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(7);
+    expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(8);
     expect(verdicts.filter((verdict) => verdict === 'ported').length).toBe(10);
     expect(verdicts.filter((verdict) => verdict === 'uncovered').length).toBe(0);
   });

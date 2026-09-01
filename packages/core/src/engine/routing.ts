@@ -3,7 +3,7 @@ import { gateAnswerEnvelopeSchema, type GateQuestionEvent } from '@quorum/shared
 
 import { runFanOut, runIntegrate } from './composite.js';
 import { runAgentStep, runScript } from './steps.js';
-import { FlowError, type RoutingContext, type StepResult } from './types.js';
+import { FlowError, GateUnansweredError, type RoutingContext, type StepResult } from './types.js';
 
 function interruptedGate(request: GateQuestionEvent): FlowError {
   return new FlowError(`gate ${request.kind} (${request.reason}) interrupted`);
@@ -22,7 +22,12 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
   if (context.signal?.aborted) throw interruptedGate(request);
 
   context.emit(request);
-  if (!context.answerGate) throw new FlowError(`gate ${request.kind} (${request.reason}) has no answer channel`);
+  // Typed rather than plain since Q-0040: a caller that supplied no channel is nobody being there,
+  // which the run classifies `undecided`. The wording is unchanged.
+  if (!context.answerGate) {
+    throw new GateUnansweredError(`gate ${request.kind} (${request.reason}) has no answer channel`,
+      { kind: request.kind, reason: request.reason, condition: 'no-answer-channel' });
+  }
 
   let removeAbort = (): void => {};
   try {

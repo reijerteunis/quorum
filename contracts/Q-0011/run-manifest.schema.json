@@ -20,7 +20,7 @@
     "started_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "ended_at": { "type": ["string", "null"], "format": "date-time", "pattern": "Z$" },
     "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
-    "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted"] },
+    "status": { "enum": ["running", "completed", "failed", "aborted", "regressed", "exhausted", "interrupted", "undecided"] },
     "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
     "rollup": { "type": "array", "items": { "$ref": "#/$defs/vendor_rollup" } }
   },

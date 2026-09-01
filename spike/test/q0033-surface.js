@@ -342,9 +342,33 @@ await scenario('S11.1-S11.4', 'suite wiring, explicit gates, and board counter/c
   const board = cli(root, ['board']); assert.match(output(board), /iter=.*review.*2/); assert.match(output(board), /cost=\$1\.25/);
 });
 
-await scenario('S11.5', 'frozen Q-0006 inputs are unchanged from the reachable baseline', () => {
+await scenario('S11.5', 'frozen Q-0006 inputs change only where an erratum supersedes them', () => {
+  // The freeze is Q-0033's and still holds for every byte nobody authorised. Q-0040 is the first
+  // change to land inside it, and the reason is that the freeze predates the vocabulary: the history
+  // enum was fixed before `interrupted` and `undecided` existed, and the engine writes both — so
+  // `backlog/Q-0011-run-history-on-disk/ticket.md` has failed this contract for as long as it has
+  // carried an interrupt, today and independently of Q-0040. Superseded by that ticket's
+  // `requirements/errata.md` and by *"A run nobody answered is undecided, and keeps the branch it
+  // proved"* (2026-09-01).
+  //
+  // Narrowed rather than re-baselined or deleted. A newer baseline commit would freeze whatever else
+  // happened to be in the tree at it, and dropping the assertion would leave seven contract files
+  // unguarded — so the guard keeps its subject and gains a shape for the one authorised change.
+  // Each clause fails alone: a second changed file, a removed word, a different added pair, or any
+  // other edit to the file.
   git(repo, 'cat-file', '-e', '5d16e06^{commit}');
-  assert.equal(git(repo, 'diff', '--name-only', '5d16e06', '--', 'contracts/Q-0006'), '');
+  const changed = git(repo, 'diff', '--name-only', '5d16e06', '--', 'contracts/Q-0006').split('\n').filter(Boolean);
+  assert.deepEqual(changed, ['contracts/Q-0006/ticket-review-state.schema.json'], 'only the superseded file differs');
+
+  const statusEnum = (schema) => schema.properties.history.items.properties.status.enum;
+  const baseline = JSON.parse(git(repo, 'show', '5d16e06:contracts/Q-0006/ticket-review-state.schema.json'));
+  const current = JSON.parse(read(q6, 'ticket-review-state.schema.json'));
+  assert.deepEqual(statusEnum(current).filter((s) => !statusEnum(baseline).includes(s)), ['interrupted', 'undecided']);
+  assert.deepEqual(statusEnum(baseline).filter((s) => !statusEnum(current).includes(s)), [], 'an erratum adds, it never removes');
+  // Restoring the one superseded value must make the file byte-identical again, which is what says
+  // the supersession is the enum and nothing travelled with it.
+  current.properties.history.items.properties.status.enum = statusEnum(baseline);
+  assert.deepEqual(current, baseline, 'nothing outside the status enum moved');
 });
 const unavailableBaseline = '0000000000000000000000000000000000000033';
 try { git(repo, 'cat-file', '-e', `${unavailableBaseline}^{commit}`); assert.fail('deliberately nonexistent baseline unexpectedly resolved'); }

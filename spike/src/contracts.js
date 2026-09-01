@@ -48,7 +48,7 @@ export function validateFile(schemaFile, dataFile) {
 // pass it reports on rather than claiming a pass a caller performs. packages/core keeps them in
 // contracts/run-manifest.ts and re-exports them through contracts.ts, which is the same shape.
 
-export const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
+export const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted', 'undecided'];
 
 // The one x-quorum-contract value that selects a semantic pass.
 const RUN_MANIFEST_CONTRACT = 'run-manifest-v1';

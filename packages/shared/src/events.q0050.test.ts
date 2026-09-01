@@ -50,3 +50,24 @@ describe('Q-0050 AC-4c/AC-4d — correlated closed gate answers', () => {
     expect(gateAnswerEnvelopeSchema.safeParse({ gateId: 'g1', answer: 'advance', extra: 1 }).success).toBe(false);
   });
 });
+
+describe('Q-0040 AC-10 — `undecided` is a run status, and only that', () => {
+  test('the terminal union carries it, in the non-regressed member and with no extra fields', () => {
+    expect(runTerminalEventSchema.parse({ ...base, status: 'undecided' }))
+      .toStrictEqual({ ...base, status: 'undecided' });
+    expect(eventSchema.safeParse({ ...base, status: 'undecided' }).success).toBe(true);
+    // It is not a regression, so it may not carry the regression group — the discriminated union
+    // is what refuses this, and a flat optional-fields shape would not.
+    expect(runTerminalEventSchema.safeParse({ ...base, status: 'undecided', counter: 'f.s' }).success).toBe(false);
+  });
+
+  test('and the gate-answer union still refuses it, because nothing was decided', () => {
+    // Already pinned by Q-0050's AC-4c above, and restated here as this ticket's own boundary: a
+    // run reporting that nobody answered must not become a word somebody may answer with, which
+    // *"Non-auto exhaustion gates require an explicit human or scripted answer"* (2026-08-23)
+    // forbids. The two assertions sit in different suites on purpose — deleting either leaves the
+    // other standing.
+    expect(gateAnswerSchema.safeParse('undecided').success).toBe(false);
+    expect(gateAnswerEnvelopeSchema.safeParse({ gateId: 'g1', answer: 'undecided' }).success).toBe(false);
+  });
+});

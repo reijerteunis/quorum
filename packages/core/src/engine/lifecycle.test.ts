@@ -3,11 +3,30 @@ import { describe, expect, test, vi } from 'vitest';
 import type { Event, Flow } from '@quorum/shared';
 
 import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
+import { coreSourceFiles } from '../../test/corpus.js';
 import { finish, outcome, recordEvent } from './lifecycle.js';
 import type { LifecycleContext, RegressionFields, RunStatus } from './types.js';
 
 const render = (template: string, values: Record<string, string | number>): string =>
   template.replace(/<([^>]+)>/g, (whole, key: string) => String(values[key] ?? whole));
+
+/**
+ * The `RunStatus` union as `engine/types.ts` declares it, so the table below can be checked against
+ * the vocabulary instead of standing in for it. Read from the corpus the package already collects,
+ * which leaves no path literal for `turbo-inputs.test.ts` to want registered.
+ *
+ * @throws {Error} when the declaration is missing or carries no member — a check that cannot find
+ *   its subject reports that rather than passing over nothing.
+ */
+function declaredRunStatuses(): string[] {
+  const types = coreSourceFiles().find(([name]) => name === 'engine/types.ts')?.[1];
+  if (types === undefined) throw new Error('corpus missing: packages/core/src/engine/types.ts');
+  const declaration = /export type RunStatus =([^;]+);/.exec(types);
+  if (declaration === null) throw new Error('packages/core/src/engine/types.ts declares no RunStatus union');
+  const members = [...declaration[1]!.matchAll(/'([^']+)'/g)].map(([, member]) => member!);
+  if (members.length === 0) throw new Error('packages/core/src/engine/types.ts: RunStatus names no member');
+  return members;
+}
 
 function lifecycle(overrides: Partial<LifecycleContext> = {}): LifecycleContext {
   const flow = { name: 'qa-red', consumes: 'solutioned', produces: 'red', steps: [] } as unknown as Flow;
@@ -47,6 +66,10 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     ['aborted', 'solutioned', false],
     ['failed', 'solutioned', false],
     ['interrupted', 'solutioned', false],
+    // The sixth, added by Q-0040. It is here rather than in a suite of its own because every
+    // clause below is a property of EVERY terminal status, and a table that enumerated five of
+    // six would say the new one is a special case when it is not.
+    ['undecided', 'solutioned', false],
   ] as const)('%s persists counters/history and applies its stage rule', async (status, target, moves) => {
     const ctx = lifecycle();
     const before = ctx.ticket.meta.stage;
@@ -164,6 +187,10 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
       [false, 'failed', null, 'bbbbbbbb', 0],
       [false, 'failed', 'aaaaaaaa', 'aaaaaaaa', 0],
       [false, 'failed', 'aaaaaaaa', null, 0],
+      // Q-0040: the one non-advancing status that does not restore. Every guard this matrix tests
+      // is satisfied — not dry, a start head, a current head, and the two differ — and the reset
+      // still must not happen, which is the row no other status can stand in for.
+      [false, 'undecided', 'aaaaaaaa', 'bbbbbbbb', 0],
     ] as const) {
       const reset = vi.fn();
       const ctx = lifecycle({ dry, branchHeadAtStart: start, readBranchHead: vi.fn(() => current), resetBranch: reset });
@@ -213,5 +240,77 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     expect(ctx.persistence.appendLog).toHaveBeenCalled();
     expect(realBacklog.write).not.toHaveBeenCalled();
     expect(realBacklog.log).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What each terminal status decides, as three independent questions.
+ *
+ * `finished` used to answer all three, and the worktree return and the branch rollback were the
+ * two arms of one `if`/`else` — mutually exclusive by construction, so "keep the worktrees *and*
+ * leave the branch alone" was unsayable however the predicate was widened. Splitting the
+ * conditional loses that structural guarantee, so the invariant below is what replaces it: without
+ * it this criterion is a rename and Q-0062's *"cannot drift apart"* property is gone.
+ *
+ * The table asserts the CONSEQUENCES rather than the three private predicates, because a predicate
+ * nothing reads decides nothing — which is the shape of the defect this repository keeps finding.
+ *
+ * It is keyed by `RunStatus` and checked against the union `types.ts` declares, because a hand-kept
+ * list of rows is not a claim about the vocabulary: a seventh status added with no row would
+ * otherwise take all three decisions and evade the invariant while this suite reported green. Both
+ * halves fire — the key type fails `pnpm typecheck`, and the vocabulary check below fails the suite
+ * — so neither gate has to be the one somebody happens to run.
+ */
+describe('Q-0040 AC-4 — three named questions, and no status takes both arms', () => {
+  const withWorktrees = (overrides: Partial<LifecycleContext> = {}): LifecycleContext => lifecycle({
+    worktrees: new Map([['harness/Q-0050/implement', '/repo/.harness/worktrees/harness__Q-0050__implement']]),
+    readWorktreeChanges: vi.fn(() => []),
+    removeWorktree: vi.fn(),
+    branchHeadAtStart: 'aaaaaaaa',
+    readBranchHead: vi.fn(() => 'bbbbbbbb'),
+    resetBranch: vi.fn(),
+    ...overrides,
+  } as unknown as Partial<LifecycleContext>);
+
+  /** What one status decides, as the three questions `lifecycle.ts` asks of it. */
+  interface Consequences { advances: boolean; returns: boolean; restores: boolean }
+
+  const TABLE: Readonly<Record<RunStatus, Consequences>> = {
+    completed: { advances: true, returns: true, restores: false },
+    regressed: { advances: true, returns: true, restores: false },
+    aborted: { advances: false, returns: false, restores: true },
+    failed: { advances: false, returns: false, restores: true },
+    interrupted: { advances: false, returns: false, restores: true },
+    undecided: { advances: false, returns: false, restores: false },
+  };
+
+  const ROWS = Object.entries(TABLE).map(([status, row]) => ({ status: status as RunStatus, ...row }));
+
+  test('every RunStatus has a row, and no row invents a status', () => {
+    // The table's own subject, read out of `types.ts` rather than restated here: without this the
+    // rows below are a list somebody remembered to extend, and the invariant is a claim about that
+    // list rather than about the vocabulary.
+    expect([...Object.keys(TABLE)].sort()).toStrictEqual([...declaredRunStatuses()].sort());
+  });
+
+  test.each(ROWS)('$status: stage $advances, worktrees $returns, branch $restores', async (row) => {
+    const ctx = withWorktrees();
+    const before = ctx.ticket.meta.stage;
+    const fields = row.status === 'regressed' ? regression : undefined;
+    await expect(finish(ctx, 'red', row.status, null, fields)).resolves.toBeDefined();
+    expect(ctx.ticket.meta.stage, 'stage').toBe(row.advances ? 'red' : before);
+    expect((ctx.removeWorktree as ReturnType<typeof vi.fn>).mock.calls.length > 0, 'worktrees').toBe(row.returns);
+    expect((ctx.resetBranch as ReturnType<typeof vi.fn>).mock.calls.length > 0, 'branch').toBe(row.restores);
+  });
+
+  test('no status both returns its worktrees and restores its branch', () => {
+    // The property the `if`/`else` used to guarantee, asserted over the whole vocabulary rather
+    // than over the row that motivated the split. A seventh status is caught before it reaches
+    // here: with no row it fails the vocabulary check above and the key type; with one it answers
+    // all three questions in the rows above, and answering two of them the old, coupled way fails
+    // here.
+    for (const row of ROWS) expect(row.returns && row.restores, row.status).toBe(false);
+    expect(ROWS.filter((row) => !row.returns && !row.restores).map((row) => row.status))
+      .toStrictEqual(['undecided']);
   });
 });
