@@ -590,6 +590,7 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/shared/src/flow.test.ts': {
     'parseYaml → file': 'the loop iterates flowFiles(), the audited walk of harness/flows',
+    'read → chore!': 'the value is flowFiles().find(basename === \'chore.yaml\'), so it comes from the same audited walk of harness/flows as the line above',
   },
   'packages/shared/src/ticket.test.ts': {
     'read → file': 'the loops iterate ticketFiles(), the audited walk of backlog/*/ticket.md',

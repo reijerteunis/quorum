@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 (Q-0037) to both sides of the revise loop: the implement report is `dev/chore/run-<run>/implement-iter-<iter>.md` and the reviewer globs it, because Q-0057 scoped the review path and left the report flat beside it. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -426,17 +426,27 @@ dropped is solutioning's contracts and qa-red's failing suite, because work that
 the repository *is* has no behaviour a test could fail on before it exists. The reasoning is in
 the DECISIONS entry of 2026-08-24; the shipped file is `harness/flows/chore.yaml`.
 
-**A review artifact is named by the run that wrote it.** The review step writes
-`review/chore/run-<run>/chore-iter-<iter>.md`, and the implement step reads
-`review/chore/run-<run>/chore-iter-*.md` — so a revision round is fed its own run's reviews and no
-others, while every earlier run's reviews stay on disk under their own directory. `{run}` is the
+**Every artifact the revise loop rewrites is named by the run and the iteration that wrote it.**
+The review step writes `review/chore/run-<run>/chore-iter-<iter>.md` and the implement step reads
+`review/chore/run-<run>/chore-iter-*.md`; the implement step writes
+`dev/chore/run-<run>/implement-iter-<iter>.md` and the review step reads
+`dev/chore/run-<run>/implement-iter-*.md`. So each side of the loop is fed its own run's artifacts
+and no others, sees every earlier round of that run rather than only the last, and every earlier
+run's stay on disk under their own directory. The rule is the **pair** of variables and not either
+one: `{run}` alone lets iteration 2 overwrite iteration 1, and `{iter}` alone lets run 2 overwrite
+run 1. The implement report was flat until Q-0037 — Q-0057 scoped the review path and left the
+report beside it — so a revision round's report replaced the previous round's, and the measured
+evidence a criterion had been verified with stopped existing while the run reported green. That is
+the same defect on the other side of the same loop, found by a reviewer that could not check four
+criteria and could not say why from the artifact it was given. `{run}` is the
 run's id: the number `runs.log` carries as `run=N` and `.quorum/runs/<id>-N/` is named after.
 `{iter}` still counts backward edges inside one run and still restarts at 1 in each run, which is
-why it cannot name the path on its own — until Q-0057 it did, and a second run of the flow on a
+why it cannot name a path on its own — until Q-0057 it did, and a second run of the flow on a
 ticket overwrote the first run's reviews and fed the surviving mixture back to the implementer. A
 finding that must outlive the run it was made in belongs in `requirements/errata.md`, which the
-implement step reads on every run. Reviews written before Q-0057 keep their flat
-`review/chore-iter-<iter>.md` names; nothing moves them and no glob reads them.
+implement step reads on every run. Artifacts written before their path was scoped keep their flat
+names — `review/chore-iter-<iter>.md` before Q-0057, `dev/implement-report.md` before Q-0037;
+nothing moves them and no glob reads them.
 
 **Prerequisite, and a known gap.** `review` diffs against `harness/<id>/integration` and
 `implement` bases its worktree on it, but `integrate` — the only step that creates that branch —

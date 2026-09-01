@@ -13,7 +13,7 @@ steps:
       backlog: [requirements/merged.md, requirements/errata.md, "review/chore/run-{run}/chore-iter-*.md"]
       harness: [rules.md, architecture.md]
       repo: true
-    output: { writes: [dev/implement-report.md] }
+    output: { writes: ["dev/chore/run-{run}/implement-iter-{iter}.md"] }
     instructions: >
       Implement exactly what requirements/merged.md asks for and nothing else: no scope
       creep, no speculative abstraction, no tidying of code you were not sent to change.
@@ -28,7 +28,7 @@ steps:
     role: code-reviewer
     adapter: codex
     input:
-      backlog: [requirements/merged.md, requirements/errata.md, dev/implement-report.md]
+      backlog: [requirements/merged.md, requirements/errata.md, "dev/chore/run-{run}/implement-iter-*.md"]
       diff: "harness/{id}/integration...harness/{id}/implement"
     output:
       writes: ["review/chore/run-{run}/chore-iter-{iter}.md"]

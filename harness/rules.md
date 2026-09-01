@@ -90,6 +90,10 @@ When they disagree, this file wins and the other is the drift.
   **Alternatives considered**, **Why**; `docs/DECISIONS.md` is the index and gains one line
   per entry. A landed entry is never edited — reversing one is a new entry naming the old.
   Cite an entry by its title and date, never by its file name or number.
+- **An entry's date is the date it takes its place in the index**, not the date the choice was
+  made; where the two differ the body says when it was decided. `packages/shared/src/docs.test.ts`
+  enforces it — the index's dates never go backwards — so a back-dated entry turns the suite red.
+  See *"An entry's date is the date it takes its place in the index"* (2026-09-01).
 - `docs/GLOSSARY.md` is the vocabulary. Add a term there before using it in a second file;
   never introduce a synonym for an existing term.
 - When code and docs disagree, the docs are wrong until a DECISIONS entry says otherwise —

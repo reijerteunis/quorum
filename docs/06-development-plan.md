@@ -37,7 +37,7 @@ same"* (2026-09-01). The `owner:` split was closed in the same edit: five ticket
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
 answer by hand. **Q-0037 shipped on 2026-09-01**, the first ticket run through the
-flows after Q-0058, and **Q-0085** was opened from its OQ-1 at its requirements gate; both entries below are
+flows after Q-0058, and two tickets were opened from it and closed the same day by hand — **Q-0085**, split from its OQ-1 at the requirements gate, and **Q-0086**, from its erratum E-2, neither of which any flow could have run: the first because its whole deliverable is a decision entry, the second because it edits the flow the run would have loaded; both entries below are
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
@@ -540,9 +540,11 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `packages/cli`, or whether Q-0010 re-decides it. Nit 5 has no counterpart today, so this ticket
   picked a shape; saying at the close that it binds is what turns that into a decision Q-0010
   inherits rather than an accident it copies. Recorded here as open rather than quietly assumed.
-- Q-0085 An entry's date is the date it takes its place in the index. *(Folder created 2026-09-01,
-  `draft`.)* Split from Q-0037's OQ-1 at its requirements gate, with that run's Appendix A
-  transcribed into the body in full rather than referenced. `docs/DECISIONS.md` is called
+- Q-0085 An entry's date is the date it takes its place in the index. *(`reviewed` 2026-09-01,
+  implemented by hand the day it was opened; the board reads `main:indeterminate(no branch)`,
+  which is right — a hand-run ticket names a branch nothing created.)* Split from Q-0037's OQ-1 at
+  its requirements gate, with that run's Appendix A transcribed into the body in full rather than
+  referenced. `docs/DECISIONS.md` is called
   *"append-only, newest last"* in three places and is also grouped by date, and the two cannot both
   hold for an entry decided on one date and landed after entries decided later. The ruling is owed
   in one direction or the other — the landing date wins and the body carries the deciding date, or
@@ -551,6 +553,49 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   whole deliverable is a decision entry**, so it is the human's work directly and there is no flow
   to route it through — which is the point of splitting it out rather than carrying it as a
   criterion of a chore ticket whose implement step could then never satisfy it.
+  **Ruled reading (a): the landing date.** See *"An entry's date is the date it takes its place in
+  the index"* (2026-09-01). It ratifies what shipped rather than changing anything — no code moved,
+  `docs.test.ts` is untouched, and the measurement it rests on was re-run before it was written: 74
+  index rows, 74 files, index order identical to numeric order, dates non-decreasing. The
+  alternative was rejected on what it costs rather than on taste: amending the *"newest last"* prose
+  means deleting the only mechanical check that the index is append-only, to protect information an
+  entry's body can carry losslessly. `harness/rules.md` and its derived `.claude/rules/` copy each
+  gained one sentence citing the entry by title and date, so the rule an author meets is the rule a
+  test enforces. **Q-0011's round-2 nit 4, raised 2026-08-24, closes with it** — a week and a half
+  from a review nit to a written rule, most of it spent because the finding described a flat
+  `DECISIONS.md` that stopped existing on 2026-08-28 and nobody re-measured it until Q-0037's
+  requirements run did.
+- Q-0086 The revise loop names every artifact it rewrites by run and iteration. *(`reviewed`
+  2026-09-01, implemented by hand.)* Opened from Q-0037's erratum E-2 and closed the same session
+  rather than queued. `chore.yaml`'s `implement` step wrote one flat `dev/implement-report.md` that
+  the engine rewrites on **every traversal of the revise loop**, so a revision round's report
+  replaced the previous round's and the measured evidence a criterion had been verified with stopped
+  existing while the run reported green. **It is Q-0057's defect on the other side of the same
+  loop**: that ticket scoped the review artifact — write path and input glob together — and left the
+  report flat beside it, and its own recorded reasoning, that the engine writes an agent's document
+  verbatim so the path is the only place identity can be stamped, applies to the report unchanged.
+  `implement` now writes `dev/chore/run-{run}/implement-iter-{iter}.md` and `review` reads
+  `dev/chore/run-{run}/implement-iter-*.md`, in both shipped copies — `lint.test.ts`'s existing
+  parity assertion would have failed had only one moved. **No engine change**: both variables
+  already interpolate on any step, `writeFile` creates nested directories, and `readFiles` globs the
+  basename inside `path.dirname(pattern)`, so the nested path already resolved.
+  **The rule is the pair of variables and not either one**, and the guard in
+  `packages/shared/src/flow.test.ts` says so in clauses that were each shown red on their own before
+  the change was trusted — a flat write path, `{run}` dropped from the write path, and `{run}`
+  dropped from the reader glob all fail separately, which is Q-0071's point that showing a guard has
+  a subject proves it fires and not that each clause does. It asserts over the **shipped file**
+  rather than a fixture, and additionally refuses the flat spellings anywhere in it, because a
+  second `writes:` naming one would satisfy every positive assertion. Q-0072's input guard refused
+  the new read site until it was registered with the reason its path is a literal — the fourth
+  ticket to earn a registration on the way in, and the machinery working as designed.
+  **Not run through the flows, with a reason rather than a preference**: the change is to
+  `chore.yaml` itself and `runFlow` loads the flow at run start, so a chore run fixing this flow
+  could not benefit from its own fix — Q-0057's position exactly — and an implement step editing the
+  file that governs its own output path is a hazard, not a demonstration.
+  **Reported and not fixed:** `dev/integration.md` is run-scoped only by accident, because
+  `integrate` runs once per run and no revise loop rewrites it; a second run on a ticket still
+  replaces the first's. Same class, far lower frequency, and it spans `development.yaml` and
+  `qa-red.yaml` too, so it wants its own requirement rather than being widened into this one.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint

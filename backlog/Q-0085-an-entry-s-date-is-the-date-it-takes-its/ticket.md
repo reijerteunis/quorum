@@ -1,7 +1,7 @@
 ---
 id: Q-0085
 title: An entry's date is the date it takes its place in the index
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0085/integration
@@ -10,6 +10,15 @@ created: 2026-09-01
 iterations: {}
 history: []
 ---
+*Closed by hand 2026-09-01, the same day it was opened. The ruling is
+`docs/decisions/075-an-entrys-date-is-the-date-it-takes-its-place.md` — **"An entry's date is the
+date it takes its place in the index" (2026-09-01)** — which takes reading (a) below, the one that
+had already shipped. `harness/rules.md` and its derived `.claude/rules/` copy gained the sentence,
+citing the entry by title and date. No code changed and `docs.test.ts` is untouched, exactly as the
+scope section predicted. The stage is `reviewed` by hand and the history is deliberately empty: no
+engine run advanced it, and none could — a decision entry is the human's to write, which is the
+whole reason this was split out of Q-0037 rather than carried as one of its criteria.*
+
 Opened 2026-09-01 at Q-0037's requirements gate, where OQ-1 was routed to a successor rather than
 ruled in place. The body below is `requirements/merged.md`'s Appendix A transcribed rather than
 referenced, so the obligation cannot expire — a requirement is written by an agent reading its own

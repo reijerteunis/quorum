@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { flowSchema, flowStepSchema } from './flow.js';
-import { flowFiles, lintAccepts, parseYaml, sharedSourceFiles, spikeLintFlow } from '../test/corpus.js';
+import { flowFiles, lintAccepts, parseYaml, read, sharedSourceFiles, spikeLintFlow } from '../test/corpus.js';
 
 // `loadFlow` assigns `flow.file = file` onto the parsed object BEFORE lint or anything else sees
 // it (spike/src/engine.js:15-20). Every corpus flow is parsed the way the engine parses it,
@@ -274,6 +274,55 @@ describe('AC-3 as errata E-1 amends it — lint succeeding implies no absent key
       expect(result.success, JSON.stringify(step)).toBe(false);
       expect(result.error?.issues.map((issue) => issue.path.join('.')), JSON.stringify(step))
         .toContain(expectedPath);
+    }
+  });
+
+  // Q-0057 made the review artifact run-scoped and left the implement report flat, so a revise
+  // round's report replaced the previous round's and the evidence a criterion was verified with
+  // stopped existing. Q-0037 review round 2 found exactly that and could not check four criteria;
+  // its erratum E-2 is the record. The rule is the pair, not either path: an artifact a bounded
+  // loop rewrites is named by BOTH the run and the iteration, and the step that reads it globs the
+  // iteration within its own run. Asserted over the shipped file rather than over a fixture,
+  // because the shipped file is what a run loads.
+  test('chore.yaml: every artifact a revise round rewrites is named by its run and its iteration', () => {
+    const chore = flowFiles().find((file) => path.basename(file) === 'chore.yaml');
+    expect(chore, 'chore.yaml must be among the shipped flows').toBeDefined();
+    // Parsed through the schema rather than cast: the shape these assertions read is the shape the
+    // engine is handed, and a cast would let a rename here pass while a run broke.
+    const flow = flowSchema.parse(loadAsTheEngineDoes(chore!));
+    expect(flow.steps, 'chore.yaml must still declare steps').toBeDefined();
+    const steps = flow.steps ?? [];
+    const step = (id: string): { output?: { writes?: unknown }; input?: { backlog?: unknown } } => {
+      const found = steps.find((s) => 'id' in s && s.id === id);
+      expect(found, `chore.yaml must still have a step called ${id}`).toBeDefined();
+      return found as { output?: { writes?: unknown }; input?: { backlog?: unknown } };
+    };
+
+    // The two writers inside the loop. Both carry {run} AND {iter}: {run} alone lets iteration 2
+    // overwrite iteration 1, and {iter} alone lets run 2 overwrite run 1 — which is the defect
+    // Q-0057 fixed on one path and this closes on the other.
+    for (const [id, expected] of [
+      ['implement', 'dev/chore/run-{run}/implement-iter-{iter}.md'],
+      ['review', 'review/chore/run-{run}/chore-iter-{iter}.md'],
+    ] as const) {
+      expect(step(id).output?.writes, `${id} writes one run- and iteration-scoped artifact`).toStrictEqual([expected]);
+    }
+
+    // Each reader globs the OTHER step's artifacts within its own run, so a round sees every
+    // earlier round of this run and no earlier run's. A flat path here would read one file and a
+    // {run}-less glob would mix runs.
+    for (const [id, expected] of [
+      ['implement', 'review/chore/run-{run}/chore-iter-*.md'],
+      ['review', 'dev/chore/run-{run}/implement-iter-*.md'],
+    ] as const) {
+      expect(step(id).input?.backlog, `${id} reads its own run's artifacts and no others`).toContain(expected);
+    }
+
+    // The flat spellings are gone from the file entirely, not merely unreferenced by these four
+    // assertions — a second `writes:` naming one would satisfy everything above.
+    const text = read(chore!);
+    for (const flat of ['dev/implement-report.md', 'review/chore-iter-']) {
+      expect(text, `chore.yaml must not name the flat ${flat}`).not.toContain(flat);
     }
   });
 
