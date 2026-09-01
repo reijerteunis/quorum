@@ -1,7 +1,7 @@
 ---
 id: Q-0003
 title: Decide Codex cost reporting — tokens only or priced
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0003/integration

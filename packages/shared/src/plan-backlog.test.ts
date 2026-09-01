@@ -19,7 +19,7 @@
 //                    the tree, so the register cannot silently stop covering anything.
 import { describe, expect, test } from 'vitest';
 
-import { repoFile, ticketFiles } from '../test/corpus.js';
+import { read, repoFile, ticketFiles } from '../test/corpus.js';
 
 const PLAN = 'docs/06-development-plan.md';
 
@@ -70,10 +70,60 @@ const UNCREATED: Record<string, string> = {
   'Q-0012': 'qa-final.yaml and deploy.yaml. Blocked by Q-0056, which must first settle what `route` is.',
 };
 
+
+/**
+ * Ticket ids bulleted under a milestone heading the plan marks closed.
+ *
+ * The two existing directions check whether a ticket EXISTS on both sides. Neither asks whether a
+ * ticket's own state agrees with the milestone that claims to have delivered it — which is how
+ * Q-0001, Q-0002 and Q-0003 sat at `draft`, two of them p1, for ten days after M0 closed with a
+ * decision entry naming their work as done. A board that lists them is not wrong about the files;
+ * it is wrong about what is open, and that is the question a board exists to answer.
+ */
+function closedMilestoneBullets(): string[] {
+  const text = repoFile(PLAN);
+  const headings = [...text.matchAll(/^## (M\d) [^\n]*$/gm)];
+  const ids: string[] = [];
+  headings.forEach((heading, index) => {
+    if (!/✅ closed/.test(heading[0])) return;
+    const from = heading.index! + heading[0].length;
+    const to = index + 1 < headings.length ? headings[index + 1]!.index! : text.length;
+    for (const [, id] of text.slice(from, to).matchAll(/^- (?:~~)?(Q-[0-9]{4})\b/gm)) ids.push(id!);
+  });
+  return [...new Set(ids)];
+}
+
+/**
+ * A ticket's `stage:`, read from its own frontmatter rather than from any document.
+ *
+ * Reads through `read` and the path `ticketFiles()` produced, rather than re-deriving a
+ * repo-relative one: the audited walk already knows where the file is, and slicing its own output
+ * to feed a second reader is an indirection Q-0072's input guard correctly refuses.
+ */
+function stageOf(id: string): string | null {
+  const file = ticketFiles().find((path) => (path.split('/').at(-2) ?? '').startsWith(`${id}-`));
+  return file ? (/^stage:\s*(\S+)/m.exec(read(file))?.[1] ?? null) : null;
+}
+
 describe('the development plan and backlog/ agree about which tickets exist', () => {
   test('every ticket in backlog/ is named in the plan', () => {
     const missing = [...created()].filter((id) => !named().has(id)).sort();
     expect(missing, `${PLAN} names no entry for ${missing.join(', ')} — a ticket exists in backlog/ and the plan does not know. Add its line rather than deleting the folder.`).toStrictEqual([]);
+  });
+
+  // The third direction, and the one nothing asked until 2026-09-01.
+  test('no ticket of a closed milestone is still a draft', () => {
+    const stillDraft = closedMilestoneBullets()
+      .filter((id) => stageOf(id) === 'draft')
+      .sort();
+    expect(stillDraft, `${stillDraft.join(', ')} sit at stage: draft under a milestone the plan marks ✅ closed. Either the milestone is not closed or the ticket is not a draft — advance the ticket, or say in its runs.log where its work was actually done.`).toStrictEqual([]);
+  });
+
+  // The check must be able to see something: a closed milestone whose bullets all lack folders
+  // would make the test above pass over nothing at all.
+  test('the closed milestones do name tickets that exist, so the check above has a subject', () => {
+    const withFolders = closedMilestoneBullets().filter((id) => stageOf(id) !== null);
+    expect(withFolders.length, 'M0 and M1 must between them name at least four tickets with folders').toBeGreaterThanOrEqual(4);
   });
 
   test('every M2 bullet either has a folder or is registered as deliberately uncreated', () => {

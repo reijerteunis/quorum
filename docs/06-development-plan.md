@@ -81,6 +81,26 @@ Every milestone: definition of done, the tickets to create in `backlog/`, and th
 
 **Risk it retires:** structured output on subscription CLIs. If this fails, everything else is moot; the fallback is the trailing-JSON extraction already in the adapter.
 
+*All three tickets were closed by hand on 2026-09-01, ten days after this milestone closed, because
+they had sat at `draft` — two of them p1 — the entire time. **The work was never missing; it was done
+on another ticket.** M0's closing entry names Q-0006 by id as the one that travelled
+`draft → requirements → solutioned` on real CLIs, and Q-0006's folder holds it: 89 `runs.log` lines
+from 2026-08-22 and 41 real vendor steps. Q-0001's other deliverables landed outside its folder too
+— the adapter corrections in `spike/src/adapters/`, the verification table in
+`03-adapter-contract.md` — and Q-0003's whole deliverable is a decision entry that cites Q-0003 by
+id. This is the Q-0005 / Q-0007 shape, where work done inside another ticket is recorded there; the
+only difference is that these three had folders to leave behind. Each now carries a `runs.log` note
+naming where its evidence is.*
+
+***A third direction of the plan/backlog check was added with them.*** The two that existed asked
+whether a ticket **exists** on both sides; neither asked whether a ticket's own state agrees with
+the milestone claiming to have delivered it, which is how three tickets stayed open on the board for
+ten days after their milestone closed. `plan-backlog.test.ts` now fails if a ticket bulleted under a
+`✅ closed` heading is still `draft`, with a companion assertion that the closed milestones name
+enough real tickets for the first one to have a subject. A board that lists a closed milestone's
+work as open is not wrong about the files — it is wrong about what is open, which is the one
+question a board exists to answer.
+
 ---
 
 ## M1 — Red → green on a real repo (≈ 1 week) — ✅ closed 2026-08-24

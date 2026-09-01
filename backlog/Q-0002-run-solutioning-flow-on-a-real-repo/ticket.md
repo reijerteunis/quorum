@@ -1,7 +1,7 @@
 ---
 id: Q-0002
 title: Run solutioning flow on a real repo
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0002/integration
