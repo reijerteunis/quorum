@@ -125,6 +125,40 @@ describe('Q-0050 AC-4 — gate behavior', () => {
     expect(flagEvents).toContainEqual({ type: 'info', message: render(fixture.gateAutoAdvanced, { kind: 'human' }) });
   });
 
+  test('Q-0037 AC-5: a pending gate settles on nothing but the signal, and then on the cancellation contract', async () => {
+    // The behavioural half of removing `signalWindow`. `q0050.source.test.ts` can say the timer is
+    // gone and that nothing replaced it; only this can say that what the timer was blamed for still
+    // works. It was the one engine-owned handle in this function, so if cancellation had been
+    // leaning on it, this is where that would show.
+    //
+    // The first assertion is the one with a subject: with the answer channel outstanding and no
+    // abort raised, the gate must not settle by itself across event-loop turns — a claim about
+    // turns and not about wall clock, which is all a promise settling itself would need.
+    const abort = new AbortController();
+    let answer!: (value: { gateId: string; answer: 'advance' }) => void;
+    const answerGate = vi.fn(() => new Promise<{ gateId: string; answer: 'advance' }>((resolve) => { answer = resolve; }));
+    const outcomes: string[] = [];
+    const pending = askGate(gate(), context({ answerGate, signal: abort.signal })).then(
+      () => outcomes.push('resolved'),
+      (error: Error) => outcomes.push(`rejected: ${error.message}`),
+    );
+
+    for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(outcomes).toStrictEqual([]);
+    expect(answerGate).toHaveBeenCalledTimes(1);
+
+    abort.abort();
+    await pending;
+    expect(outcomes).toStrictEqual(['rejected: gate human (decide) interrupted']);
+
+    // And the contract's other half is unmoved: an answer arriving after the interruption is not
+    // applied, so a cancelled gate cannot be resolved by a late reply from the channel.
+    answer({ gateId: 'g1', answer: 'advance' });
+    await Promise.resolve();
+    expect(outcomes).toStrictEqual(['rejected: gate human (decide) interrupted']);
+  });
+
   test('a pending gate is interrupted and a late answer is not applied', async () => {
     const abort = new AbortController();
     let answer!: (value: { gateId: string; answer: 'advance' }) => void;

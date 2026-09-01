@@ -174,7 +174,13 @@ await scenario('AC-2', 'an interrupted run keeps the directory it stopped in', a
   const source = `import { runFlow, loadFlow } from ${JSON.stringify(path.join(spike, 'src/engine.js'))};\n`
     + `import { Backlog } from ${JSON.stringify(path.join(spike, 'src/backlog.js'))};\n`
     + `const root=process.argv[1], h=root+'/harness', b=new Backlog(root+'/backlog'), t=b.list()[0];\n`
-    + `const ui={info(){},warn(){},step(){},done(){},trace(){},gate:()=>new Promise(()=>{})};\n`
+    // The gate promise owns its own libuv handle, bounded, for the reason q0011-run-history.js's
+    // EDGE-9 fixture states at length: `runGate` used to hold a one-second timer on this fixture's
+    // behalf, and Q-0037 took that prop out of production code. Without a handle here the child
+    // drains and exits before the SIGTERM below, and the run records `failed` rather than
+    // `interrupted`. Ten seconds is far past the milliseconds the signal takes, and reaching it
+    // ends the run rather than hanging the suite, which has no per-scenario timeout.
+    + `const ui={info(){},warn(){},step(){},done(){},trace(){},gate:()=>new Promise((_,reject)=>{setTimeout(()=>reject(new Error('gate ceiling reached')),10000);})};\n`
     + `await runFlow({flow:loadFlow(h+'/flows/coding.yaml'),ticket:t,backlog:b,harnessDir:h,repoDir:root,`
     + `config:{adapterOverride:'mock',adapters:{},repo:{base_branch:'main'}},ui,auto:false});`;
   const child = spawn(process.execPath, ['--input-type=module', '-e', source, f.root], { stdio: 'ignore' });

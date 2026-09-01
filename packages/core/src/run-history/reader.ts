@@ -179,6 +179,10 @@ export function occurrenceSeq(occurrenceDir: string | null | undefined): number 
  * a 35% overstatement of the M0 figures, in the one number run history exists to report. The
  * fixture that missed it left both cache fields null.
  *
+ * A row whose totals are **both** null while its cache fields are populated is therefore a manifest
+ * no adapter can produce — it is malformed, and `null` is the honest reading of absent summands
+ * rather than a defect to repair here. Ruled rather than changed; see Q-0037.
+ *
  * @returns the sum, or `null` only when **both** totals are null.
  */
 export function vendorTokenTotal(row: VendorRollup): number | null {
