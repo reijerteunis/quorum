@@ -77,12 +77,23 @@ flow-name level exists only where a directory has more than one writing flow —
 development) and `review/` (chore and review). `qa/`, `requirements/` and `solution/` have one each.
 No real run had used the Q-0087 spelling, so the correction cost nothing.
 
-**Not done, and stated rather than implied.** `docs/02-sdlc-pipeline-spec.md` §5's flow snippets
-still show flat paths. They are abridged and already diverged from the shipped files before this
-change — several name a `harness:` input the shipped flows do not — so rewriting them is a separate
-docs job that would also fix pre-existing drift. §5 now says so, and §3.3's folder tree, which is
-what a reader actually uses as the layout, is rewritten to the real shape. The engine's
-`verdict_file` (`.harness/<step>-verdict.json`) is also unscoped; it is not a `writes:` target, so
-the guard does not see it, and `requirements.yaml` reads it by literal name.
+**§5's snippets were fixed in the same session, by generation rather than by transcription.**
+§5.1–§5.5 are now the shipped files byte for byte, produced by reading `harness/flows/*.yaml` rather
+than by hand — the drift they carried is the argument for that: they showed flat write paths tickets
+had moved *and* named a `harness: architecture.md` input the shipped requirements flow never had, so
+at least one of the two errors predates this session by a long way. **A transcription of code drifts
+silently**, because it goes on looking like the thing it describes, which is why the fix is a check
+and not a correction: `docs.test.ts` now fails if any of the five differs by a character.
+§5.6 and §5.7 stay **sketches** and are registered as such — `qa-final.yaml` and `deploy.yaml` are
+Q-0012's and do not exist, so there is no file to check them against, and inventing one to satisfy a
+test would be the defect this repository keeps finding. The register is closed in both directions: a
+new §5 yaml block fails until it is classified, and a sketch whose flow later acquires a file fails
+until it moves to the checked set. Q-0056 still owns the separate fact that §5.6's sketch does not
+pass the real `lintFlow`.
+
+**Not done, and stated rather than implied.** The engine's `verdict_file`
+(`.harness/<step>-verdict.json`) is unscoped; it is not a `writes:` target, so the guard cannot see
+it, and `requirements.yaml` reads it by literal name. §3.3's folder tree — what a reader actually
+uses as the layout — is rewritten to the real shape.
 
 Belongs to M2 in `docs/06-development-plan.md`.

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, test } from 'vitest';
 
-import { decisionFiles, read, repoFile } from '../test/corpus.js';
+import { decisionFiles, flowFiles, read, repoFile } from '../test/corpus.js';
 
 // AC-4, AC-8 and AC-11 all require the documents to end up agreeing with what shipped. These check
 // that they do, so a later edit that reintroduces one of the contradictions fails here rather than
@@ -112,6 +112,70 @@ describe('docs/DECISIONS.md indexes docs/decisions/ exactly', () => {
   test('the dates never go backwards — the index is append-only, newest last', () => {
     const dates = listed().map((row) => row.date);
     expect([...dates].sort((a, b) => a.localeCompare(b))).toEqual(dates);
+  });
+});
+
+// 02-sdlc-pipeline-spec.md §5 prints one YAML block per flow, and until Q-0088 they were
+// hand-maintained: they showed flat write paths a year of tickets had moved, and named a `harness:`
+// input the shipped files never had. Prose about code drifts; a transcription of code drifts
+// silently, because it still looks like the thing it describes. So the five that correspond to a
+// shipped file are now that file, byte for byte, and this is what keeps them so.
+describe('Q-0088 — §5\'s flow snippets are the shipped files, not a copy of them', () => {
+  /** Section number → the flow whose file it prints. */
+  const SHIPPED: Record<string, string> = {
+    '5.1': 'requirements', '5.2': 'solutioning', '5.3': 'qa-red', '5.4': 'development', '5.5': 'review',
+  };
+
+  /**
+   * Sections whose block is a SKETCH of a flow that does not exist yet, with why each stays one.
+   * A sketch cannot be checked against a file, and pretending otherwise would either delete the
+   * design or invent a file to satisfy a test.
+   */
+  const SKETCHES: Record<string, string> = {
+    '5.6': 'qa-final.yaml is Q-0012\'s and unwritten; this block is its design, and Q-0056 owns the fact that it fails the real lintFlow on both verdict steps',
+    '5.7': 'deploy.yaml is Q-0012\'s and unwritten; this block is the human-locked gate\'s design',
+  };
+
+  /** The fenced YAML block a `### <n> ` heading introduces, or null when it has none. */
+  function blockOf(section: string): string | null {
+    const text = repoFile('docs/02-sdlc-pipeline-spec.md');
+    const heading = text.indexOf(`\n### ${section} `);
+    if (heading < 0) return null;
+    const open = text.indexOf('\n```yaml\n', heading);
+    if (open < 0) return null;
+    const start = open + '\n```yaml\n'.length;
+    const close = text.indexOf('\n```', start);
+    return close < 0 ? null : text.slice(start, close);
+  }
+
+  test('every section printing a shipped flow prints exactly that file', () => {
+    for (const [section, flow] of Object.entries(SHIPPED)) {
+      const block = blockOf(section);
+      expect(block, `§${section} must still print a yaml block`).not.toBeNull();
+      expect(block, `§${section} must be harness/flows/${flow}.yaml verbatim`)
+        .toBe(repoFile(`harness/flows/${flow}.yaml`).replace(/\n+$/, ''));
+    }
+  });
+
+  // The register cannot silently stop covering anything: every §5 section carrying a yaml block is
+  // either checked against a file or excused by name, and a NEW one fails until it is classified.
+  test('every §5 yaml block is either a shipped flow or a registered sketch', () => {
+    const text = repoFile('docs/02-sdlc-pipeline-spec.md');
+    const sections = [...text.matchAll(/^### (5\.\d) /gm)].map(([, n]) => n!);
+    const withBlock = sections.filter((section) => blockOf(section) !== null);
+    expect(withBlock.sort()).toStrictEqual([...Object.keys(SHIPPED), ...Object.keys(SKETCHES)].sort());
+  });
+
+  // A sketch is still a sketch: if one ever becomes a shipped file, it moves to SHIPPED rather than
+  // sitting here excused while a real file exists beside it.
+  test('no registered sketch names a flow that now has a file', () => {
+    const shipped = new Set(flowFiles().map((file) => path.basename(file, '.yaml')));
+    const claimed = Object.keys(SKETCHES).map((section) => {
+      const text = repoFile('docs/02-sdlc-pipeline-spec.md');
+      const heading = text.slice(text.indexOf(`\n### ${section} `));
+      return /`([a-z-]+)\.yaml`/.exec(heading)?.[1] ?? '';
+    });
+    expect(claimed.filter((flow) => shipped.has(flow))).toEqual([]);
   });
 });
 

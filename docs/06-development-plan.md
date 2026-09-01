@@ -683,11 +683,21 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   **Q-0087's `qa/red/run-{run}/` was corrected to `qa/run-{run}/`** in the same change: the
   flow-name level exists only where a directory has more than one writing flow — `dev/` and
   `review/` — and no real run had used the older spelling.
-  **Not done, and said rather than implied:** §5's flow snippets in `02-sdlc-pipeline-spec.md` still
-  show flat paths. They are abridged and already diverged from the shipped files before this change,
-  so rewriting them is a separate docs job; §5 now says so, and §3.3's folder tree — what a reader
-  actually uses as the layout — is rewritten to the real shape. The engine's `verdict_file` is
-  unscoped too and is invisible to the guard, because it is not a `writes:` target.
+  **§5's snippets were fixed in the same session, by generation rather than transcription.**
+  §5.1–§5.5 are now the shipped files byte for byte, read out of `harness/flows/` rather than
+  retyped, and `docs.test.ts` fails if any differs by a character. The drift they carried is the
+  argument for the method: they showed flat write paths tickets had moved **and** named a
+  `harness: architecture.md` input the shipped requirements flow never had, so one of the two errors
+  long predates this session. A transcription of code drifts *silently*, because it goes on looking
+  like the thing it describes — so the fix is a check, not a correction. §5.6 and §5.7 stay
+  **sketches** and are registered as such: `qa-final.yaml` and `deploy.yaml` are Q-0012's and do not
+  exist, so there is nothing to check them against, and inventing a file to satisfy a test is the
+  defect this repository keeps finding. The register closes both ways — a new §5 block fails until
+  classified, and a sketch whose flow acquires a file fails until it moves. Q-0056 still owns §5.6's
+  separate lint problem.
+  **Not done, and said rather than implied:** the engine's `verdict_file` is unscoped and invisible
+  to the guard, because it is not a `writes:` target. §3.3's folder tree is rewritten to the real
+  layout.
 - Q-0038 Deferred-range failures name their producing step in every case. *(`reviewed` and
   `main:contained` 2026-08-30.)* The preflight now classifies each **endpoint** on its own —
   step-created, unresolved template, or pre-existing — and a range holding a step-created endpoint

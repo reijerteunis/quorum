@@ -1,6 +1,6 @@
 # SDLC Pipeline Spec — seven stage-chained flows on Quorum, plus `chore`
 
-*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 to both sides of the revise loop (Q-0086) and then to a rule covering every flow (Q-0087): a write path carries `{run}`, and one a bounded loop can re-enter within a run carries `{iter}` too, which moved the `integrate` artifacts in `chore.yaml`, `development.yaml` and `qa-red.yaml`; it also records that an `integrate` step's content is chosen by whether its path contains `report`; completed the same day (Q-0088) across `requirements.yaml`, `solutioning.yaml` and `qa-red.yaml`, which added the pointer half of the rule and rewrote §3.3's folder tree to the layout that results. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
+*Status: draft v1, 2026-08-21; §3.4 amended 2026-08-24 (Q-0036) to state what a stage asserts, what it does not, and where containment is visible; §5.5 amended 2026-08-25 (Q-0035) with the `input.diff` rule, what an empty range reports, the boundary between preflighted and deferred ranges, and how a `fan_out` template's range is judged. 2026-08-25 docs review: §5.8 adds the chore flow and its prerequisite, §3.4 gains the chore edge, principle 2 no longer claims one flow per stage, `harness/T-{id}` branch refs corrected to `harness/{id}`, and two open questions closed. §3.3's `ticket.md` example corrected 2026-08-25 (Q-0041) to the `iterations` keys and eight-field `history` entries the engine actually writes. §5.5's two range paragraphs rewritten 2026-08-30 (Q-0038): the preflight's guarantee is per endpoint, not per range, so a deferred range's pre-existing endpoints are proven at run start and a knowably absent one costs nothing. §5.8 gained a paragraph 2026-08-30 (Q-0057): a chore review artifact is named by the run that wrote it — `review/chore/run-<run>/chore-iter-<iter>.md` — and a revise round reads its own run only. §5.8's run-scoping paragraph widened 2026-09-01 to both sides of the revise loop (Q-0086) and then to a rule covering every flow (Q-0087): a write path carries `{run}`, and one a bounded loop can re-enter within a run carries `{iter}` too, which moved the `integrate` artifacts in `chore.yaml`, `development.yaml` and `qa-red.yaml`; it also records that an `integrate` step's content is chosen by whether its path contains `report`; completed the same day (Q-0088) across `requirements.yaml`, `solutioning.yaml` and `qa-red.yaml`, which added the pointer half of the rule, rewrote §3.3's folder tree to the layout that results, and replaced §5.1–§5.5's hand-maintained snippets with the shipped files under a test that fails on any drift. §2 gained principle 8 on 2026-08-31 (Q-0062): a run gives back the worktrees it obtained when it finishes, keeps them when it does not, keeps a worktree that is not clean, and never deletes a ref. Extends the locked v1 definition (01-product-definition.md). New decisions it depends on are recorded in DECISIONS.md under the 2026-08-21 entries. Terms in GLOSSARY.md.*
 
 ## 1. Purpose
 
@@ -187,9 +187,20 @@ Everything else reuses v1 primitives: `adapter`, `model`, `worktree: true`, `par
 ## 5. The seven flows, plus `chore`
 
 All examples use `claude` and `codex` adapters. Model names are placeholders — set them per project.
-**The snippets below are abridged and predate the artifact-naming rule of §5.8**: they show flat write
-paths, and several name inputs the shipped files do not. The shipped flows in `harness/flows/` are
-authoritative for both, and `packages/shared/src/flow.test.ts` is what checks them.
+
+**§5.1 to §5.5 are the shipped files themselves, byte for byte**, and
+`packages/shared/src/docs.test.ts` fails if any of them drifts by a character. They were
+hand-maintained until 2026-09-01 and had drifted in both of the ways a transcription does: they
+showed flat write paths that tickets had since moved, and they named a `harness:` input the shipped
+files never carried. A transcription of code drifts *silently*, because it goes on looking like the
+thing it describes — which is why the fix is a check rather than a correction. §5.8's `chore.yaml`
+is described in prose rather than printed, and is checked by `flow.test.ts` instead.
+
+**§5.6 and §5.7 are sketches, not files.** `qa-final.yaml` and `deploy.yaml` are Q-0012's and do not
+exist yet, so those blocks are design rather than record; the same test registers them by name, so a
+new block in §5 fails until someone says which of the two it is, and a sketch whose flow later
+acquires a file fails until it moves. Q-0056 owns the separate fact that §5.6's sketch does not pass
+the real `lintFlow`.
 
 ### 5.1 `requirements.yaml` — PM×2 + Head of Product
 
@@ -197,29 +208,38 @@ authoritative for both, and `packages/shared/src/flow.test.ts` is what checks th
 name: requirements
 consumes: draft
 produces: requirements
+cross_vendor: required
 steps:
   - parallel:
     - id: pm-claude
       role: product-manager
       adapter: claude
-      input: { backlog: [ticket.md], harness: [rules.md, architecture.md, product-context.md] }
-      output: { write: requirements/candidate-claude.md }
+      model: opus
+      input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
+      output: { write: "requirements/run-{run}/candidate-claude.md" }
     - id: pm-codex
       role: product-manager
       adapter: codex
-      input: { backlog: [ticket.md], harness: [rules.md, architecture.md, product-context.md] }
-      output: { write: requirements/candidate-codex.md }
+      input: { backlog: [ticket.md], harness: [rules.md, product-context.md] }
+      output: { write: "requirements/run-{run}/candidate-codex.md" }
 
   - id: head-of-product
     role: head-of-product
     adapter: claude
-    input: { backlog: [ticket.md, requirements/candidate-*.md] }
-    output: { write: requirements/merged.md }
+    model: opus
+    input: { backlog: [ticket.md, "requirements/run-{run}/candidate-*.md", requirements/merged.md, .harness/head-of-product-verdict.json] }
+    output: { writes: ["requirements/run-{run}/merged-iter-{iter}.md", requirements/merged.md], verdict: ready|needs-input }
     instructions: >
-      Judge both candidates for completeness, testability and scope discipline.
-      Produce one merged requirement with acceptance criteria, non-goals and
-      open questions. Note which candidate contributed what.
-  - gate: human        # PM owner approves the merged requirement
+      Judge both candidate requirement documents for completeness, testability and
+      scope discipline. Produce ONE merged requirement: user story, acceptance criteria
+      (numbered, each independently testable), non-goals, open questions, and a short
+      "provenance" section noting which candidate contributed what. Verdict "ready" when
+      no open question blocks solutioning; otherwise "needs-input" with the blocking
+      questions as findings.
+    on_fail: { goto: head-of-product, max_iterations: 1, on_exhausted: gate }
+
+  - gate: human
+    reason: PM owner approves requirements/merged.md
 ```
 
 Optional: make `pm-*` interactive (step chat) so the PM can answer clarifying questions — this is the existing grill pattern.
@@ -230,31 +250,62 @@ Optional: make `pm-*` interactive (step chat) so the PM can answer clarifying qu
 name: solutioning
 consumes: requirements
 produces: solutioned
+cross_vendor: required
 steps:
   - id: architect
     role: principal-architect
     adapter: codex
-    worktree: true                       # may read the repo, may write contracts/
-    input: { backlog: [requirements/merged.md], harness: [architecture.md, rules.md], repo: true }
-    output:
-      writes: [solution/draft.md, solution/tasks.yaml]
-      write_dir: solution/contracts/
+    worktree: true
+    branch: "harness/{id}/contracts"
+    input: { backlog: [requirements/merged.md, "solution/run-{run}/review-iter-*.md"], harness: [architecture.md, rules.md], repo: true }
+    output: { writes: ["solution/run-{run}/draft-iter-{iter}.md"] }
     instructions: >
-      Produce a solution document, machine-checkable contracts (interfaces,
-      schemas, stubs, migration skeletons) and a task breakdown tagged by role.
-      Every task must reference at least one contract.
+      Produce the solution document for this requirement. It MUST contain: (1) chosen
+      approach and rejected alternatives, (2) a "Contracts" section listing every
+      interface, schema, stub or migration skeleton you created as files under
+      contracts/ in the repository worktree, (3) a "Tasks" section as a YAML block with
+      id, role (frontend|backend|data), title, contracts, depends_on — every task
+      references at least one contract. If a solution/review.md input is present, this
+      is a revision round: address every finding explicitly.
+
   - id: architecture-review
     role: architecture-reviewer
     adapter: claude
-    input: { backlog: [requirements/merged.md, solution/draft.md, solution/contracts/, solution/tasks.yaml], repo: true }
-    output: { write: solution/review.md, verdict: approve|revise }
+    model: opus
+    input: { backlog: [requirements/merged.md, "solution/run-{run}/draft-iter-*.md"], harness: [architecture.md, rules.md], repo: true }
+    output: { writes: ["solution/run-{run}/review-iter-{iter}.md"], verdict: approve|revise }
+    instructions: >
+      Review the solution against the requirement and the architecture rules. Check that
+      every acceptance criterion maps to a task, every task references a contract, and
+      contracts are concrete enough to write failing tests against. "approve" only if you
+      would let QA start writing tests today.
     on_fail: { goto: architect, max_iterations: 2, on_exhausted: gate }
+
   - id: finalize
+    role: principal-architect
     adapter: codex
-    input: { backlog: [solution/draft.md, solution/review.md] }
-    output: { write: solution/solution.md }
-  - gate: human        # architect owner approves; contracts are committed to the ticket branch
-cross_vendor: required
+    input: { backlog: ["solution/run-{run}/draft-iter-*.md", "solution/run-{run}/review-iter-*.md"] }
+    output: { writes: ["solution/run-{run}/solution.md", solution/solution.md] }
+    instructions: Produce the final solution document, incorporating the review. Keep the Contracts and Tasks sections verbatim unless the review changed them.
+
+  - id: tasks
+    role: principal-architect
+    adapter: codex
+    input: { backlog: ["solution/run-{run}/solution.md"] }
+    output: { writes: ["solution/run-{run}/tasks.yaml", solution/tasks.yaml] }
+    instructions: >
+      Extract the Tasks section of the solution as a YAML document with exactly this shape
+      and nothing else: tasks: [{id, role, title, description, contracts: [paths], depends_on: [ids]}].
+      Put the YAML in "document" without code fences.
+
+  - gate: human
+    reason: Architect owner approves solution/solution.md and solution/tasks.yaml
+
+  - id: merge-contracts
+    type: integrate
+    branches: ["harness/{id}/contracts"]
+    into: "harness/{id}/integration"
+    output: { writes: ["solution/run-{run}/integration.md"] }
 ```
 
 ### 5.3 `qa-red.yaml` — Automation QA writes failing tests
@@ -263,34 +314,54 @@ cross_vendor: required
 name: qa-red
 consumes: solutioned
 produces: red
+cross_vendor: required
 steps:
   - id: scenarios
     role: automation-qa
     adapter: claude
-    input: { backlog: [requirements/merged.md, solution/solution.md, solution/contracts/] }
-    output: { write: qa/scenarios.md }
+    model: sonnet
+    input: { backlog: [requirements/merged.md, solution/solution.md, solution/errata.md, solution/tasks.yaml, "qa/run-{run}/scenario-review-iter-*.md"] }
+    output: { writes: ["qa/run-{run}/scenarios-iter-{iter}.md"] }
+    instructions: >
+      Write the test scenarios for this ticket: one Given/When/Then scenario per acceptance
+      criterion, plus edge cases the architecture reviewer or the solution call out. Tag
+      each scenario with the task id(s) it covers.
+
   - id: write-tests
     role: automation-qa
     adapter: codex
     worktree: true
     branch: "harness/{id}/tests"
-    input: { backlog: [qa/scenarios.md, solution/contracts/], repo: true }
+    base: "harness/{id}/integration"
+    input: { backlog: ["qa/run-{run}/scenarios-iter-*.md", solution/tasks.yaml, solution/errata.md, "qa/run-{run}/scenario-review-iter-*.md", "qa/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
     instructions: >
-      Write the automated tests for every scenario against the contracts. Tests
-      must compile/typecheck against the stubs and FAIL on assertions, not on
-      missing symbols. Do not implement any production code.
+      Implement automated tests for every scenario against the contracts under contracts/.
+      Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
+      symbols. Do not implement production code. Summarise which files you created.
+
   - id: prove-red
-    type: script                       # in v1 since 2026-08-21
-    run: "npm test -- --reporter=json > ../backlog/{id}/qa/red-report.json"
-    assert: "all tests fail, zero compile errors"
+    type: integrate
+    branches: ["harness/{id}/tests"]
+    into: "harness/{id}/integration"
+    run_tests: true
+    expect: fail
+    output: { writes: ["qa/run-{run}/red-integration-iter-{iter}.md", "qa/run-{run}/red-report-iter-{iter}.md"] }
     on_fail: { goto: write-tests, max_iterations: 2, on_exhausted: gate }
+
   - id: scenario-review
+    role: architecture-reviewer
     adapter: claude
-    input: { backlog: [requirements/merged.md, qa/scenarios.md], branch: "harness/{id}/tests" }
-    output: { verdict: approve|revise }
+    model: opus
+    input: { backlog: [requirements/merged.md, "qa/run-{run}/scenarios-iter-*.md", "qa/run-{run}/red-report-iter-*.md"] }
+    output: { writes: ["qa/run-{run}/scenario-review-iter-{iter}.md"], verdict: approve|revise }
+    instructions: >
+      Check coverage: every acceptance criterion has at least one scenario and the red
+      report shows the suite failing on assertions (not compile errors). "revise" lists the
+      uncovered criteria or the compile failures.
     on_fail: { goto: scenarios, max_iterations: 1, on_exhausted: gate }
-  - gate: human        # QA owner approves; tests branch merged into ticket branch
-cross_vendor: required
+
+  - gate: human
+    reason: QA owner approves the failing suite
 ```
 
 ### 5.4 `development.yaml` — Specialised developers fan out, integrate to green
@@ -301,30 +372,32 @@ consumes: red
 produces: green
 steps:
   - id: developers
-    fan_out: { from: solution/tasks.yaml, by: role, respect: depends_on }
+    fan_out: { from: solution/tasks.yaml, by: role, respect: depends_on, scope: failing-tasks-only }
     step:
-      role: "developer-{role}"           # harness/roles/developer-backend.md etc.
-      adapter: "{role.adapter}"           # per-role adapter from harness/roles
-      worktree: true
+      id: "dev:{task.id}"
+      role: "developer-{role}"
+      adapter: "{role.adapter}"
+      model: "{role.model}"
       branch: "harness/{id}/{task.id}"
-      base: "harness/{id}/integration"              # includes contracts + red tests
-      input: { backlog: [solution/solution.md, "solution/contracts/"], task: true, repo: true }
+      base: "harness/{id}/integration"
+      input: { backlog: [solution/solution.md, review/verdict.md], harness: [rules.md, architecture.md], repo: true }
       instructions: >
-        Implement only your task. Make the tests that cover your task pass.
-        Do not modify tests. Do not touch files outside your role's allowed paths.
+        Implement ONLY your task so that the tests covering it pass. Do not modify tests.
+        Do not touch files outside your role's allowed paths. Commit nothing — the harness
+        commits your worktree. If a contract is missing or contradictory, stop and say so
+        in the summary instead of guessing.
+
   - id: integrate
     type: integrate
-    adapter: claude
     branches: "harness/{id}/*"
     into: "harness/{id}/integration"
     run_tests: true
+    expect: pass
     output: { writes: ["dev/development/run-{run}/integration-iter-{iter}.md", "dev/development/run-{run}/green-report-iter-{iter}.md"] }
-    on_fail:                              # conflicts or still-red tests
-      goto: developers
-      scope: failing-tasks-only
-      max_iterations: 3
-      on_exhausted: gate
-  - gate: human        # optional in practice; flip to auto once trusted
+    on_fail: { goto: developers, max_iterations: 3, on_exhausted: gate }
+
+  - gate: human
+    reason: Integrated branch is green; approve to hand over to review
 ```
 
 Roles example `harness/roles/developer-frontend.md` frontmatter: `adapter: claude, paths: [apps/web/**]`; `developer-backend.md`: `adapter: codex, paths: [apps/api/**]`. Mixing vendors across roles is how you get genuine multi-model development without pinning model names that may not be available through an adopter's subscription.
@@ -335,6 +408,7 @@ Roles example `harness/roles/developer-frontend.md` frontmatter: `adapter: claud
 name: review
 consumes: green
 produces: reviewed
+cross_vendor: required
 steps:
   - parallel:
       - id: review-claude
@@ -371,13 +445,13 @@ steps:
       approve every finding must be a nit; on changes-requested there must be at least one
       finding. Judge the reviews, not the code diff.
     on_fail:
-      goto: flow:development              # cross-flow backward edge
+      goto: flow:development
       counter: review
       max_iterations: 3
       on_exhausted: gate
+
   - gate: human
     reason: Review verdict is approve; accept or abort handover to final QA
-cross_vendor: required
 ```
 
 `{base}` resolves from `repo.base_branch` in `harness/harness.yaml` and defaults to `main` when omitted. The engine materialises the three-dot diff from that configured base to `harness/{id}/integration` and truncates its patch at `repo.max_diff_bytes`, whose default is `200000` bytes. When the fourth rejection exceeds the three permitted regressions, the engine presents an exhaustion gate without changing the stage. That gate requires an explicit `advance`, `retry`, or `abort`; `--auto` cannot bypass it.

@@ -574,6 +574,7 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/shared/src/docs.test.ts': {
     'repoFile → file': 'the loop iterates a literal array of the three documents, in the same test',
     'read → file': 'the map is built from decisionFiles(), the audited walk of docs/decisions',
+    'repoFile → `harness/flows/${flow}.yaml`': 'the loop iterates SHIPPED, a literal map of five flow names declared in the same test, and clause B collects the harness/flows prefix from it',
   },
   'packages/shared/src/plan-backlog.test.ts': {
     'repoFile → PLAN': 'the constant is \'docs/06-development-plan.md\', a literal at the top of that file, which clause B collects',
