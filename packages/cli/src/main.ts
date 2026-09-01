@@ -8,16 +8,33 @@
  * `die`, a command that failed but has more to say calls `failSoftly`, and everything else returns
  * and lets the process exit on its own status. See Q-0090 AC-5.
  *
- * **It is `async` with nothing to await**, because `spike/bin/harness.js:569` is
+ * **It is `async` and it awaits what it dispatched to**, because `spike/bin/harness.js:569` is
  * `main().catch(…)`: the uncaught-rejection path is part of what this frame preserves, and it needs
- * a promise to attach to. The binary that wires the two together does not exist yet — a `bin`
- * target is Q-0096's, together with everything else about making this workspace emit JavaScript.
+ * a promise to attach to. The spike's `run` case awaits the engine inside `main`'s own body, so a
+ * failing command reaches that `catch`; a dispatch that called a handler without awaiting would
+ * resolve `main` first and leave the rejection detached, where Node's unhandled-rejection path
+ * prints it instead of `fail.ts`'s `dieOnUnexpected`. The binary that wires the two together does
+ * not exist yet — a `bin` target is Q-0096's, together with everything else about making this
+ * workspace emit JavaScript.
  *
  * **No command is implemented here.** `board`, `lint`, `validate` and `adapters` are Q-0091's;
  * `runs` is Q-0092's; `init` and `ticket` are Q-0093's; `run` and its gate reader are Q-0094's.
  */
-import { parseArgv } from './argv.js';
+import { parseArgv, type ParsedArgv } from './argv.js';
 import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
+
+/**
+ * What one command does with a parsed command line.
+ *
+ * It is handed the whole {@link ParsedArgv} because the spike's eight cases read `cmd`, `rest`,
+ * `flags` and `gateAnswers` out of module scope (`spike/bin/harness.js:40–42`), so every one of them
+ * sees all four. A handler given only its own name would leave Q-0091 to Q-0094 either parsing argv
+ * a second time or widening this contract, which is the duplication the frame exists to prevent.
+ *
+ * It may return a promise, and {@link main} awaits it: `run` is asynchronous, and a command's
+ * failure has to arrive at `main().catch(dieOnUnexpected)` rather than as a detached rejection.
+ */
+export type CommandHandler = (argv: ParsedArgv) => void | Promise<void>;
 
 /**
  * What each command does.
@@ -25,8 +42,13 @@ import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
  * Keyed by {@link Command}, so the table and {@link COMMANDS} cannot drift: a handler added without
  * its name fails to compile, and a name added without its handler fails to compile too. That is the
  * coupling `commands.test.ts` relies on when it checks the help against the same set.
+ *
+ * Exported because it is the frame's registry rather than an implementation detail: Q-0091 to
+ * Q-0094 each add their entry to it, and `main.test.ts` reaches through it to exercise the dispatch
+ * — that a handler receives the parsed command line, and that an asynchronous one is waited for —
+ * over the registered set rather than over a command written for the test.
  */
-const HANDLERS: Readonly<Record<Command, () => void>> = {
+export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
   help: () => {
     console.log(HELP);
   },
@@ -42,9 +64,10 @@ const HANDLERS: Readonly<Record<Command, () => void>> = {
  * "did the thing" from "did not understand you". The successor is Q-0090's GA-4.
  */
 export async function main(argv: readonly string[]): Promise<void> {
-  const { cmd } = parseArgv(argv);
+  const parsed = parseArgv(argv);
+  const { cmd } = parsed;
   if (cmd !== undefined && isCommand(cmd)) {
-    HANDLERS[cmd]();
+    await HANDLERS[cmd](parsed);
     return;
   }
   console.log(HELP);

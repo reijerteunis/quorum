@@ -13,9 +13,10 @@ import { Writable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { HELP } from './commands.js';
+import { parseArgv, type ParsedArgv } from './argv.js';
+import { COMMANDS, HELP } from './commands.js';
 import { SUCCESS } from './exit.js';
-import { main } from './main.js';
+import { HANDLERS, main } from './main.js';
 
 /** The four shapes AC-8 names, and the three AC-6 names among them. */
 const INVOCATIONS: readonly (readonly string[])[] = [
@@ -91,6 +92,88 @@ describe('AC-6 — an unknown or absent command prints help and exits 0', () => 
     });
     await invoke([]);
     expect(exit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The dispatch contract: what a handler is given, and what the entry waits for.
+ *
+ * Both properties belong to AC-8's frame rather than to any command — Q-0091 to Q-0094 write
+ * against them and none of them may have to widen this module to do it — and both were found
+ * missing by run 2's fifth review. Exercised over {@link COMMANDS} rather than over a command
+ * written for the test, so a sibling's entry inherits the checks instead of needing its own.
+ */
+describe('the frame hands a handler the parsed command line, and waits for what it dispatched to', () => {
+  /** A command line carrying all four of the parser's fields, so a truncated one is visible. */
+  const tail = ['ticket', '--adapter', 'mock', '--gate-answer', 'advance', '--gate-answer', 'abort'];
+
+  test.each([...COMMANDS])('the %s handler receives exactly what parseArgv returned', async (name) => {
+    const seen: ParsedArgv[] = [];
+    vi.spyOn(HANDLERS, name).mockImplementation((parsed) => {
+      seen.push(parsed);
+    });
+    const argv = [name, ...tail];
+    await invoke(argv);
+    expect(seen).toStrictEqual([parseArgv(argv)]);
+    // Named one by one as well, because a structural comparison against the parser's own output
+    // would still hold if both sides lost a field. `rest`, `flags` and `gateAnswers` are the three
+    // a handler taking only its name would have to re-derive.
+    expect(seen[0]?.rest).toStrictEqual(['ticket']);
+    expect(seen[0]?.flags.adapter).toBe('mock');
+    expect(seen[0]?.gateAnswers).toStrictEqual(['advance', 'abort']);
+  });
+
+  test.each([...COMMANDS])('main does not resolve until an asynchronous %s handler does', async (name) => {
+    // The handler waits on a promise this test alone can settle, and the wait is drained through a
+    // macrotask, so every microtask an unawaited dispatch could hide behind has run before the
+    // assertion. The first shape written here — a handler suspended on one `await Promise.resolve()`
+    // and a flag read after `main` — passed against `void HANDLERS[cmd](parsed)`, because the
+    // handler's continuation is queued ahead of the caller's: a check that could not see its own
+    // subject, which is why this one holds the handler open instead of racing it.
+    //
+    // The declared return type carries none of this, and that was measured rather than assumed:
+    // TypeScript accepts a `Promise<void>`-returning function wherever `void` is declared, so
+    // narrowing `CommandHandler` back to `(argv: ParsedArgv) => void` leaves `tsc --noEmit` and all
+    // 94 of this package's tests green. The union says what a handler may do; only the `await` in
+    // `main` makes it true, so only a behavioural check can hold it.
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let finished = false;
+    vi.spyOn(HANDLERS, name).mockImplementation(async () => {
+      await held;
+      finished = true;
+    });
+
+    let resolved = false;
+    const running = invoke([name]).then(() => {
+      resolved = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolved, 'main resolved while its handler was still waiting').toBe(false);
+    expect(finished).toBe(false);
+
+    release();
+    await running;
+    expect(finished, 'main resolved with its handler still running').toBe(true);
+  });
+
+  test.each([...COMMANDS])('a rejecting %s handler rejects main, which is what carries it to die', async (name) => {
+    // `spike/bin/harness.js:569` is `main().catch((e) => die(e.stack ?? String(e)))`. A detached
+    // rejection reaches Node's unhandled-rejection path instead, which neither prints through the
+    // error path nor exits with ERROR. The binary that installs that `catch` is Q-0096's; the
+    // property it will depend on is this one.
+    vi.spyOn(HANDLERS, name).mockImplementation(() => Promise.reject(new Error('a command failed')));
+    await expect(main([name])).rejects.toThrow('a command failed');
+  });
+
+  test('the registry is what the type says it is, and the spies restore it', () => {
+    // The three checks above replace an entry and rely on `restoreAllMocks` to put it back; this
+    // asserts the restoration rather than assuming it, so a later test cannot silently run against
+    // a mocked frame.
+    expect(Object.keys(HANDLERS).sort()).toStrictEqual([...COMMANDS].sort());
+    for (const name of COMMANDS) expect(vi.isMockFunction(HANDLERS[name])).toBe(false);
   });
 });
 
