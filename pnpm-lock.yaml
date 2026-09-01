@@ -32,7 +32,14 @@ importers:
 
   apps/web: {}
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@quorum/core':
+        specifier: workspace:*
+        version: link:../core
+      '@quorum/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/compiler: {}
 

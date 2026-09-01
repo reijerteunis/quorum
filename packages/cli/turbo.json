@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // As in packages/shared and packages/core: a hit on this task claims that nothing it READS has
+    // changed, so every file this package's suite opens outside itself is declared here beside
+    // `$TURBO_DEFAULT$`, which keeps the package-relative set rather than replacing it. Q-0072.
+    //
+    // Only two are named, because the other three the suite reads are already hashed by a
+    // mechanism this package declares:
+    //   - packages/core/package.json and packages/shared/package.json (src/package.test.ts AC-9)
+    //     come in through the `^test` edge that the two workspace dependencies create, which is
+    //     what covers `core`'s reads of `shared` and is why turbo-inputs.test.ts's MANIFEST omits
+    //     those deliberately;
+    //   - tsconfig.base.json is a root `globalDependencies` entry, hashed for every task.
+    // Neither of the two below is covered by anything: `pnpm-lock.yaml` reaches this task only
+    // through @quorum/core#test's own declaration, which is not this package's to rely on, and the
+    // root package.json is hashed by no task at all. Q-0090 AC-10(a).
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../pnpm-lock.yaml",
+        "../../package.json"
+      ]
+    }
+  }
+}
