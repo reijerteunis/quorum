@@ -126,7 +126,22 @@ import { commitAll, git, removeTempDirs, tempDir, write } from '../test/repo.js'
 /** This file, which the clause B scan skips and a test of its own audits instead. */
 const GUARD = 'packages/core/src/turbo-inputs.test.ts';
 
-/** The two packages whose suites read outside themselves. The other five read nothing outside. */
+/**
+ * The two packages whose suites read outside themselves *and are audited here*.
+ *
+ * It was "the other five read nothing outside" until Q-0090, and that stopped being true: the CLI
+ * frame's suite reads `pnpm-lock.yaml` and the root `package.json`, and declares both in
+ * `packages/cli/turbo.json`, so its hash is correct. It is **not** a third member, because the
+ * three floors below are calibrated for these two — clause A wants more than 24 hashed inputs and a
+ * {@link MANIFEST} of more than five named reads, and `@quorum/cli` has 21 and 2. Widening them is
+ * re-deriving somebody else's guard rather than moving a register, and it belongs to whichever
+ * ticket grows that package — Q-0091, which adds the first four commands and their tests.
+ *
+ * So the four remaining packages read nothing outside, `@quorum/cli` reads outside and declares it,
+ * and its declaration is checked by its own suite rather than by this file. Stated rather than left
+ * to be discovered, because a register that quietly stops covering something is the defect this
+ * file exists to close.
+ */
 const SUITES = [
   { taskId: '@quorum/shared#test', directory: 'packages/shared' },
   { taskId: '@quorum/core#test', directory: 'packages/core' },

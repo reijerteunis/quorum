@@ -41,7 +41,14 @@ flows after Q-0058, and two tickets were opened from it and closed the same day 
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
-against a measurement that was not copied.
+against a measurement that was not copied. **Q-0090's implement step corrected two things in this
+page on 2026-09-01**: Q-0010's four figures for what transfers at the CLI cut — eight files, 2,515
+lines, "half", `smoke.js` 773 — which were stale in all four places and are re-derived from
+`spike-parity.test.ts`'s pinned identities as nine files, 2,959 lines, 55% and 780; and Q-0090's own
+bullet, which promised a runnable binary the gate had already ruled to be Q-0096's. The first is a
+transcription of a register drifting from it, which is what the register exists to catch; the second
+is the plan describing a ticket as it was scoped before its requirements run rather than as it
+shipped.
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
 *M0 closed 2026-08-22 — see the DECISIONS entry. Both of its forward-looking findings are now
@@ -478,8 +485,15 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   printers, argv, exit codes, the interactive gate reader, a `bin` entry and the packaging that makes
   `npx quorum` work from a clean clone; `packages/cli/src/index.ts` is one line today. Anyone sizing
   this from Q-0009's $657 is sizing the wrong thing, and anyone calling it trivial is forgetting the
-  suite: **2,515 lines across eight `spike/test/` files carry a binary half and transfer here**, half
-  the spike suite by line, `smoke.js`'s 773 among them.
+  suite: **2,959 lines across nine `spike/test/` files carry a binary half and transfer here**, 55%
+  of the spike suite by line, `smoke.js`'s 780 among them. All four of those figures said eight
+  files, 2,515 lines, "half" and 773 until Q-0090 re-derived them from
+  `packages/core/src/spike-parity.test.ts`'s own pinned identities — one `binary-only` file plus
+  eight `both`, 220 + 2,739 of 5,428 — which is the register catching a transcription of itself, and
+  is why a share is re-derived rather than adjusted. `docs/04-architecture.md:73` already said 55%,
+  so the two documents had drifted from each other as well as from the register.
+  `backlog/Q-0010-…/ticket.md` §2 carries the same four figures and is the human's to correct: the
+  backlog belongs to the harness and an agent's edits under it are discarded.
   **The cut was agreed on 2026-09-01 and the six children exist**, Q-0090 to Q-0095. Measured, the
   eight `case` blocks are **252 lines of the 569** — the same finding as above from another angle,
   since the rest is helpers and scaffolding. Q-0090 is a hard prerequisite for all five others;
@@ -496,8 +510,12 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   - Q-0090 CLI package skeleton, `bin` entry and `npx quorum`. The prerequisite, and the only one:
     argv, the colour helper, `die`, and **exit codes as a single owned table** rather than scattered
     `process.exit` calls — 0, 1, 2, 130 on signal, and **3 for `undecided`**, which Q-0040 added the
-    same day. No command is implemented; the deliverable is the frame and a binary that runs from a
-    clean clone, which is also M6's cold-clone path.
+    same day. No command is implemented; the deliverable is the frame, **as importable modules with
+    tests that run in process**, plus the package manifest and its `bin` field. It said "and a
+    binary that runs from a clean clone, which is also M6's cold-clone path" until its requirements
+    run measured that this workspace emits no JavaScript at all; the gate ruled on 2026-09-01 that
+    the binary, the emit and what `npx quorum` may mean are **Q-0096's**, so Q-0090 stays the
+    prerequisite for Q-0091 to Q-0094 and is no longer the prerequisite for running anything.
   - Q-0091 CLI read-only commands: `board`, `lint`, `validate`, `adapters`. 109 lines of `case`
     against **698 lines** of inherited coverage, which is the point — these four are thin over
     `core`, so what transfers is the assertion that the surface behaves. Carries three measured

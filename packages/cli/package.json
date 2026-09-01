@@ -3,9 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "quorum": "./bin/quorum.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@quorum/core": "workspace:*",
+    "@quorum/shared": "workspace:*"
   }
 }
