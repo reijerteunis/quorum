@@ -467,8 +467,25 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     2026-08-21 count as a present-tense requirement; both now state that two required suites exist
     until the cutover, what each proves, and the four-link chain from a new failing file to a red
     `pnpm test`. The append-only decision entry that is the origin of "30 checks" is untouched.
-- Q-0010 CLI package; `npx quorum` entry. **Inherits three obligations, stated here because no
-  folder exists to carry them.** (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
+- Q-0010 CLI package; `npx quorum` entry. *(Folder created 2026-09-01, `draft`, with a measured
+  body and a proposed cut awaiting a ruling.)* **M2's last substantive item; the cutover and M3 both
+  queue behind it.**
+  **The measurement that reframes it: this is not a port.** Every domain helper the spike CLI
+  defines locally already exists in `packages/core` — `findProject`/`loadProject` (Q-0043), the six
+  run-history readers (Q-0049), `lintDirectory` (Q-0044), `overrideAdapters` (Q-0047), `containment`
+  (Q-0042), eleven of eleven, checked by name. The logic landed during Q-0009 and the spike CLI has
+  held duplicates since. What is genuinely unbuilt is a **presentation layer** — the formatters, the
+  printers, argv, exit codes, the interactive gate reader, a `bin` entry and the packaging that makes
+  `npx quorum` work from a clean clone; `packages/cli/src/index.ts` is one line today. Anyone sizing
+  this from Q-0009's $657 is sizing the wrong thing, and anyone calling it trivial is forgetting the
+  suite: **2,515 lines across eight `spike/test/` files carry a binary half and transfer here**, half
+  the spike suite by line, `smoke.js`'s 773 among them.
+  **Six children are proposed, not settled** — skeleton, read-only commands, `runs`, writing
+  commands, `run`, and `smoke.js` — with the skeleton a hard prerequisite and the rest independent
+  until the last. The seam's weakness is stated in the body rather than hidden: the eight test files
+  do not partition cleanly by command, which is why `smoke.js` is its own child. No child folder
+  exists until the seam is agreed, because creating them commits it.
+  **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
   `unpriced_steps` on a single step, summing left to the roll-up. (2) Q-0054's routing: the eight
   `spike/test/` files that spawn `spike/bin/harness.js`, 50% of the suite by line, transfer here

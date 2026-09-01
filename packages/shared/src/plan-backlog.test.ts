@@ -66,7 +66,6 @@ function currentMilestoneBullets(): string[] {
  * for one listed here fails too — so the register cannot rot in either direction.
  */
 const UNCREATED: Record<string, string> = {
-  'Q-0010': 'the CLI package. M2\'s largest remaining item; the cutover queues behind it. Needs its own cut, like Q-0009 did.',
   'Q-0012': 'qa-final.yaml and deploy.yaml. Blocked by Q-0056, which must first settle what `route` is.',
 };
 
