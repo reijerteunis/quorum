@@ -1,14 +1,23 @@
 ---
 id: Q-0040
 title: A gate can say undecided
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0040/integration
 priority: p2
 created: 2026-08-31
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-01T14:33:18.204Z
+    cost: 10.645
 ---
 Opened by hand 2026-08-31 at id `Q-0040`, which is where `docs/06-development-plan.md` has cited it
 since 2026-08-24. Like [Q-0039] it had a plan entry and no folder; this body re-measures the claim
