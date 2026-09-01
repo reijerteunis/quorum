@@ -21,10 +21,23 @@ twice:
 - argv parsing — `spike/bin/harness.js:25–26` is `process.argv.slice(2)` plus a flag object, and the
   eight commands read positional `rest` and named flags from it;
 - the colour helper (`:44`) and `die` (`:124`), which every command's error path uses;
-- **exit codes as a single owned table**, not scattered `process.exit` calls. Measured in the spike:
-  `0` and `2` at `:557` (`aborted ? 2 : 0`), `1` via `die` and at `:403`, `:459`, `:551`,
-  `process.exitCode = 1` at four sites, `130` on signal (`spike/src/engine.js:87`), and **`3` for an
-  undecided run**, which Q-0040 added on 2026-09-01 and which is the newest member;
+- **exit codes as a single owned table**, not scattered `process.exit` calls. Re-derived against
+  `main` on 2026-09-01, **after** Q-0040 merged and shifted three of them:
+
+  | code | where, today | meaning |
+  | --- | --- | --- |
+  | `0` | `:404`, `:460`, and the fallthrough of `:557` | success |
+  | `1` | `die` at `:124`, plus `:404`, `:460`, `:548` | error |
+  | `1` (soft) | `process.exitCode = 1` at `:499`, `:517`, `:523`, `:531` | **a distinct mechanism, and preserved**: it sets the status and lets the process finish writing, where `process.exit` truncates. A port that collapses the two loses output on the `runs` warning paths |
+  | `2` | `:557` | the human chose to stop it — `aborted` |
+  | `3` | `:557` | nobody was there — `undecided`, added by Q-0040 on 2026-09-01 |
+  | `130` | **`spike/src/engine.js:87`**, not the CLI | signal. `core` installs no signal handler (Q-0050 AC-5), so in `packages/cli` this becomes the CLI's own, and is Q-0094's to place |
+
+  `:557` is now a single three-way expression —
+  `r.status === 'aborted' ? 2 : r.status === 'undecided' ? 3 : 0` — so 0, 2 and 3 are decided in one
+  place and a fourth status would extend it there. Do not re-derive this table from the ticket body's
+  earlier draft or from `docs/`; it was wrong by three line numbers within an hour of being written,
+  because Q-0040 landed in between.
 - `npx quorum` working from a clean clone, which is this child's acceptance test and is also M6's
   cold-clone path.
 
