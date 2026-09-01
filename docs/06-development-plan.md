@@ -36,8 +36,8 @@ See *"The plan and the backlog are checked against each other, and the two direc
 same"* (2026-09-01). The `owner:` split was closed in the same edit: five tickets carried the OS
 user `ruudvanengelenhoven` against fifty-four `ruud`, because `create()` defaults owner to
 `process.env.USER`, which is a product-behaviour question this repository is not the right place to
-answer by hand. **Q-0037 reached `requirements` on 2026-09-01**, the first ticket run through the
-flows after Q-0058, and **Q-0085** was opened from its OQ-1 at that gate; both entries below are
+answer by hand. **Q-0037 shipped on 2026-09-01**, the first ticket run through the
+flows after Q-0058, and **Q-0085** was opened from its OQ-1 at its requirements gate; both entries below are
 written to what happened rather than to what was planned, and Q-0037's records a requirements run
 correcting a body that had been re-measured against the tree hours earlier — which is the same
 lesson as *"a measurement copied from a document is not a measurement"* arriving one layer up,
@@ -127,8 +127,10 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   through the binary** — `spike/test/smoke.js`, 151 assertions, the "30-check smoke test" this line
   said until 2026-08-31, counted when it was 30 by *"`integrate` is one generic step type used by
   three stages"* (2026-08-21) — is **Q-0010's**, together with the other seven files that spawn
-  `spike/bin/harness.js`: 49% of the suite by line — 53% when Q-0054 counted it, and re-derived by
-  `spike-parity.test.ts` on every ticket that adds a library-only file — which cannot be aimed at a
+  `spike/bin/harness.js`: 50% of the suite by line — 53% when Q-0054 counted it, 49% after Q-0062,
+  and re-derived by `spike-parity.test.ts` rather than transcribed, which is why it moves in both
+  directions; Q-0037 moved it **up**, by reclassifying `q0011-runs-cli.js` out of binary-only once
+  the spike gained a `validateArtifact` that file asserts over directly — which cannot be aimed at a
   `packages/cli` that does not exist. Until then both CI jobs stay green and both are required.
 - `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
 - `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.
@@ -452,7 +454,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 - Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` and
   `main:contained` 2026-08-25.)*
 - Q-0036 What `green` means, and where the code is — the board's git-derived containment annotation.
-- Q-0037 Run-history review remainder — one major and eight nits. *(`requirements` 2026-09-01.)*
+- Q-0037 Run-history review remainder — one major and eight nits. *(`reviewed` and
+  `main:contained` 2026-09-01.)*
   Ready on the first pass, twelve criteria, $8.587 and 6,279,293 tokens across three steps. **Its
   body was re-measured against both trees before the run and the merge then corrected the
   re-measurement**, which is the record worth keeping: two of the corrections reduce scope and one
@@ -486,6 +489,57 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   corrected the same day, a week after the precondition it described had been **abandoned rather
   than met**. Kept as one ticket at the gate (OQ-4), and `harness/Q-0037/integration` cut
   deliberately from the requirements tip rather than from whatever `HEAD` held (GA-2).
+  **What shipped, in one chore run of three implement rounds and three reviews, no exhaustion
+  gate.** The timer is gone from `spike/src/engine.js` and `packages/core/src/engine/routing.ts`
+  together, the fixture at `q0011-run-history.js` owns a bounded ten-second handle of its own — the
+  ceiling being what stops the fix becoming worse than the defect, since `spike/test/run.js` has no
+  per-scenario timeout — and the AC-4h pin is **inverted rather than deleted**, so a returning timer
+  fails a check instead of passing an absent one. The `routing.ts` register went from three
+  authority lines to two and the cross-file arithmetic 19 → 18.
+  **Round 1 introduced a regression while fixing a nit, and round 2's reviewer caught it**, which is
+  the loop earning its cost. Rewriting the skipped-check notice dropped the word *recognised*, and
+  `validateArtifact` returns `unrecognised-annotation` for **any** value that is not
+  `run-manifest-v1` — so the new sentence was factually false for a schema carrying
+  `x-quorum-contract: unknown-v1`, a case the wording it replaced had covered. Restored, and still
+  literally compliant with `runs-cli.contract.md:47–48`, which the implementer may not edit.
+  **Two errata, both written during the loop rather than at a gate, and both for findings no round
+  could act on.** **E-1**: AC-12 step 2 asked for the freeze SHA to be re-recorded *"in that
+  commit"*, which requires a commit to contain its own hash. Measured against the only precedent —
+  Q-0062's `9721d78` has parent `a6e529a` and records `a6e529a`, two commits — and **charter §3
+  carried the same impossible wording**, so the criterion inherited the defect rather than
+  introducing it. Both are corrected; the ninth appearance of a loop handed work no step in it can
+  perform, and the second where the requirement's own text is what hands it over. **E-2**: round 2's
+  report dropped AC-3/AC-4/AC-5/AC-8's evidence, and the cause is `chore.yaml` — `implement` writes
+  one flat `dev/implement-report.md` that the engine rewrites every traversal, which is **exactly
+  the defect Q-0057 closed for reviews and left open for reports**. Round 1's 471-line report was
+  recoverable only because an unrelated commit's `git add -A` happened to catch it, which is
+  recorded as luck rather than as design; all three rounds now sit under `dev/rounds/`. The
+  successor — making the implement report round-scoped — is owed and not opened here.
+  **AC-11 moved a classification rather than arithmetic**, and it is the first re-derivation to move
+  the transfer share **up**: `q0011-runs-cli.js` was binary-only on the true statement that it
+  imported nothing from `spike/src`, which stopped being true when AC-9 gave the spike a
+  `validateArtifact` the file asserts over directly. 49% → **50%**, corrected here and in
+  `04-architecture.md`, and the requirement predicted the move by name at the gate.
+  **$53.13 across two runs** — $8.59 requirements, $44.54 chore — and 73.2M tokens across four
+  unpriced codex steps. **The first run to exercise Q-0062's worktree cleanup for real**:
+  `removed-worktrees=2 kept=0`, which Q-0062's own run could not do because `runFlow` loads the
+  engine at run start. Verified in both environment rows per Q-0072's closing finding — `integrate`
+  ran install and both suites to exit 0 in a worktree with neither `.harness/worktrees` nor
+  `.quorum/runs`, then forced on `main` after the merge: spike 18/18, workspace 7/7 tasks 0 cached
+  and 1378 passed, lint and typecheck 14/14 tasks 0 cached, `harness lint` 6/6, and the
+  git-identity sweep green. The freeze-SHA half was **demonstrated red before green** — it named
+  `spike/src/contracts.js` and `spike/src/engine.js` at the merge and is clear at the re-record —
+  with the guard's own 43 checks passing.
+  **OQ-3 is answered by measurement: `validateFile` stays, in both trees and unchanged.** Its
+  non-CLI callers are `q0034-review-fixes.js:74` and a new convergence test at
+  `q0011-runs-cli.js:210` asserting that it and `validateArtifact` agree structurally over every
+  combination in which the two are comparable, and `contracts.test.ts`'s AC-4 pins its signature and
+  per-call schema read in `core`. So the single-read entry point was added beside it rather than in
+  place of it, and Q-0010 inherits both with a test saying what each is for.
+  **OQ-2 is the one thing still owed and it is Ruud's**: whether AC-8's per-step usage shape binds
+  `packages/cli`, or whether Q-0010 re-decides it. Nit 5 has no counterpart today, so this ticket
+  picked a shape; saying at the close that it binds is what turns that into a decision Q-0010
+  inherits rather than an accident it copies. Recorded here as open rather than quietly assumed.
 - Q-0085 An entry's date is the date it takes its place in the index. *(Folder created 2026-09-01,
   `draft`.)* Split from Q-0037's OQ-1 at its requirements gate, with that run's Appendix A
   transcribed into the body in full rather than referenced. `docs/DECISIONS.md` is called

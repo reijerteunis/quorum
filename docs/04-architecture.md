@@ -70,11 +70,14 @@ React + Vite, Tailwind, dark "ground control" theme from the design prompt. Scre
   the mock end-to-end *through the binary* — 151 assertions in `spike/test/smoke.js`, which is what
   M2's done-when calls "the 30-check smoke test" and what the 2026-08-21 decision *"`integrate` is
   one generic step type used by three stages"* counted when the figure was 30. Neither suite is a
-  subset of the other. 49% of `spike/test/`, by line, spawns `spike/bin/harness.js`, and **that half
+  subset of the other. 50% of `spike/test/`, by line, spawns `spike/bin/harness.js`, and **that half
   transfers at Q-0010** rather than at Q-0054 — the CLI does not exist in `packages/` yet, so there
-  is nothing for it to be aimed at. The share was 53% when Q-0054 measured it and falls with every
-  library-only file added since; it is re-derived on each run rather than transcribed, which is why
-  this sentence can be trusted to be current. `packages/core/src/spike-parity.test.ts` is the file-by-file
+  is nothing for it to be aimed at. The share was 53% when Q-0054 measured it and 49% after Q-0062;
+  it is re-derived on each run rather than transcribed, which is why this sentence can be trusted to
+  be current, and why it moves in **both** directions. Q-0037 moved it up rather than down, and by
+  reclassifying a file rather than by arithmetic: `q0011-runs-cli.js` was binary-only on the true
+  statement that it imported nothing from `spike/src`, and that stopped being true when the spike
+  gained a `validateArtifact` the file asserts over directly. `packages/core/src/spike-parity.test.ts` is the file-by-file
   record of which spike scenario the workspace suite carries, which transfers, and which is carried
   by nobody; it is deleted at the cutover with `spike/test/**`.
 - **What makes a new failing test file fail `pnpm test`**, since Q-0054, link by link. The include

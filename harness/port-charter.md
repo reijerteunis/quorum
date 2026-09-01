@@ -3,7 +3,9 @@
 *Status: written 2026-08-25 by Q-0009; the cutover follow-up's proposed id corrected the same day
 from `Q-0055` to `Q-0058`, `Q-0055` having been opened for other work in the meantime (§10);
 §3's "the freeze SHA is not yet named" block corrected 2026-09-01, a day after the SHA was
-recorded and the precondition it described was abandoned rather than met. The ground rules for
+recorded and the precondition it described was abandoned rather than met, and §3's re-record step
+corrected the same day by Q-0037 erratum E-1, which measured that it asked for a commit containing
+its own hash. The ground rules for
 porting `spike/` into `packages/core` and `packages/shared` across fourteen child
 tickets, Q-0041 to Q-0054. Q-0009 ports nothing; this document and the guard beside it are its
 output. Read with `harness/rules.md` and `harness/architecture.md`, which points here.*
@@ -202,7 +204,12 @@ base. It is:
 1. **Mirror the change into `packages/core`** wherever the module is ported, so the port and its
    witness say the same thing. Q-0057 and Q-0080 both did this without being asked, landing in both
    trees in one commit — the Q-0066 / Q-0068 / Q-0070 shape.
-2. **Re-record `freeze-sha` in the same commit**, at the tip that carries the mirrored change.
+2. **Re-record `freeze-sha` in a follow-up commit whose parent is the merge**, and record the
+   merge commit's own SHA. *Corrected 2026-09-01 by Q-0037 erratum E-1: this step read "in the same
+   commit, at the tip that carries the mirrored change", which asks for a commit containing its own
+   hash and cannot be done in any order. Q-0062 is the only ticket to have walked the path and did
+   the achievable thing silently — `9721d78`'s parent is `a6e529a` and what it records is `a6e529a`,
+   two commits rather than one. The step is now what the precedent actually did.*
 
 **Until the port completes, the half cannot tell two causes apart, and that is stated rather than
 discovered.** A change to a **ported** module means the port is genuinely stale. A change to one
@@ -269,7 +276,7 @@ must not report success no longer has a subject here.
 <!-- port-freeze:begin — read by .github/scripts/port-freeze-guard.sh; keep the three keys and their format -->
 ```yaml
 children: Q-0041 Q-0042 Q-0043 Q-0044 Q-0045 Q-0046 Q-0047 Q-0048 Q-0049 Q-0050 Q-0051 Q-0052 Q-0053 Q-0054
-freeze-sha: a6e529a31e84893140cc4b01cc0b2f2013880ca2
+freeze-sha: c0583f31d2ee594570ac05b26a87b273975a0877
 exemption-trailer: Port-freeze-exemption
 ```
 <!-- port-freeze:end -->
