@@ -81,18 +81,41 @@ await scenario('B2', 'vendor token totals do not add cache components a second t
   // Non-null cache fields are the whole point: Q-0011's own CLI fixture leaves them null, which is
   // why a 35% overstatement passed its suite. input_tokens already contains both cache components.
   const usage = { vendor: 'claude', input_tokens: 1000, output_tokens: 100, cached_input_tokens: 700, cache_write_input_tokens: 250, cost_usd: 1 };
+  // The malformed row that carries the Q-0037 nit-9 ruling, deliberately BESIDE the well-formed one
+  // above rather than in a fixture of its own: both totals null while the cache fields are
+  // populated. No adapter can produce it — claude.js folds both cache components INTO input_tokens
+  // before a manifest sees one, and the writer contract says readers do not add them again — so the
+  // cache fields are a breakdown and never summands, and n/a is the honest rendering of absent
+  // summands. Summing 700+250 here would print a number that is not a token total in the one place
+  // run history exists to report one, which is the double-count this scenario already forbids,
+  // reached from the other side. Ruled, not fixed. See Q-0037 AC-7.
+  const malformed = { vendor: 'codex', step_count: 1, unpriced_steps: 1, input_tokens: null, output_tokens: null, cached_input_tokens: 700, cache_write_input_tokens: 250, cost_usd: null };
   write(path.join(root, '.quorum/runs/Q-0011-1/manifest.json'), {
     schema_version: 1, run_id: 'Q-0011-1', ticket_id: 'Q-0011', ticket_path: 'backlog/Q-0011-x/ticket.md',
     flow: 'development', flow_file: 'harness/flows/development.yaml',
     stage: { before: 'red', after: 'green' }, started_at: '2026-08-23T10:00:00.000Z',
     ended_at: '2026-08-23T10:00:01.000Z', duration_ms: 1000, status: 'completed',
     steps: [{ step_id: 'step:1', occurrence_dir: 'steps/001-step-1', kind: 'adapter', role: 'qa', adapter: 'mock', model: null, branch: null, worktree: null, started_at: '2026-08-23T10:00:00.000Z', duration_ms: 5, attempts: 1, status: 'completed', verdict: null, error: null, usage }],
-    rollup: [{ vendor: 'claude', step_count: 1, unpriced_steps: 0, input_tokens: 1000, output_tokens: 100, cached_input_tokens: 700, cache_write_input_tokens: 250, cost_usd: 1 }],
+    rollup: [{ vendor: 'claude', step_count: 1, unpriced_steps: 0, input_tokens: 1000, output_tokens: 100, cached_input_tokens: 700, cache_write_input_tokens: 250, cost_usd: 1 }, malformed],
   });
 
+  // The roll-up rows, which is where vendorTokenTotal runs and where this scenario's property lives.
+  // It was asserted on the DETAIL view until Q-0037, and that was reading the wrong line:
+  // printRunDetailHuman renders no roll-up at all, so the `tokens=1100` below used to match the
+  // per-step usage line — the exact line AC-8 rewrites. Re-aimed at the roll-up itself rather than
+  // deleted, so the double-count guard keeps a subject instead of quietly losing one.
+  const list = cli(root, ['runs']).stdout;
+  assert.match(list, /claude:[^\n]*tokens=1100\b/, `expected input+output=1100; got: ${list.match(/tokens=[^\s]+/g)}`);
+  assert.doesNotMatch(list, /tokens=1350\b/, 'cache_write_input_tokens was added to a total that already contains it');
+  assert.match(list, /codex:[^\n]*tokens=n\/a/, 'a row whose totals are both null reports n/a, never the sum of its cache breakdown');
+
+  // AC-8: the per-step line reports the occurrence's own four measures and no roll-up field.
   const out = cli(root, ['runs', 'Q-0011-1']).stdout;
-  assert.match(out, /tokens=1100\b/, `expected input+output=1100; got: ${out.match(/tokens=\d+/g)}`);
-  assert.doesNotMatch(out, /tokens=1350\b/, 'cache_write_input_tokens was added to a total that already contains it');
+  for (const [field, value] of [['input_tokens', 1000], ['output_tokens', 100], ['cached_input_tokens', 700], ['cache_write_input_tokens', 250]]) {
+    assert.match(out, new RegExp(`${field}=${value}\\b`), `the per-step usage line must name ${field} at its own value`);
+  }
+  assert.doesNotMatch(out, /1350/, 'cache_write_input_tokens was added to a total that already contains it');
+  assert.doesNotMatch(out, /unpriced_steps/, 'a roll-up field must not be synthesised onto a single occurrence');
 });
 
 await scenario('B3', 'an existing run directory is refused by name, not by raw EEXIST', async () => {

@@ -376,6 +376,10 @@ function initialiseRunHistory(ctx) {
   // stage_after. This is NOT the run-directory collision refusal below — it is a narrower,
   // separate check that happens to fire first, and conflating the two is what let AC-1 look
   // implemented when it was not. See Q-0034.
+  //
+  // Why: preserved as-is, see Q-0037 — unreachable from the command line, where every path loads
+  // the ticket from the file this re-reads, and reachable from a caller that builds a ticket record
+  // itself, which is what the daemon will be.
   const persistedStage = fs.existsSync(historyRoot)
     ? parseFrontmatter(fs.readFileSync(path.join(ctx.ticket.dir, 'ticket.md'), 'utf8')).meta.stage
     : null;
@@ -465,6 +469,8 @@ function terminalOccurrence(ctx, occurrence, status, fields = {}) {
     try { fs.writeFileSync(outputPath, ''); }
     catch (e) { ctx.ui.warn(`could not persist run history at ${outputPath}: ${e.message}`); }
   }
+  // Whole-list, and therefore quadratic in occurrence count.
+  // Why: preserved, see Q-0037 — reported rather than optimised in passing.
   ctx.history.manifest.rollup = rollup(ctx.history.manifest.steps);
   replaceManifest(ctx);
 }
@@ -477,6 +483,9 @@ function persistArtifact(ctx, occurrence, name, text) {
 
 function replaceManifest(ctx, { fatal = false } = {}) {
   const target = path.join(ctx.history.dir, 'manifest.json');
+  // Why: preserved as-is, see Q-0037 — the temporary path is fixed on purpose, so the next
+  // replacement renames a stray away; a run that does not continue leaves one, and nothing names or
+  // cleans it.
   const temporary = `${target}.tmp`;
   let fd;
   try {
@@ -601,23 +610,7 @@ async function runGate(step, ctx) {
   const kind = step.gate;
   if (kind === 'auto' || (ctx.auto && kind !== 'human-locked')) { ctx.ui.info(`gate: auto-advanced (${kind})`); return null; }
   if (ctx.dry) { ctx.ui.info(`gate (${kind}): would pause here`); return null; }
-  // A custom UI can represent a gate with a promise that owns no libuv handle. Give a signal a
-  // short window to reach the synchronous finaliser, while still allowing an EOF-backed CLI gate
-  // to terminate naturally instead of keeping a non-interactive process alive forever.
-  //
-  // Known limitation, kept deliberately rather than silently (Q-0011 review round 2). Neither
-  // shipped gate path needs this: a TTY gate owns a readline handle, and a non-interactive gate
-  // throws before awaiting. So in practice it keeps only a test fixture alive, and after the second
-  // elapses the loop can drain and the process exit 0 with the manifest still reading "running".
-  // Removing it belongs with giving that fixture a promise owning its own handle, which means
-  // editing spike/test/** — qa-red's artifact, frozen by AC-4. Tracked, not resolved.
-  const signalWindow = setTimeout(() => {}, 1000);
-  let answer;
-  try {
-    answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
-  } finally {
-    clearTimeout(signalWindow);
-  }
+  const answer = await ctx.ui.gate({ kind, reason: step.reason ?? step.prompt ?? `${ctx.flow.name}: approve to advance ticket to "${ctx.flow.produces}"`, ticketDir: ctx.ticket.dir, retry: step.retryTarget });
   ctx.backlog.log(ctx.ticket, `run=${ctx.runId} gate=${kind} answer=${answer}`);
   if (answer === 'advance') return null;
   if (answer === 'retry' && step.retryTarget) {

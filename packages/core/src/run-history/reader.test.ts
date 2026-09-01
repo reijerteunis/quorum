@@ -209,6 +209,16 @@ describe('AC-10 — ordering, incompleteness, sequence numbers and token totals'
     expect(vendorTokenTotal(populated)).toBe(12_900);
     expect(vendorTokenTotal(populated)).not.toBe(12_000 + 900 + 9000 + 500);
     expect(vendorTokenTotal(populated)).not.toBe(12_000 + 900 + 500);
+
+    // The same fields read the other way round, deliberately adjacent to the row above so both
+    // readings are covered together rather than one of them standing alone. Both totals null while
+    // the cache fields are populated is a row no adapter can produce, because the fold happens
+    // before a manifest sees a measure — so it is malformed, and null is the honest answer for
+    // absent summands. Summing the breakdown instead would put a number that is not a token total
+    // in the one place run history exists to report one. Ruled, not changed. See Q-0037 AC-7.
+    const malformed = row({ input_tokens: null, output_tokens: null, cached_input_tokens: 9000, cache_write_input_tokens: 500 });
+    expect(vendorTokenTotal(malformed)).toBeNull();
+    expect(vendorTokenTotal(malformed)).not.toBe(9500);
   });
 
   test('and it is null only when both totals are', () => {

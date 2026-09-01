@@ -24,7 +24,6 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
   context.emit(request);
   if (!context.answerGate) throw new FlowError(`gate ${request.kind} (${request.reason}) has no answer channel`);
 
-  const signalWindow = setTimeout(() => {}, 1000); // Why: preserved defect, see Q-0050 AC-4.
   let removeAbort = (): void => {};
   try {
     const interrupted = new Promise<never>((_resolve, reject) => {
@@ -45,7 +44,6 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
     return parsed.data.answer;
   } finally {
     removeAbort();
-    clearTimeout(signalWindow);
   }
 }
 

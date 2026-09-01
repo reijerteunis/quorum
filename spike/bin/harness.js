@@ -17,7 +17,7 @@ import YAML from 'yaml';
 import { Backlog, STAGES, parseTicketId } from '../src/backlog.js';
 import { loadFlow, loadFlowByName, runFlow, FlowError, lintFlowDirectory } from '../src/engine.js';
 import { getAdapter, probeAdapter } from '../src/adapters/index.js';
-import { validateFile, readData } from '../src/contracts.js';
+import { validateArtifact, readData } from '../src/contracts.js';
 import { IntegrationError } from '../src/fanout.js';
 import { containment } from '../src/git.js';
 
@@ -126,10 +126,9 @@ function die(m) { console.error(c.red('✗ ') + m); process.exit(1); }
 // Reads .quorum/runs/ back for a human. Never repairs or infers persisted state — see
 // contracts/Q-0011/runs-cli.contract.md. Deliberately not in spike/src: the reader is scheduled
 // to be replaced during the M2 TypeScript port and would otherwise be a cross-role dependency.
-
-// The ticket-id grammar is parseTicketId in spike/src/backlog.js — one spelling per tree, so the
-// token `harness runs` resolves and the id `ticket new` allocates cannot drift apart. See Q-0080.
-const TERMINAL_STATUSES = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
+// The ticket-id grammar it resolves a token against is parseTicketId in spike/src/backlog.js — one
+// spelling per tree, so the token `harness runs` resolves and the id `ticket new` allocates cannot
+// drift apart. See Q-0080.
 
 // Resolves symlinks and returns null when the path does not exist or cannot be resolved. Used for
 // confinement checks, where a lexical comparison is not enough. See Q-0034.
@@ -212,6 +211,20 @@ function formatVendorSummary(row) {
   return `${row.vendor}: cost=${formatMoney(row.cost_usd)} tokens=${formatTokens(vendorTokenTotal(row))} unpriced_steps=${row.unpriced_steps}`;
 }
 
+// One occurrence's own usage, which is a different thing from a roll-up row and is now rendered as
+// one. This line used to call formatVendorSummary with an `unpriced_steps` synthesised from the
+// occurrence's own cost, printing a roll-up field over a single step where it can only be 0 or 1
+// and says nothing the status does not; and it collapsed four separately measured fields into
+// vendorTokenTotal's single sum, on the line whose whole job is to show what one step reported.
+// The four measures stay separate here, each through formatTokens, so a null reads n/a and never
+// 0 — and the cache pair is visible as the breakdown it is rather than folded away. Summing is
+// still the roll-up's business, where formatVendorSummary does it. See Q-0037.
+function formatOccurrenceUsage(u) {
+  return `${u.vendor}: cost=${formatMoney(u.cost_usd)} input_tokens=${formatTokens(u.input_tokens)} `
+    + `output_tokens=${formatTokens(u.output_tokens)} cached_input_tokens=${formatTokens(u.cached_input_tokens)} `
+    + `cache_write_input_tokens=${formatTokens(u.cache_write_input_tokens)}`;
+}
+
 function statusLabel(status) {
   const paint = status === 'completed' ? c.green : status === 'running' ? c.amber : c.dim;
   return paint(status);
@@ -255,7 +268,7 @@ function printRunDetailHuman(runId, manifest, manifestPath, repoDir) {
       `kind=${s.kind}`, `adapter=${s.adapter ?? 'n/a'}`, `model=${s.model ?? 'n/a'}`, statusLabel(s.status),
       `started_at=${s.started_at}`, `duration_ms=${s.duration_ms ?? 'n/a'}`, `attempts=${s.attempts}`, `verdict=${s.verdict ?? 'n/a'}`,
     ].join(' '));
-    console.log('    usage: ' + (s.usage ? formatVendorSummary({ ...s.usage, unpriced_steps: s.usage.cost_usd == null ? 1 : 0 }) : 'n/a'));
+    console.log('    usage: ' + (s.usage ? formatOccurrenceUsage(s.usage) : 'n/a'));
     if (s.error) console.log('    error: ' + `${s.error.category}: ${s.error.message}`);
   }
 }
@@ -264,96 +277,6 @@ function runDetailJSON(manifest, manifestPath, repoDir) {
   return { mode: 'detail', run: manifest, incomplete: isIncomplete(manifest), manifest_path: path.relative(repoDir, manifestPath), warnings: [] };
 }
 
-// --- Q-0011 run-manifest semantic validation ----------------------------
-// Structural JSON Schema cannot tell a genuinely reported zero cost from an unpriced vendor's
-// roll-up mutated null -> 0 (errata E-2). Recomputing the roll-up from occurrence usage can.
-
-function computeManifestRollup(steps) {
-  const groups = new Map();
-  for (const s of steps ?? []) {
-    if (!s.usage) continue;
-    const vendor = s.usage.vendor;
-    if (!groups.has(vendor)) groups.set(vendor, []);
-    groups.get(vendor).push(s.usage);
-  }
-  const sum = (usages, key) => {
-    const vals = usages.map((u) => u[key]).filter((v) => v != null);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
-  };
-  const rows = new Map();
-  for (const [vendor, usages] of groups) {
-    rows.set(vendor, {
-      vendor,
-      step_count: usages.length,
-      unpriced_steps: usages.filter((u) => u.cost_usd == null).length,
-      input_tokens: sum(usages, 'input_tokens'),
-      output_tokens: sum(usages, 'output_tokens'),
-      cached_input_tokens: sum(usages, 'cached_input_tokens'),
-      cache_write_input_tokens: sum(usages, 'cache_write_input_tokens'),
-      cost_usd: sum(usages, 'cost_usd'),
-    });
-  }
-  return rows;
-}
-
-function checkRunManifestSemantics(data) {
-  const errors = [];
-
-  const seenDirs = new Set();
-  for (const s of data.steps ?? []) {
-    if (seenDirs.has(s.occurrence_dir)) errors.push(`steps: duplicate occurrence_dir "${s.occurrence_dir}"`);
-    seenDirs.add(s.occurrence_dir);
-  }
-
-  const seenVendors = new Set();
-  for (const r of data.rollup ?? []) {
-    if (seenVendors.has(r.vendor)) errors.push(`rollup: duplicate vendor "${r.vendor}"`);
-    seenVendors.add(r.vendor);
-  }
-
-  const terminal = TERMINAL_STATUSES.includes(data.status);
-  if (terminal && (data.ended_at == null || data.duration_ms == null)) {
-    errors.push(`run: terminal status "${data.status}" requires non-null ended_at and duration_ms`);
-  }
-  if (data.status === 'running' && (data.ended_at != null || data.duration_ms != null)) {
-    errors.push('run: status "running" requires null ended_at and duration_ms');
-  }
-  if (data.started_at && data.ended_at && data.duration_ms != null) {
-    const computed = Date.parse(data.ended_at) - Date.parse(data.started_at);
-    if (computed !== data.duration_ms) errors.push(`run: duration_ms ${data.duration_ms} does not match ended_at - started_at (${computed})`);
-  }
-
-  for (const s of data.steps ?? []) {
-    if (s.kind === 'adapter') {
-      if (s.adapter == null) errors.push(`steps[${s.step_id}]: kind "adapter" requires non-null adapter`);
-    } else {
-      if (s.adapter != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null adapter, got "${s.adapter}"`);
-      if (s.model != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null model`);
-      if (s.usage != null) errors.push(`steps[${s.step_id}]: kind "${s.kind}" requires null usage`);
-    }
-    const stepTerminal = TERMINAL_STATUSES.includes(s.status);
-    if (stepTerminal && s.duration_ms == null) errors.push(`steps[${s.step_id}]: terminal status "${s.status}" requires non-null duration_ms`);
-    if (s.status === 'running' && s.duration_ms != null) errors.push(`steps[${s.step_id}]: status "running" requires null duration_ms`);
-  }
-
-  const computedRollup = computeManifestRollup(data.steps);
-  const persistedByVendor = new Map((data.rollup ?? []).map((r) => [r.vendor, r]));
-  const fields = ['step_count', 'unpriced_steps', 'input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cost_usd'];
-  for (const [vendor, computed] of computedRollup) {
-    const persisted = persistedByVendor.get(vendor);
-    if (!persisted) { errors.push(`rollup: missing row for vendor "${vendor}" (occurrences report usage but rollup has no entry)`); continue; }
-    for (const field of fields) {
-      if (persisted[field] !== computed[field]) {
-        errors.push(`rollup: vendor "${vendor}" field "${field}" is ${JSON.stringify(persisted[field])}, recomputed from occurrence usage is ${JSON.stringify(computed[field])}`);
-      }
-    }
-  }
-  for (const vendor of persistedByVendor.keys()) {
-    if (!computedRollup.has(vendor)) errors.push(`rollup: vendor "${vendor}" has a row but no occurrence reported its usage`);
-  }
-
-  return errors;
-}
 // `git branch --show-current` names the current branch even on an unborn HEAD (a fresh
 // `git init -b <name>` before the first commit), and prints an empty string — not an error —
 // for detached HEAD. Both are "cannot name a branch" outcomes for our purposes, so both fall
@@ -504,24 +427,31 @@ async function main() {
       // prose in a review. Exits non-zero on the first invalid file.
       const [schemaFile, ...dataFiles] = rest;
       if (!schemaFile || !dataFiles.length) die('usage: harness validate <schema.json> <file…>');
-      let schemaObj;
-      try { schemaObj = readData(schemaFile); } catch (e) { die(`cannot read schema ${schemaFile}: ${e.message}`); }
-      // Annotation-driven, not filename/$id-driven — see the "contracts are executable" decision
-      // and contracts/Q-0011/runs-cli.contract.md. An absent/unrecognised annotation still runs
+      // Read once here purely so an unreadable schema dies with its own message before any artifact
+      // is opened. Selection itself is validateArtifact's, and is annotation-driven rather than
+      // filename/$id-driven — see the "contracts are executable" decision and
+      // contracts/Q-0011/runs-cli.contract.md. An absent or unrecognised annotation still runs
       // structural validation; it just never earns a run-manifest-specific green tick.
-      const isRunManifestContract = schemaObj['x-quorum-contract'] === 'run-manifest-v1';
+      try { readData(schemaFile); } catch (e) { die(`cannot read schema ${schemaFile}: ${e.message}`); }
       let bad = 0;
       for (const f of dataFiles) {
         let r;
-        try { r = validateFile(schemaFile, f); }
+        try { r = validateArtifact(schemaFile, f); }
         catch (e) { console.log(c.red('✗') + ` ${f}: ${e.message}`); bad += 1; continue; }
-        if (!isRunManifestContract) {
-          console.log(c.dim('·') + ` ${f}: run-manifest semantic checks skipped (schema has no recognised x-quorum-contract annotation)`);
-        } else if (r.ok) {
-          let data;
-          try { data = readData(f); } catch (e) { console.log(c.red('✗') + ` ${f}: ${e.message}`); bad += 1; continue; }
-          const semanticErrors = checkRunManifestSemantics(data);
-          if (semanticErrors.length) r = { ok: false, errors: semanticErrors, schema: r.schema, data: r.data };
+        // Derived from the outcome rather than from a boolean computed before the loop, and it
+        // leads with WHY no pass applies. The old wording opened "run-manifest semantic checks
+        // skipped", which over an unrelated contract reads as a check that was owed and missed —
+        // sending an author looking for an annotation their schema was never supposed to carry.
+        // It still says in as many words that run-manifest semantic checks were skipped and that
+        // none ran, which is what contracts/Q-0011/runs-cli.contract.md:46-48 requires of it, and
+        // it never says any passed: a skip is not a pass (DECISIONS 2026-08-25). See Q-0037.
+        //
+        // "no RECOGNISED annotation" rather than "no annotation": this one outcome covers an absent
+        // annotation and a present-but-unsupported value alike — the reason is named for the
+        // annotation being unrecognised, not for it being missing — so a notice claiming absence is
+        // false over `x-quorum-contract: unknown-v1`. Q-0037 review round 1.
+        if (!r.semantic.ran && r.semantic.reason === 'unrecognised-annotation') {
+          console.log(c.dim('·') + ` ${f}: no recognised x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`);
         }
         if (r.ok) console.log(c.green('✓') + ` ${f} matches ${r.schema}`);
         else { bad += 1; console.log(c.red('✗') + ` ${f} violates ${r.schema}:\n    ${r.errors.join('\n    ')}`); }

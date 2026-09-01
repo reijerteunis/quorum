@@ -142,10 +142,10 @@ export function validateFile(schemaFile: string, dataFile: string): FileValidati
  * The semantic errors REPLACE the structural ones rather than joining them, which costs nothing:
  * the pass runs only when structural validation returned none.
  *
- * Each file is read once here and reused for both passes. The spike reads each twice
- * (spike/bin/harness.js:494 and :510 against `validateFile`'s own reads); read count is internal
- * and charter §2 does not preserve it, and reading once removes a race between the two reads
- * rather than changing any outcome.
+ * Each file is read once here and reused for both passes. The spike read each twice until Q-0037
+ * gave it a `validateArtifact` of the same shape; read count is internal and charter §2 does not
+ * preserve it, and reading once removes a race between the two reads rather than changing any
+ * outcome.
  */
 export function validateArtifact(schemaFile: string, dataFile: string): ArtifactValidationResult {
   const schema = readData(schemaFile);
