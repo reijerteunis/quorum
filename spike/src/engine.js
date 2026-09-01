@@ -779,9 +779,14 @@ const UNANSWERED_CAUSE = {
 // verbatim, because it is what tells the operator how to answer next time and it used to reach them
 // through the failure path this status no longer takes; the line under it replaces the rollback
 // warning, and is the record a maintainer reads before deciding whether to answer the gate by hand
-// or re-run: which gate went unanswered, which of the three ways there was no answer, where the
-// branch stands, and how many worktrees are still there. Emitted before finish() so it precedes the
-// terminal line, as the cleanup count does. See Q-0040.
+// or re-run: which gate went unanswered — by its own reason, which is the question that was asked
+// and the only thing that tells two gates of one flow apart — which of the three ways there was no
+// answer, where the branch stands, and how many worktrees are still there. Emitted before finish()
+// so it precedes the terminal line, as the cleanup count does. See Q-0040.
+//
+// The reason is spelled `(kind) "reason"` here as bin/harness.js:97 spells it, and JSON-encoded in
+// runs.log as an error note is: a reason is flow-authored prose, and runs.log is one line per
+// record.
 function reportUndecided(ctx, error) {
   const { ticket } = ctx;
   const head = branchHead(ctx.repoDir, ticket.meta.branch);
@@ -789,8 +794,8 @@ function reportUndecided(ctx, error) {
   const cause = UNANSWERED_CAUSE[error.gate.condition] ?? error.gate.condition;
   const where = head ? `${ticket.meta.branch} stays at ${head.slice(0, 7)}` : `${ticket.meta.branch} does not exist`;
   ctx.ui.warn(error.message);
-  ctx.ui.warn(`gate (${error.gate.kind}) went unanswered — ${cause}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`);
-  ctx.backlog.log(ticket, `run=${ctx.runId} undecided-gate kind=${error.gate.kind} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+  ctx.ui.warn(`gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${cause}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`);
+  ctx.backlog.log(ticket, `run=${ctx.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
 }
 
 function finish(ctx, stage, status, note, fields = {}) {

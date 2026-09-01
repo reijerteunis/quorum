@@ -192,15 +192,29 @@ await scenario('AC-13', 'the diagnostic is verbatim, and the line beside it says
     `warn gate (human) "${GATE_REASON}" needs an answer and stdin closed without one — run it interactively, or answer it on stdin`,
   ), f.messages.join('\n'));
   assert.ok(f.messages.includes(
-    `warn gate (human) went unanswered — stdin closed while the question was open;`
+    `warn gate (human) "${GATE_REASON}" went unanswered — stdin closed while the question was open;`
     + ` nothing was rolled back: ${INTEGRATION} stays at ${head}, 2 worktrees kept`,
   ), f.messages.join('\n'));
   assert.ok(logLines(f).includes(
-    `run=1 undecided-gate kind=human condition=stdin-closed branch=${INTEGRATION} kept-at=${head} kept-worktrees=2`,
+    `run=1 undecided-gate kind=human reason=${JSON.stringify(GATE_REASON)} condition=stdin-closed`
+    + ` branch=${INTEGRATION} kept-at=${head} kept-worktrees=2`,
   ), logLines(f).join('\n'));
   // Before the terminal line, as the cleanup count is.
   const lines = logLines(f);
   assert.ok(lines.findIndex((l) => l.includes('undecided-gate')) < lines.findIndex((l) => l.startsWith('run=1 undecided stage=')));
+});
+
+await scenario('AC-13', 'both records name the gate\'s own reason, not only its kind', async () => {
+  // AC-13 asks for the line to name the unanswered gate, and a flow may hold more than one gate of
+  // the same kind: `kind=human` identifies neither, so the reason is the identifier. Asserted on
+  // its own rather than left implicit in the whole-string matches above, so a reword that drops it
+  // fails saying which of the two records lost it.
+  const f = fixture();
+  await f.run();
+  const disposition = f.messages.find((m) => m.includes('went unanswered')) ?? '';
+  const record = logLines(f).find((l) => l.includes('undecided-gate')) ?? '';
+  assert.ok(disposition.includes(`"${GATE_REASON}"`), `disposition must name the reason: ${disposition}`);
+  assert.ok(record.includes(`reason=${JSON.stringify(GATE_REASON)}`), `runs.log must name the reason: ${record}`);
 });
 
 await scenario('AC-13', 'the three conditions read differently, so a maintainer knows what to do next', async () => {

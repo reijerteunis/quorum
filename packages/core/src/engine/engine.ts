@@ -119,9 +119,15 @@ const UNANSWERED_CAUSE: Readonly<Record<GateUnansweredError['gate']['condition']
  * The diagnostic goes out verbatim, because it is what tells the operator how to answer next time
  * and it used to reach them through the failure path this status no longer takes. The line under it
  * replaces the rollback warning, and is the record a maintainer reads before deciding whether to
- * answer the gate by hand or re-run: which gate went unanswered, which of the three ways there was
- * no answer, where the branch stands, and how many worktrees are still on disk. Emitted before
- * `finish` so it precedes the terminal record, as the cleanup count does. See Q-0040.
+ * answer the gate by hand or re-run: which gate went unanswered — by its own `reason`, which is the
+ * question that was asked and the only thing that tells two gates of one flow apart — which of the
+ * three ways there was no answer, where the branch stands, and how many worktrees are still on
+ * disk. Emitted before `finish` so it precedes the terminal record, as the cleanup count does.
+ * See Q-0040.
+ *
+ * The reason is spelled `(kind) "reason"` as `spike/bin/harness.js` spells it, and JSON-encoded in
+ * `runs.log` as an error note is: a reason is flow-authored prose, and `runs.log` is one line per
+ * record.
  */
 function reportUndecided(context: EngineContext, error: GateUnansweredError): void {
   const { ticket } = context;
@@ -131,9 +137,9 @@ function reportUndecided(context: EngineContext, error: GateUnansweredError): vo
   context.emit({ type: 'warn', message: error.message });
   context.emit({
     type: 'warn',
-    message: `gate (${error.gate.kind}) went unanswered — ${UNANSWERED_CAUSE[error.gate.condition]}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`,
+    message: `gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${UNANSWERED_CAUSE[error.gate.condition]}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`,
   });
-  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
 }
 
 /**

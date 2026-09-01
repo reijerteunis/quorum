@@ -1114,12 +1114,17 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // rather than re-baselined or deleted. Both land in the same bucket: 2647 → 2706 and
     // 5336 → 5395, the share 54% either side — stated rather than skipped, because "it did not
     // move" is a measurement and assuming it did not is how a stale pin survives.
+    //
+    // Re-measured a third time in review round 3, which put the unanswered gate's own `reason` in
+    // both records AC-13 governs: `q0040-undecided.js` gained the scenario asserting it on its own,
+    // 380 → 394, so `both` is 2706 → 2720 and the total 5395 → 5409. The share is 54% either side
+    // again, and is re-derived rather than carried over.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2706);
+    expect(linesOf(named('both'))).toBe(2720);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(5395);
+    expect(total).toBe(5409);
     // 54% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(54);
   });

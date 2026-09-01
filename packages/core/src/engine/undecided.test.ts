@@ -300,17 +300,34 @@ describe('AC-13 — the run says which gate went unanswered and what it kept', (
     // failure path this status no longer takes.
     expect(warns(events)).toContain('gate human (Chore owner approves the review) has no answer channel');
     expect(warns(events)).toContain(
-      'gate (human) went unanswered — the run was started with no way to ask;'
+      'gate (human) "Chore owner approves the review" went unanswered — the run was started with no way to ask;'
       + ` nothing was rolled back: ${INTEGRATION} stays at ${head!.slice(0, 7)}, 2 worktrees kept`,
     );
     expect(runsLog(fixture)).toContain(
-      `run=1 undecided-gate kind=human condition=no-answer-channel branch=${INTEGRATION}`
-      + ` kept-at=${head!.slice(0, 7)} kept-worktrees=2`,
+      `run=1 undecided-gate kind=human reason="Chore owner approves the review" condition=no-answer-channel`
+      + ` branch=${INTEGRATION} kept-at=${head!.slice(0, 7)} kept-worktrees=2`,
     );
     // Before the terminal line, as the cleanup count is.
     const lines = runsLog(fixture);
     expect(lines.findIndex((line) => line.includes('undecided-gate')))
       .toBeLessThan(lines.findIndex((line) => line.startsWith('run=1 undecided stage=')));
+  });
+
+  test('both records name the gate\'s own reason, which is what tells two gates of one flow apart', async () => {
+    // AC-13 asks for the line to name the unanswered gate, and a flow may hold more than one gate
+    // of the same kind: `kind=human` alone identifies neither, so the reason is the identifier and
+    // its presence is asserted here rather than left implicit in the two whole-string matches
+    // above. The reason is this fixture's own, unique in the run's output, so the assertion cannot
+    // be satisfied by the verbatim diagnostic emitted beside it.
+    const fixture = runFixture();
+    provingFlow(fixture);
+    writing();
+
+    const { events } = await fixture.settle();
+    const disposition = warns(events).find((message) => message.includes('went unanswered')) ?? '';
+    const record = runsLog(fixture).find((line) => line.includes('undecided-gate')) ?? '';
+    expect(disposition).toContain('"Chore owner approves the review"');
+    expect(record).toContain('reason="Chore owner approves the review"');
   });
 
   test('the three conditions produce three distinguishable sentences', async () => {
