@@ -56,17 +56,20 @@ describe('AC-1 — the manifest', () => {
     expect(own.type).toBe('module');
   });
 
-  test('the bin target does not exist yet, which is Q-0096\'s to create', () => {
-    // Why: the executable a `bin` entry points at is Q-0096's by the gate ruling of 2026-09-01 —
-    // this workspace emits no JavaScript, and a `bin` naming a `.ts` file would not run under Node
-    // in any case. Measured rather than assumed: `pnpm install --frozen-lockfile` exits 0 with this
-    // manifest as declared and creates no shim, because no package depends on @quorum/cli, so pnpm
-    // is never asked to resolve the target. The *path* below is provisional and Q-0096's to
-    // confirm; only the key name is fixed here.
-    const target = own.bin?.quorum ?? '';
-    expect(target).not.toBe('');
-    expect(target.endsWith('.js'), 'a bin entry pointing at TypeScript does not run under Node').toBe(true);
-    expect(fs.existsSync(path.join(PACKAGE, target)), 'the target is Q-0096\'s to build').toBe(false);
+  test('and says nothing about what that key points at, which is Q-0096\'s to decide', () => {
+    // Why: the executable, its extension and the output layout it sits in are Q-0096's by the gate
+    // ruling of 2026-09-01 — this ticket declares the `bin` *field* and does not make it run
+    // (Q-0090 AC-1, non-goal 1). So the only property asserted is that the key carries a value: a
+    // suffix or a location pinned here would turn a legitimate Q-0096 choice — an extensionless
+    // launcher, a `dist/` layout — into a red Q-0090 suite, which is this package constraining a
+    // decision it does not own. The path in the manifest today is provisional for the same reason.
+    //
+    // The install was measured rather than predicted and is reported instead of pinned:
+    // `pnpm install --frozen-lockfile` exits 0 with the manifest as declared and creates no shim,
+    // because nothing depends on `@quorum/cli`, so pnpm is never asked to resolve the target — the
+    // measured unknown AC-1 named, answered, and needing no erratum.
+    expect(typeof own.bin?.quorum).toBe('string');
+    expect(own.bin?.quorum).not.toBe('');
   });
 
   test('declares the three tasks turbo runs and a Node floor consistent with the root', () => {

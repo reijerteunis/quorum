@@ -37,16 +37,26 @@ const sink = (): { text: () => string; stream: Writable } => {
   return { text: () => text, stream };
 };
 
+/** How a body ended: it exited through `die`, it raised before reaching one, or it just returned. */
+type Outcome =
+  | { kind: 'exited'; code: unknown; stdout: string; stderr: string }
+  | { kind: 'raised'; error: unknown; stdout: string; stderr: string }
+  | { kind: 'returned'; stdout: string; stderr: string };
+
 /**
  * Run `body` with the global console bound to two streams this test owns, and `process.exit`
- * replaced with a throw.
+ * replaced with a throw, and report which of the three ways it ended.
  *
  * A real `node:console` over two distinct streams is what makes the *stream* assertable rather than
  * the function: spying on `console.error` would only prove `die` called it, and spying on
  * `process.stderr.write` proves nothing under Vitest, which routes console output through its own
  * interception. Here the bytes have to arrive in one stream or the other.
+ *
+ * The three outcomes are distinguished here rather than at the call sites because two of AC-3's
+ * rows *raise* instead of exiting, and a helper that could only express "it exited" would have to
+ * be worked around to test them — which is how a check stops discriminating.
  */
-function observe(body: () => void): { stdout: string; stderr: string; code: unknown } {
+function attempt(body: () => void): Outcome {
   const out = sink();
   const err = sink();
   const saved = globalThis.console;
@@ -54,15 +64,38 @@ function observe(body: () => void): { stdout: string; stderr: string; code: unkn
   vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null): never => {
     throw new Exited(code);
   });
+  let raised: { error: unknown } | undefined;
   try {
     body();
-    throw new Error('the body returned, and die does not return');
-  } catch (thrown) {
-    if (!(thrown instanceof Exited)) throw thrown;
-    return { stdout: out.text(), stderr: err.text(), code: thrown.code };
+  } catch (error) {
+    raised = { error };
   } finally {
     globalThis.console = saved;
   }
+  const streams = { stdout: out.text(), stderr: err.text() };
+  if (!raised) return { kind: 'returned', ...streams };
+  if (raised.error instanceof Exited) return { kind: 'exited', code: raised.error.code, ...streams };
+  return { kind: 'raised', error: raised.error, ...streams };
+}
+
+/** {@link attempt} for a body that must reach `die`, which every command's error path does. */
+function observe(body: () => void): { stdout: string; stderr: string; code: unknown } {
+  const outcome = attempt(body);
+  if (outcome.kind !== 'exited') throw new Error(`expected die, and the body ${outcome.kind}`);
+  return { stdout: outcome.stdout, stderr: outcome.stderr, code: outcome.code };
+}
+
+/**
+ * {@link attempt} for a body that must raise before anything is printed.
+ *
+ * It refuses an `exited` outcome rather than reporting one, which is what makes it discriminate: an
+ * implementation that guards the property access prints and exits here, and this throws instead of
+ * quietly returning empty streams.
+ */
+function raises(body: () => void): { error: unknown; stdout: string; stderr: string } {
+  const outcome = attempt(body);
+  if (outcome.kind !== 'raised') throw new Error(`expected a raise, and the body ${outcome.kind}`);
+  return { error: outcome.error, stdout: outcome.stdout, stderr: outcome.stderr };
 }
 
 afterEach(() => {
@@ -127,12 +160,40 @@ describe('AC-3 — the uncaught-rejection path', () => {
     expect(observe(() => dieOnUnexpected({ stack: undefined })).stderr).toContain('[object Object]');
   });
 
-  test('a thrown null is reported as null, the one deliberate divergence', () => {
-    // Why: deliberate divergence, see Q-0090 AC-3. `e.stack` raises a `TypeError` inside the
-    // spike's own `catch` handler for a thrown `null`; the frame reports the value instead of
-    // replacing the crash with a different one.
-    expect(observe(() => dieOnUnexpected(null)).stderr).toContain('null');
-    expect(observe(() => dieOnUnexpected(undefined)).stderr).toContain('undefined');
+  // The three rows on which `e.stack ?? String(e)` does not print. Measured against the spike's own
+  // expression rather than reasoned about, and preserved rather than repaired: the path that exists
+  // to turn a crash into a message replaces it with a different crash, which is a defect this
+  // ticket reports (Q-0090 ground rule 3, AC-3).
+  //
+  // One row each, because two clauses in one test means the second is never reached once the first
+  // fails, and the second is exactly the one an implementation is likely to get differently
+  // (Q-0071).
+  test.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])('a thrown %s raises, because the property access is unguarded', (_name, value) => {
+    // An optional chain would print the value and exit 1 here. That is the readable spelling and it
+    // is a behaviour change, so it is not the one that ships.
+    const { error, stderr, stdout } = raises(() => dieOnUnexpected(value));
+    expect(error).toBeInstanceOf(TypeError);
+    expect(stderr, 'die was never reached, so nothing was printed').toBe('');
+    expect(stdout).toBe('');
+  });
+
+  test('a symbol-valued stack raises inside die, where the + cannot coerce it', () => {
+    // The `??` yields the symbol untouched, and `c.red('✗ ') + symbol` is a TypeError. Coercing it
+    // with `String()` on the way in would print `Symbol(unprintable)` instead — the other readable
+    // spelling, and the other behaviour change.
+    const { error, stderr } = raises(() => dieOnUnexpected({ stack: Symbol('unprintable') }));
+    expect(error).toBeInstanceOf(TypeError);
+    expect(stderr, 'the concatenation raised before console.error was called').toBe('');
+  });
+
+  test('while a thrown symbol prints, because the fallback is String() and String() takes one', () => {
+    // The row that discriminates `?? String(e)` from `?? e`: `String(Symbol('s'))` is `'Symbol(s)'`
+    // where `'' + Symbol('s')` raises. A port whose fallback is the bare value passes every other
+    // row in this file and fails this one.
+    expect(observe(() => dieOnUnexpected(Symbol('thrown'))).stderr).toContain('Symbol(thrown)');
   });
 });
 

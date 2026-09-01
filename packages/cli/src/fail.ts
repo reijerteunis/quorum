@@ -33,30 +33,27 @@ export function failSoftly(): void {
 }
 
 /**
- * What `e.stack ?? String(e)` yields for a thrown value, as a string.
+ * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path.
  *
- * The `??` tests whether a `stack` property is *there* and never what type it is, so a thrown
- * `{ stack: 42 }` is reported as `42` — the spike hands the number to `die`, whose `+` coerces it.
- * `String()` is that coercion made explicit, because {@link die} takes a string. Reading the
- * property's *type* instead would report `[object Object]` for that value.
- * Why: preserved, see Q-0090 AC-3.
+ * `spike/bin/harness.js:569` is `main().catch((e) => die(e.stack ?? String(e)))`, and four of its
+ * behaviours belong to that exact expression rather than to the idea behind it, each measured
+ * against it: the property access is unguarded, so a thrown `null` or `undefined` **raises** before
+ * `die` is reached; the `??` tests whether `stack` is *there* and never what type it is, so
+ * `{ stack: 42 }` is reported as `42`; the fallback is `String(e)`, so a thrown symbol prints as
+ * `Symbol(s)`; and a symbol-valued `stack` reaches `die`, where the `+` **raises** because it cannot
+ * coerce one. The expression is therefore written out rather than paraphrased, and the coercion is
+ * left where the spike leaves it — inside {@link die}. Why: preserved, see Q-0090 AC-3.
  *
- * One divergence, deliberate: a thrown `null` or `undefined` is reported as `null` / `undefined`,
- * where `e.stack` raises a `TypeError` inside the spike's own `catch` handler.
- */
-const stackOf = (error: unknown): string => {
-  const stack = (error as { stack?: unknown } | null | undefined)?.stack;
-  return String(stack ?? error);
-};
-
-/**
- * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path
- * rather than as an unhandled rejection.
+ * The two raising rows are a defect and are reported rather than repaired here: the one path that
+ * exists to turn a crash into a message replaces it with a different crash. Ground rule 3.
  *
- * Preserved from `spike/bin/harness.js:569`, which is `main().catch((e) => die(e.stack ?? String(e)))`.
- * The binary that wires it to the frame's entry does not exist yet and is Q-0096's; the behaviour is
- * declared and tested here so no sibling command ticket has to invent it.
+ * The binary that wires this to the frame's entry does not exist yet and is Q-0096's; the behaviour
+ * is declared and tested here so no sibling command ticket has to invent it.
  */
 export function dieOnUnexpected(error: unknown): never {
-  return die(stackOf(error));
+  const message: unknown = (error as { stack?: unknown }).stack ?? String(error);
+  // The assertion is the point rather than a convenience: `die` takes a string, and this is the one
+  // call site that may hand it something else, so the `+` inside `die` performs the same coercion —
+  // and raises the same TypeError on a symbol — that the spike's does.
+  return die(message as string);
 }
