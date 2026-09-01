@@ -507,7 +507,32 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   against the running ticket's own folder and nothing injects a parent's body into a child's run —
   the same constraint that put Q-0009's rules in `harness/port-charter.md`. No second charter is
   added: five rules fit in a body, and a charter would have to be retired later.
-  - Q-0090 CLI package skeleton, `bin` entry and `npx quorum`. The prerequisite, and the only one:
+  - Q-0090 CLI package skeleton, `bin` entry and `npx quorum`. *(`reviewed` and `main:contained`
+    2026-09-02.)* **$71.25** — $19.07 requirements over four head-of-product attempts, $52.16 chore
+    over six implement rounds reached through three retries. Round 6 returned "No findings".
+    **Its requirements run is what found that Q-0010's cut assumed something false** — the workspace
+    has never emitted JavaScript — so `npx quorum` was withdrawn from this ticket, the frame ships as
+    importable modules tested in process, and **Q-0096** exists. Six review rounds each found a
+    different real subject: the `e.stack ?? String(e)` divergence and then the over-correction that
+    printed where the spike **raises**; a test requiring the `bin` target to end in `.js`, which was
+    this ticket pre-deciding Q-0096's emit strategy; the BYOS guard narrowed twice; and `main`
+    discarding `rest`, `flags` and `gateAnswers`, which would have made all four command children
+    re-parse argv — AC-2's stated purpose unmet at the dispatch boundary.
+    **Erratum E-1 is the reusable output**: it ruled that *"Membership is a git question, not a
+    filesystem one"* (2026-08-28) does **not** govern the BYOS scan, because that entry is scoped to
+    `turbo-inputs.test.ts` and argues from what turbo hashes — no analogue in *"is a credential
+    present"*, where a gitignored file is still on disk and still readable by any agent given
+    `input.repo: true`. Two rounds had narrowed that guard; the ruling closed it in one, and the
+    shipped guard carries the reasoning in place and goes red if `--exclude-standard` is restored.
+    **The retries that worked are the ones where the tree changed**, which is the session's lesson
+    about `retry`: iteration 2 of the requirements run recorded that it had opened on an unchanged
+    tree and could not rule its own blocker, and only produced a ready document once the gate ruling
+    was written into the ticket body first.
+    **One environment note:** the merge is red in an existing checkout until `pnpm install` links the
+    new package's workspace dependencies — `pnpm install --frozen-lockfile` reports *"Already up to
+    date"* in 180 ms and the suite flips green. CI does a fresh install so never sees it; a developer
+    pulling the merge does, and it looks like a code defect.
+    The frame is: argv, the colour helper, `die`, and the exit-code table below — the deliverable —
     argv, the colour helper, `die`, and **exit codes as a single owned table** rather than scattered
     `process.exit` calls — 0, 1, 2, 130 on signal, and **3 for `undecided`**, which Q-0040 added the
     same day. No command is implemented; the deliverable is the frame, **as importable modules with
