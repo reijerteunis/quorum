@@ -75,6 +75,18 @@ stream, an event is one item of it. See *What a run's event stream carries, and 
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
 
+**Undecided**: A run's terminal status, never a gate answer — the answers a gate accepts are still
+exactly `advance`, `retry` and `abort`. A run is undecided when it stops at a gate for which **no
+answer was available**: the scripted answers were exhausted and stdin is not a terminal, stdin
+closed while the question was open, or the caller supplied no answer channel. It moves no stage and
+keeps every worktree the run obtained, like the other non-advancing statuses, and alone among them
+it does **not** restore the ticket branch — nothing was proved wrong, so the merge an `integrate`
+step had already proven green survives. Somebody who supplied a word that is not an answer *was*
+there: that is an operator error and stays `failed`, rollback included. The CLI exits **3**. It is
+terminal rather than suspended — nothing is held open, and M3's resume (Q-0019) may later choose it
+as the state it picks up. Not a synonym for "aborted", "failed" or "paused". See *"A run nobody
+answered is undecided, and keeps the branch it proved"* (2026-09-01).
+
 **Occurrence**: One entry in a run manifest's record of what actually executed — an adapter call, a
 script, or an integrate step — carrying its own usage, errors and retained files. Adapter
 occurrences keep their exact `prompt.txt` and `output.txt`; gates and fan-out parents allocate

@@ -1386,6 +1386,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
   'packages/core/src/engine/steps.test.ts': {
     ticketDir: "the ticket folder inside tempDir('script-'), where the script step's declared output landed",
   },
+  'packages/core/src/engine/undecided.test.ts': {
+    'fixture.ticketDir': 'the ticket folder inside the temp repository runFixture() built, for the runs.log lines an undecided run appended',
+    'fixture.repoDir': 'that temp repository itself, which is where the run history an undecided run finalised is read back from',
+    'worktreeOf(fixture.repoDir, branch)': "path.join(fixture.repoDir, '.harness', 'worktrees', worktreeDirName(branch)) — a worktree inside that same temp repository, asked whether an undecided run left it standing",
+  },
   'packages/core/src/engine/worktree-lifecycle.test.ts': {
     'fixture.ticketDir': "the ticket folder inside the temp repository runFixture() built, for the runs.log line a finished run's cleanup appended",
     'worktreeOf(fixture.repoDir, branch)': "path.join(fixture.repoDir, '.harness', 'worktrees', worktreeDirName(branch)) — a worktree inside that same temp repository, asked whether it is still there",

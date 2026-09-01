@@ -47,6 +47,10 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     ['aborted', 'solutioned', false],
     ['failed', 'solutioned', false],
     ['interrupted', 'solutioned', false],
+    // The sixth, added by Q-0040. It is here rather than in a suite of its own because every
+    // clause below is a property of EVERY terminal status, and a table that enumerated five of
+    // six would say the new one is a special case when it is not.
+    ['undecided', 'solutioned', false],
   ] as const)('%s persists counters/history and applies its stage rule', async (status, target, moves) => {
     const ctx = lifecycle();
     const before = ctx.ticket.meta.stage;
@@ -164,6 +168,10 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
       [false, 'failed', null, 'bbbbbbbb', 0],
       [false, 'failed', 'aaaaaaaa', 'aaaaaaaa', 0],
       [false, 'failed', 'aaaaaaaa', null, 0],
+      // Q-0040: the one non-advancing status that does not restore. Every guard this matrix tests
+      // is satisfied — not dry, a start head, a current head, and the two differ — and the reset
+      // still must not happen, which is the row no other status can stand in for.
+      [false, 'undecided', 'aaaaaaaa', 'bbbbbbbb', 0],
     ] as const) {
       const reset = vi.fn();
       const ctx = lifecycle({ dry, branchHeadAtStart: start, readBranchHead: vi.fn(() => current), resetBranch: reset });
@@ -213,5 +221,58 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
     expect(ctx.persistence.appendLog).toHaveBeenCalled();
     expect(realBacklog.write).not.toHaveBeenCalled();
     expect(realBacklog.log).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What each terminal status decides, as three independent questions.
+ *
+ * `finished` used to answer all three, and the worktree return and the branch rollback were the
+ * two arms of one `if`/`else` — mutually exclusive by construction, so "keep the worktrees *and*
+ * leave the branch alone" was unsayable however the predicate was widened. Splitting the
+ * conditional loses that structural guarantee, so the invariant below is what replaces it: without
+ * it this criterion is a rename and Q-0062's *"cannot drift apart"* property is gone.
+ *
+ * The table asserts the CONSEQUENCES rather than the three private predicates, because a predicate
+ * nothing reads decides nothing — which is the shape of the defect this repository keeps finding.
+ */
+describe('Q-0040 AC-4 — three named questions, and no status takes both arms', () => {
+  const withWorktrees = (overrides: Partial<LifecycleContext> = {}): LifecycleContext => lifecycle({
+    worktrees: new Map([['harness/Q-0050/implement', '/repo/.harness/worktrees/harness__Q-0050__implement']]),
+    readWorktreeChanges: vi.fn(() => []),
+    removeWorktree: vi.fn(),
+    branchHeadAtStart: 'aaaaaaaa',
+    readBranchHead: vi.fn(() => 'bbbbbbbb'),
+    resetBranch: vi.fn(),
+    ...overrides,
+  } as unknown as Partial<LifecycleContext>);
+
+  const TABLE = [
+    { status: 'completed', advances: true, returns: true, restores: false },
+    { status: 'regressed', advances: true, returns: true, restores: false },
+    { status: 'aborted', advances: false, returns: false, restores: true },
+    { status: 'failed', advances: false, returns: false, restores: true },
+    { status: 'interrupted', advances: false, returns: false, restores: true },
+    { status: 'undecided', advances: false, returns: false, restores: false },
+  ] as const;
+
+  test.each(TABLE)('$status: stage $advances, worktrees $returns, branch $restores', async (row) => {
+    const ctx = withWorktrees();
+    const before = ctx.ticket.meta.stage;
+    const fields = row.status === 'regressed' ? regression : undefined;
+    await expect(finish(ctx, 'red', row.status as RunStatus, null, fields)).resolves.toBeDefined();
+    expect(ctx.ticket.meta.stage, 'stage').toBe(row.advances ? 'red' : before);
+    expect((ctx.removeWorktree as ReturnType<typeof vi.fn>).mock.calls.length > 0, 'worktrees').toBe(row.returns);
+    expect((ctx.resetBranch as ReturnType<typeof vi.fn>).mock.calls.length > 0, 'branch').toBe(row.restores);
+  });
+
+  test('no status both returns its worktrees and restores its branch', () => {
+    // The property the `if`/`else` used to guarantee, asserted over the whole vocabulary rather
+    // than over the row that motivated the split. A seventh status added without answering all
+    // three questions fails the table above; one answering two of them the old, coupled way fails
+    // here.
+    for (const row of TABLE) expect(row.returns && row.restores, row.status).toBe(false);
+    expect(TABLE.filter((row) => !row.returns && !row.restores).map((row) => row.status))
+      .toStrictEqual(['undecided']);
   });
 });

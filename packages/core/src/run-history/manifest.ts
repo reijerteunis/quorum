@@ -21,14 +21,19 @@ import type { UsageMeasure } from '@quorum/shared';
 import { authError, transientError } from '../adapters/adapters.js';
 
 /**
- * The seven values the schema's `status` enum admits, for a run and for an occurrence alike.
+ * The eight values the schema's run-level `status` enum admits.
  *
- * Six of them are terminal and one is not, which is the only distinction any caller draws.
+ * Seven of them are terminal and one is not, which is the only distinction any caller draws.
  * `exhausted` is legal and the engine never writes it: exhaustion is recorded as a ticket-history
  * event and the run continues to a gate, ending later with its actual outcome. That is a note about
  * the caller and not a restriction here — the writer's `finalise` writes whichever it is given.
+ *
+ * One union serves both levels, and since Q-0040 the two levels no longer admit the same set:
+ * `undecided` is a run's conclusion about itself and never a step's, because a gate allocates no
+ * occurrence and nothing one level down can be undecided. What refuses it there is the schema's
+ * separate occurrence enum and the guard over it, not this type.
  */
-export type RunStatus = 'running' | 'completed' | 'failed' | 'aborted' | 'regressed' | 'exhausted' | 'interrupted';
+export type RunStatus = 'running' | 'completed' | 'failed' | 'aborted' | 'regressed' | 'exhausted' | 'interrupted' | 'undecided';
 
 /**
  * What an occurrence was: an adapter call, a script step, or an integrate step.

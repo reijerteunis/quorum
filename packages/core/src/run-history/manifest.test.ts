@@ -202,10 +202,22 @@ describe('AC-8 — classification is delegated, and every category the schema ad
     expect(outOfSet).toBe('billing');
   });
 
-  test('and RunStatus admits exactly the statuses the schema does', () => {
+  test('RunStatus and the schema are one word apart, and the word is the one Q-0040 added', () => {
+    // This test was called *"RunStatus admits exactly the statuses the schema does"* and never
+    // checked that: `every` is a hand-written list that is merely assignable to `RunStatus[]`, so
+    // widening the type left it green while its own title stopped being true. Q-0040 is what made
+    // the falsity visible, and the fix is to say what is actually the case rather than to restate
+    // the claim over one more word.
+    //
+    // The gap is real and deliberate. `undecided` is a run status in this package and is not yet in
+    // the frozen `contracts/Q-0011/run-manifest.schema.json`, because that file is outside every
+    // role's write paths and moves by human erratum — see Q-0040's implement report, GO-2. Both
+    // sides are pinned here so the day the erratum lands this assertion goes red and has to move
+    // with it, which is the difference between a registered divergence and a silent one.
     const status = (schema().properties as Record<string, { enum?: string[] }>).status;
-    const every: RunStatus[] = ['running', 'completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'];
-    expect(status.enum).toStrictEqual(every);
+    expect(status.enum).toStrictEqual(['running', 'completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted']);
+    const carried: RunStatus[] = [...(status.enum ?? []), 'undecided'] as RunStatus[];
+    expect(carried.filter((value) => !(status.enum ?? []).includes(value))).toStrictEqual(['undecided']);
     // @ts-expect-error the set is closed: `cancelled` is not a run status (AC-9)
     const outOfSet: RunStatus = 'cancelled';
     expect(outOfSet).toBe('cancelled');

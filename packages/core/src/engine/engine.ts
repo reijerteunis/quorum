@@ -25,7 +25,7 @@ import { loadFlowByName, reviewRound } from './loaders.js';
 import { finish, recordEvent } from './lifecycle.js';
 import { runStep } from './routing.js';
 import {
-  FlowError,
+  FlowError, GateUnansweredError,
   type EmitEvent, type LifecycleContext, type RegressionFields, type RoutingContext,
   type RunFlowOptions, type RunOutcome, type RunPersistence, type RunStats, type RunStatus, type StepResult,
 } from './types.js';
@@ -101,6 +101,39 @@ function failureMessage(error: unknown): string {
 /** The failure in full, as an occurrence's `error.message` carries it — spike/src/engine.js:165. */
 function occurrenceMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Why there was no answer, in the words a maintainer acts on: the first two say supply another
+ * answer or run interactively, the third says the caller started a run it could not answer.
+ */
+const UNANSWERED_CAUSE: Readonly<Record<GateUnansweredError['gate']['condition'], string>> = {
+  'answers-exhausted': 'the scripted answers ran out and stdin is not a terminal',
+  'stdin-closed': 'stdin closed while the question was open',
+  'no-answer-channel': 'the run was started with no way to ask',
+};
+
+/**
+ * What an undecided run is holding, said once on the stream and once in `runs.log`.
+ *
+ * The diagnostic goes out verbatim, because it is what tells the operator how to answer next time
+ * and it used to reach them through the failure path this status no longer takes. The line under it
+ * replaces the rollback warning, and is the record a maintainer reads before deciding whether to
+ * answer the gate by hand or re-run: which gate went unanswered, which of the three ways there was
+ * no answer, where the branch stands, and how many worktrees are still on disk. Emitted before
+ * `finish` so it precedes the terminal record, as the cleanup count does. See Q-0040.
+ */
+function reportUndecided(context: EngineContext, error: GateUnansweredError): void {
+  const { ticket } = context;
+  const head = branchHead(context.repoDir, ticket.meta.branch);
+  const kept = context.worktrees?.size ?? 0;
+  const where = head ? `${ticket.meta.branch} stays at ${head.slice(0, 7)}` : `${ticket.meta.branch} does not exist`;
+  context.emit({ type: 'warn', message: error.message });
+  context.emit({
+    type: 'warn',
+    message: `gate (${error.gate.kind}) went unanswered — ${UNANSWERED_CAUSE[error.gate.condition]}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`,
+  });
+  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} condition=${error.gate.condition} branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
 }
 
 /**
@@ -308,6 +341,17 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     }
     throwIfInterrupted();
   } catch (error) {
+    // Abort keeps precedence over the missing answer: the abort is a decision, the absent answer is
+    // not, so a cancellation arriving while a gate is open is `interrupted` and never `undecided`.
+    // Nobody was there is not the work is bad — the run ends `undecided`, the branch keeps whatever
+    // `integrate` proved, the worktrees stay open for whoever arrives, and nothing propagates,
+    // because nothing failed. A gate allocates no occurrence, so there is none to close as failed
+    // either; the suite asserts that rather than this branch working around it. See Q-0040.
+    if (!signal.aborted && error instanceof GateUnansweredError) {
+      reportUndecided(context, error);
+      await finishRun(ticket.meta.stage, 'undecided', failureMessage(error));
+      return;
+    }
     const status: 'failed' | 'interrupted' = signal.aborted ? 'interrupted' : 'failed';
     const note = status === 'interrupted' ? interruptionNote(signal, error) : failureMessage(error);
     // Before the terminal record and in that order — spike/src/engine.js:161-168, and the
