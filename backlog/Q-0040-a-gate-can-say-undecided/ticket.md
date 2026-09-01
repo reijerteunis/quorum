@@ -1,7 +1,7 @@
 ---
 id: Q-0040
 title: A gate can say undecided
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0040/integration
@@ -9,6 +9,7 @@ priority: p2
 created: 2026-08-31
 iterations:
   requirements.head-of-product: 1
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,22 @@ history:
     stage_after: requirements
     at: 2026-09-01T14:33:18.204Z
     cost: 10.645
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-01T16:37:20.622Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-01T18:10:49.717Z
+    cost: 84.908
 ---
 Opened by hand 2026-08-31 at id `Q-0040`, which is where `docs/06-development-plan.md` has cited it
 since 2026-08-24. Like [Q-0039] it had a plan entry and no folder; this body re-measures the claim

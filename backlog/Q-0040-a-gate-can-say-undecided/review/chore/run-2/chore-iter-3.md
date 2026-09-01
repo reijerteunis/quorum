@@ -1,0 +1,3 @@
+major: packages/core/src/engine/engine.ts:142 The durable `undecided-gate` record does not state that nothing was rolled back; it only records `kept-at`, despite AC-13 explicitly requiring the `runs.log` line itself to state that fact. Add an explicit rollback-preservation field or wording to the log record and assert it in the core test.
+
+major: spike/src/engine.js:798 The spike’s durable `undecided-gate` record has the same AC-13 gap: `kept-at` implies branch preservation but never states that nothing was rolled back. Make the log line explicitly record that no rollback occurred and update the spike assertion accordingly.
