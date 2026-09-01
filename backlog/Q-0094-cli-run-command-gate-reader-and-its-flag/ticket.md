@@ -2,7 +2,7 @@
 id: Q-0094
 title: CLI run command, gate reader and its flags
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0094/integration
 priority: p2

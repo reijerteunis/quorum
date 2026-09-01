@@ -2,7 +2,7 @@
 id: Q-0092
 title: CLI runs command and the run-history presentation layer
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0092/integration
 priority: p2

@@ -2,7 +2,7 @@
 id: Q-0095
 title: The mock end-to-end suite runs against the CLI binary
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0095/integration
 priority: p1

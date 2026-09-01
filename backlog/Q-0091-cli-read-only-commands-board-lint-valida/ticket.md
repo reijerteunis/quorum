@@ -2,7 +2,7 @@
 id: Q-0091
 title: "CLI read-only commands: board, lint, validate, adapters"
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0091/integration
 priority: p2

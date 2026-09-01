@@ -2,7 +2,7 @@
 id: Q-0093
 title: "CLI writing commands: init and ticket"
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0093/integration
 priority: p2
@@ -30,10 +30,15 @@ folder instead of overwriting one.
 **Inherits 217 lines** — `q0080-allocation.js`, whose nine scenarios are the allocation table.
 
 **One measured defect it must preserve and report, not fix:** `create()` defaults `owner` to
-`process.env.USER`, which is why five tickets in this backlog carried the OS user against
-fifty-four `ruud` and were normalised by hand on 2026-08-31 — and it reproduced on the very next
-invocation. Whether the product should default an owner at all is a question this child raises and
-does not answer.
+`process.env.USER`. Five tickets in this backlog carried the OS user against fifty-four `ruud` and
+were normalised by hand on 2026-08-31; it reproduced on the very next invocation, and then **on all
+six of Q-0010's children at once** — the act of creating this ticket produced a seventh, eighth and
+ninth instance, normalised again by hand. That is the strongest evidence available that the default
+is wrong rather than merely untidy: it has now been corrected three times and re-appeared every
+time, because nothing about the correction reaches the code. Whether the product should default an
+owner at all — and if so to what, given that `process.env.USER` is the one thing guaranteed *not*
+to identify the person a ticket belongs to on a shared or CI machine — is the question this child
+raises and does not answer.
 
 ## Ground rules — Q-0010's, repeated here because a child cannot read its parent
 

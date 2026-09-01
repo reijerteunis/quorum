@@ -2,7 +2,7 @@
 id: Q-0090
 title: CLI package skeleton, bin entry and npx quorum
 stage: draft
-owner: ruudvanengelenhoven
+owner: ruud
 repos: []
 branch: harness/Q-0090/integration
 priority: p1
