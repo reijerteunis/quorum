@@ -447,7 +447,15 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     2026-08-21 count as a present-tense requirement; both now state that two required suites exist
     until the cutover, what each proves, and the four-link chain from a new failing file to a red
     `pnpm test`. The append-only decision entry that is the origin of "30 checks" is untouched.
-- Q-0010 CLI package; `npx quorum` entry.
+- Q-0010 CLI package; `npx quorum` entry. **Inherits three obligations, stated here because no
+  folder exists to carry them.** (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
+  roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
+  `unpriced_steps` on a single step, summing left to the roll-up. (2) Q-0054's routing: the eight
+  `spike/test/` files that spawn `spike/bin/harness.js`, 50% of the suite by line, transfer here
+  rather than at Q-0054 — `spike-parity.test.ts` is the file-by-file record and is deleted at the
+  cutover with `spike/test/**`. (3) Q-0062's successor, `harness worktrees` (list, prune stale
+  registrations, remove what is contained), written out in full in that ticket's merged requirement;
+  until it exists, a run cleans up only after itself and nothing removes what earlier runs left.
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
 - Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
@@ -536,10 +544,18 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   combination in which the two are comparable, and `contracts.test.ts`'s AC-4 pins its signature and
   per-call schema read in `core`. So the single-read entry point was added beside it rather than in
   place of it, and Q-0010 inherits both with a test saying what each is for.
-  **OQ-2 is the one thing still owed and it is Ruud's**: whether AC-8's per-step usage shape binds
-  `packages/cli`, or whether Q-0010 re-decides it. Nit 5 has no counterpart today, so this ticket
-  picked a shape; saying at the close that it binds is what turns that into a decision Q-0010
-  inherits rather than an accident it copies. Recorded here as open rather than quietly assumed.
+  **OQ-2 is answered: the per-step usage shape binds `packages/cli`.** Ruled at the close on
+  2026-09-01, so Q-0010 inherits a decision rather than copying an accident. What binds is the
+  distinction, not the punctuation: **an occurrence's usage is not a roll-up row and is not rendered
+  as one.** `formatOccurrenceUsage` prints the four measures separately — `input_tokens`,
+  `output_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, each through `formatTokens`,
+  so a null reads `n/a` and never `0` — and prints no `unpriced_steps`, which over a single step can
+  only be 0 or 1 and says nothing the status does not. Summing stays the roll-up's business, in
+  `formatVendorSummary`, where `vendorTokenTotal` adds input and output and the cache pair remains
+  the breakdown it is rather than a summand. A `packages/cli` that re-collapses the two is
+  reintroducing nit 5, and the cache-double-count guard that has been re-aimed twice —
+  `q0034-review-fixes.js` B2 — is the test that would catch it. Carried into Q-0010's bullet below,
+  because an obligation recorded only in a closed ticket's entry is one that quietly expires.
 - Q-0085 An entry's date is the date it takes its place in the index. *(`reviewed` 2026-09-01,
   implemented by hand the day it was opened; the board reads `main:indeterminate(no branch)`,
   which is right — a hand-run ticket names a branch nothing created.)* Split from Q-0037's OQ-1 at
