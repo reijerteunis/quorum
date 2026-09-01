@@ -1074,6 +1074,12 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // rounded share is 50% before and after — stated rather than skipped, because "it did not move"
     // is a measurement and assuming it did not is how a stale pin survives.
     //
+    // Re-measured 2026-09-01 for Q-0040's decision entry, which did not touch a test at all: CI
+    // failed because `q0033-surface.js` S13.6 identified a decision entry by matching its topic
+    // against the WHOLE file, so an entry citing another by title — which the docs rules require —
+    // counted as a second copy of it. Anchoring the match on the title line cost seven comment
+    // lines in an entangled file: 2287 → 2294 and 4976 → 4983, share 50% either side.
+    //
     // Re-measured a third time 2026-09-01 for Q-0088, which re-aimed three `smoke.js` assertions at
     // the run-scoped requirements paths and gave the negative one a recursive search: 2279 → 2287
     // and 4968 → 4976, one entangled file and nothing else, the share 50% before and after. The
@@ -1083,9 +1089,9 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2287);
+    expect(linesOf(named('both'))).toBe(2294);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(4976);
+    expect(total).toBe(4983);
     // 50% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(50);
   });

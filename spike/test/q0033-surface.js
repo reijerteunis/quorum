@@ -390,11 +390,18 @@ await scenario('S13.5', 'the development plan records the Q-0006/Q-0033 split', 
 await scenario('S13.6', 'DECISIONS contains both complete review-flow decisions', () => {
   // One entry per file since 2026-08-28, so the block is the file and exactly one may match:
   // the old form took the first hit anywhere in the concatenated document.
+  //
+  // The topic is matched against each entry's TITLE LINE, not its whole text. Matching the body
+  // made this uniqueness check punish the very thing docs-and-decisions.md mandates — "cite an
+  // entry by its title and date" — so the moment a later entry cited the non-auto-exhaustion
+  // decision by name, two entries "matched" it and the count assertion failed over a correctly
+  // written document. A title identifies an entry; a mention of it does not. Found by CI on
+  // Q-0040's decision entry, 2026-09-01.
   const dir = path.join(repo, 'docs', 'decisions');
   const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8'));
   assert.ok(entries.length, 'docs/decisions/ is empty — this scenario proves nothing without it');
   for (const [label, topic] of [['derived-regression-target', /derived regression/i], ['non-auto-exhaustion-gate', /non.auto.*exhaustion|exhaustion.*--auto/i]]) {
-    const hits = entries.filter((text) => topic.test(text));
+    const hits = entries.filter((text) => topic.test(text.split('\n')[0]));
     assert.equal(hits.length, 1, `docs/decisions/ must hold exactly one ${label} entry, found ${hits.length}`);
     const block = hits[0];
     assert.match(block, /\d{4}-\d{2}-\d{2}/); assert.match(block, /\*\*Decision\*\*/); assert.match(block, /\*\*Alternatives considered\*\*/); assert.match(block, /\*\*Why\*\*/);
