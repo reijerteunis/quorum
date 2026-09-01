@@ -10,3 +10,29 @@
 2026-09-01T19:49:55.495Z run=1 gate=human answer=advance
 2026-09-01T19:49:55.506Z run=1 completed stage=draft→requirements cost=19.068 tokens=12985869
 2026-09-01T19:52:00.000Z note (out-of-band: the exhaustion-gate ruling in this ticket's body was written by hand at 19:30, between iteration 2 and the retry, and finish() reverted it at 19:49 as expected — the engine snapshots ticket.meta AND ticket.body at run start and backlog.write() renders both back from that snapshot (spike/src/backlog.js:86-88). It was re-applied afterwards onto the run's own frontmatter, so stage=requirements and the history entry are the engine's and only the body is the hand edit. The sequence is deliberate and worth copying: head-of-product reads ticket.md FROM DISK when its prompt is built, so a mid-run body edit does reach the next iteration; it just does not survive the run. That is what made the retry productive rather than a repeat — iteration 2 recorded that it had opened on an unchanged tree and could not rule its own blocker, iteration 3 opened on a changed one and returned ready. Ruud answered retry against a recommendation to advance, and was right: the recommendation assumed the tree would stay unchanged, which was a thing to fix rather than a fact to accept.)
+2026-09-01T20:05:08.394Z run=2 flow=chore start stage=requirements
+2026-09-01T20:37:56.172Z run=2 step=implement vendor=claude model=- verdict=- cost=19.265134000000007 ms=1967524
+2026-09-01T20:38:52.011Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=55799
+2026-09-01T20:46:11.992Z run=2 step=implement vendor=claude model=- verdict=- cost=4.135555 ms=439863
+2026-09-01T20:46:50.951Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=38911
+2026-09-01T21:01:16.643Z run=2 step=implement vendor=claude model=- verdict=- cost=7.452901000000001 ms=865587
+2026-09-01T21:02:07.416Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=50724
+2026-09-01T21:02:07.434Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-01T21:13:15.701Z run=2 gate=human-locked answer=retry
+2026-09-01T21:13:15.701Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-01T21:25:57.518Z run=2 step=implement vendor=claude model=- verdict=- cost=6.795155000000001 ms=761730
+2026-09-01T21:27:13.591Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=76032
+2026-09-01T21:27:13.598Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-01T21:35:43.633Z run=2 gate=human-locked answer=retry
+2026-09-01T21:35:43.634Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-01T21:47:21.026Z run=2 step=implement vendor=claude model=- verdict=- cost=6.9867004999999995 ms=697299
+2026-09-01T21:48:14.306Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=53232
+2026-09-01T21:48:14.318Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-01T21:56:52.357Z run=2 gate=human-locked answer=retry
+2026-09-01T21:56:52.357Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-01T22:08:25.633Z run=2 step=implement vendor=claude model=- verdict=- cost=7.526962999999997 ms=693195
+2026-09-01T22:09:09.414Z run=2 step=review vendor=codex model=- verdict=approve cost=? ms=43744
+2026-09-01T22:10:28.734Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-01T23:04:52.477Z run=2 gate=human answer=advance
+2026-09-01T23:04:53.570Z run=2 removed-worktrees=2 kept=0
+2026-09-01T23:04:53.571Z run=2 completed stage=requirements→reviewed cost=52.162 tokens=67314964

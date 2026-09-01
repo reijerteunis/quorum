@@ -1,7 +1,7 @@
 ---
 id: Q-0090
 title: CLI package skeleton, bin entry and npx quorum
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0090/integration
@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-01
 iterations:
   requirements.head-of-product: 1
+  chore.review: 2
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,38 @@ history:
     stage_after: requirements
     at: 2026-09-01T19:49:55.505Z
     cost: 19.068
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-01T21:02:07.427Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-01T21:27:13.597Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-01T21:48:14.316Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-01T23:04:52.484Z
+    cost: 52.162
 ---
 > **RULED AT THE EXHAUSTION GATE, 2026-09-01 — read this before the rest of the body.**
 >
