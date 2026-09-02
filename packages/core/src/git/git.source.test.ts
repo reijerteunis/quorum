@@ -9,6 +9,7 @@ import type { AncestryReason, ContainmentReason, ContainmentResult } from '@quor
 import { ANCESTRY_REASONS, CONTAINMENT_REASONS, CONTAINMENT_STATES } from '@quorum/shared';
 
 import * as gitModule from './git.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /**
@@ -46,10 +47,13 @@ describe('AC-1 — the module exports nine functions, and core reads ancestry in
     }
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    // Deliberate: this ticket adds no public re-export. Its only declared dependent (Q-0048) is in
-    // the same package and imports ./git.js directly (OQ-1).
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
+    // still under decision: `containment` is what the board renders and the only name here a
+    // consumer outside the package may reach.
+    expect(Object.keys(gitModule).filter((symbol) => symbol in barrel).sort())
+      .toStrictEqual(['containment']);
   });
 });
 

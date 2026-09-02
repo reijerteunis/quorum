@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import * as manifestModule from './manifest.js';
 import * as readerModule from './reader.js';
 import * as writerModule from './writer.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /** Corpus keys are whole paths below `src`, so a same-named file elsewhere never answers for these. */
@@ -169,10 +170,13 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     expect(fields.length).toBe(56);
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    // Deliberate: this ticket adds no public re-export. Its declared dependent (Q-0050) is in the
-    // same package and imports ./run-history/writer.js directly.
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports nothing from this folder (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 opens the surface and this folder is still
+    // absent from it, which is now an assertion rather than a consequence: the six readers are
+    // Q-0092's to present, and it imports them when it lands rather than inheriting them here.
+    expect([...Object.keys(manifestModule), ...Object.keys(readerModule), ...Object.keys(writerModule)]
+      .filter((symbol) => symbol in barrel)).toStrictEqual([]);
   });
 
   test('core declares no new dependency', () => {
