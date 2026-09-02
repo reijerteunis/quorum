@@ -9,6 +9,7 @@ import { describe, expect, test } from 'vitest';
 
 import * as backlogModule from './backlog.js';
 import * as projectModule from './project.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /**
@@ -61,11 +62,13 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
     }
   });
 
-  test('packages/core/src/index.ts still holds Q-0041\'s exact bytes', () => {
-    // Deliberate: this ticket adds no public re-export (OQ-3). Its consumers — Q-0050, Q-0052,
-    // Q-0053 — are in this package and import ./backlog.js and ./project.js directly, and
-    // packages/shared/src/index.test.ts:52-53 pins this file byte for byte.
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export (OQ-3). Q-0096 opens the surface, so what survives is
+    // the half still under decision: the ticket store and the two project readers are what
+    // Q-0091 to Q-0093 build `board`, `ticket` and `init` on.
+    expect([...Object.keys(backlogModule), ...Object.keys(projectModule)]
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['Backlog', 'findProject', 'loadProject']);
   });
 });
 

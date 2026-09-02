@@ -8,7 +8,8 @@
 import { describe, expect, test } from 'vitest';
 
 import * as lintModule from './lint.js';
-import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+import * as barrel from '../index.js';
+import { coreSourceFiles } from '../../test/corpus.js';
 
 /**
  * Corpus keys are whole paths below `src`, so a same-named file in another folder can never answer
@@ -41,10 +42,13 @@ describe('AC-1 — the surface, and the entry point left alone', () => {
     for (const value of Object.values(lintModule)) expect(typeof value).toBe('function');
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    // This ticket adds no public re-export: every consumer it has is in-package and imports
-    // ./lint/lint.js directly, exactly as src/git/ and src/backlog/ are consumed today (OQ-2).
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 is the ticket that opens the surface, so that
+    // subject is gone; what survives is the half still under decision — which of this folder's six
+    // exports a consumer outside the package may reach, and which three stay in-package.
+    expect(Object.keys(lintModule).filter((symbol) => symbol in barrel).sort())
+      .toStrictEqual(['FlowError', 'lintDirectory', 'lintFlowDirectory']);
   });
 
   test('it imports node builtins, yaml and @quorum/shared — never spike, never zod', () => {

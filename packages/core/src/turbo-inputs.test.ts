@@ -166,7 +166,6 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'spike/bin/harness.js': 'events.test.ts, constants.test.ts — the six ui methods',
     'spike/templates/harness/harness.yaml': 'project.test.ts — the shipped template config',
     'packages/core/package.json': 'index.test.ts — core declares shared as a workspace dependency',
-    'packages/core/src/index.ts': 'index.test.ts — the entry point is byte-pinned',
     'packages/core/src/adapters/adapters.ts': 'project.test.ts — Q-0058 AC-2, withRetry\'s defaults are the oracle for the shipped example, so a change to one must move this task\'s hash',
     'packages/core/src/backlog/project.ts': 'project.test.ts — loadProject runs no schema',
   },
@@ -1671,8 +1670,11 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
     // `restoresTaskCache`'s key clause go unexercised behind its path clause (Q-0071).
     const shared = turbo['@quorum/shared#test'];
     expect(shared.dependencies).toEqual([]);
-    expect(covered('packages/core/src/index.ts', shared, 'packages/shared')).toBe(true);
-    expect(shared.inputs.has('packages/core/src/index.ts'), 'shared declares this as an input, never as an edge').toBe(true);
+    // Was `packages/core/src/index.ts` until Q-0096 AC-3 retired the byte pin that read it, which
+    // took the declared input with it. `packages/core/package.json` is the same shape of witness —
+    // a path outside `packages/shared` that this task covers by declaring it and not by an edge.
+    expect(covered('packages/core/package.json', shared, 'packages/shared')).toBe(true);
+    expect(shared.inputs.has('packages/core/package.json'), 'shared declares this as an input, never as an edge').toBe(true);
   });
 });
 
@@ -1717,20 +1719,35 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * register before this change: the assertion below read 72 while the last paragraph said 71. The
  * count is re-derived from the array here rather than continued from the sentence, which is the
  * same reason this file pins identities and not totals.
+ *
+ * **Q-0096 removed eight and added one, which is the first contraction this register has taken.**
+ * Eight tests read `packages/core/src/index.ts` to pin the barrel byte for byte — one in
+ * `packages/shared/src/index.test.ts`, named by that ticket's AC-3, and seven more inside
+ * `packages/core` that no criterion named, each asserting that its own port child *"adds no public
+ * re-export"*. Q-0096 is the ticket that gives the package a public surface, so all eight lost
+ * their subject at once and none could survive; the seven core-side ones are now assertions about
+ * which of their folder's exports the barrel carries, which needs no file read. The one addition
+ * is `index.test.ts`, which reads the file to say it is no longer the stub. **Seventy-three minus
+ * eight, plus one: sixty-six over forty** — counted from the array below rather than continued
+ * from the sentence above it, for the reason the previous paragraph gives, and the first draft of
+ * this sentence said sixty-seven because it forgot that the eighth removal was the one AC-3 names.
+ * The literal count does not move: `packages/core/src/index.ts` is still collected, from the one
+ * test that still reads it.
+ *
+ * A contraction is the one direction this register exists to catch, so it is recorded here rather
+ * than absorbed: what makes these eight legitimate is that the read stopped happening, not that an
+ * assertion was weakened.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
-  'packages/core/src/adapters/adapters.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/adapters/capabilities.source.test.ts: docs/03-adapter-contract.md',
   'packages/core/src/adapters/capabilities.source.test.ts: docs/04-architecture.md',
   'packages/core/src/adapters/structured-output.test.ts: contracts/Q-0006/review-artifacts.schema.json',
   'packages/core/src/backlog/backlog.source.test.ts: packages/core/package.json',
-  'packages/core/src/backlog/backlog.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/backlog/backlog.source.test.ts: packages/shared/package.json',
   'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/index.ts',
   'packages/core/src/backlog/backlog.source.test.ts: packages/shared/src/project.ts',
   'packages/core/src/contracts/contracts.source.test.ts: packages/core/package.json',
-  'packages/core/src/contracts/contracts.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/contracts/contracts.test.ts: backlog/Q-0006-review-flow-and-cross-flow-backward-edge/ticket.md',
   'packages/core/src/contracts/contracts.test.ts: backlog/Q-0011-run-history-on-disk/ticket.md',
   'packages/core/src/contracts/contracts.test.ts: contracts/Q-0006/ticket-review-state.schema.json',
@@ -1748,13 +1765,11 @@ const COLLECTED_BASELINE = [
   'packages/core/src/corpus.test.ts: packages/core/src',
   'packages/core/src/engine/engine.test.ts: harness/harness.yaml',
   'packages/core/src/fanout/fanout.source.test.ts: packages/core/package.json',
-  'packages/core/src/fanout/fanout.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/fanout/fanout.test.ts: spike/src/fanout.js',
-  'packages/core/src/git/git.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/git/git.source.test.ts: packages/shared/package.json',
   'packages/core/src/git/git.source.test.ts: packages/shared/src/containment.ts',
   'packages/core/src/git/git.source.test.ts: packages/shared/src/index.ts',
-  'packages/core/src/lint/lint.source.test.ts: packages/core/src/index.ts',
+  'packages/core/src/index.test.ts: packages/core/src/index.ts',
   'packages/core/src/lint/lint.test.ts: harness/flows',
   'packages/core/src/lint/lint.test.ts: spike/templates/harness/flows',
   'packages/core/src/run-history/manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
@@ -1762,7 +1777,6 @@ const COLLECTED_BASELINE = [
   'packages/core/src/run-history/reader.test.ts: harness/flows/development.yaml',
   'packages/core/src/run-history/run-history.source.test.ts: packages/core/package.json',
   'packages/core/src/run-history/run-history.source.test.ts: packages/core/src/contracts/run-manifest.ts',
-  'packages/core/src/run-history/run-history.source.test.ts: packages/core/src/index.ts',
   'packages/core/src/run-history/writer.test.ts: backlog/Q-0049-core-run-history/ticket.md',
   'packages/core/src/run-history/writer.test.ts: contracts/Q-0011/run-manifest.schema.json',
   'packages/core/src/run-history/writer.test.ts: harness/flows/chore.yaml',
@@ -1776,7 +1790,6 @@ const COLLECTED_BASELINE = [
   'packages/shared/src/docs.test.ts: docs/DECISIONS.md',
   'packages/shared/src/docs.test.ts: docs/GLOSSARY.md',
   'packages/shared/src/index.test.ts: packages/core/package.json',
-  'packages/shared/src/index.test.ts: packages/core/src/index.ts',
   'packages/shared/src/index.test.ts: packages/shared/package.json',
   'packages/shared/src/project.test.ts: harness/harness.yaml',
   'packages/shared/src/project.test.ts: packages/core/src/adapters/adapters.ts',
@@ -1899,7 +1912,7 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(73);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(66);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
       'distinct literals in the baseline').toBe(40);
     // And the nine the classifier calls directories, which is the class the defect lived in: a

@@ -12,9 +12,26 @@
 // `packages/core/src/test-discovery.test.ts` is what fails when a `*.test.ts` lands somewhere
 // nothing collects, and what refuses a narrowing — it reads this declaration rather than assuming
 // it, so restoring the old one turns three behavioural assertions red rather than none.
+// `quorum-source` is the workspace-only export condition. `@quorum/core` publishes `./src/index.ts`
+// under it and `./dist/index.js` by default, so this line is what decides that the workspace suites
+// keep proving TypeScript source while Node and a packed install get the emitted artifact — see
+// "The emit serves the binary, and no test verdict moves behind it" (2026-09-02), clause (b).
+//
+// It is `ssr.resolve` and not `resolve` because Vitest's node environment resolves through Vite's
+// server pipeline; setting the client list as well was measured to be redundant here and dropped.
+// The default list is spread rather than replaced — narrowing it to one condition would strip
+// `module`, `node` and `import` and break every other resolution in the workspace. Removing
+// `quorum-source` from this array is what turns it red: `@quorum/core` then resolves to a `dist/`
+// nothing has built, and Vite reports "Failed to resolve entry for package".
+import { defaultServerConditions } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  ssr: {
+    resolve: {
+      conditions: ['quorum-source', ...defaultServerConditions],
+    },
+  },
   test: {
     include: [...configDefaults.include],
   },

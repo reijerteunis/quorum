@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 
 import * as commandModule from './command.js';
 import * as fanoutModule from './fanout.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /** Corpus keys are whole paths below `src`, so a same-named file elsewhere never answers for these. */
@@ -46,10 +47,13 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
     expect(typeof commandModule.runCommand).toBe('function');
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    // Deliberate: this ticket adds no public re-export. Its only declared dependent (Q-0053) is in
-    // the same package and imports ./fanout.js directly (OQ-4, settled).
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
+    // still under decision: `IntegrationError` is a class a caller has to catch, and the rest of
+    // this folder — the fan-out itself and `runCommand` — stays in-package.
+    expect([...Object.keys(fanoutModule), ...Object.keys(commandModule)]
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['IntegrationError']);
   });
 
   test('core declares no new dependency', () => {
