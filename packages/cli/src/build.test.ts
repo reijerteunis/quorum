@@ -187,6 +187,9 @@ const removeEmit = (): void => {
  * descend into it: a copy's `node_modules` is a directory of symlinks, each a leaf whose fingerprint
  * is its target, so a file a build creates under one is a new entry there and is reported. See
  * {@link isolate}.
+ *
+ * Why: the five this replaced are `requirements/errata.md` E-1's register, which **E-2 withdraws**.
+ * Read E-1 alone and this line contradicts a ruling; E-2 is the one that stands.
  */
 const INSTALLED = ['node_modules'];
 
@@ -312,6 +315,10 @@ afterAll(() => {
  * build free to write into any of the three while the criterion reports exact agreement. Here
  * nothing else runs, so the audit prunes **nothing** and excuses only what AC-8 excuses in its own
  * words. The real-workspace proof R-4 and OQ-1 make load-bearing is kept separately beside it.
+ *
+ * Why: `requirements/errata.md` E-1 **rejected** this split and **E-2 withdraws E-1**, ruling that
+ * the concurrency argument moves the observation rather than narrowing the criterion. Cited because
+ * a reader meeting E-1 first would read this as contradicting a ruling — which a review round did.
  *
  * **Tracked files only**, so the copy is the commit rather than the checkout, and `dist/`, `.turbo/`,
  * `.harness/` and `.quorum/` are all gitignored and therefore none of them arrives to be mistaken
