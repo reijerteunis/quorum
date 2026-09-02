@@ -74,6 +74,52 @@ this. Q-0091 to Q-0094 implement commands against that frame and do not need thi
 does** — the mock end-to-end runs the binary — so this ticket lands before Q-0095 and may run in
 parallel with the four command children.
 
+## Re-scoped at the requirements gate, 2026-09-02
+
+**This ticket is now the export surface alone — AC-1 to AC-6 of
+`requirements/merged.md`.** The merged requirement measured **21 criteria against a ceiling of
+fifteen** and cut the ticket in three; the split was ruled at the gate, per GO-3.
+
+- **Q-0096** (this ticket) — `@quorum/core` resolves and exports its public API. **6 criteria.**
+- **Q-0097** — the workspace emits JavaScript. AC-7 to AC-14, 8 criteria.
+- **Q-0098** — `quorum` is a runnable binary, and what `npx quorum` may claim. AC-15 to AC-21, 7.
+
+**Order: Q-0096 → Q-0097 → Q-0098 → Q-0095.** Q-0096 and Q-0097 may run concurrently once 078 is
+written *were it not for Q-0039*, which is unfixed — two runs on one ticket share a worktree and
+compute the same run id, so they run one at a time. Q-0098 needs Q-0097's artifact.
+
+**Why the seam falls here, and it is the most consequential structural finding of the run.**
+`docs/06-development-plan.md` said this ticket *"may run in parallel with Q-0091 to Q-0094"* and
+Q-0090's entry said those four *"do not need this either"*. **Both are false, and were verified by
+hand at the gate rather than taken from the report:** `packages/core/package.json` declares no
+`exports`, no `main` and no `types`, and `packages/core/src/index.ts` is
+`export const name = '@quorum/core';` — so a command child importing `@quorum/core` fails under
+Vitest as well as under Node. `packages/cli/src/package.test.ts:141` already pins it, routed here by
+Q-0090. Splitting the export surface out unblocks **four** sibling tickets after 6 criteria instead
+of 21. The plan bullet is corrected in the same change.
+
+**This half needs the emit *decision* and not the emit *artifact*.** Under Shape A its `exports`
+names `./src/index.ts` for the development condition — the shape `@quorum/shared` already proves in
+this repository today.
+
+**AC-0 still binds it.** `docs/decisions/078-<slug>.md` must exist before this ticket's first chore
+run: clause (b), whether the suites resolve source or emitted output, decides what this ticket's
+`exports` map may say. Tenth appearance of a loop handed work no step in it can perform; the ninth
+was Q-0062, whose requirement named the hazard and whose run was launched without the entry anyway.
+
+**Gate obligations carried:** GO-2 (Q-0083 does not exist; an unactionable finding is closed by an
+erratum written *during* the loop, not at the exhaustion gate) and GO-3
+(`harness/Q-0096/integration` must exist before the first chore run — `review` diffs against it and
+only `integrate` creates it).
+
+**One measurement in `requirements/merged.md` is wrong and is corrected rather than inherited.**
+§M-3 says *"`packages/cli`'s only cross-package import is `import type { RunTerminalEvent }` at
+exit.ts:12 … every other import is package-relative."* True of **production source only** —
+`packages/cli/src/exit.test.ts:20` is a cross-package **value** import of `runTerminalEventSchema`
+from `@quorum/shared`. The conclusion stands, since tests are not emitted into the binary; the cost
+of Shape B is slightly higher than stated. Corrected here and in Q-0098's body so it does not reach
+decision 078 uncorrected.
+
 ## Ground rules — Q-0010's, repeated here because a child cannot read its parent
 
 1. **Do not modify `spike/src/`.** The spike stays authoritative and green until cutover; a witness
