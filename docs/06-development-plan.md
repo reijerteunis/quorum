@@ -54,7 +54,9 @@ shipped. **Q-0096's requirements run corrected this page's sequencing on
 `packages/core` declares no `exports`, `main` or `types` — a claim `packages/cli`'s own suite had
 already pinned since Q-0090 and which this page contradicted for a day. So Q-0096 keeps that half,
 **Q-0097** takes the build task and the emit, **Q-0098** takes the binary and the packaging, and the
-Q-0010 cut is nine children rather than seven. This is the second time the cut has moved because a
+Q-0010 cut is nine children rather than seven.  **AC-0's decision entry landed the same day** — *"The emit serves the binary, and no test
+verdict moves behind it"* (2026-09-02) — so all three tickets are launchable, and the emit strategy
+is ruled against the post-Q-0091 tree rather than against the frame that exists today. This is the second time the cut has moved because a
 run measured something it assumed, and the first time the thing that moved was a *dependency* rather
 than a scope — which is the Q-0074 drift in a third direction, and the argument for the plan/backlog
 check acquiring a fourth one day.
@@ -625,8 +627,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     the artifact disturbs — `frame.source.test.ts`'s `GENERATED` register and its two header
     promises, AC-13's two fail-open task registers, and `shared-resolution.test.ts:4`, whose stated
     authority (*"`turbo.json` has no `build` task and `tsconfig.base.json` emits nothing"*) this
-    ticket falsifies while the test keeps passing. **Its precondition is AC-0's decision entry**,
-    `docs/decisions/078-*.md`, written by hand before the first chore run.
+    ticket falsifies while the test keeps passing. **Its precondition, AC-0's decision entry, is
+    landed** — *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02).
   - Q-0098 `quorum` is a runnable binary, and what `npx quorum` may claim. *(Split from Q-0096
     2026-09-02, `draft`, p1.)* AC-15 to AC-21, 7 criteria: the `bin` target executed under plain
     `node` and demonstrated **red** first, the shebang and mode bit, the exit-code table across a

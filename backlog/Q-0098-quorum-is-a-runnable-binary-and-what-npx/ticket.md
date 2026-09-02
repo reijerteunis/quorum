@@ -26,8 +26,7 @@ document into this ticket's run.
 
 ## The precondition
 
-**AC-0's decision entry — `docs/decisions/078-<slug>.md` — must exist before this ticket's first
-chore run**, and it is Q-0097's precondition too. Two of its seven clauses are this ticket's directly:
+**AC-0's decision entry is written and landed — *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02)** — and it is Q-0097's precondition too. Two of its seven clauses are this ticket's directly:
 **(d)** what `npx quorum` may claim before Q-0029, and **(e)** where the artifact sits and what
 `files` must carry — `spike/bin/harness.js:321` resolves shipped templates as
 `path.join(here, '..', 'templates', 'harness')`, **relative to the binary's own file**, so the
@@ -131,8 +130,8 @@ deferred. If the ruling introduces vocabulary (*build task*, *emitted artifact*)
 
 ## Gate obligations
 
-**GO-1 — AC-0's entry (`docs/decisions/078-*.md`) exists before the first chore run**, and Q-0097 has
-landed. This ticket executes an artifact; without Q-0097 there is none.
+**GO-1 — AC-0's entry is landed**, *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02). What remains is Q-0097: this ticket executes an
+artifact, and without Q-0097 there is none.
 
 **GO-2 — Q-0083 does not exist yet.** An implement step that finds a finding it may not act on still
 has no `blocked` verdict (*"A refused finding is a gate, not another round"*, 2026-08-31); the remedy

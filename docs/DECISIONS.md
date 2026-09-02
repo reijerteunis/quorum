@@ -136,3 +136,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [An entry's date is the date it takes its place in the index](decisions/075-an-entrys-date-is-the-date-it-takes-its-place.md)
 - [A run nobody answered is undecided, and keeps the branch it proved](decisions/076-a-run-that-nobody-answered-is-undecided.md)
 - [Erratum: `--auto` does reach an unanswered gate, and can end a run undecided](decisions/077-erratum-auto-does-reach-an-unanswered-gate.md)
+
+## 2026-09-02
+
+- [The emit serves the binary, and no test verdict moves behind it](decisions/078-the-emit-serves-the-binary.md)

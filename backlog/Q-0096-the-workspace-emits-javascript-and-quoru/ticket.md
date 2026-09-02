@@ -102,8 +102,7 @@ of 21. The plan bullet is corrected in the same change.
 names `./src/index.ts` for the development condition — the shape `@quorum/shared` already proves in
 this repository today.
 
-**AC-0 still binds it.** `docs/decisions/078-<slug>.md` must exist before this ticket's first chore
-run: clause (b), whether the suites resolve source or emitted output, decides what this ticket's
+**AC-0 still binds it, and is now discharged** — *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02). Clause (b), whether the suites resolve source or emitted output, decides what this ticket's
 `exports` map may say. Tenth appearance of a loop handed work no step in it can perform; the ninth
 was Q-0062, whose requirement named the hazard and whose run was launched without the entry anyway.
 

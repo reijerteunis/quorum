@@ -27,8 +27,7 @@ resolves against **this** folder and nothing injects a sibling's document into t
 
 ## The precondition, and it is absolute
 
-**AC-0's decision entry — `docs/decisions/078-<slug>.md` — must exist before this ticket's first
-chore run.** It rules the emit strategy, whether the suites resolve source or emitted output, what
+**AC-0's decision entry is written and landed — *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02).** It rules the emit strategy, whether the suites resolve source or emitted output, what
 `outputs` a build task declares and **whether `build` is a root task at all**. `developer-generalist`
 is forbidden to write a decision entry (`harness/roles/developer-generalist.md:23`), so an implement
 step handed a criterion that depends on an absent ruling has one channel: prose the human does not
@@ -155,8 +154,9 @@ authority that has stopped being true is what `engineering.md` forbids.
 
 ## Gate obligations
 
-**GO-1 — AC-0's entry (`docs/decisions/078-*.md`) is written by hand before this ticket's first chore
-run.** See the precondition above; it is not negotiable and the precedents are Q-0058's and Q-0069's.
+**GO-1 — AC-0's entry is landed**, *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02), written by hand at Q-0096's requirements gate on
+the Q-0058 and Q-0069 precedent. This obligation is discharged; the criteria below are read against
+that entry's ruling and a criterion contradicting it is closed by an erratum, not by a round.
 
 **GO-2 — Q-0083 does not exist yet.** An implement step that finds a finding it may not act on still
 has no `blocked` verdict (*"A refused finding is a gate, not another round"*, 2026-08-31). If the
