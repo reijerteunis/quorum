@@ -27,7 +27,9 @@
  * present-and-absent assertion re-checks rather than assumes.
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -156,13 +158,31 @@ const removeEmit = (): void => {
 };
 
 /**
- * Every file below `root`, relative to it, with the two generated directories pruned.
+ * Directory names the write-set audit does not descend into, and the whole of what it excludes.
  *
- * `node_modules` is an install and `.turbo` is turbo's own cache metadata and per-task log — neither
- * is a package artifact, which is what AC-8 asks the declaration to cover. Pruned during the walk so
- * an installed dependency tree is never read.
+ * Each is a named claim rather than a convenience, because everything not on this list is audited:
+ *
+ *   - `node_modules` is an install, not a package artifact — and pruning it during the walk is also
+ *     what keeps the audit affordable.
+ *   - `.turbo` is turbo's own cache metadata and per-task log. AC-8's own wording excuses it:
+ *     *"Turbo's own cache metadata and logs are not treated as package artifacts."*
+ *   - `.git` is git's object store.
+ *   - `.harness` and `.quorum` are the harness's worktrees and its run history. Both are gitignored,
+ *     both are absent in a fresh clone and in a linked worktree and present in a working checkout —
+ *     the pair Q-0072's closing finding names — and both are **written by any concurrent harness
+ *     run**, so a verdict that read them would be a verdict about the machine rather than about the
+ *     commit (*"A test's verdict is a property of the commit, not of the checkout or the account"*,
+ *     2026-08-30).
+ *
+ * The accepted limit, stated rather than left to be found: a build that wrote **into** one of these
+ * five would be invisible here. Nothing does — each emitting package's build script is
+ * `rm -rf dist && tsc -p tsconfig.build.json` — and the alternative, auditing an installed
+ * dependency tree and a live run's worktrees, buys a flake rather than a guard.
  */
-function filesUnder(root: string, prune: readonly string[] = ['node_modules', '.turbo']): string[] {
+const UNAUDITED = ['node_modules', '.git', '.turbo', '.harness', '.quorum'];
+
+/** Every file below `root`, relative to it with `/` separators, with {@link UNAUDITED} pruned. */
+function filesUnder(root: string, prune: readonly string[] = UNAUDITED): string[] {
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -177,6 +197,36 @@ function filesUnder(root: string, prune: readonly string[] = ['node_modules', '.
   walk(root);
   return found.sort();
 }
+
+/**
+ * A fingerprint of every file below `root`: its size, its modification time and a hash of its bytes.
+ *
+ * **This is what makes AC-8 an enumeration of what the build WROTE rather than of what it ADDED.** A
+ * snapshot of path *names* answers only *did this path exist before*, so a build that **overwrote**
+ * an existing file — a tracked source, another package's manifest, a configuration at the repository
+ * root — is subtracted away by the very comparison meant to find it. Content and timestamp together
+ * make an overwrite as visible as a creation; walking from the **workspace** rather than from each
+ * emitting package is what puts a write outside any package root in scope at all. Both halves are
+ * demonstrated to have a subject below rather than argued for here.
+ *
+ * The one write this cannot see is a rewrite identical in bytes *and* in timestamp, which no
+ * compiler produces and which nothing short of instrumenting the process would observe.
+ */
+function inventory(root: string, prune: readonly string[] = UNAUDITED): Map<string, string> {
+  return new Map(filesUnder(root, prune).map((relative) => {
+    const full = path.join(root, relative);
+    const stat = fs.statSync(full);
+    return [relative, `${stat.size}:${stat.mtimeMs}:${createHash('sha256').update(fs.readFileSync(full)).digest('hex')}`];
+  }));
+}
+
+/** Every path whose fingerprint `after` does not share with `before` — created or overwritten. */
+const writtenBetween = (before: Map<string, string>, after: Map<string, string>): string[] =>
+  [...after].filter(([relative, mark]) => before.get(relative) !== mark).map(([relative]) => relative).sort();
+
+/** Every path `before` held that `after` does not. */
+const removedBetween = (before: Map<string, string>, after: Map<string, string>): string[] =>
+  [...before.keys()].filter((relative) => !after.has(relative)).sort();
 
 describe('AC-7 — a build task exists, declares real outputs, and orders itself by dependency', () => {
   test('the root declares it beside the other three, with a non-empty outputs and a ^build edge', () => {
@@ -321,44 +371,155 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     // load-bearing (R-4): with no build step in CI, the forced workspace suite is the only thing
     // that builds this repository's own packages on every push, so a fixture-only AC-8 would leave
     // the real emit unbuilt until Q-0098.
-    const tasks = emitting();
+    //
+    // **The comparison is over the whole workspace and over file CONTENT**, which is two corrections
+    // to the shape this started as. A per-package snapshot of path names answers only *did this path
+    // exist before*, so it subtracts away an overwrite of a file that was already there and never
+    // looks at anything outside an emitting package at all — the two ways a build can write
+    // something nobody declared. {@link inventory} and {@link UNAUDITED} carry the reasoning; the
+    // clause after this one shows the two cases the old shape missed.
+    //
     // Snapshotted AFTER the emit is removed, so `written` is what this build produced rather than
     // what this build produced *and an earlier one had not already left behind*. Taking it first
     // makes the difference empty in any checkout that has ever built, which is a test whose subject
     // depends on the checkout — the class this ticket keeps meeting.
+    const tasks = emitting();
     removeEmit();
-    const before = new Map(tasks.map((task) => [task.directory, new Set(filesUnder(path.join(WORKSPACE, task.directory)))]));
+    const before = inventory(WORKSPACE);
     runBuild('--force');
+    // One `after`, read once and shared: two reads could disagree, and a comparison whose two halves
+    // are taken against different states of the tree is one whose verdict has no single subject.
+    const after = inventory(WORKSPACE);
+    const written = writtenBetween(before, after);
+
+    expect(written.length, 'the build wrote nothing anywhere — the enumeration has no subject').toBeGreaterThan(0);
+
+    // Nothing in the audited region was deleted. `removeEmit()` ran before the snapshot, so no
+    // emitted path is in `before` and this clause is entirely about what lives outside the emit: a
+    // build that removed a source file, a manifest or a configuration would be reported here and by
+    // nothing else, since a comparison of what CHANGED cannot see what stopped existing.
+    expect(removedBetween(before, after), 'the build removed files outside its own emit').toStrictEqual([]);
+
+    // Every written path belongs to some emitting package's emit directory. This is the clause that
+    // covers writes **outside a package root** — a file at the repository root, in `docs/`, in
+    // `spike/`, in a package that emits nothing, or in another package's `src/` — none of which a
+    // per-package walk could have been asked about. The two untracked `tsc` outputs this ticket
+    // opened on, `packages/shared/test/corpus.js` and `corpus.d.ts`, emitted beside their source
+    // because nothing configured an `outDir`, are what one looks like; `.gitignore` matched neither,
+    // so "it is gitignored anyway" was not available as a defence.
+    const emitRoots = tasks.map((task) => ({ task, prefix: `${task.directory}/${EMIT}/` }));
+    const strays = written.filter((relative) => !emitRoots.some(({ prefix }) => relative.startsWith(prefix)));
+    expect(strays, `the build wrote outside every emitting package's ${EMIT}/`).toStrictEqual([]);
 
     const declared = rootTurbo().tasks.build.outputs ?? [];
-    for (const task of tasks) {
-      const root = path.join(WORKSPACE, task.directory);
-      const written = filesUnder(root).filter((relative) => !before.get(task.directory)?.has(relative));
-      expect(written.length, `${task.package} wrote nothing — the enumeration has no subject`).toBeGreaterThan(0);
+    for (const { task, prefix } of emitRoots) {
+      // Package-relative, because `outputs` patterns are resolved against the package directory.
+      const mine = written.filter((relative) => relative.startsWith(prefix))
+        .map((relative) => relative.slice(task.directory.length + 1));
+      expect(mine.length, `${task.package} wrote nothing — its half of the enumeration has no subject`).toBeGreaterThan(0);
 
       // Direction 1: nothing the build wrote falls outside the declaration. An undeclared emit is
       // the stale-artifact hazard in its exact form — turbo neither caches nor restores it, so a
       // cache hit yields a package that is missing a file something downstream executes.
-      const undeclared = written.filter((relative) => !declared.some((pattern) => path.matchesGlob(relative, pattern)));
+      const undeclared = mine.filter((relative) => !declared.some((pattern) => path.matchesGlob(relative, pattern)));
       expect(undeclared, `${task.package} wrote paths no outputs pattern covers`).toStrictEqual([]);
-
-      // And the emit lands only under the declared directory. The two untracked `tsc` outputs this
-      // ticket opened on — `packages/shared/test/corpus.js` and `corpus.d.ts`, emitted beside their
-      // source because nothing configured an `outDir` — are what a missing `outDir` looks like, and
-      // `.gitignore` matched neither, so "it is gitignored anyway" was not available as a defence.
-      const strays = written.filter((relative) => !relative.startsWith(`${EMIT}/`));
-      expect(strays, `${task.package} emitted outside ${EMIT}/`).toStrictEqual([]);
 
       // Direction 2: no declared pattern matches nothing. Over-declaring cannot be caught by
       // direction 1, and a pattern that has stopped matching is a declaration nobody re-read.
       for (const pattern of declared) {
         expect(
-          written.some((relative) => path.matchesGlob(relative, pattern)),
+          mine.some((relative) => path.matchesGlob(relative, pattern)),
           `${task.package}: the outputs pattern ${pattern} matches nothing the build wrote`,
         ).toBe(true);
       }
     }
   }, 300_000);
+
+  test('and the write set is one a name-only, per-package snapshot could not have produced', () => {
+    // **The subject of the clause above, exhibited rather than asserted.** Three writes in a sandbox
+    // shaped like the workspace, of which a comparison of path names taken per emitting package sees
+    // exactly one:
+    //
+    //   1. a new file under the package's emit — visible to both shapes;
+    //   2. an OVERWRITE of a tracked source that was already there — invisible to a name-only
+    //      snapshot, because the path is in `before` and the difference subtracts it;
+    //   3. a file written OUTSIDE the package root — invisible to a per-package walk, because the
+    //      walk is never pointed at it.
+    //
+    // Both oracles are run over the same event, so this fails if the fingerprint stops covering
+    // content or the walk stops starting at the workspace, and it fails the other way — as a false
+    // claim about the old shape — if the old shape would in fact have caught 2 or 3.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-write-set-'));
+    try {
+      const pkg = path.join(sandbox, 'packages', 'emitter');
+      fs.mkdirSync(path.join(pkg, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(pkg, EMIT), { recursive: true });
+      fs.writeFileSync(path.join(pkg, 'src', 'a.ts'), 'export const a = 1;\n');
+      fs.writeFileSync(path.join(sandbox, 'README.md'), 'before\n');
+
+      const before = inventory(sandbox);
+      const namesBefore = new Set(filesUnder(pkg));
+
+      fs.writeFileSync(path.join(pkg, EMIT, 'a.js'), 'export const a = 1;\n');
+      fs.writeFileSync(path.join(pkg, 'src', 'a.ts'), 'export const a = 2;\n');
+      fs.writeFileSync(path.join(sandbox, 'stray.txt'), 'written by the build\n');
+
+      expect(writtenBetween(before, inventory(sandbox)), 'the fingerprint no longer sees all three writes').toStrictEqual([
+        `packages/emitter/${EMIT}/a.js`,
+        'packages/emitter/src/a.ts',
+        'stray.txt',
+      ]);
+
+      // What the shape this replaced would have reported, run rather than described: the same event,
+      // through a per-package walk comparing names alone.
+      expect(
+        filesUnder(pkg).filter((relative) => !namesBefore.has(relative)),
+        'a name-only per-package snapshot now sees more than the one write it can see, so this comparison proves nothing',
+      ).toStrictEqual([`${EMIT}/a.js`]);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('and each name the audit prunes excuses a real file, so a sixth arrives with a subject', () => {
+    // The exclusion list is what decides the audit's reach, so every entry is a claim and each is
+    // shown to do work — a fixture per entry, derived from the list rather than written out, which
+    // is the shape `frame.source.test.ts` already uses for its own. Showing that the pruning fires
+    // proves the pruning fires and not that each entry does (Q-0071), which is why this loops.
+    //
+    // `.harness` and `.quorum` are the two that matter most and the two hardest to reach any other
+    // way: they hold a concurrent run's worktrees and its run history, so without them a run
+    // happening while this test is between its two inventories reports a stray that no build wrote
+    // — a verdict about the machine, which is what the pruning buys and what this clause prices.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-unaudited-'));
+    try {
+      fs.writeFileSync(path.join(sandbox, 'kept.txt'), 'before\n');
+      const before = inventory(sandbox);
+      for (const name of UNAUDITED) {
+        fs.mkdirSync(path.join(sandbox, name, 'nested'), { recursive: true });
+        fs.writeFileSync(path.join(sandbox, name, 'nested', 'written.txt'), 'during\n');
+      }
+      fs.writeFileSync(path.join(sandbox, 'kept.txt'), 'after\n');
+
+      // An identity and not a count, because the fixtures are derived from the list: removing an
+      // entry would otherwise remove its own subject and leave the behavioural assertion green over
+      // a shorter rule (Q-0073, "a count is not an identity").
+      expect(UNAUDITED, 'the audit\'s reach moved — each entry is a named claim').toStrictEqual([
+        'node_modules', '.git', '.turbo', '.harness', '.quorum',
+      ]);
+      expect(writtenBetween(before, inventory(sandbox)), 'the audit descended into a name it claims to prune')
+        .toStrictEqual(['kept.txt']);
+      for (const name of UNAUDITED) {
+        expect(fs.existsSync(path.join(sandbox, name, 'nested', 'written.txt')), `${name} excuses nothing — its fixture is not there`).toBe(true);
+        expect(
+          writtenBetween(before, inventory(sandbox, UNAUDITED.filter((other) => other !== name))),
+          `${name} prunes nothing — dropping it from the list changes no answer`,
+        ).toContain(`${name}/nested/written.txt`);
+      }
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
 
   test('the emit carries the declarations the export maps promise', () => {
     // `packages/cli/src/package.test.ts:193-194` already pins `@quorum/core`'s `default` as
@@ -501,70 +662,182 @@ describe('AC-12 — the artifact is invisible to every source scan', () => {
   });
 });
 
-describe('AC-23 — the emit contains nothing Vitest collects', () => {
-  /**
-   * Vitest's configured include, taken from the same defaults `vitest.shared.js` spreads.
-   *
-   * `packages/core/test/vitest-include.ts` asks this question for the two guards in that package and
-   * cannot be imported here: `@quorum/core` publishes `"."` and no subpath (Q-0096 AC-5), so a test
-   * module below it is not reachable from another package. What is shared instead is the *closing of
-   * the loop* — the configuration is asserted to spread these very defaults, so the value used below
-   * cannot drift from the one every package resolves.
-   */
-  const includePatterns = (): readonly string[] => {
-    const shared = read(WORKSPACE, 'vitest.shared.js');
-    expect(shared, 'the include is no longer Vitest\'s own default taken by reference').toMatch(/include:\s*\[\.\.\.configDefaults\.include\]/);
-    expect(shared).toContain(`import { configDefaults, defineConfig } from 'vitest/config';`);
-    const patterns = configDefaults.include ?? [];
-    expect(patterns.length, 'vitest declares no default include — this criterion has no subject').toBeGreaterThan(0);
-    return patterns;
-  };
+/**
+ * What Vitest collects, as **both** halves of the question rather than the include alone.
+ *
+ * A set built by matching the include is not the collected set: `vitest.shared.js` declares an
+ * `exclude` as well, and it is the exclude that decides an emitted test file under `dist/`. A
+ * comparison that filtered candidates by extension, or by the include alone, could never place an
+ * emitted `.js` on either side of itself — so it would go on passing with the `dist` exclusion
+ * removed, which is the state it exists to refuse.
+ *
+ * **Read out of `vitest.shared.js` rather than retyped or taken from Vitest's defaults**, for the
+ * reason `packages/core/test/vitest-include.ts` gives about the include: taking the defaults
+ * directly would leave every clause below green over a configuration whose exclusion had been
+ * deleted. That module asks the include half for the two guards in `core` and cannot be imported
+ * here — `@quorum/core` publishes `"."` and no subpath (Q-0096 AC-5) — so the shape of its reader is
+ * mirrored instead, refusal included: a declaration this reader cannot resolve **stops the guard**
+ * rather than resolving to a default nobody wrote.
+ *
+ * The remaining option, spawning Vitest and asking it what it collects, is refused for the reason
+ * `packages/core/src/test-command.test.ts:129-158` gives for its own fixture — *"running this
+ * repository's own suite instead would make the check spawn the run it is running inside"* — and
+ * because it could not be asked the counterfactual at all: the clauses below turn on what the
+ * collection would be with the exclusion removed.
+ */
+function collection(): { include: readonly string[]; exclude: readonly string[] } {
+  const text = read(WORKSPACE, 'vitest.shared.js');
+  if (!/import\s*\{[^}]*\bconfigDefaults\b[^}]*\}\s*from\s*'vitest\/config'/.test(text)) {
+    throw new Error("vitest.shared.js does not import configDefaults from 'vitest/config' — the patterns below would be ones nobody wrote");
+  }
+  if (!/include:\s*\[\s*\.\.\.configDefaults\.include\s*,?\s*\]/.test(text)) {
+    throw new Error('vitest.shared.js declares an include this reader cannot resolve — a narrowing must stop this guard, not pass it');
+  }
+  const declared = /exclude:\s*\[\s*\.\.\.configDefaults\.exclude\s*((?:,\s*'[^'\n]+')*)\s*,?\s*\]/.exec(text);
+  if (declared === null) {
+    throw new Error('vitest.shared.js declares an exclude this reader cannot resolve — the emit exclusion is what AC-23 turns on');
+  }
+  const include = [...(configDefaults.include ?? [])];
+  const exclude = [...(configDefaults.exclude ?? []), ...[...declared[1].matchAll(/'([^'\n]+)'/g)].map((match) => match[1])];
+  if (include.length === 0 || exclude.length === 0) {
+    throw new Error(`vitest declares ${include.length} include and ${exclude.length} exclude patterns — the criterion would be vacuous`);
+  }
+  return { include, exclude };
+}
 
-  test('the include has a subject — it collects an emitted test file, which is why none is emitted', () => {
-    // Shown red first. `configDefaults.include` matches `.js` as well as `.ts`, and
-    // `configDefaults.exclude` in this version is `node_modules` and `.git` only, so before this
-    // ticket an emitted `dist/**/*.test.js` was **collected and executed** — from a directory at a
-    // different depth from its source, which makes every path a test derives from its own location
-    // wrong. A fifth `dist`-awareness site, and it fails worse than AC-12's: the file does not merely
-    // get scanned, it runs.
-    const planted = `${EMIT}/x.test.js`;
-    expect(
-      includePatterns().some((pattern) => path.matchesGlob(planted, pattern)),
-      'the configured include collects nothing under the emit — this criterion would be vacuous',
-    ).toBe(true);
+/**
+ * Whether Vitest collects `relative`, which is a path below a **package** root — each package's
+ * Vitest run is rooted at its own directory, so a repository-relative path answers a different
+ * question. Included and not excluded, which is the rule Vitest itself applies.
+ */
+const collects = (relative: string, { include, exclude }: { include: readonly string[]; exclude: readonly string[] }): boolean =>
+  include.some((pattern) => path.matchesGlob(relative, pattern))
+  && !exclude.some((pattern) => path.matchesGlob(relative, pattern));
+
+describe('AC-23 — the emit contains nothing Vitest collects', () => {
+  test('the configuration is the one every package resolves, and the reader refuses a shape it cannot resolve', () => {
+    const shared = read(WORKSPACE, 'vitest.shared.js');
+    expect(shared).toContain(`import { configDefaults, defineConfig } from 'vitest/config';`);
+    // Defence in depth, and deliberately NOT a narrowing of the include: that file's header states
+    // the include is taken by reference and "deliberately not narrowed", and
+    // `packages/core/src/test-discovery.test.ts` reads that declaration and refuses a narrowing.
+    // Widening the EXCLUDE leaves every discovery guarantee intact — a red phase writes TypeScript
+    // under `src/` or `test/`, never under a gitignored emit directory.
+    expect(collection().exclude, 'the emit exclusion is gone from the one shared configuration').toContain(`**/${EMIT}/**`);
     expect(configDefaults.exclude ?? [], 'Vitest\'s own defaults already excluded the emit, so the criterion has no subject')
       .not.toContain(`**/${EMIT}/**`);
   });
 
-  test('and the build emits no file it matches — the primary mechanism, which is that none exists', () => {
+  test('an emitted test file is collected without the exclusion and not with it — the fifth dist site, both ways', () => {
+    // **Shown red first, over real files.** `configDefaults.include` matches `.js` as well as `.ts`
+    // and Vitest's own `exclude` is `node_modules` and `.git` only, so before this ticket an emitted
+    // `dist/**/*.test.js` was COLLECTED AND EXECUTED — from a directory at a different depth from its
+    // source, which makes every path such a test derives from its own location wrong. It fails worse
+    // than AC-12's site: the file does not merely get scanned, it runs.
+    //
+    // Both directions over one sandbox, so neither can be satisfied by a walk that collects nothing,
+    // and the emitted files are real rather than strings handed to a matcher — a candidate set built
+    // by extension or by the include alone could not put one on either side of a comparison.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-collect-'));
+    try {
+      fs.mkdirSync(path.join(sandbox, 'src'));
+      fs.mkdirSync(path.join(sandbox, EMIT, 'nested'), { recursive: true });
+      fs.writeFileSync(path.join(sandbox, 'src', 'a.test.ts'), 'export const a = 1;\n');
+      fs.writeFileSync(path.join(sandbox, EMIT, 'x.test.js'), 'export const x = 1;\n');
+      fs.writeFileSync(path.join(sandbox, EMIT, 'nested', 'y.test.js'), 'export const y = 1;\n');
+      fs.writeFileSync(path.join(sandbox, EMIT, 'index.js'), 'export const i = 1;\n');
+
+      const configured = collection();
+      const withoutTheExclusion = { ...configured, exclude: configured.exclude.filter((pattern) => pattern !== `**/${EMIT}/**`) };
+      const collectedUnder = (patterns: typeof configured): string[] =>
+        filesUnder(sandbox).filter((relative) => collects(relative, patterns)).sort();
+
+      expect(collectedUnder(withoutTheExclusion), 'an emitted test file is not collected even without the exclusion — this proves nothing')
+        .toStrictEqual([`${EMIT}/nested/y.test.js`, `${EMIT}/x.test.js`, 'src/a.test.ts']);
+      expect(collectedUnder(configured), 'the exclusion does not reach an emitted test file')
+        .toStrictEqual(['src/a.test.ts']);
+      expect(withoutTheExclusion.exclude.length, 'the counterfactual removed nothing, so both sides are the same configuration')
+        .toBe(configured.exclude.length - 1);
+
+      // **And the shape this replaced, run rather than described.** The present/absent clause below
+      // filtered candidates by the `.test.ts` suffix until this round, which no emitted file can
+      // carry — `tsc` writes `.js` — so an emitted test file could not reach either side of that
+      // comparison and it went on passing with the exclusion deleted. Shown here to answer the same
+      // sandbox with the same list under both configurations, which is what makes it blind rather
+      // than merely narrower.
+      const bySuffix = filesUnder(sandbox).filter((relative) => relative.endsWith('.test.ts')).sort();
+      expect(bySuffix, 'the suffix filter sees an emitted test file, so it was not the defect it is replaced for')
+        .toStrictEqual(['src/a.test.ts']);
+      expect(collectedUnder(withoutTheExclusion), 'the configured collection is blind to the emit too — the fix changed nothing')
+        .not.toStrictEqual(bySuffix);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('and the build emits no file the include matches — the primary mechanism, which is that none exists', () => {
+    // The include ALONE here, deliberately: the criterion's first clause is that nothing Vitest
+    // would want to collect is emitted at all, which each emitting package's `tsconfig.build.json`
+    // secures by excluding `src/**/*.test.ts`. Applying the exclude too would make this vacuous —
+    // `**/dist/**` would answer for every path under the emit.
     runBuild();
-    const patterns = includePatterns();
+    const { include } = collection();
     for (const task of emitting()) {
-      const collected = filesUnder(path.join(WORKSPACE, task.directory, EMIT))
-        .filter((relative) => patterns.some((pattern) => path.matchesGlob(relative, pattern)));
-      expect(collected, `${task.package} emits files Vitest would collect and run`).toStrictEqual([]);
+      const matched = filesUnder(path.join(WORKSPACE, task.directory, EMIT))
+        .filter((relative) => include.some((pattern) => path.matchesGlob(relative, pattern)));
+      expect(matched, `${task.package} emits files Vitest would collect and run`).toStrictEqual([]);
     }
   }, 300_000);
 
-  test('the collection site is closed as well, so a future emit cannot be run as a suite', () => {
-    // Defence in depth, and deliberately NOT a narrowing of the include: `vitest.shared.js`'s header
-    // states the include is taken by reference and "deliberately not narrowed", and
-    // `packages/core/src/test-discovery.test.ts` reads that declaration and refuses a narrowing.
-    // Widening the *exclude* leaves every discovery guarantee intact — a red phase writes TypeScript
-    // under `src/` or `test/`, never under a gitignored emit directory.
-    expect(read(WORKSPACE, 'vitest.shared.js')).toMatch(/exclude:\s*\[\s*\.\.\.configDefaults\.exclude\s*,\s*'\*\*\/dist\/\*\*'\s*,?\s*\]/);
-  });
-
-  test('the collected set is identical with the artifact present and absent', () => {
+  test('the collected set is identical with the artifact present and absent, and the emit is on both sides of the question', () => {
     // The same present-and-absent shape AC-12 uses, which is what makes both of them checks rather
     // than assertions of intent: whether this checkout has run a build may not move any verdict
-    // (078(b)). Asked of the walk `test-discovery.test.ts` performs, over this package.
-    const testFiles = (): string[] => filesUnder(PACKAGE).filter((relative) => relative.endsWith('.test.ts'));
+    // (078(b)). Over the REAL package, and over EVERY file it carries — the walk does not prune the
+    // emit, so an emitted `.js` is a candidate, and the include and the exclude are both applied to
+    // it. A comparison of `.test.ts` names could not have been moved by the emit whatever the
+    // configuration said, so it would have passed with the exclusion deleted.
+    //
+    // A `dist/x.test.js` is planted for the duration, because the real emit carries no file the
+    // include matches — so without one the equality would hold for the trivial reason and the
+    // clauses below would have nothing to discriminate. It is written inside the gitignored emit,
+    // which is a directory this file legitimately writes, and the next build's `rm -rf dist` clears
+    // it even if this test dies before its `finally`.
+    const configured = collection();
+    const candidates = (): string[] => filesUnder(PACKAGE);
+    const collected = (patterns = configured): string[] => candidates().filter((relative) => collects(relative, patterns)).sort();
+
     runBuild();
-    const built = testFiles();
+    const planted = path.join(PACKAGE, EMIT, 'x.test.js');
+    const withPlanted = <T>(ask: () => T): T => {
+      fs.writeFileSync(planted, 'export const planted = 1;\n');
+      try {
+        return ask();
+      } finally {
+        fs.rmSync(planted, { force: true });
+      }
+    };
+
+    const { built, builtCandidates } = withPlanted(() => {
+      // The counterfactual, on the real tree: with the exclusion removed the planted file IS
+      // collected, so it genuinely reaches both sides of the comparison below.
+      expect(
+        collected({ ...configured, exclude: configured.exclude.filter((pattern) => pattern !== `**/${EMIT}/**`) }),
+        'the planted emitted test is collected by nothing even without the exclusion — the comparison below is vacuous',
+      ).toContain(`${EMIT}/x.test.js`);
+      return { built: collected(), builtCandidates: candidates() };
+    });
+
     removeEmit();
-    const unbuilt = testFiles();
+    const unbuiltCandidates = candidates();
+    const unbuilt = collected();
     runBuild();
-    expect(built, 'the emit changes which TypeScript test files this package appears to hold').toStrictEqual(unbuilt);
+
+    expect(built, 'the emit changes what Vitest collects in this package').toStrictEqual(unbuilt);
+    // And the equality is not the walk failing to see the emit: the candidate sets DO differ, every
+    // path by which they differ is under the emit, and the planted test file is among them.
+    const extra = builtCandidates.filter((relative) => !unbuiltCandidates.includes(relative));
+    expect(extra.length, 'the walk sees no emitted file at all, so the equality above says nothing').toBeGreaterThan(0);
+    expect(extra.filter((relative) => !relative.startsWith(`${EMIT}/`)), 'the two states differ outside the emit').toStrictEqual([]);
+    expect(extra, 'the planted emitted test never entered the candidate set').toContain(`${EMIT}/x.test.js`);
   }, 300_000);
 });
