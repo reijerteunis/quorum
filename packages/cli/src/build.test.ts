@@ -1258,6 +1258,28 @@ const binTarget = (): string => {
 /** The command names {@link HELP} lists, derived from the help text rather than transcribed. */
 const helpNames = (text: string): string[] => [...text.matchAll(/^ {2}quorum (\S+)/gm)].map((match) => match[1]);
 
+/**
+ * Whether this platform carries POSIX permission bits, and therefore whether `mode & 0o111` is a
+ * question that can be asked at all.
+ *
+ * It decides whether a check **runs** and never what one answers: a machine property may shape a
+ * fixture or refuse a check and may never be the oracle (`harness/rules.md`; *"A test's verdict is a
+ * property of the commit, not of the checkout or the account"*, 2026-08-30).
+ */
+const POSIX_MODES = process.platform !== 'win32';
+
+/**
+ * The words the runner shows where a mode-bit check could not run.
+ *
+ * Carried by Vitest's own reporting rather than by an assertion message, which is shown only when an
+ * assertion fails: `ctx.skip(condition, note)` where a whole test loses its subject, so the report
+ * says **skipped** and names the unavailable check, and `ctx.annotate(note)` where only part of one
+ * does. That is AC-16's *"skipped and says so … never a silent pass"*. An early `return`, or an
+ * `expect` restating the condition it is already inside, reports **passed** over a subject nothing
+ * examined — *"a check that skips its subject must not report success"* (2026-08-25).
+ */
+const NO_POSIX_MODES = `POSIX mode bits are unavailable on ${process.platform}, so the executable bit cannot be asserted`;
+
 describe('Q-0098 AC-26 — the target sits one directory below the package root', () => {
   test('so path.join(here, \'..\') resolves to the package root, which is where the templates go', () => {
     // The ruled constraint, made arithmetic. `spike/bin/harness.js:321` resolves the shipped
@@ -1356,27 +1378,34 @@ describe('Q-0098 AC-16 — the artifact carries a shebang and is executable', ()
     expect(text.split('\n')[0]).toBe('#!/usr/bin/env node');
   }, 300_000);
 
-  test('the mode bit is set, and the build is what sets it because tsc sets none', () => {
-    runBuild();
-    const target = binTarget();
-    if (process.platform === 'win32') {
-      // An explicit skip naming the unavailable check, never a silent pass: Windows has no POSIX
-      // mode bits, so `mode & 0o111` says nothing there.
-      expect(process.platform, 'SKIPPED on win32: POSIX mode bits are unavailable, so the executable bit cannot be asserted').toBe('win32');
-      return;
-    }
-    expect(fs.statSync(target).mode & 0o111, `${target} is not executable`).not.toBe(0);
+  test('the build is what sets the mode, because tsc sets none', () => {
+    // Its own test because it holds on every platform, and a mode-bit skip below must not take it
+    // with it: `ctx.skip` ends the test it is called in, so a platform-independent assertion sharing
+    // that test would be reported skipped on win32 while nothing about it was unavailable.
+    //
     // Why the build script carries a `chmod`: `tsc` emits mode 644 and `.gitignore` ignores the emit,
     // so git records no mode for it either. Measured — an emitted target without this is `rw-r--r--`
     // and fails under `./<file>` and under an installed shim while passing under `node <file>`.
     expect(JSON.parse(read(PACKAGE, 'package.json')).scripts.build).toContain('chmod +x');
+  });
+
+  test('and the emitted target carries the bit that build set', (ctx) => {
+    // The skip is the RUNNER's, so a platform without POSIX modes reports this test as skipped and
+    // carries {@link NO_POSIX_MODES} into the report. Called before {@link runBuild} because a build
+    // paid for on the way to a check that cannot run is a cost with no verdict behind it.
+    ctx.skip(!POSIX_MODES, NO_POSIX_MODES);
+    runBuild();
+    const target = binTarget();
+    expect(fs.statSync(target).mode & 0o111, `${target} is not executable`).not.toBe(0);
   }, 300_000);
 
-  test('and it runs when executed directly, which is the difference the mode bit makes', () => {
+  test('and it runs when executed directly, which is the difference the mode bit makes', (ctx) => {
     // `node <file>` works whatever the mode is, so the assertion above needs a behavioural
-    // counterpart: this is the invocation an installed `bin` shim performs.
+    // counterpart: this is the invocation an installed `bin` shim performs. It is the one that cannot
+    // even be attempted without POSIX modes, so it is skipped by the same mechanism and for the same
+    // stated reason rather than by an early return, which would report a pass over nothing.
+    ctx.skip(!POSIX_MODES, NO_POSIX_MODES);
     runBuild();
-    if (process.platform === 'win32') return;
     expect(execFileSync(binTarget(), ['help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
   }, 300_000);
 });
@@ -1792,7 +1821,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
 });
 
 describe('Q-0098 AC-25 — the target survives a cache replay of build', () => {
-  test('a hit restores the file with its shebang, its mode bit and its behaviour intact', () => {
+  test('a hit restores the file with its shebang, its mode bit and its behaviour intact', async (ctx) => {
     // 078's *Why* is that a `build` task with real `outputs` introduces a replayed ARTIFACT, and an
     // artifact something downstream EXECUTES "lies about the present". The `bin` target is the first
     // artifact anything executes, so every property AC-15 and AC-16 assert must hold after a cache
@@ -1812,9 +1841,17 @@ describe('Q-0098 AC-25 — the target survives a cache replay of build', () => {
     const target = binTarget();
     expect(fs.existsSync(target), 'the hit restored no bin target').toBe(true);
     expect(fs.readFileSync(target, 'utf8').split('\n')[0], 'the restored artifact lost its shebang').toBe('#!/usr/bin/env node');
-    if (process.platform !== 'win32') {
+    if (POSIX_MODES) {
       expect(fs.statSync(target).mode & 0o111, 'the restored artifact lost its executable bit').not.toBe(0);
       expect(execFileSync(target, ['help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
+    } else {
+      // Annotated rather than skipped, because the two mechanisms answer different questions and
+      // this test is not wholly unavailable: the restore, the shebang and the plain-node spawn below
+      // are AC-25's subject and hold on every platform, so `ctx.skip` would report a pass that did
+      // hold as a test that never ran. What is unavailable is two assertions, and the report says so
+      // — which is the same rule as AC-16's skip, applied where only part of a test loses its
+      // subject.
+      await ctx.annotate(NO_POSIX_MODES);
     }
     expect(execFileSync(process.execPath, [target, 'help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
   }, 300_000);
