@@ -586,9 +586,51 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
     `AsyncIterable<Event>` and `core` installs no signal handler, so the 130-on-signal exit is this
     package's to own.
-  - Q-0096 The workspace emits JavaScript, and `quorum` is a runnable binary. *(Opened 2026-09-01
+  - Q-0096 `@quorum/core` resolves and exports its public API. *(`reviewed` and `main:contained`
+    2026-09-02; retitled from *"The workspace emits JavaScript, and `quorum` is a runnable binary"*
+    when it was split, because that title now describes Q-0097's and Q-0098's work. Opened 2026-09-01
     from Q-0090's requirements run, which blocked on it twice and was right both times — **the cut
-    became seven children because a run measured something the cut assumed**.)* This workspace has
+    became seven children because a run measured something the cut assumed**, and nine when this
+    ticket's own requirements run split it.)* **$38.46** — $10.59 requirements, $27.87 chore.
+    **It unblocks Q-0091 to Q-0094**, which is what the split was for: six criteria instead of
+    twenty-one.
+    **What shipped is decision 078(b) implemented literally**: a `quorum-source` condition resolving
+    `./src/index.ts`, `./dist/index.js` by default, `customConditions` in `tsconfig.base.json` and
+    `ssr.resolve.conditions` in `vitest.shared.js` — the default list spread rather than replaced —
+    so `tsc` and Vitest prove source while a plain `node` process is sent to an emit Q-0097 has yet
+    to build. Sixteen symbols from **two** named registers, `"."` alone with no wildcard subpath, and
+    `packages/shared/src/index.test.ts`'s byte pin **retired by replacement rather than deleted**.
+    **The run did not finish, and the reason is worth recording because it was not a defect.** Review
+    iteration 2 died on `codex exited 1: Selected model is at capacity`. Because `failed` is not
+    `finished()`, `finish()` rolled the ticket branch back — a no-op, `integrate` never having run —
+    and kept the worktree, which is Q-0062's rule working on the first vendor failure to test it.
+    Nothing was lost. **Review round 2 and `integrate` were then performed by hand**, cross-vendor
+    (claude wrote, codex reviewed), on Q-0050's and Q-0079's precedent; the review is a direct
+    adapter call outside any run, so **no manifest records it** and `runs.log` carries it instead.
+    **The codex approve was distrusted rather than banked**, per Q-0051 — 42 of 59 chore reviews
+    return `revise` — and the reason was concrete: codex runs `--sandbox read-only`, so its own
+    attempt to execute the suite failed `EPERM` and it approved on reading alone. Confirmed by
+    mutation instead: aiming the `default` condition at `./src/index.js` turns two AC-1 assertions
+    red and removing the `exports` map turns three red, each with a discriminating message.
+    **The run's most durable finding is round 2's, and the reviewer had not named it.** Round 1's
+    major was that `package.test.ts` required `ERR_MODULE_NOT_FOUND` and so codified the opposite of
+    AC-1. The implementer refused both offered remedies with reasons — an implement step cannot write
+    `requirements/errata.md`, and building `dist/` here implements Q-0097's central deliverable — and
+    replaced the assertion with a positive `import.meta.resolve` proof. Measuring the replacement it
+    found that **the old assertion's verdict came from the checkout**: `dist/` is gitignored, so
+    requiring the import to *fail* is green in a fresh clone and red in any checkout that has ever
+    built — and red **everywhere including CI** the moment Q-0097 lands the build task. That is *"A
+    test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30)
+    arriving through an assertion rather than a guard, and it is the build-directory cell R-4 had
+    named as one to watch. It also caught a defect it had introduced — `String()` on a module
+    namespace throws, those having a null prototype — and **removed two of its own assertions for
+    being unfalsifiable before shipping them**, which is the Q-0050 defect class refused by the round
+    that would have committed it. `requirements/errata.md` **E-1** records the ruling.
+    **Reported and not fixed, and Q-0097 inherits it:** `@quorum/shared`'s manifest still names
+    `./src/index.ts` for both conditions, while 21 production files in `packages/core` import it by
+    package name — so the `dist/index.js` Q-0097 emits will carry `import … from '@quorum/shared'`
+    and die under Node until that manifest gains the same conditional map. No criterion of this half
+    named it. *(The original body follows.)* This workspace has
     never emitted JavaScript and nothing in it is arranged to: no `build` task anywhere, no `paths`
     in `tsconfig.base.json`, no `exports`/`main`/`types` on `@quorum/core` — so it is unresolvable at
     **typecheck** as well as at runtime — and `@quorum/shared`'s `exports` naming `./src/index.ts`.

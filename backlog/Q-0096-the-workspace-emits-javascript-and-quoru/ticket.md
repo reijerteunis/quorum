@@ -1,7 +1,7 @@
 ---
 id: Q-0096
-title: The workspace emits JavaScript, and quorum is a runnable binary
-stage: requirements
+title: "@quorum/core resolves and exports its public API"
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0096/integration
