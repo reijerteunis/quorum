@@ -149,3 +149,46 @@ tree. *"An erratum is the last repair, not the first"* (2026-08-30) is usually r
 for it early in a loop*; this run is the second reading, that a repair written before the round it
 was meant to unblock has reported can be overtaken by that round. Where an erratum exists only to
 give a possible `retry` a subject, it can wait for the round in flight to land.
+
+## E-3 — E-2 overclaimed: the isolated audit does not descend through a symlink — 2026-09-02
+
+**Ruled: one sentence of E-2 is corrected. Its withdrawal of E-1 stands in full, and AC-8 stands
+unamended.** Written by hand after run 3's closing gate, with the repairs it describes.
+
+E-2 wrote, of `node_modules` being pruned from the real-workspace walk, that *"it is a bound rather
+than a blind spot"* **because "the isolated audit descends into it"**. Review round 4 was right that
+this is false, and the code says so plainly: `fingerprint` reduced a symlink to `link:<target>`, so a
+build that wrote **through** a link — into `node_modules/typescript/lib/…` — would change a file
+outside the audited root and no fingerprint would differ. The isolated audit descends into the
+*directory of links*, which is what makes a **new entry** beside them visible; it does not follow one.
+
+The error is the operator's and it is the same one twice: E-1 narrowed a criterion to fit an
+implementation not yet attempted, and E-2 transcribed an implementation's own claim into a ruling
+without running it. **A sentence in an erratum is a measurement like any other.**
+
+### What was repaired, and what was registered
+
+Two majors from review round 4, both verified in the code before they were believed.
+
+**Fixed — `isTurboMetadata` exempted every path with a `.turbo` segment**, not turbo's metadata and
+logs, so `.turbo/stray.js` was discarded by the audit while the JSDoc one line above promised that an
+artifact hidden beside a log stays reportable. The predicate now names **two measured shapes** — root
+`.turbo/cache/<hash>{-manifest.json,-meta.json,.tar.zst}` and `<package>/.turbo/turbo-<task>.log` —
+and anything else under a `.turbo` directory is reported. A mutation appends
+`echo stray > .turbo/stray.js` to a real emitting package's own build script and asserts the audit
+names it while still excusing the log beside it; it is **demonstrated red against the old predicate**
+and green against the new one.
+
+The first attempt at that narrowing was itself wrong and is worth recording: it named only the
+per-task log, having been derived from the per-package `.turbo` directories alone, and turned three of
+the audit's own clauses red by reporting turbo's root cache as strays. The complete set was then
+measured across both locations rather than inferred from one.
+
+**Registered, not fixed — a write through a symlink.** `fingerprint` now records a link's
+**`realpath`** rather than its raw target, so re-pointing one is caught; following one is not. Closing
+it means auditing the whole dependency tree on every run. The bound is written into `fingerprint`'s
+own doc comment beside the identical-bytes-and-timestamp bound it already carried, so it is stated
+where the next reader meets it rather than in a document they may not open. **No shipped build script
+can reach it** — all three are `rm -rf dist && tsc -p tsconfig.build.json`, and `tsc` writes only
+under its `outDir`. A build script that ever writes outside `outDir` is what makes this worth a
+ticket.

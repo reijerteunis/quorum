@@ -224,11 +224,25 @@ function filesUnder(root: string, prune: readonly string[] = []): string[] {
  * ADDED.** A snapshot of path *names* answers only *did this path exist before*, so a build that
  * **overwrote** a file already there is subtracted away by the very comparison meant to find it.
  *
- * The one write it cannot see is a rewrite identical in bytes *and* in timestamp, which no compiler
- * produces and which nothing short of instrumenting the process would observe.
+ * Two writes it cannot see, both stated rather than left to be found:
+ *
+ *   - a rewrite identical in bytes *and* in timestamp, which no compiler produces and which nothing
+ *     short of instrumenting the process would observe; and
+ *   - a write **through** a symlink. A link's fingerprint is its target, so re-pointing one is
+ *     reported and creating an entry beside one is reported, but a build that opened
+ *     `node_modules/typescript/lib/x.js` for writing would change a file *outside* the audited root
+ *     and nothing here would differ. Closing it means auditing the whole dependency tree on every
+ *     run, which is why the bound is registered instead. Found by review round 4 of chore run 3,
+ *     which was right that `requirements/errata.md` E-2 overclaimed in saying the isolated audit
+ *     descends into `node_modules` with no blind spot — E-3 corrects that sentence. No shipped build
+ *     script can reach it: all three are `rm -rf dist && tsc -p tsconfig.build.json`, and `tsc`
+ *     writes only under its `outDir`.
  */
 function fingerprint(full: string, stat: fs.Stats): string {
-  if (stat.isSymbolicLink()) return `link:${fs.readlinkSync(full)}`;
+  // `realpath` and not `readlink`, so a link re-pointed at the same relative spelling from a
+  // different directory is still a change. The target's CONTENTS are deliberately not read — see
+  // the second bound above.
+  if (stat.isSymbolicLink()) return `link:${fs.realpathSync.native(path.resolve(path.dirname(full), fs.readlinkSync(full)))}`;
   if (!stat.isFile()) return `special:${stat.mode}`;
   return `${stat.size}:${stat.mtimeMs}:${createHash('sha256').update(fs.readFileSync(full)).digest('hex')}`;
 }
@@ -281,9 +295,31 @@ const removedBetween = (before: Map<string, string>, after: Map<string, string>)
  * *"Turbo's own cache metadata and logs are not treated as package artifacts."*
  *
  * Applied by **naming** the paths rather than by declining to walk the directory, so what is excused
- * is enumerated and a build that hid an artifact beside a log would still be reported.
+ * is enumerated and a build that hid an artifact beside a log is still reported.
+ *
+ * Why: that last clause was false until this predicate was narrowed. It tested
+ * `segments.includes('.turbo')`, which excuses **every** path with a `.turbo` segment — so
+ * `.turbo/stray.js` was discarded by the audit while the sentence above promised the opposite,
+ * one line apart. Review round 4 of chore run 3 found it; the mutation below is what establishes
+ * the sentence rather than restating it (*"A check is not established by reading it"*, 2026-08-29).
+ *
+ * **Two shapes, and both are measured rather than guessed** — the first narrowing of this predicate
+ * named only the second and turned the audit's own clauses red, because it had been derived from
+ * the per-package `.turbo` directories alone:
+ *
+ *   - `.turbo/cache/<hash>-manifest.json`, `-meta.json` and `.tar.zst` at the **workspace root**,
+ *     which is the *cache metadata* half of AC-8's wording; and
+ *   - `<package>/.turbo/turbo-<task>.log`, which is the *logs* half.
+ *
+ * Anything else under a `.turbo` directory is an artifact and is reported.
  */
-const isTurboMetadata = (relative: string): boolean => relative.split('/').includes('.turbo');
+const isTurboMetadata = (relative: string): boolean => {
+  const segments = relative.split('/');
+  const name = segments.at(-1) ?? '';
+  if (segments.at(-2) === '.turbo') return /^turbo-[A-Za-z0-9_-]+\.log$/.test(name);
+  return segments.at(-3) === '.turbo' && segments.at(-2) === 'cache'
+    && /^[0-9a-f]+(-manifest\.json|-meta\.json|\.tar\.zst)$/.test(name);
+};
 
 /**
  * The four files that make a directory a pnpm-and-turbo workspace. Root `globalDependencies` are
@@ -632,6 +668,39 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
       'the audit is blind to a build that writes into the three directories the pruned shape excused',
     ).toStrictEqual(['.git/written', '.harness/written', '.quorum/written']);
     expect(removedBetween(before, after), 'the audit is blind to a build that deletes a file').toStrictEqual([victim]);
+  }, 300_000);
+
+  test('and it reports an artifact hidden beside a turbo log, which the exemption used to swallow', () => {
+    // The mutation review round 4 of chore run 3 asked for, and the one that establishes
+    // `isTurboMetadata`'s doc comment instead of leaving it a promise. The predicate tested
+    // `segments.includes('.turbo')`, so a build writing `.turbo/stray.js` was excused by a clause
+    // whose stated purpose is to excuse turbo's logs and nothing else.
+    //
+    // Same shape as the sibling above: the emitting package's own build script is what writes the
+    // file, so a real build task is doing something no criterion allows. The log beside it is
+    // asserted to be excused in the same breath, because a predicate that reported BOTH would pass
+    // this clause while breaking AC-8's one real exemption.
+    const root = isolate();
+    const target = emitting()[0];
+
+    const manifestPath = path.join(root, target.directory, 'package.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { scripts: Record<string, string> };
+    manifest.scripts.build += ' && mkdir -p .turbo && echo stray > .turbo/stray.js';
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const before = inventory(root);
+    buildIn(root, '--force');
+    const written = writtenBetween(before, inventory(root));
+
+    const prefixes = emitting().map((task) => `${task.directory}/${EMIT}/`);
+    expect(
+      written.filter((relative) => !isTurboMetadata(relative) && !prefixes.some((prefix) => relative.startsWith(prefix))),
+      'an artifact hidden beside a turbo log is excused by the exemption instead of reported',
+    ).toStrictEqual([`${target.directory}/.turbo/stray.js`]);
+    expect(
+      written.filter(isTurboMetadata).some((relative) => /\/\.turbo\/turbo-[A-Za-z0-9_-]+\.log$/.test(relative)),
+      'the exemption stopped excusing turbo\'s own log, which is the one thing AC-8 allows it',
+    ).toBe(true);
   }, 300_000);
 
   test('the real workspace builds, and its emit and the declaration agree in both directions', () => {
