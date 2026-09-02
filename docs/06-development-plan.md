@@ -59,7 +59,16 @@ verdict moves behind it"* (2026-09-02) — so all three tickets are launchable, 
 is ruled against the post-Q-0091 tree rather than against the frame that exists today. This is the second time the cut has moved because a
 run measured something it assumed, and the first time the thing that moved was a *dependency* rather
 than a scope — which is the Q-0074 drift in a third direction, and the argument for the plan/backlog
-check acquiring a fourth one day.
+check acquiring a fourth one day. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
+what happened, which is not what this cut described: it landed **eleven** criteria rather than the
+eight this page promised, because its requirements run added AC-22 to AC-24 and two of them are what
+make the ticket work — `@quorum/shared`'s flat `exports`, which Q-0096 reported unfixed and which
+would have killed `core`'s emitted `dist` under Node, and a fifth `dist`-awareness site in Vitest's
+default `exclude` that neither this page nor decision 078 had. The third correction is to the
+sequencing claim that the emit strategy was settled: it was, and what was not settled was **who owes
+what an erratum may say** — the run produced three, of which two corrected the *previous* one, both
+because a ruling was written from a claim rather than from a measurement. That is the same class as
+the drift this paragraph keeps recording, arriving inside the instrument meant to repair it.
 
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
@@ -661,16 +670,57 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     script — verbatim the failure the first guard's own describe block exists to close, and the
     `q0050.source.test.ts` fail-open shape Q-0051 found, in a file whose `PACKAGES` half *is* derived
     from the workspace globs. A package added later is covered; a task added later is not.
-  - Q-0097 The workspace emits JavaScript. *(Split from Q-0096 2026-09-02, `draft`, p1.)* AC-7 to
-    AC-14, 8 criteria: the `build` task with `dependsOn: ["^build"]` and the first non-empty
-    `outputs` in this workspace, its declared output set proven exact **in both directions** by
-    building into a clean tree rather than by reading the declaration, the three replay criteria that
-    establish a cache hit restores a *usable artifact* rather than a prior verdict, and the guards
-    the artifact disturbs — `frame.source.test.ts`'s `GENERATED` register and its two header
-    promises, AC-13's two fail-open task registers, and `shared-resolution.test.ts:4`, whose stated
-    authority (*"`turbo.json` has no `build` task and `tsconfig.base.json` emits nothing"*) this
-    ticket falsifies while the test keeps passing. **Its precondition, AC-0's decision entry, is
-    landed** — *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02).
+  - Q-0097 The workspace emits JavaScript. *(`reviewed` and `main:contained` 2026-09-02.)*
+    **$91.39** — $15.76 requirements across two runs, $75.63 chore across four implement rounds,
+    reached through one `retry` and closed by `advance` at a second exhaustion gate. **The workspace
+    emits for the first time**: a root `build` task with `dependsOn: ["^build"]` and
+    `outputs: ["dist/**"]`, the first non-empty `outputs` here, driven by a `tsconfig.build.json` per
+    emitting package. Eleven criteria, not the eight this line promised — AC-22 to AC-24 were added
+    by the requirements run and two of them are why the ticket works.
+    **AC-22 is the finding that made it satisfiable, and no criterion of the ticket body named it.**
+    `@quorum/shared`'s `exports` was still a flat `./src/index.ts` map — Q-0096 reported it unfixed
+    and this page inherited the gap — so `packages/core/dist/index.js` would have died at its first
+    specifier under Node. **AC-23 is a site neither the body nor 078 had:** Vitest's default
+    `exclude` is two entries and `dist/**` is not among them, so an emitted `dist/**/*.test.js` would
+    have been *collected and executed*. Four `dist`-awareness sites already held and the fifth failed
+    open.
+    **Proven by execution rather than by report**, which is 078(b)'s own demand: a clean build emits
+    96 files, and a plain `node` process knowing no `quorum-source` condition resolves
+    `@quorum/core` to `dist/index.js` and imports it — 16 symbols, with `@quorum/shared` resolving
+    through it. Both new guards were mutation-tested and turn 3 tests red each.
+    **The requirements stage cost two runs because the first was aborted at its gate**, and the cause
+    was an agent contract violation rather than a defect: head-of-product returned `ready` having
+    composed the document its `summary` describes, and wrote a 44-byte placeholder into the field the
+    engine persists. `advance` would have approved a document that was not there, and a declared
+    human gate offers no `retry` — `runGate` honours one only where `retryTarget` is set. **Nothing
+    validates that a step's document is substantive**, which is *"a check that skips its subject must
+    not report success"* (2026-08-25) arriving on the artifact rather than on the check; registered
+    here and owed its own ticket.
+    **The durable lesson is about the erratum, and it cost two of them.** The deliverable was stable
+    from implement round 1 and every finding after it was in the **test scaffolding** — Q-0050's
+    shape again. Round 1's two majors were both checks that could not see their subject: an audit
+    snapshotting path *names*, so an overwrite was subtracted away by the comparison meant to find
+    it, and an AC-23 assertion listing `.test.ts` where an emit produces `.test.js`, which therefore
+    could not fail. **E-1 was the operator's mistake**: written between round 3 starting and its
+    review to give a possible `retry` a subject, it narrowed AC-8 to fit an implementation not yet
+    attempted, and round 3 — which never saw it, a step's inputs being read when it starts — built
+    something better. Review round 3 then blocked that change for contradicting E-1, correctly and
+    entirely as an artifact of a bad ruling. **E-2 withdrew E-1**; round 4 changed no behaviour and
+    added two `Why:` authority lines so a reader meeting E-1 first cannot repeat the misreading.
+    **E-3 then corrected E-2**, which had transcribed an implementation's claim — that the isolated
+    audit descends into `node_modules` with no blind spot — into a ruling without running it. *A
+    sentence in an erratum is a measurement like any other*, and this ticket got it wrong twice in
+    the same direction.
+    **Two majors were advanced past and repaired by hand after the gate** (Q-0073, Q-0080), with
+    E-3 recording both: `isTurboMetadata` exempted every path with a `.turbo` segment while the
+    JSDoc one line above promised the opposite, now two measured shapes with a mutation shown red
+    first; and a write *through* a symlink is registered rather than fixed, unreachable by any
+    shipped build script. **The first attempt at that narrowing was wrong in the same way as the
+    defect** — derived from the per-package `.turbo` directories alone, it reported turbo's root
+    cache as strays — which is recorded rather than quietly corrected.
+    Verified forced on `main` in the populated row after the merge: workspace 21/21 tasks 0 cached,
+    spike 19/19, `harness lint` 6/6, git-identity sweep green in both checkout shapes.
+    **It unblocks Q-0098**, which needs the artifact.
   - Q-0098 `quorum` is a runnable binary, and what `npx quorum` may claim. *(Split from Q-0096
     2026-09-02, `draft`, p1.)* AC-15 to AC-21, 7 criteria: the `bin` target executed under plain
     `node` and demonstrated **red** first, the shebang and mode bit, the exit-code table across a
