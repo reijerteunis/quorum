@@ -143,7 +143,9 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
 });
 
 /**
- * Runs `source` in a plain `node` process rooted at this package, and reports what happened.
+ * Evaluates `source` in a plain `node` process rooted at this package, and reports what happened —
+ * `code: 'RESOLVED'` and the expression's value on success, the error's `code` and `message` on
+ * failure.
  *
  * The point of spawning rather than importing is that Node knows nothing of Vitest's resolver or of
  * the `quorum-source` condition, so what it reports is a property of the published package metadata
@@ -152,14 +154,18 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
  * "package not found", which is a different fact and the one iteration 1 of the requirement
  * transcribed by mistake (merged.md §M-5).
  */
-const inPlainNode = (source: string): { code: string; message: string } => {
-  const script = `try { ${source}; console.log(JSON.stringify({ code: 'RESOLVED', message: '' })) }`
-    + ' catch (e) { console.log(JSON.stringify({ code: e.code ?? "", message: e.message })) }';
+const inPlainNode = (source: string): { code: string; message: string; value: string } => {
+  // `typeof v === 'string'` rather than `String(v)`: a resolution yields a string and an `import()`
+  // yields a module namespace, whose prototype is null — so `String()` on one throws a codeless
+  // TypeError that the catch below would report as a failure, turning a *successful* deep import
+  // into an empty `code` and quietly disarming AC-5's negative. Measured, not foreseen.
+  const script = `try { const v = ${source}; console.log(JSON.stringify({ code: 'RESOLVED', message: '', value: typeof v === 'string' ? v : '' })) }`
+    + ' catch (e) { console.log(JSON.stringify({ code: e.code ?? "", message: e.message, value: "" })) }';
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
     cwd: PACKAGE,
     encoding: 'utf8',
   });
-  return JSON.parse(out) as { code: string; message: string };
+  return JSON.parse(out) as { code: string; message: string; value: string };
 };
 
 describe('Q-0096 AC-1 — @quorum/core resolves, and its entry points are declared', () => {
@@ -202,17 +208,38 @@ describe('Q-0096 AC-1 — @quorum/core resolves, and its entry points are declar
   });
 
   test('a plain node process, which knows no such condition, is sent to the emit', () => {
-    // Decision 078(b) asks for exactly this proof, and it is the honest maximum for this half of
-    // the ticket: `dist/` is Q-0097's to produce, so what is established here is that Node honours
-    // the export map and *reaches* the declared artifact. Before this change the same import died
-    // on `…/@quorum/core/index.js` — Node's legacy fall-through for a package with no `exports` at
-    // all — so the failure moving to `dist/index.js` is the whole of what AC-1 delivers today.
-    // It becomes `RESOLVED` at Q-0097 and this assertion is that ticket's to replace.
-    const result = inPlainNode("await import('@quorum/core')");
-    expect(result.code).toBe('ERR_MODULE_NOT_FOUND');
-    expect(result.message).toContain('@quorum/core/dist/index.js');
-    expect(result.message, 'the legacy index.js fall-through is what an absent exports map gives')
-      .not.toContain('@quorum/core/index.js');
+    // Decision 078(b) asks for "a proof that a plain `node` process, which knows no such condition,
+    // gets `dist/`", and *resolution* is where an export map is read — so that is what is asserted,
+    // positively and successfully, rather than an import whose execution needs a `dist/` this half
+    // of the ticket does not build. `import.meta.resolve` answers from the manifest alone and does
+    // not require the target to exist (measured: it returns the URL below against a tree with no
+    // `packages/core/dist`), which makes this a claim about package metadata and nothing else.
+    //
+    // Why: an assertion on a *failed* import here would take its verdict from the checkout rather
+    // than from the commit — forbidden by "A test's verdict is a property of the commit, not of the
+    // checkout or the account" (2026-08-30). `dist/` is gitignored (`.gitignore:4`), and with a
+    // `packages/core/dist/index.js` planted the same import returns RESOLVED, so a test requiring
+    // ERR_MODULE_NOT_FOUND is red in any checkout that has ever run a build and green in a fresh
+    // clone. That is Q-0072's instance shape, and it is why this reads the resolver instead.
+    const result = inPlainNode("import.meta.resolve('@quorum/core')");
+    expect(result.code, `resolution failed: ${result.message}`).toBe('RESOLVED');
+
+    // The tail rather than the whole path: Node realpaths the URL when the target exists and does
+    // not when it is absent, so the prefix is `packages/cli/node_modules/@quorum/core` in a clean
+    // tree and `packages/core` once Q-0097 emits. Both are the same package and neither is the
+    // subject; the branch of the map that was taken is.
+    //
+    // These two assertions are the whole test, and no negative is written beside them, because the
+    // three ways of getting this wrong each fail one of them and were each demonstrated: the
+    // workspace condition leaking resolves `…/src/index.ts` and fails the tail; no `exports` map at
+    // all makes `import.meta.resolve` *throw*, naming Node's legacy `@quorum/core/index.js`
+    // fall-through, and fails the code above. A `not.toContain('/src/')` or a `not.toMatch(/…
+    // index\.js$/)` beside them could not fail once the tail holds — an assertion that cannot fail
+    // is the defect this repository has recorded most often, so it is left out deliberately.
+    expect(result.value.endsWith('/dist/index.js'), `resolved to ${result.value}`).toBe(true);
+
+    // This assertion is deliberately not Q-0097's to replace: it holds unchanged once `dist/`
+    // exists, because the map it reads does not move. What Q-0097 adds is that the file is there.
   });
 
   test('@quorum/shared resolves too, by the same mechanism it always did', async () => {
