@@ -121,3 +121,25 @@ behaviour a test could fail on before it exists. Not a lighter SDLC; a different
 changes what the repository *is* rather than what it *does*. Requires `harness/<id>/integration` to
 exist before its first run — `review` diffs against that branch and only `integrate`, which runs
 later, creates it (see 02-sdlc-pipeline-spec.md §5.8).
+
+**Build task**: Turborepo's `build` task, declared once in the root `turbo.json` and run in the
+three packages that emit. It is the **first task in this workspace whose `outputs` is non-empty**,
+so a cache hit on it replays an *artifact* where `lint`, `typecheck` and `test` replay only a
+verdict — the distinction the 2026-09-02 decision rests on. Not a "pipeline", a "job" or a "step":
+a pipeline is turbo's own retired name for the task table, a job is one of CI's seven, and a step is
+a flow's. Nothing in `harness/flows/` runs it, and no test verdict in this workspace moves behind
+it: the suites resolve TypeScript source through the `quorum-source` export condition, and the emit
+is what Node and a packed install get. See *"The emit serves the binary, and no test verdict moves
+behind it"* (2026-09-02).
+
+**Emitted artifact**: The JavaScript and declaration files a **build task** writes under a package's
+`dist/`, gitignored and reproducible from the commit. The three emitting packages are
+`@quorum/shared`, `@quorum/core` and `@quorum/cli`, which is also the **local distribution set** —
+what a `pnpm pack` of this repository produces and what an installation outside the workspace
+consumes. Distinguished from the **binary**, which is the single file `packages/cli`'s `bin.quorum`
+names: the binary is one emitted artifact among many and the two words are not interchangeable. An
+emitted artifact is not a "bundle" — nothing here is bundled, each source file emits its own
+counterpart — and not a "build output directory", which names the container rather than the
+contents. Since Q-0098 the binary carries a shebang and an executable bit, both proven to survive a
+cache replay, because an artifact something *executes* fails differently from a stale tick: the tick
+lies about the past, the artifact lies about the present.

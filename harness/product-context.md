@@ -71,9 +71,15 @@ Every requirement carries acceptance criteria for these where they apply:
 5. **Cross-vendor rule.** A reviewing or judging step must see at least one input written by
    a vendor other than its own; the flow linter enforces it.
 6. **Product-agnostic.** Nothing in this repository knows about any specific SaaS product.
-7. **The cold-clone test.** A stranger goes from `npx quorum` to a multi-vendor-reviewed,
+7. **The cold-clone test.** A stranger goes from installing Quorum to a multi-vendor-reviewed,
    human-approved merged branch in under 30 minutes reading only the README. A feature that
-   lengthens the first 30 minutes needs a reason.
+   lengthens the first 30 minutes needs a reason. **Two installation paths are claimed and one is
+   refused:** the workspace-local path (`pnpm install`, `pnpm turbo run build`, `pnpm exec quorum`)
+   and the locally packed path (the three emitting packages' tarballs installed together outside the
+   repository) both work since Q-0098. **Registry-resolved `npx quorum` does not** — every package
+   is `"private": true`, so it would fetch a stranger's package — and it is Q-0029's, in M6. Do not
+   write a requirement, a test name or a success message that claims a cold machine can obtain
+   Quorum from the public registry.
 8. **Errors are explicit.** Invalid structured output saves the raw text beside the ticket and
    stops the run with a clear message. Never default silently.
 

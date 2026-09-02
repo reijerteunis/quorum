@@ -1,6 +1,6 @@
 # Quorum — Product Definition (v1)
 
-*Status: definition locked after grilling session, 2026-08-06; positioning amended 2026-08-22 (launch via heyruud.com, product-agnostic, dogfood portfolio); renamed from Harness Studio to Quorum 2026-08-22; 2026-08-25 docs review — "Studio" replaced by "Quorum" throughout, and the cold-clone test now states the measured constraint that contradicts it. See DECISIONS.md for the reasoning behind every choice and GLOSSARY.md for terminology.*
+*Status: definition locked after grilling session, 2026-08-06; positioning amended 2026-08-22 (launch via heyruud.com, product-agnostic, dogfood portfolio); renamed from Harness Studio to Quorum 2026-08-22; 2026-08-25 docs review — "Studio" replaced by "Quorum" throughout, and the cold-clone test now states the measured constraint that contradicts it; 2026-09-02 (Q-0098) — the cold-clone test is annotated rather than rewritten, naming its `npx quorum` as the registry path that stays Q-0029's in M6 and pointing at the two paths that work today. See DECISIONS.md for the reasoning behind every choice and GLOSSARY.md for terminology.*
 
 ## One-liner
 
@@ -31,6 +31,8 @@ Explicitly out of v1, listed as roadmap in the README: Gemini adapter (designed 
 ## Launch test (pass/fail)
 
 **The cold-clone test:** a stranger with Claude and Codex subscriptions, on their own repo, goes from `npx quorum` to a multi-vendor-reviewed, human-approved merged branch in under 30 minutes, reading nothing but the README. Any feature or design decision that does not serve this test is out of v1.
+
+**What `npx quorum` names here.** The registry-resolved form, which is **M6's** and is Q-0029's to make true: every package is `"private": true` today, so typing it on a cold machine fetches a stranger's package or nothing. The shape of this test is unchanged — it is the sentence *"v1 cut and launch test"* (2026-08-06) froze — and the two paths that **do** work since Q-0098 are the workspace-local one and the locally packed one, both described in `04-architecture.md`. See *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02), clause (d).
 
 **Measured constraint, still unresolved.** `requirements` is the cheapest of the seven stages and takes about 13 minutes (DECISIONS, 2026-08-22), so thirty minutes cannot cover the full SDLC. Either the first-run path covers one stage rather than seven, or the test's premise changes. The decision belongs before M6 writes the README and has not been taken.
 

@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@quorum/cli':
+        specifier: workspace:*
+        version: link:packages/cli
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
