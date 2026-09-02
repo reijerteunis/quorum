@@ -1,14 +1,30 @@
 ---
 id: Q-0097
 title: The workspace emits JavaScript
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0097/integration
 priority: p1
 created: 2026-09-02
 iterations: {}
-history: []
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: aborted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-02T08:28:07.068Z
+    cost: 7.587
+  - stage: requirements
+    run: 2
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-02T08:52:37.359Z
+    cost: 8.176
 ---
 Split from **Q-0096** at its requirements gate on 2026-09-02, where the merged requirement measured
 **21 criteria against a ceiling of fifteen** and cut the ticket in three. This is **B**, the middle
