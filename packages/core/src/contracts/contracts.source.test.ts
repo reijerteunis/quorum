@@ -11,6 +11,7 @@ import { describe, expect, test } from 'vitest';
 
 import * as contractsModule from './contracts.js';
 import * as runManifestModule from './run-manifest.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 
 /** Corpus keys are whole paths below `src`, so a same-named file elsewhere can never answer for these. */
@@ -46,10 +47,13 @@ describe('AC-1 — the surface, the folder, and the entry point left alone', () 
     expect(moduleSources().map(([name]) => name)).toStrictEqual([CONTRACTS_SOURCE, RUN_MANIFEST_SOURCE]);
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    // This ticket adds no public re-export: its only consumer at landing is in-package, exactly as
-    // src/git/, src/backlog/ and src/lint/ are consumed today (AC-1, fact 16).
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
+    // still under decision: `validateArtifact` is the single-read entry point `harness validate`
+    // is built on, and `validateFile` and the run-manifest pass stay in-package.
+    expect([...Object.keys(contractsModule), ...Object.keys(runManifestModule)]
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['validateArtifact']);
   });
 
   test('it imports node builtins, yaml, ajv, shared and its own siblings — never spike', () => {

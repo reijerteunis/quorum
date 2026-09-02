@@ -60,13 +60,20 @@ describe('AC-1 — importable, one runtime dependency, no workspace import', () 
     }
   });
 
-  test('core declares the dependency, and nothing else in core changed', () => {
+  test('core declares the dependency', () => {
     const core = readJson('packages/core/package.json');
     expect((core.dependencies as Record<string, string>)[`${SCOPE}shared`]).toBe('workspace:*');
     // The resolution proof itself is a new test file in core, not an edit to a core source file:
     // packages/core/src/shared-resolution.test.ts.
-    expect(fs.readFileSync(path.join(repoRoot, 'packages/core/src/index.ts'), 'utf8'))
-      .toBe(`export const name = '${SCOPE}core';\n`);
+    //
+    // **Retired here, deliberately and not by deletion.** This test was called "core declares the
+    // dependency, and nothing else in core changed" and its second half pinned
+    // `packages/core/src/index.ts` byte for byte. That half's subject was that Q-0041 had not
+    // touched `core`, which expired when the port closed on 2026-08-31 and which Q-0096 AC-2
+    // falsifies outright by giving the barrel its sixteen-symbol public surface. The first half is
+    // the one with a live subject and is what remains; the surface itself is `core`'s to police
+    // and is pinned in `packages/cli/src/package.test.ts`, since `shared` may not read `core`.
+    // Q-0096 AC-3.
   });
 });
 

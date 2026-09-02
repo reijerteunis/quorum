@@ -12,6 +12,7 @@ import { afterAll, describe, expect, test } from 'vitest';
 
 import * as adaptersModule from './adapters.js';
 import * as mockModule from './mock.js';
+import * as barrel from '../index.js';
 import { coreSourceFiles, repoFile } from '../../test/corpus.js';
 import { removeTempDirs, tempDir, write } from '../../test/repo.js';
 
@@ -91,8 +92,14 @@ describe('AC-1 — the surface, the folder, the dependencies, and the entry poin
     expect(() => expect(ninth).toStrictEqual(FOLDER)).toThrow();
   });
 
-  test('packages/core/src/index.ts is untouched, so Q-0041\'s byte pin stays green', () => {
-    expect(repoFile('packages/core/src/index.ts')).toBe("export const name = '@quorum/core';\n");
+  test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
+    // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
+    // still under decision. `overrideAdapters` is public too and lives in ./override.js, which
+    // this file does not import — it is covered by the identity register in
+    // `packages/cli/src/package.test.ts`, which is the one place the whole surface is pinned.
+    expect([...Object.keys(adaptersModule), ...Object.keys(mockModule)]
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['getAdapter', 'probeAdapter']);
   });
 
   test('this ticket adds no dependency: core declares the same four it already had', () => {
