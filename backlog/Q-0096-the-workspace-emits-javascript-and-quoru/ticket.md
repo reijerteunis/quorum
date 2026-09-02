@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-01
 iterations:
   requirements.head-of-product: 2
+  chore.review: 1
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,14 @@ history:
     stage_after: requirements
     at: 2026-09-02T05:43:54.000Z
     cost: 10.593
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-02T06:48:47.726Z
+    cost: 27.868
 ---
 Opened 2026-09-01 from Q-0090's requirements run, which blocked twice on it and was right both
 times. **The seventh child of Q-0010, and the cut moved because a run measured something the cut
