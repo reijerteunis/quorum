@@ -1,14 +1,31 @@
 ---
 id: Q-0096
 title: The workspace emits JavaScript, and quorum is a runnable binary
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0096/integration
 priority: p1
 created: 2026-09-01
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-01T23:59:43.559Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-02T05:43:54.000Z
+    cost: 10.593
 ---
 Opened 2026-09-01 from Q-0090's requirements run, which blocked twice on it and was right both
 times. **The seventh child of Q-0010, and the cut moved because a run measured something the cut
