@@ -735,16 +735,64 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     Verified forced on `main` in the populated row after the merge: workspace 21/21 tasks 0 cached,
     spike 19/19, `harness lint` 6/6, git-identity sweep green in both checkout shapes.
     **It unblocks Q-0098**, which needs the artifact.
-  - Q-0098 `quorum` is a runnable binary, and what `npx quorum` may claim. *(Split from Q-0096
-    2026-09-02, `draft`, p1.)* AC-15 to AC-21, 7 criteria: the `bin` target executed under plain
-    `node` and demonstrated **red** first, the shebang and mode bit, the exit-code table across a
-    process boundary — 0, 1, 2, 130 and **3 for `undecided`** — the two honest installation paths,
-    and the documentation separating three claims. **Q-0095 needs its binary half and not its packed
-    half**, which is why AC-19 and AC-20 sit off M2's critical path. `npm pack --dry-run` on
-    `packages/cli` **exits 0 despite `"private": true`**, shipping 22 files and 90.6 kB including
-    three `.turbo/*.log` and nine test files with no `files` field — re-measured by hand at Q-0096's
-    gate, so AC-19's contract is load-bearing on day one. Registry-resolved `npx quorum` is
-    **refused** here by AC-20 and AC-21 rather than deferred; it stays Q-0029's in M6.
+  - Q-0098 `quorum` is a runnable binary, and what `npx quorum` may claim. *(`reviewed` and
+    `main:contained` 2026-09-02.)* **$50.36** — $9.43 requirements ready on the first pass, $40.93
+    chore across three implement rounds — and **the cheapest of the three siblings**, against
+    Q-0097's $91.39 and Q-0096's $38.46. **`quorum` runs**: `node packages/cli/dist/quorum.js help`
+    prints the frame's help and exits 0, from a `bin` at `./dist/quorum.js` whose depth is ruled
+    rather than chosen — one directory below the package root, so `path.join(here, '..')` reaches
+    the package and Q-0093's `init` inherits the template depth 078(e) fixes. `files: ["dist"]` on
+    all three emitting packages took the CLI tarball from **40 files to 17** — sixteen emitted files
+    and the manifest, with zero tests, `src/` or turbo logs.
+    **Nine criteria, not the seven this line promised.** The requirements run added AC-25 and AC-26,
+    numbered from 25 because Q-0097 had already spent AC-22 to AC-24 in the shared space. Its two
+    largest findings were its own: the local distribution set is **three tarballs**, not one —
+    `core` packed 167 files and 2.0 MB, `shared` 52 and 339.8 kB, neither declaring `files` — and
+    **`@quorum/cli` cannot install from its own tarball alone**, because `workspace:*` either
+    rewrites to a `0.0.0` the registry does not have or stays literally invalid outside a workspace.
+    The fixture therefore installs all three together.
+    **The run aborted at `integrate` with the suite red, and that is the flow working.** It was the
+    first execution of the change — the implement step runs no tests and the review is read-only —
+    so `integrate` caught what three cross-vendor reviews could not. Diagnosed by experiment rather
+    than by reading: **pnpm links a bin shim during *install*, and only where the target exists.**
+    With `dist/quorum.js` absent the install links nothing and says so in a `WARN` nobody reads;
+    re-running the identical command once the artifact exists creates it. Decision 078(b)
+    deliberately gives `test` no `^build` edge, so from a clean checkout the order is install → test
+    and `dist/` is *guaranteed* absent when install runs — which makes AC-18's shim mechanism
+    **structurally incompatible with the ruling this ticket sits under**, not a slip. The
+    implementer's worktree had built before installing, so its verdict was a property of that
+    checkout's ordering rather than of the commit. **Finished by hand** on Q-0096's precedent:
+    `linkBins()` installs after building at both call sites, shown load-bearing by deleting the shim
+    and watching the fixture recreate it.
+    **Two errata, and this time both were measurements.** E-1 was written at the requirements gate,
+    before the chore run rather than during it: every pack count in the merged requirement is a
+    **built-checkout** count — cli 40 here against 22 fresh, core 167 against 101, shared 52 against
+    28 — because `packages/*` carry no package-level ignore file and npm never reads the repository
+    root, so gitignored `dist/` and `.turbo/` ship. AC-19 therefore asserts over the declared `files`
+    allow-list and never over a count, a size, or the absence of build output, which is the assertion
+    Q-0096's E-1 retired one ticket earlier for the identical reason. **The inherited "22 files" is a
+    trap rather than a stale figure**: a fresh clone packs 22 today from a *different* set of files,
+    so re-measuring in a clean checkout appears to confirm the superseded number.
+    **The review loop's findings were good and none of them was the defect that stopped the run** —
+    an argument for `integrate` rather than against the panel. Round 1: the AC-18 fixture executed
+    the shim directly, bypassing the pnpm resolution it claimed to prove, and the packer-agreement
+    test checked one package of three while its comment claimed all three. Round 2 is the sharpest:
+    the non-POSIX branch of the mode assertion executed an assertion that necessarily passes and
+    returned, so Vitest reported **passed** and AC-16's required explanation never appeared — *"a
+    check that skips its subject must not report success"* (2026-08-25) reproduced inside the
+    criterion drafted to forbid it, and invisible on macOS.
+    **Registered and not fixed: the build is POSIX-only.** Round 3's major was `chmod +x`; advanced
+    past deliberately, because `rm -rf dist` is the same defect in the same line and went unflagged,
+    all three emitting packages carry it, and **Q-0097 introduced it** — so the fix is a
+    cross-platform helper across three build scripts, which is that ticket's surface and a decision
+    rather than a repair. All seven CI jobs are `ubuntu-latest` and `harness.yaml`'s own commands are
+    POSIX shell chains; this repository has never claimed Windows support, and the ticket for it is
+    owed only if it ever does.
+    **M2's done-when was corrected in the same change**, and `harness/product-context.md` with it —
+    the first time a *harness context file* was fixed for a false installation claim, which matters
+    because it is fed to every product-manager step at run time. Registry-resolved `npx quorum` is
+    **refused** rather than deferred while every package is `"private": true`; it stays Q-0029's in
+    M6.
   - Q-0095 The mock end-to-end suite runs against the CLI binary. **M2's done-when**, 781 lines and
     151 assertions, and the child that unblocks the cutover. It is `split` and not binary-only —
     Q-0054's audit found fifteen `await import()` calls a static scan cannot see — so only its binary
