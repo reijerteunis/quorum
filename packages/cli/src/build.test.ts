@@ -171,6 +171,34 @@ function runBuild(...flags: string[]): TurboTask[] {
   }
 }
 
+/**
+ * Links the workspace's bin shims, which is an **install-time** artifact and not a build-time one.
+ *
+ * Why this exists, measured rather than reasoned — chore run 2 aborted at `integrate` with the two
+ * AC-18 tests red, and this is what it turned out to be. `pnpm` links `node_modules/.bin/<name>`
+ * during install **and only where the bin target already exists**. Decision *"The emit serves the
+ * binary, and no test verdict moves behind it"* (2026-09-02) clause (b) deliberately gives `test` no
+ * `^build` edge, so from a clean checkout the order is **install → test** and `dist/quorum.js` is
+ * *guaranteed* absent when install runs. {@link runBuild} then creates the artifact but cannot make
+ * a finished install link anything, so the shim never appears and AC-18 fails for a reason that has
+ * nothing to do with the commit.
+ *
+ * Verified both directions in the integrate worktree: with the artifact absent the install links no
+ * shim; re-running the identical command once it exists creates one, *"Already up to date"* in
+ * 182 ms. See `requirements/errata.md` E-2, which rules this the fixture's job.
+ *
+ * **The side effect is registered rather than hidden.** This writes to the developer's
+ * `node_modules/.bin`, which Q-0073 objects to in the general case. Accepted here because the write
+ * is exactly the one a correct install performs, it is self-correcting on the next install, and the
+ * alternative is no coverage of AC-18's documented mechanism at all. It adds no task-graph edge, so
+ * no other verdict in the workspace moves behind a build.
+ */
+function linkBins(): void {
+  execFileSync('pnpm', ['install', '--frozen-lockfile'], {
+    cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 /** Removes every emitting package's emit directory, so a build writes into a clean tree. */
 const removeEmit = (): void => {
   for (const task of emitting()) fs.rmSync(path.join(WORKSPACE, task.directory, EMIT), { recursive: true, force: true });
@@ -1512,6 +1540,9 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     // over the resolved target directly — was cheaper and would have collapsed this criterion into
     // AC-15, which is choosing by accident in the other direction.
     runBuild();
+    // The shim is linked by INSTALL, not by build, and 078(b) guarantees no build has run by
+    // install time — so it must be linked after the artifact exists. See linkBins() and E-2.
+    linkBins();
     const shim = path.join(WORKSPACE, 'node_modules', '.bin', 'quorum');
     expect(fs.existsSync(shim), 'pnpm linked no quorum shim — the root devDependency is missing or the bin field moved').toBe(true);
 
@@ -1547,6 +1578,9 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     // success here was served from `node_modules/.bin` and could not have come from a public package
     // named `quorum`. The test below shows that guarantee discriminates.
     runBuild();
+    // Same ordering as the test above: `pnpm exec` resolves through `node_modules/.bin`, which
+    // install populates and only where the target already exists. See linkBins() and E-2.
+    linkBins();
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-exec-'));
     isolated.push(cache);
     const result = attempt('pnpm', ['exec', 'quorum', 'help'], offline(cache));
