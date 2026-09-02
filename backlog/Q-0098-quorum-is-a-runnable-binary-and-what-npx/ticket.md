@@ -1,13 +1,14 @@
 ---
 id: Q-0098
 title: quorum is a runnable binary, and what npx quorum may claim
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0098/integration
 priority: p1
 created: 2026-09-02
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-09-02T13:28:04.292Z
     cost: 9.431
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-02T14:42:44.768Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: aborted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-02T14:48:20.947Z
+    cost: 40.934
 ---
 Split from **Q-0096** at its requirements gate on 2026-09-02, where the merged requirement measured
 **21 criteria against a ceiling of fifteen** and cut the ticket in three. This is **C**, the last one.

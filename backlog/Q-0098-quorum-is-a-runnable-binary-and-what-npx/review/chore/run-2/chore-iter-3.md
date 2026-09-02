@@ -1,0 +1,3 @@
+# Q-0098 code review — run 2, iteration 3
+
+major: packages/cli/package.json:16 The build unconditionally invokes the POSIX-only `chmod` command. On Windows, `pnpm turbo run build` fails before the mode tests can use their explicit non-POSIX skips, so AC-15’s install → build → execute chain and the packed fixture cannot run there. Replace the shell-specific mode step with a cross-platform build helper that applies executable permissions where supported and explicitly tolerates platforms without POSIX modes; update the platform-independent test at `build.test.ts:1389` to assert that mechanism rather than requiring the literal `chmod +x` command.
