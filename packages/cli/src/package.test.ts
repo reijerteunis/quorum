@@ -139,7 +139,11 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'package.json': 'package.test.ts — AC-1, the engines.node floor matches the root\'s',
     'packages/core/package.json': 'package.test.ts — Q-0096 AC-1 and AC-5, the conditional export map and its single "." key',
     'packages/shared/package.json': 'package.test.ts — Q-0096 AC-1, the frame\'s own dependency resolves',
-    'tsconfig.base.json': 'package.test.ts — Q-0096 AC-1, customConditions is the typecheck half of the export map',
+    'tsconfig.base.json': 'package.test.ts — Q-0096 AC-1, customConditions is the typecheck half of the export map; and build.test.ts, which copies it into the isolated workspace as a root globalDependency',
+    'pnpm-workspace.yaml': 'build.test.ts — Q-0097 AC-8, one of the four files that make the isolated copy a workspace turbo can plan',
+    '.nvmrc': 'build.test.ts — Q-0097 AC-8, copied into the isolated workspace because root turbo.json names it a globalDependency',
+    'packages/shared': 'build.test.ts — Q-0097 AC-8, every tracked file under it is copied into the isolated workspace, which is what gives that copy a package to build',
+    'packages/core': 'build.test.ts — Q-0097 AC-8, the same, and the package whose emitted artifact AC-9 imports',
     'turbo.json': 'package.test.ts and build.test.ts — Q-0097 AC-7 and AC-13, the build task\'s shape and the tasks every package owes',
     '.gitignore': 'build.test.ts — Q-0097 AC-12, git attributes the emit to the rule that ignores it',
     'eslint.config.js': 'build.test.ts — Q-0097 AC-12, `**/dist/**` keeps emitted JavaScript unlinted',
@@ -153,13 +157,16 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
   /**
    * Of those, the ones no other mechanism hashes, and which this package therefore declares.
    *
-   * `eslint.config.js` and `vitest.shared.js` are root `globalDependencies`, hashed for every task;
-   * the three files under `packages/core` and `packages/shared` arrive through the `^test` edges the
-   * two workspace dependencies create. Declaring any of them would over-declare rather than
+   * `eslint.config.js`, `vitest.shared.js`, `tsconfig.base.json` and `.nvmrc` are root
+   * `globalDependencies`, hashed for every task; everything under `packages/core` and
+   * `packages/shared` — the two manifests, `git-identity.test.ts`, and the tracked subtrees
+   * `build.test.ts` copies into its isolated workspace — arrives through the `^test` edges the two
+   * workspace dependencies create. Declaring any of them would over-declare rather than
    * under-declare, which is the same reasoning the turbo configuration's own comment carries.
    */
   const DECLARED = [
     '../../pnpm-lock.yaml', '../../package.json', '../../turbo.json', '../../.gitignore',
+    '../../pnpm-workspace.yaml',
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
   ];
 

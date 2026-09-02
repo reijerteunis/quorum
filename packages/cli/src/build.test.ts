@@ -20,6 +20,15 @@
  * already sits, and where `turbo-inputs.test.ts` deliberately does not audit — this package's
  * out-of-package reads are registered in `package.test.ts`'s own `OUTSIDE`/`DECLARED` pair instead.
  *
+ * **Where AC-8 is observed, and why it is two places rather than one.** The exact write-set audit
+ * runs against an isolated copy ({@link isolate}), because that is the only place the question *what
+ * did this build write* has an exact answer: in the real checkout `.git`, `.harness` and `.quorum`
+ * are entered by a concurrent harness run, so auditing them there reads the machine, and excusing
+ * them by name — which this file did until run 3 — leaves a build free to write into any of the
+ * three while the criterion reports exact agreement. The real-workspace build is kept beside it
+ * because R-4 and OQ-1 make it load-bearing, and there it is observed by git outside the emitting
+ * packages and by the walk inside them, so no hand-written list of directory names excuses anything.
+ *
  * **Every test below leaves the workspace built.** The emit is gitignored and this file is the only
  * thing in the suite that writes it, which `harness/rules.md` permits — *"a repository it built
  * itself"*. It is not a side effect on the tree the suite is judging: no verdict anywhere in this
@@ -34,7 +43,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { configDefaults } from 'vitest/config';
-import { describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test } from 'vitest';
 
 /** This package's own root, reached package-relatively rather than by climbing to a repository. */
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
@@ -75,9 +84,16 @@ function parseTurboConfig(text: string, name: string): { tasks: Record<string, R
   }
 }
 
+/** One task's declaration, as root `turbo.json` writes it. */
+interface TaskDeclaration {
+  readonly outputs?: string[];
+  readonly dependsOn?: string[];
+  readonly env?: string[];
+}
+
 /** Root `turbo.json`, which declares every task and is the only place `env` is decided. */
-const rootTurbo = (): { tasks: Record<string, { outputs?: string[]; dependsOn?: string[]; env?: string[] }> } =>
-  JSON.parse(read(WORKSPACE, 'turbo.json')) as { tasks: Record<string, { outputs?: string[]; dependsOn?: string[]; env?: string[] }> };
+const rootTurbo = (): { globalDependencies?: string[]; tasks: Record<string, TaskDeclaration> } =>
+  JSON.parse(read(WORKSPACE, 'turbo.json')) as { globalDependencies?: string[]; tasks: Record<string, TaskDeclaration> };
 
 /**
  * The real `turbo` this workspace installs. Absent is a failure, never a skip: a build proof that
@@ -158,31 +174,30 @@ const removeEmit = (): void => {
 };
 
 /**
- * Directory names the write-set audit does not descend into, and the whole of what it excludes.
+ * The one directory name the **real-workspace** walks below do not descend into.
  *
- * Each is a named claim rather than a convenience, because everything not on this list is audited:
+ * It is a bound on where the build is observed rather than an exemption AC-8 grants, and the
+ * difference is the whole of why it is one name and not five. `node_modules` is what an install
+ * writes rather than what a build writes, and — measured — the `.vite` and `.vite-temp` directories
+ * inside each package's own `node_modules` are written by the **Vitest process running this very
+ * test**, which is not a hypothetical concurrent writer but the one running now, so a walk that
+ * descended would take its verdict from the runner's own cache churn rather than from the build.
  *
- *   - `node_modules` is an install, not a package artifact — and pruning it during the walk is also
- *     what keeps the audit affordable.
- *   - `.turbo` is turbo's own cache metadata and per-task log. AC-8's own wording excuses it:
- *     *"Turbo's own cache metadata and logs are not treated as package artifacts."*
- *   - `.git` is git's object store.
- *   - `.harness` and `.quorum` are the harness's worktrees and its run history. Both are gitignored,
- *     both are absent in a fresh clone and in a linked worktree and present in a working checkout —
- *     the pair Q-0072's closing finding names — and both are **written by any concurrent harness
- *     run**, so a verdict that read them would be a verdict about the machine rather than about the
- *     commit (*"A test's verdict is a property of the commit, not of the checkout or the account"*,
- *     2026-08-30).
- *
- * The accepted limit, stated rather than left to be found: a build that wrote **into** one of these
- * five would be invisible here. Nothing does — each emitting package's build script is
- * `rm -rf dist && tsc -p tsconfig.build.json` — and the alternative, auditing an installed
- * dependency tree and a live run's worktrees, buys a flake rather than a guard.
+ * What keeps it from being a blind spot is that the isolated audit prunes nothing at all and does
+ * descend into it: a copy's `node_modules` is a directory of symlinks, each a leaf whose fingerprint
+ * is its target, so a file a build creates under one is a new entry there and is reported. See
+ * {@link isolate}.
  */
-const UNAUDITED = ['node_modules', '.git', '.turbo', '.harness', '.quorum'];
+const INSTALLED = ['node_modules'];
 
-/** Every file below `root`, relative to it with `/` separators, with {@link UNAUDITED} pruned. */
-function filesUnder(root: string, prune: readonly string[] = UNAUDITED): string[] {
+/**
+ * Every path below `root`, relative to it with `/` separators.
+ *
+ * A symlink is a **leaf**: `readdir` does not follow one, so what churns behind it is out of scope
+ * while the link itself stays in scope. That is what lets the isolated audit walk a copy's
+ * `node_modules` without walking an installed dependency tree.
+ */
+function filesUnder(root: string, prune: readonly string[] = []): string[] {
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -199,25 +214,55 @@ function filesUnder(root: string, prune: readonly string[] = UNAUDITED): string[
 }
 
 /**
- * A fingerprint of every file below `root`: its size, its modification time and a hash of its bytes.
+ * One path's fingerprint: its size, its modification time and a hash of its bytes — or, for a
+ * symlink, its target.
  *
- * **This is what makes AC-8 an enumeration of what the build WROTE rather than of what it ADDED.** A
- * snapshot of path *names* answers only *did this path exist before*, so a build that **overwrote**
- * an existing file — a tracked source, another package's manifest, a configuration at the repository
- * root — is subtracted away by the very comparison meant to find it. Content and timestamp together
- * make an overwrite as visible as a creation; walking from the **workspace** rather than from each
- * emitting package is what puts a write outside any package root in scope at all. Both halves are
- * demonstrated to have a subject below rather than argued for here.
+ * **This is what makes the audit an enumeration of what the build WROTE rather than of what it
+ * ADDED.** A snapshot of path *names* answers only *did this path exist before*, so a build that
+ * **overwrote** a file already there is subtracted away by the very comparison meant to find it.
  *
- * The one write this cannot see is a rewrite identical in bytes *and* in timestamp, which no
- * compiler produces and which nothing short of instrumenting the process would observe.
+ * The one write it cannot see is a rewrite identical in bytes *and* in timestamp, which no compiler
+ * produces and which nothing short of instrumenting the process would observe.
  */
-function inventory(root: string, prune: readonly string[] = UNAUDITED): Map<string, string> {
-  return new Map(filesUnder(root, prune).map((relative) => {
+function fingerprint(full: string, stat: fs.Stats): string {
+  if (stat.isSymbolicLink()) return `link:${fs.readlinkSync(full)}`;
+  if (!stat.isFile()) return `special:${stat.mode}`;
+  return `${stat.size}:${stat.mtimeMs}:${createHash('sha256').update(fs.readFileSync(full)).digest('hex')}`;
+}
+
+/** {@link fingerprint} for every path below `root`. */
+const inventory = (root: string, prune: readonly string[] = []): Map<string, string> =>
+  new Map(filesUnder(root, prune).map((relative) => {
     const full = path.join(root, relative);
-    const stat = fs.statSync(full);
-    return [relative, `${stat.size}:${stat.mtimeMs}:${createHash('sha256').update(fs.readFileSync(full)).digest('hex')}`];
+    return [relative, fingerprint(full, fs.lstatSync(full))];
   }));
+
+/**
+ * {@link fingerprint} for every path in `cwd` **git can see** — tracked, plus untracked and
+ * unignored.
+ *
+ * This is how the real-workspace audit reaches outside the emitting packages, and the oracle is
+ * chosen rather than inherited: *"Membership is a git question, not a filesystem one"*
+ * (2026-08-28). It is what separates a build's write from a concurrent harness run's, because
+ * `.git`, `.harness`, `.quorum`, `node_modules` and the emit itself are all things git does not
+ * list — so no hand-written list of directory names has to excuse them, and none does. What it
+ * cannot see is a write to a gitignored path outside an emitting package, which is exactly the
+ * region {@link isolate} covers whole and with nothing pruned.
+ */
+function gitVisible(cwd: string): Map<string, string> {
+  const listed = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+    cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+  }).split('\0').filter(Boolean);
+  const found = new Map<string, string>();
+  for (const relative of listed) {
+    const full = path.join(cwd, relative);
+    // Absence is refused rather than classified (Q-0073): a tracked path git lists and the working
+    // tree does not hold is skipped in *both* snapshots, so a build that deletes one is still
+    // reported as a removal by the comparison rather than being quietly excused here.
+    const stat = fs.lstatSync(full, { throwIfNoEntry: false });
+    if (stat !== undefined) found.set(relative, fingerprint(full, stat));
+  }
+  return found;
 }
 
 /** Every path whose fingerprint `after` does not share with `before` — created or overwritten. */
@@ -227,6 +272,104 @@ const writtenBetween = (before: Map<string, string>, after: Map<string, string>)
 /** Every path `before` held that `after` does not. */
 const removedBetween = (before: Map<string, string>, after: Map<string, string>): string[] =>
   [...before.keys()].filter((relative) => !after.has(relative)).sort();
+
+/**
+ * Turbo's own cache metadata and per-task log, which is the one thing AC-8's wording excuses:
+ * *"Turbo's own cache metadata and logs are not treated as package artifacts."*
+ *
+ * Applied by **naming** the paths rather than by declining to walk the directory, so what is excused
+ * is enumerated and a build that hid an artifact beside a log would still be reported.
+ */
+const isTurboMetadata = (relative: string): boolean => relative.split('/').includes('.turbo');
+
+/**
+ * The four files that make a directory a pnpm-and-turbo workspace. Root `globalDependencies` are
+ * copied beside them, read out of `turbo.json` rather than listed here, so a fifth arrives in the
+ * isolated copy without anyone remembering.
+ */
+const WORKSPACE_FILES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'turbo.json'];
+
+/** Every tracked path under `directory`, which is the copy's source and therefore the commit's. */
+const trackedUnder = (directory: string): string[] =>
+  execFileSync('git', ['ls-files', '-z', '--', directory], {
+    cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+  }).split('\0').filter(Boolean);
+
+const isolated: string[] = [];
+afterAll(() => {
+  for (const directory of isolated.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+});
+
+/**
+ * A copy of this workspace's build — the emitting packages' tracked files and the root configuration
+ * turbo needs to plan one — in a temporary directory nothing else writes to.
+ *
+ * **Why a copy at all.** AC-8 asks what the build writes, and in the real checkout that question has
+ * an exact answer only where nothing else is writing. `.git`, `.harness` and `.quorum` are entered
+ * by a concurrent harness run, so auditing them *there* would be reading the machine rather than the
+ * commit (*"A test's verdict is a property of the commit, not of the checkout or the account"*,
+ * 2026-08-30) — and excusing them by name, which is what this file did until this round, leaves a
+ * build free to write into any of the three while the criterion reports exact agreement. Here
+ * nothing else runs, so the audit prunes **nothing** and excuses only what AC-8 excuses in its own
+ * words. The real-workspace proof R-4 and OQ-1 make load-bearing is kept separately beside it.
+ *
+ * **Tracked files only**, so the copy is the commit rather than the checkout, and `dist/`, `.turbo/`,
+ * `.harness/` and `.quorum/` are all gitignored and therefore none of them arrives to be mistaken
+ * for something this build wrote. `node_modules` is mirrored as a real directory of symlinks rather
+ * than as one link, so a write *under* it is a new entry rather than an invisible change behind a
+ * leaf; the `@quorum` scope is re-pointed at the copy's own packages, which is what makes the copy
+ * build itself rather than the tree it was taken from.
+ */
+function isolate(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-isolated-'));
+  isolated.push(root);
+  const copy = (relative: string): void => {
+    const source = path.join(WORKSPACE, relative);
+    // Refusing a missing corpus rather than building a workspace that is quietly short of a file:
+    // turbo would report a plan nobody wrote and every clause below would be about it.
+    if (!fs.existsSync(source)) throw new Error(`corpus missing: ${relative} — the isolated workspace cannot be built without it`);
+    const destination = path.join(root, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(source, destination);
+  };
+
+  const tasks = emitting();
+  for (const relative of [...WORKSPACE_FILES, ...(rootTurbo().globalDependencies ?? [])]) copy(relative);
+  for (const task of tasks) {
+    const tracked = trackedUnder(task.directory);
+    if (tracked.length === 0) throw new Error(`git tracks nothing under ${task.directory} — the copy would hold no source to build`);
+    for (const relative of tracked) copy(relative);
+  }
+
+  const directoryOf = new Map(tasks.map((task) => [task.package, task.directory]));
+  for (const level of ['', ...tasks.map((task) => task.directory)]) {
+    const source = path.join(WORKSPACE, level, 'node_modules');
+    if (!fs.existsSync(source)) continue;
+    const destination = path.join(root, level, 'node_modules');
+    fs.mkdirSync(destination, { recursive: true });
+    for (const name of fs.readdirSync(source)) {
+      if (name !== '@quorum') {
+        fs.symlinkSync(path.join(source, name), path.join(destination, name));
+        continue;
+      }
+      fs.mkdirSync(path.join(destination, name));
+      for (const linked of fs.readdirSync(path.join(source, name))) {
+        const directory = directoryOf.get(`@quorum/${linked}`);
+        fs.symlinkSync(
+          directory === undefined ? path.join(source, name, linked) : path.join(root, directory),
+          path.join(destination, name, linked),
+        );
+      }
+    }
+  }
+  return root;
+}
+
+/** Runs the real `build` in `cwd`, which is an isolated copy rather than this workspace. */
+const buildIn = (cwd: string, ...flags: string[]): string =>
+  execFileSync(turboBin(), ['run', 'build', ...flags], {
+    cwd, encoding: 'utf8', env: turboEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+  });
 
 describe('AC-7 — a build task exists, declares real outputs, and orders itself by dependency', () => {
   test('the root declares it beside the other three, with a non-empty outputs and a ^build edge', () => {
@@ -365,75 +508,213 @@ describe('AC-14 — the four places that could have grown a build phase did not,
 });
 
 describe('AC-8 — the declared outputs cover exactly what the build writes', () => {
-  test('built into a clean tree, the emit and the declaration agree in both directions', () => {
+  /**
+   * Both directions of the criterion, over one package's package-relative write set.
+   *
+   * Direction 1: nothing the build wrote falls outside the declaration — an undeclared emit is the
+   * stale-artifact hazard in its exact form, since turbo neither caches nor restores it, so a cache
+   * hit yields a package missing a file something downstream executes. Direction 2: no declared
+   * pattern matches nothing, which direction 1 cannot catch and which is a declaration nobody
+   * re-read.
+   */
+  const agreesWithTheDeclaration = (label: string, mine: string[]): void => {
+    const declared = rootTurbo().tasks.build.outputs ?? [];
+    expect(mine.length, `${label} wrote nothing — its half of the enumeration has no subject`).toBeGreaterThan(0);
+    expect(
+      mine.filter((relative) => !declared.some((pattern) => path.matchesGlob(relative, pattern))),
+      `${label} wrote paths no outputs pattern covers`,
+    ).toStrictEqual([]);
+    for (const pattern of declared) {
+      expect(
+        mine.some((relative) => path.matchesGlob(relative, pattern)),
+        `${label}: the outputs pattern ${pattern} matches nothing the build wrote`,
+      ).toBe(true);
+    }
+  };
+
+  test('audited whole in an isolated copy, the build writes its emit and turbo\'s metadata and nothing else', () => {
     // Verified by building and enumerating, never by reading the declaration — "A check is not
-    // established by reading it" (2026-08-29). It runs against the REAL workspace and that siting is
-    // load-bearing (R-4): with no build step in CI, the forced workspace suite is the only thing
-    // that builds this repository's own packages on every push, so a fixture-only AC-8 would leave
-    // the real emit unbuilt until Q-0098.
+    // established by reading it" (2026-08-29).
     //
-    // **The comparison is over the whole workspace and over file CONTENT**, which is two corrections
-    // to the shape this started as. A per-package snapshot of path names answers only *did this path
-    // exist before*, so it subtracts away an overwrite of a file that was already there and never
-    // looks at anything outside an emitting package at all — the two ways a build can write
-    // something nobody declared. {@link inventory} and {@link UNAUDITED} carry the reasoning; the
-    // clause after this one shows the two cases the old shape missed.
+    // **Nothing is pruned.** The walk descends into every directory the copy holds — `node_modules`
+    // among them, and any `.git`, `.harness` or `.quorum` a build decides to create — and the one
+    // exemption AC-8 grants is applied by NAMING turbo's metadata paths rather than by declining to
+    // look at the directory holding them. Until this round those three names were on a prune list
+    // instead, which is an exemption the criterion never granted: a build writing into any of them
+    // was invisible while this test reported exact agreement. {@link isolate} carries why the
+    // observation had to move rather than the prune list merely getting shorter, and the clause
+    // after this one runs the case rather than describing it.
+    const root = isolate();
+    const before = inventory(root);
+    expect(before.size, 'the isolated copy holds nothing — every clause below would be vacuous').toBeGreaterThan(0);
+    // Paths *below* a `node_modules` segment rather than paths *containing* one: a mirror made as a
+    // single symlink records the name itself as a leaf, which satisfies the weaker question while
+    // descending into nothing. Measured — the weaker form passed the mutation that replaced the
+    // directory of links with one link, which is this ticket's own defect class inside its own guard.
+    const descended = [...before.keys()].filter((relative) => {
+      const segments = relative.split('/');
+      const at = segments.indexOf('node_modules');
+      return at !== -1 && at < segments.length - 1;
+    });
+    expect(descended.length, 'the audit did not descend into the copy\'s node_modules, so it is pruning something after all').toBeGreaterThan(0);
+
+    buildIn(root, '--force');
+    // One `after`, read once and shared: two reads could disagree, and a comparison whose two halves
+    // are taken against different states of the tree is one whose verdict has no single subject.
+    const after = inventory(root);
+    const written = writtenBetween(before, after);
+
+    expect(written.length, 'the build wrote nothing anywhere — the enumeration has no subject').toBeGreaterThan(0);
+    // A comparison of what CHANGED cannot see what stopped existing, so removal is asked separately
+    // — and here it is asked of the whole copy rather than of a region.
+    expect(removedBetween(before, after), 'the build removed a path from the workspace').toStrictEqual([]);
+
+    const metadata = written.filter(isTurboMetadata);
+    expect(metadata.length, 'turbo wrote no cache metadata, so the one exemption excuses nothing real').toBeGreaterThan(0);
+
+    const tasks = emitting();
+    const prefixes = tasks.map((task) => `${task.directory}/${EMIT}/`);
+    expect(
+      written.filter((relative) => !isTurboMetadata(relative) && !prefixes.some((prefix) => relative.startsWith(prefix))),
+      `the build wrote outside every emitting package's ${EMIT}/`,
+    ).toStrictEqual([]);
+
+    for (const task of tasks) {
+      // Package-relative, because `outputs` patterns are resolved against the package directory.
+      agreesWithTheDeclaration(task.package, written
+        .filter((relative) => relative.startsWith(`${task.directory}/${EMIT}/`))
+        .map((relative) => relative.slice(task.directory.length + 1)));
+    }
+  }, 300_000);
+
+  test('and that audit reports a build that writes into .git, .harness or .quorum, or deletes a file', () => {
+    // **The clause that makes the one above a check rather than a claim, and the reason the exact
+    // audit is performed on a copy at all.** Those three names were excused by a prune list until
+    // this round, on the ground that a concurrent harness run writes two of them — true, and an
+    // argument for moving the observation, not for narrowing the criterion. Here the build script is
+    // given exactly the behaviour the exclusion used to hide, and the audit is asked what it saw.
+    //
+    // The mutation is the emitting package's OWN build script, read out of the copy and appended to,
+    // so what is exercised is a real build task writing where no criterion allows rather than a
+    // fixture shaped to be caught.
+    const root = isolate();
+    const target = emitting()[0];
+    const up = '../'.repeat(target.directory.split('/').length);
+    // A file the copy holds and the build does not read, so removing it mid-build changes nothing
+    // but the audit's answer. Asserted present rather than assumed: it arrives as a root
+    // `globalDependencies` entry, and if that list stops naming it this clause must fail loudly
+    // rather than prove nothing.
+    const victim = 'eslint.config.js';
+    expect(fs.existsSync(path.join(root, victim)), `${victim} is not in the copy — the removal clause would have no subject`).toBe(true);
+
+    const manifestPath = path.join(root, target.directory, 'package.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { scripts: Record<string, string> };
+    manifest.scripts.build += ` && mkdir -p ${up}.harness ${up}.quorum ${up}.git`
+      + ` && echo stray > ${up}.harness/written && echo stray > ${up}.quorum/written && echo stray > ${up}.git/written`
+      + ` && rm -f ${up}${victim}`;
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const before = inventory(root);
+    buildIn(root, '--force');
+    const after = inventory(root);
+    const prefixes = emitting().map((task) => `${task.directory}/${EMIT}/`);
+
+    expect(
+      writtenBetween(before, after)
+        .filter((relative) => !isTurboMetadata(relative) && !prefixes.some((prefix) => relative.startsWith(prefix))),
+      'the audit is blind to a build that writes into the three directories the pruned shape excused',
+    ).toStrictEqual(['.git/written', '.harness/written', '.quorum/written']);
+    expect(removedBetween(before, after), 'the audit is blind to a build that deletes a file').toStrictEqual([victim]);
+  }, 300_000);
+
+  test('the real workspace builds, and its emit and the declaration agree in both directions', () => {
+    // **Retained and load-bearing** (merged requirement R-4, OQ-1): with no build step in CI, the
+    // forced workspace suite is the only thing that builds this repository's own packages on every
+    // push, so an isolated-only AC-8 would leave the real emit unbuilt until Q-0098. What the copy
+    // adds is exactness; what this adds is that the artifact everything downstream imports is the
+    // one that was audited.
+    //
+    // Two regions, and between them no hand-written list of directory names to excuse. **Outside**
+    // the emitting packages the observer is git, which lists neither `.git` nor `.harness` nor
+    // `.quorum` nor `node_modules` — so a concurrent harness run cannot enter this audit rather than
+    // having to be pruned out of it, which is the same oracle and the same reason as *"Membership is
+    // a git question, not a filesystem one"* (2026-08-28). **Inside** them it is the walk, with
+    // `node_modules` bounded by INSTALLED and turbo's metadata named rather than skipped. The region
+    // neither reaches — a gitignored path outside an emitting package — is the one the isolated
+    // audit above covers whole.
     //
     // Snapshotted AFTER the emit is removed, so `written` is what this build produced rather than
     // what this build produced *and an earlier one had not already left behind*. Taking it first
     // makes the difference empty in any checkout that has ever built, which is a test whose subject
     // depends on the checkout — the class this ticket keeps meeting.
     const tasks = emitting();
+    const insideEach = (): Map<string, string>[] =>
+      tasks.map((task) => inventory(path.join(WORKSPACE, task.directory), INSTALLED));
+
     removeEmit();
-    const before = inventory(WORKSPACE);
+    const before = gitVisible(WORKSPACE);
+    const beforeInside = insideEach();
     runBuild('--force');
-    // One `after`, read once and shared: two reads could disagree, and a comparison whose two halves
-    // are taken against different states of the tree is one whose verdict has no single subject.
-    const after = inventory(WORKSPACE);
-    const written = writtenBetween(before, after);
+    const after = gitVisible(WORKSPACE);
+    const afterInside = insideEach();
 
-    expect(written.length, 'the build wrote nothing anywhere — the enumeration has no subject').toBeGreaterThan(0);
+    expect(before.size, 'git listed nothing — the outside half of this audit has no subject').toBeGreaterThan(0);
+    // The emit is gitignored, so every path git can see is one the build has no business touching:
+    // a file at the repository root, in `docs/`, in `spike/`, in a package that emits nothing, or in
+    // another package's `src/`. The two untracked `tsc` outputs this ticket opened on —
+    // `packages/shared/test/corpus.js` and `corpus.d.ts`, emitted beside their source because
+    // nothing configured an `outDir` — are untracked and unignored, so they are exactly what git
+    // reports here and what `.gitignore` did not save anyone from.
+    expect(writtenBetween(before, after), 'the build wrote a file git can see, which its emit is not').toStrictEqual([]);
+    expect(removedBetween(before, after), 'the build removed a file git can see').toStrictEqual([]);
 
-    // Nothing in the audited region was deleted. `removeEmit()` ran before the snapshot, so no
-    // emitted path is in `before` and this clause is entirely about what lives outside the emit: a
-    // build that removed a source file, a manifest or a configuration would be reported here and by
-    // nothing else, since a comparison of what CHANGED cannot see what stopped existing.
-    expect(removedBetween(before, after), 'the build removed files outside its own emit').toStrictEqual([]);
-
-    // Every written path belongs to some emitting package's emit directory. This is the clause that
-    // covers writes **outside a package root** — a file at the repository root, in `docs/`, in
-    // `spike/`, in a package that emits nothing, or in another package's `src/` — none of which a
-    // per-package walk could have been asked about. The two untracked `tsc` outputs this ticket
-    // opened on, `packages/shared/test/corpus.js` and `corpus.d.ts`, emitted beside their source
-    // because nothing configured an `outDir`, are what one looks like; `.gitignore` matched neither,
-    // so "it is gitignored anyway" was not available as a defence.
-    const emitRoots = tasks.map((task) => ({ task, prefix: `${task.directory}/${EMIT}/` }));
-    const strays = written.filter((relative) => !emitRoots.some(({ prefix }) => relative.startsWith(prefix)));
-    expect(strays, `the build wrote outside every emitting package's ${EMIT}/`).toStrictEqual([]);
-
-    const declared = rootTurbo().tasks.build.outputs ?? [];
-    for (const { task, prefix } of emitRoots) {
-      // Package-relative, because `outputs` patterns are resolved against the package directory.
-      const mine = written.filter((relative) => relative.startsWith(prefix))
-        .map((relative) => relative.slice(task.directory.length + 1));
-      expect(mine.length, `${task.package} wrote nothing — its half of the enumeration has no subject`).toBeGreaterThan(0);
-
-      // Direction 1: nothing the build wrote falls outside the declaration. An undeclared emit is
-      // the stale-artifact hazard in its exact form — turbo neither caches nor restores it, so a
-      // cache hit yields a package that is missing a file something downstream executes.
-      const undeclared = mine.filter((relative) => !declared.some((pattern) => path.matchesGlob(relative, pattern)));
-      expect(undeclared, `${task.package} wrote paths no outputs pattern covers`).toStrictEqual([]);
-
-      // Direction 2: no declared pattern matches nothing. Over-declaring cannot be caught by
-      // direction 1, and a pattern that has stopped matching is a declaration nobody re-read.
-      for (const pattern of declared) {
-        expect(
-          mine.some((relative) => path.matchesGlob(relative, pattern)),
-          `${task.package}: the outputs pattern ${pattern} matches nothing the build wrote`,
-        ).toBe(true);
-      }
+    for (const [index, task] of tasks.entries()) {
+      const written = writtenBetween(beforeInside[index], afterInside[index]);
+      expect(removedBetween(beforeInside[index], afterInside[index]), `${task.package}: the build removed one of its own files`).toStrictEqual([]);
+      expect(
+        written.filter((relative) => !isTurboMetadata(relative) && !relative.startsWith(`${EMIT}/`)),
+        `${task.package} wrote inside itself and outside ${EMIT}/`,
+      ).toStrictEqual([]);
+      agreesWithTheDeclaration(task.package, written.filter((relative) => relative.startsWith(`${EMIT}/`)));
     }
   }, 300_000);
+
+  test('and the outside observer has a subject, and is blind to exactly what the copy covers', () => {
+    // Three claims the real-workspace audit rests on, demonstrated rather than described, over a
+    // repository this test builds itself — which `harness/rules.md` permits and which needs no
+    // commit, so no identity is resolved and nothing about the machine can decide the verdict
+    // (Q-0079).
+    //
+    //   1. git reports an overwrite of a file it tracks, and a new unignored file — the outside
+    //      half's oracle, exercised through the shipped {@link gitVisible} rather than a copy of it;
+    //   2. git is blind to a gitignored path, which is *why* no prune list has to name `.harness` or
+    //      `.quorum` and why a run happening beside this test cannot decide its verdict;
+    //   3. the same path IS visible to the unpruned walk, which is what the isolated audit uses, so
+    //      the region git cannot see is covered there rather than excused anywhere.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-observer-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
+      fs.writeFileSync(path.join(sandbox, '.gitignore'), '.harness/\n');
+      fs.writeFileSync(path.join(sandbox, 'tracked.txt'), 'before\n');
+      execFileSync('git', ['add', '.'], { cwd: sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
+
+      const before = gitVisible(sandbox);
+      expect([...before.keys()].sort(), 'the fixture is not staged, so the comparison below starts empty')
+        .toStrictEqual(['.gitignore', 'tracked.txt']);
+
+      fs.writeFileSync(path.join(sandbox, 'tracked.txt'), 'after\n');
+      fs.writeFileSync(path.join(sandbox, 'untracked.txt'), 'new and unignored\n');
+      fs.mkdirSync(path.join(sandbox, '.harness', 'worktrees'), { recursive: true });
+      fs.writeFileSync(path.join(sandbox, '.harness', 'worktrees', 'concurrent'), 'a run happening beside the build\n');
+
+      expect(writtenBetween(before, gitVisible(sandbox)), 'git no longer reports a write it can see')
+        .toStrictEqual(['tracked.txt', 'untracked.txt']);
+      expect(filesUnder(sandbox), 'the unpruned walk cannot see the path git is blind to either')
+        .toContain('.harness/worktrees/concurrent');
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   test('and the write set is one a name-only, per-package snapshot could not have produced', () => {
     // **The subject of the clause above, exhibited rather than asserted.** Three writes in a sandbox
@@ -447,8 +728,10 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     //      walk is never pointed at it.
     //
     // Both oracles are run over the same event, so this fails if the fingerprint stops covering
-    // content or the walk stops starting at the workspace, and it fails the other way — as a false
-    // claim about the old shape — if the old shape would in fact have caught 2 or 3.
+    // content or the walk stops starting above the package, and it fails the other way — as a false
+    // claim about the old shape — if the old shape would in fact have caught 2 or 3. It is what the
+    // isolated audit's whole-copy walk rests on, and what the real workspace's outside half asks git
+    // instead.
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-write-set-'));
     try {
       const pkg = path.join(sandbox, 'packages', 'emitter');
@@ -481,40 +764,50 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     }
   });
 
-  test('and each name the audit prunes excuses a real file, so a sixth arrives with a subject', () => {
-    // The exclusion list is what decides the audit's reach, so every entry is a claim and each is
-    // shown to do work — a fixture per entry, derived from the list rather than written out, which
-    // is the shape `frame.source.test.ts` already uses for its own. Showing that the pruning fires
-    // proves the pruning fires and not that each entry does (Q-0071), which is why this loops.
+  test('and the four names that left the exclusion list are back in scope, while the one that stayed is not', () => {
+    // **What the change of observation bought, priced rather than asserted.** The audit's reach used
+    // to be everything except `node_modules`, `.git`, `.turbo`, `.harness` and `.quorum`; four of
+    // those five are exemptions AC-8 never granted, and a build writing into one of them was
+    // invisible while the criterion reported exact agreement.
     //
-    // `.harness` and `.quorum` are the two that matter most and the two hardest to reach any other
-    // way: they hold a concurrent run's worktrees and its run history, so without them a run
-    // happening while this test is between its two inventories reports a stray that no build wrote
-    // — a verdict about the machine, which is what the pruning buys and what this clause prices.
-    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-unaudited-'));
+    // Only `node_modules` is still pruned, and only where the walk is pointed at the real checkout
+    // (INSTALLED), for the measured reason in its own doc comment. So the four are shown to be
+    // audited now, and the one is shown to be pruned there and audited in the copy — which is the
+    // difference between a bound and a blind spot, run rather than described. A fixture per name,
+    // derived from the list rather than written out, so a name that rejoins arrives with a subject
+    // or fails (Q-0073, "a count is not an identity"; Q-0071, showing a guard fires proves the guard
+    // fires and not that each clause does).
+    const RESTORED = ['.git', '.turbo', '.harness', '.quorum'];
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-reach-'));
     try {
       fs.writeFileSync(path.join(sandbox, 'kept.txt'), 'before\n');
       const before = inventory(sandbox);
-      for (const name of UNAUDITED) {
+      for (const name of [...RESTORED, ...INSTALLED]) {
         fs.mkdirSync(path.join(sandbox, name, 'nested'), { recursive: true });
         fs.writeFileSync(path.join(sandbox, name, 'nested', 'written.txt'), 'during\n');
       }
       fs.writeFileSync(path.join(sandbox, 'kept.txt'), 'after\n');
 
-      // An identity and not a count, because the fixtures are derived from the list: removing an
-      // entry would otherwise remove its own subject and leave the behavioural assertion green over
-      // a shorter rule (Q-0073, "a count is not an identity").
-      expect(UNAUDITED, 'the audit\'s reach moved — each entry is a named claim').toStrictEqual([
-        'node_modules', '.git', '.turbo', '.harness', '.quorum',
-      ]);
-      expect(writtenBetween(before, inventory(sandbox)), 'the audit descended into a name it claims to prune')
-        .toStrictEqual(['kept.txt']);
-      for (const name of UNAUDITED) {
-        expect(fs.existsSync(path.join(sandbox, name, 'nested', 'written.txt')), `${name} excuses nothing — its fixture is not there`).toBe(true);
-        expect(
-          writtenBetween(before, inventory(sandbox, UNAUDITED.filter((other) => other !== name))),
-          `${name} prunes nothing — dropping it from the list changes no answer`,
-        ).toContain(`${name}/nested/written.txt`);
+      expect(INSTALLED, 'the real-workspace walk prunes more than the install').toStrictEqual(['node_modules']);
+      expect(RESTORED, 'the four names the observation moved for are no longer the four this prices')
+        .toStrictEqual(['.git', '.turbo', '.harness', '.quorum']);
+
+      // The unpruned audit — the one {@link isolate} uses — reports every one of the five.
+      const unpruned = writtenBetween(before, inventory(sandbox));
+      for (const name of [...RESTORED, ...INSTALLED]) {
+        expect(unpruned, `${name} is excused by the audit that claims to prune nothing`).toContain(`${name}/nested/written.txt`);
+      }
+
+      // The real-workspace walk reports the four and not the install, which is the whole of what
+      // still costs anything.
+      const pruned = writtenBetween(before, inventory(sandbox, INSTALLED));
+      expect(pruned, 'the real-workspace walk no longer sees the four names it stopped excusing').toStrictEqual([
+        ...RESTORED.map((name) => `${name}/nested/written.txt`).sort(),
+        'kept.txt',
+      ].sort());
+      for (const name of INSTALLED) {
+        expect(pruned, `${name} prunes nothing there — dropping it from the list would change no answer`)
+          .not.toContain(`${name}/nested/written.txt`);
       }
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });
@@ -547,7 +840,7 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     // file the `outputs` declaration does not name and nothing would report it. Refused in the three
     // `tsconfig.build.json` files by leaving both options off, and asserted rather than trusted.
     for (const task of emitting()) {
-      const stale = filesUnder(path.join(WORKSPACE, task.directory)).filter((relative) => relative.endsWith('.tsbuildinfo'));
+      const stale = filesUnder(path.join(WORKSPACE, task.directory), INSTALLED).filter((relative) => relative.endsWith('.tsbuildinfo'));
       expect(stale, `${task.package} emits build metadata the declaration does not cover`).toStrictEqual([]);
     }
   });
@@ -803,7 +1096,10 @@ describe('AC-23 — the emit contains nothing Vitest collects', () => {
     // which is a directory this file legitimately writes, and the next build's `rm -rf dist` clears
     // it even if this test dies before its `finally`.
     const configured = collection();
-    const candidates = (): string[] => filesUnder(PACKAGE);
+    // `INSTALLED` because this package's own `node_modules` holds Vitest's cache, which the process
+    // running this test writes: a walk that descended would report a difference between the two
+    // states that is the runner's rather than the emit's.
+    const candidates = (): string[] => filesUnder(PACKAGE, INSTALLED);
     const collected = (patterns = configured): string[] => candidates().filter((relative) => collects(relative, patterns)).sort();
 
     runBuild();

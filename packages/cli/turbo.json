@@ -17,12 +17,15 @@
     // this task only through @quorum/core#test's own declaration, which is not this package's to
     // rely on, and the second is hashed by no task at all. Q-0090 AC-10(a).
     //
-    // Q-0097 adds two more, for `src/build.test.ts`. Root `turbo.json` is what AC-7 asserts the
-    // `build` task's shape against, and `.gitignore` is what AC-12 asks git to attribute the emit to
-    // — a cached pass must not stand over an edited rule that has stopped ignoring `dist/`. The
-    // other files that guard reads are already hashed: `eslint.config.js` and `vitest.shared.js` are
-    // root `globalDependencies`, and `packages/core/src/git-identity.test.ts` arrives through the
-    // `^test` edge the workspace dependency creates.
+    // Q-0097 adds three more, for `src/build.test.ts`. Root `turbo.json` is what AC-7 asserts the
+    // `build` task's shape against, `.gitignore` is what AC-12 asks git to attribute the emit to — a
+    // cached pass must not stand over an edited rule that has stopped ignoring `dist/` — and
+    // `pnpm-workspace.yaml` is one of the four files AC-8's isolated copy needs before turbo can
+    // plan a build in it. The other files that guard reads are already hashed: `eslint.config.js`,
+    // `vitest.shared.js`, `tsconfig.base.json` and `.nvmrc` are root `globalDependencies`, and
+    // everything under `packages/core` and `packages/shared` that the copy carries — their sources
+    // as well as `git-identity.test.ts` — arrives through the `^test` edge the workspace
+    // dependencies create.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -30,6 +33,7 @@
         "../../package.json",
         "../../turbo.json",
         "../../.gitignore",
+        "../../pnpm-workspace.yaml",
         "../../.github/workflows/ci.yml",
         "../../.github/scripts/git-identity-sweep.sh",
         "../../harness/harness.yaml"
