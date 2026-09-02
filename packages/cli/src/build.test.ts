@@ -1267,10 +1267,12 @@ describe('Q-0098 AC-26 — the target sits one directory below the package root'
     // which fixes the depth so Q-0093 inherits it rather than discovering it.
     //
     // The property asserted is the resolution itself and not a segment count. Q-0098's AC-26 words
-    // it as "`path.relative(PACKAGE, target)` has exactly one path segment", which is satisfied only
-    // by a target at the package root and contradicts that criterion's own admissibility table —
-    // see `requirements/errata.md` E-2. What both agree on, and what Q-0093 actually depends on, is
-    // the line below.
+    // it as "`path.relative(PACKAGE, target)` has exactly one path segment"; measured, that is
+    // `dist/quorum.js`, which splits into two — so the literal wording is satisfied only by a target
+    // at the package root and contradicts the criterion's own admissibility table, which lists
+    // `dist/quorum.js` as admissible. What both readings agree on, and what Q-0093 actually depends
+    // on, is the line below. An erratum ruling the wording is owed and is reported at the gate: an
+    // implement step may not write `backlog/`.
     const target = binTarget();
     expect(path.resolve(path.dirname(target), '..')).toBe(path.resolve(PACKAGE));
     expect(fs.existsSync(target), `${target} is not a file — bin.quorum names something that is not there`).toBe(true);
@@ -1434,7 +1436,44 @@ describe('Q-0098 AC-17 — a non-zero status crosses the process boundary throug
   }, 300_000);
 });
 
+/**
+ * An environment in which nothing can be fetched, so a command that succeeds under it was satisfied
+ * locally.
+ *
+ * This is the other half of AC-20. The first half is asserted **positively** — the resolved path
+ * lies inside the workspace package or inside the temporary installation — and this half makes a
+ * lookup the fixture *controls* fail: a closed port on loopback, a cache directory the caller owns
+ * so no warm cache can serve a real package, and zero retries so the failure is immediate rather
+ * than a timeout. A negative assertion about the machine's own network would pass on a laptop in a
+ * tunnel, for reasons that have nothing to do with this commit.
+ *
+ * One definition rather than one per fixture, so the two supported paths cannot drift into claiming
+ * different guarantees under the same word.
+ */
+const offline = (cache: string): NodeJS.ProcessEnv => ({
+  ...process.env,
+  npm_config_registry: 'http://127.0.0.1:1/',
+  npm_config_cache: cache,
+  npm_config_audit: 'false',
+  npm_config_fund: 'false',
+  npm_config_fetch_retries: '0',
+});
+
 describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves locally', () => {
+  /**
+   * Runs a command **at the repository root** — which is where AC-18's mechanism is typed — and
+   * reports its streams instead of throwing, so a failure can be read rather than merely counted.
+   */
+  const attempt = (command: string, args: string[], env: NodeJS.ProcessEnv): { status: number; stdout: string; stderr: string } => {
+    try {
+      const stdout = execFileSync(command, args, { cwd: WORKSPACE, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, stdout, stderr: '' };
+    } catch (error) {
+      const failure = error as { status?: number; stdout?: string; stderr?: string };
+      return { status: failure.status ?? -1, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
+    }
+  };
+
   test('pnpm links a shim from the root devDependency, and it resolves inside this package', () => {
     // **Mechanism A, selected by measurement rather than by taste** (AC-18, R-4). Before this ticket
     // `node_modules/.bin` held six entries and no `quorum`, and `packages/cli/node_modules/.bin` did
@@ -1463,7 +1502,49 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     expect(executed).toBe(fs.realpathSync(binTarget()));
     // And the shim really does name that path, so the chain above is the shell's and not the test's.
     expect(fs.readFileSync(shim, 'utf8')).toContain(`@quorum/cli/${path.relative(PACKAGE, binTarget())}`);
+    // Executing the shim file directly is AC-16's "and under an installed shim" half: it proves the
+    // link is runnable. It is NOT AC-18's mechanism, which is the command below — see that test.
     expect(execFileSync(shim, ['help'], { cwd: WORKSPACE, encoding: 'utf8' })).toContain('usage: quorum');
+  }, 300_000);
+
+  test('and `pnpm exec quorum help` — the command AC-18 selected — runs, with nothing to fall back to', () => {
+    // **The documented command, through pnpm's own resolution.** Executing the generated shim by
+    // absolute path proves the shim; it bypasses the step a contributor actually depends on, so it
+    // cannot establish that `pnpm exec quorum help` works or that no package runner could have
+    // satisfied it. Both facts are wanted and they are different, which is why this test sits beside
+    // the one above rather than replacing it.
+    //
+    // Run under `offline()` (AC-20): the registry is a closed port and the cache is empty, so a
+    // success here was served from `node_modules/.bin` and could not have come from a public package
+    // named `quorum`. The test below shows that guarantee discriminates.
+    runBuild();
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-exec-'));
+    isolated.push(cache);
+    const result = attempt('pnpm', ['exec', 'quorum', 'help'], offline(cache));
+    expect(result.status, `pnpm exec quorum help failed: ${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('usage: quorum');
+    // Derived from HELP rather than transcribed, as AC-15 requires of the plain-node spawn.
+    expect(helpNames(result.stdout), 'the command list is not the frame\'s').toStrictEqual(helpNames(HELP));
+  }, 300_000);
+
+  test('and pnpm exec fails rather than falling back — it resolves locally or not at all', () => {
+    // The guarantee the test above rests on, **shown to discriminate rather than assumed**. `pnpm
+    // exec` is not `npx` and not `pnpm dlx`: it runs a binary already linked into `node_modules/.bin`
+    // and installs nothing. Without this, "it ran under a dead registry" would be decoration — a
+    // command that never consults a registry proves nothing by not reaching one.
+    //
+    // Asserted on the MESSAGE and not merely on the non-zero status, because a fetch against the
+    // closed port would also fail: "it failed" would then pass for a reason that has nothing to do
+    // with this commit. pnpm declining to resolve a name locally and pnpm failing to reach a registry
+    // are different sentences, and only the first is evidence here.
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-nofallback-'));
+    isolated.push(cache);
+    const absent = 'quorum-absent-probe-q0098';
+    const result = attempt('pnpm', ['exec', absent, '--version'], offline(cache));
+    expect(result.status, 'pnpm exec resolved a command that is linked nowhere — it fell back').not.toBe(0);
+    const said = `${result.stdout}${result.stderr}`;
+    expect(said, 'pnpm exec did not decline to resolve the name; it failed for some other reason').toContain('not found');
+    expect(said).toContain(absent);
   }, 300_000);
 
   test('and the root manifest and the lockfile moved together, which is what keeps the install frozen', () => {
@@ -1487,16 +1568,45 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     { why: 'a turbo build log or cache entry', matches: (relative: string): boolean => relative.startsWith('.turbo/') },
   ];
 
-  /** Packs `directory` into `destination` and returns the tarball's paths, relative to the package. */
-  const packedPaths = (directory: string, destination: string): string[] => {
-    const out = execFileSync('pnpm', ['pack', '--pack-destination', destination], { cwd: directory, encoding: 'utf8' });
-    const tarball = out.trim().split('\n').at(-1)?.trim() ?? '';
-    return execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
+  /** Packs `directory` with `packer` and returns the tarball's absolute path. */
+  const packWith = (packer: 'pnpm' | 'npm', directory: string, destination: string): string => {
+    const args = packer === 'npm'
+      ? ['pack', '--pack-destination', destination, '--silent']
+      : ['pack', '--pack-destination', destination];
+    const out = execFileSync(packer, args, { cwd: directory, encoding: 'utf8' });
+    // pnpm prints an absolute path and npm prints a bare filename; `resolve` accepts either.
+    return path.resolve(destination, out.trim().split('\n').at(-1)?.trim() ?? '');
+  };
+
+  /** The files a tarball carries, named relative to the package root. */
+  const pathsIn = (tarball: string): string[] =>
+    execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
       .split('\n').filter(Boolean)
       .map((entry) => entry.replace(/^package\//, ''))
       .filter((entry) => entry !== '' && !entry.endsWith('/'))
       .sort();
-  };
+
+  /** The manifest a tarball carries, which is **not** always the manifest on disk — see the last test. */
+  const manifestIn = (tarball: string): { dependencies?: Record<string, string> } =>
+    JSON.parse(execFileSync('tar', ['-xzOf', tarball, 'package/package.json'], { encoding: 'utf8' })) as
+      { dependencies?: Record<string, string> };
+
+  /** One of the three packages, read from disk. */
+  const manifestOf = (name: string): { version: string; dependencies?: Record<string, string> } =>
+    JSON.parse(read(WORKSPACE, 'packages', name, 'package.json')) as { version: string; dependencies?: Record<string, string> };
+
+  /** The version a `workspace:` range resolves to, which is the sibling package's own. */
+  const versionOf = (packageName: string): string => manifestOf(packageName.replace('@quorum/', '')).version;
+
+  /** The names `name` depends on through the `workspace:` protocol, which is what a packer rewrites. */
+  const workspaceDepsOf = (name: string): string[] =>
+    Object.entries(manifestOf(name).dependencies ?? {})
+      .filter(([, range]) => range.startsWith('workspace:'))
+      .map(([dependency]) => dependency);
+
+  /** Packs `directory` with pnpm and returns its paths — the packer AC-19(b)'s install requires. */
+  const packedPaths = (directory: string, destination: string): string[] =>
+    pathsIn(packWith('pnpm', directory, destination));
 
   test('each of the three declares files, and the pack result carries the emit and nothing repository-only', () => {
     // **The assertion is over the allow-list and the entry point, never over a count, a byte size or
@@ -1552,10 +1662,11 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // satisfy nor change the result.
     //
     // **`pnpm pack` and not `npm pack`, and the difference is a measurement rather than a
-    // preference** — see `requirements/errata.md` E-1 of this ticket's run. Only pnpm rewrites
-    // `workspace:*` to a resolvable `0.0.0`; `npm pack` leaves the literal protocol in the packed
-    // manifest and npm then refuses it with EUNSUPPORTEDPROTOCOL. The merged requirement's M-8 poses
-    // these as two possible branches of what pnpm writes; both are real, one per packer.
+    // preference.** Only pnpm rewrites `workspace:*` to the sibling's resolvable version; `npm pack`
+    // leaves the literal protocol in the packed manifest and npm then refuses it with
+    // EUNSUPPORTEDPROTOCOL. The merged requirement's M-8 poses these as two possible branches of
+    // what pnpm writes; both are real, one per packer. **Guarded by the last test in this block**
+    // rather than asserted here, because the choice of packer rests on it.
     //
     // The three tarballs are installed TOGETHER, which is what lets npm satisfy `@quorum/core@0.0.0`
     // and `@quorum/shared@0.0.0` from siblings rather than from a registry that does not have them.
@@ -1567,12 +1678,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const cache = path.join(sandbox, 'npm-cache');
     for (const directory of [tarballs, project, cache]) fs.mkdirSync(directory);
 
-    const packed = DISTRIBUTION.map((name) => {
-      const out = execFileSync('pnpm', ['pack', '--pack-destination', tarballs], {
-        cwd: path.join(WORKSPACE, 'packages', name), encoding: 'utf8',
-      });
-      return out.trim().split('\n').at(-1)?.trim() ?? '';
-    });
+    const packed = DISTRIBUTION.map((name) => packWith('pnpm', path.join(WORKSPACE, 'packages', name), tarballs));
 
     // The distribution set's third-party dependencies, supplied as tarballs packed from this
     // workspace's own installed tree. They are genuine public packages this ticket did not
@@ -1592,23 +1698,13 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
       for (const dependency of Object.keys(own.dependencies ?? {})) collect(dependency, directory);
     }
     expect(closure.size, 'the third-party closure is empty — the install below would prove less than it appears to').toBeGreaterThan(0);
-    const mirrored = [...closure.values()].map((directory) => {
-      const out = execFileSync('npm', ['pack', '--pack-destination', tarballs, '--silent'], { cwd: directory, encoding: 'utf8' });
-      return path.join(tarballs, out.trim().split('\n').at(-1)?.trim() ?? '');
-    });
+    const mirrored = [...closure.values()].map((directory) => packWith('npm', directory, tarballs));
 
     fs.writeFileSync(path.join(project, 'package.json'),
       JSON.stringify({ name: 'quorum-consumer-fixture', version: '1.0.0', private: true }, null, 2));
-    const offline: NodeJS.ProcessEnv = {
-      ...process.env,
-      npm_config_registry: 'http://127.0.0.1:1/',
-      npm_config_cache: cache,
-      npm_config_audit: 'false',
-      npm_config_fund: 'false',
-      npm_config_fetch_retries: '0',
-    };
+    const env = offline(cache);
     execFileSync('npm', ['install', '--no-package-lock', '--no-audit', '--no-fund', ...packed, ...mirrored], {
-      cwd: project, encoding: 'utf8', env: offline, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: project, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     const shim = path.join(project, 'node_modules', '.bin', 'quorum');
@@ -1619,7 +1715,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const executed = fs.realpathSync(shim);
     expect(executed.startsWith(fs.realpathSync(project)), `the packed shim resolves to ${executed}`).toBe(true);
     expect(executed.startsWith(fs.realpathSync(WORKSPACE)), 'the packed shim reaches back into the repository').toBe(false);
-    expect(execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env: offline })).toContain('usage: quorum');
+    expect(execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env })).toContain('usage: quorum');
   }, 300_000);
 
   test('and the registry really is unreachable in that environment, so the install proved something', () => {
@@ -1629,29 +1725,69 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // property of the machine's network.
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-registry-'));
     isolated.push(cache);
+    // The SAME `offline()` the fixtures run under, not a second spelling of it — otherwise this
+    // proves a neighbouring environment dead and the fixtures keep whatever they were given.
     expect(() => execFileSync('npm', ['view', 'quorum', 'version'], {
-      cwd: cache, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, npm_config_registry: 'http://127.0.0.1:1/', npm_config_cache: cache, npm_config_fetch_retries: '0' },
+      cwd: cache, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: offline(cache),
     })).toThrow();
   }, 300_000);
 
-  test('pnpm pack and npm pack agree on the file list, and disagree on the packed manifest', () => {
-    // OQ-3, confirmed after `files` landed rather than assumed, with the divergence REPORTED rather
-    // than resolved in passing. They agree on every path in all three tarballs. They do not agree on
-    // the manifest: pnpm rewrites `workspace:*` to `0.0.0` and npm leaves the protocol literal, which
-    // is why the fixture above packs with pnpm. Resolving that divergence is out of scope; hiding it
-    // is what is refused.
+  test('pnpm pack and npm pack agree on the file list, for every package in the distribution set', () => {
+    // OQ-3, confirmed after `files` landed rather than assumed.
+    //
+    // **Every package, not only the CLI.** AC-19 defines a three-package distribution set (R-2), and
+    // checking one of the three is the fail-open shape this repository keeps finding — Q-0051 in
+    // `q0050.source.test.ts`, Q-0097 in `test-discovery.test.ts`: a guard that reports agreement
+    // while two thirds of its subject went unexamined. `@quorum/core` and `@quorum/shared` are packed
+    // by AC-19(b) and installed into the consumer, so a divergence in either ships a different
+    // tarball from the one this suite checked.
     runBuild();
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packers-'));
     isolated.push(destination);
-    const directory = path.join(WORKSPACE, 'packages', 'cli');
-    const byPnpm = packedPaths(directory, destination);
-    const npmOut = execFileSync('npm', ['pack', '--pack-destination', destination, '--silent'], { cwd: directory, encoding: 'utf8' });
-    const byNpm = execFileSync('tar', ['-tzf', path.join(destination, npmOut.trim().split('\n').at(-1)?.trim() ?? '')], { encoding: 'utf8' })
-      .split('\n').filter(Boolean).map((entry) => entry.replace(/^package\//, ''))
-      .filter((entry) => entry !== '' && !entry.endsWith('/')).sort();
-    expect(byPnpm.length, 'the pack produced nothing — the comparison is vacuous').toBeGreaterThan(1);
-    expect(byNpm, 'pnpm pack and npm pack disagree on which files ship').toStrictEqual(byPnpm);
+    for (const name of DISTRIBUTION) {
+      const directory = path.join(WORKSPACE, 'packages', name);
+      const byPnpm = pathsIn(packWith('pnpm', directory, destination));
+      const byNpm = pathsIn(packWith('npm', directory, destination));
+      expect(byPnpm.length, `@quorum/${name} packed nothing — the comparison is vacuous`).toBeGreaterThan(1);
+      expect(byNpm, `pnpm pack and npm pack disagree on which files @quorum/${name} ships`).toStrictEqual(byPnpm);
+    }
+  }, 300_000);
+
+  test('and they disagree on the packed manifest, which is why the fixture above packs with pnpm', () => {
+    // **The divergence guarded rather than described.** Until this round it was a claim in a comment:
+    // that pnpm rewrites `workspace:*` to a concrete version while npm leaves the protocol literal.
+    // Nothing executed it, so it was a sentence about a tool's behaviour with no subject — and it is
+    // load-bearing, because it is the whole reason AC-19(b) packs with pnpm. If pnpm stopped
+    // rewriting, that install would fail at dependency resolution against a closed registry, and the
+    // error would name a network rather than a protocol.
+    //
+    // The merged requirement's M-8 poses the two as alternative branches of "what pnpm writes";
+    // measured, both are real and each belongs to one packer. Resolving the divergence is out of
+    // scope (non-goal 7 keeps bundling with Q-0091); hiding it is what is refused.
+    runBuild();
+    const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-manifests-'));
+    isolated.push(destination);
+
+    // A register rather than a count, per Q-0073: a subject that quietly emptied would leave the
+    // loop below reporting success over nothing. `@quorum/shared` depends on no workspace sibling,
+    // so it has nothing to rewrite and is deliberately absent.
+    const dependents = DISTRIBUTION.filter((name) => workspaceDepsOf(name).length > 0);
+    expect(dependents, 'the set of packages declaring a workspace dependency moved').toStrictEqual(['cli', 'core']);
+
+    for (const name of dependents) {
+      const directory = path.join(WORKSPACE, 'packages', name);
+      const byPnpm = manifestIn(packWith('pnpm', directory, destination)).dependencies ?? {};
+      const byNpm = manifestIn(packWith('npm', directory, destination)).dependencies ?? {};
+      for (const dependency of workspaceDepsOf(name)) {
+        // Derived from the sibling's own manifest rather than written down, so the assertion is
+        // about the substitution and not about the number `0.0.0` happening to be current.
+        const substituted = versionOf(dependency);
+        expect(byPnpm[dependency], `pnpm no longer rewrites ${dependency} for @quorum/${name} — AC-19(b) would resolve it from a registry`).toBe(substituted);
+        expect(byNpm[dependency], `npm now rewrites ${dependency} for @quorum/${name}; the reason this fixture packs with pnpm has gone`)
+          .toBe(manifestOf(name).dependencies?.[dependency]);
+        expect(byNpm[dependency]?.startsWith('workspace:'), `npm's packed manifest no longer carries the literal protocol for ${dependency}`).toBe(true);
+      }
+    }
   }, 300_000);
 });
 
