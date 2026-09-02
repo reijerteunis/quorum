@@ -14,6 +14,7 @@
     "sweep:git-identity": "bash .github/scripts/git-identity-sweep.sh"
   },
   "devDependencies": {
+    "@quorum/cli": "workspace:*",
     "@types/node": "^26.3.0",
     "eslint": "^10.9.0",
     "turbo": "^2.10.11",

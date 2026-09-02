@@ -38,12 +38,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { configDefaults } from 'vitest/config';
 import { afterAll, describe, expect, test } from 'vitest';
+
+import { HELP } from './commands.js';
 
 /** This package's own root, reached package-relatively rather than by climbing to a repository. */
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
@@ -1211,5 +1214,472 @@ describe('AC-23 — the emit contains nothing Vitest collects', () => {
     expect(extra.length, 'the walk sees no emitted file at all, so the equality above says nothing').toBeGreaterThan(0);
     expect(extra.filter((relative) => !relative.startsWith(`${EMIT}/`)), 'the two states differ outside the emit').toStrictEqual([]);
     expect(extra, 'the planted emitted test never entered the candidate set').toContain(`${EMIT}/x.test.js`);
+  }, 300_000);
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * Q-0098 — `quorum` is a runnable binary.
+ *
+ * **Why these live in this file rather than in one of their own.** Every assertion below spawns or
+ * packs the REAL `packages/cli/dist`, and this file deletes that directory twice — AC-9's replay and
+ * AC-23's present-and-absent comparison both call {@link removeEmit}. `vitest.shared.js` sets no
+ * `fileParallelism: false`, so Vitest runs test *files* in parallel workers and `test.sequential`
+ * does not serialise across them: a separate file spawning the same path would intermittently meet
+ * an emit that had just been removed, and the flake would read as a code defect rather than as a
+ * fixture defect. Q-0098's merged requirement measures this (§3 M-12) and names exactly two safe
+ * shapes in AC-15(c) — assert inside an isolated copy, or put the real-workspace assertions here.
+ * Both are used below, and no third "run the build" mechanism is introduced: {@link isolate},
+ * {@link buildIn}, {@link runBuild} and {@link removeEmit} are the ones this file already owns, and
+ * nothing was extracted from it.
+ *
+ * Tests within one file run sequentially, but each block that needs the artifact calls
+ * {@link runBuild} for itself rather than inheriting one — a cache hit costs milliseconds, and a
+ * verdict that depended on which test ran first would be a property of the ordering.
+ * ------------------------------------------------------------------------------------------- */
+
+/** This package's own manifest, which is where the `bin` target is resolved from and never inlined. */
+const ownManifest = (): { bin?: Record<string, string>; files?: string[] } =>
+  JSON.parse(read(PACKAGE, 'package.json')) as { bin?: Record<string, string>; files?: string[] };
+
+/**
+ * The absolute path of the file `bin.quorum` names.
+ *
+ * Resolved from the manifest on every call rather than written down, because AC-26 leaves the choice
+ * between an emitted and a tracked target local to this package: a suffix or a location pinned in a
+ * test would make that choice unreviewable, which is the reasoning `package.test.ts:63`'s own block
+ * already carries.
+ */
+const binTarget = (): string => {
+  const declared = ownManifest().bin?.quorum;
+  if (declared === undefined || declared === '') throw new Error('package.json declares no bin.quorum — every assertion below would be about nothing');
+  return path.resolve(PACKAGE, declared);
+};
+
+/** The command names {@link HELP} lists, derived from the help text rather than transcribed. */
+const helpNames = (text: string): string[] => [...text.matchAll(/^ {2}quorum (\S+)/gm)].map((match) => match[1]);
+
+describe('Q-0098 AC-26 — the target sits one directory below the package root', () => {
+  test('so path.join(here, \'..\') resolves to the package root, which is where the templates go', () => {
+    // The ruled constraint, made arithmetic. `spike/bin/harness.js:321` resolves the shipped
+    // templates as `path.join(here, '..', 'templates', 'harness')` — relative to the binary's own
+    // file — so Q-0093's `init` reads them from whatever `path.join(here, '..')` is. This is
+    // "The emit serves the binary, and no test verdict moves behind it" (2026-09-02) clause (e),
+    // which fixes the depth so Q-0093 inherits it rather than discovering it.
+    //
+    // The property asserted is the resolution itself and not a segment count. Q-0098's AC-26 words
+    // it as "`path.relative(PACKAGE, target)` has exactly one path segment", which is satisfied only
+    // by a target at the package root and contradicts that criterion's own admissibility table —
+    // see `requirements/errata.md` E-2. What both agree on, and what Q-0093 actually depends on, is
+    // the line below.
+    const target = binTarget();
+    expect(path.resolve(path.dirname(target), '..')).toBe(path.resolve(PACKAGE));
+    expect(fs.existsSync(target), `${target} is not a file — bin.quorum names something that is not there`).toBe(true);
+  });
+
+  test('and that arithmetic refuses the shape decision 078(e) rules out', () => {
+    // Shown to discriminate rather than asserted. `dist/bin/quorum.js` is the refused candidate: it
+    // would put the shipped templates at `packages/cli/dist/templates/`, inside the directory this
+    // package's own build script deletes with `rm -rf dist` on every run.
+    const parentOf = (relative: string): string => path.resolve(path.dirname(path.resolve(PACKAGE, relative)), '..');
+    expect(parentOf('./dist/quorum.js'), 'an emitted target one level down is admissible').toBe(path.resolve(PACKAGE));
+    expect(parentOf('./bin/quorum.js'), 'a tracked launcher one level down is admissible').toBe(path.resolve(PACKAGE));
+    expect(parentOf('./dist/bin/quorum.js'), 'two levels down must not satisfy the constraint').not.toBe(path.resolve(PACKAGE));
+  });
+
+  test('the recorded choice is the emitted target, and its source carries the reason Q-0093 reads', () => {
+    // AC-26 requires the number and its consequence to be written where Q-0093 will look — in the
+    // target's own JSDoc — citing the entry by title and date. Asserted over the SOURCE, because the
+    // emitted file is what a reader of the package never edits.
+    const source = read(PACKAGE, 'src', 'quorum.ts');
+    expect(source).toContain('The emit serves the binary, and no test verdict moves behind it');
+    expect(source).toContain('2026-09-02');
+    expect(source).toContain("path.join(here, '..')");
+  });
+});
+
+describe('Q-0098 AC-15 — the target runs under plain node and exits 0', () => {
+  test('spawned from the manifest\'s own target, it prints the help and exits 0', () => {
+    // The spawn is `process.execPath` with no `--conditions`, no loader and no `quorum-source`: what
+    // runs is the `default` branch of every export map and plain JavaScript, which is 078(b) applied
+    // to the binary. The command list is DERIVED from `HELP` rather than transcribed, so a command
+    // added by Q-0091 to Q-0094 is covered without anyone remembering.
+    runBuild();
+    const target = binTarget();
+    const stdout = execFileSync(process.execPath, [target, 'help'], { cwd: PACKAGE, encoding: 'utf8' });
+    const names = helpNames(HELP);
+    expect(names.length, 'the help lists no command — the loop below would be vacuous').toBeGreaterThan(0);
+    for (const name of names) expect(stdout, `the binary's help does not list ${name}`).toContain(name);
+    expect(stdout).toContain('usage: quorum <command> [options]');
+  }, 300_000);
+
+  test('and a non-zero status is what a caller would see if it failed, so the 0 above is a fact', () => {
+    // Without this the assertion above could not distinguish "exited 0" from "execFileSync did not
+    // report a status at all". `execFileSync` throws on a non-zero exit, so the discriminator is a
+    // spawn that is known to fail.
+    expect(() => execFileSync(process.execPath, [path.join(PACKAGE, 'no-such-target.js')], {
+      cwd: PACKAGE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    })).toThrow();
+  });
+
+  test('the same chain runs in an isolated copy — tracked files, install, build, execute', () => {
+    // AC-15's "from a clean clone", and the primary proof. {@link isolate} copies TRACKED files only
+    // — the commit rather than the checkout — so nothing here can be satisfied by an artifact this
+    // working tree happens to carry, which is R-1's failure mode and the one Q-0096's E-1 retired an
+    // assertion for. The copy is then built with the real turbo and the target spawned inside it.
+    const root = isolate();
+    const target = path.join(root, 'packages', 'cli', ownManifest().bin?.quorum ?? '');
+    expect(fs.existsSync(target), 'the copy carries the target before it is built — then the build proves nothing').toBe(false);
+
+    buildIn(root, '--force');
+    expect(fs.existsSync(target), 'the isolated build wrote no bin target').toBe(true);
+    const stdout = execFileSync(process.execPath, [target, 'help'], {
+      cwd: path.join(root, 'packages', 'cli'), encoding: 'utf8',
+    });
+    for (const name of helpNames(HELP)) expect(stdout).toContain(name);
+    expect(path.resolve(target).startsWith(path.resolve(root)), 'the copy executed the real workspace\'s binary').toBe(true);
+  }, 300_000);
+});
+
+describe('Q-0098 AC-16 — the artifact carries a shebang and is executable', () => {
+  test('the first bytes are the shebang, read out of the emitted file rather than cited', () => {
+    // TypeScript's shebang preservation is a mechanism rather than a promise, so it is PROVEN by
+    // reading what `tsc` wrote. A banner emitted before it would not work, which is why this is the
+    // first line and not merely a line.
+    runBuild();
+    const text = fs.readFileSync(binTarget(), 'utf8');
+    // The exact bytes `spike/bin/harness.js:1` carries, asserted as a literal rather than derived
+    // from that file: reading it would make `@quorum/cli#test`'s verdict depend on `spike/`, which
+    // this package's turbo inputs do not declare and which would have to be added for the read to be
+    // honest (Q-0072). A shebang is a fixed string, so the derivation buys nothing for that cost.
+    expect(text.split('\n')[0]).toBe('#!/usr/bin/env node');
+  }, 300_000);
+
+  test('the mode bit is set, and the build is what sets it because tsc sets none', () => {
+    runBuild();
+    const target = binTarget();
+    if (process.platform === 'win32') {
+      // An explicit skip naming the unavailable check, never a silent pass: Windows has no POSIX
+      // mode bits, so `mode & 0o111` says nothing there.
+      expect(process.platform, 'SKIPPED on win32: POSIX mode bits are unavailable, so the executable bit cannot be asserted').toBe('win32');
+      return;
+    }
+    expect(fs.statSync(target).mode & 0o111, `${target} is not executable`).not.toBe(0);
+    // Why the build script carries a `chmod`: `tsc` emits mode 644 and `.gitignore` ignores the emit,
+    // so git records no mode for it either. Measured — an emitted target without this is `rw-r--r--`
+    // and fails under `./<file>` and under an installed shim while passing under `node <file>`.
+    expect(JSON.parse(read(PACKAGE, 'package.json')).scripts.build).toContain('chmod +x');
+  }, 300_000);
+
+  test('and it runs when executed directly, which is the difference the mode bit makes', () => {
+    // `node <file>` works whatever the mode is, so the assertion above needs a behavioural
+    // counterpart: this is the invocation an installed `bin` shim performs.
+    runBuild();
+    if (process.platform === 'win32') return;
+    expect(execFileSync(binTarget(), ['help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
+  }, 300_000);
+});
+
+describe('Q-0098 AC-17 — a non-zero status crosses the process boundary through the emitted artifact', () => {
+  /** Runs `source` in a plain node process rooted at `cwd` and reports status, stdout and stderr. */
+  const spawnStatus = (cwd: string, args: string[]): { status: number; stdout: string; stderr: string } => {
+    try {
+      const stdout = execFileSync(process.execPath, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, stdout, stderr: '' };
+    } catch (error) {
+      const failure = error as { status?: number; stdout?: string; stderr?: string };
+      return { status: failure.status ?? -1, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
+    }
+  };
+
+  /** The emitted `fail.js`, whose two exports are the mechanisms this criterion is about. */
+  const emittedFail = (): string => path.join(PACKAGE, EMIT, 'fail.js');
+
+  test('failSoftly sets the status and the output written after it still arrives', () => {
+    // The subject is the SOFT path and the EMITTED module. Both halves are asserted together,
+    // because either alone is satisfiable by the other mechanism: a `die` would give the 1 and lose
+    // the output, and a plain return would give the output and lose the 1. That pairing is the whole
+    // reason `fail.ts` keeps the two apart, and four spike sites depend on it
+    // (`spike/bin/harness.js:499`, `:517`, `:523`, `:531`).
+    //
+    // No test-only command, environment variable, package export or production branch is added to
+    // manufacture a status — the module is imported by absolute path from a plain node process,
+    // which is possible precisely because the emit is self-contained JavaScript.
+    runBuild();
+    const script = `const { failSoftly } = await import(${JSON.stringify(emittedFail())});`
+      + " failSoftly(); process.stdout.write('AFTER-THE-CALL');";
+    const result = spawnStatus(PACKAGE, ['--input-type=module', '-e', script]);
+    expect(result.status, 'the emit swallowed process.exitCode').toBe(1);
+    expect(result.stdout, 'the soft path truncated the output it exists to preserve').toContain('AFTER-THE-CALL');
+  }, 300_000);
+
+  test('die stops the process with the same code and puts its message on stderr', () => {
+    runBuild();
+    const script = `const { die } = await import(${JSON.stringify(emittedFail())}); die('a message');`;
+    const result = spawnStatus(PACKAGE, ['--input-type=module', '-e', script]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('a message');
+    expect(result.stdout, 'die wrote its message to stdout').not.toContain('a message');
+  }, 300_000);
+
+  test('and the preserved unknown-command zero survives the boundary rather than being quietly fixed', () => {
+    // Why: preserved, see Q-0090 AC-6 — `spike/bin/harness.js:560–562` prints usage and returns, so
+    // the process exits 0 and a shell script cannot tell "did the thing" from "did not understand
+    // you". Successor Q-0090 GA-4. Returning 1 here would be a behaviour change wearing a bug fix's
+    // clothes, which ground rule 3 forbids; pinning it across the process boundary is what makes a
+    // later fix a deliberate act.
+    runBuild();
+    const result = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
+    expect(result.status, 'the unknown-command zero was changed — that is Q-0090 GA-4 and not this ticket').toBe(0);
+    expect(result.stdout).toContain('usage: quorum');
+  }, 300_000);
+});
+
+describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves locally', () => {
+  test('pnpm links a shim from the root devDependency, and it resolves inside this package', () => {
+    // **Mechanism A, selected by measurement rather than by taste** (AC-18, R-4). Before this ticket
+    // `node_modules/.bin` held six entries and no `quorum`, and `packages/cli/node_modules/.bin` did
+    // not exist at all — so `pnpm --filter @quorum/cli exec quorum` could not work, which is what
+    // `package.test.ts:69`'s own comment predicted. Measured after declaring `@quorum/cli` as a root
+    // devDependency: `pnpm install` links `node_modules/.bin/quorum`. The alternative — asserting
+    // over the resolved target directly — was cheaper and would have collapsed this criterion into
+    // AC-15, which is choosing by accident in the other direction.
+    runBuild();
+    const shim = path.join(WORKSPACE, 'node_modules', '.bin', 'quorum');
+    expect(fs.existsSync(shim), 'pnpm linked no quorum shim — the root devDependency is missing or the bin field moved').toBe(true);
+
+    // AC-20, asserted POSITIVELY: the file the shim executes lies inside this workspace package. A
+    // negative assertion that some registry lookup failed would pass on a machine with no network,
+    // for reasons that have nothing to do with this commit.
+    //
+    // The shim is a generated `sh` script rather than a symlink, so `realpathSync` on it answers
+    // about the script and not about its target — measured, and the reason the chain below goes
+    // through the package link instead: `node_modules/@quorum/cli` IS a symlink, and the shim execs
+    // `$basedir/../@quorum/cli/<bin.quorum>`, so resolving the link and appending the manifest's own
+    // target is the same file the shell would run.
+    const link = path.join(WORKSPACE, 'node_modules', '@quorum', 'cli');
+    expect(fs.realpathSync(link), '@quorum/cli does not resolve to this workspace package').toBe(fs.realpathSync(PACKAGE));
+    const executed = fs.realpathSync(path.join(link, ownManifest().bin?.quorum ?? ''));
+    expect(executed.startsWith(fs.realpathSync(PACKAGE)), `the shim would execute ${executed}, outside this package`).toBe(true);
+    expect(executed).toBe(fs.realpathSync(binTarget()));
+    // And the shim really does name that path, so the chain above is the shell's and not the test's.
+    expect(fs.readFileSync(shim, 'utf8')).toContain(`@quorum/cli/${path.relative(PACKAGE, binTarget())}`);
+    expect(execFileSync(shim, ['help'], { cwd: WORKSPACE, encoding: 'utf8' })).toContain('usage: quorum');
+  }, 300_000);
+
+  test('and the root manifest and the lockfile moved together, which is what keeps the install frozen', () => {
+    // R-4: `commands.install` runs `pnpm install --frozen-lockfile`, so a manifest edit without a
+    // regenerated lockfile fails the install AFTER the implement step has been paid for (Q-0090 R-4).
+    const root = JSON.parse(read(WORKSPACE, 'package.json')) as { devDependencies?: Record<string, string> };
+    expect(root.devDependencies?.['@quorum/cli'], 'the root does not depend on the CLI, so pnpm links no shim').toBe('workspace:*');
+    const lock = read(WORKSPACE, 'pnpm-lock.yaml');
+    expect(lock, 'the lockfile does not record the root devDependency — a frozen install would fail').toContain('link:packages/cli');
+  });
+});
+
+describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared contract', () => {
+  /** The three packages decision 078(c) names as emitting, which is the local distribution set (R-2). */
+  const DISTRIBUTION = ['cli', 'core', 'shared'];
+
+  /** A path npm must never ship: a test file, anything under `src/`, and anything under `.turbo/`. */
+  const REJECTED = [
+    { why: 'a test file', matches: (relative: string): boolean => /\.test\.[cm]?[jt]s$/.test(relative) },
+    { why: 'source rather than the emit', matches: (relative: string): boolean => relative.startsWith('src/') },
+    { why: 'a turbo build log or cache entry', matches: (relative: string): boolean => relative.startsWith('.turbo/') },
+  ];
+
+  /** Packs `directory` into `destination` and returns the tarball's paths, relative to the package. */
+  const packedPaths = (directory: string, destination: string): string[] => {
+    const out = execFileSync('pnpm', ['pack', '--pack-destination', destination], { cwd: directory, encoding: 'utf8' });
+    const tarball = out.trim().split('\n').at(-1)?.trim() ?? '';
+    return execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
+      .split('\n').filter(Boolean)
+      .map((entry) => entry.replace(/^package\//, ''))
+      .filter((entry) => entry !== '' && !entry.endsWith('/'))
+      .sort();
+  };
+
+  test('each of the three declares files, and the pack result carries the emit and nothing repository-only', () => {
+    // **The assertion is over the allow-list and the entry point, never over a count, a byte size or
+    // the absence of build output** — `requirements/errata.md` E-1. `packages/*` carry no
+    // `.npmignore` and no package-level `.gitignore`, and npm reads ignore files in the package
+    // directory only, so gitignored `dist/` and `.turbo/` ship and every pack COUNT depends on
+    // whether the checkout has run a build. A count assertion is green in a fresh clone, red in any
+    // checkout that has built, and red everywhere including CI once a build runs before `test` —
+    // which is precisely the assertion Q-0096's E-1 retired one ticket ago for the same reason.
+    //
+    // The rejection is DERIVED rather than hand-written, so an eleventh test file is covered without
+    // anyone remembering — the fail-open shape Q-0051 found in `q0050.source.test.ts` and Q-0097
+    // found again in `test-discovery.test.ts`.
+    runBuild();
+    const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packed-'));
+    isolated.push(destination);
+    for (const name of DISTRIBUTION) {
+      const directory = path.join(WORKSPACE, 'packages', name);
+      const declared = (JSON.parse(read(directory, 'package.json')) as { files?: string[] }).files;
+      expect(declared, `@quorum/${name} declares no files field, so the checkout decides the tarball`).toStrictEqual([EMIT]);
+
+      const paths = packedPaths(directory, destination);
+      expect(paths, `@quorum/${name} ships no manifest`).toContain('package.json');
+      expect(paths.some((entry) => entry.startsWith(`${EMIT}/`)), `@quorum/${name} ships no emit`).toBe(true);
+      for (const rule of REJECTED) {
+        expect(paths.filter((entry) => rule.matches(entry)), `@quorum/${name} ships ${rule.why}`).toStrictEqual([]);
+      }
+    }
+    // The CLI additionally ships the file `bin.quorum` names, which is the whole point of the set.
+    const cliPaths = packedPaths(path.join(WORKSPACE, 'packages', 'cli'), destination);
+    expect(cliPaths).toContain(path.relative(PACKAGE, binTarget()));
+  }, 300_000);
+
+  test('and the rejection rules have subjects — each one matches something this repository really has', () => {
+    // Without this the three could all be regexes that match nothing, and the loop above would
+    // report success over an empty question. Shown against real paths rather than invented ones.
+    expect(REJECTED[0].matches('src/build.test.ts')).toBe(true);
+    expect(REJECTED[0].matches('dist/build.test.js')).toBe(true);
+    expect(REJECTED[1].matches('src/main.ts')).toBe(true);
+    expect(REJECTED[2].matches('.turbo/turbo-build.log')).toBe(true);
+    // And they do not reject the distribution itself.
+    for (const rule of REJECTED) {
+      expect(rule.matches('dist/quorum.js'), `${rule.why} rejects the binary`).toBe(false);
+      expect(rule.matches('package.json'), `${rule.why} rejects the manifest`).toBe(false);
+    }
+  });
+
+  test('the packed set installs outside the workspace with the registry dead, and runs', () => {
+    // AC-19(b) and AC-20's packed half. The project is created under `os.tmpdir()`, outside the
+    // repository, with no workspace symlinks; `npm_config_registry` points at a closed local port,
+    // retries are zero and the npm cache is inside the sandbox, so no warm cache can serve a real
+    // package. A public package named `quorum`, `@quorum/core` or `@quorum/shared` can neither
+    // satisfy nor change the result.
+    //
+    // **`pnpm pack` and not `npm pack`, and the difference is a measurement rather than a
+    // preference** — see `requirements/errata.md` E-1 of this ticket's run. Only pnpm rewrites
+    // `workspace:*` to a resolvable `0.0.0`; `npm pack` leaves the literal protocol in the packed
+    // manifest and npm then refuses it with EUNSUPPORTEDPROTOCOL. The merged requirement's M-8 poses
+    // these as two possible branches of what pnpm writes; both are real, one per packer.
+    //
+    // The three tarballs are installed TOGETHER, which is what lets npm satisfy `@quorum/core@0.0.0`
+    // and `@quorum/shared@0.0.0` from siblings rather than from a registry that does not have them.
+    runBuild();
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-consumer-'));
+    isolated.push(sandbox);
+    const tarballs = path.join(sandbox, 'tarballs');
+    const project = path.join(sandbox, 'project');
+    const cache = path.join(sandbox, 'npm-cache');
+    for (const directory of [tarballs, project, cache]) fs.mkdirSync(directory);
+
+    const packed = DISTRIBUTION.map((name) => {
+      const out = execFileSync('pnpm', ['pack', '--pack-destination', tarballs], {
+        cwd: path.join(WORKSPACE, 'packages', name), encoding: 'utf8',
+      });
+      return out.trim().split('\n').at(-1)?.trim() ?? '';
+    });
+
+    // The distribution set's third-party dependencies, supplied as tarballs packed from this
+    // workspace's own installed tree. They are genuine public packages this ticket did not
+    // introduce, and a dead registry cannot serve them — so they come from a local mirror, which is
+    // AC-20's "equally explicit offline guarantee". Nothing under `@quorum` comes from here.
+    const closure = new Map<string, string>();
+    const collect = (name: string, from: string): void => {
+      if (closure.has(name) || name.startsWith('@quorum/')) return;
+      const resolved = createRequire(path.join(from, 'noop.js')).resolve(`${name}/package.json`);
+      closure.set(name, path.dirname(resolved));
+      const nested = JSON.parse(fs.readFileSync(resolved, 'utf8')) as { dependencies?: Record<string, string> };
+      for (const dependency of Object.keys(nested.dependencies ?? {})) collect(dependency, path.dirname(resolved));
+    };
+    for (const name of DISTRIBUTION) {
+      const directory = path.join(WORKSPACE, 'packages', name);
+      const own = JSON.parse(read(directory, 'package.json')) as { dependencies?: Record<string, string> };
+      for (const dependency of Object.keys(own.dependencies ?? {})) collect(dependency, directory);
+    }
+    expect(closure.size, 'the third-party closure is empty — the install below would prove less than it appears to').toBeGreaterThan(0);
+    const mirrored = [...closure.values()].map((directory) => {
+      const out = execFileSync('npm', ['pack', '--pack-destination', tarballs, '--silent'], { cwd: directory, encoding: 'utf8' });
+      return path.join(tarballs, out.trim().split('\n').at(-1)?.trim() ?? '');
+    });
+
+    fs.writeFileSync(path.join(project, 'package.json'),
+      JSON.stringify({ name: 'quorum-consumer-fixture', version: '1.0.0', private: true }, null, 2));
+    const offline: NodeJS.ProcessEnv = {
+      ...process.env,
+      npm_config_registry: 'http://127.0.0.1:1/',
+      npm_config_cache: cache,
+      npm_config_audit: 'false',
+      npm_config_fund: 'false',
+      npm_config_fetch_retries: '0',
+    };
+    execFileSync('npm', ['install', '--no-package-lock', '--no-audit', '--no-fund', ...packed, ...mirrored], {
+      cwd: project, encoding: 'utf8', env: offline, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const shim = path.join(project, 'node_modules', '.bin', 'quorum');
+    expect(fs.existsSync(shim), 'the packed install linked no quorum shim').toBe(true);
+    // AC-20, positively: the executed file lies inside the temporary installation and not inside the
+    // repository. Both directions, because the first alone would hold for a shim that resolved to a
+    // workspace path that happened to sit under `os.tmpdir()`.
+    const executed = fs.realpathSync(shim);
+    expect(executed.startsWith(fs.realpathSync(project)), `the packed shim resolves to ${executed}`).toBe(true);
+    expect(executed.startsWith(fs.realpathSync(WORKSPACE)), 'the packed shim reaches back into the repository').toBe(false);
+    expect(execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env: offline })).toContain('usage: quorum');
+  }, 300_000);
+
+  test('and the registry really is unreachable in that environment, so the install proved something', () => {
+    // The guarantee AC-20 rests on, demonstrated rather than assumed: if the closed port were
+    // answering, every assertion above would be satisfiable by a public package. Asserted as a
+    // failure of a lookup the fixture CONTROLS — a closed port on loopback — rather than as a
+    // property of the machine's network.
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-registry-'));
+    isolated.push(cache);
+    expect(() => execFileSync('npm', ['view', 'quorum', 'version'], {
+      cwd: cache, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, npm_config_registry: 'http://127.0.0.1:1/', npm_config_cache: cache, npm_config_fetch_retries: '0' },
+    })).toThrow();
+  }, 300_000);
+
+  test('pnpm pack and npm pack agree on the file list, and disagree on the packed manifest', () => {
+    // OQ-3, confirmed after `files` landed rather than assumed, with the divergence REPORTED rather
+    // than resolved in passing. They agree on every path in all three tarballs. They do not agree on
+    // the manifest: pnpm rewrites `workspace:*` to `0.0.0` and npm leaves the protocol literal, which
+    // is why the fixture above packs with pnpm. Resolving that divergence is out of scope; hiding it
+    // is what is refused.
+    runBuild();
+    const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packers-'));
+    isolated.push(destination);
+    const directory = path.join(WORKSPACE, 'packages', 'cli');
+    const byPnpm = packedPaths(directory, destination);
+    const npmOut = execFileSync('npm', ['pack', '--pack-destination', destination, '--silent'], { cwd: directory, encoding: 'utf8' });
+    const byNpm = execFileSync('tar', ['-tzf', path.join(destination, npmOut.trim().split('\n').at(-1)?.trim() ?? '')], { encoding: 'utf8' })
+      .split('\n').filter(Boolean).map((entry) => entry.replace(/^package\//, ''))
+      .filter((entry) => entry !== '' && !entry.endsWith('/')).sort();
+    expect(byPnpm.length, 'the pack produced nothing — the comparison is vacuous').toBeGreaterThan(1);
+    expect(byNpm, 'pnpm pack and npm pack disagree on which files ship').toStrictEqual(byPnpm);
+  }, 300_000);
+});
+
+describe('Q-0098 AC-25 — the target survives a cache replay of build', () => {
+  test('a hit restores the file with its shebang, its mode bit and its behaviour intact', () => {
+    // 078's *Why* is that a `build` task with real `outputs` introduces a replayed ARTIFACT, and an
+    // artifact something downstream EXECUTES "lies about the present". The `bin` target is the first
+    // artifact anything executes, so every property AC-15 and AC-16 assert must hold after a cache
+    // hit and not only after a fresh build. Nobody had measured whether a mode bit survives turbo's
+    // cache; this is that measurement, and it does.
+    //
+    // The oracle is turbo's machine-readable summary, not its output text — the shape AC-9 already
+    // establishes.
+    runBuild('--force');
+    removeEmit();
+    expect(fs.existsSync(binTarget()), 'the emit is still there, so the replay below proves nothing').toBe(false);
+
+    const replayed = runBuild();
+    const own = replayed.find((entry) => entry.taskId === '@quorum/cli#build');
+    expect(own?.cache?.status, 'the build was not a cache hit, so nothing was restored').toBe('HIT');
+
+    const target = binTarget();
+    expect(fs.existsSync(target), 'the hit restored no bin target').toBe(true);
+    expect(fs.readFileSync(target, 'utf8').split('\n')[0], 'the restored artifact lost its shebang').toBe('#!/usr/bin/env node');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(target).mode & 0o111, 'the restored artifact lost its executable bit').not.toBe(0);
+      expect(execFileSync(target, ['help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
+    }
+    expect(execFileSync(process.execPath, [target, 'help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
   }, 300_000);
 });

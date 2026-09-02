@@ -13,6 +13,13 @@
         // the shipped build task rather than against a literal, so a cached pass must not stand over
         // a `turbo.json` whose `outputs` has moved away from what the document says.
         "../../turbo.json",
+        // Q-0098 AC-21: docs.test.ts scans every document this ticket edits for an unqualified
+        // registry claim, and reads docs/README.md's term list beside the glossary entries it must
+        // move with. `harness/product-context.md` is read for the same scan and matters most of the
+        // four, being what every product-manager step is fed at run time.
+        "../../docs/01-product-definition.md",
+        "../../docs/README.md",
+        "../../harness/product-context.md",
         "../../docs/02-sdlc-pipeline-spec.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",

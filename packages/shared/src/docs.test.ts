@@ -335,3 +335,157 @@ describe('Q-0040 AC-12 — the documented status vocabulary is the shipped one',
     expect(glossary).toMatch(/Not a synonym for "aborted", "failed" or "paused"/);
   });
 });
+
+describe('Q-0098 AC-21 — the documentation separates three installation claims', () => {
+  /** A document with its line breaks collapsed, because these files are hard-wrapped. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /**
+   * The documents this ticket edits, and which therefore carry the claim.
+   *
+   * `docs/decisions/**` is deliberately absent and its exemption is asserted below: a landed entry
+   * is never edited, so a scan that demanded a correction there would name a surface the rules
+   * forbid — *"A requirement may not name a surface its flow cannot write"* (2026-08-25), arriving
+   * on a surface the rules forbid rather than one the role cannot reach. 078(d) governs and 008 is
+   * superseded in substance by a later entry naming it, which is the mechanism the append-only rule
+   * exists to provide.
+   */
+  const EDITED = [
+    'docs/04-architecture.md',
+    'docs/01-product-definition.md',
+    'docs/06-development-plan.md',
+    'harness/product-context.md',
+  ];
+
+  test('each edited document names the two claimed paths and the one that is refused', () => {
+    for (const file of EDITED) {
+      const text = flowed(file);
+      expect(text, `${file} does not name the workspace-local path`).toMatch(/workspace-local/i);
+      expect(text, `${file} does not name the locally packed path`).toMatch(/locally packed|packed tarball|three tarballs/i);
+      expect(text, `${file} does not say the registry path is refused`).toMatch(/refused rather than deferred|does not\b[\s\S]{0,200}private/i);
+      expect(text, `${file} does not route the registry path to its owner`).toContain('Q-0029');
+    }
+  });
+
+  /**
+   * What each document is scanned for an unqualified claim.
+   *
+   * The whole file everywhere except the development plan, whose subject is its **`Done when`
+   * bullets** — which is what AC-21 means by a *"development-plan bullet"*, and where the corrected
+   * sentence lived. The rest of that file is a **record**: ticket titles (*"Q-0010 CLI package;
+   * `npx quorum` entry"*), and entries saying what a ticket was scoped to do or had withdrawn from
+   * it. Measured — five of its twelve mentions are of that kind and none of them tells a reader to
+   * type anything. Rewriting them would be rewriting the history of how the claim was refused, which
+   * is the opposite of what this criterion asks for; the exclusion is asserted load-bearing below.
+   */
+  const claimSurface = (file: string): string => {
+    const text = flowed(file);
+    if (!file.endsWith('06-development-plan.md')) return text;
+    return [...text.matchAll(/\*\*Done when\*\*([\s\S]*?)\*\*Tickets\*\*/g)].map(([, block]) => block).join(' ');
+  };
+
+  test('no edited document claims a cold machine can obtain Quorum from the public registry', () => {
+    // The claim this ticket exists to remove. Every surviving `npx quorum` must sit inside a
+    // sentence that says it is the M6 registry path, so the scan is for an unqualified one: the
+    // mention is allowed, the *claim* is not.
+    //
+    // The window reaches BOTH ways, because prose qualifies a phrase as often before it as after —
+    // measured: the plan's done-when names the refusal and then refers back to it in the next
+    // sentence, which a forward-only scan reported as an unqualified claim.
+    const window = (text: string, at: number): string => text.slice(Math.max(0, at - 300), at + 400);
+    for (const file of EDITED) {
+      const text = claimSurface(file);
+      for (const match of [...text.matchAll(/npx quorum/g)]) {
+        const context = window(text, match.index);
+        expect(
+          /Q-0029|M6|registry|private/i.test(context),
+          `${file} mentions npx quorum without saying it is the deferred registry path: …${context.slice(0, 200)}…`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test('the plan\'s narrowed surface still holds the sentence this ticket corrected', () => {
+    // Without this the narrowing would be a filter that quietly excused the whole file: the block
+    // extraction could match nothing and the clause above would pass over an empty string. What it
+    // must contain is M2's done-when — the bullet that said `npx quorum` works from a clean clone —
+    // and the surface must be a strict subset of the file, or it is not narrowed at all.
+    const surface = claimSurface('docs/06-development-plan.md');
+    const whole = flowed('docs/06-development-plan.md');
+    expect(surface.length, 'the Done when extraction matched nothing').toBeGreaterThan(400);
+    expect(surface.length, 'the extraction is the whole file, so nothing was excluded').toBeLessThan(whole.length);
+    expect(surface, 'M2\'s done-when is outside the scanned surface').toContain('`packages/cli` wraps core with the spike\'s commands');
+    expect(surface, 'the corrected bullet names neither claimed path').toMatch(/workspace-local/);
+    // And the excluded region really is what it is said to be: mentions that are records.
+    expect(whole.length - surface.length, 'nothing was excluded').toBeGreaterThan(1000);
+    expect(whole, 'the excluded region holds no ticket-entry mention, so the exclusion excuses nothing')
+      .toContain('Q-0010 CLI package; `npx quorum` entry');
+  });
+
+  test('and that scan has a subject — it recognises an unqualified claim where one is written', () => {
+    // Without this the clause above would pass over a corpus containing no `npx quorum` at all, or
+    // over a regex that matched nothing. Both directions, over fixtures rather than over the tree.
+    const window = (text: string, at: number): string => text.slice(Math.max(0, at - 300), at + 400);
+    const bare = 'Install it with npx quorum and you are done.';
+    const at = /npx quorum/.exec(bare)?.index ?? -1;
+    expect(at, 'the scan cannot find the phrase it is written to find').toBeGreaterThan(-1);
+    expect(/Q-0029|M6|registry|private/i.test(window(bare, at)), 'an unqualified claim is not recognised as one').toBe(false);
+    // Qualified after, and qualified BEFORE — the second is what the window reaches both ways for.
+    const after = 'Use npx quorum once it is published, which is Q-0029\'s in M6.';
+    const before = 'Registry resolution stays Q-0029\'s in M6, so nothing here promises npx quorum works.';
+    for (const qualified of [after, before]) {
+      const found = /npx quorum/.exec(qualified)?.index ?? -1;
+      expect(/Q-0029|M6|registry|private/i.test(window(qualified, found)), `not recognised as qualified: ${qualified}`).toBe(true);
+    }
+  });
+
+  test('the decisions are exempt, and the exemption is load-bearing rather than a widened filter', () => {
+    // Load-bearing means the exempted files really do carry what the scan would otherwise refuse:
+    // 008's cold-clone sentence is an unqualified `npx quorum` in an append-only entry. If it did
+    // not, the exemption would be excusing nothing and could be deleted without anyone noticing —
+    // the register-rot shape Q-0073 found.
+    const frozen = flowed('docs/decisions/008-v1-cut-and-launch-test.md');
+    const match = /npx quorum/.exec(frozen);
+    expect(match, 'decision 008 no longer carries the phrase the exemption exists for').not.toBe(null);
+    const context = frozen.slice(match?.index ?? 0, (match?.index ?? 0) + 400);
+    expect(
+      /Q-0029|M6/i.test(context),
+      'decision 008 now qualifies its own claim, so the exemption excuses nothing and should go',
+    ).toBe(false);
+    // And the exemption is exactly `docs/decisions/**` rather than the whole of `docs/`: three of
+    // the four edited documents are under it, so a scan excusing `docs/` would report success over
+    // its own subject.
+    expect(EDITED.filter((file) => file.startsWith('docs/')).length).toBeGreaterThan(2);
+    expect(EDITED.filter((file) => file.startsWith('docs/decisions/'))).toStrictEqual([]);
+  });
+
+  test('the glossary defines both new terms with their decision, and says what each is not', () => {
+    // Per `harness/rules.md`, a term goes in the glossary before its second use. Both were already
+    // in their second file — decision 078 and `04-architecture.md` — so this was owed rather than
+    // conditionally owed. The shape is the one Event and Undecided already use.
+    const glossary = flowed('docs/GLOSSARY.md');
+    for (const term of ['**Build task**:', '**Emitted artifact**:']) {
+      expect(glossary, `the glossary does not define ${term}`).toContain(term);
+    }
+    expect(glossary).toContain('The emit serves the binary, and no test verdict moves behind it');
+    expect(glossary).toContain('2026-09-02');
+    // The no-synonym clause, which is what stops a definition from being a paraphrase.
+    expect(glossary, 'build task does not say what it is not').toMatch(/Not a "pipeline", a "job" or a "step"/);
+    expect(glossary, 'emitted artifact does not distinguish itself from the binary').toMatch(/the two words are not interchangeable/);
+    // `docs/README.md`'s term list moves with them, which nothing else checks.
+    expect(repoFile('docs/README.md')).toContain('build task, emitted artifact');
+  });
+
+  test('the status line of every numbered document this change edits records Q-0098', () => {
+    // A NEW assertion beside the Q-0041 one above rather than a change to it: trading a landed
+    // guard for this one would be a check swapped rather than added (merged.md §M-14).
+    for (const file of EDITED.filter((name) => /docs\/0\d/.test(name))) {
+      const text = repoFile(file);
+      const start = text.indexOf('*Status:');
+      expect(start, `${file} has no status line`).toBeGreaterThan(-1);
+      const status = text.slice(start, text.indexOf('\n\n', start));
+      expect(status, `${file}'s status line does not record this change`).toContain('Q-0098');
+      expect(status, `${file}'s status line does not carry the landing date`).toContain('2026-09-02');
+    }
+  });
+});

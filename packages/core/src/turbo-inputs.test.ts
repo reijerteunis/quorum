@@ -298,8 +298,7 @@ const NOT_READ: Record<string, string> = {
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
-  'docs/05-design-prompt.md': 'named nowhere but this file, as clause B\'s own fixture below',
-  'docs/01-product-definition.md': 'named nowhere but this file, as clause A\'s own fixture below',
+  'docs/05-design-prompt.md': 'named nowhere but this file, as clause A\'s and clause B\'s own fixture below',
 };
 
 /**
@@ -389,10 +388,12 @@ function listing(root: string = repoRoot): string[] {
  *   sits outside both directories or is not a `.ts` file.
  * - **`reported()`** — turbo's own enumeration, which is the other side of clause A rather than an
  *   independent reader, and which counts untracked-unignored files exactly as the walks do.
- * - **Clause B's subject demonstration**, which asserts that `docs/05-design-prompt.md` really is
- *   in the repository before showing that no declaration covers it — a demonstration over a path
- *   that had gone would prove nothing. The file is tracked, so it is in every checkout of this
- *   commit, and the assertion classifies nothing either way.
+ * - **Clause A's and clause B's subject demonstrations**, which assert that
+ *   `docs/05-design-prompt.md` really is in the repository before showing that no declaration covers
+ *   it — a demonstration over a path that had gone would prove nothing. The file is tracked, so it
+ *   is in every checkout of this commit, and the assertion classifies nothing either way. Both
+ *   clauses use the one path since Q-0098; clause A's was `docs/01-product-definition.md` until that
+ *   ticket gave it a real reader.
  * - **This inventory's own failures** — git absent or failing is a named error; a listing that came
  *   back implausibly small is a named error; and a sparse checkout, which can track a path that is
  *   absent from disk, *collects* that literal, which asks more of the declaration rather than less.
@@ -1627,8 +1628,16 @@ describe('AC-7 clause A — every audited read is a hashed input', () => {
   test('the clause has a subject — a read that is not declared is reported missing', () => {
     // The failure this clause exists to catch, over a real reported input set: an escaping glob
     // that stopped resolving leaves its files out of `inputs` while turbo.json still names them.
-    expect(uncovered(['docs/01-product-definition.md'], turbo['@quorum/core#test'].inputs))
-      .toEqual(['docs/01-product-definition.md']);
+    //
+    // Why this path moved (Q-0098): the fixture was `docs/01-product-definition.md`, which stopped
+    // being a path nothing reads the moment `packages/shared/src/docs.test.ts` began scanning it for
+    // an unqualified registry claim (AC-21). Its NOT_READ entry would then have been excusing a real
+    // read — and because `undeclaredPaths` skips a NOT_READ key for EVERY task, clause B would have
+    // gone blind to whether `@quorum/shared#test` declared it. Removing the entry is what restores
+    // the check; the fixture is served just as well by `docs/05-design-prompt.md`, which clause B
+    // below already demonstrates is in the repository and covered by no declaration.
+    expect(uncovered(['docs/05-design-prompt.md'], turbo['@quorum/core#test'].inputs))
+      .toEqual(['docs/05-design-prompt.md']);
   });
 });
 

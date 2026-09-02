@@ -69,6 +69,14 @@ sequencing claim that the emit strategy was settled: it was, and what was not se
 what an erratum may say** — the run produced three, of which two corrected the *previous* one, both
 because a ruling was written from a claim rather than from a measurement. That is the same class as
 the drift this paragraph keeps recording, arriving inside the instrument meant to repair it.
+**Q-0098 corrected M2's done-when on 2026-09-02.** That bullet had promised *"`npx quorum` works
+from a clean clone"*, which decision 078(d) had already refused — every package is
+`"private": true`, so the command fetches a stranger's package or nothing — and it now names the two
+paths this repository claims and tests, the workspace-local one and the locally packed one, with
+registry resolution left to Q-0029 in M6. The same edit is the first time a *harness* context file
+was corrected for a claim of this kind: `harness/product-context.md`'s quality pillar 7 is fed to
+every product-manager step at run time, so a false installation claim there is one every future
+requirement inherits.
 
 Milestones are ordered by risk, not by screen. Each milestone ends with a demo that a stranger could follow. The cold-clone test is the finish line.*
 
@@ -180,7 +188,13 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   directions; Q-0037 moved it **up**, by reclassifying `q0011-runs-cli.js` out of binary-only once
   the spike gained a `validateArtifact` that file asserts over directly — which cannot be aimed at a
   `packages/cli` that does not exist. Until then both CI jobs stay green and both are required.
-- `packages/cli` wraps core with the spike's commands; `npx quorum` works from a clean clone (no UI yet).
+- `packages/cli` wraps core with the spike's commands, and `quorum` is a runnable binary from a clean
+  clone by the **two paths this repository claims** (no UI yet): the workspace-local one —
+  `pnpm install`, `pnpm turbo run build`, `pnpm exec quorum` — and the locally packed one, three
+  tarballs installed together into a project outside the repository. **Registry-resolved
+  `npx quorum` is refused rather than deferred** while every package is `"private": true`; it is
+  Q-0029's, in M6. Q-0098 shipped both supported paths with tests and the line said `npx quorum`
+  until it did.
 - `quorum/harness/` and `quorum/backlog/` exist; Q-0010 onward are run through the flows themselves.
 
 **Tickets**

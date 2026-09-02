@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "bin": {
-    "quorum": "./bin/quorum.js"
+    "quorum": "./dist/quorum.js"
   },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/quorum.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
