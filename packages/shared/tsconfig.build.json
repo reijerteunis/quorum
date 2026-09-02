@@ -1,0 +1,26 @@
+{
+  // The emit's configuration, and deliberately NOT the one `lint` and `typecheck` read.
+  //
+  // `tsconfig.json` is one line — `extends` and nothing else — so `tsc`'s default `**/*` reaches
+  // every test file, and `eslint.config.js:26-31` rests on exactly that: `projectService` finds a
+  // project for every linted file because no package narrows its own `include`. Adding `exclude`
+  // there would leave each `*.test.ts` without a project and the type-aware `no-deprecated` rule
+  // without its type information (Q-0069), so the emit gets a second configuration instead and the
+  // two existing verdicts stay where they are — "The emit serves the binary, and no test verdict
+  // moves behind it" (2026-09-02), clause (b).
+  //
+  // `rootDir` is stated rather than inferred: unset, `tsc` derives the common root from the input
+  // set, so removing the last file outside `src/` would silently move every emitted path.
+  // `incremental` and `composite` stay off because `*.tsbuildinfo` is gitignored (`.gitignore:9`)
+  // and a gitignored output the `outputs` declaration omits is under-declaration wearing a
+  // gitignore.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

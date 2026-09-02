@@ -9,6 +9,10 @@
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
+        // Q-0097 AC-24: docs.test.ts compares 04-architecture.md's description of the emit against
+        // the shipped build task rather than against a literal, so a cached pass must not stand over
+        // a `turbo.json` whose `outputs` has moved away from what the document says.
+        "../../turbo.json",
         "../../docs/02-sdlc-pipeline-spec.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",

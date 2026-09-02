@@ -13,14 +13,26 @@
     //     what covers `core`'s reads of `shared` and is why turbo-inputs.test.ts's MANIFEST omits
     //     those deliberately;
     //   - tsconfig.base.json is a root `globalDependencies` entry, hashed for every task.
-    // Neither of the two below is covered by anything: `pnpm-lock.yaml` reaches this task only
-    // through @quorum/core#test's own declaration, which is not this package's to rely on, and the
-    // root package.json is hashed by no task at all. Q-0090 AC-10(a).
+    // Neither `pnpm-lock.yaml` nor the root `package.json` is covered by anything: the first reaches
+    // this task only through @quorum/core#test's own declaration, which is not this package's to
+    // rely on, and the second is hashed by no task at all. Q-0090 AC-10(a).
+    //
+    // Q-0097 adds two more, for `src/build.test.ts`. Root `turbo.json` is what AC-7 asserts the
+    // `build` task's shape against, and `.gitignore` is what AC-12 asks git to attribute the emit to
+    // — a cached pass must not stand over an edited rule that has stopped ignoring `dist/`. The
+    // other files that guard reads are already hashed: `eslint.config.js` and `vitest.shared.js` are
+    // root `globalDependencies`, and `packages/core/src/git-identity.test.ts` arrives through the
+    // `^test` edge the workspace dependency creates.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
-        "../../package.json"
+        "../../package.json",
+        "../../turbo.json",
+        "../../.gitignore",
+        "../../.github/workflows/ci.yml",
+        "../../.github/scripts/git-identity-sweep.sh",
+        "../../harness/harness.yaml"
       ]
     }
   }

@@ -157,6 +157,7 @@ const SUITES = [
  */
 const MANIFEST: Record<string, Record<string, string>> = {
   '@quorum/shared#test': {
+    'turbo.json': 'docs.test.ts — Q-0097 AC-24, 04-architecture.md\'s description of the emit is compared against the shipped build task rather than against a literal',
     'docs/02-sdlc-pipeline-spec.md': 'docs.test.ts — the status line and the §5.8 chore section',
     'docs/03-adapter-contract.md': 'docs.test.ts — the three adapter event kinds',
     'docs/04-architecture.md': 'docs.test.ts — the event union the document names',
@@ -294,7 +295,9 @@ const NOT_READ: Record<string, string> = {
   'harness/architecture.md': 'role.test.ts asserts this string appears in role.ts\'s own doc comment; no suite opens the file',
   'harness/port-charter.md': 'named in doc comments in both packages, opened by neither',
   'spike/src/fanout.js': 'fanout.test.ts uses the path as task-fixture data; the file itself is read only through the spike/src walk',
-  'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, which is data and not a read',
+  'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
+  'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
+  'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
   'docs/05-design-prompt.md': 'named nowhere but this file, as clause B\'s own fixture below',
   'docs/01-product-definition.md': 'named nowhere but this file, as clause A\'s own fixture below',
 };
