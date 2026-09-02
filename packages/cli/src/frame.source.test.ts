@@ -59,18 +59,24 @@ const production = (): [string, string][] => files().filter(([name]) => !name.en
  * in `requirements/errata.md` E-1, which exists to pre-empt the reading that would restore
  * `--exclude-standard` here.
  *
- * Both entries are installed or generated, nothing under either is authored, and each is
+ * Every entry is installed or generated, nothing under any of them is authored, and each is
  * demonstrated below to excuse a real file rather than to sit in the list unexercised.
  *
- * **Emitted output is deliberately not among them.** This workspace emits nothing and the output
- * layout is Q-0096's to choose; naming a directory here now would be this ticket deciding it, which
- * is the objection review round 2 raised against a `bin` target assumed to end in `.js`.
+ * **`dist` is the emitted output, and it is here because Q-0097 built it.** This said *"emitted
+ * output is deliberately not among them"* while the workspace emitted nothing and the layout was
+ * Q-0096's to choose — correct then, and false the moment a `build` task wrote `packages/cli/dist`.
+ * `tsconfig.build.json` excludes every test file under `src`, so what lands there today is
+ * production modules; the exclusion is what makes that a *choice* rather than something the scan
+ * happens not to trip over, because an emitted copy of THIS file would carry every pattern below and
+ * turn the scan red — and only in a checkout that had run a build, which is the
+ * verdict-from-the-checkout defect Q-0096's round 2 caught in the assertion next door. Demonstrated
+ * below in both directions.
  *
  * **There is no binary exclusion either**, and that direction is deliberate: text is decoded as
  * UTF-8 unconditionally, and a lossy decode can only make a scan report *more* than it should,
  * where an exclusion is the only thing that can make it report less.
  */
-const GENERATED = ['node_modules', '.turbo'];
+const GENERATED = ['node_modules', '.turbo', 'dist'];
 
 /**
  * Every file below `root`, as paths relative to it, with {@link GENERATED} pruned.
@@ -84,14 +90,18 @@ const GENERATED = ['node_modules', '.turbo'];
  * below, so the clause is known to fire rather than assumed to.
  *
  * @param root the directory to walk — this package, unless a test hands it a sandbox.
+ * @param prune the directory names to skip. A parameter so a fixture can ask the same question of
+ *   the list as it stood **before** Q-0097 added the emit, which is what makes that entry
+ *   demonstrable rather than asserted — the shape `collects(relative, patterns)` already uses in
+ *   `packages/core/test/vitest-include.ts` for the same reason.
  */
-function inventory(root: string): string[] {
+function inventory(root: string, prune: readonly string[] = GENERATED): string[] {
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        if (!GENERATED.includes(entry.name)) walk(full);
+        if (!prune.includes(entry.name)) walk(full);
       } else if (entry.isFile()) {
         found.push(path.relative(root, full));
       } else {
@@ -118,10 +128,14 @@ function inventory(root: string): string[] {
  * disk. The exclusions are the two names in that list plus this file, all three enumerated and each
  * asserted to excuse something.
  *
- * **No verdict below depends on whether this checkout has run a build.** `node_modules/` and
- * `.turbo/` exist after an install and a test run and not before, so what they contain is asserted
- * over a directory this file builds rather than over this package — a gitignored directory that
- * *use* creates may not move an answer (Q-0073).
+ * **No verdict below depends on whether this checkout has run a build**, which since Q-0097 is a
+ * property the {@link GENERATED} entry for `dist` *restores* rather than one the workspace supplies:
+ * the emit exists after `turbo run build` and not before, and it is pruned, so the answer is the
+ * same either way. Asserted rather than claimed — a test below runs both scans over this package
+ * with the artifact present and absent and requires identical verdicts. The same reasoning covers
+ * `node_modules/` and `.turbo/`, which exist after an install and a test run and not before, so what
+ * they contain is asserted over a directory this file builds rather than over this package — a
+ * gitignored directory that *use* creates may not move an answer (Q-0073).
  */
 const packageFiles = (): [string, string][] => inventory(PACKAGE)
   .map((name) => [name, fs.readFileSync(path.join(PACKAGE, name), 'utf8')]);
@@ -296,7 +310,7 @@ describe('AC-12 — BYOS: no API-key path exists anywhere in this package', () =
       // stay green over a shorter rule. A count of two would too. So the list is written out once
       // more, and that is what makes a removal visible (Q-0073, "a count is not an identity").
       expect(GENERATED, 'the exclusion list moved — each entry is a named claim').toStrictEqual([
-        'node_modules', '.turbo',
+        'node_modules', '.turbo', 'dist',
       ]);
       expect(inventory(sandbox).sort()).toStrictEqual(['kept.json', path.join('src', 'kept.ts')]);
       for (const name of GENERATED) {
@@ -305,6 +319,71 @@ describe('AC-12 — BYOS: no API-key path exists anywhere in this package', () =
           `${name} excuses nothing — the fixture it prunes is not there`,
         ).toBe(true);
       }
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('Q-0097 AC-12 — an emitted copy of a test file turns this scan red without the emit exclusion', () => {
+    // **The two-directional demonstration**, which is what proves the `dist` entry has a subject
+    // rather than being a precaution. The fixture is an emitted copy of a test file — the exact
+    // thing `tsc` would write from `src/` if `tsconfig.build.json` did not exclude `src/**/*.test.ts`
+    // — and it carries a pattern this scan looks for, so:
+    //
+    //   - under the list as it stood BEFORE this ticket, the scan finds it and goes red;
+    //   - under the list as it stands now, the scan does not see it at all.
+    //
+    // Both directions in one fixture, so neither can be satisfied by a walk that collects nothing.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-emit-'));
+    try {
+      const BEFORE_Q0097 = ['node_modules', '.turbo'];
+      fs.mkdirSync(path.join(sandbox, 'src'));
+      fs.writeFileSync(path.join(sandbox, 'src', 'frame.source.test.ts'), 'const CREDENTIAL = [/API_KEY/i];\n');
+      fs.mkdirSync(path.join(sandbox, 'dist'));
+      fs.writeFileSync(path.join(sandbox, 'dist', 'frame.source.test.js'), 'const CREDENTIAL = [/API_KEY/i];\n');
+      const emitted = path.join('dist', 'frame.source.test.js');
+
+      const matching = (prune: readonly string[]): string[] => inventory(sandbox, prune)
+        .filter((name) => CREDENTIAL.some((pattern) => pattern.test(fs.readFileSync(path.join(sandbox, name), 'utf8'))));
+
+      expect(matching(BEFORE_Q0097), 'the emitted copy was invisible before the exclusion — the fixture proves nothing')
+        .toContain(emitted);
+      expect(matching(GENERATED), 'the emit exclusion does not reach an emitted test file').not.toContain(emitted);
+      expect(matching(GENERATED), 'the exclusion swallowed the source file too, which is not what it is for')
+        .toStrictEqual([path.join('src', 'frame.source.test.ts')]);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('Q-0097 AC-12 — both scans return identical verdicts with the artifact present and absent', () => {
+    // Decision 078(b)'s guarantee applied to this file: whether a checkout has run a build may not
+    // move an answer. Asked of BOTH scans this file performs — the one above and AC-4(d)'s
+    // signal-handler sweep — because the exclusion is shared and a regression would hit both.
+    //
+    // Over a sandbox rather than over the live package, for two reasons stated rather than left to
+    // be found. A test that built and deleted `packages/cli/dist` would be mutating the tree it is
+    // judging (Q-0073), and `src/build.test.ts` — which legitimately does mutate it — runs in a
+    // parallel Vitest worker, so the two would race and the flake would look like a code defect.
+    // What that file asserts on the live package is the same claim for the collected test set
+    // (AC-23); what this asserts is that the walk itself cannot tell the two states apart.
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-present-absent-'));
+    try {
+      fs.mkdirSync(path.join(sandbox, 'src'));
+      fs.writeFileSync(path.join(sandbox, 'src', 'main.ts'), 'export const main = 1;\n');
+      const absent = inventory(sandbox);
+
+      fs.mkdirSync(path.join(sandbox, 'dist'));
+      fs.writeFileSync(path.join(sandbox, 'dist', 'main.js'), 'export const main = 1;\n');
+      fs.writeFileSync(path.join(sandbox, 'dist', 'main.d.ts'), 'export declare const main = 1;\n');
+      fs.writeFileSync(path.join(sandbox, 'dist', 'leaked.test.js'), 'const t = "ANTHROPIC_API_KEY";\n');
+      const present = inventory(sandbox);
+
+      expect(present, 'the emit is visible to the walk, so every verdict below moves with the checkout')
+        .toStrictEqual(absent);
+      expect(absent, 'the sandbox holds nothing — both sides are empty and the comparison is vacuous')
+        .toStrictEqual([path.join('src', 'main.ts')]);
+      expect(fs.existsSync(path.join(sandbox, 'dist', 'leaked.test.js')), 'the fixture emit is not there').toBe(true);
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });
     }

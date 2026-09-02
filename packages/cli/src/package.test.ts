@@ -76,11 +76,39 @@ describe('AC-1 — the manifest', () => {
     expect(own.bin?.quorum).not.toBe('');
   });
 
-  test('declares the three tasks turbo runs and a Node floor consistent with the root', () => {
-    for (const task of ['lint', 'typecheck', 'test']) {
+  test('declares every task turbo runs, this package being one that emits, and a Node floor consistent with the root', () => {
+    // **Derived, not inlined.** This read `['lint', 'typecheck', 'test']` under the name "declares
+    // the three tasks turbo runs" until Q-0097, and neither the array nor the name came from
+    // `turbo.json` — so adding a fourth task left this at three, the name false, and turbo skipping
+    // the package in silence if it had no script for it. That is the fail-open shape Q-0051 found in
+    // `q0050.source.test.ts`, in a file whose sibling register in `test-discovery.test.ts` derives
+    // its *package* half from the workspace globs: a package added later was covered and a task
+    // added later was not (Q-0097 AC-13).
+    //
+    // Every root task and not a subset, because `@quorum/cli` is one of the three packages decision
+    // 078(c) says emit. Which packages owe `build` is the register in
+    // `packages/core/src/test-discovery.test.ts`; here the claim is simply that this one owes all of
+    // them, so a fifth root task arrives with a subject rather than passing unnoticed.
+    const tasks = Object.keys((JSON.parse(read(WORKSPACE, 'turbo.json')) as { tasks: Record<string, unknown> }).tasks);
+    expect(tasks.length, 'the root turbo.json declares no task — this assertion would be vacuous').toBeGreaterThan(3);
+    for (const task of tasks) {
       expect(own.scripts?.[task] ?? '', `no ${task} script`).not.toBe('');
     }
     expect(own.engines?.node).toBe(manifest(WORKSPACE).engines?.node);
+  });
+
+  test('and the derivation has a subject — the array it replaced does not see a fourth task', () => {
+    // The defect exhibited rather than described: the hand-written list is shown passing over a
+    // manifest with no `build` script, which is exactly the state that would make turbo skip this
+    // package's build in silence while the suite reported green.
+    const withoutBuild = { lint: 'eslint .', typecheck: 'tsc --noEmit', test: 'vitest run' };
+    for (const task of ['lint', 'typecheck', 'test']) {
+      expect(withoutBuild[task as keyof typeof withoutBuild] ?? '').not.toBe('');
+    }
+    expect(Object.keys((JSON.parse(read(WORKSPACE, 'turbo.json')) as { tasks: Record<string, unknown> }).tasks))
+      .toContain('build');
+    expect(withoutBuild, 'the fixture already declares a build script, so it discriminates nothing')
+      .not.toHaveProperty('build');
   });
 });
 
@@ -111,11 +139,36 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'package.json': 'package.test.ts — AC-1, the engines.node floor matches the root\'s',
     'packages/core/package.json': 'package.test.ts — Q-0096 AC-1 and AC-5, the conditional export map and its single "." key',
     'packages/shared/package.json': 'package.test.ts — Q-0096 AC-1, the frame\'s own dependency resolves',
-    'tsconfig.base.json': 'package.test.ts — Q-0096 AC-1, customConditions is the typecheck half of the export map',
+    'tsconfig.base.json': 'package.test.ts — Q-0096 AC-1, customConditions is the typecheck half of the export map; and build.test.ts, which copies it into the isolated workspace as a root globalDependency',
+    'pnpm-workspace.yaml': 'build.test.ts — Q-0097 AC-8, one of the four files that make the isolated copy a workspace turbo can plan',
+    '.nvmrc': 'build.test.ts — Q-0097 AC-8, copied into the isolated workspace because root turbo.json names it a globalDependency',
+    'packages/shared': 'build.test.ts — Q-0097 AC-8, every tracked file under it is copied into the isolated workspace, which is what gives that copy a package to build',
+    'packages/core': 'build.test.ts — Q-0097 AC-8, the same, and the package whose emitted artifact AC-9 imports',
+    'turbo.json': 'package.test.ts and build.test.ts — Q-0097 AC-7 and AC-13, the build task\'s shape and the tasks every package owes',
+    '.gitignore': 'build.test.ts — Q-0097 AC-12, git attributes the emit to the rule that ignores it',
+    'eslint.config.js': 'build.test.ts — Q-0097 AC-12, `**/dist/**` keeps emitted JavaScript unlinted',
+    'vitest.shared.js': 'build.test.ts — Q-0097 AC-23, the include is still taken by reference and the emit is excluded',
+    'packages/core/src/git-identity.test.ts': 'build.test.ts — Q-0097 AC-12, that walk prunes the emit directory by name',
+    '.github/workflows/ci.yml': 'build.test.ts — Q-0097 AC-14, CI\'s workspace job grew no build phase',
+    '.github/scripts/git-identity-sweep.sh': 'build.test.ts — Q-0097 AC-14, the sweep\'s five phases are unchanged',
+    'harness/harness.yaml': 'build.test.ts — Q-0097 AC-14, commands.install and commands.test grew no build phase',
   };
 
-  /** Of those, the ones no other mechanism hashes, and which this package therefore declares. */
-  const DECLARED = ['../../pnpm-lock.yaml', '../../package.json'];
+  /**
+   * Of those, the ones no other mechanism hashes, and which this package therefore declares.
+   *
+   * `eslint.config.js`, `vitest.shared.js`, `tsconfig.base.json` and `.nvmrc` are root
+   * `globalDependencies`, hashed for every task; everything under `packages/core` and
+   * `packages/shared` — the two manifests, `git-identity.test.ts`, and the tracked subtrees
+   * `build.test.ts` copies into its isolated workspace — arrives through the `^test` edges the two
+   * workspace dependencies create. Declaring any of them would over-declare rather than
+   * under-declare, which is the same reasoning the turbo configuration's own comment carries.
+   */
+  const DECLARED = [
+    '../../pnpm-lock.yaml', '../../package.json', '../../turbo.json', '../../.gitignore',
+    '../../pnpm-workspace.yaml',
+    '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
+  ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {
     // Why: a cache hit names what the task reads (Q-0072). Three of the five above arrive by a

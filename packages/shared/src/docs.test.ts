@@ -203,6 +203,37 @@ describe('AC-8 / AC-11 — the documents agree with what shipped', () => {
     }
   });
 
+  test('Q-0097 AC-24 — the emit is described once, and its declaration is read out of turbo.json', () => {
+    // *"When code and docs disagree, the docs are wrong until a DECISIONS entry says otherwise"*,
+    // and the way a document about configuration goes wrong is by transcription: it drifts silently,
+    // because it goes on looking like the thing it describes (Q-0088). So the pattern the document
+    // quotes is compared against the shipped `turbo.json` rather than against a literal here.
+    const architecture = repoFile('docs/04-architecture.md');
+    const build = (JSON.parse(repoFile('turbo.json')) as {
+      tasks: Record<string, { outputs?: string[]; dependsOn?: string[] }>;
+    }).tasks.build;
+    expect(build, 'the root declares no build task — this assertion would be vacuous').toBeDefined();
+    expect(build.outputs?.length, 'the build task declares no outputs').toBeGreaterThan(0);
+
+    for (const pattern of build.outputs ?? []) {
+      // Exactly once: a second occurrence is the transcription this guard exists to refuse, and the
+      // `packages/core` entry says in as many words that it does not restate this.
+      const occurrences = architecture.split(`\`${pattern}\``).length - 1;
+      expect(occurrences, `04-architecture.md describes the outputs pattern ${pattern} ${occurrences} times, not once`).toBe(1);
+    }
+    // The floor is what stops this loop from passing over an absent `dependsOn`: measured by
+    // removing the key, at which point `?? []` iterates nothing and the clause reports success over
+    // a task that no longer orders itself — *"a check that skips its subject must not report
+    // success"* (2026-08-25), inside a guard written to catch a document drifting from a file.
+    expect(build.dependsOn?.length, 'the build task declares no ordering, so this clause has no subject').toBeGreaterThan(0);
+    for (const edge of build.dependsOn ?? []) {
+      expect(architecture, `the document does not say how build is ordered (${edge})`).toContain(edge);
+    }
+    // And the claim the whole arrangement rests on, so a later reader meets it here as well as in
+    // the decision entry: no existing verdict moves behind the artifact.
+    expect(architecture).toContain('No verdict that exists today moves behind it');
+  });
+
   test('the ticket.md example shows the iterations keys and the history entry the engine writes', () => {
     const spec = repoFile('docs/02-sdlc-pipeline-spec.md');
     expect(spec).toContain('solutioning.architecture-review: 2');

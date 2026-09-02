@@ -22,12 +22,28 @@ describe('AC-1 — importable, one runtime dependency, no workspace import', () 
     expect(importSpecifiers(sharedSourceFiles().map(([, text]) => text).join('\n'))).not.toContain('yaml');
   });
 
-  test('the package declares an exports map — the workspace\'s first', () => {
+  test('the package declares the conditional map decision 078(b) describes', () => {
+    // **Retired by replacement rather than deletion**, on the precedent Q-0096 set for the byte pin
+    // it replaced. This pinned the flat map — `types` and `default` both `'./src/index.ts'` — which
+    // was the workspace's first exports map and correct while nothing emitted. It is what made
+    // `packages/core/dist/index.js` unrunnable: its import of this package by name resolved to
+    // `./src/index.ts`, which then died on the `./constants.js` specifier no loader was there to
+    // rewrite. An unmet clause of "The emit serves the binary, and no test verdict moves behind it"
+    // (2026-09-02), whose (b) asks every consumable package for the same shape (Q-0097 AC-22).
+    //
+    // The package is named by scope nowhere above: this file is itself under `src/`, so a literal
+    // would make the no-workspace-import assertion below its own subject.
+    //
+    // The workspace condition resolves TypeScript source, so no verdict in this workspace moves
+    // behind a build artifact; the default resolves the emit, which is what Node and a packed
+    // install get. `packages/core/src/shared-resolution.test.ts` is the other half — a value import
+    // of this package proving Vitest still reaches the source branch — and it stays green unchanged.
     const pkg = readJson('packages/shared/package.json');
     expect(pkg.exports).toBeDefined();
-    const entry = (pkg.exports as Record<string, Record<string, string>>)['.'];
-    expect(entry.types).toBe('./src/index.ts');
-    expect(entry.default).toBe('./src/index.ts');
+    const entry = (pkg.exports as Record<string, Record<string, unknown>>)['.'];
+    expect(entry['quorum-source']).toStrictEqual({ types: './src/index.ts', default: './src/index.ts' });
+    expect(entry.default, 'the default condition resolves the emit, never the source').toBe('./dist/index.js');
+    expect(entry.types).toBe('./dist/index.d.ts');
   });
 
   test('nothing under src imports a workspace package', () => {

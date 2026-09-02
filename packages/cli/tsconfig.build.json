@@ -1,0 +1,15 @@
+{
+  // The emit's configuration, and deliberately NOT the one `lint` and `typecheck` read — see
+  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The three emitting
+  // packages declare the same four options for the same reasons; a divergence between them would be
+  // a difference in emitted layout, which is what `outputs` has to cover.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

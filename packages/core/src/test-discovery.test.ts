@@ -55,8 +55,43 @@ interface Manifest {
   scripts?: Record<string, string>;
 }
 
-/** The three tasks the root `turbo.json` declares, and therefore the three every package owes. */
-const TASKS = ['lint', 'typecheck', 'test'] as const;
+/**
+ * Every task the root `turbo.json` declares, derived rather than written down.
+ *
+ * This was `['lint', 'typecheck', 'test'] as const` under the comment *"the three tasks the root
+ * `turbo.json` declares, and therefore the three every package owes"*, and **neither half was
+ * derived**. Q-0097 adds a fourth task, at which point the array stays at three, the comment becomes
+ * false, and turbo skips every package with no `build` script **in silence** — verbatim the failure
+ * the AC-7 block below exists to close, and the fail-open shape Q-0051 found in
+ * `q0050.source.test.ts`. The asymmetry was in this file's own words: {@link workspacePackages} is
+ * derived *"so a package added later is covered without anyone remembering"*, and a task added later
+ * was not.
+ */
+const rootTasks = (): string[] =>
+  Object.keys((JSON.parse(repoFile('turbo.json')) as { tasks: Record<string, unknown> }).tasks).sort();
+
+/**
+ * Tasks a package owes only if it **emits**, per *"The emit serves the binary, and no test verdict
+ * moves behind it"* (2026-09-02), clause (c).
+ *
+ * The sentence the two registers assert is that entry's: *every package owes lint, typecheck and
+ * test; build is owed by the packages that emit, and the register names which*. A no-op build script
+ * in the four packages that emit nothing would declare an artifact that does not exist, which is the
+ * under- and over-declaration hazard (c) exists to avoid, and it is the alternative that entry
+ * rejects by name.
+ *
+ * This is the one hand-written line, and it fails closed: {@link TASKS} is everything else the root
+ * declares, so a fifth task entered in neither column becomes owed by **every** package and the
+ * suite says so — the decision is forced rather than defaulted.
+ */
+const EMITTER_ONLY = ['build'];
+
+/** The tasks every package owes, whatever the root grows. */
+const TASKS = (): string[] => rootTasks().filter((task) => !EMITTER_ONLY.includes(task));
+
+/** The packages whose manifests declare a `build` script — the emitting set 078(c) names. */
+const emittingPackages = (): string[] =>
+  PACKAGES.filter((pkg) => ((JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {}).build !== undefined);
 
 /** The include as it stood before this ticket — the fixture that makes the widening demonstrable. */
 const BEFORE_Q0054 = ['src/**/*.test.ts'] as const;
@@ -206,14 +241,70 @@ describe('Q-0054 AC-6 — a red test lands where a red phase would put it, and i
 });
 
 describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
-  test.each(PACKAGES)('%s declares lint, typecheck and test', (pkg) => {
+  test.each(PACKAGES)('%s declares every task the root requires of every package', (pkg) => {
     // A package with no `test` script is skipped by turbo in silence, which is AC-6's failure one
-    // layer up. All seven satisfy this today, so this is drift protection and not a fix — and it is
-    // derived from the globs, so a package added later is covered without anyone remembering.
+    // layer up. All seven satisfy this today, so this is drift protection and not a fix — and both
+    // halves are now derived: the package list from the workspace globs, the task list from
+    // `turbo.json`, so neither a package nor a task added later goes uncovered (Q-0097 AC-13).
     const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
-    for (const task of TASKS) {
+    for (const task of TASKS()) {
       expect(scripts[task] ?? '', `${pkg} declares no ${task} script`).not.toBe('');
     }
+  });
+
+  test('the two derivations have subjects, and the emitter-only register names real tasks', () => {
+    // Without this, a `turbo.json` this reader could not parse would yield an empty task list and
+    // every clause above would pass over nothing — the failure "a check that skips its subject must
+    // not report success" (2026-08-25) names.
+    expect(rootTasks(), 'the root turbo.json declares no task').not.toStrictEqual([]);
+    expect(TASKS(), 'every root task is emitter-only — no package owes anything').not.toStrictEqual([]);
+    for (const task of EMITTER_ONLY) {
+      expect(rootTasks(), `${task} is registered as emitter-only and the root declares no such task`).toContain(task);
+    }
+  });
+
+  test('Q-0097 AC-13 — build is owed by the packages that emit, and the register names which', () => {
+    // Decision 078(c)'s sentence, asserted as an identity rather than a count (Q-0073): the three
+    // are named, so a fourth package that starts emitting, or one of these three that stops, is a
+    // visible act. Derived from the manifests rather than transcribed, so the register cannot claim
+    // a package emits while its manifest says otherwise.
+    expect(emittingPackages()).toStrictEqual(['packages/cli', 'packages/core', 'packages/shared']);
+    for (const pkg of emittingPackages()) {
+      const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
+      for (const task of EMITTER_ONLY) {
+        expect(scripts[task] ?? '', `${pkg} emits and declares no ${task} script`).not.toBe('');
+      }
+    }
+  });
+
+  test('and a package that emits nothing is not required to declare a no-op build script', () => {
+    // The other direction, which keeps the derived rule from overshooting into the alternative 078
+    // rejects: a no-op build in the four stub packages would declare an artifact that does not
+    // exist. Shown over the real non-emitting packages, of which there must be some for the clause
+    // above to be discriminating at all.
+    const stubs = PACKAGES.filter((pkg) => !emittingPackages().includes(pkg));
+    expect(stubs.length, 'every package emits — the emitting register discriminates nothing').toBeGreaterThan(0);
+    for (const pkg of stubs) {
+      const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
+      expect(scripts.build, `${pkg} declares a build script and emits nothing`).toBeUndefined();
+      for (const task of TASKS()) {
+        expect(scripts[task] ?? '', `${pkg} declares no ${task} script`).not.toBe('');
+      }
+    }
+  });
+
+  test('the register has a subject — the array it replaced cannot see a package that owes a build', () => {
+    // The defect exhibited rather than asserted. Under the hand-written `['lint','typecheck','test']`
+    // an emitting package with no `build` script satisfies every clause, and turbo then skips its
+    // build in silence while the suite reports green.
+    const asItWas = ['lint', 'typecheck', 'test'];
+    const emitterWithoutBuild = { lint: 'eslint .', typecheck: 'tsc --noEmit', test: 'vitest run' };
+    for (const task of asItWas) {
+      expect(emitterWithoutBuild[task as keyof typeof emitterWithoutBuild] ?? '').not.toBe('');
+    }
+    // And the derived list is what catches it, because `build` is in the root's tasks.
+    expect(rootTasks()).toContain('build');
+    expect(asItWas, 'the old array already covered build, so it discriminates nothing').not.toContain('build');
   });
 });
 

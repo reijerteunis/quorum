@@ -34,5 +34,17 @@ export default defineConfig({
   },
   test: {
     include: [...configDefaults.include],
+    // The include matches `.js` as well as `.ts`, and Vitest's own `exclude` default is
+    // `node_modules` and `.git` only — so once Q-0097 gave the workspace an emit, an emitted
+    // `dist/**/*.test.js` would be COLLECTED AND EXECUTED, from a directory at a different depth
+    // from its source, making every path such a test derives from its own location wrong.
+    //
+    // The primary mechanism is that no test file is emitted at all: each emitting package's
+    // `tsconfig.build.json` excludes `src/**/*.test.ts`. This is defence in depth, and it is a
+    // widening of the EXCLUDE rather than a narrowing of the include — the include is still Vitest's
+    // own default, taken by reference, and `packages/core/src/test-discovery.test.ts` still refuses a
+    // narrowing of it. A red phase writes TypeScript under `src/` or `test/`, never under a
+    // gitignored emit directory, so no discovery guarantee moves. Q-0097 AC-23.
+    exclude: [...configDefaults.exclude, '**/dist/**'],
   },
 });
