@@ -1,14 +1,22 @@
 ---
 id: Q-0098
 title: quorum is a runnable binary, and what npx quorum may claim
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0098/integration
 priority: p1
 created: 2026-09-02
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-02T13:28:04.292Z
+    cost: 9.431
 ---
 Split from **Q-0096** at its requirements gate on 2026-09-02, where the merged requirement measured
 **21 criteria against a ceiling of fifteen** and cut the ticket in three. This is **C**, the last one.
@@ -141,6 +149,30 @@ is an erratum written **during** the loop.
 `docs/02-sdlc-pipeline-spec.md` §5.8.
 
 **GO-4 — Q-0039 is unfixed.** Do not run concurrently with Q-0096 or Q-0097.
+
+**GO-5 — a pack count is not a property of the commit.** Ruled at the requirements gate on
+2026-09-02 and **binding through `requirements/errata.md` E-1, which is where the chore flow reads
+it** — `chore.yaml`'s implement step takes `requirements/merged.md`, `requirements/errata.md` and the
+review files, and **never this file**, so a rule recorded only here would not reach the implementer.
+It is repeated here because a human opening the ticket should not have to find it in an erratum.
+
+`packages/*` carry no `.npmignore` and no package-level `.gitignore`, and npm reads ignore files in
+the package directory only — never the repository root — so gitignored `dist/` and `.turbo/` ship and
+**every pack count depends on whether the checkout has run a build**. Measured at `51c56f5`:
+`@quorum/cli` packs **40** here and **22** in a fresh clone, `@quorum/core` **167** and **101**,
+`@quorum/shared` **52** and **28**. The merged requirement's §3 figures are all the built-checkout
+column, correctly measured and not properties of the commit.
+
+So **AC-19 asserts over the declared `files` allow-list and the entry point, never over a count, a
+byte size, or the absence of build output.** Such an assertion is green in a fresh clone, red in any
+checkout that has built, and red everywhere including CI the moment a `build` runs before `test` —
+which is precisely the assertion Q-0096's E-1 retired one ticket ago for the same reason.
+
+**And the `22` above is a trap rather than a stale number.** Tracked files under `packages/cli` were
+19 at Q-0096's gate and are 22 now, so the inherited figure decomposes as 19 tracked + 3 turbo logs
+(three, there being no `build` task then) and today's as 22 tracked + 4 logs + 14 `dist/` = 40. A
+fresh clone today packs 22 — the same number, from a different set of files — so re-measuring in a
+clean checkout *appears to confirm* the superseded figure.
 
 ## Non-goals
 
