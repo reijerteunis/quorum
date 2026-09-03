@@ -24,15 +24,29 @@ const gitSource = (): string => {
   return found[1];
 };
 
-describe('AC-1 — the module exports nine functions, and core reads ancestry in one file', () => {
-  test('exactly the nine functions this module owns', () => {
+describe('AC-1 — the module exports ten functions, and core reads ancestry in one file', () => {
+  test('exactly the ten functions this module owns', () => {
     // Eight at Q-0042. `mergeBase` is the ninth, and it is here rather than in the engine because
     // the guard below permits `merge-base` in this file alone — Q-0053 AC-3a and OQ-1.
+    // `currentBranch` is the tenth, and it is here for the reason this file exists: every git call
+    // in `core` goes through one runner, and a probe spelled inside `backlog/scaffold.ts` would be
+    // a second one (Q-0093 AC-9(b)).
     expect(Object.keys(gitModule).sort()).toEqual([
-      'ancestry', 'containment', 'emptyRangeEvidence', 'ensureExcluded', 'ensureWorktree',
-      'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
+      'ancestry', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
+      'ensureWorktree', 'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
     ]);
     for (const value of Object.values(gitModule)) expect(typeof value).toBe('function');
+  });
+
+  test('and that pin moved rather than being widened — the nine it held before Q-0093 are refused', () => {
+    // Shown red against the value it replaces rather than edited to fit, which is the demonstration
+    // Q-0091 and Q-0092 each wrote for their own registers. A `toContain` here would have accepted
+    // either list and recorded nothing.
+    expect(Object.keys(gitModule).sort(), 'the module still exports the nine it had before Q-0093')
+      .not.toEqual([
+        'ancestry', 'containment', 'emptyRangeEvidence', 'ensureExcluded', 'ensureWorktree',
+        'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
+      ]);
   });
 
   test('merge-base and --is-ancestor appear in git.ts and in no other source file', () => {

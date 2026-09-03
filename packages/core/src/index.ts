@@ -1,15 +1,15 @@
 /**
  * The public API of `@quorum/core`.
  *
- * Twenty-four value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
+ * Twenty-six value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
  * command children (Q-0091 to Q-0094) import from here, and what they may reach is settled by
  * whoever adds a name to this file rather than by whoever types an import first. That is why
  * `package.json` publishes `"."` alone and no `./*` subpath — a wildcard would defer the decision
  * to the first consumer (Q-0096 AC-5).
  *
- * Twenty of the twenty-four are the domain helpers `packages/cli/src/frame.source.test.ts` names in
- * its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
- * command module may name only where its own command needs them — and the other four are the error
+ * Twenty-one of the twenty-six are the domain helpers `packages/cli/src/frame.source.test.ts` names
+ * in its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
+ * command module may name only where its own command needs them — and the other five are the error
  * classes a caller has to catch. `packages/cli/src/package.test.ts` derives the surface from that
  * register rather than transcribing it, so the two cannot drift.
  *
@@ -28,6 +28,14 @@
  * grammar is `@quorum/shared`'s `parseTicketId`, which is the spelling the spike's own `runs` case
  * uses and the one `Backlog` allocates with, and publishing a second one here would make two.
  *
+ * **Q-0093 added two, and they are the pair a scaffolding command needs.** `initProject` is the one
+ * helper the CLI genuinely had no counterpart for — the filesystem-and-git work `quorum init` does —
+ * and `ProjectExistsError` is what lets that command tell "already scaffolded" from a crash, exactly
+ * as `ProjectNotFoundError` does for a command that opens a project. `currentBranch` is deliberately
+ * **not** among them: it is `initProject`'s own probe, no command asks git for a branch name, and a
+ * name is added here because a command needs it — the rule Q-0092 applied when it withheld
+ * `manifestShapeError`.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
@@ -36,6 +44,7 @@ export { getAdapter, probeAdapter } from './adapters/adapters.js';
 export { overrideAdapters } from './adapters/override.js';
 export { Backlog } from './backlog/backlog.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
+export { initProject, ProjectExistsError } from './backlog/scaffold.js';
 export { readData, validateArtifact } from './contracts/contracts.js';
 export type { ArtifactValidationResult } from './contracts/contracts.js';
 export { runFlow } from './engine/engine.js';

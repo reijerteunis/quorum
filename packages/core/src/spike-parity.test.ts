@@ -177,8 +177,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/lint/lint.test.ts',
     ],
     note: 'its one library import is lintFlow; the ported lint carries the sixteen messages, the cross-vendor rules, the directory walk and every shipped flow linting clean',
-    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091. What remains is `harness init` and the shipped review assets on disk — Q-0093 — and the gate answers a terminal supplies — Q-0094',
-    binaryCarriedBy: ['packages/cli/src/lint.test.ts'],
+    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091; and `harness init` — `initFixture` and S5.1-S5.7/E5\'s six repository states, the base-branch discovery and the comment-preserving edit — carried since Q-0093, which additionally mirrors S1.1/S1.2/S1.4 and S2.1-S2.5\'s shipped-asset freeze on the workspace side rather than translating it, because those assertions are about a directory rather than about a command. What remains is the gate answers a terminal supplies — Q-0094',
+    binaryCarriedBy: ['packages/cli/src/init.test.ts', 'packages/cli/src/lint.test.ts'],
   },
   'q0034-chore-preflight.js': {
     verdict: 'ported',
@@ -284,11 +284,14 @@ const REGISTER: Record<string, Entry> = {
     verdict: 'split',
     carriedBy: ['packages/core/src/backlog/backlog.test.ts'],
     note: 'one backlog, one prefix, and an allocator that refuses rather than guessing — asserted from q0080-allocation.json, the one table both trees read',
-    // Prose only, and deliberately no `binaryCarriedBy`: its one `runs` line (`:206–207`, spelled
-    // as varargs, so a census grepping `['runs'` misses it) asserts that a ticket filter with zero
-    // matches exits 0, which Q-0092 translates from `q0011-runs-cli.js:47` — claiming a counterpart
-    // here would read as more done than is done, since this file's binary half is `ticket new`'s.
-    binaryHalf: '`harness ticket new` and the refusal text it prints for a hostile --id — Q-0093. Its one `runs` and one `board` invocation are incidental to that scenario, and the behaviour each asserts is translated by Q-0092 and Q-0099 from the files that own it',
+    // The field was deliberately absent until Q-0093, and the reason is recorded rather than
+    // deleted: this file's one `runs` line (`:206–207`, spelled as varargs, so a census grepping
+    // `['runs'` misses it) asserts that a ticket filter with zero matches exits 0, which Q-0092
+    // translates from `q0011-runs-cli.js:47` — so claiming a counterpart on that basis would have
+    // read as more done than was done, this file's binary half being `ticket new`'s. That half is
+    // now translated, which is what the field records.
+    binaryHalf: '`harness ticket new` — A7\'s three sequential allocations, A8\'s three refusals, each one line and exit 1 with no stack, and `--id` as the escape hatch that still works afterwards, with the `project()` / `cli` / `folders` helpers translated with them — carried by packages/cli since Q-0093. The allocation table itself is the library half above and is not re-asserted there. Its one `runs` and one `board` invocation are incidental to A9\'s scenario, and the behaviour each asserts is translated by Q-0092 and Q-0099 from the files that own it',
+    binaryCarriedBy: ['packages/cli/src/ticket.test.ts'],
     mentions: {
       'spike/bin/harness.js must not spell the grammar again': 'an assertion message naming the file it read, not a path handed to a spawn; the reference is the path.join above it',
     },
@@ -1533,8 +1536,9 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     expect(claiming).toStrictEqual([
       'q0011-run-history.js → packages/cli/src/build.test.ts, packages/cli/src/runs.test.ts',
       'q0011-runs-cli.js → packages/cli/src/runs.test.ts, packages/cli/src/validate.test.ts',
-      'q0033-surface.js → packages/cli/src/lint.test.ts',
+      'q0033-surface.js → packages/cli/src/init.test.ts, packages/cli/src/lint.test.ts',
       'q0034-review-fixes.js → packages/cli/src/runs.test.ts',
+      'q0080-allocation.js → packages/cli/src/ticket.test.ts',
     ]);
   });
 
@@ -1560,6 +1564,52 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       'q0011-run-history.js', 'q0011-runs-cli.js', 'q0034-review-fixes.js',
     ]);
     expect(REGISTER['q0011-runs-cli.js'].binaryCarriedBy, 'and one row names two suites').toHaveLength(2);
+  });
+
+  test('(l) Q-0093 — a fifth row claims one, and a row that already claimed one now names two files', () => {
+    // Shown red against the superseded value rather than edited to fit, which is the demonstration
+    // Q-0092 wrote one clause up. Both halves of this ticket's move are here: `q0080-allocation.js`
+    // gains its first counterpart — `ticket new`'s binary half — and `q0033-surface.js` goes from one
+    // suite to two, because `harness init` and `quorum lint` are two commands translated by two
+    // tickets out of one spike file. The second shape is the one E-2's field was ruled to admit.
+    const claiming = Object.entries(REGISTER)
+      .filter(([, entry]) => entry.binaryCarriedBy !== undefined)
+      .map(([name, entry]) => `${name} → ${(entry.binaryCarriedBy ?? []).join(', ')}`)
+      .sort();
+    expect(claiming, 'the register still holds the four claims it held before Q-0093').not.toStrictEqual([
+      'q0011-run-history.js → packages/cli/src/build.test.ts, packages/cli/src/runs.test.ts',
+      'q0011-runs-cli.js → packages/cli/src/runs.test.ts, packages/cli/src/validate.test.ts',
+      'q0033-surface.js → packages/cli/src/lint.test.ts',
+      'q0034-review-fixes.js → packages/cli/src/runs.test.ts',
+    ]);
+    expect(REGISTER['q0080-allocation.js'].binaryCarriedBy, 'the allocation row claims no translation')
+      .toStrictEqual(['packages/cli/src/ticket.test.ts']);
+    expect(REGISTER['q0033-surface.js'].binaryCarriedBy, 'the surface row still names one suite').toHaveLength(2);
+    // And the prose moved with the field: a row saying the work is owed while the field says it is
+    // done is the contradiction E-2 created the field to make impossible.
+    expect(REGISTER['q0080-allocation.js'].binaryHalf, 'the allocation row still says Q-0093 owes it')
+      .not.toMatch(/— Q-0093\b/);
+    expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row still says Q-0093 owes it')
+      .not.toMatch(/— Q-0093\b/);
+    expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row lost the half Q-0094 still owes')
+      .toMatch(/Q-0094/);
+  });
+
+  test('(m) Q-0093 — no spike file was edited, so the five line totals are re-derived unmoved again', () => {
+    // Same derivation, same reason, a second time. Ground rules 1 and 2 keep everything under
+    // `spike/` untouched — `spike/templates/` is READ by this ticket's new parity guard and never
+    // written — so the expected answer is that nothing moves. It is measured rather than assumed,
+    // because "it did not move" is a measurement and assuming it did not is how a stale pin
+    // survives. Q-0092 wrote the clause above for the same ticket-shaped reason; this is a second
+    // instance rather than a re-statement, and it fails independently.
+    const total = linesOf(Object.keys(FACTS));
+    expect({
+      binaryOnly: linesOf(named('binary-only')),
+      both: linesOf(named('both')),
+      libraryOnly: linesOf(named('library-only')),
+      total,
+      share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
+    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
   });
 
   test('(k) Q-0092 — no spike file was edited, so the five line totals are re-derived unmoved', () => {
