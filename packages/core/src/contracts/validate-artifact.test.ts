@@ -138,70 +138,87 @@ describe('AC-7 — three states, and `ran: true` is the only one that means the 
   });
 });
 
-describe('AC-9 — nothing in core prints, and the CLI\'s four lines are reproducible from what it returns', () => {
+describe('AC-9 — nothing in core prints, and every decision the CLI\'s four lines rest on is in the value', () => {
   /**
-   * The renderer that belongs to the CLI, transcribed from spike/bin/harness.js:425–459 and driven
-   * entirely by `validateArtifact`'s return value. It lives here, in a test, because an escape byte
-   * in `core` is a bug in M4's browser and on M3's WebSocket.
+   * **The renderer that used to live here is gone, and it was retired by replacement rather than
+   * deleted** (Q-0091 AC-9, on Q-0096's precedent with `index.test.ts`'s byte pin).
    *
-   * The citation is re-derived rather than carried: the range moved when Q-0037 took the semantic
-   * checker out of the CLI and into spike/src/contracts.js, and again when review round 1 widened
-   * the notice to cover a present-but-unsupported annotation. The notice below moved with it, and
-   * this helper is only worth having while it still reproduces what the CLI prints — a copy that
-   * has stopped matching its subject is a green test of a string nobody sees, which is the failure
-   * this file exists to avoid rather than to commit.
+   * It was a `render` helper transcribed from `spike/bin/harness.js:425–459`, and its own doc
+   * comment said it was *"only worth having while it still reproduces what the CLI prints"*. Since
+   * Q-0091 the CLI prints for itself, so the helper was a second copy of a frozen sentence in a
+   * package that may not import the one that owns it — and a copy that stops matching its subject
+   * is a green test of a string nobody sees. **`packages/cli/src/validate.test.ts` owns the
+   * rendering**, asserts that sentence by the clauses
+   * `contracts/Q-0011/runs-cli.contract.md:46–48` is about, and scans every workspace package to
+   * prove exactly one file holds it.
+   *
+   * What stays here is the half that is `core`'s: that the four outcomes a renderer distinguishes
+   * are decidable **from `validateArtifact`'s return value alone**, without re-reading the schema or
+   * the artifact — and that nothing in that value carries a byte a browser or a WebSocket would
+   * choke on. A renderer written against this is what the CLI's is.
    */
-  const render = (file: string, result: ArtifactValidationResult): string[] => {
-    const lines: string[] = [];
+  const decision = (result: ArtifactValidationResult): string => {
     if (!result.semantic.ran && result.semantic.reason === 'unrecognised-annotation') {
-      lines.push(`\x1b[2m·\x1b[0m ${file}: no recognised x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`);
+      return result.ok ? 'notice + verdict: matches' : 'notice + verdict: violates';
     }
-    lines.push(result.ok
-      ? `\x1b[32m✓\x1b[0m ${file} matches ${result.schema}`
-      : `\x1b[31m✗\x1b[0m ${file} violates ${result.schema}:\n    ${result.errors.join('\n    ')}`);
-    return lines;
+    return result.ok ? 'verdict: matches' : 'verdict: violates';
   };
 
-  test('a clean run manifest prints one green line and no skip line', () => {
+  test('a clean run manifest earns a verdict and no notice', () => {
     const [schemaFile, dataFile] = pair(RUN_MANIFEST_SCHEMA, CLEAN_RUN, 'run-manifest.schema.json', 'manifest.json');
-    expect(render(dataFile, validateArtifact(schemaFile, dataFile)))
-      .toStrictEqual([`\x1b[32m✓\x1b[0m ${dataFile} matches run-manifest.schema.json`]);
+    const result = validateArtifact(schemaFile, dataFile);
+    expect(decision(result)).toBe('verdict: matches');
+    expect(result.schema, 'the basename is what a verdict line names').toBe('run-manifest.schema.json');
   });
 
-  test('a broken run manifest prints one red line, indented, and still no skip line', () => {
+  test('a broken run manifest earns a verdict, its errors, and still no notice', () => {
     const [schemaFile, dataFile] = pair(RUN_MANIFEST_SCHEMA, SEMANTICALLY_BROKEN, 'run-manifest.schema.json', 'manifest.json');
-    expect(render(dataFile, validateArtifact(schemaFile, dataFile)))
-      .toStrictEqual([`\x1b[31m✗\x1b[0m ${dataFile} violates run-manifest.schema.json:\n    ${ROLLUP_UNSUPPORTED}`]);
+    const result = validateArtifact(schemaFile, dataFile);
+    expect(decision(result)).toBe('verdict: violates');
+    expect(result.errors).toStrictEqual([ROLLUP_UNSUPPORTED]);
   });
 
   /**
-   * All three shapes of the `unrecognised-annotation` outcome render the same line, and the two
-   * that carry a value are why that line may not claim the annotation is missing: it is present and
-   * merely unsupported. Q-0037 review round 1 — the CLI half of this is
-   * spike/test/q0011-runs-cli.js's clause (6).
+   * All three shapes of the `unrecognised-annotation` outcome reach the same decision, and the two
+   * that carry a value are why the sentence the CLI prints may not claim the annotation is missing:
+   * it is present and merely unsupported. Q-0037 review round 1 — the CLI half of this is
+   * `packages/cli/src/validate.test.ts`, and `spike/test/q0011-runs-cli.js`'s clause (6).
    */
-  test('a generic schema prints the skip line first, then the verdict, however the annotation is unrecognised', () => {
+  test('all three unrecognised shapes ask for the notice, and structurally-invalid asks for none', () => {
     for (const [name, schema] of [
       ['none', GENERIC_SCHEMA], ['unknown-v1', UNKNOWN_ANNOTATION_SCHEMA], ['empty', EMPTY_ANNOTATION_SCHEMA],
     ] as const) {
-      const [schemaFile, dataFile] = pair(schema, { b: 1 }, 'other.schema.json', 'artifact.json');
-      expect(render(dataFile, validateArtifact(schemaFile, dataFile)), name).toStrictEqual([
-        `\x1b[2m·\x1b[0m ${dataFile}: no recognised x-quorum-contract annotation, so no semantic contract applies — no run-manifest semantic checks ran; they were skipped as inapplicable, and run-manifest-v1 is the only contract defined`,
-        `\x1b[31m✗\x1b[0m ${dataFile} violates other.schema.json:\n    /: must have required property 'a'`,
-      ]);
+      expect(decision(validateArtifact(...pair(schema, { b: 1 }, 'other.schema.json', 'artifact.json'))), name)
+        .toBe('notice + verdict: violates');
     }
+    // The discriminating row: `structurally-invalid` is the other non-running shape, and a renderer
+    // reading `ran` alone would print the notice over it — claiming no contract applied where one
+    // was recognised and merely suppressed. Two return shapes, and the reason is what tells them
+    // apart (`:88` above pins the value; this pins what a caller may conclude from it).
+    expect(decision(validateArtifact(...pair(RUN_MANIFEST_SCHEMA, BROKEN_BOTH_WAYS)))).toBe('verdict: violates');
   });
 
-  test('a throw prints the file and the message, and nothing core wrote', () => {
+  test('a throw carries the file and the reason, and nothing core wrote', () => {
     const [schemaFile, dataFile] = pair(GENERIC_SCHEMA, { a: 1 });
     const absent = path.join(path.dirname(dataFile), 'absent.json');
-    let line = '';
-    try {
-      validateArtifact(schemaFile, absent);
-    } catch (e) {
-      line = `\x1b[31m✗\x1b[0m ${absent}: ${(e as Error).message}`;
-    }
-    expect(line).toBe(`\x1b[31m✗\x1b[0m ${absent}: ENOENT: no such file or directory, open '${absent}'`);
+    expect(() => validateArtifact(schemaFile, absent))
+      .toThrow(`ENOENT: no such file or directory, open '${absent}'`);
+  });
+
+  test('and no string it returns carries a terminal escape byte', () => {
+    // The property the departed renderer demonstrated implicitly, asserted directly instead: an
+    // escape byte in `core` is a defect in M4's browser and on M3's WebSocket, so the marker, the
+    // colour and the indentation belong to whoever is printing (charter §7).
+    const results = [
+      validateArtifact(...pair(RUN_MANIFEST_SCHEMA, SEMANTICALLY_BROKEN)),
+      validateArtifact(...pair(GENERIC_SCHEMA, { b: 1 })),
+      validateArtifact(...pair(RUN_MANIFEST_SCHEMA, CLEAN_RUN)),
+    ];
+    const strings = results.flatMap((result) => [result.schema, result.data, ...result.errors]);
+    expect(strings.length, 'nothing was collected — this assertion would be vacuous').toBeGreaterThan(6);
+    expect(strings.filter((value) => /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value))).toStrictEqual([]);
+    // And the scan sees one where there is one, so the empty list above is a measurement.
+    expect(/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test('\x1b[31m✗\x1b[0m')).toBe(true);
   });
 
   test('the exit code is a property of the ok values, and core computes none of it', () => {

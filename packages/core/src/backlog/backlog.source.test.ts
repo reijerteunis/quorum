@@ -66,9 +66,15 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
     // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
     // port child added no public re-export (OQ-3). Q-0096 opens the surface, so what survives is
     // the half still under decision: the ticket store and the two project readers are what
-    // Q-0091 to Q-0093 build `board`, `ticket` and `init` on.
+    // Q-0091 to Q-0093 build `lint`, `board`, `ticket` and `init` on.
+    //
+    // Q-0091 adds the fourth. `loadProject` throws where the CLI's own version called `die`, so a
+    // command that cannot name the class it threw prints a Node stack where the spike prints one
+    // sentence — which makes `ProjectNotFoundError` part of this folder's public contribution
+    // rather than an implementation detail of it.
     expect([...Object.keys(backlogModule), ...Object.keys(projectModule)]
-      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['Backlog', 'findProject', 'loadProject']);
+      .filter((symbol) => symbol in barrel).sort())
+      .toStrictEqual(['Backlog', 'ProjectNotFoundError', 'findProject', 'loadProject']);
   });
 });
 

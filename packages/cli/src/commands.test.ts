@@ -87,11 +87,46 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry today is the help itself, and nothing else', () => {
-    // Q-0091 to Q-0094 each add their own name and line as their command lands. Listing the eight
-    // the spike has would be a green tick over a subject that does not exist: each would fall
-    // through AC-6's default branch to this same text and exit 0.
-    expect([...COMMANDS]).toStrictEqual(['help']);
-    expect(mentioned(HELP)).toStrictEqual(['help']);
+  test('the registry is help and the two read-only commands, and nothing else', () => {
+    // Q-0092 to Q-0094 and Q-0099 each add their own name and line as their command lands. Listing
+    // the eight the spike has would be a green tick over a subject that does not exist: each would
+    // fall through AC-6's default branch to this same text and exit 0.
+    expect([...COMMANDS]).toStrictEqual(['help', 'lint', 'validate']);
+    expect(mentioned(HELP)).toStrictEqual(['help', 'lint', 'validate']);
+  });
+
+  test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
+    // Q-0091 AC-1: the two pins above read `['help']` until this ticket, and a pin that had been
+    // widened to `toContain` would have accepted either. Shown discriminating in both directions —
+    // the old value no longer describes the frame, and the extraction still finds the new names in
+    // the help rather than only in the registry.
+    expect([...COMMANDS], 'the frame still registers only help').not.toStrictEqual(['help']);
+    expect(mentioned(HELP), 'the help still lists only help').not.toStrictEqual(['help']);
+    for (const name of ['lint', 'validate']) {
+      expect(mentioned(HELP), `${name} is registered and the help does not list it`).toContain(name);
+      expect(isCommand(name), `the help lists ${name} and the frame does not dispatch it`).toBe(true);
+    }
+  });
+
+  test('each new line carries what the spike header says its command takes and does', () => {
+    // AC-1 asks for the *information* of `spike/bin/harness.js:6` and `:8`, rewritten rather than
+    // transcribed: the arguments each takes, and what it does. The spike's own wording cannot be
+    // reused, because every one of its lines opens with the binary name this one is not called.
+    const line = (name: string): string => HELP.split('\n').find((text) => text.startsWith(`  quorum ${name}`)) ?? '';
+    expect(line('lint')).toMatch(/lint the whole flow directory/);
+    expect(line('lint'), 'what the whole-directory walk covers is what makes it worth running').toMatch(/cross-flow/);
+    expect(line('validate'), 'the arguments it takes').toContain('<schema.json> <file…>');
+    expect(line('validate'), 'the exit code is the contract a script step reads').toMatch(/exit 1 on failure/);
+    // Their order is the spike header's: `lint` at `:6` precedes `validate` at `:8`. `help` keeps
+    // the first line Q-0090 gave it, the spike's header having no such line to order it against.
+    expect(mentioned(HELP).indexOf('lint')).toBeLessThan(mentioned(HELP).indexOf('validate'));
   });
 });
+
+// AC-1's BYOS clause is asserted nowhere in this file on purpose. `frame.source.test.ts`'s
+// package-wide scan already reads `commands.ts`, and therefore {@link HELP}, against every spelling
+// that would mean a key had a path through the CLI — so a second check here would add nothing, and
+// writing one costs this file an exemption from that scan, because a test naming those spellings
+// trips it. That collision is real and was met: the first draft of this block earned exactly that
+// failure. Q-0095 inherits the same problem with `smoke.js`'s BYOS assertion, where it is a finding
+// rather than a duplicate (merged.md OQ-5).

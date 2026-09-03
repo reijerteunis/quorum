@@ -40,6 +40,15 @@
  * bind it in a way this scan cannot follow are reported. Both halves of the same rule as the first
  * round's — what cannot be resolved fails the file rather than falling to a default class.
  *
+ * **A binary half can now be recorded as carried rather than only as owed.** Every `cli` and `split`
+ * row names the behaviour Q-0010's children inherit, and until Q-0091 there was no way to say that
+ * one of them had done it: `admissible` locks a binary-spawning file that imports no spike source to
+ * `cli`, and `audit` refuses a `cli` row that names counterparts, so the register would have gone on
+ * reading *"the work is still owed"* after it had been done. {@link Entry.binaryCarriedBy} is that
+ * field — a second fact about a second tree, beside a verdict that describes the spike file's own
+ * text and does not change when somebody translates it. Ruled once, in Q-0091's
+ * `requirements/errata.md` E-2, because it binds Q-0092 to Q-0095 and Q-0099 too.
+ *
  * **The keys come from the tree.** A hand-written list is what Q-0051 found failing open in
  * `q0050.source.test.ts`, where a seventh engine file went unscanned while the suite reported green;
  * a register keyed by hand would go stale the first time a spike suite lands and would report green
@@ -87,6 +96,24 @@ interface Entry {
   readonly note: string;
   /** The binary behaviour Q-0010 inherits. Required for `cli` and `split`, absent otherwise. */
   readonly binaryHalf?: string;
+  /**
+   * Repository-relative `packages/**` test files carrying part of this file's **binary** half, once
+   * one of Q-0010's children has translated it.
+   *
+   * **A separate field rather than a fourth verdict**, ruled once in Q-0091's
+   * `requirements/errata.md` E-2 because it binds Q-0092 to Q-0095 and Q-0099 as well. Ground rule 5
+   * requires a child that translates a binary half to record it here, and until this field existed
+   * no edit could: {@link admissible} gives a file that reaches the binary and imports no spike
+   * source exactly one legal verdict, `cli`, and {@link audit} fails a `cli` entry that names
+   * counterparts — so the register would have gone on reading *"the work is still owed"* after it
+   * had been done, which is the failure it exists to prevent, inverted.
+   *
+   * A verdict describes the **spike file's own text**, which {@link factsOf} derives from that file
+   * and which translating into `packages/cli` does not change; this records a separate fact about a
+   * second tree. Permitted on `cli` and `split` — the two verdicts that have a binary half at all —
+   * and validated exactly as {@link Entry.carriedBy} is, existence and collection failing separately.
+   */
+  readonly binaryCarriedBy?: readonly string[];
   /** The successor for an `uncovered` row, where one is owed. */
   readonly ticket?: string;
   /**
@@ -139,7 +166,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/contracts/validate-artifact.test.ts',
     ],
     note: 'it was `cli` until Q-0037, on the true statement that it imported nothing from the spike\'s src — that stopped being true when AC-9 gave the spike a validateArtifact and this file began asserting over it directly, because "the artifact is read once" is invisible from outside the process. Its library half is that convergence: validateArtifact\'s three-state semantic outcome, and its structural half agreeing with validateFile over every combination in which the two are comparable',
-    binaryHalf: '`harness runs` listing and detail, including its exit codes, and the skipped-check notice as the CLI actually prints it — Q-0010',
+    binaryHalf: '`quorum validate` — its eight invocations, the structural mutations, the three annotation shapes and the skipped-check notice as the CLI actually prints it — carried by packages/cli since Q-0091. What remains is `harness runs` listing and detail, including its exit codes — Q-0092',
+    binaryCarriedBy: ['packages/cli/src/validate.test.ts'],
   },
   'q0033-surface.js': {
     verdict: 'split',
@@ -148,7 +176,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/lint/lint.test.ts',
     ],
     note: 'its one library import is lintFlow; the ported lint carries the sixteen messages, the cross-vendor rules, the directory walk and every shipped flow linting clean',
-    binaryHalf: '`harness lint` and `harness init`, the shipped review assets on disk, and the gate answers a terminal supplies — Q-0010',
+    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091. What remains is `harness init` and the shipped review assets on disk — Q-0093 — and the gate answers a terminal supplies — Q-0094',
+    binaryCarriedBy: ['packages/cli/src/lint.test.ts'],
   },
   'q0034-chore-preflight.js': {
     verdict: 'ported',
@@ -946,24 +975,36 @@ function audit(
     const wantsBinaryHalf = entry.verdict === 'cli' || entry.verdict === 'split';
     if (wantsBinaryHalf && entry.binaryHalf === undefined) say(`${name}: '${entry.verdict}' does not name its binary half`);
     if (!wantsBinaryHalf && entry.binaryHalf !== undefined) say(`${name}: '${entry.verdict}' names a binary half it does not have`);
+    // A translated binary half is only a claim a verdict WITH a binary half can make (Q-0091 E-2).
+    if (!wantsBinaryHalf && entry.binaryCarriedBy !== undefined) {
+      say(`${name}: '${entry.verdict}' names a translated binary half it does not have`);
+    }
+    if (entry.binaryCarriedBy?.length === 0) say(`${name}: its translated binary half names no counterpart`);
     if (entry.note.trim() === '') say(`${name}: its verdict carries no reason`);
 
-    for (const counterpart of entry.carriedBy) {
-      const where = inPackage(counterpart);
-      if (where === null) {
-        say(`${name}: '${counterpart}' is not inside a workspace package`);
-        continue;
+    // Both counterpart columns are checked by the same three rules, because they make the same kind
+    // of claim about two different trees: inside a package, on disk, and collected by the configured
+    // include. Existence and collection are two failures, not one: a counterpart moved out of
+    // collection is still on disk, and a register naming it would read as coverage while excusing
+    // nothing. node_modules/.bin/turbo went dead in Q-0073's NOT_READ on day one, in exactly that way.
+    for (const [column, counterparts] of [
+      ['', entry.carriedBy],
+      ['binary ', entry.binaryCarriedBy ?? []],
+    ] as const) {
+      for (const counterpart of counterparts) {
+        const where = inPackage(counterpart);
+        if (where === null) {
+          say(`${name}: '${counterpart}' is not inside a workspace package`);
+          continue;
+        }
+        try {
+          repoFile(counterpart);
+        } catch {
+          say(`${name}: ${column}'${counterpart}' does not exist`);
+          continue;
+        }
+        if (!collects(where.relative, patterns)) say(`${name}: ${column}'${counterpart}' exists and no include collects it`);
       }
-      // Existence and collection are two failures, not one: a counterpart moved out of collection
-      // is still on disk, and a register naming it would read as coverage while excusing nothing.
-      // node_modules/.bin/turbo went dead in Q-0073's NOT_READ on day one, in exactly that way.
-      try {
-        repoFile(counterpart);
-      } catch {
-        say(`${name}: '${counterpart}' does not exist`);
-        continue;
-      }
-      if (!collects(where.relative, patterns)) say(`${name}: '${counterpart}' exists and no include collects it`);
     }
   }
   return problems;
@@ -1129,6 +1170,14 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // at 54.13% before this round and 54.51% after, which is a rounding boundary crossed rather
     // than a real four-point-style shift; it is stated because a share that moves silently is the
     // thing this register exists to prevent, and Q-0010's inheritance is one point larger.
+    //
+    // Re-derived 2026-09-03 for Q-0091 and **unmoved**, which is the expected result and is stated
+    // rather than skipped: that ticket translates two commands' binary halves into `packages/cli`
+    // and edits no file under `spike/test/`, so the three buckets are the same files with the same
+    // line counts. "It did not move" is a measurement, and assuming it did not is how a stale pin
+    // survives. What did move is the register's shape rather than its arithmetic — two rows gained
+    // a `binaryCarriedBy`, which is the first time this file has been able to say that a binary half
+    // was carried rather than owed.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
@@ -1435,6 +1484,47 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       .toContain("q0070-capture.js: 'packages/core/test/repo.ts' exists and no include collects it");
     expect(audit(REGISTER, FILES, ['src/engine/**/*.test.ts']))
       .toContain("q0070-capture.js: 'packages/core/src/fanout/command.test.ts' exists and no include collects it");
+  });
+
+  test('(f) Q-0091 — a translated binary half naming a file that is not there fails', () => {
+    expect(audit(mutated('q0033-surface.js', { binaryCarriedBy: ['packages/cli/src/no-such.test.ts'] }), FILES))
+      .toContain("q0033-surface.js: binary 'packages/cli/src/no-such.test.ts' does not exist");
+  });
+
+  test('(g) Q-0091 — one naming a file that exists and is collected by nothing fails', () => {
+    // The same two shapes clause (d) uses, for the same reason: after Q-0054 every `*.test.ts` in a
+    // package is collected, so a real uncollected file is needed for the first and a narrowed
+    // include for the second. Existence and collection stay two failures across both columns.
+    expect(audit(mutated('q0033-surface.js', { binaryCarriedBy: ['packages/core/test/repo.ts'] }), FILES))
+      .toContain("q0033-surface.js: binary 'packages/core/test/repo.ts' exists and no include collects it");
+    expect(audit(REGISTER, FILES, ['src/engine/**/*.test.ts']))
+      .toContain("q0033-surface.js: binary 'packages/cli/src/lint.test.ts' exists and no include collects it");
+  });
+
+  test('(h) Q-0091 — a translated binary half on a verdict that has no binary half fails', () => {
+    // `q0070-capture.js` is `ported`: it imports `runCommand` and spawns nothing, so it has no
+    // binary half for a child of Q-0010 to translate. The field is permitted on `cli` and `split`
+    // alone, which is what E-2 ruled — and the empty list is refused too, so a row cannot claim a
+    // translation while naming none.
+    expect(audit(mutated('q0070-capture.js', { binaryCarriedBy: ['packages/cli/src/lint.test.ts'] }), FILES))
+      .toContain("q0070-capture.js: 'ported' names a translated binary half it does not have");
+    expect(audit(mutated('q0033-surface.js', { binaryCarriedBy: [] }), FILES))
+      .toContain('q0033-surface.js: its translated binary half names no counterpart');
+  });
+
+  test('(i) Q-0091 — and the two entries that claim one are the two commands this ticket shipped', () => {
+    // An identity rather than a count, so a row losing its translation is visible: E-2's field binds
+    // Q-0092 to Q-0095 and Q-0099, each of which adds its own, and a register that had quietly
+    // dropped one would go on reading "the work is still owed" — which is the failure the field was
+    // added to prevent.
+    const claiming = Object.entries(REGISTER)
+      .filter(([, entry]) => entry.binaryCarriedBy !== undefined)
+      .map(([name, entry]) => `${name} → ${(entry.binaryCarriedBy ?? []).join(', ')}`)
+      .sort();
+    expect(claiming).toStrictEqual([
+      'q0011-runs-cli.js → packages/cli/src/validate.test.ts',
+      'q0033-surface.js → packages/cli/src/lint.test.ts',
+    ]);
   });
 
   test('(e) an entry that names no counterpart, or names one it may not have, fails', () => {

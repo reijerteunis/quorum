@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
 
+import { COMMANDS } from './commands.js';
+
 /** The directory the module scans walk — this package's `src`, reached package-relatively. */
 const SRC = fileURLToPath(new URL('.', import.meta.url));
 
@@ -44,6 +46,28 @@ const files = (): [string, string][] => fs
 
 /** The production half: everything that is not a test, and the subject AC-8 names. */
 const production = (): [string, string][] => files().filter(([name]) => !name.endsWith('.test.ts'));
+
+/**
+ * The production half, split into the two kinds AC-10 and AC-11 treat differently.
+ *
+ * **Derived from {@link COMMANDS} rather than hand-listed**, which is what makes the split a rule
+ * instead of a list somebody remembers to extend: a module is a *command module* exactly when its
+ * basename is a registered command name, so `validate.ts` is one because `validate` is dispatched,
+ * and `main.ts` is not because `main` is not. A command added without a module, or a module named
+ * after a command that is not registered, both fall out of the same derivation — and
+ * {@link COMMAND_DOMAIN} is then required to name exactly the modules this produces, so neither can
+ * happen silently. The failure this replaces is `q0050.source.test.ts`'s third list, which mapped
+ * over six hand-written names while a seventh file went unscanned and the suite reported green
+ * (Q-0051).
+ */
+const isCommandModule = ([name]: [string, string]): boolean =>
+  (COMMANDS as readonly string[]).includes(path.basename(name, '.ts'));
+
+/** The command modules: one per registered command that has a module of its own name. */
+const commandModules = (): [string, string][] => production().filter(isCommandModule);
+
+/** The frame: every production module that is not a command's. */
+const frameModules = (): [string, string][] => production().filter((entry) => !isCommandModule(entry));
 
 /**
  * Directory names the walk prunes, and the whole of what {@link inventory} excludes.
@@ -140,8 +164,20 @@ function inventory(root: string, prune: readonly string[] = GENERATED): string[]
 const packageFiles = (): [string, string][] => inventory(PACKAGE)
   .map((name) => [name, fs.readFileSync(path.join(PACKAGE, name), 'utf8')]);
 
-/** Modules a frame that reads, writes, spawns or prompts would have to import. */
-const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:readline[^']*|node:os|node:path|node:url)'/;
+/**
+ * Modules **no** production module in this package may import: every read, spawn and prompt goes
+ * through `@quorum/core`, which is ground rule 4 as an executable property rather than an intention.
+ *
+ * `node:path` left this list at Q-0091 and moved to {@link FRAME_ONLY_IO}. It is admitted for a
+ * command module because `<harnessDir>/flows` has to be joined somewhere and `Project` carries no
+ * `flowsDir` — the alternative, adding one, moves `project.test.ts:78`'s four-key pin in the package
+ * Q-0092 to Q-0094 all consume, to save one import. `node:url` stays forbidden everywhere in
+ * production: a module resolving its own location is the mechanism Q-0090 AC-7 replaced.
+ */
+const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:readline[^']*|node:os|node:url)'/;
+
+/** The one module a command may import and the frame may not. */
+const FRAME_ONLY_IO = /from 'node:path'/;
 
 describe('the module scan has a subject', () => {
   test('it finds this package\'s modules, both halves are non-empty, and the paths are distinct', () => {
@@ -151,6 +187,18 @@ describe('the module scan has a subject', () => {
     expect(production().length).toBeGreaterThan(4);
     expect(files().length).toBeGreaterThan(production().length);
     expect(names.sort()).toStrictEqual([...new Set(names)].sort());
+  });
+
+  test('and the frame/command split is a real partition, with both halves populated', () => {
+    // Without this the AC-10 clauses below could pass over an empty half: a derivation that matched
+    // nothing would leave "no frame module names a domain symbol" true of nothing at all, which is
+    // the shape "a check that skips its subject must not report success" (2026-08-25) names.
+    const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
+    expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
+      .toStrictEqual(['lint.ts', 'validate.ts']);
+    expect(names(frameModules())).toContain('main.ts');
+    expect([...names(frameModules()), ...names(commandModules())].sort()).toStrictEqual(names(production()));
+    expect(names(frameModules()).filter((name) => names(commandModules()).includes(name))).toStrictEqual([]);
   });
 });
 
@@ -164,35 +212,179 @@ describe('the module scan has a subject', () => {
 const DOMAIN = [
   'runFlow', 'loadFlow', 'loadFlowByName', 'lintFlowDirectory', 'lintDirectory',
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
-  'validateArtifact', 'containment', 'overrideAdapters',
+  'validateArtifact', 'readData', 'containment', 'overrideAdapters',
 ];
 
-describe('AC-8 — no command is implemented and no domain helper is copied', () => {
-  test('no production module names a run-executing or backlog-writing symbol', () => {
-    const offenders = DOMAIN.flatMap((symbol) => production()
-      .filter(([, text]) => new RegExp(`\\b${symbol}\\b`).test(text))
-      .map(([name]) => `${name}: ${symbol}`));
-    expect(offenders, 'these belong to @quorum/core and to a sibling command ticket').toStrictEqual([]);
+/**
+ * For each command module, the domain symbols **that command** needs.
+ *
+ * The other half of AC-10, and the reason the scan below could be narrowed without being weakened:
+ * a command module has to name some of {@link DOMAIN}, so the prohibition alone would have had to
+ * become an exemption, and an exemption with no shape is a hole. Here it has one — a `validate.ts`
+ * naming `probeAdapter` is a failure, and so is an entry permitting a symbol its module does not
+ * actually name, which is what stops the list rotting into a wish.
+ *
+ * Keyed by module rather than by command so the audit can compare it against the derivation above
+ * directly. Q-0092 to Q-0094 and Q-0099 each add their row with their command.
+ */
+const COMMAND_DOMAIN: Record<string, readonly string[]> = {
+  'lint.ts': ['loadProject', 'lintDirectory'],
+  'validate.ts': ['validateArtifact', 'readData'],
+};
+
+/** Whether `text` names `symbol` as a word rather than as part of a longer one. */
+const names = (text: string, symbol: string): boolean => new RegExp(`\\b${symbol}\\b`).test(text);
+
+/**
+ * Everything wrong with `frame`, `commands` and `allowed` as a description of AC-10, one sentence
+ * each.
+ *
+ * A function over its inputs rather than assertions over the three constants, so each clause can be
+ * shown firing on a mutated copy — demonstrating that a guard has a subject proves the guard fires,
+ * not that each of its clauses does (Q-0071).
+ */
+function domainOffenders(
+  frame: readonly [string, string][],
+  commands: readonly [string, string][],
+  allowed: Record<string, readonly string[]>,
+): string[] {
+  const problems: string[] = [];
+  for (const [name, text] of frame) {
+    for (const symbol of DOMAIN) {
+      if (names(text, symbol)) problems.push(`${name}: ${symbol} belongs to @quorum/core and to a command`);
+    }
+  }
+  for (const [name, text] of commands) {
+    const permitted = allowed[name];
+    if (permitted === undefined) {
+      problems.push(`${name}: a command module with no entry saying which domain symbols it may name`);
+      continue;
+    }
+    for (const symbol of DOMAIN) {
+      if (names(text, symbol) && !permitted.includes(symbol)) {
+        problems.push(`${name}: ${symbol} is not one of [${permitted.join(', ')}]`);
+      }
+    }
+    for (const symbol of permitted) {
+      if (!names(text, symbol)) problems.push(`${name}: its entry permits ${symbol}, which the module does not name`);
+    }
+  }
+  for (const name of Object.keys(allowed)) {
+    if (!commands.some(([module]) => module === name)) problems.push(`${name}: an entry for a module that is no command's`);
+  }
+  return problems;
+}
+
+describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a command reaches only its own', () => {
+  test('no frame module names a run-executing or backlog-writing symbol, and no command names another\'s', () => {
+    expect(domainOffenders(frameModules(), commandModules(), COMMAND_DOMAIN), 'AC-10').toStrictEqual([]);
     expect(DOMAIN.length, 'the symbol list is empty — this test proves nothing').toBeGreaterThan(10);
   });
 
   test('and that scan has a subject — the symbol names are found where they are written down', () => {
-    // Demonstrated over this file, which names all thirteen: the regexes match real text rather
+    // Demonstrated over this file, which names all fourteen: the regexes match real text rather
     // than never matching anything.
     const here = files().find(([name]) => name === GUARD);
     expect(here).toBeDefined();
-    expect(DOMAIN.filter((symbol) => new RegExp(`\\b${symbol}\\b`).test(here?.[1] ?? ''))).toStrictEqual(DOMAIN);
+    expect(DOMAIN.filter((symbol) => names(here?.[1] ?? '', symbol))).toStrictEqual(DOMAIN);
   });
 
-  test('no production module imports a filesystem, process-spawning or terminal module', () => {
-    // The frame reads nothing, writes nothing, spawns nothing and prompts for nothing. The gate
-    // reader that owns `node:readline` is Q-0094's; the commands that open a project are Q-0091's
-    // to Q-0093's.
+  test('AC-10 — a domain symbol in the frame fails, and so does one in the wrong command', () => {
+    // Both directions, over mutated copies rather than over the tree, because the shipped tree
+    // passes and a clause that can only be observed passing is not established (2026-08-29).
+    const stray: [string, string][] = [['main.ts', 'const x = loadProject();']];
+    expect(domainOffenders(stray, [], {}))
+      .toStrictEqual(['main.ts: loadProject belongs to @quorum/core and to a command']);
+
+    const wrongCommand: [string, string][] = [['validate.ts', 'validateArtifact(); readData(); probeAdapter();']];
+    expect(domainOffenders([], wrongCommand, { 'validate.ts': COMMAND_DOMAIN['validate.ts'] }))
+      .toStrictEqual(['validate.ts: probeAdapter is not one of [validateArtifact, readData]']);
+  });
+
+  test('AC-10 — an unregistered command module fails, and so does an entry with no module', () => {
+    // The two ways the register and the derivation can come apart. The first is what a fifth command
+    // landing without a row would do; the second is what deleting a command's module would do while
+    // leaving its row behind, which is how a register decays into prose.
+    const unregistered: [string, string][] = [['board.ts', 'containment();']];
+    expect(domainOffenders([], unregistered, COMMAND_DOMAIN))
+      .toContain('board.ts: a command module with no entry saying which domain symbols it may name');
+    expect(domainOffenders([], [], COMMAND_DOMAIN))
+      .toContain("lint.ts: an entry for a module that is no command's");
+  });
+
+  test('AC-10 — an entry permitting a symbol its module does not name fails, so the list cannot rot', () => {
+    const stale: [string, string][] = [['lint.ts', 'loadProject(); lintDirectory();']];
+    expect(domainOffenders([], stale, { 'lint.ts': ['loadProject', 'lintDirectory', 'containment'] }))
+      .toStrictEqual(['lint.ts: its entry permits containment, which the module does not name']);
+  });
+
+  test('AC-11 — no production module imports a filesystem, process-spawning or terminal module', () => {
+    // Every read, spawn and prompt goes through `@quorum/core`. The gate reader that owns
+    // `node:readline` is Q-0094's, and it will need this clause split again rather than deleted.
     expect(production().filter(([, text]) => IO_MODULE.test(text)).map(([name]) => name)).toStrictEqual([]);
   });
 
   test('and that clause has a subject — this package\'s tests do import them', () => {
     expect(files().filter(([, text]) => IO_MODULE.test(text)).length).toBeGreaterThan(2);
+  });
+
+  test('AC-11 — node:path is a command\'s to import and never the frame\'s', () => {
+    // The clause split rather than shrunk: `node:path` came out of the package-wide list and became
+    // this, so the frame's prohibition is unchanged and only the commands gained one module.
+    expect(frameModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name)).toStrictEqual([]);
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name))
+      .toStrictEqual(['lint.ts']);
+  });
+
+  test('and both halves of that clause fire — it is neither vacuous nor blind', () => {
+    // Shown discriminating over text rather than over the tree: the regex matches a real import and
+    // is not satisfied by a mention of the module's name in prose, which is the failure Q-0079's
+    // round 1 found — a guard that can be talked out of firing by text it does not execute.
+    expect(FRAME_ONLY_IO.test("import path from 'node:path';")).toBe(true);
+    expect(FRAME_ONLY_IO.test('// joins <harnessDir> and flows with node:path')).toBe(false);
+    expect(IO_MODULE.test("import path from 'node:path';"), 'node:path is still package-wide').toBe(false);
+  });
+});
+
+describe('Q-0091 AC-2 — no command re-parses the command line', () => {
+  test('no command module reads process.argv or calls the parser', () => {
+    // `main.ts` hands every handler the whole `ParsedArgv` for exactly this reason (Q-0090 review
+    // round 6, which found `main` discarding `rest`, `flags` and `gateAnswers`). A command that
+    // parsed again would need a second flag table, and the two would drift.
+    const offenders = commandModules()
+      .filter(([, text]) => /process\.argv|\bparseArgv\s*\(/.test(text))
+      .map(([name]) => name);
+    expect(offenders, 'the frame parses once and the handler is given the result').toStrictEqual([]);
+  });
+
+  test('and that scan has a subject — the frame does both of the things it forbids', () => {
+    // `main.ts` calls `parseArgv` and `quorum.ts` reads `process.argv`, so the two patterns match
+    // real text in this tree rather than never matching anything.
+    const frameText = frameModules().map(([, text]) => text).join('\n');
+    expect(/\bparseArgv\s*\(/.test(frameText)).toBe(true);
+    expect(/process\.argv/.test(frameText)).toBe(true);
+  });
+});
+
+describe('Q-0091 AC-5 — the flattening lives in core and is not copied here', () => {
+  test('no command module carries the regexes that split a lint message', () => {
+    // `flattenProblems` (`packages/core/src/lint/lint.ts:388`) has already split each multi-line
+    // message, dropped its header and stripped the leading hyphens, so the CLI adds a marker, a
+    // colour and an indent and nothing else. A second copy of these two literals would be the
+    // transcription defect this repository keeps paying for, and it would go stale silently — the
+    // copy still renders something, just not what `core` computed.
+    const offenders = commandModules()
+      .filter(([, text]) => /\^-\+|invalid:\$/.test(text))
+      .map(([name]) => name);
+    expect(offenders, 'the flattening belongs to core').toStrictEqual([]);
+  });
+
+  test('and that clause has a subject — the literals it looks for are the ones core uses', () => {
+    // Shown to match the real thing rather than asserted: these are the two anchors of
+    // `flattenProblems`, written out here so the scan is known to be aimed at them.
+    expect(/\^-\+|invalid:\$/.test("problem.replace(/^-+\\s*/, '')")).toBe(true);
+    expect(/\^-\+|invalid:\$/.test('/invalid:$/.test(parts[0])')).toBe(true);
+    expect(/\^-\+|invalid:\$/.test('`  - ${problem}`'), 'the indent is the CLI\'s and must not trip it').toBe(false);
   });
 });
 
