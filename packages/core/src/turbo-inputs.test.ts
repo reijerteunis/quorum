@@ -130,12 +130,18 @@ const GUARD = 'packages/core/src/turbo-inputs.test.ts';
  * The two packages whose suites read outside themselves *and are audited here*.
  *
  * It was "the other five read nothing outside" until Q-0090, and that stopped being true: the CLI
- * frame's suite reads `pnpm-lock.yaml` and the root `package.json`, and declares both in
- * `packages/cli/turbo.json`, so its hash is correct. It is **not** a third member, because the
- * three floors below are calibrated for these two — clause A wants more than 24 hashed inputs and a
- * {@link MANIFEST} of more than five named reads, and `@quorum/cli` has 21 and 2. Widening them is
- * re-deriving somebody else's guard rather than moving a register, and it belongs to whichever
- * ticket grows that package — Q-0091, which adds the first four commands and their tests.
+ * frame's suite reads outside itself and declares what it reads in `packages/cli/turbo.json`, so
+ * its hash is correct. It is **not** a third member, because the three floors below are calibrated
+ * for these two — clause A wants more than 24 hashed inputs and a {@link MANIFEST} of more than
+ * five named reads, and when Q-0090 measured it `@quorum/cli` had 21 and 2. Widening them is
+ * re-deriving somebody else's guard rather than moving a register.
+ *
+ * **That parenthetical is a measurement of a package that has grown three times since**, and it is
+ * left as the dated figure it was rather than refreshed on every ticket that adds a declaration:
+ * Q-0097 and Q-0098 added five inputs between them for `build.test.ts`, and Q-0091 two more for the
+ * first two commands' suites. What it is evidence for — that the floors were chosen around `shared`
+ * and `core` and would have to be re-derived to admit a third member — is unchanged, and the ticket
+ * that admits one is whichever ticket re-derives them.
  *
  * So the four remaining packages read nothing outside, `@quorum/cli` reads outside and declares it,
  * and its declaration is checked by its own suite rather than by this file. Stated rather than left

@@ -50,10 +50,15 @@ describe('AC-1 — the surface, the folder, and the entry point left alone', () 
   test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
     // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
     // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
-    // still under decision: `validateArtifact` is the single-read entry point `harness validate`
-    // is built on, and `validateFile` and the run-manifest pass stay in-package.
+    // still under decision: `validateArtifact` is the single-read entry point `quorum validate` is
+    // built on, and `validateFile` and the run-manifest pass stay in-package.
+    //
+    // Q-0091 adds `readData` and nothing else. The command reads its schema once, up front, so an
+    // unreadable one dies with its own message before any artifact is opened — a behaviour with no
+    // other route to it. `validateFile` stays in-package deliberately: Q-0037 OQ-3 ruled it kept
+    // rather than replaced, and it has non-CLI callers.
     expect([...Object.keys(contractsModule), ...Object.keys(runManifestModule)]
-      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['validateArtifact']);
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['readData', 'validateArtifact']);
   });
 
   test('it imports node builtins, yaml, ajv, shared and its own siblings — never spike', () => {

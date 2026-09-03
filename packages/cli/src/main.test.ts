@@ -5,6 +5,7 @@
  * Everything runs in process. `main` returns rather than exiting, so "exits 0" is observed as
  * `process.exitCode` never being set — which is the same claim, made without ending the suite.
  */
+import { execFileSync } from 'node:child_process';
 import { Console } from 'node:console';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,12 +19,29 @@ import { COMMANDS, HELP } from './commands.js';
 import { SUCCESS } from './exit.js';
 import { HANDLERS, main } from './main.js';
 
-/** The four shapes AC-8 names, and the three AC-6 names among them. */
+/** The four shapes AC-6 names — the ones that must print the help and leave the status at 0. */
 const INVOCATIONS: readonly (readonly string[])[] = [
   [],
   ['--help'],
   ['nonsense'],
   ['--', '-x', '--gate-answer', '--adapter'],
+];
+
+/**
+ * Every shape AC-8's byte-identical-tree snapshot drives, which is the four above plus one real
+ * invocation of each read-only command.
+ *
+ * **Split from {@link INVOCATIONS} by Q-0091 rather than grown in place**: that list is also AC-6's
+ * subject, and `quorum lint` neither prints the help nor is meant to. What AC-8 claims is that a
+ * command introduced no write path, and the cheapest available proof of it is that the tree is
+ * unchanged afterwards — so the list grows with each read-only command as it lands. Q-0093's `init`
+ * and `ticket` write by design and belong to a different claim, not to a widening of this one.
+ */
+const READ_ONLY: readonly (readonly string[])[] = [
+  ...INVOCATIONS,
+  ['help'],
+  ['lint'],
+  ['validate', 'contract.schema.json', 'artifact.json'],
 ];
 
 /** A stream that keeps what is written to it. */
@@ -183,12 +201,31 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-frame-'));
-    // A project shaped like one the commands will one day be pointed at, so a stray relative write
-    // would land somewhere this test can see it.
-    for (const sub of ['harness', 'backlog', '.quorum/runs', '.harness/worktrees']) {
+    // A project shaped like one the commands are pointed at, so a stray relative write would land
+    // somewhere this test can see it.
+    for (const sub of ['harness/flows', 'backlog', '.quorum/runs', '.harness/worktrees']) {
       fs.mkdirSync(path.join(dir, sub), { recursive: true });
     }
     fs.writeFileSync(path.join(dir, 'harness', 'harness.yaml'), 'repo:\n  base_branch: main\n', 'utf8');
+    // One clean flow and one conforming artifact, so the two read-only commands in {@link READ_ONLY}
+    // do their real work rather than failing on the way in — a snapshot taken around a command that
+    // stopped at its first line would be a green tick over nothing.
+    fs.writeFileSync(
+      path.join(dir, 'harness', 'flows', 'sample.yaml'),
+      'name: sample\nconsumes: draft\nproduces: requirements\nsteps: []\n',
+      'utf8',
+    );
+    fs.writeFileSync(path.join(dir, 'contract.schema.json'), '{"type":"object","required":["a"]}\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'artifact.json'), '{"a":1}\n', 'utf8');
+    // A repository with two refs, so `for-each-ref` below has something to compare rather than the
+    // empty string on both sides — a ref snapshot over a repository with no refs would report
+    // agreement whatever a command did. Through {@link git} rather than `execFileSync` directly, so
+    // the commit is visible to `packages/core/src/git-identity.test.ts`: that guard is anchored on a
+    // call to a helper named `git`, and a spawn spelled any other way is invisible to it.
+    git('init', '-q', '-b', 'main');
+    git('-c', 'user.email=q0091@quorum.invalid', '-c', 'user.name=q0091 fixture',
+      'commit', '-q', '--allow-empty', '-m', 'fixture');
+    git('branch', 'harness/T-0001/integration');
     cwd = process.cwd();
     process.chdir(dir);
   });
@@ -198,13 +235,37 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Every path below `root`, relative and sorted, with each file's bytes. */
+  /**
+   * Run git in the fixture with an identity this test supplies at the call site.
+   *
+   * `-c` pairs rather than an ambient `user.email`, so the verdict is a property of the commit and
+   * not of the account the suite runs as (`harness/rules.md`; *"A test's verdict is a property of
+   * the commit"*, 2026-08-30) — and spelled at each call site rather than hidden in this helper,
+   * because `packages/core/src/git-identity.test.ts` reads the literals before the subcommand and a
+   * helper that supplied them invisibly would look like a violation to the guard that exists to
+   * find one.
+   */
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+  /**
+   * Everything about the fixture a command could change: every path below it with its bytes, and
+   * every ref with the object it points at.
+   *
+   * Two halves because a command has two ways to leave something behind, and the tree walk sees only
+   * one of them — a branch created for a ticket is a ref and not a file, which is the shape Q-0062's
+   * *"no ref is ever deleted"* rule is about from the other side. `.git` is pruned from the walk
+   * rather than read: its contents move on their own (index, logs, packed refs), so including it
+   * would make the comparison a property of git's housekeeping, and `for-each-ref` is the part of it
+   * that is a claim about this repository.
+   */
   const snapshot = (root: string): Record<string, string> => {
     const seen: Record<string, string> = {};
     const walk = (at: string): void => {
       for (const entry of fs.readdirSync(at, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
         const full = path.join(at, entry.name);
         if (entry.isDirectory()) {
+          if (entry.name === '.git') continue;
           seen[`${path.relative(root, full)}/`] = '';
           walk(full);
         } else {
@@ -213,14 +274,48 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
       }
     };
     walk(root);
+    seen['git:for-each-ref'] = git('for-each-ref', '--format=%(refname) %(objectname)');
     return seen;
   };
 
-  test('every invocation shape leaves the working tree byte for byte as it found it', async () => {
+  test('every invocation shape leaves the working tree and the ref namespace as it found them', async () => {
     const before = snapshot(dir);
     expect(Object.keys(before).length, 'the fixture is empty — this test proves nothing').toBeGreaterThan(4);
-    for (const argv of INVOCATIONS) await invoke(argv);
+    expect(before['git:for-each-ref'], 'the fixture has no refs, so half this snapshot is vacuous')
+      .toContain('refs/heads/harness/T-0001/integration');
+    for (const argv of READ_ONLY) await invoke(argv);
     expect(snapshot(dir)).toStrictEqual(before);
+  });
+
+  test('and it is shown to fail against a handler that writes, which the invocation loop is what runs', async () => {
+    // The `:226` clause below writes a file directly and so proves the *snapshot* has a subject.
+    // This proves the *loop* does: what is replaced is a registered handler, so the write happens
+    // where a command's write would happen — through dispatch, at the working directory a command
+    // sees. Both halves of the snapshot are shown moving, because a stub that only wrote a file
+    // would leave the ref half unexercised.
+    const before = snapshot(dir);
+    vi.spyOn(HANDLERS, 'lint').mockImplementation(() => {
+      fs.writeFileSync(path.join(dir, 'backlog', 'written-by-a-command.md'), 'x', 'utf8');
+      git('branch', 'harness/T-0002/integration');
+    });
+    await invoke(['lint']);
+    const after = snapshot(dir);
+    expect(after).not.toStrictEqual(before);
+    expect(Object.keys(after)).toContain(path.join('backlog', 'written-by-a-command.md'));
+    expect(after['git:for-each-ref']).toContain('refs/heads/harness/T-0002/integration');
+  });
+
+  test('and the two read-only commands really ran inside it, so the snapshot covers them', async () => {
+    // Without this the clause above would hold just as well over a `lint` that had died on its
+    // first line: a command that does nothing writes nothing. Both are shown producing the output
+    // they are for, in this fixture, at the same working directory the snapshot is taken around.
+    const lint = await invoke(['lint']);
+    expect(lint.stdout, 'lint read the flow directory').toContain('sample.yaml');
+    const validate = await invoke(['validate', 'contract.schema.json', 'artifact.json']);
+    expect(validate.stdout, 'validate read the artifact').toContain('matches contract.schema.json');
+    for (const name of ['lint', 'validate']) {
+      expect(READ_ONLY.map((argv) => argv[0]), `${name} is not in the snapshot's list`).toContain(name);
+    }
   });
 
   test('the snapshot has a subject — a file written into the fixture is seen', () => {
