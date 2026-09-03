@@ -167,16 +167,37 @@ const runsListJSON = (runs: readonly RunEntry[], warnings: readonly RunWarning[]
   warnings: warnings.map((warning) => `${warning.runId}: ${warning.message}`),
 });
 
-/** An occurrence's second line: everything it recorded about itself, `n/a` for each absent value. */
+/**
+ * One occurrence field, rendered, or `n/a` where the document does not carry it.
+ *
+ * **Four of the eight fields AC-9 names are nullable in fact and not in type.** `Occurrence`
+ * declares `kind`, `started_at`, `attempts` and `status` non-nullable, and a detail read validates
+ * no schema at all — `manifestShapeError` proves five things about a manifest and none of them is an
+ * occurrence's shape, which AC-12 defect 4 rules deliberate. So the declared nullability is the
+ * wrong thing to follow here: it renders `undefined` on exactly the hand-edited or truncated
+ * document a reader opens this view to understand. Why: AC-9 asks for `n/a` on each absent value,
+ * so the fallback is uniform across all eight.
+ */
+const occurrenceField = (value: string | number | null | undefined): string =>
+  (value == null ? 'n/a' : String(value));
+
+/**
+ * An occurrence's second line: everything it recorded about itself, `n/a` for each absent value.
+ *
+ * The header line above it keeps its own two fallbacks and gains none — an absent stage endpoint
+ * reads `?` and a null duration reads `duration=n/a`, which is the whole of what AC-8 specifies, so
+ * an absent `flow` still renders as the document leaves it. The asymmetry is the two criteria's and
+ * is deliberate rather than an oversight; it is pinned in `runs.test.ts` beside this rule.
+ */
 const occurrenceFields = (step: Occurrence): string => [
-  `kind=${step.kind}`,
-  `adapter=${step.adapter ?? 'n/a'}`,
-  `model=${step.model ?? 'n/a'}`,
-  statusLabel(step.status),
-  `started_at=${step.started_at}`,
-  `duration_ms=${step.duration_ms == null ? 'n/a' : String(step.duration_ms)}`,
-  `attempts=${String(step.attempts)}`,
-  `verdict=${step.verdict ?? 'n/a'}`,
+  `kind=${occurrenceField(step.kind)}`,
+  `adapter=${occurrenceField(step.adapter)}`,
+  `model=${occurrenceField(step.model)}`,
+  statusLabel(step.status ?? 'n/a'),
+  `started_at=${occurrenceField(step.started_at)}`,
+  `duration_ms=${occurrenceField(step.duration_ms)}`,
+  `attempts=${occurrenceField(step.attempts)}`,
+  `verdict=${occurrenceField(step.verdict)}`,
 ].join(' ');
 
 /**

@@ -12,8 +12,9 @@
  * `q0011-run-history.js:121–124` claims two things — that the failed occurrence's usage is rendered,
  * and that a *separate process* is what renders it. The first is here; the second is a spawn of the
  * built binary and lives in `build.test.ts`, the file Q-0098 AC-15(c) rules may spawn
- * `packages/cli/dist`, because that file removes the emit twice and Vitest parallelises across
- * files.
+ * `packages/cli/dist`, because that file removes the emit at **four** sites — counted in the tree
+ * rather than taken from the Q-0098 banner there, which says twice and names two of them — and
+ * `vitest.shared.js` sets no `fileParallelism: false`.
  *
  * **B2's two halves are two blocks here, because they are two views.** Q-0037 re-aimed the
  * `tokens=1100` double-count guard at the **list**, where `vendorTokenTotal` runs — it had been
@@ -464,6 +465,35 @@ describe('AC-9 — the detail view renders an occurrence\'s own usage, and no ro
     expect(detail).toContain('simulated');
     expect(detail).toContain('codex');
     expect(detail, 'a billed failure\'s usage was omitted').toMatch(/input_tokens=100\b/);
+  });
+
+  test('an occurrence the document does not fill in reads n/a in all eight fields', async () => {
+    // AC-9 asks for `n/a` on each absent value, and a detail read validates no schema — AC-12
+    // defect 4, deliberate. So the four fields `Occurrence` declares non-nullable (`kind`,
+    // `status`, `started_at`, `attempts`) are absent in fact whenever a manifest is hand-edited or
+    // truncated, which is the document this view exists to make readable. Following the declared
+    // nullability instead rendered `undefined` in exactly those four, and this line is what
+    // discriminates the two: it fails, naming each of them, against the type-faithful spelling.
+    const document: Record<string, unknown> = { ...manifest('Q-0011-1', 'Q-0011') };
+    document.steps = [{ step_id: 'step:1', occurrence_dir: 'steps/001-step-1' }];
+    delete document.flow;
+    put('Q-0011-1', document);
+
+    const detail = plain((await invoke(['runs', 'Q-0011-1'])).stdout);
+    const fields = (detail.split('\n').find((line) => line.includes('kind=')) ?? '').trim();
+    expect(fields)
+      .toBe('kind=n/a adapter=n/a model=n/a n/a started_at=n/a duration_ms=n/a attempts=n/a verdict=n/a');
+    expect(detail, 'an occurrence carrying no usage says so rather than printing zeros')
+      .toContain('usage: n/a');
+
+    // **The boundary, pinned rather than left to be found.** AC-8 gives the header exactly two
+    // fallbacks — `?` for an absent stage endpoint, `duration=n/a` for a null duration — so an
+    // absent `flow` renders as the document leaves it, here and in the spike
+    // (`spike/bin/harness.js:237`). AC-9's rule is the occurrence line's and stops there; widening
+    // it upward is a change no criterion asks for, and this assertion is what makes doing it a
+    // deliberate act rather than a tidy-up.
+    expect(detail.split('\n')[0], 'the header keeps AC-8\'s two fallbacks and gains none')
+      .toContain('undefined');
   });
 
   test('the incomplete label names the manifest, project-relative, and nothing is repaired', async () => {
