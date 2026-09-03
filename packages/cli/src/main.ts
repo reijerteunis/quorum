@@ -17,14 +17,15 @@
  * not exist yet — a `bin` target is Q-0096's, together with everything else about making this
  * workspace emit JavaScript.
  *
- * **No command is implemented here**, and two now exist beside it: `lint` and `validate` are
- * Q-0091's and live in one module each, dispatched through {@link HANDLERS}. `board` and `adapters`
- * are Q-0099's; `runs` is Q-0092's; `init` and `ticket` are Q-0093's; `run` and its gate reader are
- * Q-0094's.
+ * **No command is implemented here**, and three now exist beside it: `lint` and `validate` are
+ * Q-0091's and `runs` is Q-0092's, each in one module of its own, dispatched through
+ * {@link HANDLERS}. `board` and `adapters` are Q-0099's; `init` and `ticket` are Q-0093's; `run` and
+ * its gate reader are Q-0094's.
  */
 import { parseArgv, type ParsedArgv } from './argv.js';
 import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
 import { lint } from './lint.js';
+import { runs } from './runs.js';
 import { validate } from './validate.js';
 
 /**
@@ -58,6 +59,7 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
   },
   lint,
   validate,
+  runs,
 };
 
 /**

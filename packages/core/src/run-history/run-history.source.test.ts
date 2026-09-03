@@ -68,15 +68,30 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     expect(Object.keys(writerModule).sort()).toStrictEqual(['initialiseRunHistory', 'nextRunId']);
   });
 
-  test('reader.ts holds the eight names the port assigns it, and the two shapes it answers with', () => {
+  test('reader.ts holds the nine names it is assigned, and the three shapes it answers with', () => {
     expect(exportsOf(sourceOf(READER_SOURCE)).sort()).toStrictEqual([
-      'RunEntry', 'RunWarning', 'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError',
-      'occurrenceSeq', 'readRunsDir', 'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
+      'RunEntry', 'RunRead', 'RunWarning', 'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError',
+      'occurrenceSeq', 'readRun', 'readRunsDir', 'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
     ]);
     expect(Object.keys(readerModule).sort()).toStrictEqual([
-      'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError', 'occurrenceSeq', 'readRunsDir',
-      'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
+      'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError', 'occurrenceSeq', 'readRun',
+      'readRunsDir', 'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
     ]);
+  });
+
+  test('Q-0092 AC-3 — both spellings moved, and each is refused at the value it replaced', () => {
+    // The identity above is pinned twice, once over the source text and once over the module's own
+    // keys, and both are shown red against the eight-value list they held before this ticket rather
+    // than edited to fit. `readRun` is the single-run read a detail request goes through, and
+    // `RunRead` is the discriminated result it answers with — a type, so it adds no runtime key.
+    expect(Object.keys(readerModule).sort(), 'the runtime surface still holds the eight it held before Q-0092')
+      .not.toStrictEqual([
+        'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError', 'occurrenceSeq', 'readRunsDir',
+        'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
+      ]);
+    expect(Object.keys(readerModule), 'a type export must add no runtime key').not.toContain('RunRead');
+    expect(exportsOf(sourceOf(READER_SOURCE))).toContain('RunRead');
+    expect(typeof readerModule.readRun).toBe('function');
   });
 
   test('the reader does not import the writer, so history can be read without linking a writer', () => {
@@ -170,13 +185,29 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     expect(fields.length).toBe(56);
   });
 
-  test('the barrel re-exports nothing from this folder (Q-0096 AC-2)', () => {
-    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
-    // port child added no public re-export. Q-0096 opens the surface and this folder is still
-    // absent from it, which is now an assertion rather than a consequence: the six readers are
-    // Q-0092's to present, and it imports them when it lands rather than inheriting them here.
+  test('the barrel re-exports exactly the six readers a command needs (Q-0092 AC-4)', () => {
+    // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte; from Q-0096 to Q-0092 it
+    // asserted that the folder was absent from the barrel altogether, with its own comment saying
+    // *"the six readers are Q-0092's to present, and it imports them when it lands"*. This is that
+    // sentence arriving. An identity rather than a `toContain`, so a seventh name is a visible act.
     expect([...Object.keys(manifestModule), ...Object.keys(readerModule), ...Object.keys(writerModule)]
-      .filter((symbol) => symbol in barrel)).toStrictEqual([]);
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual([
+      'isIncomplete', 'occurrenceSeq', 'readRun', 'readRunsDir', 'sortRuns', 'vendorTokenTotal',
+    ]);
+  });
+
+  test('and the writer is still absent from it in full, which is what the split was for', () => {
+    // The half that stops the identity above from being read as "the folder is public now".
+    // `initialiseRunHistory` and `nextRunId` are the only two ways to create a directory under
+    // `.quorum/`, and a CLI presenting run history has no business reaching either.
+    expect(Object.keys(writerModule).filter((symbol) => symbol in barrel)).toStrictEqual([]);
+    expect(Object.keys(writerModule).length, 'the writer exports nothing — this proves nothing').toBeGreaterThan(1);
+    // And the three reader names no command needs stay off it, for the reason the barrel's own
+    // comment gives: a name is added because a command needs it.
+    for (const withheld of ['manifestShapeError', 'resolveRunDirectory', 'TICKET_ID_PATTERN']) {
+      expect(withheld in barrel, `${withheld} is public and no command calls it`).toBe(false);
+      expect(Object.keys(readerModule), `${withheld} is not this module's`).toContain(withheld);
+    }
   });
 
   test('core declares no new dependency', () => {
