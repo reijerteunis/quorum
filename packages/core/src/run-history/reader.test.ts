@@ -11,7 +11,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
 
 import {
-  TICKET_ID_PATTERN, isIncomplete, manifestShapeError, occurrenceSeq, readRunsDir,
+  TICKET_ID_PATTERN, isIncomplete, manifestShapeError, occurrenceSeq, readRun, readRunsDir,
   resolveRunDirectory, sortRuns, vendorTokenTotal,
 } from './reader.js';
 import type { RunEntry } from './reader.js';
@@ -303,5 +303,110 @@ describe('AC-11 — the confinement guard resolves realpath, and the symlink cas
     for (const not of ['q-0011', 'Q-11', 'Q-00111', 'Q-0011-1', ' Q-0011', 'Q-0011 ', 'Q0011', '0011-Q']) {
       expect(TICKET_ID_PATTERN.test(not), not).toBe(false);
     }
+  });
+});
+
+describe('Q-0092 AC-3 — readRun answers one of three things, and reads one file to do it', () => {
+  /**
+   * A runs root holding one good run, one whose manifest will not parse, one directory with no
+   * manifest at all, and a symlink out of the root — every outcome in one fixture, so none of the
+   * cases below can pass over a store that has nothing in it.
+   *
+   * The escaping directory is named `secret` because the token `../secret` is the one this file
+   * already drives at the guard, and `turbo-inputs.test.ts` holds its registration.
+   */
+  const store = (): { root: string; secret: string } => {
+    const root = runsRootWith({
+      'Q-0011-1': manifest({ run_id: 'Q-0011-1', ticket_id: 'Q-0011' }),
+      'Q-0011-2': '{broken',
+      'Q-0011-3': undefined,
+    });
+    const secret = outsideOf(root, 'secret');
+    write(path.join(secret, 'manifest.json'), JSON.stringify(manifest({ ticket_id: 'PLANTED' })));
+    fs.symlinkSync(secret, path.join(root, 'Q-0011-4'));
+    return { root, secret };
+  };
+
+  test('a genuine run comes back with its directory, its manifest path and the parsed document', () => {
+    const { root } = store();
+    const found = readRun(root, 'Q-0011-1');
+    expect(found.outcome).toBe('run');
+    if (found.outcome !== 'run') return;
+    expect(found.directory).toBe(fs.realpathSync(path.join(root, 'Q-0011-1')));
+    expect(found.manifestPath).toBe(path.join(fs.realpathSync(path.join(root, 'Q-0011-1')), 'manifest.json'));
+    expect(found.manifest.run_id).toBe('Q-0011-1');
+    expect(found.manifest.ticket_id).toBe('Q-0011');
+  });
+
+  test('a manifest that will not parse is malformed, and carries the parser\'s own words', () => {
+    const { root } = store();
+    const found = readRun(root, 'Q-0011-2');
+    expect(found.outcome).toBe('malformed');
+    if (found.outcome !== 'malformed') return;
+    // The parser's message rather than a paraphrase — asserted against what `JSON.parse` actually
+    // says about this exact input, so a wrapper that replaced it would fail here.
+    const own = ((): string => {
+      try {
+        JSON.parse('{broken');
+        return '';
+      } catch (error) {
+        return (error as Error).message;
+      }
+    })();
+    expect(own, 'the fixture parses, so this assertion compares nothing').not.toBe('');
+    expect(found.message).toBe(own);
+  });
+
+  test('a run directory with no manifest is malformed too, not "not a run"', () => {
+    // The token named something real inside the runs root, so refusing it as unknown would be a
+    // different sentence about a different thing. Why: preserved — `spike/bin/harness.js:490–497`
+    // reaches the same catch for an absent file as for an unparseable one.
+    const { root } = store();
+    const found = readRun(root, 'Q-0011-3');
+    expect(found.outcome).toBe('malformed');
+    if (found.outcome !== 'malformed') return;
+    expect(found.message).toMatch(/ENOENT/);
+  });
+
+  test('a token that names nothing inside the root is not a run, and discloses nothing', () => {
+    const { root, secret } = store();
+    // Every shape at once: a name that is not there, the five lexical tokens, and the symlink out.
+    for (const token of ['Q-0011-404', '../secret', '.quorum/secret', secret, '..', '.', 'Q-0011-4']) {
+      const found = readRun(root, token);
+      expect(found.outcome, token).toBe('not-a-run');
+      // The whole value, so a shape carrying a path or a message alongside the outcome would fail:
+      // `not-a-run` says nothing about what the token pointed at, including whether it is there.
+      expect(found, token).toStrictEqual({ outcome: 'not-a-run' });
+    }
+  });
+
+  test('a damaged sibling changes no answer, which is what reading one directory means', () => {
+    // The observable half of "it reads only the run it was asked for". The counted half is the
+    // command's, in `packages/cli/src/runs.test.ts` — a spy on `readFileSync` here would alias a
+    // read API, which `turbo-inputs.test.ts`'s clause C4 refuses by design (Q-0070 met the same
+    // refusal). What can be shown here is that `Q-0011-2` being unparseable and `Q-0011-3` having
+    // no manifest at all leave the good run's answer identical to the one it gives alone.
+    const { root } = store();
+    const beside = readRun(root, 'Q-0011-1');
+    const alone = readRun(runsRootWith({ 'Q-0011-1': manifest({ run_id: 'Q-0011-1', ticket_id: 'Q-0011' }) }), 'Q-0011-1');
+    expect(beside.outcome).toBe('run');
+    expect(alone.outcome).toBe('run');
+    if (beside.outcome !== 'run' || alone.outcome !== 'run') return;
+    expect(beside.manifest).toStrictEqual(alone.manifest);
+    // And `readRunsDir` over the same store does report both, so the fixture genuinely holds two
+    // damaged siblings rather than nothing to be affected by.
+    expect(readRunsDir(root).warnings.map((warning) => warning.runId).sort()).toStrictEqual(['Q-0011-2', 'Q-0011-3']);
+  });
+
+  test('it writes nothing: no entry appears or disappears, and the manifest is unchanged', () => {
+    // A reader repairs nothing — an unparseable manifest is still unparseable afterwards, and the
+    // directory with no manifest does not acquire one. Both the entry list and the bytes, because
+    // the first alone would miss an in-place rewrite.
+    const { root } = store();
+    const entries = walk(root);
+    const bytes = fs.readFileSync(path.join(root, 'Q-0011-1', 'manifest.json'));
+    for (const token of ['Q-0011-1', 'Q-0011-2', 'Q-0011-3', 'Q-0011-404', '..']) readRun(root, token);
+    expect(walk(root)).toStrictEqual(entries);
+    expect(fs.readFileSync(path.join(root, 'Q-0011-1', 'manifest.json'))).toStrictEqual(bytes);
   });
 });

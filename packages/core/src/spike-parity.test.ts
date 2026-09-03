@@ -157,7 +157,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/run-history/writer.test.ts',
     ],
     note: 'the manifest a run writes, its occurrences and roll-ups, the retry that bills a killed call, and the semantic pass over run-manifest-v1',
-    binaryHalf: '`harness runs` reading that history back at the command line — Q-0010',
+    binaryHalf: 'its one binary invocation (`:121–124`): a billed failure\'s usage surviving into a separate reader — `quorum runs` detail — carried by packages/cli since Q-0092. The process-separation half of that assertion is the binary\'s own and is Q-0095\'s; the other 279 lines are library-only and are carried above',
+    binaryCarriedBy: ['packages/cli/src/runs.test.ts'],
   },
   'q0011-runs-cli.js': {
     verdict: 'split',
@@ -166,8 +167,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/contracts/validate-artifact.test.ts',
     ],
     note: 'it was `cli` until Q-0037, on the true statement that it imported nothing from the spike\'s src — that stopped being true when AC-9 gave the spike a validateArtifact and this file began asserting over it directly, because "the artifact is read once" is invisible from outside the process. Its library half is that convergence: validateArtifact\'s three-state semantic outcome, and its structural half agreeing with validateFile over every combination in which the two are comparable',
-    binaryHalf: '`quorum validate` — its eight invocations, the structural mutations, the three annotation shapes and the skipped-check notice as the CLI actually prints it — carried by packages/cli since Q-0091. What remains is `harness runs` listing and detail, including its exit codes — Q-0092',
-    binaryCarriedBy: ['packages/cli/src/validate.test.ts'],
+    binaryHalf: '`quorum validate` — its eight invocations, the structural mutations, the three annotation shapes and the skipped-check notice as the CLI actually prints it — carried by packages/cli since Q-0091; and all five `runs` scenarios (`:29–81`) — the selection grammar, the documented order, the ticket filter, the empty state, detail ordering and its exit codes, and the four --json modes — carried since Q-0092. Nothing of this file\'s binary half is owed',
+    binaryCarriedBy: ['packages/cli/src/runs.test.ts', 'packages/cli/src/validate.test.ts'],
   },
   'q0033-surface.js': {
     verdict: 'split',
@@ -212,7 +213,11 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/run-history/reader.test.ts',
     ],
     note: 'the four blockers the Q-0011 panel raised: validateFile\'s per-call schema read, the routing a FlowError takes, and the reader surviving a damaged sibling',
-    binaryHalf: 'the exit codes and messages the binary routes a FlowError to — Q-0010',
+    // The prose named only B3 until Q-0092, which was incomplete rather than merely unattributed:
+    // B2 and B4 both drive `harness runs`, and a row saying only "the exit codes a FlowError takes"
+    // read as though the other two scenarios had no binary half at all.
+    binaryHalf: 'B2\'s roll-up/per-step split (`:95–119`) and B4\'s five confinement tokens (`:141–155`), both of which drive `harness runs` — carried by packages/cli since Q-0092. What remains is B3: the exit codes and messages the binary routes a FlowError to — Q-0094',
+    binaryCarriedBy: ['packages/cli/src/runs.test.ts'],
   },
   'q0035-empty-range.js': {
     verdict: 'ported',
@@ -279,7 +284,11 @@ const REGISTER: Record<string, Entry> = {
     verdict: 'split',
     carriedBy: ['packages/core/src/backlog/backlog.test.ts'],
     note: 'one backlog, one prefix, and an allocator that refuses rather than guessing — asserted from q0080-allocation.json, the one table both trees read',
-    binaryHalf: '`harness ticket new` and the refusal text it prints for a hostile --id — Q-0010',
+    // Prose only, and deliberately no `binaryCarriedBy`: its one `runs` line (`:206–207`, spelled
+    // as varargs, so a census grepping `['runs'` misses it) asserts that a ticket filter with zero
+    // matches exits 0, which Q-0092 translates from `q0011-runs-cli.js:47` — claiming a counterpart
+    // here would read as more done than is done, since this file's binary half is `ticket new`'s.
+    binaryHalf: '`harness ticket new` and the refusal text it prints for a hostile --id — Q-0093. Its one `runs` and one `board` invocation are incidental to that scenario, and the behaviour each asserts is translated by Q-0092 and Q-0099 from the files that own it',
     mentions: {
       'spike/bin/harness.js must not spell the grammar again': 'an assertion message naming the file it read, not a path handed to a spawn; the reference is the path.join above it',
     },
@@ -1512,7 +1521,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       .toContain('q0033-surface.js: its translated binary half names no counterpart');
   });
 
-  test('(i) Q-0091 — and the two entries that claim one are the two commands this ticket shipped', () => {
+  test('(i) Q-0091 — and the entries that claim one are the commands the children have shipped', () => {
     // An identity rather than a count, so a row losing its translation is visible: E-2's field binds
     // Q-0092 to Q-0095 and Q-0099, each of which adds its own, and a register that had quietly
     // dropped one would go on reading "the work is still owed" — which is the failure the field was
@@ -1522,9 +1531,50 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       .map(([name, entry]) => `${name} → ${(entry.binaryCarriedBy ?? []).join(', ')}`)
       .sort();
     expect(claiming).toStrictEqual([
+      'q0011-run-history.js → packages/cli/src/runs.test.ts',
+      'q0011-runs-cli.js → packages/cli/src/runs.test.ts, packages/cli/src/validate.test.ts',
+      'q0033-surface.js → packages/cli/src/lint.test.ts',
+      'q0034-review-fixes.js → packages/cli/src/runs.test.ts',
+    ]);
+  });
+
+  test('(j) Q-0092 — the identity moved from the two rows it held, and one row now names two files', () => {
+    // Shown red against the superseded value rather than edited to fit. The second half is the one
+    // worth pinning: a command child translates a set of behaviours across several files and never
+    // a file, so one spike file can be carried by two `packages/cli` suites and one `packages/cli`
+    // suite can carry four spike files. A field that admitted only the first shape would have made
+    // this ticket's three new claims unrecordable.
+    const claiming = Object.entries(REGISTER)
+      .filter(([, entry]) => entry.binaryCarriedBy !== undefined)
+      .map(([name, entry]) => `${name} → ${(entry.binaryCarriedBy ?? []).join(', ')}`)
+      .sort();
+    expect(claiming, 'the register still holds the two claims it held before Q-0092').not.toStrictEqual([
       'q0011-runs-cli.js → packages/cli/src/validate.test.ts',
       'q0033-surface.js → packages/cli/src/lint.test.ts',
     ]);
+    const byRuns = Object.entries(REGISTER)
+      .filter(([, entry]) => (entry.binaryCarriedBy ?? []).includes('packages/cli/src/runs.test.ts'))
+      .map(([name]) => name)
+      .sort();
+    expect(byRuns, 'one suite carries the binary half of three spike files').toStrictEqual([
+      'q0011-run-history.js', 'q0011-runs-cli.js', 'q0034-review-fixes.js',
+    ]);
+    expect(REGISTER['q0011-runs-cli.js'].binaryCarriedBy, 'and one row names two suites').toHaveLength(2);
+  });
+
+  test('(k) Q-0092 — no spike file was edited, so the five line totals are re-derived unmoved', () => {
+    // "It did not move" is a measurement, and a share that is silently unstated is the drift this
+    // register exists to catch. Nothing under `spike/` changes in this ticket — ground rules 1 and 2
+    // — so the totals pinned above are asserted to be the same numbers rather than skipped, from
+    // the same derivation rather than from this comment.
+    const total = linesOf(Object.keys(FACTS));
+    expect({
+      binaryOnly: linesOf(named('binary-only')),
+      both: linesOf(named('both')),
+      libraryOnly: linesOf(named('library-only')),
+      total,
+      share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
+    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
   });
 
   test('(e) an entry that names no counterpart, or names one it may not have, fails', () => {
