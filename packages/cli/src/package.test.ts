@@ -154,6 +154,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'harness/harness.yaml': 'build.test.ts — Q-0097 AC-14, commands.install and commands.test grew no build phase',
     'harness/flows': 'lint.test.ts — Q-0091 AC-5, the shipped flow directory is copied into a fixture and asserted to lint clean, which is `q0033-surface.js` S1.3',
     packages: 'validate.test.ts — Q-0091 AC-9, every workspace package\'s src is walked to prove the frozen skip notice has exactly one copy under packages/**',
+    'spike/templates/harness': 'templates.test.ts — Q-0093 AC-4, the shipped template tree this package carries is asserted byte-identical to the spike\'s in both directions, and link 2 of that chain reads harness/flows beside it',
   };
 
   /**
@@ -170,12 +171,16 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
    * reaches, and the per-package source glob covers the four scaffold packages `validate.test.ts`
    * walks, which no edge covers either. That glob over-declares `core` and `shared`, and the
    * alternative is a scan whose verdict can go stale behind a cache hit.
+   *
+   * Q-0093's one is the same shape: `spike/` is hashed by nothing here — the spike is outside the
+   * workspace's dependency graph entirely — so an edited template would leave `templates.test.ts`
+   * reporting byte identity from a replay of a comparison it never made.
    */
   const DECLARED = [
     '../../pnpm-lock.yaml', '../../package.json', '../../turbo.json', '../../.gitignore',
     '../../pnpm-workspace.yaml',
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
-    '../../harness/flows/*.yaml', '../../packages/*/src/**',
+    '../../harness/flows/*.yaml', '../../packages/*/src/**', '../../spike/templates/harness/**',
   ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {
@@ -337,12 +342,14 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
    * them rather than calling them — and `frame.source.test.ts` has no reason to name them. Written
    * out with their modules so a reader can check the list against the barrel by eye.
    */
-  const ERRORS = ['FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectNotFoundError'];
+  const ERRORS = [
+    'FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectExistsError', 'ProjectNotFoundError',
+  ];
 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(20);
+    expect(domain()).toHaveLength(21);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
@@ -390,6 +397,26 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
       expect(Object.keys(barrel), `${withheld} is on the public surface and no command needs it`)
         .not.toContain(withheld);
     }
+  });
+
+  test('Q-0093 AC-9 — the register moved again, and the two new names are what a scaffolding command needs', async () => {
+    // Both pins read 20 and four until this ticket, and each is shown red against the value it
+    // replaced rather than edited to fit — the same demonstration Q-0091 and Q-0092 wrote for their
+    // own additions, for the same reason.
+    expect(domain(), 'the register still holds the twenty it held before this ticket').not.toHaveLength(20);
+    expect(ERRORS, 'the error list still holds the four it held before this ticket')
+      .not.toStrictEqual(['FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectNotFoundError']);
+
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    expect(domain(), 'initProject is exported and the register does not name it').toContain('initProject');
+    expect(typeof barrel.initProject, 'initProject is not a function on the barrel').toBe('function');
+    expect(typeof barrel.ProjectExistsError).toBe('function');
+
+    // And the name no command needs stays off the surface. `currentBranch` is `initProject`'s own
+    // probe: no command asks git for a branch name, and a symbol reaches the barrel because a
+    // command needs it — the rule Q-0092 applied when it withheld `manifestShapeError`.
+    expect(Object.keys(barrel), 'currentBranch is on the public surface and no command needs it')
+      .not.toContain('currentBranch');
   });
 
   test('and a type export adds no runtime key, which is why the counts above are the whole surface', async () => {

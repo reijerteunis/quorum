@@ -20,6 +20,17 @@ const source = (name: string): string => fs.readFileSync(new URL(`./${name}`, im
 const mentioned = (text: string): string[] =>
   [...text.matchAll(/^ {2}quorum (\S+)/gm)].map((match) => match[1]);
 
+/**
+ * The folder `harness`, written as a path — the one spelling of the word the help may carry.
+ *
+ * `product-boundaries.md` permits the word for the **folder** and forbids it for the product, and a
+ * slash is what tells the two apart. It read `harness\/\S+` until Q-0093, which admitted
+ * `harness/harness.yaml` and refused `harness/` — so a help line naming the directory `quorum init`
+ * creates would have failed a guard aimed at something else entirely. One quantifier wider; a
+ * mention with no slash is still a mention, which is asserted below in both directions.
+ */
+const FOLDER = /harness\/\S*/g;
+
 describe('AC-7 — the text', () => {
   test('names the product and the usage form', () => {
     expect(HELP).toContain('Quorum');
@@ -32,15 +43,30 @@ describe('AC-7 — the text', () => {
     // the product. The spike's own header breaks this on every line, which is why the text is
     // rewritten here rather than transcribed. Not a fix for Q-0068, whose subject is the BYOS
     // refusal string in the adapters, and which this ticket leaves alone.
-    const outsideAPath = HELP.replace(/harness\/\S+/g, '');
+    const outsideAPath = HELP.replace(FOLDER, '');
     expect(outsideAPath.toLowerCase()).not.toContain('harness');
   });
 
   test('the exclusion is load-bearing — a path literal is what it is allowed to keep', () => {
     // Shown to discriminate rather than asserted: the filter removes `harness/harness.yaml` and
     // leaves a bare mention, so the clause above would fail on a help text that carried one.
-    expect('see harness/harness.yaml'.replace(/harness\/\S+/g, '').toLowerCase()).not.toContain('harness');
-    expect('runs the harness'.replace(/harness\/\S+/g, '').toLowerCase()).toContain('harness');
+    expect('see harness/harness.yaml'.replace(FOLDER, '').toLowerCase()).not.toContain('harness');
+    expect('runs the harness'.replace(FOLDER, '').toLowerCase()).toContain('harness');
+  });
+
+  test('Q-0093 — and the folder written with its own trailing slash is a path too', () => {
+    // The exclusion said `harness/\S+`, which admits `harness/harness.yaml` and refuses `harness/`
+    // — the spelling the rule itself uses for the folder, and the one `quorum init` has to print,
+    // because what it creates is that directory and not a file inside it. Widened by one quantifier
+    // rather than by dropping the clause, and shown still to discriminate: a slash is what makes a
+    // mention a path, so every spelling without one is still refused.
+    expect('created harness/ and backlog/'.replace(FOLDER, '').toLowerCase()).not.toContain('harness');
+    expect('into <dir>/harness/ and create'.replace(FOLDER, '').toLowerCase()).not.toContain('harness');
+    expect('runs the harness for you'.replace(FOLDER, '').toLowerCase()).toContain('harness');
+    expect('a harness, compiled'.replace(FOLDER, '').toLowerCase()).toContain('harness');
+    // And the pre-Q-0093 spelling is shown to be the thing that could not admit it, so the widening
+    // is a measurement rather than a preference.
+    expect('created harness/ and backlog/'.replace(/harness\/\S+/g, '').toLowerCase()).toContain('harness');
   });
 });
 
@@ -87,12 +113,12 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry is help and the three read-only commands, and nothing else', () => {
-    // Q-0093, Q-0094 and Q-0099 each add their own name and line as their command lands. Listing
-    // the eight the spike has would be a green tick over a subject that does not exist: each would
-    // fall through AC-6's default branch to this same text and exit 0.
-    expect([...COMMANDS]).toStrictEqual(['help', 'lint', 'validate', 'runs']);
-    expect(mentioned(HELP)).toStrictEqual(['help', 'lint', 'validate', 'runs']);
+  test('the registry is help, the two writing commands and the three read-only ones, and nothing else', () => {
+    // Q-0094 and Q-0099 each add their own name and line as their command lands. Listing the eight
+    // the spike has would be a green tick over a subject that does not exist: each would fall
+    // through AC-6's default branch to this same text and exit 0.
+    expect([...COMMANDS]).toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
+    expect(mentioned(HELP)).toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
   });
 
   test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
@@ -141,7 +167,37 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP).indexOf('validate')).toBeLessThan(mentioned(HELP).indexOf('runs'));
   });
 
-  test('and its line is aligned to the description column the other three share', () => {
+  test('Q-0093 AC-1 — `init` and `ticket` are registered, listed above `lint`, and say what they take', () => {
+    // Both pins above read four entries until this ticket, and the value they replaced is refused
+    // rather than widened to a `toContain` that would accept either — the demonstration Q-0091 and
+    // Q-0092 each wrote for their own additions.
+    expect([...COMMANDS], 'the frame still registers only the read-only commands')
+      .not.toStrictEqual(['help', 'lint', 'validate', 'runs']);
+    expect(mentioned(HELP), 'the help still lists only the read-only commands')
+      .not.toStrictEqual(['help', 'lint', 'validate', 'runs']);
+    for (const name of ['init', 'ticket']) {
+      expect(isCommand(name), `the help lists ${name} and the frame does not dispatch it`).toBe(true);
+    }
+
+    const line = (name: string): string => HELP.split('\n').find((text) => text.startsWith(`  quorum ${name}`)) ?? '';
+    expect(line('init'), 'the argument it takes').toContain('[dir]');
+    expect(line('init'), 'what it does — both directories, from the shipped templates')
+      .toMatch(/copy the shipped templates into <dir>\/harness\/ and create backlog\//);
+    expect(line('ticket'), 'the arguments it takes').toContain('new "<title>"');
+    expect(line('ticket'), 'the three optional flags the spike header names')
+      .toMatch(/\[--intent --owner --id\]/);
+    expect(line('ticket'), 'what it does — the id comes from the backlog rather than from a setting')
+      .toMatch(/create a ticket at the backlog's next id/);
+
+    // Above `lint`, because `spike/bin/harness.js:3` and `:4` precede `:7`. AC-1's ordering rule is
+    // the spike's own wherever it has one, which is the same rule that put `runs` last.
+    const order = mentioned(HELP);
+    expect(order.indexOf('init')).toBeLessThan(order.indexOf('ticket'));
+    expect(order.indexOf('ticket')).toBeLessThan(order.indexOf('lint'));
+    expect(order.indexOf('help')).toBeLessThan(order.indexOf('init'));
+  });
+
+  test('and its line is aligned to the description column the other five share', () => {
     // The help is one block of text a stranger reads, so a new line that broke the column would be
     // a visible regression no other assertion here would catch.
     const columns = HELP.split('\n')
@@ -153,7 +209,9 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
       });
     expect(columns, 'a command line carries no description at all').not.toContain(-1);
     expect(new Set(columns).size, `the description column is ragged: ${columns.join(', ')}`).toBe(1);
-    expect(columns.length, 'no command lines were found — this proves nothing').toBe(4);
+    // Six since Q-0093. The count is the register: a command whose line is missing entirely would
+    // otherwise leave a single-column block reporting perfect alignment over five lines.
+    expect(columns.length, 'no command lines were found — this proves nothing').toBe(6);
     // And the measurement discriminates: a line one space short reports a different column.
     const ragged = '  quorum runs [ticket|run-id] [--json]   x'.slice(2);
     expect(2 + (/ {2,}/.exec(ragged)?.index ?? 0) + (/ {2,}/.exec(ragged)?.[0].length ?? 0))

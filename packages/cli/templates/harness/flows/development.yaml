@@ -1,0 +1,31 @@
+name: development
+consumes: red
+produces: green
+steps:
+  - id: developers
+    fan_out: { from: solution/tasks.yaml, by: role, respect: depends_on, scope: failing-tasks-only }
+    step:
+      id: "dev:{task.id}"
+      role: "developer-{role}"
+      adapter: "{role.adapter}"
+      model: "{role.model}"
+      branch: "harness/{id}/{task.id}"
+      base: "harness/{id}/integration"
+      input: { backlog: [solution/solution.md, review/verdict.md], harness: [rules.md, architecture.md], repo: true }
+      instructions: >
+        Implement ONLY your task so that the tests covering it pass. Do not modify tests.
+        Do not touch files outside your role's allowed paths. Commit nothing — the harness
+        commits your worktree. If a contract is missing or contradictory, stop and say so
+        in the summary instead of guessing.
+
+  - id: integrate
+    type: integrate
+    branches: "harness/{id}/*"
+    into: "harness/{id}/integration"
+    run_tests: true
+    expect: pass
+    output: { writes: ["dev/development/run-{run}/integration-iter-{iter}.md", "dev/development/run-{run}/green-report-iter-{iter}.md"] }
+    on_fail: { goto: developers, max_iterations: 3, on_exhausted: gate }
+
+  - gate: human
+    reason: Integrated branch is green; approve to hand over to review

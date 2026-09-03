@@ -63,6 +63,17 @@ const WORKSPACE = path.resolve(PACKAGE, '..', '..');
  */
 const EMIT = 'dist';
 
+/**
+ * The tracked asset directory `@quorum/cli` ships beside its emit, named once for the same reason
+ * {@link EMIT} is.
+ *
+ * It is **not** an output: `tsc` neither writes nor deletes it, and it is deliberately outside the
+ * directory this package's `build` script removes with `rm -rf dist` on every run — which is the
+ * consequence decision *"The emit serves the binary, and no test verdict moves behind it"*
+ * (2026-09-02) clause (e) fixes by ruling the binary's depth. Q-0093 AC-5.
+ */
+const ASSETS = 'templates';
+
 /** Turbo's marker for a package that declares no script for the task — the silent skip AC-13 is about. */
 const NO_SCRIPT = '<NONEXISTENT>';
 
@@ -359,9 +370,27 @@ const isTurboMetadata = (relative: string): boolean => {
  */
 const WORKSPACE_FILES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'turbo.json'];
 
-/** Every tracked path under `directory`, which is the copy's source and therefore the commit's. */
+/**
+ * Every path under `directory` that **git can see** — tracked, plus untracked and unignored.
+ *
+ * The property the copy needs is that no *gitignored* path arrives: `dist/`, `.turbo/`, `.harness/`
+ * and `.quorum/` are what would let a stale artifact satisfy an assertion about a build that had
+ * not run. `--exclude-standard` is what buys that, and it is the same oracle {@link gitVisible}
+ * already uses one function up — *"Membership is a git question, not a filesystem one"*
+ * (2026-08-28).
+ *
+ * **`--others` is here because the index is not the subject.** This read `git ls-files` alone until
+ * Q-0093, and paired with a `copyFileSync` of the WORKING TREE that never described the commit: it
+ * described *paths in the index, with current contents*. The difference shows the moment a change
+ * adds a source file — a modified `index.ts` arrives and the new module it imports does not, so the
+ * isolated build fails to compile a tree that exists nowhere, for a reason that is a property of
+ * whether anyone has run `git add` rather than of the change. That is this repository's most
+ * recorded defect class (Q-0072, Q-0073, Q-0079) arriving through the index instead of the
+ * filesystem. Every guarantee the isolated audit rests on is unchanged: what it must not receive is
+ * a build output, and a build output is ignored.
+ */
 const trackedUnder = (directory: string): string[] =>
-  execFileSync('git', ['ls-files', '-z', '--', directory], {
+  execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', directory], {
     cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
   }).split('\0').filter(Boolean);
 
@@ -387,9 +416,10 @@ afterAll(() => {
  * the concurrency argument moves the observation rather than narrowing the criterion. Cited because
  * a reader meeting E-1 first would read this as contradicting a ruling — which a review round did.
  *
- * **Tracked files only**, so the copy is the commit rather than the checkout, and `dist/`, `.turbo/`,
- * `.harness/` and `.quorum/` are all gitignored and therefore none of them arrives to be mistaken
- * for something this build wrote. `node_modules` is mirrored as a real directory of symlinks rather
+ * **Only what git can see**, so `dist/`, `.turbo/`, `.harness/` and `.quorum/` are all gitignored
+ * and none of them arrives to be mistaken for something this build wrote — see
+ * {@link trackedUnder}, which carries why that is the tracked-and-unignored set rather than the
+ * index alone. `node_modules` is mirrored as a real directory of symlinks rather
  * than as one link, so a write *under* it is a new entry rather than an invisible change behind a
  * leaf; the `@quorum` scope is re-pointed at the copy's own packages, which is what makes the copy
  * build itself rather than the tree it was taken from.
@@ -621,6 +651,14 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     const root = isolate();
     const before = inventory(root);
     expect(before.size, 'the isolated copy holds nothing — every clause below would be vacuous').toBeGreaterThan(0);
+    // The one property the copy's oracle has to buy, asserted rather than argued (Q-0093): no
+    // gitignored path arrives, so nothing an earlier build left in this checkout can satisfy an
+    // assertion about what THIS build wrote. Named over the emit specifically, because that is the
+    // artifact the whole file is about and the one this workspace certainly has on disk by now.
+    expect(
+      [...before.keys()].filter((relative) => relative.split('/').includes(EMIT)),
+      'a gitignored emit arrived in the isolated copy',
+    ).toStrictEqual([]);
     // Paths *below* a `node_modules` segment rather than paths *containing* one: a mirror made as a
     // single symlink records the name itself as a leaf, which satisfies the weaker question while
     // descending into nothing. Measured — the weaker form passed the mutation that replaced the
@@ -1438,6 +1476,62 @@ describe('Q-0098 AC-16 — the artifact carries a shebang and is executable', ()
   }, 300_000);
 });
 
+describe('Q-0093 AC-8 — the emit finds the shipped templates, and the depth that lets it is asserted', () => {
+  /**
+   * The emitted modules that resolve the template directory relative to themselves.
+   *
+   * **Derived from the emit's own text rather than named**, because AC-8(b)'s subject is the emitted
+   * path and not the source layout: `rootDir: src` makes `dist/` flat today, so `src/init.ts` emits
+   * `dist/init.js` — and a later `src/commands/init.ts` would emit `dist/commands/init.js`, one
+   * level deeper, silently breaking the resolution while a hand-written `dist/init.js` went on
+   * passing. That is the fail-open shape Q-0051 found in `q0050.source.test.ts` and Q-0097 found
+   * again in `test-discovery.test.ts`.
+   */
+  const resolvers = (): string[] => filesUnder(path.join(PACKAGE, EMIT))
+    .filter((relative) => relative.endsWith('.js'))
+    .filter((relative) => read(PACKAGE, EMIT, ...relative.split('/')).includes(`../${ASSETS}/harness/`));
+
+  test('exactly one emitted module resolves them, and it sits one directory below the package root', () => {
+    runBuild();
+    const found = resolvers();
+    expect(found, 'the emit resolves the templates in no place, or in more than one').toStrictEqual(['init.js']);
+    const emitted = path.join(PACKAGE, EMIT, ...found[0].split('/'));
+    expect(path.resolve(path.dirname(emitted), '..'), `${found[0]} is not one directory below the package root`)
+      .toBe(path.resolve(PACKAGE));
+    // And what that arithmetic reaches is the tree itself, rather than a directory of the right name.
+    expect(fs.existsSync(path.join(path.dirname(emitted), '..', ASSETS, 'harness', 'harness.yaml'))).toBe(true);
+  }, 300_000);
+
+  test('and the depth arithmetic refuses a module one level deeper, so the derivation is load-bearing', () => {
+    // Shown to discriminate rather than observed passing: the resolution is `new URL('../…', …)`,
+    // so a module emitted at `dist/commands/init.js` would answer `packages/cli/dist/templates` —
+    // inside the directory this package's build script deletes on every run.
+    const deeper = path.join(PACKAGE, EMIT, 'commands', 'init.js');
+    expect(path.resolve(path.dirname(deeper), '..')).not.toBe(path.resolve(PACKAGE));
+    expect(path.resolve(path.dirname(path.join(PACKAGE, EMIT, 'init.js')), '..')).toBe(path.resolve(PACKAGE));
+  });
+
+  test('a plain node process running the built binary scaffolds the shipped tree', () => {
+    // AC-8(a)'s second half, by **execution** rather than by reasoning: `process.execPath` with no
+    // `--conditions`, no loader and no `quorum-source`, so what runs is the `default` branch of every
+    // export map and plain JavaScript. If the emitted module resolved anything but
+    // `packages/cli/templates/harness`, this copies the wrong tree or none.
+    runBuild();
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-init-emit-'));
+    isolated.push(target);
+    const stdout = execFileSync(process.execPath, [binTarget(), 'init', target], { cwd: PACKAGE, encoding: 'utf8' });
+    expect(stdout).toContain(target);
+    const shipped = filesUnder(path.join(PACKAGE, ASSETS, 'harness'));
+    expect(shipped.length, 'the shipped tree is empty — this comparison proves nothing').toBeGreaterThan(10);
+    expect(filesUnder(path.join(target, 'harness')), 'the emit scaffolded a different tree').toStrictEqual(shipped);
+    for (const relative of shipped) {
+      expect(fs.readFileSync(path.join(target, 'harness', ...relative.split('/'))), relative)
+        .toStrictEqual(fs.readFileSync(path.join(PACKAGE, ASSETS, 'harness', ...relative.split('/'))));
+    }
+    expect(fs.existsSync(path.join(target, 'backlog'))).toBe(true);
+  }, 300_000);
+});
+
 describe('Q-0098 AC-17 — a non-zero status crosses the process boundary through the emitted artifact', () => {
   /** Runs `source` in a plain node process rooted at `cwd` and reports status, stdout and stderr. */
   const spawnStatus = (cwd: string, args: string[]): { status: number; stdout: string; stderr: string } => {
@@ -1624,6 +1718,26 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
   /** The three packages decision 078(c) names as emitting, which is the local distribution set (R-2). */
   const DISTRIBUTION = ['cli', 'core', 'shared'];
 
+  /**
+   * What each of the three declares in `files`, as a register rather than as one shared literal.
+   *
+   * It was `[EMIT]` for all three until Q-0093, and that literal was correct only while `dist` was
+   * all there was: `@quorum/cli` now ships a tracked `templates/` beside its emit, because
+   * `quorum init` reads the shipped harness templates from `<package>/templates/harness` and a
+   * tarball without them installs a binary whose first command cannot find its assets. Decision 078
+   * says a package *declares* `files`; it pins no contents, and nothing in it says a package ships
+   * only what it emits.
+   *
+   * Derived per package rather than asserted once, so a fourth entry appearing in `@quorum/core`'s
+   * manifest is a failure naming that package rather than a shared literal quietly widening for all
+   * three.
+   */
+  const DECLARED_FILES: Record<string, readonly string[]> = {
+    cli: [EMIT, ASSETS],
+    core: [EMIT],
+    shared: [EMIT],
+  };
+
   /** A path npm must never ship: a test file, anything under `src/`, and anything under `.turbo/`. */
   const REJECTED = [
     { why: 'a test file', matches: (relative: string): boolean => /\.test\.[cm]?[jt]s$/.test(relative) },
@@ -1689,7 +1803,8 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     for (const name of DISTRIBUTION) {
       const directory = path.join(WORKSPACE, 'packages', name);
       const declared = (JSON.parse(read(directory, 'package.json')) as { files?: string[] }).files;
-      expect(declared, `@quorum/${name} declares no files field, so the checkout decides the tarball`).toStrictEqual([EMIT]);
+      expect(declared, `@quorum/${name} declares no files field, so the checkout decides the tarball`)
+        .toStrictEqual(DECLARED_FILES[name]);
 
       const paths = packedPaths(directory, destination);
       expect(paths, `@quorum/${name} ships no manifest`).toContain('package.json');
@@ -1701,6 +1816,31 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // The CLI additionally ships the file `bin.quorum` names, which is the whole point of the set.
     const cliPaths = packedPaths(path.join(WORKSPACE, 'packages', 'cli'), destination);
     expect(cliPaths).toContain(path.relative(PACKAGE, binTarget()));
+  }, 300_000);
+
+  test('Q-0093 AC-5 — and the CLI tarball carries every shipped template, by identity against git\'s inventory', () => {
+    // **Never by a count, a byte size or the absence of build output** — `requirements/errata.md`
+    // E-1 of Q-0098 and E-1 of Q-0096 both retired count assertions here for the same reason, and
+    // this is the assertion that has to survive them: an identity between what git can see under
+    // `packages/cli/templates` and what the packer put in the tarball. Twenty files today, and the
+    // number is derived rather than written down.
+    //
+    // The oracle is the tracked-and-unignored set rather than a filesystem walk, so the claim is
+    // about the COMMIT — *"Membership is a git question, not a filesystem one"* (2026-08-28) —
+    // and it answers the same before a commit as after one, which is what lets it run in a worktree
+    // where the assets are new.
+    runBuild();
+    const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-assets-'));
+    isolated.push(destination);
+    const tracked = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', `packages/cli/${ASSETS}`], {
+      cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).split('\0').filter(Boolean).map((entry) => entry.replace('packages/cli/', '')).sort();
+    expect(tracked.length, 'git can see no template at all — the comparison below is vacuous').toBeGreaterThan(10);
+
+    const packed = packedPaths(PACKAGE, destination).filter((entry) => entry.startsWith(`${ASSETS}/`));
+    expect(packed, 'the tarball and the tracked template tree disagree').toStrictEqual(tracked);
+    // And the assets are outside the emit, which is what makes them survive `rm -rf dist`.
+    expect(packed.filter((entry) => entry.startsWith(`${EMIT}/`)), 'a template ships from inside the emit').toStrictEqual([]);
   }, 300_000);
 
   test('and the rejection rules have subjects — each one matches something this repository really has', () => {
@@ -1779,6 +1919,22 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     expect(executed.startsWith(fs.realpathSync(project)), `the packed shim resolves to ${executed}`).toBe(true);
     expect(executed.startsWith(fs.realpathSync(WORKSPACE)), 'the packed shim reaches back into the repository').toBe(false);
     expect(execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env })).toContain('usage: quorum');
+
+    // **Q-0093 AC-5(d): the command that needs the assets is run from the packed install.**
+    // Asserting that `files` contains `"templates"` proves a manifest key; this is the only
+    // assertion that would have caught the finding the ticket turns on — a tarball whose binary
+    // cannot find the templates its first command copies. `quorum init` is run in a directory the
+    // fixture creates inside the temporary project, and the scaffolded tree is compared with the
+    // one in this repository, so a partial or empty copy fails rather than an existence check
+    // passing over whatever arrived.
+    const scaffolded = path.join(project, 'a-new-project');
+    fs.mkdirSync(scaffolded);
+    execFileSync(shim, ['init', scaffolded], { cwd: project, encoding: 'utf8', env });
+    expect(fs.existsSync(path.join(scaffolded, 'harness', 'harness.yaml')), 'the packed init wrote no config').toBe(true);
+    expect(fs.existsSync(path.join(scaffolded, 'backlog')), 'the packed init created no backlog').toBe(true);
+    const shipped = filesUnder(path.join(PACKAGE, ASSETS, 'harness'));
+    expect(filesUnder(path.join(scaffolded, 'harness')), 'the packed install scaffolded a different tree').toStrictEqual(shipped);
+    expect(shipped.length, 'the shipped tree is empty — the comparison above is vacuous').toBeGreaterThan(10);
   }, 300_000);
 
   test('and the registry really is unreachable in that environment, so the install proved something', () => {
