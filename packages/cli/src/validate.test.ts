@@ -23,6 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { findProject } from '@quorum/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { ERROR, SUCCESS } from './exit.js';
@@ -280,15 +281,25 @@ describe('AC-2 — the command reads the parsed command line and never the proce
   test('and it opens no project, so a script step outside a checkout still runs', async () => {
     // Measured against the spike rather than assumed: `spike/bin/harness.js:426–461` never calls
     // `loadProject`, and running it with `--project` aimed at a directory holding no
-    // `harness/harness.yaml` validates normally. Requiring one here would be a behaviour change on
+    // `harness/harness.yaml` validates normally — re-proved by execution, where the same flag on
+    // `lint` exits 1 from `loadProject` (`:58`). Requiring one here would be a behaviour change on
     // the command's machine-facing surface, where a `type: script` step reads the exit code. Why:
     // preserved, ground rule 3 — the merged requirement's AC-4 says both commands load a project,
-    // which is true of `lint` and was never true of this one.
+    // which is true of `lint` and was never true of this one. An erratum limiting AC-4 to `lint` is
+    // owed at the gate; until it lands this pin is what makes the divergence a deliberate act
+    // rather than a default choice.
     const schema = put('s.json', GENERIC);
     const artifact = put('d.json', { a: 1 });
     const from = process.cwd();
     const orphan = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-noproject-'));
     try {
+      // Asserted rather than assumed, and it is what gives this test a subject: `findProject` walks
+      // upwards, so on a machine whose temp directory sat inside a checkout an AC-4-literal
+      // `validate` would find *that* project, succeed, and leave this test green over the very
+      // behaviour change it exists to catch. The machine property refuses the run and is never the
+      // oracle (`harness/rules.md`; *"A test's verdict is a property of the commit"*, 2026-08-30).
+      // `lint.test.ts`'s own orphan helper has carried this assertion since it was written.
+      expect(findProject(orphan), `${orphan} sits inside a project, so this fixture is not orphaned`).toBeNull();
       process.chdir(orphan);
       const { stdout, stderr, exitCode } = await invoke(['validate', schema, artifact]);
       expect(exitCode).toBe(SUCCESS);

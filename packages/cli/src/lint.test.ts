@@ -264,7 +264,7 @@ describe('AC-4 — the project-not-found sentence survives the port unchanged', 
   test('and --project at a directory holding no config is a different failure, as it is in the spike', async () => {
     // Not the sentence: `loadProject(dir)` with an explicit directory never consults `findProject`,
     // so an absent `harness/harness.yaml` there is an ENOENT that reaches `dieOnUnexpected` — which
-    // is exactly what `spike/bin/harness.js:52` does, `flags.project ? path.resolve(flags.project)`
+    // is exactly what `spike/bin/harness.js:55` does, `flags.project ? path.resolve(flags.project)`
     // being unconditional. Pinned so the two failures are not conflated by a later widening of the
     // catch. Why: preserved, ground rule 3.
     const orphan = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-noconfig-'));
@@ -302,12 +302,20 @@ describe('AC-2 — the command reads the parsed command line and never the proce
   });
 
   test('--project reaches loadProject, so the flag the frame parsed is the one that decides', async () => {
-    // Why: preserved. `spike/bin/harness.js:52` reads `flags.project` inside `loadProject`, which
-    // `lint` calls, so `harness lint --project <dir>` lints that project rather than the working
-    // directory's. Measured against the spike rather than inferred, and pinned here because dropping
-    // it would be a silent behaviour change on a ported command — the merged requirement's AC-2 says
-    // in passing that `lint` reads neither `rest` nor `flags`, which is what that sentence gets
-    // wrong.
+    // Why: preserved, ground rule 3. `spike/bin/harness.js:55` reads `flags.project` *inside*
+    // `loadProject`, which every call site — `lint` at `:401` among them — reaches by calling
+    // `loadProject()` with no argument, so `harness lint --project <dir>` lints that project rather
+    // than the working directory's. That closure is why AC-2's aside is wrong rather than the port:
+    // the spike's `lint` case names no flag, so a reader checking only the case block concludes it
+    // needs nothing from argv. Re-proved by execution against the spike, not inferred from the
+    // source: `node spike/bin/harness.js lint --project <dir holding no harness.yaml>` exits 1 from
+    // `loadProject` (`:58`), where the same flag on `validate` is ignored entirely.
+    //
+    // AC-2's normative half — no command re-parses the command line — is met: the value read is the
+    // one the frame parsed, which is what the test above proves. What is wrong is its descriptive
+    // aside that `lint` reads neither `rest` nor `flags`. An erratum correcting that aside is owed at
+    // the gate; until it lands this pin is what makes the divergence a deliberate act rather than a
+    // default choice, and it goes red if anyone narrows the handler to match the aside.
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-elsewhere-'));
     fs.mkdirSync(path.join(elsewhere, 'harness', 'flows'), { recursive: true });
     fs.writeFileSync(path.join(elsewhere, 'harness', 'harness.yaml'), 'repo:\n  base_branch: main\n', 'utf8');

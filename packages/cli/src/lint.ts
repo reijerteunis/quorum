@@ -8,7 +8,7 @@
  * stripped their leading hyphens — the same records reach M3's WebSocket and M4's flow editor,
  * where an escape byte is a defect. So the only thing added below is the marker, the colour and the
  * two-space indent: exactly what the spike's own local `lintDirectory`
- * (`spike/bin/harness.js:296–311`) added, and a second copy of the flattening would be the
+ * (`spike/bin/harness.js:299–311`) added, and a second copy of the flattening would be the
  * transcription defect this repository keeps paying for.
  *
  * **The aggregate verdict goes through {@link failSoftly}**, where the spike ends the case in
@@ -37,10 +37,15 @@ import type { CommandHandler } from './main.js';
  * not called: Why: preserved defect, see `backlog/Q-0091-…/requirements/merged.md` OQ-2, whose
  * successor owns every user-facing occurrence of the old name at once.
  *
- * @param project `--project`'s value, passed through as `spike/bin/harness.js:52` passes it. A flag
- *   given with no value is the boolean `true`, and `path.resolve(true)` raises inside `loadProject`
- *   exactly as it raises in the spike. Why: preserved defect — coercing it here would answer
- *   `<cwd>/true` and lint the wrong project instead of stopping.
+ * @param project `--project`'s value, passed through as `spike/bin/harness.js:55` passes it — the
+ *   spike reads that flag *inside* `loadProject`, which is why its `lint` case names no flag and why
+ *   AC-2's aside that this command reads neither `rest` nor `flags` describes the case block rather
+ *   than the behaviour. Why: preserved, ground rule 3 — dropping it would stop `--project` deciding
+ *   which project is linted; an erratum correcting that aside is owed at the gate.
+ *
+ *   A flag given with no value is the boolean `true`, and `path.resolve(true)` raises inside
+ *   `loadProject` exactly as it raises in the spike. Why: preserved defect — coercing it here would
+ *   answer `<cwd>/true` and lint the wrong project instead of stopping.
  */
 function flowsDir(project: FlagValue | readonly FlagValue[] | undefined): string {
   try {

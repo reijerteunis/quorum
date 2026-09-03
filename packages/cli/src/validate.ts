@@ -12,7 +12,9 @@
  * opens none, so `harness validate` runs anywhere — verified by running the spike with `--project`
  * aimed at a directory holding no `harness/harness.yaml` and watching it validate normally.
  * Requiring one here would newly break a script step run outside a checkout, which is a behaviour
- * change on the command's machine-facing surface. Why: preserved, ground rule 3.
+ * change on the command's machine-facing surface. Why: preserved, ground rule 3 — against AC-4's
+ * *"both commands"*, which is true of `lint` and was never true of this one; an erratum limiting it
+ * is owed at the gate, and `validate.test.ts`'s AC-2 block is what holds the behaviour meanwhile.
  *
  * **The verdict goes through {@link failSoftly}** where the spike ends the case in
  * `process.exit(bad ? 1 : 0)` (`spike/bin/harness.js:460`): everything is printed by then, and the
