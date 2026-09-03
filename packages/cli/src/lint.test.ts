@@ -313,8 +313,8 @@ describe('AC-2 — the command reads the parsed command line and never the proce
     //
     // AC-2's normative half — no command re-parses the command line — is met: the value read is the
     // one the frame parsed, which is what the test above proves. What is wrong is its descriptive
-    // aside that `lint` reads neither `rest` nor `flags`. An erratum correcting that aside is owed at
-    // the gate; until it lands this pin is what makes the divergence a deliberate act rather than a
+    // aside that `lint` reads neither `rest` nor `flags`, and erratum E-6 corrects exactly that,
+    // leaving the headline binding. This pin is what makes the divergence a ruled act rather than a
     // default choice, and it goes red if anyone narrows the handler to match the aside.
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-elsewhere-'));
     fs.mkdirSync(path.join(elsewhere, 'harness', 'flows'), { recursive: true });

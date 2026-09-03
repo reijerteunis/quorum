@@ -284,10 +284,9 @@ describe('AC-2 — the command reads the parsed command line and never the proce
     // `harness/harness.yaml` validates normally — re-proved by execution, where the same flag on
     // `lint` exits 1 from `loadProject` (`:58`). Requiring one here would be a behaviour change on
     // the command's machine-facing surface, where a `type: script` step reads the exit code. Why:
-    // preserved, ground rule 3 — the merged requirement's AC-4 says both commands load a project,
-    // which is true of `lint` and was never true of this one. An erratum limiting AC-4 to `lint` is
-    // owed at the gate; until it lands this pin is what makes the divergence a deliberate act
-    // rather than a default choice.
+    // ruled, see Q-0091 erratum E-5 — the merged requirement's AC-4 says both commands load a
+    // project, which E-5 limits to `lint` on this measurement. This pin is what holds the behaviour,
+    // and it goes red if anyone makes this command open a project to match AC-4's original wording.
     const schema = put('s.json', GENERIC);
     const artifact = put('d.json', { a: 1 });
     const from = process.cwd();

@@ -40,8 +40,10 @@ import type { CommandHandler } from './main.js';
  * @param project `--project`'s value, passed through as `spike/bin/harness.js:55` passes it — the
  *   spike reads that flag *inside* `loadProject`, which is why its `lint` case names no flag and why
  *   AC-2's aside that this command reads neither `rest` nor `flags` describes the case block rather
- *   than the behaviour. Why: preserved, ground rule 3 — dropping it would stop `--project` deciding
- *   which project is linted; an erratum correcting that aside is owed at the gate.
+ *   than the behaviour. Why: ruled, see Q-0091 erratum E-6 — AC-2's normative half binds and is met,
+ *   its aside is corrected, and dropping the flag would stop `--project` deciding which project is
+ *   linted. `core`'s `loadProject(dir?)` takes the directory as a parameter where the spike's closes
+ *   over a module-level `flags`, so the read moves from implicit to explicit by necessity.
  *
  *   A flag given with no value is the boolean `true`, and `path.resolve(true)` raises inside
  *   `loadProject` exactly as it raises in the spike. Why: preserved defect — coercing it here would
