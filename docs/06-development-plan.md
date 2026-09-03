@@ -59,7 +59,7 @@ verdict moves behind it"* (2026-09-02) — so all three tickets are launchable, 
 is ruled against the post-Q-0091 tree rather than against the frame that exists today. This is the second time the cut has moved because a
 run measured something it assumed, and the first time the thing that moved was a *dependency* rather
 than a scope — which is the Q-0074 drift in a third direction, and the argument for the plan/backlog
-check acquiring a fourth one day. **Q-0091 shipped on 2026-09-03** and its entry was rewritten to what happened, which is not what this cut described: it was **re-scoped from four commands to two at its requirements gate**, where the head-of-product loop exhausted at limit 1 and produced four errata before a line was written — one of which, E-2, rules a register schema that binds five sibling tickets, because ground rule 5 turned out to be *unsatisfiable as written* for any child translating a binary half. **Q-0099** and **Q-0100** were opened at that gate from findings the flow could not act on. The chore run then priced Q-0083's absence: the code was correct from round 1, no review round ever disputed it, and two rounds costing $14.28 — one of which changed no files at all — went on holding refusals that were right the first time, because an implement step that has proved a criterion wrong has no channel but prose. That is the eleventh appearance of the pattern and the first where the cost is written down with numbers. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
+check acquiring a fourth one day. **Q-0091 shipped on 2026-09-03** and its entry was rewritten to what happened, which is not what this cut described: it was **re-scoped from four commands to two at its requirements gate**, where the head-of-product loop exhausted at limit 1 and produced four errata before a line was written — one of which, E-2, rules a register schema that binds five sibling tickets, because ground rule 5 turned out to be *unsatisfiable as written* for any child translating a binary half. **Q-0099** and **Q-0100** were opened at that gate from findings the flow could not act on. The chore run then priced Q-0083's absence: the code was correct from round 1, no review round ever disputed it, and two rounds costing $14.28 — one of which changed no files at all — went on holding refusals that were right the first time, because an implement step that has proved a criterion wrong has no channel but prose. That is the eleventh appearance of the pattern and the first where the cost is written down with numbers. **Q-0092 shipped on 2026-09-04** and is the cut's counter-example, which is why its entry is written against Q-0091's rather than on its own: four implement rounds, every one on a defect the implementer could act on, and **no erratum owed at any point** — the first ticket here to reach its chore run with none. Its requirements run is what bought that, ruling five open questions before a line was written and finding that `@quorum/core`'s barrel exported no run-history symbol at all, so ground rule 4's *"the logic is already in core"* was true of existence and false of reachability. The inherited-coverage figure was wrong for the third consecutive ticket and this time the correction changed the shape of the work: 505 was 503, of which about 54 lines actually transfer. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
 what happened, which is not what this cut described: it landed **eleven** criteria rather than the
 eight this page promised, because its requirements run added AC-22 to AC-24 and two of them are what
 make the ticket work — `@quorum/shared`'s flat `exports`, which Q-0096 reported unfixed and which
@@ -658,11 +658,52 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     whether a user-facing *instruction* belongs in a `core` error message at all once M3's server
     surfaces the same error over HTTP. A blanket `sed` is refused: the folder is `harness/` and the
     concept is a harness, which `product-boundaries.md` requires be kept apart.
-  - Q-0092 CLI `runs` and the run-history presentation layer. The largest command at 72 lines, over
-    six readers already in `core`. **Inherits Q-0037's OQ-2 ruling**: an occurrence's usage is not a
-    roll-up row and is not rendered as one, and `q0034-review-fixes.js` B2 is the guard that catches
-    a regression, because it reads the per-step line — `printRunDetailHuman` never renders the
-    roll-up.
+  - Q-0092 CLI `runs` and the run-history presentation layer. *(`reviewed` and `main:contained`
+    2026-09-04.)* **$58.66** — $11.13 requirements ready on the first pass, $47.53 chore across four
+    implement rounds and one `retry`, ending in *"No findings"*. The largest command at 72 lines,
+    over six readers already in `core`.
+    **It is the cut's useful contrast with Q-0091, and the contrast is the finding.** Every one of
+    its four rounds moved the code against a real defect the implementer could act on, and **no
+    erratum was owed at any point** — the first ticket here to enter its chore run with none, where
+    Q-0091 needed four, Q-0097 three and Q-0098 two. Q-0091 spent three rounds and $14.28 on criteria
+    that were simply wrong, one of them changing no files at all. The difference traces to the
+    requirements run, which ruled all five of its open questions before a line was written.
+    **Its first finding was that `@quorum/core`'s barrel exported no run-history symbol at all.** The
+    body said *"Everything it reads is already in `core`"* and ground rule 4 calls the CLI a
+    presentation layer over an API that exists; both are true of **existence** and false of
+    **reachability**. So the work was not "port ten formatters" but "port ten formatters, extend the
+    barrel by a subsystem, and move the two guards that derive from it" — `DOMAIN` 14 → 20 plus a
+    `COMMAND_DOMAIN` row, which landed together as they must. The barrel went 18 → 24.
+    **The inherited-coverage figure was wrong for the third consecutive ticket, and this time the
+    correction changed the shape of the work.** The body said 505 lines across two files; measured,
+    220 + 283 = 503 — but only **~54 lines and one invocation** transfer, because
+    `q0011-runs-cli.js`'s `validate` half was *already carried by Q-0091* and 279 of
+    `q0011-run-history.js`'s lines are library-only with six existing counterparts. Q-0091's 698 and
+    Q-0098's 22 were wrong the same way: whole-file counts standing in for the half that moves.
+    Q-0093, Q-0094, Q-0095 and Q-0099 each carry one, and none should be trusted unre-derived.
+    **The three rounds, each fixed at the right layer.** A `token !== undefined` where the spike
+    tests `if (token)`, so `quorum runs ""` would have reported *unknown run or ticket* while the
+    spike lists everything — closed with a parity test asserting the two invocations produce the
+    *same listing* rather than that the empty one merely does not error. AC-9's separate-reader
+    process, satisfied by spawning the built binary from `build.test.ts`, which already owns
+    `runBuild()` and `binTarget()` and which Q-0098 AC-15(c) rules may spawn the emit. And four of
+    eight occurrence fields interpolating `undefined` where the JSDoc one line above promised *"`n/a`
+    for each absent value"* — the fifth appearance this session of a comment promising what the code
+    beneath it does not do — fixed at the guard rather than by weakening the comment, with the
+    reasoning recorded: `Occurrence` declares four fields non-nullable while a detail read validates
+    no schema, so they are *nullable in fact and not in type*.
+    **`binaryCarriedBy` earned its ruling here.** Q-0091's E-2 created the field; this ticket used it
+    at three sites and then extended one row to **two files**, with prose saying why — *"across two
+    files because the assertion claims two things"* — and deleted a deferral that had been claiming
+    Q-0095 owed a half now carried. That is the first evidence that ruling the schema once at
+    Q-0091's gate rather than five separate times was worth doing.
+    **Verified through the built binary rather than from the report**, the reviewer having again been
+    unable to execute the suite under `--sandbox read-only`: the six new symbols resolve as functions
+    in a plain `node` process, and **Q-0037's OQ-2 holds over real run history** — four measures
+    printed separately, zero per-occurrence lines carrying a bare summed `tokens=` or
+    `unpriced_steps`, nulls rendering `n/a` and never `0`. The roll-up count of zero is confirmation
+    rather than a gap: `printRunDetailHuman` never renders it, which is why `q0034-review-fixes.js`
+    B2's guard reads the per-step line.
   - Q-0093 CLI writing commands: `init` and `ticket`. Small and load-bearing out of proportion,
     being the first things a stranger runs. `init` must read the shipped templates rather than
     duplicate them, or every adopter inherits the flat-path defect Q-0086 to Q-0088 closed; `ticket
