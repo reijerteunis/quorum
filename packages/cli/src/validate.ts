@@ -1,6 +1,6 @@
 /**
- * `quorum validate <schema.json> <file…>` — check artifacts against a contract, and exit 1 on the
- * first one that does not conform.
+ * `quorum validate <schema.json> <file…>` — check artifacts against a contract, and exit 1 if any of
+ * them does not conform.
  *
  * **It is the one command with a machine consumer.** A `qa-red` `type: script` step reads its exit
  * code, which is what turns a contract violation into a red test rather than prose in a review, so
