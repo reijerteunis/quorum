@@ -182,6 +182,24 @@ describe('AC-5 — selection, ordering and the empty state follow the frozen con
     expect(exitCode).toBe(ERROR);
   });
 
+  test('an empty positional is no token at all, and lists exactly what no positional lists', async () => {
+    // `spike/bin/harness.js:471` selects on truthiness, and `parseArgv` keeps an empty positional
+    // (`argv.ts:62`), so `quorum runs ""` reaches this command with `rest[0] === ''`. Under a strict
+    // `token !== undefined` it fell through the run-id and ticket-id readings to `unknown run or
+    // ticket: ` and a non-zero exit, which is a divergence rather than a rendering difference — the
+    // only assertion that discriminates the two spellings, and it fails against the strict one.
+    corruptStore();
+    const empty = await invoke(['runs', '']);
+    const absent = await invoke(['runs']);
+    expect(plain(empty.stdout)).toBe(plain(absent.stdout));
+    expect(plain(empty.stderr), 'the spike prints no failure sentence for it').toBe('');
+    expect(plain(empty.stdout)).toContain('Q-0012-1');
+    // Non-zero here is the damaged sibling of `corruptStore`, not the token: E-4's rule, and it is
+    // the same code the tokenless listing exits with above.
+    expect(empty.exitCode).toBe(absent.exitCode);
+    expect(empty.hard).toBe(false);
+  });
+
   test('a run id wins over a ticket-id reading of the same token', async () => {
     // A directory whose name also parses as a ticket id: the detail view is what must answer, or a
     // store could hide one of its own runs behind the filter.

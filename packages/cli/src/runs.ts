@@ -256,7 +256,11 @@ export const runs: CommandHandler = ({ rest, flags }) => {
   // Q-0034 AC-13, and `readRun`, which is the single-run read this defers to instead.
   const listRuns = (): { runs: RunEntry[]; warnings: RunWarning[] } => readRunsDir(runsRoot);
 
-  if (token !== undefined) {
+  // Truthiness rather than `token !== undefined`, so that `quorum runs ""` lists every run exactly
+  // as `quorum runs` does. `parseArgv` keeps an empty positional (`argv.ts:62`), so the two spellings
+  // genuinely differ on it, and the strict one turns a token the spike reads as *absent* into
+  // `unknown run or ticket: ` and a non-zero exit. Why: preserved behaviour, see `spike/bin/harness.js:471`.
+  if (token) {
     // A confined, existing run directory wins over every other reading of the token, which is what
     // makes a run id and a ticket id unambiguous when one could be both. Confinement is `core`'s
     // and is not reimplemented here: `resolveRunDirectory`'s lexical clauses reject `..`, a nested
