@@ -8,6 +8,13 @@
  * reader that holds no run state), and `q0080-allocation.js:206–207` (a ticket filter with zero
  * matches exits 0). `spike-parity.test.ts` records the transfer on each of those rows.
  *
+ * **One of those four is carried across two files, and the split is deliberate.**
+ * `q0011-run-history.js:121–124` claims two things — that the failed occurrence's usage is rendered,
+ * and that a *separate process* is what renders it. The first is here; the second is a spawn of the
+ * built binary and lives in `build.test.ts`, the file Q-0098 AC-15(c) rules may spawn
+ * `packages/cli/dist`, because that file removes the emit twice and Vitest parallelises across
+ * files.
+ *
  * **B2's two halves are two blocks here, because they are two views.** Q-0037 re-aimed the
  * `tokens=1100` double-count guard at the **list**, where `vendorTokenTotal` runs — it had been
  * asserted on the detail view, which renders no roll-up at all, so it was matching the per-step
@@ -15,8 +22,9 @@
  * criterion restores exactly the defect that ticket repaired.
  *
  * Every fixture builds its own project under `os.tmpdir()` and reads nothing in this repository.
- * Nothing here spawns the binary — the binary's own end-to-end suite is Q-0095's — and the exit
- * codes are claimed through {@link invoke}, which reports what a shell would have seen.
+ * Nothing here spawns the binary — the mock end-to-end suite through the binary is Q-0095's, and the
+ * one spawn Q-0092 owes is in `build.test.ts` for the reason above — so the exit codes are claimed
+ * through {@link invoke}, which reports what a shell would have seen.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -440,10 +448,11 @@ describe('AC-9 — the detail view renders an occurrence\'s own usage, and no ro
   });
 
   test('a billed failure\'s usage is rendered from the file, not from a run\'s memory', async () => {
-    // `q0011-run-history.js:121–124` asserts this through a separate reader process. In process the
-    // same claim is that nothing but the manifest on disk is consulted: the command is handed no
-    // run state, and the usage it prints is the usage the file carries. The process-separation half
-    // is the binary's, and is Q-0095's.
+    // The rendering half of `q0011-run-history.js:121–124`. Its other half is process separation,
+    // which `invoke` cannot claim because it calls the handler here — that is asserted by spawning
+    // the built binary at the same shape, in `build.test.ts`'s Q-0092 AC-9 block, which is where a
+    // real-workspace spawn belongs (Q-0098 AC-15(c), and the banner above it). Both are named on
+    // `spike-parity.test.ts`'s row for that file; neither is deferred.
     const document = manifest('Q-0011-1', 'Q-0011');
     document.steps = [{
       ...step(1), status: 'failed', usage: usage('codex', null),

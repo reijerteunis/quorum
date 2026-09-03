@@ -157,8 +157,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/run-history/writer.test.ts',
     ],
     note: 'the manifest a run writes, its occurrences and roll-ups, the retry that bills a killed call, and the semantic pass over run-manifest-v1',
-    binaryHalf: 'its one binary invocation (`:121–124`): a billed failure\'s usage surviving into a separate reader — `quorum runs` detail — carried by packages/cli since Q-0092. The process-separation half of that assertion is the binary\'s own and is Q-0095\'s; the other 279 lines are library-only and are carried above',
-    binaryCarriedBy: ['packages/cli/src/runs.test.ts'],
+    binaryHalf: 'its one binary invocation (`:121–124`): a billed failure\'s usage surviving into a separate reader — `quorum runs` detail — carried by packages/cli since Q-0092, across two files because the assertion claims two things. runs.test.ts carries the rendering; build.test.ts spawns the built binary at the same manifest and carries the process separation, that being the file Q-0098 AC-15(c) rules may spawn the emit. Nothing of it is owed. The other 279 lines are library-only and are carried above',
+    binaryCarriedBy: ['packages/cli/src/build.test.ts', 'packages/cli/src/runs.test.ts'],
   },
   'q0011-runs-cli.js': {
     verdict: 'split',
@@ -1531,7 +1531,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       .map(([name, entry]) => `${name} → ${(entry.binaryCarriedBy ?? []).join(', ')}`)
       .sort();
     expect(claiming).toStrictEqual([
-      'q0011-run-history.js → packages/cli/src/runs.test.ts',
+      'q0011-run-history.js → packages/cli/src/build.test.ts, packages/cli/src/runs.test.ts',
       'q0011-runs-cli.js → packages/cli/src/runs.test.ts, packages/cli/src/validate.test.ts',
       'q0033-surface.js → packages/cli/src/lint.test.ts',
       'q0034-review-fixes.js → packages/cli/src/runs.test.ts',
