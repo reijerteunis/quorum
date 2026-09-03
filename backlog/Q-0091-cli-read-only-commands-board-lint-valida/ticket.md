@@ -1,7 +1,7 @@
 ---
 id: Q-0091
 title: "CLI read-only commands: lint and validate"
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0091/integration
@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-01
 iterations:
   requirements.head-of-product: 2
+  chore.review: 2
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,22 @@ history:
     stage_after: requirements
     at: 2026-09-03T17:01:35.394Z
     cost: 13.545
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-03T19:32:28.824Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-03T19:54:16.485Z
+    cost: 58.602
 ---
 *The folder name still reads `…-board-lint-valida`, which is the id it was created under on
 2026-09-01 and is deliberately not renamed: `runs.log`, run history under `.quorum/runs/`, the

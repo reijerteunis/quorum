@@ -5,8 +5,11 @@ the contradiction is provable rather than at the exhaustion gate — *"An erratu
 not the first"* (2026-08-30). An erratum states what was **run**, not what was reasoned: Q-0097's run
 cost two of them by writing one from a claim.
 
-All four entries below were written by hand at the requirements gate, **before the chore run**,
-because every one is work no step in the chore flow may perform.
+**E-1 to E-4** were written by hand at the **requirements gate**, before the chore run. **E-5 and
+E-6** were written at chore run 2's **exhaustion gate**, after three implement rounds had held the
+same two refusals and three reviews had correctly declined to authorise them; they are late by the
+2026-08-30 rule and E-7 records what that cost. Every entry here is work no step in the chore flow
+may perform, which is why all seven are the human's.
 
 ## E-1 — the ticket is re-scoped to `lint` and `validate`; `board` and `adapters` are Q-0099 — 2026-09-03
 
@@ -118,3 +121,65 @@ review panels spanning two adapters, not the command. Sixteen of that file's twe
 So this ticket translates a **command-scoped set of behaviours across five files and never a file**,
 and an implementer reading *"inherits 698 lines"* and translating faithfully would take scope from
 three siblings and re-classify a `split` file as done.
+
+## E-5 — AC-4 governs `lint` alone; `validate` opens no project — 2026-09-03
+
+**Ruled: AC-4's *"Both commands"* binds `lint`. `validate` opens no project, and the shipped code is
+correct as it stands.** Written at the exhaustion gate of chore run 2, after three implement rounds
+held the same refusal and three reviews correctly declined to authorise it themselves.
+
+Measured, and by two rounds independently: `spike/bin/harness.js`'s `validate` case (`:426–461`)
+contains **no `loadProject` or `findProject` call site**, while `lint` (`:401`) opens with
+`const { harnessDir } = loadProject();`. Executed rather than read — `validate` run with `--project`
+aimed at a directory holding no `harness/harness.yaml` validates normally and exits 0, and the
+shipped binary reproduces that byte for byte.
+
+So AC-4 was never true of `validate`, and requiring a project there would be a **behaviour change on
+a machine-facing surface**, which ground rule 3 refuses. AC-4's headline, its sentence and its
+no-stack-trace clause are unchanged for `lint`.
+
+**If this had been ruled the other way**, `COMMAND_DOMAIN['validate.ts']` would have had to gain
+`loadProject` or AC-10 would go red — which is the register doing its job, and worth recording
+because it means the alternative could not have landed silently.
+
+## E-6 — AC-2's aside describes the case block; its normative half stands and is satisfied — 2026-09-03
+
+**Ruled: AC-2's headline — *no command re-parses the command line* — binds and is met. Its aside,
+that `lint` "reads neither `rest` nor `flags`", is corrected.**
+
+The distinction is the whole ruling, and the implement step found it before the gate did.
+`spike/bin/harness.js:55` reads `flags.project` **inside** `loadProject`, which `lint` calls at
+`:401` with no argument — so `harness lint --project <dir>` lints that project today. The aside is
+true of the case block's *text* and false of the command's *behaviour*.
+
+The port cannot preserve both. `core`'s `loadProject(dir?: string)` (`project.ts:78`) takes the
+directory as a **parameter** where the spike's closes over a module-level `flags`, so a caller in
+`packages/cli` must pass `flags.project` explicitly. The read moves from implicit to explicit **by
+necessity**, and the shipped `lint` satisfies what AC-2 actually governs: it reads the value the
+frame already parsed, calls no `parseArgv`, touches no `process.argv`, and defines no second flag
+table. AC-2's own *Test:* clause is fully met.
+
+Dropping `--project` to satisfy the aside as written would stop the flag deciding which project is
+linted — a behaviour change on a port ticket, which ground rule 3 forbids.
+
+## E-7 — what these two errata cost, recorded because the mechanism that would prevent it is named and unbuilt — 2026-09-03
+
+**Not a ruling. A measurement, kept so the cost of Q-0083's absence is written down once with
+numbers rather than described again.**
+
+Implement rounds 2 and 3 cost **$7.129 and $7.154** and round 3 **changed no files at all** — its
+tree byte-identical to round 2's commit `14a934e`. Both rounds were spent holding two refusals that
+were correct on the first telling, because `chore.yaml`'s implement step declares no verdict and
+`backlog/` is not an agent-writable surface: an implementer that has proved a criterion wrong has
+exactly one channel, prose the human does not read until a gate.
+
+That is the **eleventh** appearance in this repository of a loop handed work no step in it can
+perform, and **Q-0083** — an implement step that can return `blocked` — is the named, unbuilt
+mechanism that would have ended this run at round 2 for about $14 less.
+
+Two things are worth recording as having gone *right*, because the same decision is usually cited
+after it was ignored. Round 2 refused on ground rule 3 rather than yielding, and cited Q-0052's
+round 3 — where a reviewer that had never been asked *which of two documents should move* was
+yielded to, and the plan records the yield as the mistake. And rounds 2 and 3 spent themselves on
+**measurement rather than re-argument**, which is what *"A refused finding is a gate, not another
+round"* (2026-08-31) asks of a step that cannot clear its own blocker.
