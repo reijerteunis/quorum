@@ -1,14 +1,31 @@
 ---
 id: Q-0091
 title: "CLI read-only commands: board, lint, validate, adapters"
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0091/integration
 priority: p2
 created: 2026-09-01
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-02T17:13:58.331Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-03T17:01:35.394Z
+    cost: 13.545
 ---
 **Four commands that read and print, and change nothing.** Grouped because they share that property
 and because their two test files cover them together.
