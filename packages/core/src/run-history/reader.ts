@@ -217,3 +217,79 @@ export function resolveRunDirectory(runsRoot: string, token: string): string | n
   if (!fs.existsSync(realDir) || !fs.statSync(realDir).isDirectory()) return null;
   return realDir;
 }
+
+/**
+ * What {@link readRun} answers with: one run, or one of the two ways it is not one.
+ *
+ * Discriminated on `outcome` so a caller cannot render a manifest it was not given, and so the two
+ * failures stay distinguishable — they print different sentences and only one of them names the
+ * token's target at all.
+ *
+ * - `run` carries the resolved `directory`, the `manifestPath` that was read, and the parsed
+ *   `manifest`. The document is a cast and never a check, exactly as {@link RunEntry.manifest} is:
+ *   nothing beyond `JSON.parse` has been proved about it, and `validateArtifact` against the frozen
+ *   schema is the job that proves more.
+ * - `malformed` carries the parser's own `message`, so the sentence a caller prints names what the
+ *   parser actually objected to rather than a paraphrase of it. It covers an absent `manifest.json`
+ *   as well as an unparseable one, because a directory under the runs root with no manifest in it
+ *   fails in the same place and with the same kind of sentence.
+ * - `not-a-run` carries nothing at all, which is {@link resolveRunDirectory}'s `null` contract: it
+ *   discloses nothing about what the token pointed at, including whether anything is there.
+ */
+export type RunRead =
+  | {
+    /** The token named a directory inside the runs root and its manifest parsed. */
+    outcome: 'run';
+    /** The resolved run directory, symlinks and all. */
+    directory: string;
+    /** Absolute path of the manifest that was read. */
+    manifestPath: string;
+    /** The parsed document — a cast, never a check. */
+    manifest: RunManifest;
+  }
+  | {
+    /** The token named a directory inside the runs root and its manifest could not be read. */
+    outcome: 'malformed';
+    /** The resolved run directory. */
+    directory: string;
+    /** Absolute path of the manifest that was attempted. */
+    manifestPath: string;
+    /** The parser's own words, so a caller quotes rather than paraphrases them. */
+    message: string;
+  }
+  | {
+    /** The token named nothing inside the runs root, and nothing more is said about it. */
+    outcome: 'not-a-run';
+  };
+
+/**
+ * The one run a token names, read from the runs root and from nowhere else.
+ *
+ * **It reads exactly one file.** {@link readRunsDir} parses every sibling manifest, which couples a
+ * single-run request to the health and size of a store that may hold a year of history — and to
+ * whether a stranger's damaged directory is sitting next to the one that was asked for. So a detail
+ * request never goes through it (Q-0034 AC-13), and this is what it goes through instead.
+ *
+ * **Confinement and the read are one call, deliberately.** The alternative — publishing
+ * {@link resolveRunDirectory} beside a `readRunManifest(dir)` — puts a path-returning function on
+ * the public surface whose only correct use is to be opened immediately, and leaves a caller free to
+ * resolve a token lexically and read anyway, which is the defect that guard exists to close. Ruled
+ * rather than offered; see Q-0092 merged.md OQ-1.
+ *
+ * Writes nothing, creates nothing, and repairs nothing: an incomplete or damaged manifest is
+ * reported as it stands.
+ *
+ * @param runsRoot absolute path of the runs root.
+ * @param token the run id as it was typed.
+ */
+export function readRun(runsRoot: string, token: string): RunRead {
+  const directory = resolveRunDirectory(runsRoot, token);
+  if (directory === null) return { outcome: 'not-a-run' };
+  const manifestPath = path.join(directory, MANIFEST_FILE);
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as RunManifest;
+    return { outcome: 'run', directory, manifestPath, manifest };
+  } catch (error) {
+    return { outcome: 'malformed', directory, manifestPath, message: messageText(error) };
+  }
+}

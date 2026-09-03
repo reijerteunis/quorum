@@ -35,7 +35,7 @@
  * workspace reads `dist/`, which is clause (b) of the entry above and what AC-23's
  * present-and-absent assertion re-checks rather than assumes.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -1888,5 +1888,125 @@ describe('Q-0098 AC-25 — the target survives a cache replay of build', () => {
       await ctx.annotate(NO_POSIX_MODES);
     }
     expect(execFileSync(process.execPath, [target, 'help'], { cwd: PACKAGE, encoding: 'utf8' })).toContain('usage: quorum');
+  }, 300_000);
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * Q-0092 AC-9 — a billed failure's usage reaches a reader that holds none of the run's state.
+ *
+ * `spike/test/q0011-run-history.js:121–124` runs a flow that fails after its adapter has been
+ * billed, then **spawns the binary** at the manifest that run left behind and asserts the failed
+ * occurrence's vendor, its message and its usage all arrive. The claim is process separation: a
+ * reader sharing nothing with the run prints what the file carries, so the number came off disk
+ * rather than out of the run's memory. `runs.test.ts` renders the same occurrence and cannot make
+ * that claim — `invoke` calls the handler in this process.
+ *
+ * **Why it is here and not there.** This file removes `packages/cli/dist` — `removeEmit()` at four
+ * sites, in AC-8, AC-9, AC-23 and Q-0098 AC-25, counted rather than taken from the Q-0098 banner
+ * above, which says twice and names two of them — and `vitest.shared.js` sets no
+ * `fileParallelism: false`, so a second file spawning that path would intermittently meet an emit
+ * that had just been deleted. Q-0098 AC-15(c) names the two safe shapes; the real-workspace spawn is
+ * this one, and the reason is that hazard rather than anything about the build.
+ *
+ * The producing half — a real run that bills and then fails — is the engine's and is carried by
+ * `packages/core/src/run-history/writer.test.ts` and its neighbours. What transfers to a command
+ * child is the reader.
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * The manifest such a run leaves behind: one occurrence, billed, then failed.
+ *
+ * Written out rather than produced, because producing one means running a flow, which is neither
+ * this package's job nor this file's subject. What AC-9 is about is what a separate process makes of
+ * the file, and the file is the same either way.
+ */
+const BILLED_FAILURE = {
+  schema_version: 1,
+  run_id: 'Q-0011-1',
+  ticket_id: 'Q-0011',
+  ticket_path: 'backlog/Q-0011-x/ticket.md',
+  flow: 'development',
+  flow_file: 'harness/flows/development.yaml',
+  stage: { before: 'red', after: 'green' },
+  started_at: '2026-08-23T10:00:00.000Z',
+  ended_at: '2026-08-23T10:00:01.000Z',
+  duration_ms: 1000,
+  status: 'failed',
+  steps: [{
+    step_id: 'step:1',
+    occurrence_dir: 'steps/001-step-1',
+    kind: 'adapter',
+    role: 'qa',
+    adapter: 'mock',
+    model: null,
+    branch: null,
+    worktree: null,
+    started_at: '2026-08-23T10:00:00.000Z',
+    duration_ms: 5,
+    attempts: 1,
+    status: 'failed',
+    verdict: null,
+    error: { category: 'adapter', message: 'simulated failure' },
+    usage: {
+      vendor: 'codex',
+      input_tokens: 100,
+      output_tokens: 20,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      cost_usd: null,
+    },
+  }],
+  rollup: [],
+};
+
+describe('Q-0092 AC-9 — the detail view reads the file, not a run\'s memory', () => {
+  /** A project whose run history holds {@link BILLED_FAILURE} and nothing else. */
+  function projectWithABilledFailure(): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-reader-'));
+    isolated.push(root);
+    fs.mkdirSync(path.join(root, 'harness'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'harness', 'harness.yaml'), 'backlog: {path: backlog}\n');
+    const directory = path.join(root, '.quorum', 'runs', BILLED_FAILURE.run_id);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify(BILLED_FAILURE, null, 2));
+    return root;
+  }
+
+  test('a separate process renders the failed occurrence\'s vendor, message and usage', () => {
+    runBuild();
+    const root = projectWithABilledFailure();
+    // `--project` rather than a working directory inside the fixture, so the reader is TOLD which
+    // project to open: `cwd` stays this package, whose own repository carries a runs root of its
+    // own, and an answer that came from the wrong store would name a run this fixture never wrote.
+    const detail = spawnSync(process.execPath, [binTarget(), 'runs', BILLED_FAILURE.run_id, '--project', root], {
+      cwd: PACKAGE, encoding: 'utf8',
+    });
+    expect(detail.status, detail.stderr).toBe(0);
+    expect(detail.stdout).toMatch(/simulated/);
+    expect(detail.stdout).toMatch(/codex/);
+    expect(detail.stdout, 'a separate reader process omitted the billed failure\'s usage')
+      .toMatch(/input_tokens=100\b/);
+    // The four measures separately and no roll-up field, across the boundary as well as inside it —
+    // the Q-0037 ruling is what the per-step line is FOR, and a process that re-collapsed them would
+    // satisfy every assertion above. See Q-0037 OQ-2 (2026-09-01).
+    expect(detail.stdout).toMatch(/output_tokens=20\b/);
+    expect(detail.stdout, 'a roll-up field was synthesised onto a single occurrence').not.toMatch(/unpriced_steps/);
+  }, 300_000);
+
+  test('and the same spawn over a store that does not hold it fails, so the pass above is a fact', () => {
+    // Without this the assertion above cannot distinguish "the binary read the fixture" from "the
+    // binary answered from somewhere else and happened to print those words". Same spawn, same
+    // binary, a project whose runs root is empty: the run is unknown and the status is non-zero.
+    runBuild();
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-reader-empty-'));
+    isolated.push(empty);
+    fs.mkdirSync(path.join(empty, 'harness'), { recursive: true });
+    fs.writeFileSync(path.join(empty, 'harness', 'harness.yaml'), 'backlog: {path: backlog}\n');
+
+    const detail = spawnSync(process.execPath, [binTarget(), 'runs', BILLED_FAILURE.run_id, '--project', empty], {
+      cwd: PACKAGE, encoding: 'utf8',
+    });
+    expect(detail.status, 'a run nothing on disk holds was reported as found').not.toBe(0);
+    expect(detail.stdout, 'the usage came from somewhere other than the manifest').not.toMatch(/input_tokens=100\b/);
   }, 300_000);
 });

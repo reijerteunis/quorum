@@ -315,7 +315,7 @@ describe('Q-0096 AC-1 — @quorum/core resolves, and its entry points are declar
 
 describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes rather than moves', () => {
   /**
-   * The thirteen domain symbols, read out of `frame.source.test.ts`'s own register rather than
+   * The twenty domain symbols, read out of `frame.source.test.ts`'s own register rather than
    * retyped.
    *
    * That register is the list of helpers the frame is forbidden to reimplement because they live in
@@ -342,12 +342,12 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(14);
+    expect(domain()).toHaveLength(20);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
 
-  test('the barrel exports exactly the fourteen plus the four, and every one is defined', async () => {
+  test('the barrel exports exactly the twenty plus the four, and every one is defined', async () => {
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
     expect(Object.keys(barrel).sort()).toStrictEqual([...domain(), ...ERRORS].sort());
     for (const symbol of [...domain(), ...ERRORS]) {
@@ -370,6 +370,26 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
     expect(typeof barrel.readData).toBe('function');
     expect(typeof barrel.ProjectNotFoundError).toBe('function');
+  });
+
+  test('Q-0092 AC-4 — the register moved again, and the six new names are the reading half of run history', async () => {
+    // The pin above read 14 until this ticket, and is shown red against that value rather than
+    // edited to fit — the same demonstration Q-0091 wrote one line up, for the same reason.
+    expect(domain(), 'the register still holds the fourteen it held before this ticket').not.toHaveLength(14);
+    const added = ['readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun'];
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    for (const symbol of added) {
+      expect(domain(), `${symbol} is exported and the register does not name it`).toContain(symbol);
+      expect(typeof barrel[symbol], `${symbol} is not a function on the barrel`).toBe('function');
+    }
+
+    // And the two names a command does not need stay off the surface. `manifestShapeError` runs
+    // inside `readRunsDir`, and the CLI's ticket-id grammar is `@quorum/shared`'s `parseTicketId` —
+    // publishing `TICKET_ID_PATTERN` here would make two spellings of one rule.
+    for (const withheld of ['manifestShapeError', 'TICKET_ID_PATTERN', 'resolveRunDirectory']) {
+      expect(Object.keys(barrel), `${withheld} is on the public surface and no command needs it`)
+        .not.toContain(withheld);
+    }
   });
 
   test('and a type export adds no runtime key, which is why the counts above are the whole surface', async () => {

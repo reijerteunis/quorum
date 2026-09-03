@@ -87,12 +87,12 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry is help and the two read-only commands, and nothing else', () => {
-    // Q-0092 to Q-0094 and Q-0099 each add their own name and line as their command lands. Listing
+  test('the registry is help and the three read-only commands, and nothing else', () => {
+    // Q-0093, Q-0094 and Q-0099 each add their own name and line as their command lands. Listing
     // the eight the spike has would be a green tick over a subject that does not exist: each would
     // fall through AC-6's default branch to this same text and exit 0.
-    expect([...COMMANDS]).toStrictEqual(['help', 'lint', 'validate']);
-    expect(mentioned(HELP)).toStrictEqual(['help', 'lint', 'validate']);
+    expect([...COMMANDS]).toStrictEqual(['help', 'lint', 'validate', 'runs']);
+    expect(mentioned(HELP)).toStrictEqual(['help', 'lint', 'validate', 'runs']);
   });
 
   test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
@@ -120,6 +120,44 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     // Their order is the spike header's: `lint` at `:6` precedes `validate` at `:8`. `help` keeps
     // the first line Q-0090 gave it, the spike's header having no such line to order it against.
     expect(mentioned(HELP).indexOf('lint')).toBeLessThan(mentioned(HELP).indexOf('validate'));
+  });
+
+  test('Q-0092 AC-1 — `runs` is registered, listed last, and says what it takes and does', () => {
+    // Both pins above read three entries until this ticket, and the value they replaced is refused
+    // rather than widened to a `toContain` that would accept either.
+    expect([...COMMANDS], 'the frame still registers only the two read-only commands')
+      .not.toStrictEqual(['help', 'lint', 'validate']);
+    expect(mentioned(HELP), 'the help still lists only the two read-only commands')
+      .not.toStrictEqual(['help', 'lint', 'validate']);
+    expect(isCommand('runs'), 'the help lists runs and the frame does not dispatch it').toBe(true);
+
+    const line = HELP.split('\n').find((text) => text.startsWith('  quorum runs')) ?? '';
+    expect(line, 'the arguments it takes').toContain('[ticket|run-id] [--json]');
+    expect(line, 'what it does — listing, the ticket filter, and one run in detail')
+      .toMatch(/run history: list, filter by ticket, or show one run/);
+    // Last, because `spike/bin/harness.js:10` is the last line of that header. AC-1's ordering rule
+    // is the spike's own wherever it has one.
+    expect(mentioned(HELP)[mentioned(HELP).length - 1]).toBe('runs');
+    expect(mentioned(HELP).indexOf('validate')).toBeLessThan(mentioned(HELP).indexOf('runs'));
+  });
+
+  test('and its line is aligned to the description column the other three share', () => {
+    // The help is one block of text a stranger reads, so a new line that broke the column would be
+    // a visible regression no other assertion here would catch.
+    const columns = HELP.split('\n')
+      .filter((line) => line.startsWith('  quorum '))
+      .map((line) => {
+        // Past the two-space indent first, or every line would report the indent as its column.
+        const gap = / {2,}/.exec(line.slice(2));
+        return gap === null ? -1 : 2 + gap.index + gap[0].length;
+      });
+    expect(columns, 'a command line carries no description at all').not.toContain(-1);
+    expect(new Set(columns).size, `the description column is ragged: ${columns.join(', ')}`).toBe(1);
+    expect(columns.length, 'no command lines were found — this proves nothing').toBe(4);
+    // And the measurement discriminates: a line one space short reports a different column.
+    const ragged = '  quorum runs [ticket|run-id] [--json]   x'.slice(2);
+    expect(2 + (/ {2,}/.exec(ragged)?.index ?? 0) + (/ {2,}/.exec(ragged)?.[0].length ?? 0))
+      .not.toBe(columns[0]);
   });
 });
 

@@ -195,7 +195,9 @@ describe('the module scan has a subject', () => {
     // the shape "a check that skips its subject must not report success" (2026-08-25) names.
     const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
     expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
-      .toStrictEqual(['lint.ts', 'validate.ts']);
+      .toStrictEqual(['lint.ts', 'runs.ts', 'validate.ts']);
+    expect(names(commandModules()), 'the partition still holds the two modules it held before Q-0092')
+      .not.toStrictEqual(['lint.ts', 'validate.ts']);
     expect(names(frameModules())).toContain('main.ts');
     expect([...names(frameModules()), ...names(commandModules())].sort()).toStrictEqual(names(production()));
     expect(names(frameModules()).filter((name) => names(commandModules()).includes(name))).toStrictEqual([]);
@@ -213,6 +215,7 @@ const DOMAIN = [
   'runFlow', 'loadFlow', 'loadFlowByName', 'lintFlowDirectory', 'lintDirectory',
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
+  'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
 ];
 
 /**
@@ -225,11 +228,16 @@ const DOMAIN = [
  * actually name, which is what stops the list rotting into a wish.
  *
  * Keyed by module rather than by command so the audit can compare it against the derivation above
- * directly. Q-0092 to Q-0094 and Q-0099 each add their row with their command.
+ * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093, Q-0094 and Q-0099 each add
+ * theirs the same way.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   'lint.ts': ['loadProject', 'lintDirectory'],
   'validate.ts': ['validateArtifact', 'readData'],
+  'runs.ts': [
+    'loadProject', 'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal',
+    'readRun',
+  ],
 };
 
 /** Whether `text` names `symbol` as a word rather than as part of a longer one. */
@@ -318,6 +326,28 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
       .toStrictEqual(['lint.ts: its entry permits containment, which the module does not name']);
   });
 
+  test('Q-0092 AC-4 — the runs row fails in both directions, over mutated copies', () => {
+    // The row this ticket added, shown discriminating rather than observed passing. Both halves,
+    // because a register that only refused *extra* symbols would let a real import go unrecorded.
+    const permitted = COMMAND_DOMAIN['runs.ts'];
+    const extra: [string, string][] = [['runs.ts', `${permitted.join('(); ')}(); containment();`]];
+    expect(domainOffenders([], extra, { 'runs.ts': permitted }))
+      .toStrictEqual([`runs.ts: containment is not one of [${permitted.join(', ')}]`]);
+
+    const missing: [string, string][] = [['runs.ts', permitted.filter((s) => s !== 'readRun').join('(); ')]];
+    expect(domainOffenders([], missing, { 'runs.ts': permitted }))
+      .toStrictEqual(['runs.ts: its entry permits readRun, which the module does not name']);
+  });
+
+  test('Q-0092 AC-4 — readRun and readRunsDir are two symbols, not one matching the other', () => {
+    // `\breadRun\b` must not be satisfied by `readRunsDir`, or the register could permit the
+    // single-run reader while the module names only the directory walk. Asserted because the two
+    // names differ by a suffix and the word-boundary is the only thing keeping them apart.
+    expect(names('readRunsDir(root);', 'readRun'), 'readRunsDir answers for readRun').toBe(false);
+    expect(names('readRun(root, token);', 'readRun')).toBe(true);
+    expect(names('readRunsDir(root);', 'readRunsDir')).toBe(true);
+  });
+
   test('AC-11 — no production module imports a filesystem, process-spawning or terminal module', () => {
     // Every read, spawn and prompt goes through `@quorum/core`. The gate reader that owns
     // `node:readline` is Q-0094's, and it will need this clause split again rather than deleted.
@@ -333,7 +363,12 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // this, so the frame's prohibition is unchanged and only the commands gained one module.
     expect(frameModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name)).toStrictEqual([]);
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name))
-      .toStrictEqual(['lint.ts']);
+      .toStrictEqual(['lint.ts', 'runs.ts']);
+    // Q-0092: `runs.ts` joins the runs root, relativises a manifest path and normalises an
+    // occurrence directory to forward slashes, all of which the spike does with `node:path`. Shown
+    // red against the value it replaced rather than edited to fit.
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
+      'the list still holds the one module it held before Q-0092').not.toStrictEqual(['lint.ts']);
   });
 
   test('and both halves of that clause fire — it is neither vacuous nor blind', () => {
