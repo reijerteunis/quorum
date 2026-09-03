@@ -59,7 +59,7 @@ verdict moves behind it"* (2026-09-02) — so all three tickets are launchable, 
 is ruled against the post-Q-0091 tree rather than against the frame that exists today. This is the second time the cut has moved because a
 run measured something it assumed, and the first time the thing that moved was a *dependency* rather
 than a scope — which is the Q-0074 drift in a third direction, and the argument for the plan/backlog
-check acquiring a fourth one day. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
+check acquiring a fourth one day. **Q-0091 shipped on 2026-09-03** and its entry was rewritten to what happened, which is not what this cut described: it was **re-scoped from four commands to two at its requirements gate**, where the head-of-product loop exhausted at limit 1 and produced four errata before a line was written — one of which, E-2, rules a register schema that binds five sibling tickets, because ground rule 5 turned out to be *unsatisfiable as written* for any child translating a binary half. **Q-0099** and **Q-0100** were opened at that gate from findings the flow could not act on. The chore run then priced Q-0083's absence: the code was correct from round 1, no review round ever disputed it, and two rounds costing $14.28 — one of which changed no files at all — went on holding refusals that were right the first time, because an implement step that has proved a criterion wrong has no channel but prose. That is the eleventh appearance of the pattern and the first where the cost is written down with numbers. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
 what happened, which is not what this cut described: it landed **eleven** criteria rather than the
 eight this page promised, because its requirements run added AC-22 to AC-24 and two of them are what
 make the ticket work — `@quorum/shared`'s flat `exports`, which Q-0096 reported unfixed and which
@@ -588,41 +588,57 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     run measured that this workspace emits no JavaScript at all; the gate ruled on 2026-09-01 that
     the binary, the emit and what `npx quorum` may mean are **Q-0096's**, so Q-0090 stays the
     prerequisite for Q-0091 to Q-0094 and is no longer the prerequisite for running anything.
-  - Q-0091 CLI read-only commands: `lint` and `validate`. *(`requirements` 2026-09-03; **re-scoped
-    from four commands to two at that gate**, where the merged requirement measured 21 criteria
-    against a ceiling of fifteen and the head-of-product loop exhausted at limit 1 with the split as
-    its first finding. $13.545.)* The seam is in the spike source rather than in taste: `lint`
-    (`:404`) and `validate` (`:460`) end in `process.exit(ok ? 0 : 1)` and carry an exit-code
-    contract a `type: script` step depends on, while `board` (`:398`) and `adapters` (`:425`) end in
-    `return;` and can only exit 0. **Q-0099** takes the second pair. Thirteen criteria stay here
-    because the risky work is shared rather than command-shaped — five landed guards, two barrel
-    symbols and the register schema — and is reviewed on its own rather than underneath `board`'s
-    ten containment scenarios.
-    **Its run is the first to name the unchanged-tree pattern and draw the conclusion itself.**
-    Iteration 2 recorded that the git tip had not moved between iterations, that no successor folder
-    existed and that `spike-parity.test.ts` was untouched, re-ran every measurement instead of
-    inheriting iteration 1's, caught two citation errors iteration 1's own merge had introduced, and
-    said the gate should `advance` rather than `retry`. Third instance in a week of Q-0090's *"a
-    retry on an unchanged tree cannot rule its own blocker"*.
-    **The body's grouping premise was false in every direction**, which is worth more than the
-    arithmetic it also got wrong (446 + 221 = 667, the sentence said 698, the tree says 696 — wrong
-    when written, not stale). Measured: `q0036-board-containment.js` is 100% `board`;
-    `q0033-surface.js` gives `lint` three sites and `board` one row, its other sixteen invocations
-    being Q-0093's and Q-0094's; **`validate`'s entire binary half is in `q0011-runs-cli.js`, which
-    is Q-0092's file**; and **`adapters` inherits nothing from either named file** — the one
-    occurrence of the string is a flow-lint scenario about review panels, and its real proof is
-    `smoke.js:126–132`, Q-0095's.
-    **Four errata were written by hand at the gate**, before the chore run, because every one is work
-    no chore step may perform. E-2 is the one that reaches past this ticket: **ground rule 5 is
-    unsatisfiable as written**, verified structurally — `admissible()` permits a binary-spawning file
-    that imports no spike source only the verdict `cli`, and `audit()` fails a `cli` entry naming
-    counterparts, so no edit could record a translated binary half and the register would go on
-    reading "the work is still owed" after it had been done. `Entry.binaryCarriedBy?` is added rather
-    than a fourth verdict, because a verdict describes the spike file's own text and translation does
-    not change it. It binds Q-0092 to Q-0095 and Q-0099. E-3 stops an implementer reverting Q-0037:
-    the skip notice is the sentence Q-0037 shipped, and the phrase the body quoted from the frozen
-    contract is **not** in it — `shipped.includes(phrase)` is false, the words being rearranged and
-    one negated.
+  - Q-0091 CLI read-only commands: `lint` and `validate`. *(`reviewed` and `main:contained`
+    2026-09-03; **re-scoped from four commands to two** at its requirements gate.)* **$72.15** —
+    $13.55 requirements, $58.60 chore across four implement rounds, one `retry`, ending in `approve`
+    and a green integrate. **`quorum lint` and `quorum validate` run through the built binary**, with
+    the exit-code contract verified by execution rather than from the report: clean flows 0, no args
+    1, non-conforming artifact 1.
+    **Its requirements run exhausted at limit 1 and produced four errata before a line was written.**
+    Twenty-one criteria against a ceiling of fifteen forced a split, on a seam measured in the spike
+    source rather than chosen: `lint` (`:404`) and `validate` (`:460`) end in
+    `process.exit(ok ? 0 : 1)` and carry an exit-code contract a `type: script` step depends on,
+    while `board` (`:398`) and `adapters` (`:425`) end in `return;` — **Q-0099** takes that pair.
+    **E-2 is the ruling that reaches past this ticket**: ground rule 5 was *unsatisfiable as written*,
+    verified structurally — `admissible()` permits a binary-spawning file that imports no spike source
+    only the verdict `cli`, and `audit()` fails a `cli` entry naming counterparts, so no edit could
+    record a translated binary half and the register would go on reading *"the work is still owed"*
+    after it had been done. `Entry.binaryCarriedBy?` was added rather than a fourth verdict, because a
+    verdict describes the spike file's own text and translation does not change it; it binds Q-0092 to
+    Q-0095 and Q-0099. **E-3 stopped an implementer reverting Q-0037**: the body quoted a phrase from
+    the frozen contract that the shipped notice does not contain — `shipped.includes(phrase)` is
+    false, the words rearranged and one negated — and following it literally would have restored the
+    wording Q-0037 deliberately replaced.
+    **The body's grouping premise was false in every direction**, which matters more than the three
+    mutually inconsistent figures it also carried (components 667, sentence 698, tree 696 — wrong when
+    written, not stale). `validate`'s entire binary half is in `q0011-runs-cli.js`, **Q-0092's file**,
+    and `adapters` inherits nothing from either named file, its one occurrence there being a flow-lint
+    scenario about review panels.
+    **The chore run's shape is the finding, and it is Q-0083's absence priced.** The code was correct
+    from round 1 and no review round ever disputed it: all three early reviews returned the same two
+    majors, both about *authority* rather than the change — `validate` calls no `loadProject` (AC-4
+    said both commands must) and `lint` forwards `flags.project` (AC-2 said it reads neither). Both
+    criteria were wrong, and the implementer proved it: the spike's `validate` case holds no
+    `loadProject` call site, and the spike reads `flags.project` **inside** `loadProject`, which
+    `lint` calls — so AC-2's aside described the case block while its normative half, *no command
+    re-parses the command line*, binds and is met. **Rounds 2 and 3 cost $14.28 and round 3 changed no
+    files at all**, byte-identical to round 2's commit, because an implement step that has proved a
+    criterion wrong has one channel: prose nobody reads until a gate. Eleventh appearance of the
+    pattern; `requirements/errata.md` **E-7** records it with numbers rather than describing it again.
+    **Two things went right and are recorded as such.** Round 2 refused on ground rule 3 rather than
+    yielding, citing Q-0052's round-3 yield as the mistake not to repeat, and rounds 2 and 3 spent
+    themselves on measurement rather than re-argument. And **E-5 and E-6 were deliberately held rather
+    than landed mid-loop** — drafted after round 1 and kept back, because Q-0097 cost two errata by
+    landing one while a round was in flight that then built past it. Round 4 was the first to read
+    them, changed twelve lines of authority comment from *"an erratum is owed"* to *"see E-5/E-6"*,
+    and was approved. Its review is also the first to read the change without an authority blocker in
+    front of it — Q-0038's precedent — and returned one nit, fixed after the gate: `validate.ts`'s
+    summary said the command exits 1 *"on the first"* non-conforming artifact while its own body three
+    lines down, and the code, aggregate across all of them. Confirmed by running it over two bad
+    artifacts, which reports both.
+    **The approve was distrusted rather than banked** (Q-0051): the reviewer stated it could not
+    execute the suite under `--sandbox read-only`, so the exit codes and the skip notice were verified
+    through the built binary instead.
   - Q-0099 CLI `board` and `adapters`, the two commands that always exit 0. *(Split from Q-0091
     2026-09-03, `draft`.)* Eight criteria, transcribed into the folder in full from Appendix A of
     Q-0091's merged requirement rather than referenced, because a deferred obligation dies unless it
