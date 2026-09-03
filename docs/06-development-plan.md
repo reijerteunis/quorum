@@ -588,12 +588,60 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     run measured that this workspace emits no JavaScript at all; the gate ruled on 2026-09-01 that
     the binary, the emit and what `npx quorum` may mean are **Q-0096's**, so Q-0090 stays the
     prerequisite for Q-0091 to Q-0094 and is no longer the prerequisite for running anything.
-  - Q-0091 CLI read-only commands: `board`, `lint`, `validate`, `adapters`. 109 lines of `case`
-    against **698 lines** of inherited coverage, which is the point — these four are thin over
-    `core`, so what transfers is the assertion that the surface behaves. Carries three measured
-    traps: the board's containment vocabulary is fixed by the glossary; `validate`'s skip notice must
-    keep the words a frozen contract requires and a `core` test transcribes; and the API-key refusal
-    still says "Harness", which is Q-0068's and not this child's.
+  - Q-0091 CLI read-only commands: `lint` and `validate`. *(`requirements` 2026-09-03; **re-scoped
+    from four commands to two at that gate**, where the merged requirement measured 21 criteria
+    against a ceiling of fifteen and the head-of-product loop exhausted at limit 1 with the split as
+    its first finding. $13.545.)* The seam is in the spike source rather than in taste: `lint`
+    (`:404`) and `validate` (`:460`) end in `process.exit(ok ? 0 : 1)` and carry an exit-code
+    contract a `type: script` step depends on, while `board` (`:398`) and `adapters` (`:425`) end in
+    `return;` and can only exit 0. **Q-0099** takes the second pair. Thirteen criteria stay here
+    because the risky work is shared rather than command-shaped — five landed guards, two barrel
+    symbols and the register schema — and is reviewed on its own rather than underneath `board`'s
+    ten containment scenarios.
+    **Its run is the first to name the unchanged-tree pattern and draw the conclusion itself.**
+    Iteration 2 recorded that the git tip had not moved between iterations, that no successor folder
+    existed and that `spike-parity.test.ts` was untouched, re-ran every measurement instead of
+    inheriting iteration 1's, caught two citation errors iteration 1's own merge had introduced, and
+    said the gate should `advance` rather than `retry`. Third instance in a week of Q-0090's *"a
+    retry on an unchanged tree cannot rule its own blocker"*.
+    **The body's grouping premise was false in every direction**, which is worth more than the
+    arithmetic it also got wrong (446 + 221 = 667, the sentence said 698, the tree says 696 — wrong
+    when written, not stale). Measured: `q0036-board-containment.js` is 100% `board`;
+    `q0033-surface.js` gives `lint` three sites and `board` one row, its other sixteen invocations
+    being Q-0093's and Q-0094's; **`validate`'s entire binary half is in `q0011-runs-cli.js`, which
+    is Q-0092's file**; and **`adapters` inherits nothing from either named file** — the one
+    occurrence of the string is a flow-lint scenario about review panels, and its real proof is
+    `smoke.js:126–132`, Q-0095's.
+    **Four errata were written by hand at the gate**, before the chore run, because every one is work
+    no chore step may perform. E-2 is the one that reaches past this ticket: **ground rule 5 is
+    unsatisfiable as written**, verified structurally — `admissible()` permits a binary-spawning file
+    that imports no spike source only the verdict `cli`, and `audit()` fails a `cli` entry naming
+    counterparts, so no edit could record a translated binary half and the register would go on
+    reading "the work is still owed" after it had been done. `Entry.binaryCarriedBy?` is added rather
+    than a fourth verdict, because a verdict describes the spike file's own text and translation does
+    not change it. It binds Q-0092 to Q-0095 and Q-0099. E-3 stops an implementer reverting Q-0037:
+    the skip notice is the sentence Q-0037 shipped, and the phrase the body quoted from the frozen
+    contract is **not** in it — `shipped.includes(phrase)` is false, the words being rearranged and
+    one negated.
+  - Q-0099 CLI `board` and `adapters`, the two commands that always exit 0. *(Split from Q-0091
+    2026-09-03, `draft`.)* Eight criteria, transcribed into the folder in full from Appendix A of
+    Q-0091's merged requirement rather than referenced, because a deferred obligation dies unless it
+    is written into the next ticket's body. **Runs after Q-0091**, which decides the module layout
+    and settles four register shapes; this ticket then extends forms already ruled. `board` brings
+    all 220 lines of `q0036-board-containment.js` and the glossary-fixed containment vocabulary;
+    **`adapters` brings no inherited coverage at all**, so every one of its assertions is new.
+  - Q-0100 The user-facing binary is called `quorum`, not `harness`. *(Opened at Q-0091's
+    requirements gate 2026-09-03, `draft`.)* Three sentences tell an adopter to run a binary that
+    does not exist — the board's hint `→ harness run <flow> <id>`, `ProjectNotFoundError`'s ``run
+    `harness init` in your repo`` (which `project.ts:31` already records as *"Carried, not fixed"*),
+    and `validate`'s `usage: harness validate …` — and **Q-0093's `init` next-steps line will be a
+    fourth**, which is the argument for ruling the class once rather than per command. Distinct from
+    **Q-0068**, whose subject is the adapter refusal string in different files for a different
+    reason. What is undecided is not the target word but three things: whether `spike/bin/` changes
+    before the cutover deletes it, how the hint moves in step with Q-0099's AC-2 which pins it, and
+    whether a user-facing *instruction* belongs in a `core` error message at all once M3's server
+    surfaces the same error over HTTP. A blanket `sed` is refused: the folder is `harness/` and the
+    concept is a harness, which `product-boundaries.md` requires be kept apart.
   - Q-0092 CLI `runs` and the run-history presentation layer. The largest command at 72 lines, over
     six readers already in `core`. **Inherits Q-0037's OQ-2 ruling**: an occurrence's usage is not a
     roll-up row and is not rendered as one, and `q0034-review-fixes.js` B2 is the guard that catches

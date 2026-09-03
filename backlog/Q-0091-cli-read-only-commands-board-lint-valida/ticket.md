@@ -1,6 +1,6 @@
 ---
 id: Q-0091
-title: "CLI read-only commands: board, lint, validate, adapters"
+title: "CLI read-only commands: lint and validate"
 stage: requirements
 owner: ruud
 repos: []
@@ -27,29 +27,42 @@ history:
     at: 2026-09-03T17:01:35.394Z
     cost: 13.545
 ---
-**Four commands that read and print, and change nothing.** Grouped because they share that property
-and because their two test files cover them together.
+*The folder name still reads `…-board-lint-valida`, which is the id it was created under on
+2026-09-01 and is deliberately not renamed: `runs.log`, run history under `.quorum/runs/`, the
+branch `harness/Q-0091/integration` and every citation elsewhere resolve against it. The title
+and the body are what moved.*
+
+**Two commands that read and print, and change nothing.** Re-scoped at the requirements gate on
+2026-09-03 from four to two — see `requirements/errata.md` **E-1**, which is binding. `board` and
+`adapters` are **Q-0099's**, and the seam is measured in the spike source rather than chosen: `lint`
+(`harness.js:404`) and `validate` (`:460`) end in `process.exit(ok ? 0 : 1)` and carry an exit-code
+contract a `type: script` step depends on, while `board` (`:398`) and `adapters` (`:425`) end in
+`return;` and can only exit 0.
 
 | command | spike lines | what it needs from `core` |
 | --- | --- | --- |
-| `board` | `:353–399`, 47 lines | `Backlog`, `STAGES`, `containment` (Q-0042), `currentBranch` |
 | `lint` | `:400–405`, 6 lines | `lintDirectory` (Q-0044) |
 | `validate` | `:426–461`, 36 lines | `validateArtifact`, `readData` (Q-0045) |
-| `adapters` | `:406–425`, 20 lines | `getAdapter`, `probeAdapter` (Q-0046/Q-0047) |
 
-**Inherits 698 lines of binary-half coverage** — `q0033-surface.js` (446) and
-`q0036-board-containment.js` (221) — which is more than the commands themselves, and is the point:
-these four are thin over `core`, so what transfers is the assertion that the *surface* behaves.
+**The merged requirement is `requirements/merged.md`; its §5 AC-1 to AC-13 are this ticket** and
+Appendix A is Q-0099's. **Four errata bind this run** and each was written by hand at the gate,
+because every one is work no chore step may perform: E-1 the re-scope, E-2 the `spike-parity`
+register schema, E-3 the skip-notice contradiction, E-4 the coverage figures.
 
-**Three things measured and easy to get wrong.** `board` renders containment as one token per
-ticket and the vocabulary is fixed by the glossary — `main:contained`, `main:not-contained(+12)`,
-`main:indeterminate(...)` — and the board says "contained", never "merged" or "landed".
-`validate`'s skipped-check notice must keep the words *run-manifest semantic checks were skipped*,
-because `contracts/Q-0011/runs-cli.contract.md:47–48` requires them and `contracts/` is not this
-role's to amend; Q-0037 shipped the current wording and `packages/core/src/contracts/validate-artifact.test.ts`
-transcribes it, so that test moves with any change. And `adapters` must refuse when an API key is in
-the environment — that refusal is the BYOS guarantee and its message currently says "Harness", which
-is Q-0068's to fix and **not** this child's.
+**Where the inherited coverage actually is** — the body's old *"698 lines"* sentence was wrong three
+ways and its grouping premise false in every direction (E-4). For these two commands: `lint` has
+three sites in `q0033-surface.js` (476 lines, whose other sixteen invocations are Q-0093's and
+Q-0094's), and **`validate`'s entire binary half is in `q0011-runs-cli.js`, which is Q-0092's file**.
+So this ticket translates a command-scoped set of behaviours across files rather than translating a
+file.
+
+**Two things measured and easy to get wrong.** `validate`'s skipped-check notice is **the sentence
+Q-0037 shipped**, transcribed at `validate-artifact.test.ts:157` and `:189` — *not* the phrase
+`contracts/Q-0011/runs-cli.contract.md:46–48` uses, which is a requirement in prose and which the
+shipped string does not contain verbatim; E-3 rules it, and following the contract literally would
+revert Q-0037. And the API-key refusal still says "Harness", which is **Q-0068's** and not this
+child's; `validate`'s usage line says `harness validate`, which is **Q-0100's** and is preserved
+verbatim here.
 
 ## Ground rules — Q-0010's, repeated here because a child cannot read its parent
 
