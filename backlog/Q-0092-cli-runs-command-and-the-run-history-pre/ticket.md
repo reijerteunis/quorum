@@ -1,14 +1,22 @@
 ---
 id: Q-0092
 title: CLI runs command and the run-history presentation layer
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0092/integration
 priority: p2
 created: 2026-09-01
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-03T20:42:26.379Z
+    cost: 11.13
 ---
 **The largest single command — `spike/bin/harness.js:462–533`, 72 lines — and the whole formatting
 layer under it.** `runs` lists run history and opens one run in detail, in human and `--json` form.
