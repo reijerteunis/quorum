@@ -17,8 +17,8 @@ test('the barrel is no longer the one-line stub (Q-0096 AC-2)', () => {
 });
 
 test('and it exports a real surface, whose identity is pinned where it is derived', () => {
-  // The sixteen names are asserted as an identity by `packages/cli/src/package.test.ts`, because
-  // that is where thirteen of them are already written down — its `DOMAIN` register — and a list
+  // The eighteen names are asserted as an identity by `packages/cli/src/package.test.ts`, because
+  // that is where fourteen of them are already written down — its `DOMAIN` register — and a list
   // retyped here would be the second copy that register exists to prevent (Q-0096 AC-2). What is
   // checked here is that the surface is real and reaches this package's own modules, so a barrel
   // gutted in `core` fails in `core` rather than only in its consumer.

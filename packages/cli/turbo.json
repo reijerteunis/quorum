@@ -26,6 +26,15 @@
     // everything under `packages/core` and `packages/shared` that the copy carries — their sources
     // as well as `git-identity.test.ts` — arrives through the `^test` edge the workspace
     // dependencies create.
+    //
+    // Q-0091 adds two more, and its §9 row said this task would need none — confirmed rather than
+    // assumed, which is what that row asked for. `src/lint.test.ts` copies the shipped flow
+    // directory into its fixture and asserts it lints clean, so an edited flow file must move this
+    // hash; and `src/validate.test.ts` walks every workspace package's `src` to prove the frozen
+    // skip notice has exactly one copy under `packages/**`. The second glob over-declares
+    // deliberately: `packages/core` and `packages/shared` already arrive through the `^test` edge,
+    // and the four scaffold packages the scan also reads arrive through nothing at all, so the
+    // choice is between over-declaring two and under-declaring four.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -36,7 +45,9 @@
         "../../pnpm-workspace.yaml",
         "../../.github/workflows/ci.yml",
         "../../.github/scripts/git-identity-sweep.sh",
-        "../../harness/harness.yaml"
+        "../../harness/harness.yaml",
+        "../../harness/flows/*.yaml",
+        "../../packages/*/src/**"
       ]
     }
   }

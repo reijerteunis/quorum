@@ -152,6 +152,8 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     '.github/workflows/ci.yml': 'build.test.ts — Q-0097 AC-14, CI\'s workspace job grew no build phase',
     '.github/scripts/git-identity-sweep.sh': 'build.test.ts — Q-0097 AC-14, the sweep\'s five phases are unchanged',
     'harness/harness.yaml': 'build.test.ts — Q-0097 AC-14, commands.install and commands.test grew no build phase',
+    'harness/flows': 'lint.test.ts — Q-0091 AC-5, the shipped flow directory is copied into a fixture and asserted to lint clean, which is `q0033-surface.js` S1.3',
+    packages: 'validate.test.ts — Q-0091 AC-9, every workspace package\'s src is walked to prove the frozen skip notice has exactly one copy under packages/**',
   };
 
   /**
@@ -163,11 +165,17 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
    * `build.test.ts` copies into its isolated workspace — arrives through the `^test` edges the two
    * workspace dependencies create. Declaring any of them would over-declare rather than
    * under-declare, which is the same reasoning the turbo configuration's own comment carries.
+   *
+   * Q-0091's two are here for the opposite reason: `harness/flows` is hashed by nothing this task
+   * reaches, and the per-package source glob covers the four scaffold packages `validate.test.ts`
+   * walks, which no edge covers either. That glob over-declares `core` and `shared`, and the
+   * alternative is a scan whose verdict can go stale behind a cache hit.
    */
   const DECLARED = [
     '../../pnpm-lock.yaml', '../../package.json', '../../turbo.json', '../../.gitignore',
     '../../pnpm-workspace.yaml',
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
+    '../../harness/flows/*.yaml', '../../packages/*/src/**',
   ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {
@@ -329,22 +337,55 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
    * them rather than calling them — and `frame.source.test.ts` has no reason to name them. Written
    * out with their modules so a reader can check the list against the barrel by eye.
    */
-  const ERRORS = ['FlowError', 'GateUnansweredError', 'IntegrationError'];
+  const ERRORS = ['FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectNotFoundError'];
 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(13);
+    expect(domain()).toHaveLength(14);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
 
-  test('the barrel exports exactly the thirteen plus the three, and every one is defined', async () => {
+  test('the barrel exports exactly the fourteen plus the four, and every one is defined', async () => {
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
     expect(Object.keys(barrel).sort()).toStrictEqual([...domain(), ...ERRORS].sort());
     for (const symbol of [...domain(), ...ERRORS]) {
       expect(barrel[symbol], `${symbol} is exported but undefined`).toBeDefined();
     }
+  });
+
+  test('Q-0091 AC-3 — both counts moved, and each new name is a command\'s need', async () => {
+    // The two pins above read 13 and three until Q-0091, and each is shown red against the value it
+    // replaced rather than edited to fit. Both additions are traceable to a command:
+    // `quorum validate` reads its schema through `readData` before opening any artifact, and every
+    // project-opening command has to be able to tell a missing project from a crash — uncaught,
+    // `ProjectNotFoundError` reaches `dieOnUnexpected` and prints a Node stack where the spike
+    // prints one sentence.
+    expect(domain(), 'the register still holds the thirteen it held before this ticket').not.toHaveLength(13);
+    expect(domain()).toContain('readData');
+    expect(ERRORS, 'the error list still holds the three it held before this ticket')
+      .not.toStrictEqual(['FlowError', 'GateUnansweredError', 'IntegrationError']);
+    expect(ERRORS).toContain('ProjectNotFoundError');
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    expect(typeof barrel.readData).toBe('function');
+    expect(typeof barrel.ProjectNotFoundError).toBe('function');
+  });
+
+  test('and a type export adds no runtime key, which is why the counts above are the whole surface', async () => {
+    // Q-0091 also re-exports two types by name — `ArtifactValidationResult` and `FlowFileReport`,
+    // each a record a command renders. They are erased, so `Object.keys` cannot see them and the
+    // identity above stays the value surface. Asserted rather than assumed, because a `type` keyword
+    // dropped by accident would turn one of them into a runtime key and fail the identity with a
+    // message about the wrong thing.
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    for (const name of ['ArtifactValidationResult', 'FlowFileReport']) {
+      expect(Object.keys(barrel), `${name} is exported as a value`).not.toContain(name);
+    }
+    const source = read(WORKSPACE, 'packages', 'core', 'src', 'index.ts');
+    expect(source, 'the types are exported by name rather than wholesale').toContain('export type { FlowFileReport }');
+    expect(source, 'a wildcard type export is the exports-map objection in a second form')
+      .not.toMatch(/export type \*/);
   });
 });
 
