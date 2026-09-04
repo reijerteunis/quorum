@@ -35,6 +35,13 @@
     // deliberately: `packages/core` and `packages/shared` already arrive through the `^test` edge,
     // and the four scaffold packages the scan also reads arrive through nothing at all, so the
     // choice is between over-declaring two and under-declaring four.
+    //
+    // Q-0093 adds one. `src/templates.test.ts` asserts that this package's own
+    // `templates/harness/**` is byte-identical to `spike/templates/harness/**` in both directions,
+    // which is what stops an adopter's first `harness/flows` being a stale copy of the shipped ones.
+    // This package's half of that comparison is covered by `$TURBO_DEFAULT$`, which keeps the
+    // package's own tracked files; the spike's half is hashed by nothing at all, so an edit there
+    // must move this task's hash or the guard reports agreement from a replay.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -47,7 +54,8 @@
         "../../.github/scripts/git-identity-sweep.sh",
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
-        "../../packages/*/src/**"
+        "../../packages/*/src/**",
+        "../../spike/templates/harness/**"
       ]
     }
   }

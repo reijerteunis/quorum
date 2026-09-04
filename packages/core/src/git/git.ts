@@ -105,6 +105,30 @@ export function mergeBase(repoDir: string, a: string, b: string): string | null 
   return safe(() => git(['merge-base', a, b], repoDir));
 }
 
+/**
+ * The branch `dir` is on, or `null` where git cannot name one.
+ *
+ * `git branch --show-current` names the branch even on an **unborn HEAD** — a fresh
+ * `git init -b <name>` before the first commit — and prints an **empty string**, not an error, on a
+ * detached HEAD. Both are "cannot name a branch" for a caller's purposes, so the empty string
+ * becomes `null` here rather than reaching one as a branch called nothing. Outside a repository, or
+ * with a broken `GIT_DIR`, the command itself fails and that is `null` too.
+ *
+ * **git's stderr never leaves this function**, which is a property rather than an accident of the
+ * runner: its one caller scaffolds a project, which is the first command an adopter runs, and a raw
+ * `fatal: not a git repository` on that path reads as the product having crashed. Why: preserved from
+ * `spike/bin/harness.js:287–292`, whose `stdio` is `['ignore', 'pipe', 'ignore']` for the same
+ * reason; this module's one runner already pipes both, so the behaviour is the same and the
+ * spelling is the module's.
+ *
+ * Not on `@quorum/core`'s barrel: a symbol reaches it because a command needs it, and no command
+ * asks this question — `init` asks for a project to be scaffolded and this is how that is answered.
+ */
+export function currentBranch(dir: string): string | null {
+  const name = safe(() => git(['branch', '--show-current'], dir));
+  return name === null || name === '' ? null : name;
+}
+
 /** What a caller already knows about the repository's history when it asks {@link ancestry}. */
 export interface AncestryOptions {
   /** `true` shallow, `false` not shallow, `null` the probe could not answer — see {@link ancestry}. */

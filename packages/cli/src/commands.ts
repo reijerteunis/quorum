@@ -21,10 +21,14 @@
  *
  * **Q-0092 adds `runs`, last**, because `spike/bin/harness.js:10` is the last line of that header
  * and this file preserves its ordering wherever the spike has one.
+ *
+ * **Q-0093 adds `init` and `ticket`, above `lint`**, for the same reason: `spike/bin/harness.js:3`
+ * and `:4` precede `:7`, so the two writing commands insert rather than append. `board`, `adapters`
+ * and `run` are the three still to arrive, and each takes its own place in that order.
  */
 
 /** Every command name {@link HELP} may mention and the frame's dispatch table must handle. */
-export const COMMANDS = ['help', 'lint', 'validate', 'runs'] as const;
+export const COMMANDS = ['help', 'init', 'ticket', 'lint', 'validate', 'runs'] as const;
 
 /** One of {@link COMMANDS}. */
 export type Command = (typeof COMMANDS)[number];
@@ -48,6 +52,8 @@ usage: quorum <command> [options]
 
 commands:
   quorum help                             print this message
+  quorum init [dir]                       copy the shipped templates into <dir>/harness/ and create backlog/
+  quorum ticket new "<title>"             create a ticket at the backlog's next id [--intent --owner --id]
   quorum lint                             lint the whole flow directory (structure + cross-flow edges)
   quorum validate <schema.json> <file…>   check artifacts against a contract; exit 1 on failure
   quorum runs [ticket|run-id] [--json]    run history: list, filter by ticket, or show one run`;

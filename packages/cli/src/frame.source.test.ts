@@ -171,13 +171,64 @@ const packageFiles = (): [string, string][] => inventory(PACKAGE)
  * `node:path` left this list at Q-0091 and moved to {@link FRAME_ONLY_IO}. It is admitted for a
  * command module because `<harnessDir>/flows` has to be joined somewhere and `Project` carries no
  * `flowsDir` — the alternative, adding one, moves `project.test.ts:78`'s four-key pin in the package
- * Q-0092 to Q-0094 all consume, to save one import. `node:url` stays forbidden everywhere in
- * production: a module resolving its own location is the mechanism Q-0090 AC-7 replaced.
+ * Q-0092 to Q-0094 all consume, to save one import. **`node:url` stays forbidden everywhere in
+ * production, and it is the one entry `init` could have needed**: `quorum init` copies a tree and
+ * asks git for a branch name, and both are `@quorum/core`'s, so the list is unchanged and neither
+ * new command module has an exemption from it (Q-0093 AC-10(a)).
+ *
+ * **What this regex does not see is an import, and that is why it never saw the thing its comment
+ * claimed to forbid.** Until Q-0093 the sentence above went on to say that *"a module resolving its
+ * own location is the mechanism Q-0090 AC-7 replaced"* — a promise this scan cannot keep, because
+ * `import.meta.url` imports nothing: `URL` and `import.meta` are both ambient, so a module resolving
+ * its own location passed here in silence. {@link resolvesOwnLocation} is the clause that sees it,
+ * and Q-0093 is the first ticket to give it a subject.
  */
 const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:readline[^']*|node:os|node:url)'/;
 
 /** The one module a command may import and the frame may not. */
 const FRAME_ONLY_IO = /from 'node:path'/;
+
+/**
+ * `text` with its comments removed, so a clause below reads what a module **executes**.
+ *
+ * The two forms this repository writes prose in: a `/** … *\/` block, and a `//` remark on a line of
+ * its own. A trailing `//` after code is deliberately **not** stripped — stripping it would need a
+ * string-literal parser, since `'https://…'` is not a comment — so a claim about a scan that reads
+ * this is a claim about those two forms and no others. Stated rather than left to be found.
+ */
+const codeOf = (text: string): string => text
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^[ \t]*\/\/.*$/gm, '');
+
+/**
+ * Whether a module resolves **its own location** — the mechanism `IO_MODULE`'s comment claimed to
+ * forbid and could not see (Q-0093 AC-10(b)).
+ *
+ * Every spelling that answers *where am I*: `import.meta.url`, and the two properties Node added
+ * beside it. Read out of {@link codeOf} rather than out of the raw text, so a comment naming the
+ * mechanism cannot trip it and a guard cannot be talked out of firing by text it does not execute —
+ * the failure Q-0079's round 1 found inside its own enforcer.
+ */
+const resolvesOwnLocation = (text: string): boolean =>
+  /\bimport\.meta\.(url|dirname|filename)\b/.test(codeOf(text));
+
+/**
+ * The production modules permitted to resolve their own location, with why.
+ *
+ * **Split rather than blanket-enforced**, on the `node:path` precedent above: `quorum init` has to
+ * find the shipped templates, and the only honest answer is *beside the file that is running* —
+ * decision *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02) clause
+ * (e) fixes the binary's depth so that `../templates/harness/` resolves to `<package>/templates/`
+ * from `dist/` and from `src/` alike. A `process.cwd()` would answer the user's directory and an
+ * environment variable would answer whatever was exported.
+ *
+ * **The frame is permitted none**, which is the half that keeps this a rule rather than a list: a
+ * frame module resolving its own location is the mechanism Q-0090 AC-7 replaced, and a second
+ * command module doing it would mean two places knew where the package is.
+ */
+const SELF_LOCATING: Record<string, string> = {
+  'init.ts': 'the shipped template tree is at <package>/templates/harness, which is knowable only relative to this module — 078(e)',
+};
 
 describe('the module scan has a subject', () => {
   test('it finds this package\'s modules, both halves are non-empty, and the paths are distinct', () => {
@@ -195,12 +246,39 @@ describe('the module scan has a subject', () => {
     // the shape "a check that skips its subject must not report success" (2026-08-25) names.
     const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
     expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
-      .toStrictEqual(['lint.ts', 'runs.ts', 'validate.ts']);
+      .toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
     expect(names(commandModules()), 'the partition still holds the two modules it held before Q-0092')
       .not.toStrictEqual(['lint.ts', 'validate.ts']);
+    // Added rather than replacing the line above, as Q-0092 added that one: each superseded value is
+    // kept so a register that quietly shrank back is a failure naming the ticket it shrank past.
+    expect(names(commandModules()), 'the partition still holds the three modules it held before Q-0093')
+      .not.toStrictEqual(['lint.ts', 'runs.ts', 'validate.ts']);
     expect(names(frameModules())).toContain('main.ts');
     expect([...names(frameModules()), ...names(commandModules())].sort()).toStrictEqual(names(production()));
     expect(names(frameModules()).filter((name) => names(commandModules()).includes(name))).toStrictEqual([]);
+  });
+
+  test('Q-0093 OQ-4 — the package barrel re-exports every command module, derived rather than listed', () => {
+    // `index.ts` exported `lint.js` and `validate.js` and not `runs.js`, so Q-0092's module was
+    // absent from this package's own public surface by omission rather than by decision, and nothing
+    // said so. Derived from the same `COMMANDS` the partition above uses, which is what stops the
+    // next command being forgotten the same way — a register that can rot, closed rather than
+    // re-typed. *"Resolve rather than open a successor."*
+    const barrel = production().find(([name]) => name === 'index.ts')?.[1] ?? '';
+    expect(barrel, 'index.ts is not among the production modules').not.toBe('');
+    const modules = commandModules().map(([name]) => name).sort();
+    expect(modules.length, 'the derivation found no command module — this test proves nothing').toBeGreaterThan(2);
+    const missing = modules.filter((name) => !barrel.includes(`export * from './${name.replace(/\.ts$/, '.js')}';`));
+    expect(missing, 'a command module the package does not export').toStrictEqual([]);
+  });
+
+  test('and that derivation has a subject — a barrel missing one is recognised as missing it', () => {
+    // Shown over text rather than over the tree, because the shipped barrel passes: the expression
+    // above is run against the barrel as it stood before this ticket, which omitted `runs.js`.
+    const beforeQ0093 = "export * from './lint.js';\nexport * from './validate.js';\n";
+    const missing = ['lint.ts', 'runs.ts', 'validate.ts']
+      .filter((name) => !beforeQ0093.includes(`export * from './${name.replace(/\.ts$/, '.js')}';`));
+    expect(missing).toStrictEqual(['runs.ts']);
   });
 });
 
@@ -216,6 +294,7 @@ const DOMAIN = [
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
   'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
+  'initProject',
 ];
 
 /**
@@ -228,11 +307,17 @@ const DOMAIN = [
  * actually name, which is what stops the list rotting into a wish.
  *
  * Keyed by module rather than by command so the audit can compare it against the derivation above
- * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093, Q-0094 and Q-0099 each add
- * theirs the same way.
+ * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093 added two, and Q-0094 and Q-0099
+ * each add theirs the same way.
+ *
+ * `init.ts`'s row is one name, which is the point of it: `quorum init` scaffolds a project it has
+ * not opened, so it reaches neither `loadProject` nor `Backlog` — and the row saying so is what
+ * would fail if it started to.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
+  'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
+  'ticket.ts': ['Backlog', 'loadProject'],
   'validate.ts': ['validateArtifact', 'readData'],
   'runs.ts': [
     'loadProject', 'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal',
@@ -363,12 +448,17 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // this, so the frame's prohibition is unchanged and only the commands gained one module.
     expect(frameModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name)).toStrictEqual([]);
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name))
-      .toStrictEqual(['lint.ts', 'runs.ts']);
+      .toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts']);
     // Q-0092: `runs.ts` joins the runs root, relativises a manifest path and normalises an
     // occurrence directory to forward slashes, all of which the spike does with `node:path`. Shown
     // red against the value it replaced rather than edited to fit.
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
       'the list still holds the one module it held before Q-0092').not.toStrictEqual(['lint.ts']);
+    // Q-0093: `init.ts` resolves the directory to scaffold with `path.resolve(rest[0] ?? '.')` and
+    // `ticket.ts` relativises the created folder against the working directory, both of which the
+    // spike does with `node:path`. Same demonstration, against the value this ticket replaced.
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
+      'the list still holds the two modules it held before Q-0093').not.toStrictEqual(['lint.ts', 'runs.ts']);
   });
 
   test('and both halves of that clause fire — it is neither vacuous nor blind', () => {
@@ -378,6 +468,95 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(FRAME_ONLY_IO.test("import path from 'node:path';")).toBe(true);
     expect(FRAME_ONLY_IO.test('// joins <harnessDir> and flows with node:path')).toBe(false);
     expect(IO_MODULE.test("import path from 'node:path';"), 'node:path is still package-wide').toBe(false);
+  });
+});
+
+/**
+ * Everything wrong with `frame`, `commands` and `allowed` as a description of AC-10's self-location
+ * clause, one sentence each.
+ *
+ * A function over its inputs for the same reason {@link domainOffenders} is one: each clause is
+ * shown firing on a mutated copy rather than observed passing over a tree that satisfies it.
+ */
+function locationOffenders(
+  frame: readonly [string, string][],
+  commands: readonly [string, string][],
+  allowed: Record<string, string>,
+): string[] {
+  const problems: string[] = [];
+  for (const [name, text] of frame) {
+    if (resolvesOwnLocation(text)) problems.push(`${name}: the frame may not resolve its own location`);
+  }
+  for (const [name, text] of commands) {
+    if (resolvesOwnLocation(text) && allowed[name] === undefined) {
+      problems.push(`${name}: it resolves its own location and no entry says why it may`);
+    }
+    if (!resolvesOwnLocation(text) && allowed[name] !== undefined) {
+      problems.push(`${name}: its entry permits a self-location the module does not perform`);
+    }
+  }
+  for (const name of Object.keys(allowed)) {
+    if (!commands.some(([module]) => module === name)) problems.push(`${name}: an entry for a module that is no command's`);
+  }
+  return problems;
+}
+
+describe('Q-0093 AC-10 — one module knows where the package is, and the guard can see it', () => {
+  test('the frame resolves no location, and the one command that does is the one with an entry', () => {
+    expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
+    expect(Object.keys(SELF_LOCATING), 'the register is empty — this test proves nothing')
+      .toStrictEqual(['init.ts']);
+  });
+
+  test('a frame module doing it fails, and so does a second command module', () => {
+    // Both mutations AC-10(d) names, over copies rather than over the tree: the shipped tree passes,
+    // and a clause that can only be observed passing is not established (2026-08-29).
+    const stray: [string, string][] = [['main.ts', "const here = new URL('.', import.meta.url);"]];
+    expect(locationOffenders(stray, [], {}))
+      .toStrictEqual(['main.ts: the frame may not resolve its own location']);
+
+    const second: [string, string][] = [['runs.ts', "const root = new URL('../runs/', import.meta.url);"]];
+    expect(locationOffenders([], second, {}))
+      .toStrictEqual(['runs.ts: it resolves its own location and no entry says why it may']);
+  });
+
+  test('and an entry permitting a self-location its module does not perform fails, so the list cannot rot', () => {
+    // The other direction, which is what stops the register outliving the mechanism it excuses —
+    // the shape `domainOffenders` already refuses for the domain symbols.
+    const plain: [string, string][] = [['init.ts', "import path from 'node:path';"]];
+    expect(locationOffenders([], plain, SELF_LOCATING))
+      .toStrictEqual(['init.ts: its entry permits a self-location the module does not perform']);
+    expect(locationOffenders([], [], SELF_LOCATING))
+      .toStrictEqual(["init.ts: an entry for a module that is no command's"]);
+  });
+
+  test('the clause reads what a module executes, not what its prose says — which is why IO_MODULE missed it', () => {
+    // AC-10(b) and (e) together. The first two assertions are the finding this clause exists for:
+    // `IO_MODULE` matches an IMPORT, and `import.meta.url` imports nothing, so the expression the
+    // shipped `init.ts` uses passed a scan whose own comment promised to forbid it. The rest is the
+    // discrimination Q-0079's round 1 asked for — a guard must not be satisfiable by text it does
+    // not execute, and must not be talked out of firing by text that is only a comment.
+    const expression = "const TEMPLATES = new URL('../templates/harness/', import.meta.url);";
+    expect(IO_MODULE.test(expression), 'the import scan sees a self-location after all').toBe(false);
+    expect(resolvesOwnLocation(expression)).toBe(true);
+    expect(resolvesOwnLocation('// a module resolving its own location is what Q-0090 AC-7 replaced')).toBe(false);
+    expect(resolvesOwnLocation('/**\n * the shape is new URL(x, import.meta.url), handed to core\n */\nexport const a = 1;')).toBe(false);
+    expect(resolvesOwnLocation('const here = import.meta.dirname;'), 'the newer spelling is invisible').toBe(true);
+    expect(resolvesOwnLocation('const here = fileURLToPath(import.meta.filename);')).toBe(true);
+    // And it is not satisfied by the words alone: `import.meta` without one of the three properties
+    // is a module record, not a location.
+    expect(resolvesOwnLocation('const m = import.meta;')).toBe(false);
+  });
+
+  test('and the comment stripping has a subject in this package, so the clause above is not vacuous', () => {
+    // Without this, `codeOf` could be removing nothing and the two negative assertions would hold
+    // for a reason that has nothing to do with comments. Measured over the real modules.
+    const stripped = production().filter(([, text]) => codeOf(text).length < text.length);
+    expect(stripped.length, 'no production module carries a comment — the stripping excuses nothing')
+      .toBeGreaterThan(3);
+    const shipped = production().find(([name]) => name === 'init.ts');
+    expect(shipped, 'init.ts is not among the production modules').toBeDefined();
+    expect(resolvesOwnLocation(shipped?.[1] ?? ''), 'the shipped module no longer resolves its own location').toBe(true);
   });
 });
 

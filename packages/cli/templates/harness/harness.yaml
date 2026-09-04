@@ -1,0 +1,42 @@
+# Harness project config (spike). Truth lives in harness/; vendor files are compiled later.
+backlog:
+  layout: in-repo
+  path: backlog
+# Key spellings in this file — a key under `adapters.<vendor>` is camelCase, because getAdapter
+# hands that block to the adapter verbatim, so it is a JavaScript property name. Every other is snake_case.
+adapters:
+  claude:
+    bin: claude
+    # extraArgs: ["--allowedTools", "Read", "Bash(git diff *)"]
+  codex:
+    bin: codex
+    # retry: { attempts: 5, baseDelayMs: 5000, maxDelayMs: 60000 }   # transient network/5xx only; never auth or model errors
+    # extraArgs: ["--full-auto"]
+budget:
+  per_run_usd: 10
+  per_ticket_usd: 60
+repo:
+  # The branch ticket work integrates against. `integrate` merges it into the ticket branch
+  # before testing, so a long-running ticket never builds on the base it was cut from.
+  # Base branch used to materialize review diffs.
+  base_branch: main
+  # Maximum UTF-8 byte length of a review diff before truncation.
+  max_diff_bytes: 200000
+commands:
+  # Kills a test or script command that has not finished in this long. An orchestrator that can
+  # wait forever cannot run unattended — a hung suite once blocked a run for 24 minutes silently.
+  timeout_ms: 900000
+  # Install dependencies in the integration worktree before running tests.
+  # Run in the integration worktree before `test` — a worktree has no node_modules, and a suite
+  # that cannot start would otherwise satisfy `expect: fail` on every ticket.
+  install: npm install --no-audit --no-fund --silent
+  # `integrate` trusts this command's exit result and nothing else, so a caching test runner —
+  # Turbo, Nx, Gradle and Bazel all cache by default — can satisfy it by replaying an earlier pass
+  # without executing anything, and the flow then advances on a claim this run never made. Make
+  # this command defeat your runner's cache; the default below is left as it is because the
+  # template cannot know which runner you use, or what its option is called.
+  #
+  # A monorepo runner that skips a package because a package it depends on failed will also hide
+  # failures from an `expect: fail` step, where every failure is the deliverable. If yours has an
+  # option to keep going (turbo's is `--continue`), a red phase wants it.
+  test: npm test          # used by integrate steps with run_tests: true

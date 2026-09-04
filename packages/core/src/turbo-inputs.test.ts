@@ -1027,6 +1027,11 @@ const ROOT_DERIVATIONS: Record<string, Record<string, string>> = {
   'packages/core/src/backlog/project.test.ts': {
     'process.cwd': 'path.relative, naming a temporary directory the test itself created, for an argument it then passes',
   },
+  'packages/core/src/backlog/scaffold.test.ts': {
+    // Quoted for the reason `createRequire` above is: an unquoted key is code, and this file is
+    // inside its own scan, so writing the token bare would register a derivation in the register.
+    'pathToFileURL': 'turning a temporary directory this test created into the file: URL spelling packages/cli hands initProject, so both argument shapes are exercised over the same tree; it names nothing outside os.tmpdir',
+  },
   'packages/core/src/adapters/claude.ts': {
     'process.cwd': 'the working directory the version probe subprocess is spawned in; nothing is read through it',
   },
@@ -1474,6 +1479,16 @@ const READ_BASES: Record<string, Record<string, string>> = {
   'packages/core/src/backlog/project.ts': {
     d: 'findProject\'s walk upward from its start directory, looking for a marker and reading nothing',
     harnessDir: 'path.join(repoDir, \'harness\') — the project root the caller named or findProject located',
+  },
+  'packages/core/src/backlog/scaffold.ts': {
+    dst: 'path.join(dir, \'harness\') — under the directory initProject\'s caller named, which is the adopter\'s repository and never this one',
+    templates: 'initProject\'s parameter — the template tree the caller hands it, which packages/cli resolves relative to its own module and packages/cli/turbo.json declares',
+    configFile: 'path.join(dst, \'harness.yaml\') — the config just copied into that same caller-named directory',
+  },
+  'packages/core/src/backlog/scaffold.test.ts': {
+    dir: 'a directory this test created under os.tmpdir — either a bare one or a git repository it initialised itself',
+    byPath: 'the same, for the copy made from a filesystem path',
+    byUrl: 'the same, for the copy made from a file: URL, which is the spelling packages/cli hands core',
   },
   'packages/core/src/contracts/contracts.source.test.ts': {
     resolved: 'createRequire(...).resolve(\'ajv/package.json\') — inside node_modules, which pnpm-lock.yaml hashes',
