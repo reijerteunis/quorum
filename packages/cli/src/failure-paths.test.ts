@@ -53,11 +53,14 @@
  * reads, imports or spawns anything under that tree, asserted over this file's own source rather
  * than discovered on the day (§3 R-4).
  *
- * **POSIX only, and it refuses rather than skipping.** Two of the fixtures below write flows whose
- * `run_tests` is an `sh -c` chain, and every fixture points `commands.install` at one — so on a
- * platform without `sh` this suite has no subject, and *"a check that skips its subject must not
- * report success"* (2026-08-25). The refusal is at module scope, so the file fails to collect and
- * says why (§3 R-6).
+ * **It needs `sh`, and it refuses rather than skipping.** Two of the fixtures below write flows whose
+ * `run_tests` is an `sh -c` chain, and every fixture points `commands.install` at one — so where `sh`
+ * cannot run this suite has no subject, and *"a check that skips its subject must not report
+ * success"* (2026-08-25). The refusal is at module scope, so the file fails to collect and says why
+ * (§3 R-6), and **it is decided by running `sh` rather than by reading the platform's name**: a
+ * `process.platform` test is a proxy that is wrong in both directions, admitting a Unix-like machine
+ * with no usable `sh` — which then fails somewhere below with a command error that reads like a
+ * product defect — and refusing a Windows one that has a working shell.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -69,12 +72,54 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { buildIn, disposeIsolated, isolate, PACKAGE, read, WORKSPACE } from '../test/workspace.js';
 
-if (process.platform === 'win32') {
+/** The shell every fixture below needs, named once so the probe and the fixtures cannot disagree. */
+const SHELL = 'sh';
+
+/**
+ * A status no shell returns by accident, so the probe proves `-c` was *interpreted*.
+ *
+ * A binary that starts, ignores its argument and exits 0 would satisfy a probe that asked for zero —
+ * and it is exactly what a machine with a stub `sh` on its `PATH` has. Asking for an arbitrary
+ * status is what makes the answer a measurement of the shell rather than of the file's existence.
+ */
+const SHELL_PROBE_STATUS = 7;
+
+/** How long the probe waits, so a wedged shell refuses collection instead of hanging it. */
+const SHELL_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Why this machine cannot run these fixtures, or `null` where it can.
+ *
+ * Takes the command as a parameter rather than closing over {@link SHELL} so the refusal can be
+ * demonstrated firing over a shell composed by a test — showing the clause has a subject, rather
+ * than showing that this machine happens to have `sh` (*"A check is not established by reading it"*,
+ * 2026-08-29). The four returns are the four ways the answer can be no, and each names which.
+ */
+const shellRefusal = (shell: string): string | null => {
+  let probe: ReturnType<typeof spawnSync>;
+  try {
+    probe = spawnSync(shell, ['-c', `exit ${String(SHELL_PROBE_STATUS)}`],
+      { stdio: 'ignore', timeout: SHELL_PROBE_TIMEOUT_MS });
+  } catch (cause) {
+    return `\`${shell} -c\` could not be spawned at all (${String(cause)})`;
+  }
+  if (probe.error !== undefined) return `\`${shell} -c\` could not be executed (${probe.error.message})`;
+  if (probe.signal !== null) return `\`${shell} -c\` was killed by ${probe.signal} rather than running`;
+  if (probe.status !== SHELL_PROBE_STATUS) {
+    return `\`${shell} -c 'exit ${String(SHELL_PROBE_STATUS)}'\` returned ${String(probe.status)}, `
+      + 'so it is not a shell that interprets -c';
+  }
+  return null;
+};
+
+const SHELL_REFUSAL = shellRefusal(SHELL);
+if (SHELL_REFUSAL !== null) {
   // A refusal and not a skip: the file fails to collect and names the reason, where a skipped block
   // would report a green run over failure paths nothing walked.
   throw new Error(
-    `the failure-path fixtures drive sh-based commands.install and sh -c run_tests chains, which ${process.platform} `
-    + 'does not provide — this suite refuses rather than reporting a pass over rollbacks it never ran',
+    'the failure-path fixtures drive sh-based commands.install and sh -c run_tests chains, and on '
+    + `${process.platform} ${SHELL_REFUSAL} — `
+    + 'this suite refuses rather than reporting a pass over rollbacks it never ran',
   );
 }
 
@@ -117,6 +162,19 @@ const BASE_BRANCH = 'main';
 
 /** The integration branch the two rollback fixtures build by hand, as the ticket's frontmatter names it. */
 const INTEGRATION = `harness/${TICKET}/integration`;
+
+/** A string as a regular-expression literal, so a branch name carrying a metacharacter still pins itself. */
+const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The base-conflict diagnostic naming the ticket branch and the base, **each in its own position**.
+ *
+ * `into` and `base` are two arguments of one template, so the way a wrong attribution actually looks
+ * is a swap — which is why the two names are pinned in order rather than merely required to be
+ * present, and why the clause is shown refusing the reversed sentence beside the run it reads.
+ * Built from the two constants above so that renaming a fixture branch cannot leave this green.
+ */
+const NAMES_BOTH = new RegExp(`cannot sync ${literal(INTEGRATION)} with ${literal(BASE_BRANCH)}\\b`);
 
 /** ANSI stripped, as every assertion below reads the output. */
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -673,8 +731,28 @@ describe('AC-7(b1) — rollback (b): the base-sync conflict', () => {
     // Q-0011 burned all three iterations and $8.63 learning this, because `integrate` routed a base
     // conflict into `on_fail` like any test failure. The developers' worktrees branch from the ticket
     // branch, where nothing is wrong.
-    expect(output(clashed.invocation)).toMatch(/cannot sync .* with /);
+    //
+    // Both names, each in its own position, because AC-7(b1)(b) is about *attribution*: `cannot sync
+    // .* with ` — the form this replaces — is satisfied by any two subjects, by the two the wrong way
+    // round, and by none at all, so it would report success over a diagnostic that sent a maintainer
+    // to the wrong branch. That is the failure this ticket exists to make impossible, arriving in the
+    // assertion rather than in the product.
+    expect(output(clashed.invocation), 'the diagnostic does not name the ticket branch and the base, in that order')
+      .toMatch(NAMES_BOTH);
     expect(output(clashed.invocation)).toContain('re-running the developers cannot fix it');
+  });
+
+  test('(b) and the clause discriminates: it refuses the two branches the wrong way round', () => {
+    // The check on the check. A swap is the shape a wrong attribution actually takes — `into` and
+    // `base` are two arguments of one template — so it is what the clause has to reject, and a
+    // regexp built from the two names could still be satisfied by either order if it were written
+    // with a `.*` between them.
+    expect(NAMES_BOTH.test(`integrate: cannot sync ${INTEGRATION} with ${BASE_BRANCH} — conflict.`),
+      'the clause cannot see the sentence the product prints').toBe(true);
+    expect(NAMES_BOTH.test(`integrate: cannot sync ${BASE_BRANCH} with ${INTEGRATION} — conflict.`),
+      'the two branches the wrong way round satisfy the clause').toBe(false);
+    expect(NAMES_BOTH.test('integrate: cannot sync  with  — conflict.'),
+      'a diagnostic naming neither branch satisfies the clause').toBe(false);
   });
 
   test('(d) a base conflict does not consume the iteration budget', () => {
@@ -729,13 +807,40 @@ describe('§3 R-4 to R-6 — the properties this suite has to have to be worth r
     expect(clashed.invocation.steering).toStrictEqual({});
   });
 
-  test('R-6 — the one thing this platform could withhold is refused rather than skipped', () => {
+  test('R-6 — the one thing this machine could withhold is refused rather than skipped', () => {
     expect(SOURCE).toContain('this suite refuses rather than reporting a pass over rollbacks it never ran');
     for (const shape of [/\b(?:test|describe|it)\.(?:skip|todo|skipIf|runIf|only|failing)\b/g,
       /\bctx\.(?:skip|annotate)\(/g]) {
       expect(SOURCE.match(shape) ?? [], `${shape.source} lets a block report success over a subject it did not examine`)
         .toStrictEqual([]);
     }
+  });
+
+  test('R-6 — and the refusal is decided by running sh, not by reading the platform\'s name', () => {
+    // Three clauses, because a probe can be wrong in three ways: it can refuse a machine that has a
+    // subject, admit one that cannot spawn the shell at all, or admit one whose `sh` starts and
+    // ignores `-c`. The middle and the last are the two a `process.platform` test cannot see, and
+    // they are shown firing over commands composed here rather than over this machine's.
+    expect(shellRefusal(SHELL), 'sh ran this file\'s fixtures, so a refusal here withholds a subject it has')
+      .toBeNull();
+
+    const absent = 'quorum-no-such-shell-on-any-platform';
+    expect(shellRefusal(absent) ?? '', 'a shell that cannot be executed produced no refusal').toContain(absent);
+
+    // `node -c <arg>` reads its argument as a filename to syntax-check, so it starts, declines and
+    // exits non-7 — a binary that is on the machine and is not a shell, which is the case a probe
+    // asking merely for exit 0 or for the file's existence would admit.
+    expect(shellRefusal(process.execPath) ?? '', 'a binary that starts and does not interpret -c produced no refusal')
+      .toContain('is not a shell that interprets -c');
+
+    // And the decision is taken from the platform's name nowhere. The defect this replaces was a
+    // `win32` comparison standing in for the probe, and its return would be invisible to the three
+    // clauses above — all of which stay green beside it. The needle is assembled so that forbidding
+    // it does not require this file to exempt itself, as the cutover scan above does.
+    const byName = assembled('process.plat', 'form ===');
+    expect(SOURCE, 'the platform name decides the refusal again').not.toContain(byName);
+    expect(assembled('if (process.plat', "form === 'win32') throw new Error('…');").includes(byName),
+      'the clause cannot see the comparison it forbids').toBe(true);
   });
 });
 
