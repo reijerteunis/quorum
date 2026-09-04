@@ -104,21 +104,36 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
   });
 
   test('the extraction has a subject — an unregistered line would be caught', () => {
-    const withStray = `${HELP}\n  quorum board                            kanban of tickets by stage`;
-    expect(mentioned(withStray)).toContain('board');
-    expect(mentioned(withStray).filter((name) => !isCommand(name))).toStrictEqual(['board']);
+    // Q-0099 AC-2(a): the stray name was `board` until this ticket registered it, at which point
+    // `isCommand('board')` became true, the filter yielded `[]` and this demonstration could no
+    // longer fail. Re-aimed at a name that is not one of the spike's eight and never will be; the
+    // clause below shows the old value going vacuous rather than describing it.
+    const withStray = `${HELP}\n  quorum not-a-command                    a line no dispatch table carries`;
+    expect(mentioned(withStray)).toContain('not-a-command');
+    expect(mentioned(withStray).filter((name) => !isCommand(name))).toStrictEqual(['not-a-command']);
+  });
+
+  test('Q-0099 AC-2(a) — and the name it replaced no longer discriminates, so nobody restores it', () => {
+    // `board` is dispatched now, so a help line carrying it is extracted and then accepted: the
+    // extraction still finds it, and the filter that used to report it finds nothing. Both halves,
+    // because the first alone would hold over an extraction that had stopped working.
+    const wasBoard = `${HELP}\n  quorum board                            kanban of tickets by stage`;
+    expect(mentioned(wasBoard), 'the extraction stopped seeing the line').toContain('board');
+    expect(mentioned(wasBoard).filter((name) => !isCommand(name)), 'board is unregistered again')
+      .toStrictEqual([]);
   });
 
   test('and the usage line is not read as a command', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry is help, the three writing commands and the three read-only ones, and nothing else', () => {
-    // Q-0099 adds `board` and `adapters` as its command lands. Listing the eight the spike has would
-    // be a green tick over a subject that does not exist: each would fall through AC-6's default
+  test('the registry is help plus the spike\'s eight, in the spike header\'s order, and nothing else', () => {
+    // Complete since Q-0099. Until then, listing a command the frame did not dispatch would have
+    // been a green tick over a subject that does not exist: it would fall through AC-6's default
     // branch to this same text and exit 0.
-    expect([...COMMANDS]).toStrictEqual(['help', 'init', 'ticket', 'run', 'lint', 'validate', 'runs']);
-    expect(mentioned(HELP)).toStrictEqual(['help', 'init', 'ticket', 'run', 'lint', 'validate', 'runs']);
+    const registry = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs'];
+    expect([...COMMANDS]).toStrictEqual(registry);
+    expect(mentioned(HELP)).toStrictEqual(registry);
   });
 
   test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
@@ -222,6 +237,49 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(order.indexOf('run')).toBeLessThan(order.indexOf('lint'));
   });
 
+  test('Q-0099 AC-1 — `board` and `adapters` are registered at the spike header\'s own places', () => {
+    // Both pins above read seven entries until this ticket, and the value they replaced is refused
+    // rather than widened to a `toContain` that would accept either — the demonstration Q-0091 to
+    // Q-0094 each wrote for their own additions.
+    const beforeQ0099 = ['help', 'init', 'ticket', 'run', 'lint', 'validate', 'runs'];
+    expect([...COMMANDS], 'the frame still registers only the commands it had before this ticket')
+      .not.toStrictEqual(beforeQ0099);
+    expect(mentioned(HELP), 'the help still lists only the commands it had before this ticket')
+      .not.toStrictEqual(beforeQ0099);
+    for (const name of ['board', 'adapters']) {
+      expect(isCommand(name), `the help lists ${name} and the frame does not dispatch it`).toBe(true);
+    }
+
+    const line = (name: string): string => HELP.split('\n').find((text) => text.startsWith(`  quorum ${name}`)) ?? '';
+    expect(line('board'), 'what it shows').toMatch(/kanban of tickets by stage/);
+    // The second fact on each row, glossed rather than named: the word for it is a `@quorum/core`
+    // symbol, and `frame.source.test.ts`'s AC-10 partition forbids a FRAME module — which this one
+    // is — from naming one at all. Measured, not anticipated: the first draft of this line used the
+    // word and turned that guard red. So the help says what a reader sees and `board.ts` carries the
+    // vocabulary, which is where the rendering lives anyway.
+    expect(line('board'), 'and the second fact on each row').toMatch(/where each ticket's code is/);
+    expect(line('adapters'), 'the two flags it takes').toContain('[--probe] [--json]');
+    expect(line('adapters'), 'what it reports').toMatch(/which vendor CLIs are installed/);
+    expect(line('adapters'), 'and what --probe adds on top of presence').toMatch(/--probe also proves the login/);
+    // The spike header's `CLIs installed + no API keys` does not survive: the word is
+    // **subscription**, per `.claude/rules/product-boundaries.md` and this file's own header. The
+    // BYOS scan in `frame.source.test.ts` is NOT what forces it — its first pattern wants an
+    // underscore where the spike's wording has a space — so this clause is the only thing enforcing
+    // it (merged.md M-6). The pattern itself may not be quoted here, nor the word for what it hunts:
+    // this file is inside that scan, which is the collision the note at the foot of it records.
+    expect(line('adapters'), 'the auth model the reader is told about').toMatch(/subscription/);
+    expect(HELP, 'the help offers a key as a way in').not.toMatch(/api[ _-]?key/i);
+
+    // `board` between `ticket` and `run`, `adapters` between `lint` and `validate`, because
+    // `spike/bin/harness.js:5` sits between `:4` and `:6` and `:8` between `:7` and `:9`. AC-1's
+    // ordering rule is the spike's own wherever it has one.
+    const order = mentioned(HELP);
+    expect(order.indexOf('ticket')).toBeLessThan(order.indexOf('board'));
+    expect(order.indexOf('board')).toBeLessThan(order.indexOf('run'));
+    expect(order.indexOf('lint')).toBeLessThan(order.indexOf('adapters'));
+    expect(order.indexOf('adapters')).toBeLessThan(order.indexOf('validate'));
+  });
+
   test('and its line is aligned to the description column the other six share', () => {
     // The help is one block of text a stranger reads, so a new line that broke the column would be
     // a visible regression no other assertion here would catch.
@@ -234,9 +292,14 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
       });
     expect(columns, 'a command line carries no description at all').not.toContain(-1);
     expect(new Set(columns).size, `the description column is ragged: ${columns.join(', ')}`).toBe(1);
-    // Seven since Q-0094. The count is the register: a command whose line is missing entirely would
-    // otherwise leave a single-column block reporting perfect alignment over six lines.
-    expect(columns.length, 'no command lines were found — this proves nothing').toBe(7);
+    // Nine since Q-0099, seven before it. The count is the register: a command whose line is missing
+    // entirely would otherwise leave a single-column block reporting perfect alignment over eight.
+    expect(columns.length, 'no command lines were found — this proves nothing').toBe(9);
+    expect(columns.length, 'the register still holds the seven lines it held before Q-0099').not.toBe(7);
+    // The column is 42 and the two new prefixes are 14 and 36, so neither forced a reflow of the
+    // seven that were already there — which is what makes this a check on the addition rather than
+    // on a wholesale re-indent nobody asked for.
+    expect(columns[0]).toBe(42);
     // And the measurement discriminates: a line one space short reports a different column.
     const ragged = '  quorum runs [ticket|run-id] [--json]   x'.slice(2);
     expect(2 + (/ {2,}/.exec(ragged)?.index ?? 0) + (/ {2,}/.exec(ragged)?.[0].length ?? 0))
