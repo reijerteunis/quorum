@@ -548,6 +548,15 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   **Q-0096 → {Q-0091…Q-0094 unblocked} → Q-0097 → Q-0098 → Q-0095**, and the plan saying otherwise
   for a day is the same class as the Q-0074 drift: a document describing a dependency nobody had
   measured.
+  **Every child's inherited-coverage figure has been wrong, and the method is the reason.** Four in a
+  row measured at their requirements gates: Q-0091's *"698 lines"* (696, and only four of twenty-three
+  invocations were its own), Q-0092's *"505"* (503, of which about **54 lines** transfer), Q-0093's
+  *"217"* (216), and Q-0098's *"22 files"* (environment-dependent and coincidentally equal). The codex
+  candidate on Q-0093 named the cause rather than the arithmetic: these are **whole-file estimates,
+  not measured binary-only transfer sizes**. A file's line count is not what a command inherits, because
+  the binary halves do not partition by command — the very weakness stated below. **Q-0094, Q-0095 and
+  Q-0099 each still carry one; re-derive it at the gate rather than treating it as a target.**
+
   The seam's weakness is stated rather than hidden: the eight binary-half files do **not** partition
   cleanly by command, which is why `smoke.js` is its own child and the cut is six rather than eight.
   **Each child body repeats Q-0010's ground rules verbatim**, because `input.backlog` resolves
@@ -704,11 +713,45 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     `unpriced_steps`, nulls rendering `n/a` and never `0`. The roll-up count of zero is confirmation
     rather than a gap: `printRunDetailHuman` never renders it, which is why `q0034-review-fixes.js`
     B2's guard reads the per-step line.
-  - Q-0093 CLI writing commands: `init` and `ticket`. Small and load-bearing out of proportion,
-    being the first things a stranger runs. `init` must read the shipped templates rather than
-    duplicate them, or every adopter inherits the flat-path defect Q-0086 to Q-0088 closed; `ticket
-    new` carries Q-0080's allocation table exactly, refusals included. One defect it must preserve
-    and report: `create()` defaults `owner` to `process.env.USER`.
+  - Q-0093 CLI writing commands: `init` and `ticket`. *(`reviewed` and `main:contained`
+    2026-09-04.)* **$66.07** — $13.70 requirements ready on the first pass, $52.38 chore in **one
+    implement round approved with no findings**, the only round of the cut to close that way and the
+    most expensive single round in the project. Against 42 of 59 chore reviews returning `revise`, it
+    was distrusted rather than banked and verified independently instead.
+    **`init` had nowhere to read its templates, and that is the finding neither governing document
+    could see alone.** `packages/templates` was a two-file stub holding no assets and the real corpus
+    lived only under `spike/templates/`, which the cutover deletes. Decision 078(e) had anticipated
+    that half — *"Q-0093 does not build `init` against a guess"* — and fixed the depth, since
+    `spike/bin/harness.js:321` resolves the assets relative to the binary's own file and Q-0098 put
+    the binary at `dist/quorum.js`. **The half 078(e) could not see** is that Q-0098 later landed
+    `files: ["dist"]`, so a packed tarball carried **zero** template files and `init` would have
+    failed on one of the two installation paths Q-0098 itself verified. The trap existed only because
+    the allow-list was written after the depth ruling, and it took a run reading both to find it.
+    **What shipped**: twenty template files at `packages/cli/templates/harness/` byte-identical to the
+    spike's, `initProject` in `core/backlog/scaffold.ts`, `currentBranch` ported into `core/git`
+    because AC-7 measured it as defined at `spike/bin/harness.js:287` and nowhere else in either tree,
+    `files` extended to `["dist", "templates"]`, and `build.test.ts`'s single `toStrictEqual([EMIT])`
+    replaced by a **per-package register** — forced rather than tidy, because only `@quorum/cli` gains
+    the second entry and the old literal sat inside a loop over all three.
+    **The anti-drift guard is the best-shaped check an implement step produced in this stretch**, and
+    it was mutation-tested rather than read. Three mutations, three distinct signatures: one byte in a
+    `packages/cli` flow fails parity alone; one byte in the **spike's** copy fails parity *plus* a
+    second clause, so the pin is bidirectional; and deleting a role file fails parity plus *"the
+    mirror is tracked, so what a tarball ships is the commit and not the checkout"* — Q-0098's E-1
+    lesson applied to templates before anyone hit it. It also asserts that the comparison cannot be
+    satisfied by a tree compared with itself, which is the check on the check.
+    **The packed-install path was verified end to end after the gate**, because no criterion covered
+    it and F-3 had predicted it would ship broken: three tarballs packed, installed into a project
+    outside the repository, and `quorum init` scaffolding all twenty files. Two things surfaced.
+    **Q-0098's M-8 reproduced exactly** — a first attempt with `npm pack` died on
+    `EUNSUPPORTEDPROTOCOL` for `workspace:*`, which is why that requirement's fixture uses `pnpm pack`
+    and installs all three together. And the scaffold's own next-steps line reads *"next: harness
+    adapters · harness ticket new … · harness run requirements T-0001"*, so a stranger who has just
+    installed `quorum` is told to run a binary called `harness`. That is the **fourth instance Q-0100's
+    body predicted by name**, now confirmed on the cold-clone path rather than anticipated, and
+    correctly preserved verbatim here rather than fixed in passing.
+    **The `owner` defect is preserved at `backlog.ts:190`** as ground rule 3 requires: nine instances
+    and three hand corrections have never reached the code, and this ticket does not reach it either.
   - Q-0094 CLI `run`, the gate reader and its flags. The command the product exists for. Owns the
     readline handle, the TTY test, and the five throw sites **Q-0040 classified on 2026-09-01** —
     three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
