@@ -152,7 +152,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     '.github/workflows/ci.yml': 'build.test.ts — Q-0097 AC-14, CI\'s workspace job grew no build phase',
     '.github/scripts/git-identity-sweep.sh': 'build.test.ts — Q-0097 AC-14, the sweep\'s five phases are unchanged',
     'harness/harness.yaml': 'build.test.ts — Q-0097 AC-14, commands.install and commands.test grew no build phase',
-    'harness/flows': 'lint.test.ts — Q-0091 AC-5, the shipped flow directory is copied into a fixture and asserted to lint clean, which is `q0033-surface.js` S1.3',
+    'harness/flows': 'lint.test.ts — Q-0091 AC-5, the shipped flow directory is copied into a fixture and asserted to lint clean, which is `q0033-surface.js` S1.3; and board.test.ts — Q-0099 AC-3, the same directory copied into a fixture to prove the requirements column\'s hint is `chore` today',
     packages: 'validate.test.ts — Q-0091 AC-9, every workspace package\'s src is walked to prove the frozen skip notice has exactly one copy under packages/**',
     'spike/templates/harness': 'templates.test.ts — Q-0093 AC-4, the shipped template tree this package carries is asserted byte-identical to the spike\'s in both directions, and link 2 of that chain reads harness/flows beside it',
   };
@@ -417,6 +417,25 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // command needs it — the rule Q-0092 applied when it withheld `manifestShapeError`.
     expect(Object.keys(barrel), 'currentBranch is on the public surface and no command needs it')
       .not.toContain('currentBranch');
+  });
+
+  test('Q-0099 AC-10 — two commands landed and the surface is the one it was before them', async () => {
+    // The first command child of the cut that needed nothing added, which is worth asserting rather
+    // than observing: Q-0091 added three names, Q-0092 six and Q-0093 two, and each of those three
+    // clauses above is shown red against the count it replaced. This one is shown against the count
+    // it did NOT replace — `board` and `adapters` between them reach five symbols and all five were
+    // already here, so the register and the barrel are both unmoved.
+    expect(domain(), 'the register grew — a command child added a symbol after all').toHaveLength(21);
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    expect(Object.keys(barrel), 'the barrel grew with the register held still').toHaveLength(26);
+    for (const symbol of ['loadProject', 'containment', 'lintFlowDirectory', 'getAdapter', 'probeAdapter']) {
+      expect(domain(), `${symbol} is what the two new commands reach`).toContain(symbol);
+      expect(typeof barrel[symbol], `${symbol} is not a function on the barrel`).toBe('function');
+    }
+    // And the type the board renders is `@quorum/shared`'s, so nothing was added there either: a
+    // command child reaching for a shape declares it from the package that owns the vocabulary.
+    const shared = (await import('@quorum/shared')) as Record<string, unknown>;
+    expect(Object.keys(shared), 'the containment vocabulary is shared\'s').toContain('CONTAINMENT_REASONS');
   });
 
   test('and a type export adds no runtime key, which is why the counts above are the whole surface', async () => {
