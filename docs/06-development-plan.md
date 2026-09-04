@@ -1057,6 +1057,26 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     **The cutover is its successor and still has no ticket** — deleting `spike/`, retiring its CI job
     and retiring `harness/port-charter.md`, which is Q-0010 §5's follow-up. GO-4 says allocate it at
     this ticket's close rather than remember it.
+  - Q-0102 The git-identity sweep is red under load, and CI runs it. *(Opened 2026-09-04 at
+    Q-0095's merge, `draft`, p1.)* `pnpm sweep:git-identity` exits 1 on `main`, in phase
+    `workspace suite`, and `ci.yml` runs it as **two required jobs** — so every push is red or lucky.
+    **It is a flake, not a break**: two consecutive runs at one commit gave 28 failures across 10
+    files and then 6 across 4, and the survivors — `worktree-lifecycle.test.ts` and
+    `undecided.test.ts` — pass **29/29 in isolation** straight afterwards, leaving no stray worktree.
+    **Not Q-0095's code**: the sweep is red at the commit before that merge too.
+    **The obvious fix is refuted before the ticket starts.** Both files already build a repository
+    per case under `os.tmpdir()` and compute their worktree path against that root, so "isolate
+    them" is already true. What is unmeasured is *when* it started — the sweep was green by hand
+    after Q-0099's merge, and everything since is `docs/` and `backlog/` — and the mechanism. The
+    leading hypothesis is contention from Q-0095's new process-spawning suite, but the red predates
+    it, so the hypothesis is incomplete and GO-1 requires a failure *rate* at a fixed commit rather
+    than a fix demonstrated once.
+    **p1 because a flaky oracle is worse than a missing one.** Q-0079 built the sweep as the oracle
+    for *"A test's verdict is a property of the commit, not of the checkout or the account"*
+    (2026-08-30), with the tripwire explicitly not covering the checkout-shaped instances. A verdict
+    that changes without the tree changing trains the reader to re-run until green — and **it is an
+    instance of its own subject**, load being a third term beside the checkout and the account that
+    nobody had measured. GO-2 refuses any fix that makes it green by weakening what it runs.
   **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
   `unpriced_steps` on a single step, summing left to the roll-up. (2) Q-0054's routing: the eight
