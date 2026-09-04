@@ -135,7 +135,10 @@ describe('the frame hands a handler the parsed command line, and waits for what 
     expect(seen).toStrictEqual([parseArgv(argv)]);
     // Named one by one as well, because a structural comparison against the parser's own output
     // would still hold if both sides lost a field. `rest`, `flags` and `gateAnswers` are the three
-    // a handler taking only its name would have to re-derive.
+    // a handler taking only its name would have to re-derive; `cmd` is the fourth, and it is named
+    // here rather than inside a command module because it is the key the dispatch used — a handler
+    // reads it by being the one that ran. Q-0094 review round 2 asked for all four to be covered.
+    expect(seen[0]?.cmd).toBe(name);
     expect(seen[0]?.rest).toStrictEqual(['ticket']);
     expect(seen[0]?.flags.adapter).toBe('mock');
     expect(seen[0]?.gateAnswers).toStrictEqual(['advance', 'abort']);
