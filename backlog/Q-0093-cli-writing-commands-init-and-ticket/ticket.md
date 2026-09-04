@@ -1,7 +1,7 @@
 ---
 id: Q-0093
 title: "CLI writing commands: init and ticket"
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0093/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-09-03T23:04:54.126Z
     cost: 13.696
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-04T00:05:36.949Z
+    cost: 52.376
 ---
 **The two commands that create files** — `init` (`spike/bin/harness.js:317–339`, 23 lines) and
 `ticket new` (`:340–352`, 13 lines). Small in the CLI and load-bearing out of proportion to their
