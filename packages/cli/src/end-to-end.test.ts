@@ -3,8 +3,11 @@
  *
  * **The translated chain half of `smoke.js`**: `init`, `lint`, `ticket new`, the wrong-stage refusal,
  * `requirements`, `solutioning`, `qa-red`, `development`, and the four commands that ride along —
- * `lint`, `board`, `adapters`, `validate`. The failure, gate and rollback half is **Q-0101**'s;
- * `packages/core/src/spike-parity.test.ts` records both on the one row.
+ * `lint`, `board`, `adapters`, `validate`. The failure, gate and rollback half is **Q-0101**'s and
+ * lives in `packages/cli/src/failure-paths.test.ts`, with **one exception**: that ticket's AC-7(b2)
+ * asserts base-sync reporting off the solutioning run *this* file makes, so it is a describe block
+ * below rather than a second flow walked to produce a stdout to assert over.
+ * `packages/core/src/spike-parity.test.ts` records the division on the one row.
  *
  * **Every invocation is a separate operating-system process, and that is the point rather than a
  * preference.** The nine sibling suites drive their command in process through `test/invoke.ts`.
@@ -721,6 +724,30 @@ describe('AC-7 — the four commands that ride the chain rather than being its s
     expect(chain.ran['validate-ok']?.status, 'a conforming artifact did not exit 0').toBe(0);
     expect(chain.ran['validate-bad']?.status, 'a qa-red script step could not fail on this').toBe(1);
     expect(chain.ran['validate-bad']?.stdout).toContain('must be equal to one of the allowed values');
+  });
+});
+
+describe('Q-0101 AC-7(b2) — base-sync reporting, off the solutioning run this file already made', () => {
+  test('a base branch that does not exist yet is stated, and no failure is reported with an empty reason', () => {
+    // **Here rather than in `failure-paths.test.ts`, and that is measured rather than tidy.** The
+    // spike takes these three off `solutioningOut` — the stdout of the CHAIN's solutioning run — and
+    // in this package that recording is `chain.ran.solutioning`, a field of this file's own closure
+    // that a second suite cannot reach. The choice was three assertions over a run that already
+    // exists or a whole second solutioning flow walked to produce a stdout to assert over, and
+    // `spike-parity.test.ts`'s `smoke.js` row is what records the division.
+    //
+    // What these three uniquely claim is that the sentence **reaches the operator on a real run**:
+    // `mergeFailure`'s own wording is covered at library level by `packages/core`'s
+    // `composite.test.ts` and `steps.test.ts`, and neither of those is a claim about this output.
+    // The case is the one that printed an empty warning on every Q-0011 run — solutioning loops the
+    // architect, so its second round syncs to a ticket branch the first `integrate` has not created.
+    const solutioning = chain.ran.solutioning?.stdout ?? '';
+    expect(solutioning, 'the run said nothing about the base branch it had nothing to sync with')
+      .toContain('does not exist yet — nothing to sync');
+    expect(solutioning, 'a sync warning was raised when there was nothing to sync')
+      .not.toContain('could not sync');
+    expect(solutioning, 'a failure was reported with its reason trailing off after the dash')
+      .not.toMatch(/(could not sync|CONFLICT|FAILED)[^\n]*[—:]\s*$/m);
   });
 });
 

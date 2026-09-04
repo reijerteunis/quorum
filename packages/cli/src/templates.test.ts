@@ -21,6 +21,13 @@
  * here so a reviewer can walk it; link 2 is read rather than assumed, and if it stops holding that
  * is a finding rather than a licence to add the missing assertion here (merged.md R-10).
  *
+ * **Q-0101 AC-9 re-homes one assertion here**, and it is not a second description of the chain
+ * above. `smoke.js:216` claims that no shipped flow or role pins a vendor model name, over the
+ * spike's own template tree; byte identity carries that claim onto this mirror only for as long as
+ * the spike exists, and the cutover deletes it. So the claim is made about the corpus that survives
+ * — the one an adopter's first `quorum init` copies — rather than inherited from a tree that will
+ * not be there to compare against.
+ *
  * **`spike/templates/**` is read and never written** — ground rules 1 and 2, and non-goal 1. The
  * read is declared in `packages/cli/turbo.json` and registered in `package.test.ts`'s `OUTSIDE`
  * pair, which is what keeps a cache hit on this package's `test` honest (Q-0072).
@@ -80,6 +87,20 @@ function differences(left: string, right: string): string[] {
   }
   return problems;
 }
+
+/**
+ * The `flows` and `roles` files below `root` that pin a vendor model name, named rather than counted.
+ *
+ * Q-0101 AC-9. A function over its root so the mutation can be shown on a copy — *"a check is not
+ * established by reading it"* (2026-08-29) — and returning the offenders so a red run says which
+ * file rather than how many. The pattern is `smoke.js:216`'s, unchanged: a `model:` key whose value
+ * begins `gpt-`, anchored per line.
+ */
+const pinning = (root: string): string[] =>
+  ['flows', 'roles']
+    .flatMap((kind) => filesUnder(path.join(root, kind)).map((name) => `${kind}/${name}`))
+    .filter((relative) => /^\s*model:\s*gpt-/m.test(fs.readFileSync(path.join(root, ...relative.split('/')), 'utf8')))
+    .sort();
 
 const sandboxes: string[] = [];
 afterAll(() => {
@@ -174,6 +195,53 @@ describe('AC-4 — the shipped template tree is the spike\'s, byte for byte and 
     const shipped = path.join(WORKSPACE, 'harness', 'flows');
     expect(differences(path.join(SPIKE_TEMPLATES, 'flows'), shipped)).toStrictEqual([]);
     expect(fs.readdirSync(shipped).filter((name) => name.endsWith('.yaml')).length).toBe(6);
+  });
+
+  test('Q-0101 AC-9 — no shipped flow or role pins a vendor model name', () => {
+    // Re-homed from `smoke.js:216` rather than translated: that assertion reads
+    // `spike/templates/harness/{flows,roles}`, which the cutover deletes, and the claim is about the
+    // corpus an adopter's first `quorum init` copies — which since Q-0093 is this package's mirror.
+    // A name goes stale, and one that works on an API key is rejected on a subscription (Q-0001:
+    // codex 0.149.0 rejected every `gpt-5*`).
+    //
+    // **The walk is recursive**, which is strictly stronger than the spike's flat `readdirSync` over
+    // two directories: both are flat today, and a subdirectory added later must not escape the pin.
+    // **It names the offenders** rather than reporting a count, so a red run says which file.
+    //
+    // Distinct from its two neighbours, checked rather than assumed: `capabilities.source.test.ts`
+    // guards adapter capability module literals — a different corpus for a different reason — and
+    // `q0033-surface.js:161` is a single-file check inside a role-directory scenario, not this claim.
+    expect(pinning(SHIPPED_TEMPLATES), 'a shipped template pins a codex model name').toStrictEqual([]);
+    // The corpus is not empty and does carry `model:` lines, so the silence above is a measurement
+    // rather than a walk over nothing: eleven of them at the time of writing, none matching.
+    const declaring = ['flows', 'roles'].flatMap((kind) => filesUnder(path.join(SHIPPED_TEMPLATES, kind))
+      .filter((name) => /^\s*model:/m.test(fs.readFileSync(path.join(SHIPPED_TEMPLATES, kind, ...name.split('/')), 'utf8'))));
+    expect(declaring.length, 'no shipped template declares a model at all, so the pin has no subject')
+      .toBeGreaterThan(0);
+  });
+
+  test('and it is shown red by a template that does pin one, in a copy rather than in the tracked tree', () => {
+    // The pin is green on landing, so it needs a mutation to be trusted — and the mutation lives in a
+    // throwaway copy, never in the tree a `pnpm pack` ships. Two shapes: a flow and a role, because
+    // the walk covers two directories and a scan that had lost one would still pass over the other.
+    const { right } = copies();
+    fs.writeFileSync(path.join(right, 'flows', 'review.yaml'),
+      `${fs.readFileSync(path.join(right, 'flows', 'review.yaml'), 'utf8')}\n    model: gpt-5\n`);
+    expect(pinning(right)).toStrictEqual(['flows/review.yaml']);
+    fs.writeFileSync(path.join(right, 'roles', 'code-reviewer.md'), 'model: gpt-5-codex\n');
+    expect(pinning(right), 'the walk covers one of its two directories').toStrictEqual([
+      'flows/review.yaml', 'roles/code-reviewer.md',
+    ]);
+  });
+
+  test('and the walk reaches a subdirectory, which is where the spike\'s flat readdir stopped', () => {
+    // The one place this is stronger than the assertion it re-homes. Both directories are flat
+    // today, so the claim has a subject only over a copy that is not.
+    const { right } = copies();
+    fs.mkdirSync(path.join(right, 'flows', 'nested'));
+    fs.writeFileSync(path.join(right, 'flows', 'nested', 'panel.yaml'), 'name: panel\n  model: gpt-5\n');
+    expect(pinning(right), 'a template one directory down escapes the pin')
+      .toStrictEqual(['flows/nested/panel.yaml']);
   });
 
   test('the mirror is tracked, so what a tarball ships is the commit and not the checkout', () => {
