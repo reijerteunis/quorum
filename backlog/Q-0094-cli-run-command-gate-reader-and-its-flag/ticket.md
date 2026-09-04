@@ -1,13 +1,14 @@
 ---
 id: Q-0094
 title: CLI run command, gate reader and its flags
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0094/integration
 priority: p2
 created: 2026-09-01
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-09-04T06:14:00.951Z
     cost: 10.895
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-04T07:57:43.357Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-04T08:20:25.111Z
+    cost: 64.131
 ---
 **The command the whole product exists for** — `spike/bin/harness.js:534–568`, 35 lines in the
 switch and considerably more underneath it, because the gate reader is here.

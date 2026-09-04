@@ -1,0 +1,5 @@
+major: docs/04-architecture.md:70 This numbered architecture document is changed even though §8 explicitly says no numbered document claims anything this ticket changes and that documentation is untouched. Revert the Q-0094 architecture additions and leave documentation updates to their owning work.
+
+major: docs/06-development-plan.md:770 This corrects an existing planning-text defect outside all acceptance criteria, despite the ticket requiring known defects to be reported rather than fixed in passing and the implementer acknowledging this edit is outside the criteria. Revert this correction and report it for its owning requirements/documentation process.
+
+major: packages/cli/src/run.ts:130 AC-1(3) requires the handler to read `cmd`, `rest`, `flags`, and `gateAnswers` from the supplied `ParsedArgv`, but the handler destructures only the latter three and the tests do not enforce the missing `cmd` clause. Update the handler and source-level coverage so all four fields are consumed without introducing another parser.
