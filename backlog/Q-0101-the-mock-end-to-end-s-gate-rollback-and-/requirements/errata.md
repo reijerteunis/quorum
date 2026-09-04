@@ -70,3 +70,29 @@ erratum closes that ticket.
 
 **What does not change.** Every acceptance criterion stands exactly as written in §4. This erratum
 rules a *gate obligation*, not a criterion, and it moves no assertion.
+
+## E-3 — AC-10's "sixth counterpart" sentence yields to R-8: the surface row stays at five entries, and the prose carries the claim. 2026-09-05, second exhaustion gate of chore run 2.
+
+**Ruling.** `REGISTER['q0033-surface.js'].binaryCarriedBy` remains exactly its current five entries.
+AC-8 lands in `packages/cli/src/run.test.ts` per R-8, and that file is **already** the row's fifth
+entry — so what changes is the row's **prose**: `binaryHalf` stops naming Q-0101 (AC-11's
+inversions are untouched) and states that `run.test.ts` now also carries S3.2/S3.3, on the Q-0092
+precedent AC-10 itself cites — *a row's list grows only when a claim lands in a new file; a claim
+landing in a listed file moves the prose.* Every other clause of AC-10 — the `smoke.js` row naming
+both of **its** counterparts, `:1729` re-aimed and shown red first, no fourth verdict — stands
+exactly as written.
+
+**Why the sentence loses and the constraint wins.** The two cannot both hold: R-8 is ruled in the
+same document as *"ruled, not open"*, on four verified measurements (`project()` `:52`,
+`ticketDir` `:65`, `read` `:70`, `setStage` `:73`, plus the forcing switches making the scenario
+counter-independent), while the "sixth counterpart" sentence is inherited arithmetic from the
+ticket body, written when S3.2/S3.3 was expected to land in a new file. A sixth entry could only be
+satisfied by naming a file the audit would then require to exist and be collected — an invented
+counterpart, which is the false register entry `binaryCarriedBy` (Q-0091 E-2) exists to make
+impossible. Round 4's implementer was right to refuse it, and round 4's reviewer was right to
+confirm the refusal and route it here: *a reviewer approves the change it asked for* is exactly why
+neither of them may resolve this alone.
+
+**What this does not touch.** AC-11's three inversions, AC-12's sixth totals block, and the
+`smoke.js` row's two-file requirement are all unchanged — `failure-paths.test.ts` is a genuinely
+new file carrying new claims, so that row's list does grow, per the same precedent.
