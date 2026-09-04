@@ -59,7 +59,7 @@ verdict moves behind it"* (2026-09-02) — so all three tickets are launchable, 
 is ruled against the post-Q-0091 tree rather than against the frame that exists today. This is the second time the cut has moved because a
 run measured something it assumed, and the first time the thing that moved was a *dependency* rather
 than a scope — which is the Q-0074 drift in a third direction, and the argument for the plan/backlog
-check acquiring a fourth one day. **Q-0091 shipped on 2026-09-03** and its entry was rewritten to what happened, which is not what this cut described: it was **re-scoped from four commands to two at its requirements gate**, where the head-of-product loop exhausted at limit 1 and produced four errata before a line was written — one of which, E-2, rules a register schema that binds five sibling tickets, because ground rule 5 turned out to be *unsatisfiable as written* for any child translating a binary half. **Q-0099** and **Q-0100** were opened at that gate from findings the flow could not act on. The chore run then priced Q-0083's absence: the code was correct from round 1, no review round ever disputed it, and two rounds costing $14.28 — one of which changed no files at all — went on holding refusals that were right the first time, because an implement step that has proved a criterion wrong has no channel but prose. That is the eleventh appearance of the pattern and the first where the cost is written down with numbers. **Q-0092 shipped on 2026-09-04** and is the cut's counter-example, which is why its entry is written against Q-0091's rather than on its own: four implement rounds, every one on a defect the implementer could act on, and **no erratum owed at any point** — the first ticket here to reach its chore run with none. Its requirements run is what bought that, ruling five open questions before a line was written and finding that `@quorum/core`'s barrel exported no run-history symbol at all, so ground rule 4's *"the logic is already in core"* was true of existence and false of reachability. The inherited-coverage figure was wrong for the third consecutive ticket and this time the correction changed the shape of the work: 505 was 503, of which about 54 lines actually transfer. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
+check acquiring a fourth one day. **Q-0091 shipped on 2026-09-03** and its entry was rewritten to what happened, which is not what this cut described: it was **re-scoped from four commands to two at its requirements gate**, where the head-of-product loop exhausted at limit 1 and produced four errata before a line was written — one of which, E-2, rules a register schema that binds five sibling tickets, because ground rule 5 turned out to be *unsatisfiable as written* for any child translating a binary half. **Q-0099** and **Q-0100** were opened at that gate from findings the flow could not act on. The chore run then priced Q-0083's absence: the code was correct from round 1, no review round ever disputed it, and two rounds costing $14.28 — one of which changed no files at all — went on holding refusals that were right the first time, because an implement step that has proved a criterion wrong has no channel but prose. That is the eleventh appearance of the pattern and the first where the cost is written down with numbers. **Q-0094 shipped on 2026-09-04**, the command the product exists for, with its exit-code contract proven across a real process boundary rather than in process — including **3 for `undecided`** and the preserved **0** an unknown command still exits. Its entry also records the operator getting an erratum wrong twice over: **E-2 was landed while an implement round was already starting**, so that round could not read it while the review after it could, and enforced a half that should never have been written. E-3 withdraws it and states the rule this cut had been paying for since Q-0097 — **the window for an erratum is a gate**, not the gap between a review returning and the next round beginning. **Q-0092 shipped on 2026-09-04** and is the cut's counter-example, which is why its entry is written against Q-0091's rather than on its own: four implement rounds, every one on a defect the implementer could act on, and **no erratum owed at any point** — the first ticket here to reach its chore run with none. Its requirements run is what bought that, ruling five open questions before a line was written and finding that `@quorum/core`'s barrel exported no run-history symbol at all, so ground rule 4's *"the logic is already in core"* was true of existence and false of reachability. The inherited-coverage figure was wrong for the third consecutive ticket and this time the correction changed the shape of the work: 505 was 503, of which about 54 lines actually transfer. **Q-0097 shipped on 2026-09-02** and its entry was rewritten to
 what happened, which is not what this cut described: it landed **eleven** criteria rather than the
 eight this page promised, because its requirements run added AC-22 to AC-24 and two of them are what
 make the ticket work — `@quorum/shared`'s flat `exports`, which Q-0096 reported unfixed and which
@@ -765,11 +765,50 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     correctly preserved verbatim here rather than fixed in passing.
     **The `owner` defect is preserved at `backlog.ts:190`** as ground rule 3 requires: nine instances
     and three hand corrections have never reached the code, and this ticket does not reach it either.
-  - Q-0094 CLI `run`, the gate reader and its flags. The command the product exists for. Owns the
-    readline handle, the TTY test, and the five throw sites **Q-0040 classified on 2026-09-01** —
-    three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
-    `AsyncIterable<Event>` and `core` installs no signal handler, so the 130-on-signal exit is this
-    package's to own.
+  - Q-0094 CLI `run`, the gate reader and its flags. *(`reviewed` and `main:contained`
+    2026-09-04.)* The command the product exists for. **$75.03** — $10.90 requirements ready on the
+    first pass, $64.13 chore across four implement rounds and one `retry`, ending in *"No findings"*.
+    **The exit-code contract is proven across a real process boundary**, which is what the ticket
+    exists for and what the reviewer could not do under `--sandbox read-only`. Through the built
+    binary: an operator error exits **1**, a bad `--gate-answer` exits **1**, an unknown command
+    still prints help and exits **0** — the preserved defect Q-0090 AC-6 requires, which a tidier
+    implementation would have closed in passing — and a gate reached with no answer available, stdin
+    not a terminal, ends the run **`undecided`**, moves no stage, rolls nothing back, keeps zero
+    worktrees and **exits 3**. That is the whole of Q-0040's contract in one run.
+    **Its plan bullet said the gate reader had "three meaning nobody was there" until this entry
+    replaced it, and the register had been right all along.** Measured at the requirements gate: five
+    throw sites, **two** unanswered (`answers-exhausted`, `stdin-closed`) and **three** operator
+    errors; the third `GateUnansweredCondition`, `no-answer-channel`, is `core`'s and unreachable
+    from a CLI that always supplies an `answerGate`. `spike-parity.test.ts:249` has stated that split
+    since before the ticket was written, and the body's own arithmetic — three plus five against a
+    stated total of five — could not hold either way.
+    **Review round 1 found a defect the port INTRODUCED rather than inherited**, which is the
+    strongest single finding of the cut. The readline interface was closed only after
+    `rl.question()` resolved, while `SIGTERM` — for which readline has no event — rejected the abort
+    promise without settling it, so the process could survive with input listeners attached. The
+    spike never had it: `engine.js:113–114` registered `SIGTERM` and exited, and Q-0050's ruling that
+    `core` installs no signal handler is what removed that ground. Ground rule 3 protected nothing,
+    and round 2 fixed it.
+    **Three errata, all the same class, and the third names it.** E-1: AC-6's
+    `<advance|retry|abort or advance|abort>` is placeholder notation like the `<kind>` beside it —
+    no implementation prints the word *or* — and the spike prints no brackets. E-2: §8's row claiming
+    no numbered document changes is false, `04-architecture.md` having said *"Since Q-0093 it
+    dispatches five commands"*. E-3(b): AC-1(3)'s four field names say what `ParsedArgv` carries, not
+    a destructuring shape — measured, **not one of the five shipped handlers binds `cmd`**, because
+    `main.ts` dispatches `HANDLERS[cmd](parsed)`, so the literal reading would ship a dead binding in
+    the product's most load-bearing command. The rule stated once: *a requirement describes what must
+    be conveyed; only a fixture, a frozen contract's own file, or a criterion quoting bytes pins
+    bytes.* Fourth instance in this stretch, after Q-0091's E-3 and Q-0098's E-1.
+    **E-3(a) withdraws half of E-2, and that is the operator's error recorded twice over.** E-2 ruled
+    the development-plan edit must stay; this page's bullets are rewritten by hand at each plan pass,
+    so iteration 3's revert cost nothing and the ruling turned a harmless revert into a review
+    finding. Worse, **E-2 was landed while iteration 3 was already starting** — it appears zero times
+    in that step's prompt — so the round could not read it and reasoned to the opposite conclusion,
+    while the review that followed *could* read it and enforced the wrong half. Q-0097 lost two
+    errata to exactly this. **The rule is now written down: an erratum landed between a review
+    returning and the next implement starting has no reliable window; the window is a gate.** E-3 was
+    landed at one, and round 4 respected both rulings — `cmd` unbound, the plan untouched, and twelve
+    lines of authority comment moved from argument to *"Why: ruled, see E-1/E-3"*.
   - Q-0096 `@quorum/core` resolves and exports its public API. *(`reviewed` and `main:contained`
     2026-09-02; retitled from *"The workspace emits JavaScript, and `quorum` is a runnable binary"*
     when it was split, because that title now describes Q-0097's and Q-0098's work. Opened 2026-09-01
