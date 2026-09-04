@@ -25,6 +25,13 @@
  * reads, imports or spawns anything under that tree, and AC-3 below asserts it over this file's own
  * source rather than leaving it to be discovered on the day.
  *
+ * **Nothing the shell sets reaches a spawned process.** Each invocation gets this process's
+ * environment minus {@link STEERING} — every variable the product's own code reads, derived from the
+ * four files that read one — plus whatever that call declares for itself. An inherited
+ * `MOCK_ALWAYS_PASS` forces the verdict the three convergent behaviours below exist to observe, so
+ * the suite would report a chain that never converged as one that had; AC-9 asks that the verdict be
+ * a property of the commit, and an inherited switch is a property of the shell.
+ *
  * **POSIX only, and it refuses rather than skipping.** The fixture rewrites `commands.install` and
  * `commands.test` to `sh` chains exactly as the spike does, so on a platform without `sh` this suite
  * has no subject — and *"a check that skips its subject must not report success"* (2026-08-25). The
@@ -90,13 +97,21 @@ interface Invocation {
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
+  /**
+   * Which of {@link STEERING} the spawned process actually carried, and with what value.
+   *
+   * Recorded rather than trusted: the sanitiser is a line of code, and AC-9 is a claim about what
+   * each of the twelve invocations was handed. This is what lets a test assert the claim over the
+   * environments the run really used.
+   */
+  readonly steering: Readonly<Record<string, string>>;
 }
 
 /** Both streams together, which is where several of the spike's assertions look. */
 const output = (invocation: Invocation): string => invocation.stdout + invocation.stderr;
 
 /** What an absent recording reads as, so a missing label fails on its content rather than on a type. */
-const EMPTY: Invocation = { argv: [], status: null, stdout: '', stderr: '' };
+const EMPTY: Invocation = { argv: [], status: null, stdout: '', stderr: '', steering: {} };
 
 /** What the fixture recorded on its way from `init` to `green`. */
 interface Chain {
@@ -117,7 +132,20 @@ interface Chain {
     readonly branch: string;
     readonly worktreeDirectory: boolean;
     readonly worktreeList: string;
-    readonly status: string;
+  };
+  /**
+   * `git status --porcelain` at the two moments AC-6's working-tree claim is about.
+   *
+   * **Two readings and not one.** The solutioning-time reading is where the spike takes its
+   * (`smoke.js:79`), and on its own it is silent about `qa-red` and `development` — the two flows
+   * that run after it, which between them cut further worktrees, integrate, and write both
+   * developers' source. AC-6 says *end to end*, so the reading is repeated once the chain has
+   * reached green and both are asserted, which additionally catches pollution one flow introduces
+   * and a later one clears.
+   */
+  readonly porcelain: {
+    readonly afterSolutioning: string;
+    readonly atGreen: string;
   };
 }
 
@@ -159,6 +187,59 @@ const refusedBy = (vendor: string): string[] =>
   [...read(WORKSPACE, 'packages', 'core', 'src', 'adapters', `${vendor}.ts`)
     .matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1] ?? '');
 
+/**
+ * Every environment variable the product's own code reads — the whole of what a shell could use to
+ * steer a run of it.
+ *
+ * **Derived, for the reason {@link refusedBy} is derived.** A typed list goes on excusing a name
+ * nothing reads and misses the one added next week, and this list's job is to be complete: the mock
+ * has nine switches, two of which force a verdict outright, and `Backlog.create` defaults an owner
+ * from the account. Reading the four files that read one moves this list when they move.
+ *
+ * **Two clauses, because the mock reaches two of its switches through a variable.**
+ * `numericSwitch` (`packages/core/src/adapters/mock.ts:156`) takes the name as an argument, so the
+ * `process.env.X` clause cannot see `MOCK_CACHED_INPUT_TOKENS` or `MOCK_CACHE_WRITE_INPUT_TOKENS`;
+ * every switch is nevertheless spelled at its call site, which is what the second clause anchors on.
+ * Both are pinned below, so a tenth switch is a red test somebody reads rather than a quietly
+ * smaller sanitiser.
+ */
+const STEERING: readonly string[] = (() => {
+  const core = (...relative: string[]): string => read(WORKSPACE, 'packages', 'core', 'src', ...relative);
+  const mock = core('adapters', 'mock.ts');
+  const named = [...mock.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1] ?? '');
+  const owner = [...core('backlog', 'backlog.ts').matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1] ?? '');
+  return [...new Set([
+    ...refusedBy('claude'), ...refusedBy('codex'), ...named, ...owner, ...(mock.match(/\bMOCK_[A-Z0-9_]+\b/g) ?? []),
+  ])].sort();
+})();
+
+/**
+ * The environment one spawned invocation gets: `base`, minus every name in {@link STEERING}, plus
+ * what the call itself declares.
+ *
+ * A deny-list rather than an allow-list, deliberately: `GIT_CONFIG_GLOBAL` and its siblings must
+ * reach the child, because `pnpm sweep:git-identity` sets them to prove both suites pass with no
+ * resolvable identity, and a child that could not see them would be exempt from the one check AC-9
+ * names as its own.
+ *
+ * `base` is a parameter rather than `process.env` read in here, so the removal can be demonstrated
+ * over an environment a test composed — showing the clause fires, rather than showing that this
+ * machine happens to set none of them (*"A check is not established by reading it"*, 2026-08-29).
+ */
+const sanitised = (base: NodeJS.ProcessEnv, overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = { ...base };
+  for (const name of STEERING) delete env[name];
+  return { ...env, ...overrides };
+};
+
+/**
+ * The value the fixture gives a variable it sets for itself.
+ *
+ * One constant rather than a literal at each end, so the invocation and the assertion about what it
+ * was handed cannot drift into agreeing about a variable neither of them set.
+ */
+const SET_BY_THE_FIXTURE = 'set-by-the-fixture';
+
 beforeAll(() => {
   const root = isolate();
   buildIn(root, '--force');
@@ -173,12 +254,14 @@ beforeAll(() => {
   repositories.push(repo);
 
   const ran: Record<string, Invocation> = {};
-  const invoke = (label: string, argv: readonly string[], env: NodeJS.ProcessEnv = {}): Invocation => {
+  const invoke = (label: string, argv: readonly string[], overrides: NodeJS.ProcessEnv = {}): Invocation => {
+    const env = sanitised(process.env, overrides);
     const result = spawnSync(process.execPath, [bin, ...argv], {
-      cwd: repo, encoding: 'utf8', env: { ...process.env, ...env }, timeout: SPAWN_TIMEOUT_MS,
+      cwd: repo, encoding: 'utf8', env, timeout: SPAWN_TIMEOUT_MS,
     });
     const invocation: Invocation = {
       argv, status: result.status, stdout: plain(result.stdout ?? ''), stderr: plain(result.stderr ?? ''),
+      steering: Object.fromEntries(STEERING.flatMap((name) => (env[name] === undefined ? [] : [[name, env[name]]]))),
     };
     ran[label] = invocation;
     return invocation;
@@ -197,8 +280,8 @@ beforeAll(() => {
    * When it throws, Vitest reports the file as **FAIL** and renders the tests it never reached as
    * skipped. Nothing reports success: the file's verdict is a failure and the process exits 1.
    */
-  const mustPass = (label: string, argv: readonly string[], env: NodeJS.ProcessEnv = {}): Invocation => {
-    const invocation = invoke(label, argv, env);
+  const mustPass = (label: string, argv: readonly string[], overrides: NodeJS.ProcessEnv = {}): Invocation => {
+    const invocation = invoke(label, argv, overrides);
     if (invocation.status !== 0) {
       throw new Error(`${label} exited ${String(invocation.status)}; the chain cannot continue:\n${output(invocation)}`);
     }
@@ -246,20 +329,27 @@ beforeAll(() => {
     branch: git(repo, 'branch', '--list', `harness/${TICKET}/contracts`).trim(),
     worktreeDirectory: fs.existsSync(path.join(repo, '.harness', 'worktrees', `harness__${TICKET}__contracts`)),
     worktreeList: git(repo, 'worktree', 'list'),
-    status: git(repo, 'status', '--porcelain'),
   };
+  const solutioningPorcelain = git(repo, 'status', '--porcelain');
 
   mustPass('qa-red', ['run', 'qa-red', TICKET, '--adapter', 'mock', '--auto']);
   stage();
 
   mustPass('development', ['run', 'development', TICKET, '--adapter', 'mock', '--auto'], { MOCK_DEV_FLAKY: '1' });
   stage();
+  // The second reading, and the one AC-6 calls end to end. Taken here rather than at the end of the
+  // fixture: the `validate` block below writes a schema and two artifacts into the repository root,
+  // and those are the test's files rather than the product's — a reading after them would have to
+  // excuse three paths by name, which is how a working-tree check stops having a subject. What that
+  // leaves outside it is `board`, `adapters` and `validate`, none of which runs a flow; AC-6's claim
+  // is about what a run writes, and the last run has finished by this line.
+  const greenPorcelain = git(repo, 'status', '--porcelain');
 
   invoke('board', ['board']);
   // The two vendors are refused before either CLI is probed, so this run's verdict does not depend
   // on which vendor CLIs the machine has (AC-9).
   const guarded = [...refusedBy('claude'), ...refusedBy('codex')];
-  invoke('adapters', ['adapters'], Object.fromEntries(guarded.map((name) => [name, 'set-by-the-fixture'])));
+  invoke('adapters', ['adapters'], Object.fromEntries(guarded.map((name) => [name, SET_BY_THE_FIXTURE])));
 
   const schema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -274,7 +364,10 @@ beforeAll(() => {
   invoke('validate-ok', ['validate', 'contract.schema.json', 'conforming.json']);
   invoke('validate-bad', ['validate', 'contract.schema.json', 'violating.json']);
 
-  chain = { root, bin, repo, folder, ran, stages, afterSolutioning };
+  chain = {
+    root, bin, repo, folder, ran, stages, afterSolutioning,
+    porcelain: { afterSolutioning: solutioningPorcelain, atGreen: greenPorcelain },
+  };
 }, FIXTURE_TIMEOUT_MS);
 
 /**
@@ -441,10 +534,25 @@ describe('AC-6 — worktrees, branches and the user\'s working tree, end to end'
       .not.toContain(`harness__${TICKET}__contracts`);
   });
 
-  test('nothing outside backlog/ and harness/ appears in the user\'s working tree', () => {
-    const dirty = chain.afterSolutioning.status.split('\n')
-      .filter((line) => line.trim() !== '' && !line.includes('backlog') && !line.includes('harness/'));
-    expect(dirty, 'the run wrote into the user\'s working tree').toStrictEqual([]);
+  test('nothing outside backlog/ and harness/ appears in the user\'s working tree, at green as well as before it', () => {
+    // Both readings, named rather than iterated over the object, so losing one is a failure instead
+    // of a quietly shorter loop. The solutioning-time reading alone was silent about `qa-red` and
+    // `development` — the two flows that run after it — while this test presented it as the
+    // end-to-end result, which is the criterion's own word.
+    const readings = [
+      ['after solutioning', chain.porcelain.afterSolutioning],
+      ['at green', chain.porcelain.atGreen],
+    ] as const;
+    for (const [when, porcelain] of readings) {
+      // Each reading is asserted non-empty before it is filtered. An empty one gives the filter
+      // nothing to remove, so the clause below would pass over a `git status` that had reported
+      // nothing at all — and both readings are taken over a repository holding at least the
+      // scaffold and the ticket folder, so empty is a failure rather than a clean tree.
+      expect(porcelain.trim(), `the reading ${when} is empty, so it discriminates nothing`).not.toBe('');
+      const dirty = porcelain.split('\n')
+        .filter((line) => line.trim() !== '' && !line.includes('backlog') && !line.includes('harness/'));
+      expect(dirty, `the run wrote into the user's working tree, ${when}`).toStrictEqual([]);
+    }
     expect(fs.existsSync(path.join(chain.repo, 'src')),
       'the developers\' source landed in the working tree instead of on their branches').toBe(false);
   });
@@ -530,6 +638,55 @@ describe('AC-8 — the suite is honest about what it could not run', () => {
 });
 
 describe('AC-9 — the verdict is a property of the commit', () => {
+  test('the register of what could steer a run is derived from the product, and is the size it should be', () => {
+    // An identity over the mock's half, which this file may spell, and a derivation over the other:
+    // the two the adapters refuse cannot be written here — `frame.source.test.ts`'s AC-12 admits
+    // exactly one file in this package that names one — so they are asserted against the same guards
+    // AC-7 pins the shape of, at one and two.
+    expect(STEERING.filter((name) => name.startsWith('MOCK_')), 'the mock gained or renamed a switch')
+      .toStrictEqual([
+        'MOCK_ALWAYS_FAIL', 'MOCK_ALWAYS_PASS', 'MOCK_CACHED_INPUT_TOKENS', 'MOCK_CACHE_WRITE_INPUT_TOKENS',
+        'MOCK_DEV_FLAKY', 'MOCK_FAIL_WRITE', 'MOCK_RUN_HISTORY_PROFILES', 'MOCK_TOKEN_ONLY', 'MOCK_VENDOR',
+      ]);
+    expect(STEERING.filter((name) => !name.startsWith('MOCK_')),
+      'the product reads an environment variable this suite does not remove')
+      .toStrictEqual([...new Set([...refusedBy('claude'), ...refusedBy('codex'), 'USER'])].sort());
+    // The two the first clause cannot see, because `numericSwitch` takes its name as an argument:
+    // without the second clause of the derivation both would be missing and this would be red.
+    expect([...read(WORKSPACE, 'packages', 'core', 'src', 'adapters', 'mock.ts')
+      .matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1]),
+    'the mock now reads both numeric switches directly, so the second clause has no subject')
+      .not.toContain('MOCK_CACHED_INPUT_TOKENS');
+  });
+
+  test('and no invocation inherited one: each carried only what its own call declared', () => {
+    const set = Object.fromEntries([...refusedBy('claude'), ...refusedBy('codex')]
+      .map((name) => [name, SET_BY_THE_FIXTURE]));
+    // The twelve labels written out rather than mapped from `chain.ran`, so a thirteenth invocation
+    // has to be classified here instead of arriving with an empty expectation of its own.
+    expect(Object.fromEntries(Object.entries(chain.ran).map(([label, i]) => [label, i.steering])))
+      .toStrictEqual({
+        init: {}, lint: {}, ticket: {}, 'wrong-stage': {}, requirements: {}, solutioning: {},
+        'qa-red': {}, development: { MOCK_DEV_FLAKY: '1' }, board: {}, adapters: set,
+        'validate-ok': {}, 'validate-bad': {},
+      });
+  });
+
+  test('and the sanitiser discriminates: an ambient switch does not reach the spawned process', () => {
+    // Over an environment composed here rather than over this machine's, which sets none of them and
+    // would therefore prove nothing. The three clauses are the three ways this could be wrong: a
+    // switch survives, the declared override is lost, or the sanitiser takes something it was not
+    // asked to take.
+    const ambient = Object.fromEntries(STEERING.map((name) => [name, 'ambient']));
+    const env = sanitised({ ...ambient, PATH: 'kept' }, { MOCK_DEV_FLAKY: '1' });
+    expect(STEERING.filter((name) => env[name] !== undefined), 'an ambient switch survived the sanitiser')
+      .toStrictEqual(['MOCK_DEV_FLAKY']);
+    expect(env.MOCK_DEV_FLAKY, 'the call\'s own override was removed with the rest').toBe('1');
+    expect(env.PATH, 'the sanitiser removed something no criterion asked it to').toBe('kept');
+    expect(Object.keys(ambient).length, 'the fixture environment carries nothing, so it discriminates nothing')
+      .toBe(STEERING.length);
+  });
+
   test('every run selects the mock, so nothing here reaches a vendor or the network', () => {
     const runs = Object.values(chain.ran).filter((invocation) => invocation.argv[0] === 'run');
     // An identity rather than a floor: a count would pass whether or not the five flows this chain
