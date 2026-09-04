@@ -1,7 +1,7 @@
 ---
 id: Q-0099
 title: CLI board and adapters, the two commands that always exit 0
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0099/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-09-04T09:33:27.180Z
     cost: 12.811
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-04T10:23:58.559Z
+    cost: 38.939
 ---
 **Split from Q-0091 at its requirements gate on 2026-09-03**, where the merged requirement measured
 **21 criteria against a ceiling of fifteen** and the head-of-product loop exhausted at limit 1 with
