@@ -7,6 +7,11 @@
  * `q0034-review-fixes.js`'s B3, whose whole binary claim is that a `FlowError` reaches the terminal
  * as one sentence and exit 1. `spike-parity.test.ts` records each on its own row.
  *
+ * **Q-0101 added `q0033-surface.js`'s S3.2/S3.3** — the shipped review flow walked down both of its
+ * paths — for the reason the rest of that ticket lives in `failure-paths.test.ts` and this does not:
+ * the scenario uses the *forcing* switches, so it does not depend on the mock's per-key counter and
+ * needs no process of its own. Everything else Q-0101 carries spawns one.
+ *
  * **Every fixture is a project this suite created and scaffolded through `quorum init`**, so the
  * flows a run loads are the shipped ones and no verdict depends on this checkout. The git
  * repositories are built here with an explicit identity on the one call that writes an object
@@ -515,6 +520,63 @@ describe('AC-2 — the preflight runs in the spike\'s order, and a clean lint is
     } finally {
       process.chdir(cwd);
     }
+  });
+});
+
+describe('Q-0101 AC-8 — S3.2/S3.3: the shipped review flow traverses both of its paths', () => {
+  /**
+   * A `green` ticket with the two documents `review.yaml` reads and an integration branch to diff.
+   *
+   * The flow is the **shipped** one, which is what the criterion is about: `quorum init` scaffolds
+   * `packages/cli/templates/harness/flows/review.yaml`, which `templates.test.ts` proves byte-identical
+   * to the spike's tree and, through link 2 of its chain, to `harness/flows`. So the fixture needs no
+   * copy step of its own — the spike's `copyFlows` exists because its `init` and its repository are
+   * the same tree.
+   *
+   * `review` consumes `green`, and its diff range is `{base}...harness/{id}/integration` — so a
+   * ticket with no such branch is refused in the preflight and no step runs, which is the shape this
+   * fixture existed to avoid and which was measured before it was written.
+   */
+  const reviewable = async (name: string): Promise<string> => {
+    const dir = await project(name);
+    setStage(dir, 'green');
+    const ticket = ticketDir(dir);
+    fs.mkdirSync(path.join(ticket, 'requirements'), { recursive: true });
+    fs.writeFileSync(path.join(ticket, 'requirements', 'merged.md'), '# Requirement\n');
+    fs.mkdirSync(path.join(ticket, 'solution'), { recursive: true });
+    fs.writeFileSync(path.join(ticket, 'solution', 'solution.md'), '# Solution\n');
+    git(dir, 'checkout', '-q', '-b', 'harness/T-0001/integration');
+    fs.writeFileSync(path.join(dir, 'change.txt'), 'review me\n');
+    git(dir, 'add', 'change.txt');
+    git(dir, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '-m', 'ticket');
+    git(dir, 'checkout', '-q', 'main');
+    return dir;
+  };
+
+  test('MOCK_ALWAYS_FAIL + abort regresses the ticket to red, and exits 0', async () => {
+    // In process, and the file's *"Nothing here spawns the binary"* header stays true: the forcing
+    // switches make this scenario independent of the mock's per-key counter, which is the property
+    // that forces a fresh process on `failure-paths.test.ts` and does not force one here.
+    vi.stubEnv('MOCK_ALWAYS_FAIL', '1');
+    const dir = await reviewable('review-abort');
+    const result = await invoke(['run', 'review', 'T-0001', '--project', dir, '--adapter', 'mock',
+      '--gate-answer', 'abort']);
+    expect(result.exitCode, output(result)).toBe(SUCCESS);
+    expect(read(ticketDir(dir), 'ticket.md')).toMatch(/^stage: red$/m);
+    expect(output(result), 'the run did not say why the ticket went back')
+      .toMatch(/changes-requested|development|red/i);
+  });
+
+  test('MOCK_ALWAYS_PASS + advance reaches reviewed, says approve, and writes review/verdict.md', async () => {
+    vi.stubEnv('MOCK_ALWAYS_PASS', '1');
+    const dir = await reviewable('review-advance');
+    const result = await invoke(['run', 'review', 'T-0001', '--project', dir, '--adapter', 'mock',
+      '--gate-answer', 'advance']);
+    expect(result.exitCode, output(result)).toBe(SUCCESS);
+    expect(read(ticketDir(dir), 'ticket.md')).toMatch(/^stage: reviewed$/m);
+    expect(output(result)).toMatch(/approve/i);
+    expect(fs.existsSync(path.join(ticketDir(dir), 'review', 'verdict.md')),
+      'the approved round wrote no verdict for the gate to read').toBe(true);
   });
 });
 
