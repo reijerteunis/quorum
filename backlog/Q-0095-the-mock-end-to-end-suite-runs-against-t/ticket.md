@@ -1,42 +1,77 @@
 ---
 id: Q-0095
 title: The mock end-to-end suite runs against the CLI binary
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0095/integration
 priority: p1
 created: 2026-09-01
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-04T10:55:48.984Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-04T11:00:19.624Z
+    cost: 11.436
 ---
-**M2's done-when, and the last child of Q-0010.** `spike/test/smoke.js` is the mock end-to-end
-through the binary — 781 lines and 151 assertions — and it is what the development plan means by
-*"the mock end-to-end through the binary"*. Until it runs against `packages/cli`, the cutover cannot
-happen and neither can retiring the spike's CI job.
+**M2's done-when, and the last child of Q-0010 — re-scoped at its requirements gate on 2026-09-04
+from twenty-one criteria to eleven.** `spike/test/smoke.js` is the mock end-to-end through the
+binary, and until its binary half runs against `packages/cli` the cutover cannot happen and neither
+can retiring the spike's CI job.
 
-**Runs last, and is its own child rather than being split across the five**, because it touches
-every command: `init`, `ticket new`, `run` over several flows, `board`, `adapters`, `runs`,
-`validate` and `lint`. That is the seam's admitted weakness — the eight binary-half files do **not**
-partition cleanly by command, and `smoke.js` is why.
+**This ticket is §3.1 of `requirements/merged.md`: the spawn harness and the green chain.** The
+failure, gate and rollback paths are **Q-0101**, created at the same gate. The seam is **by scenario
+independence, not by command** — a per-command cut was refused, because `smoke.js`'s binary half does
+not partition that way, which is the admitted weakness of Q-0010's whole seam.
+
+**Its measured figures are corrected here, and the old pair described no commit that has ever
+existed.** The body said *"781 lines and 151 assertions"*. Measured at HEAD: **780 lines, 158
+`assert(` sites, of which 76 transfer.** `151` was true at `dad6254` (Q-0035) when the file was
+**739** lines, so the pair combined two different moments and then added the systematic **+1 per
+file** this cut has now recorded seven times. `06-development-plan.md` carried the same pair while
+its own Q-0010 bullet said 780, contradicting itself three screens apart; both are corrected.
 
 **It is `split`, not binary-only.** Q-0054's audit found it spawns the binary **and** imports from
 `../src/` fifteen times through `await import()` — invisible to a scan for static
-`from '../src/'`. Its library half is already carried by the workspace suite; **only the binary half
-transfers here.** Do not re-derive that from any earlier account: three documents called it
-binary-only before the audit corrected them.
+`from '../src/'` — and that count is confirmed at HEAD. Its library half is already carried by the
+workspace suite; **only the binary half transfers.**
 
-**Two assertions in it were re-aimed on 2026-09-01 and one had been passing for the wrong reason.**
+**The execution mechanism is the reason this could not be one ticket.**
+`packages/core/src/adapters/mock.ts` keys its call counter `role:kind` at `:94` with **no reset
+export**, and adding one is a charter §2 behaviour change. So the in-process `invoke()` model all six
+command children used **cannot** carry the three convergent behaviours: every binary invocation must
+be a separate operating-system process, against an artifact the suite builds in an isolated copy.
+That harness is this ticket's, and Q-0101's scenarios ride on it.
+
+**Two assertions were re-aimed on 2026-09-01 and one had been passing for the wrong reason.**
 Q-0088 moved the requirements candidates under `requirements/run-{run}/`, and
 `assert(!fs.existsSync('requirements/candidate-claude.md'))` — *"failed parallel sibling wrote
-nothing"* — went green the moment the path moved, proving the writer had failed only by accident.
-It searches recursively now. A translation that re-flattens either assertion re-opens that hole, so
-**the translated form must be shown red against a deliberately broken binary**, not merely observed
-green.
+nothing"* — went green the moment the path moved, proving the writer had failed only by accident. It
+searches recursively now (`smoke.js:148`, via `found()`), and `MOCK_FAIL_WRITE` at `:139` is the
+mechanism that makes a red witness possible. **That assertion is Q-0101's**, and its translated form
+must be shown **red against a deliberately broken binary** rather than observed green.
 
-**When this child is green, the cutover is unblocked** — deleting `spike/`, retiring its CI job and
-retiring `harness/port-charter.md`. That is Q-0010 §5's follow-up, it has no ticket, and it should
-get one at this child's close rather than being remembered.
+**AC-10 re-aims two register clauses at Q-0101.** `spike-parity.test.ts:1617` and `:1694` assert
+`REGISTER['q0033-surface.js'].binaryHalf` `.toMatch(/Q-0095/)`; if this ticket closed carrying only
+the chain half, they would name a **closed** ticket as owing work — the contradiction Q-0091's E-2
+created `binaryCarriedBy` to make impossible, running the other way.
+
+**When both halves are green the cutover is unblocked** — deleting `spike/`, retiring its CI job and
+retiring `harness/port-charter.md`. That is Q-0010 §5's follow-up, it still has no ticket, and
+Q-0101's GO-4 says it should be allocated at that ticket's close rather than remembered.
 
 ## Ground rules — Q-0010's, repeated here because a child cannot read its parent
 
