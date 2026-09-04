@@ -71,6 +71,23 @@ export const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '
  *   rather than being folded into a status, since that is the difference between `die` and a defect.
  */
 export async function invoke(argv: readonly string[]): Promise<Invocation> {
+  return capture(() => main(argv));
+}
+
+/**
+ * As {@link invoke}, but over a piece of a command a test constructed rather than over `main`.
+ *
+ * The one case the dispatch boundary cannot reach: `quorum run`'s gate reader takes its input
+ * stream, its output stream and its TTY predicate as parameters, and three of its five sites are
+ * reachable only when a human is at a terminal — so a test has to build the handler with streams it
+ * owns. `main` takes argv and nothing else, correctly, so the composition lives here instead of
+ * being a second copy of the twenty lines below. Registration through `main` is what {@link invoke}
+ * covers, and every gate site that does *not* need a terminal is asserted through it.
+ *
+ * @param body whatever the test wants run with the console, `process.exit` and the exit status
+ *   captured — usually `() => runOn({ … })(parseArgv([…]))`.
+ */
+export async function capture(body: () => void | Promise<void>): Promise<Invocation> {
   const out = sink();
   const err = sink();
   const saved = globalThis.console;
@@ -83,7 +100,7 @@ export async function invoke(argv: readonly string[]): Promise<Invocation> {
   let thrown: { error: unknown } | undefined;
   let stopped: Exited | undefined;
   try {
-    await main(argv);
+    await body();
   } catch (error) {
     if (error instanceof Exited) stopped = error;
     else thrown = { error };
