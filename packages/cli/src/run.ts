@@ -127,6 +127,11 @@ export interface GateTerminal {
  * `process.stdin.isTTY` — a route this package may not take (see `gate.ts`).
  */
 export function runOn(terminal: GateTerminal): CommandHandler {
+  // Three of `ParsedArgv`'s four fields, because `cmd` is the key this handler was reached through:
+  // `main.ts` dispatches `HANDLERS[cmd](parsed)`, so it is `'run'` by construction here and binding
+  // it would be a dead name rather than a read. Q-0091's AC-2 is the precedent for which half of
+  // AC-1(3) binds — no command re-parses the command line, which `frame.source.test.ts` enforces —
+  // and `main.test.ts` pins all four fields arriving, `cmd` among them.
   return async ({ rest, flags, gateAnswers }) => {
     const [flowName, ticketId] = rest;
     if (!flowName || !ticketId) die(USAGE);
