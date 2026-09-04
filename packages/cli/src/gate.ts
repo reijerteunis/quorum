@@ -237,11 +237,13 @@ export function createGateReader(options: GateReaderOptions): GateReader {
     // resolve as an accidental answer, or as '' → advance. Nobody was there, which the engine
     // classifies `undecided`. Why: preserved, see `spike/bin/harness.js:96–98`, Q-0011 / Q-0033.
     //
-    // The word list below carries no angle brackets, because the spike's does not. Two landed
-    // fixtures build this sentence to prove a run is classified by TYPE and not by its words —
-    // `spike/test/q0040-undecided.js:264` and `packages/core/src/engine/undecided.test.ts:243`,
-    // both saying "byte for byte" — so wording that drifts from the spike leaves them asserting
-    // over a string nothing prints.
+    // The word list below carries no angle brackets. Why: ruled, see `requirements/errata.md` E-1 —
+    // AC-6's `<advance|retry|abort or advance|abort>` is placeholder notation like the `<kind>`
+    // beside it and not text to emit, and `spike/bin/harness.js:97` prints none. Two landed fixtures
+    // build this sentence to prove a run is classified by TYPE and not by its words —
+    // `spike/test/q0040-undecided.js:264` and `packages/core/src/engine/undecided.test.ts:243`, both
+    // saying "byte for byte" — so wording that drifts from the spike leaves them asserting over a
+    // string nothing prints.
     if (!isTTY()) {
       throw new GateUnansweredError(
         `gate (${question.kind}) "${question.reason}" needs an answer and stdin closed without one`
