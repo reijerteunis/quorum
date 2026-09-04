@@ -10,7 +10,10 @@ created: 2026-09-04
 iterations: {}
 history: []
 ---
-**`pnpm sweep:git-identity` exits 1 on `main` today, and `.github/workflows/ci.yml` runs it as two
+**Re-measured the same evening: 25 sweeps across two commits and both checkout shapes, 0
+failures — see the section below, which exonerates the commit and leaves the sighting standing.**
+
+**`pnpm sweep:git-identity` exited 1 on `main` when this was written, and `.github/workflows/ci.yml` runs it as two
 required jobs** — `git identity sweep (bare checkout)` and `(populated checkout)`. So CI is red or
 flaky right now. Found on 2026-09-04 while verifying Q-0095's merge, by running the sweep as the
 post-merge check Q-0072's closing finding requires.
@@ -48,6 +51,61 @@ post-merge check Q-0072's closing finding requires.
   copies and spawns a process per invocation. More concurrent git and `node` processes than any
   previous suite. But the red **predates that merge**, so the hypothesis is incomplete and must not
   be adopted without evidence.
+
+## Re-measured 2026-09-04 evening: 25 sweeps, 0 failures, and the commit is exonerated
+
+**Measured by hand, on the machine that made the original sighting, before any fix was attempted.**
+Every run below is `bash .github/scripts/git-identity-sweep.sh` — the same entry point
+`pnpm sweep:git-identity` and both CI jobs use — with exit code, wall time and any Vitest failure
+counts recorded per run.
+
+| cell | commit | checkout shape | runs | result | wall time |
+| --- | --- | --- | --- | --- | --- |
+| idle | `e47fb1d` | populated (working checkout) | 11 | **all exit 0** | 105–110 s |
+| 48 CPU burners on 16 cores | `e47fb1d` | populated | 1 | **exit 0**, 7/7 tasks | 162 s (1.5x slower, so the contention was real) |
+| concurrent second `pnpm turbo run test --force` in the same repository | `e47fb1d` | populated | 1 | **both exit 0** | — |
+| idle | `e47fb1d` | **bare** (fresh clone, both directories absent) | 7 | **all exit 0** | 109–132 s |
+| idle | **`bb8e143`** | **bare** | 5 | **all exit 0** | 109–112 s |
+
+**The last row is the bisect this section's predecessor asked for, and it settles the largest
+question: the commit is not the variable.** `bb8e143` is the commit named red above. In a fresh
+clone with `.harness/worktrees` and `.quorum/runs` absent — CI's bare cell, reproduced rather than
+approximated, asserted absent before each run and still absent after — it is green five times out of
+five. So no `docs/` or `backlog/` change between it and `e47fb1d` repaired anything, and the red is
+**not a property of the tree**. That is this ticket's own thesis, now with the commit positively
+exonerated rather than merely suspected.
+
+**Both checkout shapes are covered.** The eleven original runs were in a working checkout, which is
+neither CI cell — it carries installed dependencies, turbo caches and run history. The bare cell was
+then built the way `ci.yml` builds it, and the clone stays untracked-clean across a full sweep, so
+repeated runs in it remain valid.
+
+**Two mechanisms are closed, and neither was the cause.**
+
+- **Cross-file fixture deletion is impossible.** `packages/core/test/repo.ts:15` keeps its temporary
+  directories in a module-scoped `created` array that `removeTempDirs()` splices; under Vitest's
+  default per-file isolation each file gets its own registry, so no file can delete a neighbour's
+  fixture. The first hypothesis anyone reaches for after "make them isolated" is also refuted.
+- **CPU contention alone is not sufficient.** Saturating all 16 cores slowed the suite by half and
+  it stayed green.
+
+**What is still not measured, stated so the next reader does not mistake this for an all-clear.**
+Twenty-five non-reproductions bound the rate; they do not explain the sighting, and they do not make
+it false — it was first-hand, and it is left standing above. If the rate were anywhere near the
+observed "two consecutive runs both red", twenty-five greens would be a coincidence of order 1e-8,
+so either the rate is very low or **the triggering condition was present then and is absent now**.
+The instrument is also wrong for the target: this is one machine, 16 cores, darwin 25.3.0, fd limit
+1048576, with a warm pnpm store, against CI's two-core `ubuntu-latest`. Untested here: CI's own
+hardware, memory and IO pressure as distinct from CPU, and a concurrent *harness run* holding
+worktrees, which is not the same load as a concurrent suite.
+
+**The most plausible surviving mechanism, recorded as a lead rather than a finding.** No
+`testTimeout` is configured anywhere — `vitest.shared.js` sets only `include`, `exclude` and
+`ssr.resolve` — so every test runs against Vitest's **5-second default**, while
+`worktree-lifecycle.test.ts` makes **18 synchronous `git` spawns** and `undecided.test.ts` four. A
+broad, unstable failure count across many files is what a timeout ceiling produces under contention,
+and two cores would reach it far sooner than sixteen. This was not reproduced at 1.5x slowdown and
+is not adopted as the cause; it is where the next measurement should aim, on CI's hardware.
 
 ## Why it is p1
 
