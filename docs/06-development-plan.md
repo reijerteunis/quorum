@@ -535,6 +535,20 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   Q-0095 is last because it exercises every command. **Q-0039 becomes a blocker the moment two of
   them run concurrently**, since two runs on one ticket already share a worktree and compute the same
   run id — which is why the children that *could* run in parallel are run one at a time.
+  **All six command children are done as of 2026-09-04, and only Q-0095 remains.** `packages/cli`
+  dispatches `lint`, `validate`, `runs`, `init`, `ticket`, `board`, `adapters` and `run`; the cut
+  became **ten** children rather than the nine this paragraph describes, because Q-0091 split at its
+  requirements gate. **Measured across the six: $370.68** — Q-0090 $71.25, Q-0091 $72.15, Q-0092
+  $58.66, Q-0093 $66.07, Q-0094 $75.03, Q-0099 $51.75 — against Q-0009's $657.47 for fourteen port
+  children, so a command child costs roughly $62 where a port child cost $47.
+  **What the money bought was not porting either, and not scaffolding this time: it was rulings.**
+  Nine errata across the six, of which **four are the same class** — a criterion's prose read as a
+  literal contract (Q-0091 E-3, Q-0094 E-1, E-2, E-3(b)) — and one, Q-0094's E-3(a), withdraws an
+  erratum the operator wrote wrongly and landed at the wrong moment. Two rules came out of it and are
+  worth more than the code: **a requirement describes what must be conveyed; only a fixture, a frozen
+  contract's own file, or a criterion quoting bytes pins bytes**; and **the window for an erratum is a
+  gate**, not the gap between a review returning and the next round beginning.
+
   **The cut has now moved twice, both times because a run measured something it assumed**, and the
   second correction is to the sequencing rather than to the scope. It said until 2026-09-02 that
   Q-0091 to Q-0094 were independent, could run in any order, and did not need Q-0096. Q-0096's own
@@ -661,13 +675,40 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     **The approve was distrusted rather than banked** (Q-0051): the reviewer stated it could not
     execute the suite under `--sandbox read-only`, so the exit codes and the skip notice were verified
     through the built binary instead.
-  - Q-0099 CLI `board` and `adapters`, the two commands that always exit 0. *(Split from Q-0091
-    2026-09-03, `draft`.)* Eight criteria, transcribed into the folder in full from Appendix A of
-    Q-0091's merged requirement rather than referenced, because a deferred obligation dies unless it
-    is written into the next ticket's body. **Runs after Q-0091**, which decides the module layout
-    and settles four register shapes; this ticket then extends forms already ruled. `board` brings
-    all 220 lines of `q0036-board-containment.js` and the glossary-fixed containment vocabulary;
-    **`adapters` brings no inherited coverage at all**, so every one of its assertions is new.
+  - Q-0099 CLI `board` and `adapters`, the two commands that always exit 0. *(`reviewed` and
+    `main:contained` 2026-09-04.)* **$51.75** — $12.81 requirements ready on the first pass, $38.94
+    chore in **one implement round approved with no findings**, `iter={}`, no exhaustion gate. The
+    second ticket of the cut to close that way, after Q-0093, and **the last of the six command
+    children**.
+    **It is the first ticket whose body the operator wrote rather than inherited** — transcribed from
+    Q-0091's Appendix A at that gate — and its requirements run refuted that body in two places,
+    which is the entry's reason for existing.
+    **The one that mattered:** the body said the form `owner=qa cost=$0.00 iter={}` *"exists nowhere
+    under `spike/test/`"*. It is `q0036-board-containment.js:126`, in a live assertion. The
+    provenance is the lesson — Q-0091's run correctly found a candidate mis-citing that regex as
+    something `q0033-surface.js:342` asserts, then **overreached** to *"occurs nowhere"*, and the
+    operator transcribed that conclusion into this body at a gate without re-running the grep. One
+    command refutes it. A correction was itself wrong, travelled one document further by being
+    copied, and took a whole ticket to surface: *"a measurement copied from a document is not a
+    measurement"*, with the operator as the copier. **It cost nothing only because the implementer
+    read the requirement rather than the body**, landing the assertion as C3 with the exact regex and
+    a stronger full-line equality beside it.
+    **The run's own best finding is neither of those.** `Backlog.create` defaults `owner` to
+    `process.env.USER` — the preserved defect ground rule 3 forbids closing here — and `q0036`'s
+    fixture passes `--owner qa` while `q0033`'s does not. So **a translated fixture asserting
+    `owner=` must supply one**, or its verdict becomes a property of the account, which *"A test's
+    verdict is a property of the commit, not of the checkout or the account"* (2026-08-30) forbids.
+    The preserved defect and Q-0079's rule intersect in a way neither ticket anticipated; four sites
+    now supply an owner explicitly.
+    **Verified through the built binary**, the reviewer again unable to execute under
+    `--sandbox read-only`: all three containment states render — 12 `main:contained`, one
+    `main:not-contained(+2)`, 43 `main:indeterminate(no branch)` — and the only forbidden synonym
+    anywhere in the output is inside **Q-0033's own title**, printed verbatim, which is correct
+    rather than drift. The BYOS refusal fires with an API key set and still says *"Harness"*
+    (Q-0068's), and the probe notice still says `harness adapters --probe` (Q-0100's); neither is
+    fixed in passing. **Every `adapters` assertion is new**, that command inheriting nothing — its
+    only occurrence in `q0033-surface.js` is `:249`, a flow-lint scenario about review panels rather
+    than the command.
   - Q-0100 The user-facing binary is called `quorum`, not `harness`. *(Opened at Q-0091's
     requirements gate 2026-09-03, `draft`.)* Three sentences tell an adopter to run a binary that
     does not exist — the board's hint `→ harness run <flow> <id>`, `ProjectNotFoundError`'s ``run
