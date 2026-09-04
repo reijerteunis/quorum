@@ -22,3 +22,77 @@ which is a claim about assertions rather than about prose.
 OQ-3 named the gate as its owner, and an open question left visibly unanswered is one a review round
 may spend itself re-opening — the shape Q-0091's rounds 2 and 3 cost $14.28 and one round that
 changed no files at all.
+
+## E-2 — GO-5 is discharged by the operator at this gate, and no further implement round may spend itself on it. 2026-09-05, exhaustion gate of chore run 2.
+
+**Ruling: GO-5 is satisfied. Round 4 must not re-attempt it.** Cite this erratum and move on.
+
+**Why no implement step could have discharged it.** GO-5 asks for matched sweep samples at the
+merge base *and* on the implement branch. An implement step has exactly one worktree, checked out
+at its own branch, and no second checkout to compare against. Round 3 tried to synthesise one by
+removing its own newly indexed file from the working tree while `HEAD` and the index stayed at the
+implement tip — a hybrid tree that is neither ref — so `@quorum/cli` failed structurally in every
+"base" run. **Review round 3 was right to refuse that sample**, and right again that the remedy is
+*"a genuine checkout whose working tree, index and `HEAD` all represent `edcc7ad`, obtained through
+the gate/human environment"*. That is this erratum.
+
+Rounds 2 and 3 cost **$24.41** and round 3 changed no files at all, both spent on a blocker no step
+on this route can clear. GO-3 named this hazard in advance and it happened anyway — the twelfth
+appearance of a loop handed work no agent in it can perform, and the second on this ticket's own
+route after Q-0091's identical $14.28.
+
+**The measurement, performed at this gate.** Five matched pairs, interleaved so environmental drift
+falls on both arms equally, each arm a separate `git clone` in the bare shape with
+`.harness/worktrees` and `.quorum/runs` asserted absent before every run:
+
+| arm | ref | runs | result | wall time |
+| --- | --- | --- | --- | --- |
+| merge base | `edcc7ad` | 5 | **all exit 0**, 0 failed files, 0 failed tests | 108–112 s |
+| implement tip | `4438307` | 5 | **all exit 0**, 0 failed files, 0 failed tests | 109–116 s |
+
+**The direction GO-5 exists to detect is absent: this ticket does not move Q-0102's failure rate.**
+Both arms are zero, and the implement arm is not measurably slower — 109–116 s against 108–112 s —
+which is the number §7 R-1 wanted, since that risk was that an additional process-spawning,
+workspace-building suite in `packages/cli` would worsen the flake it is a suspect in. It does not,
+on this instrument.
+
+**Context that is not part of GO-5 but bears on it.** Earlier the same session the sweep was run 25
+further times with no failure: 11 in the working checkout at `e47fb1d`, one under 48 CPU burners on
+16 cores (1.5x slower, still green), one against a concurrent second forced suite, 7 in a bare clone
+at `e47fb1d`, and **5 in a bare clone at `bb8e143` — the commit Q-0102 names red — which exonerates
+the commit**. Recorded in that ticket's body at `3cf345c`.
+
+**Limits, stated rather than implied.** Thirty-five green sweeps bound a rate; they do not explain
+Q-0102's first-hand sighting, and they do not make it false. The instrument is one machine, 16
+cores, darwin, warm pnpm store, against CI's two-core `ubuntu-latest`. **GO-5 asked for a data point
+in each direction and forbade fixing Q-0102 here; both halves are honoured.** Nothing in this
+erratum closes that ticket.
+
+**What does not change.** Every acceptance criterion stands exactly as written in §4. This erratum
+rules a *gate obligation*, not a criterion, and it moves no assertion.
+
+## E-3 — AC-10's "sixth counterpart" sentence yields to R-8: the surface row stays at five entries, and the prose carries the claim. 2026-09-05, second exhaustion gate of chore run 2.
+
+**Ruling.** `REGISTER['q0033-surface.js'].binaryCarriedBy` remains exactly its current five entries.
+AC-8 lands in `packages/cli/src/run.test.ts` per R-8, and that file is **already** the row's fifth
+entry — so what changes is the row's **prose**: `binaryHalf` stops naming Q-0101 (AC-11's
+inversions are untouched) and states that `run.test.ts` now also carries S3.2/S3.3, on the Q-0092
+precedent AC-10 itself cites — *a row's list grows only when a claim lands in a new file; a claim
+landing in a listed file moves the prose.* Every other clause of AC-10 — the `smoke.js` row naming
+both of **its** counterparts, `:1729` re-aimed and shown red first, no fourth verdict — stands
+exactly as written.
+
+**Why the sentence loses and the constraint wins.** The two cannot both hold: R-8 is ruled in the
+same document as *"ruled, not open"*, on four verified measurements (`project()` `:52`,
+`ticketDir` `:65`, `read` `:70`, `setStage` `:73`, plus the forcing switches making the scenario
+counter-independent), while the "sixth counterpart" sentence is inherited arithmetic from the
+ticket body, written when S3.2/S3.3 was expected to land in a new file. A sixth entry could only be
+satisfied by naming a file the audit would then require to exist and be collected — an invented
+counterpart, which is the false register entry `binaryCarriedBy` (Q-0091 E-2) exists to make
+impossible. Round 4's implementer was right to refuse it, and round 4's reviewer was right to
+confirm the refusal and route it here: *a reviewer approves the change it asked for* is exactly why
+neither of them may resolve this alone.
+
+**What this does not touch.** AC-11's three inversions, AC-12's sixth totals block, and the
+`smoke.js` row's two-file requirement are all unchanged — `failure-paths.test.ts` is a genuinely
+new file carrying new claims, so that row's list does grow, per the same precedent.
