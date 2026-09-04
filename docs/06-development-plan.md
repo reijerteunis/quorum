@@ -767,9 +767,18 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     and three hand corrections have never reached the code, and this ticket does not reach it either.
   - Q-0094 CLI `run`, the gate reader and its flags. The command the product exists for. Owns the
     readline handle, the TTY test, and the five throw sites **Q-0040 classified on 2026-09-01** —
-    three meaning nobody was there, ending a run `undecided` and exiting 3. `runFlow` is an
-    `AsyncIterable<Event>` and `core` installs no signal handler, so the 130-on-signal exit is this
-    package's to own.
+    **two** meaning nobody was there, ending a run `undecided` and exiting 3, and three being
+    operator errors that stay `failed` and exit 1. That clause said *three* here and in this
+    ticket's body until its requirements run measured the five sites, and the arithmetic could not
+    hold either way: three plus five against a stated total of five. The third
+    `GateUnansweredCondition` — `no-answer-channel` — is `core`'s, at
+    `packages/core/src/engine/routing.ts:26–28`, and is unreachable from a CLI that always supplies
+    an `answerGate`, so the sentence was right about the product and wrong about this ticket.
+    `packages/core/src/spike-parity.test.ts:249` has carried the correct split — *"the two where no
+    answer was available exit 3, the three operator errors exit 1"* — since Q-0040, which is the
+    register being right where the prose describing it was wrong, for the second time in this cut.
+    `runFlow` is an `AsyncIterable<Event>` and `core` installs no signal handler, so the
+    130-on-signal exit is this package's to own.
   - Q-0096 `@quorum/core` resolves and exports its public API. *(`reviewed` and `main:contained`
     2026-09-02; retitled from *"The workspace emits JavaScript, and `quorum` is a runnable binary"*
     when it was split, because that title now describes Q-0097's and Q-0098's work. Opened 2026-09-01

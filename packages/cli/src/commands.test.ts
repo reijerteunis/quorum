@@ -113,12 +113,12 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry is help, the two writing commands and the three read-only ones, and nothing else', () => {
-    // Q-0094 and Q-0099 each add their own name and line as their command lands. Listing the eight
-    // the spike has would be a green tick over a subject that does not exist: each would fall
-    // through AC-6's default branch to this same text and exit 0.
-    expect([...COMMANDS]).toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
-    expect(mentioned(HELP)).toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
+  test('the registry is help, the three writing commands and the three read-only ones, and nothing else', () => {
+    // Q-0099 adds `board` and `adapters` as its command lands. Listing the eight the spike has would
+    // be a green tick over a subject that does not exist: each would fall through AC-6's default
+    // branch to this same text and exit 0.
+    expect([...COMMANDS]).toStrictEqual(['help', 'init', 'ticket', 'run', 'lint', 'validate', 'runs']);
+    expect(mentioned(HELP)).toStrictEqual(['help', 'init', 'ticket', 'run', 'lint', 'validate', 'runs']);
   });
 
   test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
@@ -197,7 +197,32 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(order.indexOf('help')).toBeLessThan(order.indexOf('init'));
   });
 
-  test('and its line is aligned to the description column the other five share', () => {
+  test('Q-0094 AC-1 — `run` is registered, listed between `ticket` and `lint`, and names its flags', () => {
+    // Both pins above read six entries until this ticket, and the value they replaced is refused
+    // rather than widened to a `toContain` that would accept either — the demonstration Q-0091,
+    // Q-0092 and Q-0093 each wrote for their own additions.
+    expect([...COMMANDS], 'the frame still registers only the commands it had before this ticket')
+      .not.toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
+    expect(mentioned(HELP), 'the help still lists only the commands it had before this ticket')
+      .not.toStrictEqual(['help', 'init', 'ticket', 'lint', 'validate', 'runs']);
+    expect(isCommand('run'), 'the help lists run and the frame does not dispatch it').toBe(true);
+
+    const line = HELP.split('\n').find((text) => text.startsWith('  quorum run ')) ?? '';
+    expect(line, 'the arguments it takes').toContain('<flow> <ticket>');
+    expect(line, 'the six flags the spike header names, plus the two it gained since')
+      .toContain('[--auto --dry --base --adapter --verbose --gate-answer]');
+    expect(line, 'the exit codes a scripting maintainer reads, which no other command has')
+      .toMatch(/exits 2 aborted, 3 gate unanswered/);
+
+    // Between `ticket` and `lint`, because `spike/bin/harness.js:6` sits between `:4` and `:7`.
+    // AC-1's ordering rule is the spike's own wherever it has one, which is the rule that put `runs`
+    // last and `init` and `ticket` above `lint`.
+    const order = mentioned(HELP);
+    expect(order.indexOf('ticket')).toBeLessThan(order.indexOf('run'));
+    expect(order.indexOf('run')).toBeLessThan(order.indexOf('lint'));
+  });
+
+  test('and its line is aligned to the description column the other six share', () => {
     // The help is one block of text a stranger reads, so a new line that broke the column would be
     // a visible regression no other assertion here would catch.
     const columns = HELP.split('\n')
@@ -209,9 +234,9 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
       });
     expect(columns, 'a command line carries no description at all').not.toContain(-1);
     expect(new Set(columns).size, `the description column is ragged: ${columns.join(', ')}`).toBe(1);
-    // Six since Q-0093. The count is the register: a command whose line is missing entirely would
-    // otherwise leave a single-column block reporting perfect alignment over five lines.
-    expect(columns.length, 'no command lines were found — this proves nothing').toBe(6);
+    // Seven since Q-0094. The count is the register: a command whose line is missing entirely would
+    // otherwise leave a single-column block reporting perfect alignment over six lines.
+    expect(columns.length, 'no command lines were found — this proves nothing').toBe(7);
     // And the measurement discriminates: a line one space short reports a different column.
     const ragged = '  quorum runs [ticket|run-id] [--json]   x'.slice(2);
     expect(2 + (/ {2,}/.exec(ragged)?.index ?? 0) + (/ {2,}/.exec(ragged)?.[0].length ?? 0))

@@ -183,10 +183,50 @@ const packageFiles = (): [string, string][] => inventory(PACKAGE)
  * its own location passed here in silence. {@link resolvesOwnLocation} is the clause that sees it,
  * and Q-0093 is the first ticket to give it a subject.
  */
-const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:readline[^']*|node:os|node:url)'/;
+const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:os|node:url)'/;
 
 /** The one module a command may import and the frame may not. */
 const FRAME_ONLY_IO = /from 'node:path'/;
+
+/**
+ * The terminal module, whose one importer is named by identity below.
+ *
+ * `node:readline` left {@link IO_MODULE} at Q-0094, and the clause was **split rather than
+ * deleted** — the sentence the block above carried since Q-0090 said in as many words that the gate
+ * reader that owns it "will need this clause split again rather than deleted", and a blanket
+ * exemption would excuse a prompt in a module that has no business asking one. The `[^']*` tail is
+ * what the package-wide list carried, so `node:readline/promises` is the same import.
+ */
+const TERMINAL_IO = /from 'node:readline[^']*'/;
+
+/**
+ * The production modules permitted to open a terminal, with why.
+ *
+ * One entry, on the {@link SELF_LOCATING} shape and for the same reason: a register that only
+ * refused an *extra* importer would let this one be deleted without anyone noticing that the reader
+ * had stopped prompting. `gate.ts` is a frame module rather than a command's, because `run.ts` is
+ * the command and the reader beneath it is what M3's server will want without one.
+ */
+const TERMINAL_OWNER: Record<string, string> = {
+  'gate.ts': 'the interactive gate reader is the one place a human is asked a question — Q-0094 AC-7',
+};
+
+/** Everything wrong with `modules` as a description of who may open a terminal, one sentence each. */
+function terminalOffenders(modules: readonly [string, string][], allowed: Record<string, string>): string[] {
+  const problems: string[] = [];
+  for (const [name, text] of modules) {
+    if (TERMINAL_IO.test(text) && allowed[name] === undefined) {
+      problems.push(`${name}: it opens a terminal and no entry says why it may`);
+    }
+    if (!TERMINAL_IO.test(text) && allowed[name] !== undefined) {
+      problems.push(`${name}: its entry permits a terminal the module does not open`);
+    }
+  }
+  for (const name of Object.keys(allowed)) {
+    if (!modules.some(([module]) => module === name)) problems.push(`${name}: an entry for a module that is not here`);
+  }
+  return problems;
+}
 
 /**
  * `text` with its comments removed, so a clause below reads what a module **executes**.
@@ -246,13 +286,20 @@ describe('the module scan has a subject', () => {
     // the shape "a check that skips its subject must not report success" (2026-08-25) names.
     const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
     expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
-      .toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
+      .toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
     expect(names(commandModules()), 'the partition still holds the two modules it held before Q-0092')
       .not.toStrictEqual(['lint.ts', 'validate.ts']);
     // Added rather than replacing the line above, as Q-0092 added that one: each superseded value is
     // kept so a register that quietly shrank back is a failure naming the ticket it shrank past.
     expect(names(commandModules()), 'the partition still holds the three modules it held before Q-0093')
       .not.toStrictEqual(['lint.ts', 'runs.ts', 'validate.ts']);
+    expect(names(commandModules()), 'the partition still holds the five modules it held before Q-0094')
+      .not.toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
+    // `run.ts` is a command module and `gate.ts` and `trace.ts` are not, which is the derivation
+    // rather than a decision: `run` is dispatched and the other two are the halves under it. It is
+    // asserted because it is what makes the AC-10 row below `run.ts`'s alone.
+    expect(names(frameModules()), 'the gate reader became a command module').toContain('gate.ts');
+    expect(names(frameModules())).toContain('trace.ts');
     expect(names(frameModules())).toContain('main.ts');
     expect([...names(frameModules()), ...names(commandModules())].sort()).toStrictEqual(names(production()));
     expect(names(frameModules()).filter((name) => names(commandModules()).includes(name))).toStrictEqual([]);
@@ -307,17 +354,24 @@ const DOMAIN = [
  * actually name, which is what stops the list rotting into a wish.
  *
  * Keyed by module rather than by command so the audit can compare it against the derivation above
- * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093 added two, and Q-0094 and Q-0099
- * each add theirs the same way.
+ * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093 added two, Q-0094 added `run.ts`,
+ * and Q-0099 adds two more the same way.
  *
  * `init.ts`'s row is one name, which is the point of it: `quorum init` scaffolds a project it has
  * not opened, so it reaches neither `loadProject` nor `Backlog` — and the row saying so is what
  * would fail if it started to.
+ *
+ * **{@link DOMAIN} did not grow for `run.ts`**, which is worth stating because it is the largest
+ * command: every symbol `quorum run` reaches was already on the list, and the three error classes it
+ * catches — `FlowError`, `IntegrationError`, `ProjectNotFoundError` — are not domain *helpers* and
+ * are correctly absent from it. That is also what makes the two frame modules under this command
+ * legal: `gate.ts` and `trace.ts` name no entry of the list at all.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
   'ticket.ts': ['Backlog', 'loadProject'],
+  'run.ts': ['runFlow', 'loadFlowByName', 'lintDirectory', 'loadProject', 'overrideAdapters'],
   'validate.ts': ['validateArtifact', 'readData'],
   'runs.ts': [
     'loadProject', 'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal',
@@ -433,9 +487,10 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(names('readRunsDir(root);', 'readRunsDir')).toBe(true);
   });
 
-  test('AC-11 — no production module imports a filesystem, process-spawning or terminal module', () => {
-    // Every read, spawn and prompt goes through `@quorum/core`. The gate reader that owns
-    // `node:readline` is Q-0094's, and it will need this clause split again rather than deleted.
+  test('AC-11 — no production module imports a filesystem or process-spawning module', () => {
+    // Every read and every spawn goes through `@quorum/core`. `node:readline` left this list at
+    // Q-0094 and became {@link TERMINAL_IO}, whose one importer is named by identity below — the
+    // split this block's own sentence asked for rather than a deletion.
     expect(production().filter(([, text]) => IO_MODULE.test(text)).map(([name]) => name)).toStrictEqual([]);
   });
 
@@ -443,12 +498,51 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(files().filter(([, text]) => IO_MODULE.test(text)).length).toBeGreaterThan(2);
   });
 
+  test('Q-0094 AC-11 — exactly one production module opens a terminal, and it is the gate reader', () => {
+    expect(terminalOffenders(production(), TERMINAL_OWNER)).toStrictEqual([]);
+    expect(Object.keys(TERMINAL_OWNER), 'the register is empty — this test proves nothing')
+      .toStrictEqual(['gate.ts']);
+    // And the module is really the one on disk: a register naming a file nothing imports would be a
+    // register excusing nothing.
+    expect(production().filter(([, text]) => TERMINAL_IO.test(text)).map(([name]) => name))
+      .toStrictEqual(['gate.ts']);
+  });
+
+  test('and both directions of that clause fire, over mutated copies', () => {
+    // A second importer fails, and so does an entry for a module that stopped importing it — the
+    // shape `domainOffenders` and `locationOffenders` already refuse, on the third register.
+    const second: [string, string][] = [['runs.ts', "import readline from 'node:readline';"]];
+    expect(terminalOffenders(second, {}))
+      .toStrictEqual(['runs.ts: it opens a terminal and no entry says why it may']);
+    const stale: [string, string][] = [['gate.ts', "import path from 'node:path';"]];
+    expect(terminalOffenders(stale, TERMINAL_OWNER))
+      .toStrictEqual(['gate.ts: its entry permits a terminal the module does not open']);
+    expect(terminalOffenders([], TERMINAL_OWNER))
+      .toStrictEqual(['gate.ts: an entry for a module that is not here']);
+  });
+
+  test('and the split moved the module rather than dropping it — the old list refused it', () => {
+    // Shown red against the regex this ticket replaced rather than edited to fit: the package-wide
+    // list used to match `gate.ts`'s import, which is what made the split necessary.
+    const beforeQ0094 = /from '(node:fs[^']*|node:child_process|node:readline[^']*|node:os|node:url)'/;
+    const reader = production().find(([name]) => name === 'gate.ts')?.[1] ?? '';
+    expect(reader, 'gate.ts is not among the production modules').not.toBe('');
+    expect(beforeQ0094.test(reader), 'the old package-wide list already admitted the reader').toBe(true);
+    expect(IO_MODULE.test(reader), 'the new list still refuses it').toBe(false);
+    // And nothing else moved with it: the four modules the old list named are still refused.
+    for (const specifier of ['node:fs', 'node:fs/promises', 'node:child_process', 'node:os', 'node:url']) {
+      expect(IO_MODULE.test(`import x from '${specifier}';`), specifier).toBe(true);
+    }
+    expect(TERMINAL_IO.test("import readline from 'node:readline/promises';")).toBe(true);
+    expect(TERMINAL_IO.test('// the gate reader owns node:readline'), 'prose trips the clause').toBe(false);
+  });
+
   test('AC-11 — node:path is a command\'s to import and never the frame\'s', () => {
     // The clause split rather than shrunk: `node:path` came out of the package-wide list and became
     // this, so the frame's prohibition is unchanged and only the commands gained one module.
     expect(frameModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name)).toStrictEqual([]);
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name))
-      .toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts']);
+      .toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts']);
     // Q-0092: `runs.ts` joins the runs root, relativises a manifest path and normalises an
     // occurrence directory to forward slashes, all of which the spike does with `node:path`. Shown
     // red against the value it replaced rather than edited to fit.
@@ -459,6 +553,11 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // spike does with `node:path`. Same demonstration, against the value this ticket replaced.
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
       'the list still holds the two modules it held before Q-0093').not.toStrictEqual(['lint.ts', 'runs.ts']);
+    // Q-0094: `run.ts` joins `<harnessDir>` and `flows` for the preflight, which is the same join
+    // `lint.ts` makes and the same reason `Project` carries no `flowsDir`. Same demonstration.
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
+      'the list still holds the four modules it held before Q-0094')
+      .not.toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts']);
   });
 
   test('and both halves of that clause fire — it is neither vacuous nor blind', () => {
@@ -602,28 +701,84 @@ describe('Q-0091 AC-5 — the flattening lives in core and is not copied here', 
   });
 });
 
-describe('AC-4(d) — 130 is a row of the table and nothing installs a handler for it', () => {
-  test('no file in this package registers a signal handler', () => {
-    // `core` installs none either (Q-0050 AC-5), so the handler is this package's to place — and it
-    // is Q-0094's, with `run`. The spike's engine registers both SIGINT and SIGTERM through one
-    // `process.once` handler at `spike/src/engine.js:113–114` and exits 130 at `:111`.
-    //
+/**
+ * The one file in this package that registers a process signal handler.
+ *
+ * **This register is what AC-4(d)'s first clause became**, and it was re-aimed rather than deleted.
+ * Until Q-0094 the clause read *"no file in this package registers a signal handler"*, correctly:
+ * `core` installs none (Q-0050 AC-5) and no command owned one, so 130 was a row of `exit.ts`'s table
+ * and nothing more. `quorum run` is what falsifies that — the spike's engine registers both `SIGINT`
+ * and `SIGTERM` at `spike/src/engine.js:113–114` and exits 130 at `:111`, and with the engine out of
+ * that business the handler has nowhere else to live.
+ *
+ * **A blanket exemption for `src/**` is refused.** The claim worth keeping is that exactly one file
+ * owns process-level behaviour, so a handler appearing in a second command — or this one quietly
+ * losing its — is a failure either way. Package-relative, because the scan's subject is the package
+ * and not `src`.
+ */
+const SIGNAL_HANDLER_OWNER = ['src/run.ts'];
+
+/** Every file in `files` that registers a process signal handler, excluding this guard's own. */
+const signalHandlers = (candidates: readonly [string, string][]): string[] => candidates
+  .filter(([name]) => name !== GUARD_IN_PACKAGE)
+  .filter(([, text]) => /process\.(on|once|addListener)\s*\(\s*['"]SIG/.test(text))
+  .map(([name]) => name);
+
+describe('AC-4(d) — 130 is a row of the table, and exactly one file installs the handler for it', () => {
+  test('one file in this package registers a signal handler, and it is the run command', () => {
     // Over the package rather than over `src/**/*.ts`, because the criterion's subject is
-    // `packages/cli` and `vitest.config.js` is executable too. Same reasoning as AC-12's scan, and
-    // widened in the same change so the claim and the subject do not disagree here either.
-    const offenders = packageFiles()
-      .filter(([name]) => name !== GUARD_IN_PACKAGE)
-      .filter(([, text]) => /process\.(on|once|addListener)\s*\(\s*['"]SIG/.test(text))
-      .map(([name]) => name);
-    expect(offenders).toStrictEqual([]);
+    // `packages/cli` and `vitest.config.js` is executable too. Same reasoning as AC-12's scan.
+    expect(signalHandlers(packageFiles())).toStrictEqual(SIGNAL_HANDLER_OWNER);
   });
 
-  test('and loading the frame adds none at runtime', async () => {
+  test('and the register fires both ways — a second owner fails, and so does none at all', () => {
+    // Clause 1 shown red against the tree as it stood before Q-0094, where nothing registered one:
+    // the register is then unsatisfied, which is what makes "exactly one" a claim rather than a
+    // description of whatever happens to be there. Over copies, because the shipped tree passes.
+    expect(signalHandlers([['src/main.ts', 'export const a = 1;']]),
+      'a tree with no handler in it is not empty').toStrictEqual([]);
+    expect(signalHandlers([['src/main.ts', 'export const a = 1;']]),
+      'the pre-Q-0094 tree still satisfies a register naming an owner')
+      .not.toStrictEqual(SIGNAL_HANDLER_OWNER);
+    const second: [string, string][] = [
+      ['src/run.ts', "process.on('SIGINT', a);"],
+      ['src/runs.ts', "process.once('SIGTERM', b);"],
+    ];
+    expect(signalHandlers(second)).toStrictEqual(['src/run.ts', 'src/runs.ts']);
+    // And the scan is not satisfied by prose, nor blind to the two spellings beside `on`.
+    expect(signalHandlers([['x.ts', '// installs process.on for SIGINT']])).toStrictEqual([]);
+    expect(signalHandlers([['x.ts', "process.addListener('SIGTERM', h);"]])).toStrictEqual(['x.ts']);
+  });
+
+  test('and loading the frame adds none at runtime — which is now AC-11(1) as well', async () => {
     // Counted before and after rather than asserted to be zero: whatever the test runner installs
     // for itself is not this package's, and a verdict that depended on it would be a property of
     // the runner rather than of the commit.
+    //
+    // Unchanged since Q-0090 and it has gained a second meaning rather than becoming redundant:
+    // `run.ts` installs its handlers when a run starts and removes them when it ends, so a
+    // registration moved to module scope would turn this red. Do not delete it as covered by the
+    // clause above — that one reads source text and this one runs it. Q-0094 AC-12(2).
     const before = { SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') };
     await import('./index.js');
+    expect({ SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') })
+      .toStrictEqual(before);
+  });
+
+  test('and that count fires — a module-scope registration is exactly what it catches', () => {
+    // Clause 2 shown red rather than observed passing: the comparison above is the only thing that
+    // sees a handler installed at import time, and until Q-0094 it had nothing that could install
+    // one. Demonstrated over a listener this test adds and removes, because importing a module that
+    // registers one is not undoable.
+    const before = { SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') };
+    const stray = (): void => {};
+    process.on('SIGINT', stray);
+    try {
+      expect({ SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') })
+        .not.toStrictEqual(before);
+    } finally {
+      process.off('SIGINT', stray);
+    }
     expect({ SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') })
       .toStrictEqual(before);
   });

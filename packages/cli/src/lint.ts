@@ -58,14 +58,22 @@ function flowsDir(project: FlagValue | readonly FlagValue[] | undefined): string
   }
 }
 
-/** One file's outcome: a green tick, or a red cross with each problem indented beneath it. */
-const render = (record: FlowFileReport): string => (record.problems.length === 0
+/**
+ * One file's outcome: a green tick, or a red cross with each problem indented beneath it.
+ *
+ * Exported for `run.ts`, whose preflight lints the same directory and must report the identical
+ * diagnostic for the identical defect — `spike/bin/harness.js:299–311` is one local `lintDirectory`
+ * shared by the `lint` case and the `run` preflight for exactly that reason. A second copy of this
+ * expression in the run module would be the transcription defect this repository keeps paying for,
+ * and `frame.source.test.ts:583` would refuse it anyway. Q-0094 AC-2.
+ */
+export const renderFlowReport = (record: FlowFileReport): string => (record.problems.length === 0
   ? `${c.green('✓')} ${record.filename}`
   : [`${c.red('✗')} ${record.filename}`, ...record.problems.map((problem) => `  - ${problem}`)].join('\n'));
 
 /** Lint the whole flow directory, print one block per file, and fail if any file has a problem. */
 export const lint: CommandHandler = ({ flags }) => {
   const { ok, records } = lintDirectory(flowsDir(flags.project));
-  for (const record of records) console.log(render(record));
+  for (const record of records) console.log(renderFlowReport(record));
   if (!ok) failSoftly();
 };
