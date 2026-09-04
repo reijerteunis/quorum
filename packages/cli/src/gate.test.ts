@@ -396,6 +396,32 @@ describe('AC-7 — the interactive reader: readline, abbreviations, and a handle
     expect((result as Error).message).not.toContain('pass --gate-answer');
   });
 
+  test('AC-7(7) — a signal already aborted keeps no handle, and settles nothing either way', async () => {
+    // An `AbortSignal` fires no event for a listener added after the fact, so the already-aborted
+    // case needs its own branch — and a branch with no subject is the defect this repository
+    // records most. Settling is what it must not do: the run is about to be classified by the
+    // abort, so an answer here would race it and a `stdin-closed` rejection would call a
+    // deliberate interrupt *nobody was there*.
+    const io = terminal();
+    try {
+      const cancelled = new AbortController();
+      cancelled.abort('received SIGTERM');
+      const built = createGateReader({
+        answers: [], input: io.input, output: io.output, isTTY: () => true, signal: cancelled.signal,
+      });
+      built.announce('1:1');
+      const settled = built.answerGate(question()).then(() => 'settled', () => 'settled');
+      const outcome = await Promise.race([
+        settled,
+        new Promise((resolve) => setTimeout(() => resolve('pending'), 50)),
+      ]);
+      expect(outcome, 'the reader answered a gate the run had already been cancelled at').toBe('pending');
+      expect(attached(io.input), 'the handle outlived a reader that never asked').toBe(0);
+    } finally {
+      io.restore();
+    }
+  });
+
   test('AC-7(7) — two gates in one reader leave no handle behind', async () => {
     const io = terminal();
     try {
@@ -520,6 +546,26 @@ describe('AC-7 and AC-11(5) — the terminal sites reached through a whole run',
     expect(result.exitCode, io.text()).toBe(UNDECIDED);
     expect(plain(result.stdout)).toContain('run it interactively, or answer it on stdin');
     expect(plain(result.stdout)).toContain('nothing was rolled back');
+  });
+
+  test('AC-7(7) — an interrupt readline never sees still closes the handle, and is not undecided', async () => {
+    // SIGTERM is the path readline has no event for: `rl.on('SIGINT')` never fires, so the only
+    // thing that reaches the reader is the abort. Without a cue from it the handle stays open on a
+    // question nobody will ever answer — leaked past the end of the run, which AC-7(7) forbids and
+    // which an in-process invocation makes visible, `process.exit` being a throw here.
+    vi.stubEnv('MOCK_ALWAYS_PASS', '1');
+    const dir = await project();
+    const io = terminal();
+    let result;
+    try {
+      atPrompt(io, () => process.kill(process.pid, 'SIGTERM'));
+      result = await runAtTerminal(dir, io);
+    } finally {
+      io.restore();
+    }
+    expect(result.exitCode, io.text()).toBe(SIGNAL);
+    expect(result.exitCode, 'a deliberate interrupt was recorded as nobody being there').not.toBe(UNDECIDED);
+    expect(attached(io.input), 'the readline handle outlived the run it was opened for').toBe(0);
   });
 
   test('AC-11(5) — Ctrl-C at an interactive gate ends the run interrupted and exits 130', async () => {

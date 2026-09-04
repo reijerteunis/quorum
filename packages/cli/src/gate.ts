@@ -64,6 +64,14 @@ export interface GateReaderOptions {
   readonly output?: NodeJS.WritableStream;
   /** Whether somebody is at a terminal. Defaults to this process's own stdin. */
   readonly isTTY?: () => boolean;
+  /**
+   * The run's cancellation, so an interrupt reaches a reader parked on a question.
+   *
+   * Only `SIGINT` reaches readline, as its own event; `SIGTERM` does not, and neither does any
+   * other abort. Without this the handle would stay open on a question nobody will ever answer,
+   * because the promise below it never settles — see {@link createGateReader}.
+   */
+  readonly signal?: AbortSignal;
 }
 
 /** The two halves of answering a gate: the callback the engine holds, and the loop's cue to it. */
@@ -106,6 +114,7 @@ export function createGateReader(options: GateReaderOptions): GateReader {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const isTTY = options.isTTY ?? ((): boolean => Boolean(process.stdin.isTTY));
+  const signal = options.signal;
 
   const waiting = new Map<string, () => void>();
   const announced = new Set<string>();
@@ -154,38 +163,55 @@ export function createGateReader(options: GateReaderOptions): GateReader {
    * One typed answer from a terminal, matched by PREFIX — the asymmetry with a scripted answer, and
    * a deliberate one: a human at a prompt may type `ad`, a script may not.
    *
-   * Ctrl-C is re-raised at this process because readline swallows it on a TTY, and the run's own
-   * handler would otherwise never see it. The rejection the resulting `close` would produce is
-   * suppressed: an interrupt is a decision somebody took, so the run must end `interrupted` and
-   * never `undecided`, and `core` prefers the abort only when `signal.aborted` is already true when
-   * its catch runs. Leaving this promise pending is what lets the abort win that race. Q-0094
-   * AC-11(5).
+   * **An interrupt closes the handle and settles nothing.** It is a decision somebody took, so the
+   * run must end `interrupted` and never `undecided`, and `core` prefers the abort only when
+   * `signal.aborted` is already true when its catch runs — leaving this promise pending is what
+   * lets the abort win that race (Q-0094 AC-11(5)). Two things arrive by different routes and get
+   * the same treatment: Ctrl-C, which readline swallows on a TTY and which is re-raised here so the
+   * run's own handler sees it at all, and {@link GateReaderOptions.signal}, which is the only cue
+   * for every other cancellation — `SIGTERM` above all, for which readline has no event. Closing on
+   * both is AC-7(7): the handle outlives no path, including the ones whose promise never settles.
    */
   async function typed(question: GateQuestionEvent, allowed: readonly GateAnswer[]): Promise<GateAnswer> {
     const opts = optionsOf(allowed);
     const rl = readline.createInterface({ input, output });
-    let interruptedBySignal = false;
-    rl.on('SIGINT', () => {
-      interruptedBySignal = true;
+    let interrupted = false;
+    const cancel = (): void => {
+      interrupted = true;
       rl.close();
+    };
+    rl.on('SIGINT', () => {
+      cancel();
       process.kill(process.pid, 'SIGINT');
     });
-    const raw = await new Promise<string>((resolve, reject) => {
-      let answered = false;
-      rl.question(`  ${opts} > `, (line) => {
-        answered = true;
-        resolve(line);
+    let raw: string;
+    try {
+      raw = await new Promise<string>((resolve, reject) => {
+        let answered = false;
+        rl.question(`  ${opts} > `, (line) => {
+          answered = true;
+          resolve(line);
+        });
+        rl.on('close', () => {
+          if (answered || interrupted) return;
+          reject(new GateUnansweredError(
+            `gate (${question.kind}) "${question.reason}" needs an answer and stdin closed without one`
+            + ' — run it interactively, or answer it on stdin',
+            { kind: question.kind, reason: question.reason, condition: 'stdin-closed' },
+          ));
+        });
+        // Registered last, so `cancel` cannot close the handle before the two listeners that read
+        // its `close` exist. An abort that has already fired gets no event of its own.
+        if (signal?.aborted) cancel();
+        else signal?.addEventListener('abort', cancel, { once: true });
       });
-      rl.on('close', () => {
-        if (answered || interruptedBySignal) return;
-        reject(new GateUnansweredError(
-          `gate (${question.kind}) "${question.reason}" needs an answer and stdin closed without one`
-          + ' — run it interactively, or answer it on stdin',
-          { kind: question.kind, reason: question.reason, condition: 'stdin-closed' },
-        ));
-      });
-    });
-    rl.close();
+    } finally {
+      // Every settling path, so a refusal below leaks neither the handle nor a listener on a signal
+      // that outlives this gate. The cancelled path never settles and needs neither: `cancel` has
+      // closed the handle, and `once` has already taken the listener off.
+      signal?.removeEventListener('abort', cancel);
+      rl.close();
+    }
     const typedAnswer = raw.trim();
     const word = typedAnswer.toLowerCase();
     if (!word) {
@@ -210,6 +236,12 @@ export function createGateReader(options: GateReaderOptions): GateReader {
     // so it stops here rather than reading whatever happens to be sitting on stdin — which used to
     // resolve as an accidental answer, or as '' → advance. Nobody was there, which the engine
     // classifies `undecided`. Why: preserved, see `spike/bin/harness.js:96–98`, Q-0011 / Q-0033.
+    //
+    // The word list below carries no angle brackets, because the spike's does not. Two landed
+    // fixtures build this sentence to prove a run is classified by TYPE and not by its words —
+    // `spike/test/q0040-undecided.js:264` and `packages/core/src/engine/undecided.test.ts:243`,
+    // both saying "byte for byte" — so wording that drifts from the spike leaves them asserting
+    // over a string nothing prints.
     if (!isTTY()) {
       throw new GateUnansweredError(
         `gate (${question.kind}) "${question.reason}" needs an answer and stdin closed without one`

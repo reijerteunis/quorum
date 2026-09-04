@@ -161,8 +161,11 @@ export function runOn(terminal: GateTerminal): CommandHandler {
     }
     const ticket = project.backlog.read(ticketId);
 
-    const reader = createGateReader({ answers: gateAnswers, ...terminal });
     const cancellation = new AbortController();
+    // The reader is given the same signal the engine gets, because an interrupt has to reach a
+    // reader parked on a question: `SIGINT` arrives at readline as its own event and `SIGTERM`
+    // arrives nowhere, so without this the handle would outlive the run. Q-0094 AC-7(7).
+    const reader = createGateReader({ answers: gateAnswers, signal: cancellation.signal, ...terminal });
     // The reason is a STRING and is load-bearing: `interruptionNote`
     // (`packages/core/src/engine/engine.ts:161–165`) reads `signal.reason` only when it is a
     // non-empty string, and that is how the spike's `received SIGINT` note reaches `runs.log`.
