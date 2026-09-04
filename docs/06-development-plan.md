@@ -548,14 +548,27 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   **Q-0096 → {Q-0091…Q-0094 unblocked} → Q-0097 → Q-0098 → Q-0095**, and the plan saying otherwise
   for a day is the same class as the Q-0074 drift: a document describing a dependency nobody had
   measured.
-  **Every child's inherited-coverage figure has been wrong, and the method is the reason.** Four in a
-  row measured at their requirements gates: Q-0091's *"698 lines"* (696, and only four of twenty-three
-  invocations were its own), Q-0092's *"505"* (503, of which about **54 lines** transfer), Q-0093's
-  *"217"* (216), and Q-0098's *"22 files"* (environment-dependent and coincidentally equal). The codex
-  candidate on Q-0093 named the cause rather than the arithmetic: these are **whole-file estimates,
-  not measured binary-only transfer sizes**. A file's line count is not what a command inherits, because
-  the binary halves do not partition by command — the very weakness stated below. **Q-0094, Q-0095 and
-  Q-0099 each still carry one; re-derive it at the gate rather than treating it as a target.**
+  **Every child's inherited-coverage figure has been wrong, in two distinct ways, and the register
+  already held the right answer.** Five in a row measured at their requirements gates: Q-0091's
+  *"698 lines"*, Q-0092's *"505"*, Q-0093's *"217"*, Q-0094's *"353"*, and Q-0098's *"22 files"*.
+
+  The **arithmetic** error is a systematic **+1 per file** — six files measured, six exact matches
+  against `wc -l`, which is what an editor's line display gives for a file ending in a newline. The
+  one exception is `q0033-surface.js`'s *446* for 476, a transposition. This paragraph said
+  *"whole-file estimates"* until Q-0094's gate, which named the arithmetic precisely; a diagnosis
+  that gets the cause wrong is worse than none, because the next reader re-derives against it.
+
+  The **scope** error is the larger one and does not point in a consistent direction. Q-0092's 503
+  **overstates** — about 54 lines actually transfer. Q-0094's 353 **understates**: it names the two
+  *smallest* contributors and omits the two largest, so ≈193 lines transfer where the two files it
+  lists carry 44 between them.
+
+  **The instruction is therefore to read `spike-parity.test.ts` first, not to re-derive from
+  scratch.** On Q-0094 the register was right twice where the body was wrong: `:249` already stated
+  the gate split — *"the two where no answer was available exit 3, the three operator errors exit
+  1"* — against a body claiming three and five, and `:1594` already routed `q0033-surface.js`'s
+  remaining half to Q-0094 by name. These bodies do not merely lack precision; they **contradict a
+  register that was correct**. **Q-0095 and Q-0099 each still carry one.**
 
   The seam's weakness is stated rather than hidden: the eight binary-half files do **not** partition
   cleanly by command, which is why `smoke.js` is its own child and the cut is six rather than eight.
