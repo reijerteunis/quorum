@@ -1,7 +1,7 @@
 ---
 id: Q-0095
 title: The mock end-to-end suite runs against the CLI binary
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0095/integration
@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-01
 iterations:
   requirements.head-of-product: 2
+  chore.review: 2
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,14 @@ history:
     stage_after: requirements
     at: 2026-09-04T11:00:19.624Z
     cost: 11.436
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-04T13:04:09.614Z
+    cost: 57.686
 ---
 **M2's done-when, and the last child of Q-0010 — re-scoped at its requirements gate on 2026-09-04
 from twenty-one criteria to eleven.** `spike/test/smoke.js` is the mock end-to-end through the
