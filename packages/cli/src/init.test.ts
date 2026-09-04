@@ -13,7 +13,9 @@
  * the parity of that tree with the spike's is `templates.test.ts`'s subject.
  *
  * Nothing here spawns the binary: the emitted target's own assertions live in `build.test.ts`, which
- * is the file Q-0098 AC-15(c) rules may spawn the emit, and the end-to-end suite is Q-0095's.
+ * is the file Q-0098 AC-15(c) rules may spawn the emit. The end-to-end suite is `end-to-end.test.ts`
+ * since Q-0095, and it takes AC-15(c)'s *other* named shape — it spawns a binary it built in an
+ * isolated copy, so this sentence about `packages/cli/dist` is unchanged rather than superseded.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

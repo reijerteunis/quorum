@@ -41,18 +41,15 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { configDefaults } from 'vitest/config';
 import { afterAll, describe, expect, test } from 'vitest';
 
 import { HELP } from './commands.js';
-
-/** This package's own root, reached package-relatively rather than by climbing to a repository. */
-const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
-
-/** The workspace root, which is this package's grandparent. */
-const WORKSPACE = path.resolve(PACKAGE, '..', '..');
+import {
+  buildIn, disposeIsolated, dry, emitting, isolate, PACKAGE, read, rootTurbo, trackedUnder,
+  turboBin, turboEnv, WORKSPACE, WORKSPACE_FILES, type TurboTask,
+} from '../test/workspace.js';
 
 /**
  * The emit directory, named once.
@@ -74,11 +71,6 @@ const EMIT = 'dist';
  */
 const ASSETS = 'templates';
 
-/** Turbo's marker for a package that declares no script for the task — the silent skip AC-13 is about. */
-const NO_SCRIPT = '<NONEXISTENT>';
-
-const read = (...parts: string[]): string => fs.readFileSync(path.join(...parts), 'utf8');
-
 /**
  * Parses a turbo configuration, which is JSONC.
  *
@@ -97,69 +89,6 @@ function parseTurboConfig(text: string, name: string): { tasks: Record<string, R
     throw new Error(`${name} is not JSON once whole-line comments are removed — this reader understands no other comment form`, { cause });
   }
 }
-
-/** One task's declaration, as root `turbo.json` writes it. */
-interface TaskDeclaration {
-  readonly outputs?: string[];
-  readonly dependsOn?: string[];
-  readonly env?: string[];
-}
-
-/** Root `turbo.json`, which declares every task and is the only place `env` is decided. */
-const rootTurbo = (): { globalDependencies?: string[]; tasks: Record<string, TaskDeclaration> } =>
-  JSON.parse(read(WORKSPACE, 'turbo.json')) as { globalDependencies?: string[]; tasks: Record<string, TaskDeclaration> };
-
-/**
- * The real `turbo` this workspace installs. Absent is a failure, never a skip: a build proof that
- * quietly does not run is the shape of defect this whole ticket is about.
- */
-const turboBin = (): string => {
-  const bin = path.join(WORKSPACE, 'node_modules/.bin/turbo');
-  if (!fs.existsSync(bin)) throw new Error(`corpus missing: ${bin} — install the workspace before asserting what turbo builds`);
-  return bin;
-};
-
-/**
- * The environment the nested turbo runs get, with `TURBO_FORCE` removed.
- *
- * The outer invocation of this suite is `pnpm turbo run test --force` in CI and at `integrate`, and
- * a leaked force would turn AC-9's expected cache **hit** into a miss — a verdict taken from how the
- * run that contains it was invoked rather than from the commit (*"A test's verdict is a property of
- * the commit, not of the checkout or the account"*, 2026-08-30). Removed rather than set to a
- * falsy string, because turbo reads the variable's presence as well as its value; where a force is
- * wanted below it is passed as a flag, which outranks the environment either way.
- */
-const turboEnv = (): NodeJS.ProcessEnv => {
-  const env = { ...process.env };
-  delete env.TURBO_FORCE;
-  return env;
-};
-
-/** One task in turbo's own report of a run — real or dry. */
-interface TurboTask {
-  readonly taskId: string;
-  readonly package: string;
-  readonly directory: string;
-  readonly command: string;
-  readonly cache?: { status?: string };
-  readonly resolvedTaskDefinition: { outputs?: string[]; dependsOn?: string[]; env?: string[] };
-}
-
-/**
- * What turbo says it would do, as opposed to what `turbo.json` appears to say.
- *
- * `--dry=json` executes nothing, so this cannot spawn the run it is running inside, and it reports
- * **every** package in scope — including the four that declare no `build` script, which come back
- * with `command: "<NONEXISTENT>"`. That marker is turbo's own admission of the silent skip AC-13
- * exists to close, which makes it a better oracle than reading seven manifests.
- */
-const dry = (task: string): { packages: string[]; tasks: TurboTask[] } =>
-  JSON.parse(execFileSync(turboBin(), ['run', task, '--dry=json'], {
-    cwd: WORKSPACE, encoding: 'utf8', env: turboEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
-  })) as { packages: string[]; tasks: TurboTask[] };
-
-/** The packages turbo will actually run `build` in — the emitting set decision 078(c) names. */
-const emitting = (): TurboTask[] => dry('build').tasks.filter((task) => task.command !== NO_SCRIPT);
 
 /**
  * Runs the real `build` and hands back turbo's machine-readable summary of what it did.
@@ -364,116 +293,24 @@ const isTurboMetadata = (relative: string): boolean => {
 };
 
 /**
- * The four files that make a directory a pnpm-and-turbo workspace. Root `globalDependencies` are
- * copied beside them, read out of `turbo.json` rather than listed here, so a fifth arrives in the
- * isolated copy without anyone remembering.
+ * Every other temporary directory this file makes — pack destinations, install targets, cache
+ * homes — as opposed to the workspace copies, which `../test/workspace.ts` owns and disposes.
+ *
+ * Two registers because there are two owners, and they were one only while {@link isolate} lived in
+ * this file: calling this one `isolated` after the copier moved would name it after something it no
+ * longer holds.
  */
-const WORKSPACE_FILES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'turbo.json'];
+const temporaries: string[] = [];
 
 /**
- * Every path under `directory` that **git can see** — tracked, plus untracked and unignored.
- *
- * The property the copy needs is that no *gitignored* path arrives: `dist/`, `.turbo/`, `.harness/`
- * and `.quorum/` are what would let a stale artifact satisfy an assertion about a build that had
- * not run. `--exclude-standard` is what buys that, and it is the same oracle {@link gitVisible}
- * already uses one function up — *"Membership is a git question, not a filesystem one"*
- * (2026-08-28).
- *
- * **`--others` is here because the index is not the subject.** This read `git ls-files` alone until
- * Q-0093, and paired with a `copyFileSync` of the WORKING TREE that never described the commit: it
- * described *paths in the index, with current contents*. The difference shows the moment a change
- * adds a source file — a modified `index.ts` arrives and the new module it imports does not, so the
- * isolated build fails to compile a tree that exists nowhere, for a reason that is a property of
- * whether anyone has run `git add` rather than of the change. That is this repository's most
- * recorded defect class (Q-0072, Q-0073, Q-0079) arriving through the index instead of the
- * filesystem. Every guarantee the isolated audit rests on is unchanged: what it must not receive is
- * a build output, and a build output is ignored.
+ * Removes both, so the lifecycle is written where the directories are used. The helper exports its
+ * disposal rather than registering a hook of its own, which would attach one to whichever file
+ * happened to import it.
  */
-const trackedUnder = (directory: string): string[] =>
-  execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', directory], {
-    cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
-  }).split('\0').filter(Boolean);
-
-const isolated: string[] = [];
 afterAll(() => {
-  for (const directory of isolated.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+  for (const directory of temporaries.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+  disposeIsolated();
 });
-
-/**
- * A copy of this workspace's build — the emitting packages' tracked files and the root configuration
- * turbo needs to plan one — in a temporary directory nothing else writes to.
- *
- * **Why a copy at all.** AC-8 asks what the build writes, and in the real checkout that question has
- * an exact answer only where nothing else is writing. `.git`, `.harness` and `.quorum` are entered
- * by a concurrent harness run, so auditing them *there* would be reading the machine rather than the
- * commit (*"A test's verdict is a property of the commit, not of the checkout or the account"*,
- * 2026-08-30) — and excusing them by name, which is what this file did until this round, leaves a
- * build free to write into any of the three while the criterion reports exact agreement. Here
- * nothing else runs, so the audit prunes **nothing** and excuses only what AC-8 excuses in its own
- * words. The real-workspace proof R-4 and OQ-1 make load-bearing is kept separately beside it.
- *
- * Why: `requirements/errata.md` E-1 **rejected** this split and **E-2 withdraws E-1**, ruling that
- * the concurrency argument moves the observation rather than narrowing the criterion. Cited because
- * a reader meeting E-1 first would read this as contradicting a ruling — which a review round did.
- *
- * **Only what git can see**, so `dist/`, `.turbo/`, `.harness/` and `.quorum/` are all gitignored
- * and none of them arrives to be mistaken for something this build wrote — see
- * {@link trackedUnder}, which carries why that is the tracked-and-unignored set rather than the
- * index alone. `node_modules` is mirrored as a real directory of symlinks rather
- * than as one link, so a write *under* it is a new entry rather than an invisible change behind a
- * leaf; the `@quorum` scope is re-pointed at the copy's own packages, which is what makes the copy
- * build itself rather than the tree it was taken from.
- */
-function isolate(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-isolated-'));
-  isolated.push(root);
-  const copy = (relative: string): void => {
-    const source = path.join(WORKSPACE, relative);
-    // Refusing a missing corpus rather than building a workspace that is quietly short of a file:
-    // turbo would report a plan nobody wrote and every clause below would be about it.
-    if (!fs.existsSync(source)) throw new Error(`corpus missing: ${relative} — the isolated workspace cannot be built without it`);
-    const destination = path.join(root, relative);
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.copyFileSync(source, destination);
-  };
-
-  const tasks = emitting();
-  for (const relative of [...WORKSPACE_FILES, ...(rootTurbo().globalDependencies ?? [])]) copy(relative);
-  for (const task of tasks) {
-    const tracked = trackedUnder(task.directory);
-    if (tracked.length === 0) throw new Error(`git tracks nothing under ${task.directory} — the copy would hold no source to build`);
-    for (const relative of tracked) copy(relative);
-  }
-
-  const directoryOf = new Map(tasks.map((task) => [task.package, task.directory]));
-  for (const level of ['', ...tasks.map((task) => task.directory)]) {
-    const source = path.join(WORKSPACE, level, 'node_modules');
-    if (!fs.existsSync(source)) continue;
-    const destination = path.join(root, level, 'node_modules');
-    fs.mkdirSync(destination, { recursive: true });
-    for (const name of fs.readdirSync(source)) {
-      if (name !== '@quorum') {
-        fs.symlinkSync(path.join(source, name), path.join(destination, name));
-        continue;
-      }
-      fs.mkdirSync(path.join(destination, name));
-      for (const linked of fs.readdirSync(path.join(source, name))) {
-        const directory = directoryOf.get(`@quorum/${linked}`);
-        fs.symlinkSync(
-          directory === undefined ? path.join(source, name, linked) : path.join(root, directory),
-          path.join(destination, name, linked),
-        );
-      }
-    }
-  }
-  return root;
-}
-
-/** Runs the real `build` in `cwd`, which is an isolated copy rather than this workspace. */
-const buildIn = (cwd: string, ...flags: string[]): string =>
-  execFileSync(turboBin(), ['run', 'build', ...flags], {
-    cwd, encoding: 'utf8', env: turboEnv(), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
-  });
 
 describe('AC-7 — a build task exists, declares real outputs, and orders itself by dependency', () => {
   test('the root declares it beside the other three, with a non-empty outputs and a ^build edge', () => {
@@ -1295,8 +1132,16 @@ describe('AC-23 — the emit contains nothing Vitest collects', () => {
  * fixture defect. Q-0098's merged requirement measures this (§3 M-12) and names exactly two safe
  * shapes in AC-15(c) — assert inside an isolated copy, or put the real-workspace assertions here.
  * Both are used below, and no third "run the build" mechanism is introduced: {@link isolate},
- * {@link buildIn}, {@link runBuild} and {@link removeEmit} are the ones this file already owns, and
- * nothing was extracted from it.
+ * {@link buildIn}, {@link runBuild} and {@link removeEmit} are the four this workspace has.
+ *
+ * **The first two now live in `../test/workspace.ts` and are imported.** They were defined here
+ * until Q-0095, whose end-to-end suite spawns the binary and therefore takes AC-15(c)'s *isolated
+ * copy* shape — so a second copier would have been two implementations of the same sixty lines. What
+ * moved is the copier and nothing else: the real-workspace machinery {@link removeEmit} and
+ * {@link runBuild} drive, and every audit below, stayed. Q-0095's merged requirement R-2 rules this
+ * paragraph a description of what Q-0098 did rather than a contract, and OQ-3 recommends the
+ * extraction; both are cited so a reader meeting the old sentence does not read the move as a
+ * violation of it.
  *
  * Tests within one file run sequentially, but each block that needs the artifact calls
  * {@link runBuild} for itself rather than inheriting one — a cache hit costs milliseconds, and a
@@ -1518,7 +1363,7 @@ describe('Q-0093 AC-8 — the emit finds the shipped templates, and the depth th
     // `packages/cli/templates/harness`, this copies the wrong tree or none.
     runBuild();
     const target = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-init-emit-'));
-    isolated.push(target);
+    temporaries.push(target);
     const stdout = execFileSync(process.execPath, [binTarget(), 'init', target], { cwd: PACKAGE, encoding: 'utf8' });
     expect(stdout).toContain(target);
     const shipped = filesUnder(path.join(PACKAGE, ASSETS, 'harness'));
@@ -1676,7 +1521,7 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     // install populates and only where the target already exists. See linkBins() and E-2.
     linkBins();
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-exec-'));
-    isolated.push(cache);
+    temporaries.push(cache);
     const result = attempt('pnpm', ['exec', 'quorum', 'help'], offline(cache));
     expect(result.status, `pnpm exec quorum help failed: ${result.stderr}`).toBe(0);
     expect(result.stdout).toContain('usage: quorum');
@@ -1695,7 +1540,7 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     // with this commit. pnpm declining to resolve a name locally and pnpm failing to reach a registry
     // are different sentences, and only the first is evidence here.
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-nofallback-'));
-    isolated.push(cache);
+    temporaries.push(cache);
     const absent = 'quorum-absent-probe-q0098';
     const result = attempt('pnpm', ['exec', absent, '--version'], offline(cache));
     expect(result.status, 'pnpm exec resolved a command that is linked nowhere — it fell back').not.toBe(0);
@@ -1799,7 +1644,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // found again in `test-discovery.test.ts`.
     runBuild();
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packed-'));
-    isolated.push(destination);
+    temporaries.push(destination);
     for (const name of DISTRIBUTION) {
       const directory = path.join(WORKSPACE, 'packages', name);
       const declared = (JSON.parse(read(directory, 'package.json')) as { files?: string[] }).files;
@@ -1831,7 +1676,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // where the assets are new.
     runBuild();
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-assets-'));
-    isolated.push(destination);
+    temporaries.push(destination);
     const tracked = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', `packages/cli/${ASSETS}`], {
       cwd: WORKSPACE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     }).split('\0').filter(Boolean).map((entry) => entry.replace('packages/cli/', '')).sort();
@@ -1875,7 +1720,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // and `@quorum/shared@0.0.0` from siblings rather than from a registry that does not have them.
     runBuild();
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-consumer-'));
-    isolated.push(sandbox);
+    temporaries.push(sandbox);
     const tarballs = path.join(sandbox, 'tarballs');
     const project = path.join(sandbox, 'project');
     const cache = path.join(sandbox, 'npm-cache');
@@ -1943,7 +1788,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // failure of a lookup the fixture CONTROLS — a closed port on loopback — rather than as a
     // property of the machine's network.
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-registry-'));
-    isolated.push(cache);
+    temporaries.push(cache);
     // The SAME `offline()` the fixtures run under, not a second spelling of it — otherwise this
     // proves a neighbouring environment dead and the fixtures keep whatever they were given.
     expect(() => execFileSync('npm', ['view', 'quorum', 'version'], {
@@ -1962,7 +1807,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // tarball from the one this suite checked.
     runBuild();
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packers-'));
-    isolated.push(destination);
+    temporaries.push(destination);
     for (const name of DISTRIBUTION) {
       const directory = path.join(WORKSPACE, 'packages', name);
       const byPnpm = pathsIn(packWith('pnpm', directory, destination));
@@ -1985,7 +1830,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // scope (non-goal 7 keeps bundling with Q-0091); hiding it is what is refused.
     runBuild();
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-manifests-'));
-    isolated.push(destination);
+    temporaries.push(destination);
 
     // A register rather than a count, per Q-0073: a subject that quietly emptied would leave the
     // loop below reporting success over nothing. `@quorum/shared` depends on no workspace sibling,
@@ -2119,7 +1964,7 @@ describe('Q-0092 AC-9 — the detail view reads the file, not a run\'s memory', 
   /** A project whose run history holds {@link BILLED_FAILURE} and nothing else. */
   function projectWithABilledFailure(): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-reader-'));
-    isolated.push(root);
+    temporaries.push(root);
     fs.mkdirSync(path.join(root, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(root, 'harness', 'harness.yaml'), 'backlog: {path: backlog}\n');
     const directory = path.join(root, '.quorum', 'runs', BILLED_FAILURE.run_id);
@@ -2155,7 +2000,7 @@ describe('Q-0092 AC-9 — the detail view reads the file, not a run\'s memory', 
     // binary, a project whose runs root is empty: the run is unknown and the status is non-zero.
     runBuild();
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-reader-empty-'));
-    isolated.push(empty);
+    temporaries.push(empty);
     fs.mkdirSync(path.join(empty, 'harness'), { recursive: true });
     fs.writeFileSync(path.join(empty, 'harness', 'harness.yaml'), 'backlog: {path: backlog}\n');
 
