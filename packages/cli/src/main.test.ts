@@ -29,17 +29,36 @@ const INVOCATIONS: readonly (readonly string[])[] = [
 
 /**
  * Every shape AC-8's byte-identical-tree snapshot drives, which is the four above plus one real
- * invocation of each read-only command.
+ * invocation of the read-only commands this file can run unmocked.
  *
  * **Split from {@link INVOCATIONS} by Q-0091 rather than grown in place**: that list is also AC-6's
  * subject, and `quorum lint` neither prints the help nor is meant to. What AC-8 claims is that a
  * command introduced no write path, and the cheapest available proof of it is that the tree is
- * unchanged afterwards — so the list grows with each read-only command as it lands. Q-0093's `init`
- * and `ticket` write by design and belong to a different claim, not to a widening of this one.
+ * unchanged afterwards. Q-0093's `init` and `ticket` write by design and belong to a different
+ * claim, not to a widening of this one.
+ *
+ * **It said "the list grows with each read-only command as it lands" until Q-0099, and that was
+ * already false** — `runs` is a read and has never been here. What the list actually holds is the
+ * read-only commands whose claim survives being run against the real `@quorum/core`. Two are outside
+ * it, for two different reasons, which is why the promise is replaced by the rule rather than by a
+ * longer list.
+ *
+ * **`adapters` is outside it by decision** (Q-0099 AC-9, merged.md OQ-2). Putting it here would
+ * force `vi.mock('@quorum/core')` into the one file whose whole claim is a snapshot around
+ * **unmocked** commands — the guard would then be proving that a stub writes no files, weakening
+ * `lint` and `validate` to strengthen nothing — and an unmocked `adapters` would spawn a real vendor
+ * CLI, whose presence is a property of the machine. It takes the same two-half snapshot in
+ * `adapters.test.ts` instead, around a file-local stub.
+ *
+ * **`runs` is outside it by omission, and still is.** Nothing snapshots that command — not here and
+ * not in `runs.test.ts`, which carries no tree-and-refs comparison at all. Q-0099 measured that and
+ * records it as owed rather than closing it, because a sentence promising a growing list is what
+ * made the gap invisible; naming it is the fix this ticket makes, and the register is a successor's.
  */
 const READ_ONLY: readonly (readonly string[])[] = [
   ...INVOCATIONS,
   ['help'],
+  ['board'],
   ['lint'],
   ['validate', 'contract.schema.json', 'artifact.json'],
 ];
@@ -308,15 +327,20 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
     expect(after['git:for-each-ref']).toContain('refs/heads/harness/T-0002/integration');
   });
 
-  test('and the two read-only commands really ran inside it, so the snapshot covers them', async () => {
+  test('and the three read-only commands really ran inside it, so the snapshot covers them', async () => {
     // Without this the clause above would hold just as well over a `lint` that had died on its
-    // first line: a command that does nothing writes nothing. Both are shown producing the output
-    // they are for, in this fixture, at the same working directory the snapshot is taken around.
+    // first line: a command that does nothing writes nothing. All three are shown producing the
+    // output they are for, in this fixture, at the same working directory the snapshot is taken
+    // around. `board` joined at Q-0099, and what proves it did its real work is the hint it can only
+    // print by having read `harness/flows` — the fixture's one flow consumes `draft`.
     const lint = await invoke(['lint']);
     expect(lint.stdout, 'lint read the flow directory').toContain('sample.yaml');
     const validate = await invoke(['validate', 'contract.schema.json', 'artifact.json']);
     expect(validate.stdout, 'validate read the artifact').toContain('matches contract.schema.json');
-    for (const name of ['lint', 'validate']) {
+    const board = await invoke(['board']);
+    expect(board.stdout, 'board read the flow directory').toContain('harness run sample <id>');
+    expect(board.stdout, 'board rendered its columns').toContain('requirements');
+    for (const name of ['board', 'lint', 'validate']) {
       expect(READ_ONLY.map((argv) => argv[0]), `${name} is not in the snapshot's list`).toContain(name);
     }
   });

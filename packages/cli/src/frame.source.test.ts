@@ -286,7 +286,10 @@ describe('the module scan has a subject', () => {
     // the shape "a check that skips its subject must not report success" (2026-08-25) names.
     const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
     expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
-      .toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
+      .toStrictEqual([
+        'adapters.ts', 'board.ts', 'init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts',
+        'validate.ts',
+      ]);
     expect(names(commandModules()), 'the partition still holds the two modules it held before Q-0092')
       .not.toStrictEqual(['lint.ts', 'validate.ts']);
     // Added rather than replacing the line above, as Q-0092 added that one: each superseded value is
@@ -295,6 +298,8 @@ describe('the module scan has a subject', () => {
       .not.toStrictEqual(['lint.ts', 'runs.ts', 'validate.ts']);
     expect(names(commandModules()), 'the partition still holds the five modules it held before Q-0094')
       .not.toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
+    expect(names(commandModules()), 'the partition still holds the six modules it held before Q-0099')
+      .not.toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
     // `run.ts` is a command module and `gate.ts` and `trace.ts` are not, which is the derivation
     // rather than a decision: `run` is dispatched and the other two are the halves under it. It is
     // asserted because it is what makes the AC-10 row below `run.ts`'s alone.
@@ -355,7 +360,8 @@ const DOMAIN = [
  *
  * Keyed by module rather than by command so the audit can compare it against the derivation above
  * directly. Q-0092 added `runs.ts`'s row with its command; Q-0093 added two, Q-0094 added `run.ts`,
- * and Q-0099 adds two more the same way.
+ * and Q-0099 added `board.ts` and `adapters.ts` the same way — the last two, the register now
+ * covering every command the spike has.
  *
  * `init.ts`'s row is one name, which is the point of it: `quorum init` scaffolds a project it has
  * not opened, so it reaches neither `loadProject` nor `Backlog` — and the row saying so is what
@@ -366,8 +372,15 @@ const DOMAIN = [
  * catches — `FlowError`, `IntegrationError`, `ProjectNotFoundError` — are not domain *helpers* and
  * are correctly absent from it. That is also what makes the two frame modules under this command
  * legal: `gate.ts` and `trace.ts` name no entry of the list at all.
+ *
+ * **{@link DOMAIN} did not grow for Q-0099's two either**, and that is the first time a command
+ * child has needed nothing added: every symbol `board` and `adapters` reach was already on the list
+ * and already exported, so `@quorum/core`'s barrel did not move — asserted in `package.test.ts`
+ * rather than observed.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
+  'adapters.ts': ['loadProject', 'getAdapter', 'probeAdapter'],
+  'board.ts': ['loadProject', 'containment', 'lintFlowDirectory'],
   'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
   'ticket.ts': ['Backlog', 'loadProject'],
@@ -452,11 +465,71 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // The two ways the register and the derivation can come apart. The first is what a fifth command
     // landing without a row would do; the second is what deleting a command's module would do while
     // leaving its row behind, which is how a register decays into prose.
-    const unregistered: [string, string][] = [['board.ts', 'containment();']];
+    //
+    // Q-0099 AC-2(b): the stray name was `board.ts` until this ticket registered `board`, at which
+    // point `COMMAND_DOMAIN` gained its row and the fixture stopped producing the sentence below —
+    // a demonstration that could no longer fail, which is what the clause below shows rather than
+    // says. Re-aimed at a name that is not one of the spike's eight and never will be.
+    const unregistered: [string, string][] = [['not-a-command.ts', 'containment();']];
     expect(domainOffenders([], unregistered, COMMAND_DOMAIN))
-      .toContain('board.ts: a command module with no entry saying which domain symbols it may name');
+      .toContain('not-a-command.ts: a command module with no entry saying which domain symbols it may name');
     expect(domainOffenders([], [], COMMAND_DOMAIN))
       .toContain("lint.ts: an entry for a module that is no command's");
+  });
+
+  test('Q-0099 AC-2(b) — and the value it replaced no longer discriminates, so nobody restores it', () => {
+    // The old fixture, run against the post-change register: `board.ts` now HAS a row, so the
+    // sentence the clause above asserts is not produced and the demonstration is vacuous. Shown
+    // rather than described, because a later reader meeting `not-a-command.ts` would otherwise take
+    // it for an arbitrary choice and put the shorter name back.
+    const wasBoard: [string, string][] = [['board.ts', 'containment();']];
+    expect(domainOffenders([], wasBoard, COMMAND_DOMAIN), 'board.ts is unregistered again')
+      .not.toContain('board.ts: a command module with no entry saying which domain symbols it may name');
+    // What it produces instead, over its own row alone: the register is satisfied that `board.ts`
+    // is registered and complains only that the one-line fixture does not name the rest of it.
+    expect(domainOffenders([], wasBoard, { 'board.ts': COMMAND_DOMAIN['board.ts'] }))
+      .toStrictEqual([
+        'board.ts: its entry permits loadProject, which the module does not name',
+        'board.ts: its entry permits lintFlowDirectory, which the module does not name',
+      ]);
+  });
+
+  test('Q-0099 AC-10 — both new rows fail in both directions, over mutated copies', () => {
+    // The demonstration Q-0092's row wrote for itself, for the two rows this ticket adds: a symbol
+    // the row omits, and a symbol the row permits that the module does not name.
+    for (const module of ['board.ts', 'adapters.ts']) {
+      const permitted = COMMAND_DOMAIN[module];
+      const extra: [string, string][] = [[module, `${permitted.join('(); ')}(); runFlow();`]];
+      expect(domainOffenders([], extra, { [module]: permitted }))
+        .toStrictEqual([`${module}: runFlow is not one of [${permitted.join(', ')}]`]);
+
+      const dropped = permitted[permitted.length - 1];
+      const missing: [string, string][] = [[module, permitted.slice(0, -1).join('(); ')]];
+      expect(domainOffenders([], missing, { [module]: permitted }))
+        .toStrictEqual([`${module}: its entry permits ${dropped}, which the module does not name`]);
+    }
+  });
+
+  test('Q-0099 AC-10 — neither new command needed a symbol the register did not already have', () => {
+    // The first command child of the cut for which that is true, which is worth asserting rather
+    // than observing: Q-0091 added three names to `DOMAIN`, Q-0092 six and Q-0093 two, and each
+    // addition moved `@quorum/core`'s barrel with it. `package.test.ts` holds the other half — that
+    // the barrel's key set is the one it had before this ticket.
+    const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
+    expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
+      .toStrictEqual([]);
+    expect(DOMAIN, 'the symbol list moved — the claim above is about a register that did not')
+      .toHaveLength(21);
+  });
+
+  test('Q-0099 AC-10 — two production modules landed and the other two registers kept their size', () => {
+    // `TERMINAL_OWNER` and `SELF_LOCATING` are both "exactly one module may do this" claims, and
+    // both are the kind a new command silently joins. Asserted here beside the rows that did move,
+    // so the two that did not are a measurement rather than a silence.
+    expect(Object.keys(TERMINAL_OWNER)).toStrictEqual(['gate.ts']);
+    expect(Object.keys(SELF_LOCATING)).toStrictEqual(['init.ts']);
+    expect(terminalOffenders(production(), TERMINAL_OWNER)).toStrictEqual([]);
+    expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
   });
 
   test('AC-10 — an entry permitting a symbol its module does not name fails, so the list cannot rot', () => {
@@ -542,7 +615,7 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // this, so the frame's prohibition is unchanged and only the commands gained one module.
     expect(frameModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name)).toStrictEqual([]);
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name))
-      .toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts']);
+      .toStrictEqual(['board.ts', 'init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts']);
     // Q-0092: `runs.ts` joins the runs root, relativises a manifest path and normalises an
     // occurrence directory to forward slashes, all of which the spike does with `node:path`. Shown
     // red against the value it replaced rather than edited to fit.
@@ -558,6 +631,15 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
       'the list still holds the four modules it held before Q-0094')
       .not.toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts']);
+    // Q-0099: `board.ts` joins `<harnessDir>` and `flows`, which is the same join `lint.ts` and
+    // `run.ts` make and the same reason `Project` carries no `flowsDir`. `adapters.ts`'s ABSENCE is
+    // as much a claim as `board.ts`'s presence — it imports nothing from Node at all, because
+    // everything it reaches takes a directory it was handed. Same demonstration, same shape.
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
+      'the list still holds the five modules it held before Q-0099')
+      .not.toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts']);
+    expect(commandModules().filter(([, text]) => FRAME_ONLY_IO.test(text)).map(([name]) => name),
+      'adapters.ts acquired a node:path import').not.toContain('adapters.ts');
   });
 
   test('and both halves of that clause fire — it is neither vacuous nor blind', () => {

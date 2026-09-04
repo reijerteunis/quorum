@@ -17,12 +17,15 @@
  * not exist yet — a `bin` target is Q-0096's, together with everything else about making this
  * workspace emit JavaScript.
  *
- * **No command is implemented here**, and six now exist beside it: `lint` and `validate` are
- * Q-0091's, `runs` is Q-0092's, `init` and `ticket` are Q-0093's, and `run` — with the gate reader
- * and the signal handler under it — is Q-0094's, each in one module of its own, dispatched through
- * {@link HANDLERS}. `board` and `adapters` are Q-0099's.
+ * **No command is implemented here**, and eight now exist beside it: `lint` and `validate` are
+ * Q-0091's, `runs` is Q-0092's, `init` and `ticket` are Q-0093's, `run` — with the gate reader and
+ * the signal handler under it — is Q-0094's, and `board` and `adapters` are Q-0099's, each in one
+ * module of its own, dispatched through {@link HANDLERS}. That is the whole of the spike's set, so
+ * the frame now dispatches every command the help lists and lists every command it dispatches.
  */
+import { adapters } from './adapters.js';
 import { parseArgv, type ParsedArgv } from './argv.js';
+import { board } from './board.js';
 import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
 import { init } from './init.js';
 import { lint } from './lint.js';
@@ -52,9 +55,9 @@ export type CommandHandler = (argv: ParsedArgv) => void | Promise<void>;
  * coupling `commands.test.ts` relies on when it checks the help against the same set.
  *
  * Exported because it is the frame's registry rather than an implementation detail: Q-0091 to
- * Q-0094 each add their entry to it, and `main.test.ts` reaches through it to exercise the dispatch
- * — that a handler receives the parsed command line, and that an asynchronous one is waited for —
- * over the registered set rather than over a command written for the test.
+ * Q-0094 and Q-0099 each add their entry to it, and `main.test.ts` reaches through it to exercise
+ * the dispatch — that a handler receives the parsed command line, and that an asynchronous one is
+ * waited for — over the registered set rather than over a command written for the test.
  */
 export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
   help: () => {
@@ -62,8 +65,10 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
   },
   init,
   ticket,
+  board,
   run,
   lint,
+  adapters,
   validate,
   runs,
 };

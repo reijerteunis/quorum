@@ -177,8 +177,9 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/lint/lint.test.ts',
     ],
     note: 'its one library import is lintFlow; the ported lint carries the sixteen messages, the cross-vendor rules, the directory walk and every shipped flow linting clean',
-    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091; and `harness init` — `initFixture` and S5.1-S5.7/E5\'s six repository states, the base-branch discovery and the comment-preserving edit — carried since Q-0093, which additionally mirrors S1.1/S1.2/S1.4 and S2.1-S2.5\'s shipped-asset freeze on the workspace side rather than translating it, because those assertions are about a directory rather than about a command; and the gate answers — S10.1 to S10.7, E3, E4 and E7 — carried since Q-0094, across two files because the claims are two: run.test.ts carries the scripted queue, the flags and the exit codes through the whole command, and gate.test.ts carries the reader, including S10.5, which the spike marks `skipped` for want of a TTY and which is written here for the first time. What remains is S3.2/S3.3\'s two-path end-to-end through the shipped review flow — Q-0095 — and S11\'s board compatibility — Q-0099',
+    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091; and `harness init` — `initFixture` and S5.1-S5.7/E5\'s six repository states, the base-branch discovery and the comment-preserving edit — carried since Q-0093, which additionally mirrors S1.1/S1.2/S1.4 and S2.1-S2.5\'s shipped-asset freeze on the workspace side rather than translating it, because those assertions are about a directory rather than about a command; and the gate answers — S10.1 to S10.7, E3, E4 and E7 — carried since Q-0094, across two files because the claims are two: run.test.ts carries the scripted queue, the flags and the exit codes through the whole command, and gate.test.ts carries the reader, including S10.5, which the spike marks `skipped` for want of a TTY and which is written here for the first time; and S11\'s one board row — a rewritten `iterations` and a summed `history` rendered inside the dim span — carried by board.test.ts since Q-0099. What remains is S3.2/S3.3\'s two-path end-to-end through the shipped review flow — Q-0095',
     binaryCarriedBy: [
+      'packages/cli/src/board.test.ts',
       'packages/cli/src/gate.test.ts',
       'packages/cli/src/init.test.ts',
       'packages/cli/src/lint.test.ts',
@@ -237,7 +238,8 @@ const REGISTER: Record<string, Entry> = {
     verdict: 'cli',
     carriedBy: [],
     note: 'it spawns the binary and imports nothing from the spike\'s src; the containment computation itself is git.test.ts\'s subject and is reached from q0035-empty-range.js\'s row',
-    binaryHalf: '`harness board` rendering the containment token beside a ticket — Q-0010',
+    binaryHalf: '`quorum board` rendering the containment token beside a ticket — all ten scenarios, C1 to C10: contained, the base..branch ahead count, the unresolvable and absent branch, the missing base ref, the genuinely shallow clone, the non-git project, a master-based project naming main nowhere, the injection-shaped branch value, the tag sharing a branch name, and the ten-stage sweep of `no branch` — carried by packages/cli since Q-0099. Nothing of this file\'s binary half is owed',
+    binaryCarriedBy: ['packages/cli/src/board.test.ts'],
   },
   'q0038-endpoint-preflight.js': {
     verdict: 'ported',
@@ -1543,8 +1545,9 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     expect(claiming).toStrictEqual([
       'q0011-run-history.js → packages/cli/src/build.test.ts, packages/cli/src/runs.test.ts',
       'q0011-runs-cli.js → packages/cli/src/runs.test.ts, packages/cli/src/validate.test.ts',
-      'q0033-surface.js → packages/cli/src/gate.test.ts, packages/cli/src/init.test.ts, packages/cli/src/lint.test.ts, packages/cli/src/run.test.ts',
+      'q0033-surface.js → packages/cli/src/board.test.ts, packages/cli/src/gate.test.ts, packages/cli/src/init.test.ts, packages/cli/src/lint.test.ts, packages/cli/src/run.test.ts',
       'q0034-review-fixes.js → packages/cli/src/run.test.ts, packages/cli/src/runs.test.ts',
+      'q0036-board-containment.js → packages/cli/src/board.test.ts',
       'q0040-undecided.js → packages/cli/src/gate.test.ts, packages/cli/src/run.test.ts',
       'q0077-base-flag.js → packages/cli/src/run.test.ts',
       'q0080-allocation.js → packages/cli/src/ticket.test.ts',
@@ -1628,10 +1631,14 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
       'q0080-allocation.js',
     ]);
-    expect(claiming).toStrictEqual([
-      'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
-      'q0040-undecided.js', 'q0077-base-flag.js', 'q0080-allocation.js',
-    ]);
+    // Q-0099 MOVED this clause rather than editing its list: it pinned the whole claiming set to
+    // the seven rows that existed after Q-0094, and clause (i) above already holds that identity and
+    // is the one designated to grow with each child. Two absolute copies mean the next child edits
+    // two places and neither says which ticket it is about. What this clause is FOR is the two rows
+    // Q-0094 gave a counterpart for the first time, so that is what it names — and (p) below carries
+    // the superseded seven-row value, shown red, in the shape every child has written for its own.
+    expect(claiming, 'the two rows this ticket gave their first counterpart')
+      .toEqual(expect.arrayContaining(['q0040-undecided.js', 'q0077-base-flag.js']));
     // One suite carries the binary half of four spike files, which is the shape E-2's field was
     // ruled to admit read from the other direction — Q-0092 pinned the same property at three.
     const byRun = Object.entries(REGISTER)
@@ -1646,6 +1653,69 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       expect(REGISTER[name].binaryHalf, `${name} still says Q-0094 owes it`).not.toMatch(/— Q-0094\b/);
       expect(REGISTER[name].binaryHalf, `${name} still says Q-0010 owes it`).not.toMatch(/— Q-0010\b/);
     }
+  });
+
+  test('(p) Q-0099 — the eighth row claims one, and the register now names every command child', () => {
+    // Shown red against the superseded value rather than edited to fit, which is the demonstration
+    // Q-0092, Q-0093 and Q-0094 each wrote for their own move. Two shapes: `q0036-board-containment.js`
+    // gains its first counterpart — and it is the register's ONLY `binary-only` file, so this is the
+    // first time that bucket has been carried at all — and `q0033-surface.js` goes from four suites
+    // to five, a spike file whose binary half is now translated by five command tickets out of one
+    // file.
+    const claiming = Object.entries(REGISTER)
+      .filter(([, entry]) => entry.binaryCarriedBy !== undefined)
+      .map(([name]) => name)
+      .sort();
+    expect(claiming, 'the register still holds the seven claims it held before Q-0099').not.toStrictEqual([
+      'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
+      'q0040-undecided.js', 'q0077-base-flag.js', 'q0080-allocation.js',
+    ]);
+    expect(claiming, 'the row this ticket gave its first counterpart')
+      .toContain('q0036-board-containment.js');
+    // Named rather than counted, which is the correction Q-0094 made to the clause above: a length
+    // would pass whether or not the four suites already on this row were still there.
+    expect(REGISTER['q0033-surface.js'].binaryCarriedBy, 'the surface row lost a counterpart')
+      .toStrictEqual([
+        'packages/cli/src/board.test.ts',
+        'packages/cli/src/gate.test.ts',
+        'packages/cli/src/init.test.ts',
+        'packages/cli/src/lint.test.ts',
+        'packages/cli/src/run.test.ts',
+      ]);
+    expect(REGISTER['q0036-board-containment.js'].binaryCarriedBy, 'the board row claims no translation')
+      .toStrictEqual(['packages/cli/src/board.test.ts']);
+    // And the prose moved with the field on both rows, which is the contradiction E-2's field was
+    // created to make impossible: a row saying the work is owed while the field says it is done.
+    expect(REGISTER['q0036-board-containment.js'].binaryHalf, 'the board row still says Q-0010 owes it')
+      .not.toMatch(/— Q-0010\b/);
+    expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row still says Q-0099 owes it')
+      .not.toMatch(/— Q-0099\b/);
+    expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row names no successor for the rest')
+      .toMatch(/Q-0095/);
+  });
+
+  test('(p) Q-0099 — `adapters` moves no row, and that is a claim rather than a silence', () => {
+    // The command has NO inherited coverage: no file under `spike/test/` outside `smoke.js`
+    // exercises it, so `adapters.test.ts` appears in no `binaryCarriedBy` and every one of its
+    // assertions is new. Asserted so a later reader does not take the absence for an omission — and
+    // both halves of the measurement are made here rather than described, because the one occurrence
+    // of the string in `q0033-surface.js` is a flow-lint scenario about a review panel spanning two
+    // adapters, not the command.
+    const claiming = Object.values(REGISTER).flatMap((entry) => entry.binaryCarriedBy ?? []);
+    expect(claiming, 'a row claims the adapters suite carries its binary half')
+      .not.toContain('packages/cli/src/adapters.test.ts');
+    // Measured rather than asserted: the only suite that puts the command on an argv is `smoke.js`,
+    // whose whole binary half is Q-0095's, so no row here can move for this command.
+    const invoking = Object.entries(SUITES)
+      .filter(([, text]) => /\[\s*'adapters'\s*[,\]]/.test(text))
+      .map(([name]) => name)
+      .sort();
+    expect(invoking, 'a second spike suite drives the command after all').toStrictEqual(['smoke.js']);
+    expect(REGISTER['smoke.js'].binaryCarriedBy, 'smoke.js is still Q-0095\'s to translate')
+      .toBeUndefined();
+    // And the one occurrence in `q0033-surface.js` is prose about a review panel spanning two
+    // adapters rather than an invocation, which is why that row does not move either.
+    expect(SUITES['q0033-surface.js'], 'the flow-lint scenario that mentions the word').toMatch(/two adapters/);
   });
 
   test('(m) Q-0093 — no spike file was edited, so the five line totals are re-derived unmoved again', () => {
@@ -1679,6 +1749,23 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
     }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+  });
+
+  test('(q) Q-0099 — no spike file was edited, so the five line totals are re-derived unmoved a fourth time', () => {
+    // Fourth instance, independent of the three around it for the reason each of those gives. This
+    // ticket adds a field to two rows and reads `q0036-board-containment.js` and `q0033-surface.js`
+    // while writing neither, so the expected answer is that nothing moves — and the 220 is worth
+    // watching here in particular, because it is `q0036-board-containment.js`'s own line count and
+    // the whole of the `binary-only` bucket, so a mis-edit on that row is arithmetically visible.
+    const total = linesOf(Object.keys(FACTS));
+    expect({
+      binaryOnly: linesOf(named('binary-only')),
+      both: linesOf(named('both')),
+      libraryOnly: linesOf(named('library-only')),
+      total,
+      share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
+    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    expect(named('binary-only'), 'the bucket this ticket carried whole').toStrictEqual(['q0036-board-containment.js']);
   });
 
   test('(k) Q-0092 — no spike file was edited, so the five line totals are re-derived unmoved', () => {
