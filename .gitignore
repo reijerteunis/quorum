@@ -7,3 +7,11 @@ dist/
 .turbo/
 coverage/
 *.tsbuildinfo
+
+# Vendor dialects of CLAUDE.md, written by other agents' CLIs rather than by anything here.
+# Quorum compiles these itself from harness/ at M5 (decision 007) — until then they are strays,
+# and an untracked, unignored file is one turbo hashes into every task input (Q-0072, Q-0073).
+AGENTS.md
+GEMINI.md
+.codex/
+.agents/
