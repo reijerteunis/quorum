@@ -91,6 +91,59 @@ const BASE_BRANCH = 'main';
 /** ANSI stripped, as every assertion below reads the output. */
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, '');
 
+/** The two directories a run may write in the user's repository, and the only two AC-6 permits. */
+const PRODUCT_ROOTS = ['backlog', 'harness'] as const;
+
+/**
+ * Every repository-relative path one `git status --porcelain -z` reading is about.
+ *
+ * **`-z` rather than the newline form, and that is what makes the parse safe rather than careful.**
+ * The default output *quotes* a path git considers unusual and escapes it C-style, so a reader
+ * either unescapes it or silently misreads it; the NUL-separated form prints pathnames as-is and
+ * terminates each with a NUL. Its one irregularity is that a rename or a copy spends **two** fields
+ * rather than one, which is why the loop consumes a second field after an `R` or a `C`.
+ *
+ * **Both fields are returned, and the caller requires both to be inside a root**, which is what
+ * makes the verdict independent of which of the pair git prints first — the two forms disagree
+ * about that and nothing here has to know which. The fixture stages nothing, so a rename cannot
+ * arise in it and the clause is exercised against a composed entry rather than against git's own
+ * output; it is here because a parser that drops half an entry is the shape of defect this
+ * criterion exists to catch.
+ */
+const porcelainPaths = (porcelain: string): string[] => {
+  const fields = porcelain.split('\0').filter((field) => field !== '');
+  const paths: string[] = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const entry = fields[index] ?? '';
+    paths.push(entry.slice(3));
+    if (/^[RC]/.test(entry.slice(0, 2))) {
+      index += 1;
+      paths.push(fields[index] ?? '');
+    }
+  }
+  return paths;
+};
+
+/**
+ * Whether a repository-relative path is one of {@link PRODUCT_ROOTS} or lies beneath one.
+ *
+ * **By path segment, never by substring**, which is what the clause this replaces got wrong: it read
+ * `line.includes('backlog') || line.includes('harness/')`, and both `mybacklog.txt` and
+ * `src/harness/output` contain a root's name *somewhere* while neither is under one — so a run that
+ * wrote either would have been reported as having left the working tree alone. `path.posix.relative`
+ * answers the question the criterion asks; an untracked directory arrives with a trailing separator,
+ * which resolves to the root itself rather than to something below it.
+ */
+const insideProductRoot = (relative: string): boolean =>
+  PRODUCT_ROOTS.some((root) => {
+    const inner = path.posix.relative(root, path.posix.normalize(relative));
+    return inner === '' || (!inner.startsWith('..') && !path.posix.isAbsolute(inner));
+  });
+
+/** The paths in one reading that AC-6 forbids — every entry outside both roots. */
+const outsideProductRoots = (porcelain: string): string[] =>
+  porcelainPaths(porcelain).filter((relative) => !insideProductRoot(relative));
+
 /** Everything one spawned invocation of the binary produced. */
 interface Invocation {
   readonly argv: readonly string[];
@@ -121,6 +174,16 @@ interface Chain {
   readonly bin: string;
   /** The fixture repository every invocation runs in. */
   readonly repo: string;
+  /**
+   * Where the two `validate` artifacts and their schema live — **outside {@link Chain.repo}**.
+   *
+   * They are the test's files rather than the product's, and written into the repository they would
+   * sit in the reading AC-6 calls the end-to-end result, which would then have to excuse three paths
+   * by name. A check that excuses what it cannot distinguish is a check with a hole in it, so the
+   * files are put where the question does not arise. `validate` opens no project (Q-0091 E-5), so it
+   * reads them at an absolute path from the fixture's cwd exactly as it reads a relative one.
+   */
+  readonly artifacts: string;
   /** The ticket's folder under `backlog/`, as the binary named it. */
   readonly folder: string;
   /** Each invocation, by the label this file gives it. */
@@ -134,28 +197,37 @@ interface Chain {
     readonly worktreeList: string;
   };
   /**
-   * `git status --porcelain` at the two moments AC-6's working-tree claim is about.
+   * `git status --porcelain -z` at the three moments AC-6's working-tree claim is about.
    *
-   * **Two readings and not one.** The solutioning-time reading is where the spike takes its
-   * (`smoke.js:79`), and on its own it is silent about `qa-red` and `development` — the two flows
-   * that run after it, which between them cut further worktrees, integrate, and write both
-   * developers' source. AC-6 says *end to end*, so the reading is repeated once the chain has
-   * reached green and both are asserted, which additionally catches pollution one flow introduces
-   * and a later one clears.
+   * **Three readings and not one, because "end to end" has three ends worth naming.** The
+   * solutioning-time reading is where the spike takes its (`smoke.js:79`) and on its own is silent
+   * about `qa-red` and `development` — the two flows that run after it, which between them cut
+   * further worktrees, integrate, and write both developers' source. The green reading closes that
+   * and is where the last flow finishes. The last reading is taken after the final invocation of
+   * all, so that `board`, `adapters` and the two `validate` calls are inside the claim too: none of
+   * them runs a flow, and a regression that made one of them write somewhere would otherwise pass
+   * unexamined.
+   *
+   * Keeping all three rather than only the last is what catches pollution one step introduces and a
+   * later one clears, which a single final reading cannot see.
    */
   readonly porcelain: {
     readonly afterSolutioning: string;
     readonly atGreen: string;
+    readonly afterLastCommand: string;
   };
 }
 
 let chain: Chain;
 
-/** Fixture repositories this file created, removed with the workspace copies. */
-const repositories: string[] = [];
+/**
+ * Every temporary directory this file created — the fixture repository, and the artifacts directory
+ * beside it holding the schema and the two documents `validate` is pointed at.
+ */
+const temporaries: string[] = [];
 
 afterAll(() => {
-  for (const directory of repositories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+  for (const directory of temporaries.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
   disposeIsolated();
 });
 
@@ -251,7 +323,8 @@ beforeAll(() => {
   // an unresolved fixture path would make a path assertion fail for a reason that is a property of
   // the machine rather than of the commit.
   const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-e2e-')));
-  repositories.push(repo);
+  const artifacts = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-e2e-artifacts-')));
+  temporaries.push(repo, artifacts);
 
   const ran: Record<string, Invocation> = {};
   const invoke = (label: string, argv: readonly string[], overrides: NodeJS.ProcessEnv = {}): Invocation => {
@@ -330,20 +403,17 @@ beforeAll(() => {
     worktreeDirectory: fs.existsSync(path.join(repo, '.harness', 'worktrees', `harness__${TICKET}__contracts`)),
     worktreeList: git(repo, 'worktree', 'list'),
   };
-  const solutioningPorcelain = git(repo, 'status', '--porcelain');
+  const solutioningPorcelain = git(repo, 'status', '--porcelain', '-z');
 
   mustPass('qa-red', ['run', 'qa-red', TICKET, '--adapter', 'mock', '--auto']);
   stage();
 
   mustPass('development', ['run', 'development', TICKET, '--adapter', 'mock', '--auto'], { MOCK_DEV_FLAKY: '1' });
   stage();
-  // The second reading, and the one AC-6 calls end to end. Taken here rather than at the end of the
-  // fixture: the `validate` block below writes a schema and two artifacts into the repository root,
-  // and those are the test's files rather than the product's — a reading after them would have to
-  // excuse three paths by name, which is how a working-tree check stops having a subject. What that
-  // leaves outside it is `board`, `adapters` and `validate`, none of which runs a flow; AC-6's claim
-  // is about what a run writes, and the last run has finished by this line.
-  const greenPorcelain = git(repo, 'status', '--porcelain');
+  // The second reading: the last flow has finished by this line, so this is the working tree the
+  // chain produced. The third is taken after the four commands below, which is what puts them
+  // inside the claim as well.
+  const greenPorcelain = git(repo, 'status', '--porcelain', '-z');
 
   invoke('board', ['board']);
   // The two vendors are refused before either CLI is probed, so this run's verdict does not depend
@@ -358,15 +428,25 @@ beforeAll(() => {
     required: ['stage'],
     additionalProperties: false,
   };
-  fs.writeFileSync(path.join(repo, 'contract.schema.json'), JSON.stringify(schema));
-  fs.writeFileSync(path.join(repo, 'conforming.json'), JSON.stringify({ stage: 'draft' }));
-  fs.writeFileSync(path.join(repo, 'violating.json'), JSON.stringify({ stage: 'nonsense' }));
-  invoke('validate-ok', ['validate', 'contract.schema.json', 'conforming.json']);
-  invoke('validate-bad', ['validate', 'contract.schema.json', 'violating.json']);
+  // Written beside the fixture rather than inside it, and read at an absolute path: these three are
+  // the test's own files, and in the repository they would be indistinguishable from a product write
+  // in the reading below unless that reading excused them by name.
+  const artifact = (name: string): string => path.join(artifacts, name);
+  fs.writeFileSync(artifact('contract.schema.json'), JSON.stringify(schema));
+  fs.writeFileSync(artifact('conforming.json'), JSON.stringify({ stage: 'draft' }));
+  fs.writeFileSync(artifact('violating.json'), JSON.stringify({ stage: 'nonsense' }));
+  invoke('validate-ok', ['validate', artifact('contract.schema.json'), artifact('conforming.json')]);
+  invoke('validate-bad', ['validate', artifact('contract.schema.json'), artifact('violating.json')]);
+
+  // The last reading, after every invocation this fixture makes. Nothing the four commands above do
+  // is supposed to write anywhere, and this is the assertion that says so rather than assuming it.
+  const finalPorcelain = git(repo, 'status', '--porcelain', '-z');
 
   chain = {
-    root, bin, repo, folder, ran, stages, afterSolutioning,
-    porcelain: { afterSolutioning: solutioningPorcelain, atGreen: greenPorcelain },
+    root, bin, repo, artifacts, folder, ran, stages, afterSolutioning,
+    porcelain: {
+      afterSolutioning: solutioningPorcelain, atGreen: greenPorcelain, afterLastCommand: finalPorcelain,
+    },
   };
 }, FIXTURE_TIMEOUT_MS);
 
@@ -424,6 +504,7 @@ describe('AC-2 — the artifact is one the suite built, in a copy, and never thi
     // the implement report rather than asserted from inside the run it would be describing.
     for (const [what, target] of [
       ['artifact', chain.bin], ['workspace copy', chain.root], ['fixture', chain.repo],
+      ['validate artifacts', chain.artifacts],
     ] as const) {
       expect(path.relative(PACKAGE, target).startsWith('..'), `the ${what} is inside this package`).toBe(true);
     }
@@ -534,27 +615,53 @@ describe('AC-6 — worktrees, branches and the user\'s working tree, end to end'
       .not.toContain(`harness__${TICKET}__contracts`);
   });
 
-  test('nothing outside backlog/ and harness/ appears in the user\'s working tree, at green as well as before it', () => {
-    // Both readings, named rather than iterated over the object, so losing one is a failure instead
-    // of a quietly shorter loop. The solutioning-time reading alone was silent about `qa-red` and
-    // `development` — the two flows that run after it — while this test presented it as the
-    // end-to-end result, which is the criterion's own word.
+  test('nothing outside backlog/ and harness/ appears in the user\'s working tree, at all three moments', () => {
+    // The three readings named rather than iterated over the object, so losing one is a failure
+    // instead of a quietly shorter loop. The solutioning-time reading alone was silent about
+    // `qa-red` and `development`, and the green one about the four commands that follow them, while
+    // each in turn was presented as the end-to-end result — which is the criterion's own word.
+    //
+    // Measured, each reading is exactly `backlog/` and `harness/`. The fixture's root also holds
+    // `.harness` and `.quorum`, and git reports neither because the **product** excludes them:
+    // `git.ts:69` and `run-history/writer.ts:397` append the two patterns to the repository's own
+    // `info/exclude`. That is what the strict classification below buys — the substring form it
+    // replaces would have permitted `.harness/` whether or not that exclusion still happened, since
+    // the string contains `harness/`.
     const readings = [
       ['after solutioning', chain.porcelain.afterSolutioning],
       ['at green', chain.porcelain.atGreen],
+      ['after the last command', chain.porcelain.afterLastCommand],
     ] as const;
     for (const [when, porcelain] of readings) {
       // Each reading is asserted non-empty before it is filtered. An empty one gives the filter
       // nothing to remove, so the clause below would pass over a `git status` that had reported
-      // nothing at all — and both readings are taken over a repository holding at least the
-      // scaffold and the ticket folder, so empty is a failure rather than a clean tree.
-      expect(porcelain.trim(), `the reading ${when} is empty, so it discriminates nothing`).not.toBe('');
-      const dirty = porcelain.split('\n')
-        .filter((line) => line.trim() !== '' && !line.includes('backlog') && !line.includes('harness/'));
-      expect(dirty, `the run wrote into the user's working tree, ${when}`).toStrictEqual([]);
+      // nothing at all — and every reading is taken over a repository holding at least the scaffold
+      // and the ticket folder, so empty is a failure rather than a clean tree.
+      expect(porcelainPaths(porcelain).length, `the reading ${when} is empty, so it discriminates nothing`)
+        .toBeGreaterThan(0);
+      expect(outsideProductRoots(porcelain), `the run wrote into the user's working tree, ${when}`)
+        .toStrictEqual([]);
     }
     expect(fs.existsSync(path.join(chain.repo, 'src')),
       'the developers\' source landed in the working tree instead of on their branches').toBe(false);
+  });
+
+  test('and the reading is classified by path segment, so a name that merely contains a root is dirty', () => {
+    // The clause read `line.includes('backlog') || line.includes('harness/')` until this round, and
+    // every row on the left below satisfied it while being outside both roots — so a run that wrote
+    // any of them would have been reported as having left the working tree alone. Asserted as an
+    // identity rather than a count, so a filter that reported *everything* as dirty would fail here
+    // rather than pass a test about misclassification.
+    const misleading = ['?? mybacklog.txt', '?? src/harness/output', '?? backlogs/other', '?? harnessed.md'];
+    expect(outsideProductRoots(misleading.join('\0') + '\0'))
+      .toStrictEqual(['mybacklog.txt', 'src/harness/output', 'backlogs/other', 'harnessed.md']);
+    // And the roots themselves, the two shapes they arrive in — an untracked directory with its
+    // trailing separator, and a file below one — stay permitted.
+    const allowed = ['?? backlog/', ' M harness/harness.yaml', 'A  backlog/T-0001/ticket.md', '?? harness'];
+    expect(outsideProductRoots(allowed.join('\0') + '\0')).toStrictEqual([]);
+    // A rename spends two fields, and both sides are classified: moving a file out of a root writes
+    // into the working tree exactly as creating one there does.
+    expect(outsideProductRoots('R  moved.md\0backlog/T-0001/ticket.md\0')).toStrictEqual(['moved.md']);
   });
 
   test('and commands.install ran in the integration worktree before the tests', () => {
