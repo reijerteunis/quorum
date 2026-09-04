@@ -177,7 +177,7 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/lint/lint.test.ts',
     ],
     note: 'its one library import is lintFlow; the ported lint carries the sixteen messages, the cross-vendor rules, the directory walk and every shipped flow linting clean',
-    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091; and `harness init` — `initFixture` and S5.1-S5.7/E5\'s six repository states, the base-branch discovery and the comment-preserving edit — carried since Q-0093, which additionally mirrors S1.1/S1.2/S1.4 and S2.1-S2.5\'s shipped-asset freeze on the workspace side rather than translating it, because those assertions are about a directory rather than about a command; and the gate answers — S10.1 to S10.7, E3, E4 and E7 — carried since Q-0094, across two files because the claims are two: run.test.ts carries the scripted queue, the flags and the exit codes through the whole command, and gate.test.ts carries the reader, including S10.5, which the spike marks `skipped` for want of a TTY and which is written here for the first time; and S11\'s one board row — a rewritten `iterations` and a summed `history` rendered inside the dim span — carried by board.test.ts since Q-0099. What remains is S3.2/S3.3\'s two-path end-to-end through the shipped review flow — Q-0095',
+    binaryHalf: '`quorum lint` — S1.3\'s clean shipped directory, S6.2 to S6.10\'s return-chain cases and S9\'s multi-file aggregation, with the diagnostic-block extraction translated with them — carried by packages/cli since Q-0091; and `harness init` — `initFixture` and S5.1-S5.7/E5\'s six repository states, the base-branch discovery and the comment-preserving edit — carried since Q-0093, which additionally mirrors S1.1/S1.2/S1.4 and S2.1-S2.5\'s shipped-asset freeze on the workspace side rather than translating it, because those assertions are about a directory rather than about a command; and the gate answers — S10.1 to S10.7, E3, E4 and E7 — carried since Q-0094, across two files because the claims are two: run.test.ts carries the scripted queue, the flags and the exit codes through the whole command, and gate.test.ts carries the reader, including S10.5, which the spike marks `skipped` for want of a TTY and which is written here for the first time; and S11\'s one board row — a rewritten `iterations` and a summed `history` rendered inside the dim span — carried by board.test.ts since Q-0099. What remains is S3.2/S3.3\'s two-path end-to-end through the shipped review flow — Q-0101',
     binaryCarriedBy: [
       'packages/cli/src/board.test.ts',
       'packages/cli/src/gate.test.ts',
@@ -321,7 +321,8 @@ const REGISTER: Record<string, Entry> = {
       'packages/core/src/lint/lint.test.ts',
     ],
     note: 'split rather than cli: it spawns the binary AND imports from the spike\'s src at fifteen sites, every one of them an `await import()` that a scan for a static `from` cannot see — which is why every earlier account of this file called it binary-only. Those sites destructure authError, probeAdapter, withRetry, transientError, mockAdapter, claudeAdapter, lintFlow, FlowError, mergeFailure, testReport, environmentFailure, formatCost, resolveModel, materialiseDiff, syncBaseIntoTicketBranch, commitAll, waves, scopeToFailing and validate, and the counterparts above are where each of them now lives',
-    binaryHalf: 'the mock end-to-end through `bin/harness.js` — every command, its exit codes and its printed bytes — which is M2\'s "30-check smoke test" and is Q-0010\'s to carry',
+    binaryHalf: 'the mock end-to-end through `bin/harness.js` — every command, its exit codes and its printed bytes — which is M2\'s "30-check smoke test". Its CHAIN half — `init`, `lint`, `ticket new`, the wrong-stage refusal and the four flows that take one ticket from draft to green, with the three convergent behaviours the mock\'s per-key counter produces, the architect\'s worktree given back with its branch kept, the install marker written outside it, and the `board`, `adapters` and `validate` invocations that ride the sequence — is carried by packages/cli since Q-0095, together with the isolated-copy spawn harness every one of those scenarios needs, one operating-system process per invocation. What remains is the failure, gate and rollback half: the exhaustion gate and exit 3, the unanswered non-TTY gate recorded undecided, the retry grant, the failed parallel sibling with its recursive negative check, both rollback paths and base-sync reporting — Q-0101',
+    binaryCarriedBy: ['packages/cli/src/end-to-end.test.ts'],
   },
 };
 
@@ -1551,6 +1552,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       'q0040-undecided.js → packages/cli/src/gate.test.ts, packages/cli/src/run.test.ts',
       'q0077-base-flag.js → packages/cli/src/run.test.ts',
       'q0080-allocation.js → packages/cli/src/ticket.test.ts',
+      'smoke.js → packages/cli/src/end-to-end.test.ts',
     ]);
   });
 
@@ -1613,8 +1615,13 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     // — the prose and the field must agree about who owes what — and only the successor moved.
     expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row still says Q-0094 owes it')
       .not.toMatch(/— Q-0094\b/);
+    // Q-0095 RE-AIMED this clause rather than leaving it: it read `.toMatch(/Q-0095/)`, and that
+    // ticket has closed — so a clause naming it as owing the review-flow half would be the
+    // contradiction E-2's field was created to make impossible, running the other way. The seam
+    // moved to Q-0101 at Q-0095's requirements gate, which is where S3.2/S3.3 went; what this clause
+    // guards is unchanged, and only the successor moved.
     expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row names no successor for the rest')
-      .toMatch(/Q-0095/);
+      .toMatch(/Q-0101/);
   });
 
   test('(n) Q-0094 — two rows claim a translation for the first time, and two more rows moved', () => {
@@ -1690,8 +1697,10 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       .not.toMatch(/— Q-0010\b/);
     expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row still says Q-0099 owes it')
       .not.toMatch(/— Q-0099\b/);
+    // Re-aimed by Q-0095 for the reason clause (l) above carries: that ticket has closed, and the
+    // review-flow half it used to name is Q-0101's since the split at its requirements gate.
     expect(REGISTER['q0033-surface.js'].binaryHalf, 'the surface row names no successor for the rest')
-      .toMatch(/Q-0095/);
+      .toMatch(/Q-0101/);
   });
 
   test('(p) Q-0099 — `adapters` moves no row, and that is a claim rather than a silence', () => {
@@ -1705,17 +1714,80 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     expect(claiming, 'a row claims the adapters suite carries its binary half')
       .not.toContain('packages/cli/src/adapters.test.ts');
     // Measured rather than asserted: the only suite that puts the command on an argv is `smoke.js`,
-    // whose whole binary half is Q-0095's, so no row here can move for this command.
+    // whose chain half — the `adapters` invocation among it — Q-0095 has since carried, so no row
+    // here moved for this command at Q-0099's own close.
     const invoking = Object.entries(SUITES)
       .filter(([, text]) => /\[\s*'adapters'\s*[,\]]/.test(text))
       .map(([name]) => name)
       .sort();
     expect(invoking, 'a second spike suite drives the command after all').toStrictEqual(['smoke.js']);
-    expect(REGISTER['smoke.js'].binaryCarriedBy, 'smoke.js is still Q-0095\'s to translate')
-      .toBeUndefined();
+    // Q-0095 REWROTE this clause rather than deleting it, which is the shape every child before it
+    // wrote for its own move: it read `.toBeUndefined()`, and a deleted clause and a satisfied one
+    // are indistinguishable in a green run. What it guards is unchanged — that the `adapters`
+    // command's own suite carries nobody's binary half — and what moved is the row this file can now
+    // say is carried rather than owed.
+    expect(REGISTER['smoke.js'].binaryCarriedBy, 'smoke.js\'s chain half is no longer recorded as carried')
+      .toStrictEqual(['packages/cli/src/end-to-end.test.ts']);
     // And the one occurrence in `q0033-surface.js` is prose about a review panel spanning two
     // adapters rather than an invocation, which is why that row does not move either.
     expect(SUITES['q0033-surface.js'], 'the flow-lint scenario that mentions the word').toMatch(/two adapters/);
+  });
+
+  test('(r) Q-0095 — the ninth row claims one, and it is the last spike file whose binary half was owed', () => {
+    // Shown red against the superseded value rather than edited to fit, which is the demonstration
+    // Q-0092, Q-0093, Q-0094 and Q-0099 each wrote for their own move. This one is different in kind
+    // rather than in size: `smoke.js` is the file M2's done-when names, the only row that had a
+    // `binaryHalf` and no `binaryCarriedBy` at all, and the last of the register's entangled files to
+    // gain a counterpart. Every other row was a command's half; this is the chain the commands are
+    // links in.
+    const claiming = Object.entries(REGISTER)
+      .filter(([, entry]) => entry.binaryCarriedBy !== undefined)
+      .map(([name]) => name)
+      .sort();
+    expect(claiming, 'the register still holds the eight claims it held before Q-0095').not.toStrictEqual([
+      'q0011-run-history.js', 'q0011-runs-cli.js', 'q0033-surface.js', 'q0034-review-fixes.js',
+      'q0036-board-containment.js', 'q0040-undecided.js', 'q0077-base-flag.js', 'q0080-allocation.js',
+    ]);
+    expect(claiming, 'the row this ticket gave its first counterpart').toContain('smoke.js');
+    // The suite it names carries the binary half of exactly one spike file, which is the opposite
+    // shape from `run.test.ts`'s four and is worth pinning for the same reason: `smoke.js` is not
+    // partitioned by command, so a second row appearing here would mean somebody had decided it was.
+    const bySuite = Object.entries(REGISTER)
+      .filter(([, entry]) => (entry.binaryCarriedBy ?? []).includes('packages/cli/src/end-to-end.test.ts'))
+      .map(([name]) => name)
+      .sort();
+    expect(bySuite).toStrictEqual(['smoke.js']);
+    // And the prose moved with the field on both rows this ticket touched, which is the contradiction
+    // E-2's field was created to make impossible: a row saying the work is owed while the field says
+    // it is done. `smoke.js` names Q-0101 for the half that is genuinely still owed, and names
+    // neither the parent nor this ticket as owing anything.
+    expect(REGISTER['smoke.js'].binaryHalf, 'the smoke row still says Q-0010 owes it')
+      .not.toMatch(/— Q-0010\b/);
+    expect(REGISTER['smoke.js'].binaryHalf, 'the smoke row says Q-0095 owes what Q-0095 carried')
+      .not.toMatch(/— Q-0095\b/);
+    expect(REGISTER['smoke.js'].binaryHalf, 'the smoke row names no successor for the half it did not carry')
+      .toMatch(/— Q-0101$/);
+  });
+
+  test('(r) Q-0095 — no spike file was edited, so the five line totals are re-derived unmoved a fifth time', () => {
+    // Fifth instance, independent of the four around it for the reason each of those gives: ground
+    // rules 1 and 2 keep everything under `spike/` untouched — this ticket READS `smoke.js` while
+    // translating it and writes nothing there — so the expected answer is that nothing moves. "It did
+    // not move" is a measurement, and assuming it did not is how a stale pin survives. Re-derived
+    // from `FACTS` rather than transcribed from the clause below.
+    const total = linesOf(Object.keys(FACTS));
+    expect({
+      binaryOnly: linesOf(named('binary-only')),
+      both: linesOf(named('both')),
+      libraryOnly: linesOf(named('library-only')),
+      total,
+      share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
+    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    // The classification is unchanged too, and that is the half arithmetic cannot show: `smoke.js`
+    // stays `split` because a verdict describes the spike file's own text, which translating it does
+    // not alter — the distinction E-2 made when it added a field rather than a fourth verdict.
+    expect(REGISTER['smoke.js'].verdict, 'translating a binary half changed the spike file\'s verdict').toBe('split');
+    expect(named('both'), 'smoke.js left the entangled bucket').toContain('smoke.js');
   });
 
   test('(m) Q-0093 — no spike file was edited, so the five line totals are re-derived unmoved again', () => {
