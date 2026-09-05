@@ -1,14 +1,22 @@
 ---
 id: Q-0107
 title: The workspace stops depending on the spike
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0107/integration
 priority: p2
 created: 2026-09-05
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-05T20:30:48.733Z
+    cost: 10.53
 ---
 **Child B of the cutover, ruled at Q-0103's requirements gate 2026-09-05**, and the child where every
 judgement lives. Order is **A → B → C**: **Q-0106** is A and runs first, **Q-0103** is C. One at a
