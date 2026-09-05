@@ -1,4 +1,4 @@
-# Harness project config (spike). Truth lives in harness/; vendor files are compiled later.
+# Harness project config. Truth lives in harness/; vendor files are compiled later.
 backlog:
   layout: in-repo
   path: backlog
@@ -26,18 +26,12 @@ commands:
   # Kills a test or script command that has not finished in this long. An orchestrator that can
   # wait forever cannot run unattended — a hung suite once blocked a run for 24 minutes silently.
   timeout_ms: 900000
-  # Used by integrate steps with run_tests: true. Until packages/core lands (M2) the runnable
-  # code is the spike, so the suite is the spike's mock-adapter smoke test.
+  # Used by integrate steps with run_tests: true.
   # Install dependencies in the integration worktree before running tests.
   # Run in the integration worktree before `test`. A worktree is a fresh checkout with no
   # node_modules; without this the suite dies on a missing dependency and `expect: fail` reads
   # that as proof of red.
-  # Both dependency sets and both suites, chained so the step fails if either does. The spike is
-  # not a pnpm workspace member (its runner is not Vitest and its lockfile is npm's), so until
-  # Q-0009 retires it the repository genuinely has two suites and an `integrate` step that ran
-  # only one would prove the wrong half. Q-0008 criterion 8. `runCommand` goes through execSync,
-  # so `&&` is a shell chain, not an argv.
-  install: npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile
+  install: pnpm install --frozen-lockfile
   # `--force` because turbo replays a cached pass without executing it while `integrate` reads only
   # the exit code, and a worktree shares the main checkout's cache, so this step runs warm (Q-0065).
   # `--continue` because `dependsOn: ["^test"]` prunes a dependent whose dependency failed, which is
@@ -45,4 +39,4 @@ commands:
   # `shared` hid all seven of `core`'s failing files, and `expect: fail` reported a red it could not
   # describe. Turbo still exits non-zero, so no `expect: pass` or `expect: fail` verdict changes —
   # only what the report can say.
-  test: npm test --prefix spike && pnpm turbo run test --force --continue
+  test: pnpm turbo run test --force --continue
