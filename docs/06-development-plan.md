@@ -1154,6 +1154,28 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     ahead of `origin/main`, so nothing this month had been validated by CI at all. Q-0073 recorded the
     same gap at 15 commits. **Nothing checks it**, which is a fifth direction of the drift this page
     already records four instances of, and the one that hid a broken installation path.
+  - Q-0105 Nothing checks whether `main` has been validated by CI. *(Opened 2026-09-05 from the
+    session that closed Q-0101, `draft`, p1.)* **The root process failure behind Q-0104, and the
+    fifth direction of this page's drift.** `main` stood **89 commits and four days** ahead of
+    `origin/main`, so nothing this month had been validated by CI — the whole CLI cut, Q-0090 to
+    Q-0101. **Q-0073 recorded the same gap at 15 commits** and left it as a caveat on one table's
+    row; a caveat nobody converts into a check is how a measurement becomes folklore.
+    **What it hid, measured:** Q-0104's packed-install break, deterministic in three of seven jobs,
+    which had **never run on CI** — it landed 2026-09-02 and the last CI run was 2026-09-01 — and was
+    broken on a clean machine for three days, on **the cold-clone path M6 turns on**. Both it and
+    Q-0102's CI subject had passed implement, cross-vendor review, `integrate` **and** a hand
+    verification. The cost is not that CI was red: it is that **four documents said a path worked
+    when it did not**, Q-0098's and Q-0093's entries on this page among them.
+    **Its design problem is that the obvious instrument is forbidden.** *"A test's verdict is a
+    property of the commit"* (2026-08-30) rules out a suite assertion, because *"has CI run this
+    commit?"* is a property of a remote service at a moment in time — it would need the network, fail
+    offline, fail on a fork, and answer differently minutes apart at one tree. So the fix must live
+    where knowing about the outside world is allowed: the recommendation is a **`harness board`
+    push-lag column**, computed from git on every invocation and never stored, exactly as containment
+    already is. A board that says `main:contained` about a branch while saying nothing about whether
+    `main` was ever built is answering half its own question. **OQ-2 is the one to settle first**:
+    a column assuming a CI service would be product knowledge leaking into a product-agnostic tool,
+    while a push-lag column assumes only a git remote.
     written.
   **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
