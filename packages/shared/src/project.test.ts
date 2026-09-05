@@ -119,8 +119,10 @@ describe('AC-11 — the declaration lives here and is called nowhere in core', (
  *
  * A pure function of the string, so the assertion below cannot pass or fail on whether a local
  * cache happens to be warm — which is the whole point: the subject is what `integrate` will run,
- * not what it ran here. The chain is split on `&&` because `commands.test` is a shell chain of two
- * suites and a flag on the other half is not this half's.
+ * not what it ran here. The split on `&&` is now defensive rather than load-bearing: since Q-0106
+ * `commands.test` is the single command `pnpm turbo run test --force --continue`, which splits into
+ * one segment, and the split survives because a flag on a segment that is not turbo's has never
+ * been turbo's — an adopter's `commands.test` is still theirs to chain.
  */
 const forcesTurbo = (command: string): boolean => {
   const segment = command.split('&&').map((part) => part.trim()).find((part) => part.includes('turbo run test'));
@@ -139,6 +141,11 @@ describe('Q-0065 AC-3 — the configured test command defeats this repository\'s
 
   test('and the check has a subject — the command as it stood before this ticket fails it', () => {
     // A guard whose only evidence is a green run has not been shown to have one (Q-0069).
+    // Q-0106 retired the two-suite chain from `harness.yaml`, and these five stay: they are
+    // literals in a test file rather than a claim about the tree, each still fails for a reason
+    // somebody would act on, and between them they are what shows the function discriminates
+    // instead of answering `true` — a check outliving its subject is admissible while it can still
+    // fail (2026-09-05).
     expect(forcesTurbo('npm test --prefix spike && pnpm turbo run test')).toBe(false);
     expect(forcesTurbo('npm test --prefix spike && pnpm turbo run test --force')).toBe(true);
     // A flag on the spike half, and a flag that merely starts the same way, are both refused.
@@ -146,6 +153,11 @@ describe('Q-0065 AC-3 — the configured test command defeats this repository\'s
     expect(forcesTurbo('pnpm turbo run test --force-something')).toBe(false);
     // A command that has stopped running turbo at all is not silently reported as forcing it.
     expect(forcesTurbo('npm test --prefix spike')).toBe(false);
+    // Q-0106: the single-command shape that ships today, both ways round. Without this pair every
+    // POSITIVE fixture above is a two-segment chain, so the assertion at the top of this block
+    // would be the only evidence that a one-segment command can pass at all.
+    expect(forcesTurbo('pnpm turbo run test --continue')).toBe(false);
+    expect(forcesTurbo('pnpm turbo run test --force --continue')).toBe(true);
   });
 });
 

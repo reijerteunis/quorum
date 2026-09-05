@@ -24,9 +24,9 @@ role body. Frontmatter and prose must nevertheless agree so tooling can validate
 
 | role | vendor | directories it may write | typical contracts |
 | --- | --- | --- | --- |
-| generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `spike/`, `harness/`, `docs/` | scaffolds, CI, tool and workspace configuration |
-| backend | codex | `spike/src/`, `packages/core/`, `packages/shared/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
-| tooling | claude | `spike/bin/`, `spike/test/`, `packages/core/`, `packages/shared/` | argument parsing, terminal output, exit codes, the regression suite |
+| generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `spike/`, `harness/`, `docs/`, `README.md`, `eslint.config.js`, `vitest.shared.js` | scaffolds, CI, tool and workspace configuration |
+| backend | codex | `packages/core/`, `packages/shared/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
+| tooling | claude | `packages/core/`, `packages/shared/`, `packages/cli/` | argument parsing, terminal output, exit codes, the regression suite |
 | frontend | claude | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |
 | data | codex | `packages/database` | persistence schemas and migrations |
 
@@ -39,9 +39,9 @@ usually touches several unrelated corners of it.
 
 `backend` and `tooling` are the two live **fan-out** roles, and they are deliberately on
 **different vendors** — that is what makes a fan-out multi-vendor rather than merely parallel.
-Both may write `packages/core/` and `packages/shared/`, on the same terms as `spike/bin/` below:
-which of them owns a given file is a statement each solution's `tasks.yaml` makes explicitly, and
-the two directories appearing in two rows is a grant, never a shared claim.
+Both may write `packages/core/` and `packages/shared/`: which of them owns a given file is a
+statement each solution's `tasks.yaml` makes explicitly, and the two directories appearing in two
+rows is a grant, never a shared claim.
 
 `frontend` and `data` remain inert. `apps/web` exists since Q-0008, but `packages/ui`,
 `packages/i18n` and `packages/database` do not exist and are not planned before M3 — the rows are
@@ -61,22 +61,6 @@ one vendor's judgement across the whole change, which is the thing this project 
 avoid. Where a ticket genuinely cannot be divided that way, say so in the solution rather
 than defaulting to `backend`.
 
-`spike/bin/` and `spike/test/` belong to `tooling` by default. A `backend` task may write
-them only where its own description assigns those files explicitly and names why — tasks
-solutioned before this table gained its `tooling` row do exactly that, and remain valid.
-Tasks must still assign each concrete file to exactly one owner.
-
-**The spike is frozen for Q-0009's port, and for nothing else.** Q-0041 through Q-0054 port
-`spike/src` into `packages/core` and `packages/shared`, and while they do, none of them may
-modify or delete any file under `spike/src/` — the spike is the harness those tickets are
-themselves run on, and the port's only independent witness. Every other ticket may still write
-there, which is why the freeze is enforced on branch names in CI
-(`.github/scripts/port-freeze-guard.sh`) and not by narrowing anyone's paths above: Q-0038 and
-Q-0040 have `spike/src` as their whole subject. **If you are working on one of the fourteen,
-read `harness/port-charter.md` first** — it carries the freeze and its exemption path, the
-behaviour-preservation policy, the invariant register each child inherits, the landing order and
-the pre-run checklist.
-
 **Tasks are small, and their ownership is complete.** A task touches one coherent file set and
 is describable in a sentence. Between them, a solution's tasks must own every file the red suite
 requires changed — a file no task owns cannot be fixed by anyone, and the development loop will
@@ -85,13 +69,14 @@ task `description`; an `owns:` list is read by nothing. Tasks that share files a
 is wrong. Independent tasks declare `depends_on: []` and run in one wave, which is where a
 two-vendor fan-out comes from.
 
-`spike/test/**` belongs to qa-red, and every development task is told not to modify tests. A
+`packages/**/*.test.ts` belongs to qa-red, and every development task is told not to modify tests. A
 scenario that can only be satisfied by editing a test file is therefore unsatisfiable, and is a
 finding for the scenario gate rather than a red test.
 
 Template sharing is explicit, not directory-wide. All files under `harness/flows/` and
 the `harness/roles/code-reviewer.md` role are byte-shared with their paths under
-`spike/templates/harness/`. Repository configuration and context (`harness.yaml`,
+`spike/templates/harness/` and `packages/cli/templates/harness/`, which are themselves
+byte-identical to each other. Repository configuration and context (`harness.yaml`,
 `product-context.md`, `rules.md`, `architecture.md`) and developer roles are
 repository-specific; their template counterparts describe an adopter's project and
 must not acquire Quorum's dogfood paths.

@@ -9,12 +9,13 @@ When they disagree, this file wins and the other is the drift.
 - Every behaviour change ships with a test. The mock-adapter end-to-end suite is the
   regression suite and stays green; adapters are covered by `adapters --probe` and its report.
 - **Your worktree has no dependencies until you install them.** `commands.install` in
-  `harness.yaml` runs only in an `integrate` step's worktree (`spike/src/engine.js:1034`), so a
-  step that writes code starts in a fresh checkout with no `node_modules` and no
-  `spike/node_modules`. Run `pnpm install --frozen-lockfile` and `npm install --prefix spike
-  --no-audit --no-fund` before either suite, and run both — `npm test --prefix spike` and
-  `pnpm turbo run test --force`. Reporting a suite as unrun is honest and reporting it as green
-  without installing is not, and a reviewer cannot tell an uninstalled suite from a red one.
+  `harness.yaml` runs only in an `integrate` step's worktree — `runIntegrate`, in
+  `packages/core/src/engine/composite.ts` — so a step that writes code starts in a fresh checkout
+  with no `node_modules`. Run `pnpm install --frozen-lockfile` before the suite, and run
+  `pnpm turbo run test --force --continue`; that pair is `commands.install` and `commands.test`
+  verbatim, so what you run by hand is what `integrate` will run. Reporting a suite as unrun is
+  honest and reporting it as green without installing is not, and a reviewer cannot tell an
+  uninstalled suite from a red one.
 - **A test's verdict is a property of the commit, not of the checkout or the account** (see that
   decision, 2026-08-30). A test may read the tracked-and-unignored inventory, its own package, a
   repository it built itself, and values it set itself; it may not let its verdict depend on git's
@@ -30,10 +31,6 @@ When they disagree, this file wins and the other is the drift.
   detected one. Since Q-0069 `pnpm lint` does: `@typescript-eslint/no-deprecated` is on at error
   severity, with the type information it needs, and it is the only type-aware rule enabled.
   It covers exactly what ESLint covers — `packages/**/*.ts` and `apps/**/*.ts`, tests included.
-  **`spike/` is outside ESLint's scope entirely and stays unlinted**, so the port's independent
-  witness detects nothing: read the dependency's own typings before reaching for an unfamiliar
-  method there, and prefer the constructor a library documents to the chained method it merely
-  still accepts.
 - Prefer small, boring, proven libraries. A new dependency needs a one-line justification in
   the solution document, and a `docs/DECISIONS.md` entry if it changes architecture.
 - Conventional commits with the ticket id in the subject: `feat(core): bounded backward

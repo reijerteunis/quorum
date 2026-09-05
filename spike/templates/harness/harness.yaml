@@ -1,4 +1,4 @@
-# Harness project config (spike). Truth lives in harness/; vendor files are compiled later.
+# Harness project config. Truth lives in harness/; vendor files are compiled later.
 backlog:
   layout: in-repo
   path: backlog
