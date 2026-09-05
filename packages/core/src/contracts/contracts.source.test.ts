@@ -31,9 +31,19 @@ const sourceOf = (key: string): string => {
   return found[1];
 };
 
-/** Every module specifier the file imports from, in source order. */
+/**
+ * Every module specifier the file reaches for, in source order — three shapes.
+ *
+ * Q-0107 AC-12 added `require('…')` and the side-effect `import '…'` to the `from '…'` this read.
+ * Both are shapes the retired spike line scan caught and this parser did not, so retiring that scan
+ * without widening here would have lost them rather than moved them; the CommonJS one is not
+ * hypothetical in this folder, where `createRequire` is already imported by the suite. The
+ * side-effect form was found by demonstrating the first widening red and watching the suite stay
+ * green — see `lint.source.test.ts`, where the same hole is recorded at length.
+ */
 const importsOf = (text: string): string[] =>
-  [...text.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]);
+  [...text.matchAll(/\bfrom\s*'([^']+)'|\brequire\s*\(\s*'([^']+)'\s*\)|^\s*import\s+'([^']+)'/gm)]
+    .map((match) => match[1] ?? match[2] ?? match[3]);
 
 describe('AC-1 — the surface, the folder, and the entry point left alone', () => {
   test('contracts.ts exports exactly the five runtime names, all of them functions', () => {
@@ -61,20 +71,27 @@ describe('AC-1 — the surface, the folder, and the entry point left alone', () 
       .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['readData', 'validateArtifact']);
   });
 
-  test('it imports node builtins, yaml, ajv, shared and its own siblings — never spike', () => {
+  test('it imports node builtins, yaml, ajv, shared and its own siblings — and nothing else', () => {
     // Deliberately about SPECIFIERS: this package cites spike paths in comments as its evidence,
     // which is the house style, and a check that forbade the word would forbid the citations.
+    //
+    // Q-0107 AC-12 — `retired`, the line scan that stood below this loop. Decision 079 classes it
+    // (b): it can still fail after the cutover, but only over a comment on an export line, which is
+    // not a dependency. This allow-list is the sibling and is strictly stronger; `importsOf` gained
+    // the `require(` shape in the same change, which is what the retired scan saw and this did not.
     const allowed = ['node:fs', 'node:path', 'yaml', 'ajv/dist/2020.js', 'ajv-formats', '@quorum/shared'];
+    const admits = (specifier: string): boolean => allowed.includes(specifier) || /^\.\/[a-z-]+\.js$/.test(specifier);
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
-        expect(
-          allowed.includes(specifier) || /^\.\/[a-z-]+\.js$/.test(specifier),
-          `${name} imports ${specifier}`,
-        ).toBe(true);
+        expect(admits(specifier), `${name} imports ${specifier}`).toBe(true);
       }
-      for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
-        expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
-      }
+    }
+    for (const [shape, escape] of [
+      ['a CommonJS specifier', `const contracts = require('../../../../${'spi'}ke/src/contracts.js');`],
+      ['a side-effect import', `import '../../../../${'spi'}ke/src/contracts.js';`],
+    ] as const) {
+      expect(importsOf(escape), `the parser sees ${shape}`).toHaveLength(1);
+      expect(admits(importsOf(escape)[0]), `and the allow-list refuses ${shape}`).toBe(false);
     }
   });
 
@@ -178,11 +195,20 @@ describe('AC-11 — three validations stay distinct, and the ported ajv is the w
     }
   });
 
-  test('ajv resolves from the workspace at version 8, not from the spike and not from ESLint\'s 6', () => {
+  test('ajv resolves from the workspace at version 8, not from ESLint\'s 6', () => {
+    // Q-0107 AC-12 — `retired`, the clause that required the resolved path not to contain `spike`.
+    // Its reason is not the cutover. Once `spike/node_modules` cannot exist, the only way that
+    // clause can fail is for the checkout to sit under a directory whose own name contains the
+    // word — which makes the verdict a property of the machine rather than of the commit, and
+    // *"A test's verdict is a property of the commit, not of the checkout or the account"*
+    // (2026-08-30) forbids exactly that. A check that becomes a violation of a different rule by
+    // being left alone is not a check worth keeping.
+    //
+    // The ajv-8 half stays and is the assertion: it is what the test is named for, it names the
+    // resolved path in its own failure message, and it fails for either wrong tree.
     const resolved = createRequire(import.meta.url).resolve('ajv/package.json');
     const pkg = JSON.parse(fs.readFileSync(resolved, 'utf8')) as { version: string };
     expect(pkg.version.startsWith('8.'), `resolved ajv ${pkg.version} at ${resolved}`).toBe(true);
-    expect(resolved.includes('spike'), 'core must not resolve ajv out of the spike\'s npm tree').toBe(false);
   });
 
   test('the module runs from a plain import of its source path, with no relative escape from packages/', () => {

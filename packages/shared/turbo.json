@@ -28,15 +28,27 @@
         "../../docs/decisions/*.md",
         "../../docs/GLOSSARY.md",
         "../../harness/harness.yaml",
+        // Q-0107 AC-18: role.test.ts compares the third column of `harness/architecture.md`'s role
+        // table against every role's `paths:` frontmatter. `spike/test/smoke.js` was the only thing
+        // doing that and Q-0103 deletes it, so the read — and the hash — move here.
+        "../../harness/architecture.md",
         "../../harness/flows/*.yaml",
         "../../harness/roles/*.md",
         "../../backlog/*/ticket.md",
-        "../../spike/bin/harness.js",
-        "../../spike/src/**",
-        "../../spike/templates/harness/harness.yaml",
+        // Q-0107 AC-17: the three `../../spike/**` entries that stood here are gone with the last
+        // reader in this package. What replaced them is below — the same assertions, aimed at the
+        // tree that survives the cutover, which this package reads as TEXT and never imports.
+        "../../packages/cli/templates/harness/harness.yaml",
         "../core/package.json",
         "../core/src/adapters/adapters.ts",
-        "../core/src/backlog/project.ts"
+        "../core/src/adapters/claude.ts",
+        "../core/src/adapters/codex.ts",
+        "../core/src/adapters/mock.ts",
+        "../core/src/backlog/backlog.ts",
+        "../core/src/backlog/project.ts",
+        "../core/src/contracts/contracts.ts",
+        "../core/src/contracts/run-manifest.ts",
+        "../core/src/engine/prompt.ts"
       ]
     }
   }

@@ -48,11 +48,12 @@ rows is a grant, never a shared claim.
 kept so the write contract still describes the roles that exist, and the non-existence is stated
 here so nobody solutions a task against a directory that is not there.
 
-**The third column is read by a machine, so it holds paths and nothing else.** `spike/test/smoke.js`
-parses each cell as a comma-separated path list and asserts it equals the role's `paths`
-frontmatter — that assertion is why `developer-tooling` stopped being invisible to the architect.
-Annotating a cell (*"— does not exist yet"*) parses as a path and breaks it. Caveats go in this
-prose, where a reader still finds them and the parser does not.
+**The third column is read by a machine, so it holds paths and nothing else.**
+`packages/shared/src/role.test.ts` parses each cell as a comma-separated path list and asserts it
+equals the role's `paths` frontmatter, that the vendor matches the role's `adapter:`, and that the
+role's prose names every directory it is granted — that assertion is why `developer-tooling` stopped
+being invisible to the architect. Annotating a cell (*"— does not exist yet"*) parses as a path and
+breaks it. Caveats go in this prose, where a reader still finds them and the parser does not.
 
 **Split by surface when the work allows it.** A ticket touching both engine internals and
 the command line should become at least two tasks, one per role, rather than one `backend`
@@ -75,8 +76,9 @@ finding for the scenario gate rather than a red test.
 
 Template sharing is explicit, not directory-wide. All files under `harness/flows/` and
 the `harness/roles/code-reviewer.md` role are byte-shared with their paths under
-`spike/templates/harness/` and `packages/cli/templates/harness/`, which are themselves
-byte-identical to each other. Repository configuration and context (`harness.yaml`,
+`packages/cli/templates/harness/`, which is the tree `quorum init` copies.
+`packages/cli/src/templates.test.ts` asserts that set byte for byte in both directions.
+Repository configuration and context (`harness.yaml`,
 `product-context.md`, `rules.md`, `architecture.md`) and developer roles are
 repository-specific; their template counterparts describe an adopter's project and
 must not acquire Quorum's dogfood paths.

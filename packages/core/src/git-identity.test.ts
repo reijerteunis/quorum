@@ -18,19 +18,34 @@ import { repoRoot } from '../test/corpus.js';
  * never be read as coverage for the checkout-shaped instances of the same class (Q-0072, Q-0073).
  */
 
-/** Directories the corpus is drawn from, each relative to the repository root. */
+/**
+ * Directories the corpus is drawn from, each relative to the repository root.
+ *
+ * Q-0107 AC-15 dropped a third row, `{ dir: 'spike/test', … }`. The rule this file enforces is
+ * about a test's verdict, and after Q-0103 there are no tests in that tree to have one; the row
+ * would be a directory nobody could scan. What replaces it is not a substitute corpus but the
+ * assertion below, which names the directories this list DOES cover rather than requiring one of
+ * them by name — a list that shrinks to nothing must fail, and a list that quietly lost `packages`
+ * would have passed the clause it replaces.
+ */
 const CORPUS = [
   { dir: 'packages', match: (p: string) => /\.test\.ts$/.test(p) || /\/test\//.test(p) },
   // apps/ is in scope and was missed on the first pass: apps/web exists, ESLint already covers
   // apps/**/*.ts, and a commit-creating call added there would have been invisible while the
   // corpus floor stayed green. Reported by Q-0079's cross-vendor review.
   { dir: 'apps', match: (p: string) => /\.test\.tsx?$/.test(p) || /\/test\//.test(p) },
-  { dir: 'spike/test', match: (p: string) => p.endsWith('.js') },
 ];
 
 /**
  * A floor on the corpus, so an empty or implausibly small listing fails rather than passing over
- * nothing. Measured 2026-08-30: 43 packages files and 17 spike files.
+ * nothing.
+ *
+ * Measured 2026-08-30 as 43 `packages` files and 17 spike files, and **re-derived 2026-09-05 by
+ * Q-0107 AC-15**, which removed the spike row: `packages` alone is well past 45 now, so the number
+ * did not move and its stated composition did. Recording that is the point — a floor whose
+ * derivation names a directory the list no longer holds is a comment promising what the number
+ * beneath it no longer means, which is the class this whole ticket is about. The floor is
+ * deliberately a floor rather than a count: this corpus grows every ticket.
  */
 const CORPUS_FLOOR = 45;
 
@@ -214,10 +229,17 @@ describe('Q-0079 — a commit-creating git call in a test carries an explicit id
     const files = corpusFiles();
     expect(files.length, `corpus is ${files.length} files; the floor is ${CORPUS_FLOOR}`)
       .toBeGreaterThanOrEqual(CORPUS_FLOOR);
-    expect(files.some((f) => f.startsWith('spike/test/')), 'spike/test must be in the corpus').toBe(true);
+    // Q-0107 AC-15 — `re-aimed`. `expect(files.some((f) => f.startsWith('spike/test/')))` stood
+    // here and named the one directory Q-0103 removes; a tripwire must not lose its subject in the
+    // change that shrinks it. What replaces it says what the corpus DOES cover, derived from the
+    // listing rather than from `CORPUS`, so a row silently dropped fails here — which is the
+    // failure the old clause would have reported for `spike/test` and for nothing else.
+    const covered = [...new Set(files.map((file) => file.split('/')[0]))].sort();
+    expect(covered, 'every top-level directory the corpus reaches, named').toStrictEqual(['apps', 'packages']);
     expect(files.some((f) => f === 'packages/core/test/repo.ts'),
       'packages/*/test/** is in the corpus deliberately: repo.ts holds two commit sites and states this rule in prose')
       .toBe(true);
+    expect(files.some((f) => f.startsWith('apps/')), 'apps/ is in the corpus, and was missed once').toBe(true);
   });
 
   test('every commit-creating invocation in the corpus carries both identity fields', () => {
@@ -246,7 +268,13 @@ describe('Q-0079 — a commit-creating git call in a test carries an explicit id
     // test. The earlier version asserted over the predicates and would have survived that edit.
     expect(exempt(SELF, line), 'the marker works here').toBe(true);
     expect(exempt('packages/core/src/engine/diff.test.ts', line), 'and nowhere else').toBe(false);
-    expect(exempt('spike/test/q0035-empty-range.js', line), 'nor in the spike tree').toBe(false);
+    // Q-0107 AC-15 — `re-aimed`. The third fixture was `'spike/test/q0035-empty-range.js'`, chosen
+    // when the corpus spanned two trees and `exempt` had to refuse the marker in the other one.
+    // `exempt` is a pure predicate over a string, so it would still have refused that path after
+    // Q-0103 — and the row would have been asserting about a file nobody could point at, which is
+    // provenance dying while the assertion goes on passing. A second real corpus file makes the
+    // same claim about a path that exists: the marker is honoured in one file and in no other.
+    expect(exempt('packages/shared/test/corpus.ts', line), 'nor in another package\'s test support').toBe(false);
     expect(violations().map((v) => v.file), 'and the live corpus is clean').toEqual([]);
   });
 

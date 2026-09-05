@@ -67,15 +67,35 @@ interface AllocationRow {
 }
 
 /**
- * The allocation table, READ rather than transcribed. `spike/test/q0080-allocation.js` drives the
- * same rows through the spike's own `Backlog`, and the spike is what runs every flow in this
- * repository today — a fix that lands in `core` alone passes here and leaves that tree handing out
- * `T-0001`. Two copies of a table drift; there is one (Q-0080 AC-11).
+ * The allocation table, READ rather than transcribed — and read from beside this file, which is
+ * where Q-0107 AC-8 moved it.
+ *
+ * It was `spike/test/q0080-allocation.json` until then, so that `spike/test/q0080-allocation.js`
+ * and this file could drive one table through two `Backlog` implementations. The spike's reader
+ * still drives it, reaching across the boundary, until Q-0103 deletes that tree; what changed is
+ * the direction, so the copy that survives the cutover is the one that holds the bytes. Two copies
+ * of a table drift; there is one (Q-0080 AC-11).
  */
-const TABLE = JSON.parse(repoFile('spike/test/q0080-allocation.json')) as {
+const TABLE = JSON.parse(repoFile('packages/core/src/backlog/q0080-allocation.json')) as {
   rows: AllocationRow[];
   grammar: { accepts: string[]; rejects: string[] };
 };
+
+/**
+ * What the table drove when it was read from `spike/test/`, measured on the tree at `d24fb8b`
+ * before the move: eleven rows, three accepted ids, eight rejected ones, and the thirty-three
+ * assertions the two loops below make over them.
+ *
+ * Q-0107 AC-8 asks for the row count and the assertion count to be identical before and after,
+ * *asserted rather than eyeballed* — because a move that silently truncated the file would leave
+ * both loops iterating a shorter array and both tests green. The two loops record what they
+ * actually visited and the assertions below compare that against these numbers, so the claim is
+ * about executed assertions rather than about the file's length.
+ */
+const BEFORE_THE_MOVE = { rows: 11, accepts: 3, rejects: 8, assertions: 33 } as const;
+
+/** Every table-driven assertion the two tests below make, in the order they make them. */
+const visited: string[] = [];
 
 /**
  * Every `ticket.md` in a `backlog/` subdirectory of THIS repository, and a loud failure when there
@@ -412,6 +432,7 @@ describe('Q-0080 — one backlog, one prefix, and an allocator that refuses rath
     for (const row of TABLE.rows) {
       const backlog = backlogOf(row.tickets);
       const label = `${row.criterion} — ${row.name}`;
+      visited.push(`row: ${label}`);
       if (row.throws === undefined) expect(backlog.nextId(), label).toBe(row.id);
       else expect(refusal(() => backlog.nextId()), label).toBe(row.throws);
     }
@@ -427,16 +448,41 @@ describe('Q-0080 — one backlog, one prefix, and an allocator that refuses rath
       return parts === null ? null : `${parts.prefix}-${String(parts.number).padStart(4, '0')}`;
     };
     for (const id of TABLE.grammar.accepts) {
+      visited.push(`accepts: ${id}`, `accepts (run history): ${id}`);
       expect(roundTrip(id), id).toBe(id);
       expect(TICKET_ID_PATTERN.test(id), `${id}: run history agrees`).toBe(true);
     }
     for (const not of TABLE.grammar.rejects) {
+      visited.push(`rejects: ${not}`, `rejects (run history): ${not}`);
       expect(roundTrip(not), not).toBeNull();
       expect(TICKET_ID_PATTERN.test(not), `${not}: run history agrees`).toBe(false);
     }
     // A ticket.md the frontmatter reader fell open on carries no id at all, and AC-4(a) counts it.
     expect(roundTrip(undefined)).toBeNull();
     expect(roundTrip(null)).toBeNull();
+  });
+
+  test('Q-0107 AC-8 — the move cost the table no row and this file no assertion', () => {
+    // Read after the two tests above have run, which is why it is declared after them: `visited`
+    // is what they ACTUALLY iterated, not what the file happens to contain. A move that truncated
+    // the JSON would leave both loops shorter and both of them green.
+    //
+    // Two clauses, because a count is not an identity (Q-0073). The first says the labels are the
+    // ones the table names; the second says how many there were, pinned at what they were on
+    // `d24fb8b` with the file still under `spike/test/`. Losing a row fails the second alone;
+    // renaming one fails the first alone.
+    const derived = [
+      ...TABLE.rows.map((row) => `row: ${row.criterion} — ${row.name}`),
+      ...TABLE.grammar.accepts.flatMap((id) => [`accepts: ${id}`, `accepts (run history): ${id}`]),
+      ...TABLE.grammar.rejects.flatMap((not) => [`rejects: ${not}`, `rejects (run history): ${not}`]),
+    ];
+    expect(visited, 'the two loops above visited exactly what the table names').toStrictEqual(derived);
+    expect({
+      rows: TABLE.rows.length,
+      accepts: TABLE.grammar.accepts.length,
+      rejects: TABLE.grammar.rejects.length,
+      assertions: visited.length,
+    }).toStrictEqual(BEFORE_THE_MOVE);
   });
 
   test('AC-5 — a taken id and an occupied folder are refused, and the refusal writes nothing', () => {

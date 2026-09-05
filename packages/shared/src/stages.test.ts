@@ -2,21 +2,16 @@ import { describe, expect, test } from 'vitest';
 
 
 import { STAGES, stageSchema } from './stages.js';
-import { sharedSourceFiles, spikeSource } from '../test/corpus.js';
-
-/** The ten names as spike/src/backlog.js:6-9 lists them, parsed out of the spike itself. */
-function stagesFromSpike(): string[] {
-  const source = spikeSource('src/backlog.js');
-  const block = source.match(/export const STAGES = \[([\s\S]*?)\];/);
-  if (!block) throw new Error('spike/src/backlog.js no longer declares STAGES as an array literal');
-  return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-}
+import { sharedSourceFiles } from '../test/corpus.js';
 
 describe('AC-11 — STAGES moves unchanged, and the state machine is not invented', () => {
-  test('the exported tuple deep-equals the spike declaration, in order', () => {
-    expect([...STAGES]).toEqual(stagesFromSpike());
-  });
-
+  // Q-0107 AC-9/AC-10 — `retired`. One test stood here: *"the exported tuple deep-equals the spike
+  // declaration, in order"*, which parsed `STAGES` out of `spike/src/backlog.js` and compared the
+  // two. Its subject is evidence about a tree Q-0103 deletes, and *"A check outlives its subject
+  // only if it can still fail"* (2026-09-05) forbids transcribing that comparison into a frozen
+  // copy of the spike's array. The property it proved — the ten names, in this order — is carried
+  // by the test immediately below, which is a transcription of what the STATE MACHINE documents
+  // rather than of what the spike happened to hold, and which was already green beside it.
   test('the ten members are the ones the state machine documents', () => {
     expect([...STAGES]).toEqual([
       'draft', 'requirements', 'solutioned', 'red', 'green', 'reviewed', 'qa-passed', 'deployed',

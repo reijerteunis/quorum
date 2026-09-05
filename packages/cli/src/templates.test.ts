@@ -1,25 +1,29 @@
 /**
- * Q-0093 AC-4 — `packages/cli/templates/harness` is a mirror of `spike/templates/harness`, and it
- * cannot go stale.
+ * Q-0093 AC-4 — `packages/cli/templates/harness` mirrors what this repository runs, and it cannot
+ * go stale.
  *
  * **Why byte identity is the whole assertion, and no second scoping check is owed.** What the ticket
  * cares about is that an adopter's first `harness/flows` carries the scoped write paths Q-0086,
  * Q-0087 and Q-0088 landed — every rewritable artifact named by `{run}`, plus `{iter}` where a
  * bounded loop can re-enter, and four flat paths surviving only as pointers beside a scoped copy.
- * That property is guarded by a three-link chain, and this file is the front of it:
+ * That property is guarded by a chain, and this file is the front of it:
  *
- *   1. `packages/cli/templates/harness/flows` ≡ `spike/templates/harness/flows`, **here**;
- *   2. `spike/templates/harness/flows` ≡ `harness/flows`, by
- *      `packages/core/src/lint/lint.test.ts`'s `SHIPPED` pair — which asserts the two directories
- *      produce the same `validateFlowDirectory` records, write paths included — and by
- *      `spike/test/q0033-surface.js` S1.1/S1.2/S1.4's byte freeze;
- *   3. `harness/flows` carries the scoping rule, by `packages/shared/src/flow.test.ts`'s
+ *   1. `packages/cli/templates/harness/flows` ≡ `harness/flows`, **here**, and the same for
+ *      `roles/code-reviewer.md`, which is the rest of the byte-shared set;
+ *   2. `harness/flows` carries the scoping rule, by `packages/shared/src/flow.test.ts`'s
  *      Q-0086/Q-0087 guard.
  *
- * A fourth assertion re-describing the scoping over this copy would be a second description of a
+ * **Q-0107 AC-14 took the middle link out.** The chain was three links: this file compared the
+ * shipped tree against `spike/templates/harness`, and `packages/core/src/lint/lint.test.ts`'s
+ * `SHIPPED` pair carried `spike/templates/harness/flows` ≡ `harness/flows`. Q-0103 deletes that
+ * tree, so both ends were re-aimed at each other in one change rather than one end being left
+ * pointing at nothing — and `lint.test.ts`'s pair is now the same two directories, asserting that
+ * they produce the same `validateFlowDirectory` records where this asserts the bytes.
+ *
+ * A third assertion re-describing the scoping over this copy would be a second description of a
  * property already checked, which is the drift this repository keeps finding. The chain is written
- * here so a reviewer can walk it; link 2 is read rather than assumed, and if it stops holding that
- * is a finding rather than a licence to add the missing assertion here (merged.md R-10).
+ * here so a reviewer can walk it, and if a link stops holding that is a finding rather than a
+ * licence to add the missing assertion here (Q-0093 merged.md R-10).
  *
  * **Q-0101 AC-9 re-homes one assertion here**, and it is not a second description of the chain
  * above. `smoke.js:216` claims that no shipped flow or role pins a vendor model name, over the
@@ -28,9 +32,10 @@
  * — the one an adopter's first `quorum init` copies — rather than inherited from a tree that will
  * not be there to compare against.
  *
- * **`spike/templates/**` is read and never written** — ground rules 1 and 2, and non-goal 1. The
- * read is declared in `packages/cli/turbo.json` and registered in `package.test.ts`'s `OUTSIDE`
- * pair, which is what keeps a cache hit on this package's `test` honest (Q-0072).
+ * The reads this file makes outside its own package — `harness/flows` and
+ * `harness/roles/code-reviewer.md` — are declared in `packages/cli/turbo.json` and registered in
+ * `package.test.ts`'s `OUTSIDE` pair, which is what keeps a cache hit on this package's `test`
+ * honest (Q-0072).
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -46,12 +51,40 @@ const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
 /** The workspace root, which is this package's grandparent. */
 const WORKSPACE = path.resolve(PACKAGE, '..', '..');
 
-/** The two trees, named once each: the spike's live asset directory and this package's mirror. */
-const SPIKE_TEMPLATES = path.join(WORKSPACE, 'spike', 'templates', 'harness');
+/** This package's asset directory — the tree `quorum init` copies. */
 const SHIPPED_TEMPLATES = path.join(PACKAGE, 'templates', 'harness');
 
-/** Every file below `root`, relative to it with `/` separators, sorted. */
+/**
+ * The byte-shared set, as `[what it is, this repository's copy, the shipped copy]`.
+ *
+ * Q-0107 AC-14 — `re-aimed`. This file compared `SHIPPED_TEMPLATES` against
+ * `spike/templates/harness` as a WHOLE TREE, which was link 1 of a three-link chain; link 2 was
+ * `spike/templates/harness/flows` ≡ `harness/flows`, read at the foot of this file. Q-0103 deletes
+ * the middle link, so the chain becomes one comparison — and it is a comparison of the shared SET
+ * rather than of two trees, because only part of an adopter's template tree has a counterpart here:
+ * `harness.yaml`, `rules.md`, `architecture.md`, `product-context.md` and the developer roles
+ * describe an adopter's project and must NOT acquire Quorum's own dogfood paths
+ * (`docs/04-architecture.md` §Roles). What is shared is the flows and `code-reviewer.md`, and that
+ * is what this asserts.
+ */
+const BYTE_SHARED: readonly [string, string, string][] = [
+  ['the flow directory', path.join(WORKSPACE, 'harness', 'flows'), path.join(SHIPPED_TEMPLATES, 'flows')],
+  [
+    'the code-reviewer role',
+    path.join(WORKSPACE, 'harness', 'roles', 'code-reviewer.md'),
+    path.join(SHIPPED_TEMPLATES, 'roles', 'code-reviewer.md'),
+  ],
+];
+
+/**
+ * Every file below `root`, relative to it with `/` separators, sorted.
+ *
+ * A single file answers `['']`, so {@link differences} compares a file pair by the same code path
+ * as a directory pair — which is what lets the code-reviewer role and the flow directory be one
+ * register rather than two assertions with two shapes.
+ */
 function filesUnder(root: string): string[] {
+  if (fs.statSync(root).isFile()) return [''];
   const found: string[] = [];
   const walk = (directory: string): void => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -73,16 +106,20 @@ function filesUnder(root: string): string[] {
  * shapes to avoid: a tree compared to itself through a mis-joined path, and a name-set comparison
  * claiming to be a byte comparison. Both directions of the name set are reported separately,
  * because a copy that gained a file and one that lost a file are different failures.
+ *
+ * Q-0107 AC-14 changed only which side is which in the two name-set messages: `left` was the
+ * spike's tree and is this repository's own copy now.
  */
 function differences(left: string, right: string): string[] {
   const problems: string[] = [];
   const here = filesUnder(left);
   const there = filesUnder(right);
-  for (const name of here.filter((entry) => !there.includes(entry))) problems.push(`${name}: in the spike's tree and not in the shipped one`);
-  for (const name of there.filter((entry) => !here.includes(entry))) problems.push(`${name}: in the shipped tree and not in the spike's`);
+  const at = (root: string, name: string): string => (name === '' ? root : path.join(root, ...name.split('/')));
+  for (const name of here.filter((entry) => !there.includes(entry))) problems.push(`${name}: in this repository's copy and not in the shipped one`);
+  for (const name of there.filter((entry) => !here.includes(entry))) problems.push(`${name}: in the shipped copy and not in this repository's`);
   for (const name of here.filter((entry) => there.includes(entry))) {
-    const a = fs.readFileSync(path.join(left, ...name.split('/')));
-    const b = fs.readFileSync(path.join(right, ...name.split('/')));
+    const a = fs.readFileSync(at(left, name));
+    const b = fs.readFileSync(at(right, name));
     if (!a.equals(b)) problems.push(`${name}: the two trees differ by ${String(Math.abs(a.length - b.length))} bytes or more`);
   }
   return problems;
@@ -118,7 +155,7 @@ function copies(): { left: string; right: string } {
   return { left, right };
 }
 
-describe('AC-4 — the shipped template tree is the spike\'s, byte for byte and in both directions', () => {
+describe('AC-4 — the shipped template tree carries this repository\'s, byte for byte, both ways', () => {
   test('the twenty files exist at packages/cli/templates/harness, at the depth 078(e) fixes', () => {
     // An identity rather than a count (Q-0073): a role silently renamed leaves this red rather than
     // passing on twenty. The depth is the criterion's other half — `path.join(here, '..')` from the
@@ -148,11 +185,18 @@ describe('AC-4 — the shipped template tree is the spike\'s, byte for byte and 
     expect(path.resolve(SHIPPED_TEMPLATES, '..', '..')).toBe(path.resolve(PACKAGE));
   });
 
-  test('and it is byte-identical to the spike\'s, which is what stops it going stale', () => {
-    expect(differences(SPIKE_TEMPLATES, SHIPPED_TEMPLATES)).toStrictEqual([]);
-    // Both roots exist and neither walk is empty, so the comparison above is not two empty lists.
-    expect(filesUnder(SPIKE_TEMPLATES).length).toBeGreaterThan(10);
-    expect(filesUnder(SHIPPED_TEMPLATES).length).toBe(filesUnder(SPIKE_TEMPLATES).length);
+  test('and the byte-shared set is byte-identical, which is what stops it going stale', () => {
+    for (const [what, here, shipped] of BYTE_SHARED) {
+      expect(differences(here, shipped), what).toStrictEqual([]);
+      // Both sides exist and neither walk is empty, so the comparison above is not two empty lists.
+      expect(filesUnder(here).length, `${what}: this repository's copy is empty`).toBeGreaterThan(0);
+      expect(filesUnder(shipped).length, `${what}: the counts differ`).toBe(filesUnder(here).length);
+    }
+    // The flow half is six files, named rather than counted, so a flow silently dropped from BOTH
+    // sides leaves this red rather than passing on an agreed-upon absence.
+    expect(filesUnder(BYTE_SHARED[0][2])).toStrictEqual([
+      'chore.yaml', 'development.yaml', 'qa-red.yaml', 'requirements.yaml', 'review.yaml', 'solutioning.yaml',
+    ]);
   });
 
   test('one byte in one flow is enough to fail it, in either tree', () => {
@@ -170,9 +214,22 @@ describe('AC-4 — the shipped template tree is the spike\'s, byte for byte and 
     fs.rmSync(path.join(right, 'roles', 'automation-qa.md'));
     fs.writeFileSync(path.join(right, 'roles', 'invented.md'), '# invented\n');
     expect(differences(left, right)).toStrictEqual([
-      'roles/automation-qa.md: in the spike\'s tree and not in the shipped one',
-      'roles/invented.md: in the shipped tree and not in the spike\'s',
+      'roles/automation-qa.md: in this repository\'s copy and not in the shipped one',
+      'roles/invented.md: in the shipped copy and not in this repository\'s',
     ]);
+  });
+
+  test('a single-file pair is compared by the same code path, and one byte fails it', () => {
+    // The code-reviewer row is a file rather than a directory, and `filesUnder` answering `['']`
+    // is what lets one register hold both shapes. Shown red over copies rather than read: a
+    // file-pair comparison that silently walked nothing would report no differences over any
+    // mutation, which is the first shape R-2 names, arriving through the new branch.
+    const { left, right } = copies();
+    const role = (root: string): string => path.join(root, 'roles', 'code-reviewer.md');
+    expect(differences(role(left), role(right)), 'two copies of one file agree').toStrictEqual([]);
+    fs.writeFileSync(role(right), `${fs.readFileSync(role(right), 'utf8')} `);
+    expect(differences(role(left), role(right)))
+      .toStrictEqual([': the two trees differ by 1 bytes or more']);
   });
 
   test('the comparison cannot be satisfied by a tree compared with itself', () => {
@@ -186,16 +243,12 @@ describe('AC-4 — the shipped template tree is the spike\'s, byte for byte and 
     expect(differences(right, right), 'a tree differs from itself').toStrictEqual([]);
   });
 
-  test('link 2 of the chain holds today, read rather than assumed', () => {
-    // R-10: this file establishes link 1 and cites links 2 and 3. Link 2 is the one that carries the
-    // scoping into the spike's tree, and `lint.test.ts`'s `SHIPPED` pair is what proves the flows
-    // agree — read here so the sufficiency argument above has a subject in this suite as well as in
-    // that one. If the two directories stop being byte-identical, this fails and the argument is
-    // reopened rather than quietly false.
-    const shipped = path.join(WORKSPACE, 'harness', 'flows');
-    expect(differences(path.join(SPIKE_TEMPLATES, 'flows'), shipped)).toStrictEqual([]);
-    expect(fs.readdirSync(shipped).filter((name) => name.endsWith('.yaml')).length).toBe(6);
-  });
+  // Q-0107 AC-14 removed a test called *"link 2 of the chain holds today, read rather than
+  // assumed"*. It compared `spike/templates/harness/flows` against `harness/flows` — the middle
+  // link of the three-link chain this file's header used to describe — so that the sufficiency
+  // argument had a subject in this suite as well as in `lint.test.ts`'s. There is no middle link
+  // now: the byte comparison at the top of this describe IS that pair, so the test would have been
+  // a second description of the assertion above it rather than a check on a different one.
 
   test('Q-0101 AC-9 — no shipped flow or role pins a vendor model name', () => {
     // Re-homed from `smoke.js:216` rather than translated: that assertion reads

@@ -37,14 +37,18 @@
         // clause for another.
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
-        "../../spike/src/**",
-        // Q-0081: src/git-identity.test.ts scans the spike TEST tree for commit-creating git
-        // calls, so this task reads it. The accepted cost is stated rather than discovered:
-        // seventeen spike test files now invalidate `@quorum/core#test`. That is the price of
-        // the guard being able to see the tree it polices — Q-0051's red CI was three merge
-        // calls in a file no core task declared.
+        // Q-0107 AC-17: `../../spike/src/**` and `../../spike/templates/harness/flows/*.yaml` are
+        // gone with their last readers here — `test-command.test.ts`'s `spikeSources()` walk and
+        // `lint.test.ts`'s `SHIPPED` pair, both re-aimed at the workspace. What is left of the
+        // second is the line below.
+        "../../packages/cli/templates/harness/flows/*.yaml",
+        // Q-0107 AC-17 keeps this one, and names why: `src/spike-parity.test.ts` reads every file
+        // in `spike/test/` — `readdirSync` for the key set, then each file's own text — and it is
+        // that file's SOLE remaining reader in this package. Q-0103 deletes both together, this
+        // input and the suite, which is what makes removing it a decision rather than a tidy-up.
+        // Q-0081's `git-identity.test.ts` was the other reader and Q-0107 AC-15 dropped its
+        // `spike/test` corpus row.
         "../../spike/test/**",
-        "../../spike/templates/harness/flows/*.yaml",
         // Q-0054: src/test-discovery.test.ts expands the workspace globs and then asks, of every
         // package, whether its Vitest configuration collects each of its test files. So this task
         // reads every package's manifest and configuration, and its verdict depends on which test
