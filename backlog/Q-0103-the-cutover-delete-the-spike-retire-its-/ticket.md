@@ -48,6 +48,42 @@ This ticket is what makes that true on disk.
   as a present-tense fact. `docs/decisions/` is **append-only and is not edited**: an entry
   describing the spike stays true of when it was written.
 
+## Why this cannot go through the chore flow as one ticket — measured 2026-09-05
+
+**A chore run for this ticket would abort at its own `integrate`, after paying for implement and
+review.** `runFlow` receives `config` as a parameter (`spike/src/engine.js:61`) and never re-reads
+it, and the integrate step reads `ctx.config.commands?.test` and `ctx.config.commands?.install`
+(`:1306`, `:1309`; `packages/core/src/engine/composite.ts:353` is the ported twin). So the commands
+a run executes are the ones that existed **when it started**:
+
+1. `implement` deletes `spike/` and rewrites `harness.yaml`'s two commands.
+2. `integrate` merges, then runs the **run-start** `commands.install` —
+   `npm install --prefix spike --no-audit --no-fund --silent && pnpm install --frozen-lockfile` —
+   against a directory the run has just deleted.
+3. npm fails, and `engine.js:1342` classifies it as an environment failure: *"The report is on disk,
+   but it is not evidence of anything — fix the environment (commands.install in harness.yaml) and
+   re-run."* The run stops with no merge.
+
+This is *"Do not drive harness-machinery work through the harness"* (2026-08-23) with a mechanism
+rather than a principle, and it is **Q-0057's shape made fatal**: that ticket's run merely could not
+*benefit* from its own fix, while this one would be *killed* by it.
+
+**The cut that is runnable, and why it is two changes rather than one.** Split at the commands:
+
+- **Step 1 — the commands stop naming the spike, while `spike/` stays.** Its own `integrate` runs
+  the *old* commands, which still work because the tree is still there. The cost is one run whose
+  integrate does not exercise the spike suite; acceptable only because step 2 deletes it, and it
+  must be stated rather than discovered.
+- **Step 2 — everything else.** Its `integrate` runs the *new* commands, which name no spike, so the
+  deletion in the same change is safe.
+
+Both halves are then ordinary chore tickets. The alternative decision 035 also offers — *"a stage run
+manually"* — remains open and is cheaper in adapter cost but buys no review.
+
+**This is a gate question, not an implementation detail**, and it is written here so the requirements
+run rules on it rather than rediscovering it: whether to split, to run by hand, or to accept a
+deliberately failed `integrate` and finish it out of band.
+
 ## Ground rules
 
 1. **Nothing in `packages/` changes behaviour.** This ticket deletes a tree and repairs what pointed
