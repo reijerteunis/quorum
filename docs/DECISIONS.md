@@ -140,3 +140,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-02
 
 - [The emit serves the binary, and no test verdict moves behind it](decisions/078-the-emit-serves-the-binary.md)
+
+## 2026-09-05
+
+- [A check outlives its subject only if it can still fail](decisions/079-a-check-outlives-its-subject-only-if-it-can-still-fail.md)
