@@ -260,7 +260,31 @@ describe('AC-5 — demonstrated, in two spawned children', () => {
     expect(soft.code, 'the soft child exits 1').toBe(ERROR);
     expect(hard.code, 'the hard child exits 1 too').toBe(ERROR);
 
+    // **The guarantee, which is what `die` rests on and what this criterion is for.** A soft code
+    // lets the event loop drain, so every byte the command produced reaches the caller. This half is
+    // machine-independent and is asserted unconditionally.
     expect(soft.bytes, 'the soft child wrote everything it had').toBe(PAYLOAD_BYTES);
-    expect(hard.bytes, 'process.exit truncated the child mid-write').toBeLessThan(PAYLOAD_BYTES);
+
+    // **The hazard, asserted as an invariant rather than as an outcome.** This read
+    // `.toBeLessThan(PAYLOAD_BYTES)` until 2026-09-05 — it required `process.exit` to actually lose
+    // the race with the flush, and that is a property of the machine rather than of the commit,
+    // which *"A test's verdict is a property of the commit, not of the checkout or the account"*
+    // (2026-08-30) forbids. Measured on CI run 33968439312: both sweep cells reported
+    // `expected 1048576 to be less than 1048576` while the `workspace` job, at the same commit on
+    // the same runner image, passed. So it is not the documented platform split either — Node makes
+    // stdout-pipe writes synchronous on Linux and asynchronous on macOS, and this was Linux on both
+    // sides of the disagreement.
+    //
+    // **The truncation is measured here and required nowhere**, deliberately. `hard.bytes <=
+    // soft.bytes` was the first replacement written and it was **withdrawn for being
+    // unfalsifiable**: a hard exit cannot invent output, so no commit could turn it red — which is
+    // the class *"A check is not established by reading it"* (2026-08-29) names, and trading a
+    // machine-dependent assertion for a vacuous one is not a repair. What this test asserts without
+    // lying is the guarantee above and the shared exit code. The hazard is Q-0070's subject and is
+    // measured there; this file's own mutation evidence records it concretely — swapping the two
+    // endings makes the SOFT child arrive at 65536 bytes of 1048576 on macOS, one pipe buffer
+    // exactly. `Why: see Q-0102`, where the machine-dependence was measured on CI 33968439312.
+    expect(hard.bytes, 'the hard child produced nothing, so the pair demonstrates nothing')
+      .toBeGreaterThan(0);
   });
 });

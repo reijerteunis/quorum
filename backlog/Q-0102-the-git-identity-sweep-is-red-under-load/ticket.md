@@ -185,6 +185,51 @@ CI's own verdict is uninformative until Q-0104 lands. The next CI run after that
 measurement of this ticket's subject on the instrument that matters — two cores rather than sixteen,
 which is where contention was always likeliest and which no local run can stand in for.
 
+## The subject on CI, isolated at last — and it is one assertion, not a cluster
+
+**With Q-0104 fixed, CI run 33968439312 left the sweep cells failing alone**, which is the first time
+this ticket's subject has been visible on the instrument that matters. `workspace` went green; both
+sweep cells failed, deterministically, on **one assertion**:
+
+```
+FAIL packages/cli/src/fail.test.ts > AC-5 — demonstrated, in two spawned children
+AssertionError: process.exit truncated the child mid-write:
+     expected 1048576 to be less than 1048576
+```
+
+**It is not the cluster this ticket describes.** No `@quorum/core`, no
+`worktree-lifecycle.test.ts`, no `undecided.test.ts`, and nothing unstable: one file, one clause,
+both cells, same message. The local sighting and the CI subject are **different manifestations**, and
+only the thesis is shared.
+
+**What the assertion did.** A child writes 1 MiB to stdout and calls `process.exit(1)`; the clause
+required the write to be **truncated**. That is the outcome of a race between the exit and the flush,
+so the test required a hazard to reliably occur — making its verdict a property of the machine, which
+is exactly what this ticket exists to forbid.
+
+**The obvious explanation is refuted, and the refutation matters.** Node documents stdout-pipe writes
+as **synchronous on Linux and Windows, asynchronous on macOS**, which would make truncation
+impossible on a Linux runner and explain the red completely. It does not: **the `workspace` job
+passed on the same runner image, at the same commit, in the same run**. So this is not the documented
+platform split, and it is not the commit — it is a third thing, on the same operating system, which
+is precisely *"load is a third term beside the checkout and the account"* with a named subject at
+last.
+
+**Fixed 2026-09-05, and the first fix was withdrawn as worse than the defect.** The clause now
+asserts the guarantee `die` actually rests on — the soft child delivers all 1,048,576 bytes — and no
+longer requires the race. The first replacement written was `hard.bytes <= soft.bytes`; it was
+**withdrawn for being unfalsifiable**, since a hard exit cannot invent output, so no commit could
+ever turn it red. Trading a machine-dependent assertion for a vacuous one is not a repair, and it is
+the defect class *"A check is not established by reading it"* (2026-08-29) names. Both surviving
+clauses were demonstrated red by mutation: swapping the two endings fails the guarantee at
+**65536 bytes of 1048576** — one pipe buffer exactly, which is Q-0070's own measurement arriving from
+the other direction — and a hard child that produces nothing fails the second.
+
+**What remains this ticket's work.** The local `@quorum/core` sighting is still unexplained and still
+unreproduced in **35** local sweeps. The CI subject is now fixed rather than diagnosed: what made the
+same suite truncate in one job and not another, on one machine, is unknown. The next CI run is the
+first where a sweep result carries information about this ticket rather than about Q-0104.
+
 ## Why it is p1
 
 `.claude/rules/engineering.md` calls the sweep's subject safety by construction, and Q-0079 built it
