@@ -1176,8 +1176,29 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     `main` was ever built is answering half its own question. **OQ-2 is the one to settle first**:
     a column assuming a CI service would be product knowledge leaking into a product-agnostic tool,
     while a push-lag column assumes only a git remote.
-  - Q-0106 The commands, context files and roles stop naming the spike. *(Child A of Q-0103, opened
-    2026-09-05 at its requirements gate, `draft`.)* **Runs first of three.** Its criteria are AC-1 to
+  - Q-0106 The commands, context files and roles stop naming the spike. *(`reviewed` and
+    `main:contained` 2026-09-05.)* **$21.37** — $9.99 requirements ready on the first pass, $11.38
+    chore in **one implement round approved with no findings**, `integrate` green. The cheapest
+    ticket of the cut, and the third of the project to close on a single round.
+    **Its requirements run is what it was worth**, correcting **seven of eight** inherited statements,
+    three of which would have cost a later child a run. The decisive one: `developer-generalist` must
+    **keep** `spike` in its `paths:` where the inherited criterion said drop it. That is the role
+    `chore.yaml:7` runs, so stripping it would have left the implementer unable to write `spike/` —
+    making **Q-0107's AC-8 and Q-0103's AC-20 both unperformable**. Child A would have quietly
+    disarmed the two children that follow it, and nothing in its own suite could have shown that.
+    The distinction it drew instead is the subtle one: **the template copies drop `spike`**, an
+    adopter having none, **while this repository's own role keeps it** until Q-0103.
+    Also measured: five role files carry `spike`, not four, two of them mirrors held byte-identical by
+    `templates.test.ts`; AC-2's oracle is `project.test.ts:125–149`, which `test-command.test.ts:4–5`
+    says in its own header; and `rules.md:12` cited `engine.js:1034` for a claim whose site is
+    `:1309` — **stale by 275 lines in a file fed to every agent at run time**, so every implementer
+    since had been handed a wrong pointer.
+    **What it cannot prove is its own subject.** Its `integrate` runs the *old* commands, because
+    `runFlow` takes `config` as a parameter and never re-reads it — which is the mechanism that made
+    A separable at all. The new commands were run standalone at the merge (install exit 0, both
+    suites 7/7 forced), but **the proof required by Q-0103's GO-3 is Q-0107's `integrate`**, and
+    Q-0103 must not launch until that is seen green. A green gate here is a reviewed change, not a
+    working command. *(Original scope follows.)* **Runs first of three.** Its criteria are AC-1 to
     AC-7 of Q-0103's merged requirement, numbered continuously across the children so a criterion
     keeps its name if the cut moves. It exists as its own child because **its `integrate` runs the
     OLD commands** — `runFlow` takes `config` as a parameter and never re-reads it — which still work

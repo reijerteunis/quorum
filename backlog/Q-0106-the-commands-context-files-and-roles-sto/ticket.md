@@ -1,7 +1,7 @@
 ---
 id: Q-0106
 title: The commands, context files and roles stop naming the spike
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0106/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-09-05T19:20:04.805Z
     cost: 9.99
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-05T19:56:14.064Z
+    cost: 11.384
 ---
 **Child A of the cutover, ruled at Q-0103's requirements gate 2026-09-05.** Order is
 **A → B → C**, one at a time — Q-0039 is unfixed, so two concurrent runs on one ticket share a
