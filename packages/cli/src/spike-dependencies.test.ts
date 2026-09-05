@@ -5,9 +5,15 @@
  * Two registers, in one file because they answer halves of one question. **AC-30** is the standing
  * guard: after this ticket no file under `packages/**` READS anything under `spike/`, asserted over
  * the tree rather than reviewed, so Q-0103 is a deletion rather than an investigation. **AC-29** is
- * what makes that guard's exclusion list honest and what makes AC-10's dispositions falsifiable:
- * the membership of both is derived from a scan, so a site nobody thought of is a red test rather
- * than a silence.
+ * what makes that guard's exclusion list honest: its membership is derived from a scan, so a site
+ * nobody thought of that is **still there** is a red test rather than a silence.
+ *
+ * **A site this ticket removed is a different question, and this file does not claim to answer it
+ * by derivation.** Review round 2 was right that subject coverage is not a one-to-one comparison of
+ * dependency sites — four rows name `src/backlog.js` because four sites read it, so dropping one
+ * leaves its subject claimed by the others. What that half gets is {@link ROWS}, and the three
+ * measured reasons nothing stronger is available are below. It is a limit, and it is reported as
+ * one rather than dressed up.
  *
  * **Both key sets come from the tree, and they are two trees because the question has two sides.**
  * {@link corpus} is the workspace as it stands and answers *what still reads it* — every site it
@@ -19,12 +25,26 @@
  * checked against those two trees rather than read: a row claiming a removal that did not happen
  * fails, and a `kept` row whose tripwire has quietly gone fails the other way.
  *
- * **What no check here can do is enumerate the sites that are gone**, and the limit is stated rather
- * than left to be met. That needs the pre-change workspace, which needs `git show` against a commit
- * this branch is merged from — and CI's `workspace` job checks out at depth 1 while the two sweep
- * jobs check out at depth 0, so one commit would pass in two jobs and fail in a third. That is the
- * verdict *"A test's verdict is a property of the commit, not of the checkout or the account"*
- * (2026-08-30) forbids, so the subject side is derived and the site side is bounded instead.
+ * **What no check here can do is enumerate the sites that are gone**, and the limit is stated in
+ * three places rather than left to be met: here, at {@link treeFiles}, and at {@link ROWS}, which is
+ * the only thing standing between this register and a row nobody wrote. Three routes to a derived
+ * site inventory were measured and each fails for its own reason. Scanning the **pre-change tree**
+ * needs `git show` against a commit this branch is merged from, and CI's `workspace` job checks out
+ * at depth 1 while the two sweep jobs check out at depth 0 — one commit passing in two jobs and
+ * failing in a third is the verdict *"A test's verdict is a property of the commit, not of the
+ * checkout or the account"* (2026-08-30) forbids. **Pinning** that scan's output as a constant and
+ * comparing it against {@link DISPOSITIONS} puts both operands in this file, so the comparison can
+ * only fail when somebody edits the check — which is the class *"A check outlives its subject only
+ * if it can still fail"* (2026-09-05) retires, installed inside the guard written to retire it.
+ * And **deriving membership from prose** — the test files that still discuss the tree — reaches 83
+ * of them, against the 24 this register names on that side of its 31, because a JSDoc citation of a
+ * ported behaviour stays true after the deletion; that is §3.2(h)'s unsatisfiability one corpus
+ * over, and the fifty-nine spare files are the same ones AC-19 forbids touching.
+ *
+ * So the register's completeness is **visible rather than checkable**, which is 079(c)'s standard
+ * and not 079(b)'s: {@link ROWS} makes losing a row an edit somebody has to make on purpose, in two
+ * places, one of which names the row. Whether that is enough is a question for the gate and is
+ * reported there rather than settled here.
  *
  * **Its subject is read positions, not text occurrences**, and that distinction is the criterion
  * rather than an implementation choice. Fifty-four production source files cite a path under that
@@ -128,18 +148,28 @@ function sitesIn(file: string, text: string): Site[] {
 }
 
 /**
- * Every tracked file under `packages/` this guard scans, as `[path, text]`.
+ * The tracked files under `packages/`, in the one spelling both scans here share.
  *
- * Membership is a **git question, not a filesystem one** (2026-08-28): the inventory is
- * `git ls-files`, so an untracked scratch file is not a dependency and a checkout that has built or
- * run something does not change the verdict. That is the same instrument
- * `packages/core/src/turbo-inputs.test.ts` uses, and for the same reason.
+ * Membership is a **git question, not a filesystem one** (2026-08-28), and `--cached` **alone** is
+ * which git question. That entry is scoped to `packages/core/src/turbo-inputs.test.ts` and argues
+ * from what turbo hashes, where an untracked-unignored file counts — and Q-0090's erratum E-1 ruled
+ * that its reasoning does not travel to a scan asking something else. This scan asks *does the
+ * commit contain a read of the tree that is going away*, and an untracked file is not in the commit:
+ * scanning one would make a scratch file somebody left under `packages/` turn the suite red, which
+ * is the verdict *"A test's verdict is a property of the commit, not of the checkout or the
+ * account"* (2026-08-30) forbids. {@link treeFiles} asks a third question — *what does Q-0103
+ * delete* — and lands on the same flag for the same reason.
  */
-function corpus(): [string, string][] {
-  const listing = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'packages'], {
+function trackedUnder(directory: string): string[] {
+  const listing = execFileSync('git', ['ls-files', '--cached', directory], {
     cwd: WORKSPACE, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
   });
-  const files = listing.split('\n').filter((entry) => /\.(?:ts|tsx|js|mjs|cjs|json)$/.test(entry)).sort();
+  return listing.split('\n').filter(Boolean).sort();
+}
+
+/** Every tracked file under `packages/` this guard scans, as `[path, text]`. */
+function corpus(): [string, string][] {
+  const files = trackedUnder('packages').filter((entry) => /\.(?:ts|tsx|js|mjs|cjs|json)$/.test(entry));
   if (files.length < 100) {
     throw new Error(`the packages inventory is ${String(files.length)} files — this guard proves nothing over that`);
   }
@@ -157,28 +187,21 @@ function corpus(): [string, string][] {
  * is {@link stale}, which is red the other way. That is the shape
  * `packages/core/src/spike-parity.test.ts` uses for its own register, for the same reason.
  *
- * `git` rather than `readdir`, as {@link corpus} is: membership is a git question (2026-08-28), so
- * an untracked file left by a build can neither complete the register nor break it. **`--cached`
- * alone, where {@link corpus} additionally takes `--others --exclude-standard`, and the difference
- * is the subject rather than an inconsistency.** That spelling is Q-0073's answer to *what does turbo
- * hash*, where an untracked-unignored file counts; this one answers *what does Q-0103 delete*, where
- * it does not — and reading it here would make a scratch file somebody left in that directory turn
- * the suite red, which is a verdict that is a property of the checkout (2026-08-30).
+ * `git` rather than `readdir`, and `--cached` for {@link trackedUnder}'s reason: what Q-0103 deletes
+ * is what the commit tracks, so a scratch file somebody left in that directory neither completes the
+ * register nor breaks it.
  *
- * **What it cannot do is enumerate the sites that are gone**, and that limit is stated where a
- * reader meets the check rather than left to be discovered. Reconstructing the *pre-change*
- * workspace needs `git show` against a commit this branch is merged from, and CI's `workspace` job
- * checks out at depth 1 while the two sweep jobs check out at depth 0 — so the same commit would
- * pass in two jobs and fail in a third, which is exactly the verdict *"A test's verdict is a
- * property of the commit, not of the checkout or the account"* (2026-08-30) forbids. The subject
- * side is derivable and is derived here; the site side is bounded instead, by {@link readIsGone}
- * and {@link corpus}'s two directions.
+ * **What this key set is, and — because the distinction is the whole of Q-0107 review round 2's
+ * blocker — what it is not.** It is the set of *subjects*: every file the cutover removes must be
+ * something a verdict, a live read or a {@link NEVER_NAMED} silence accounts for, so a file nobody
+ * considered is {@link unaccounted} and red. It is **not** the set of *sites*, and it cannot stand in
+ * for one: `subject` claims overlap by design — four rows name `src/backlog.js` because four sites
+ * read it — so a row dropped from {@link DISPOSITIONS} leaves its subject claimed by its neighbours
+ * and this comparison stays green. That hole is closed one register along, by {@link ROWS}, and the
+ * part of it that no check here closes is stated with {@link ROWS} rather than here.
  */
 function treeFiles(): string[] {
-  const listing = execFileSync('git', ['ls-files', '--cached', TREE], {
-    cwd: WORKSPACE, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
-  });
-  return listing.split('\n').filter(Boolean).map((entry) => entry.slice(TREE.length + 1)).sort();
+  return trackedUnder(TREE).map((entry) => entry.slice(TREE.length + 1)).sort();
 }
 
 /**
@@ -602,8 +625,68 @@ const DISPOSITIONS: readonly Disposition[] = [
   },
 ];
 
+/**
+ * Every row above, by its verdict and the files it disposes of — the only thing that makes losing
+ * one an act rather than an omission.
+ *
+ * **This is a pinned identity and not a derived one**, for the three measured reasons the file
+ * header gives. A row describes a site that no longer exists, so no scan of this tree can re-derive
+ * it; what a register can still do is make its own contraction *visible*, which is 079(c) —
+ * *"a register that silently loses a row has destroyed the only evidence that anyone chose."*
+ *
+ * **A count would not do**, and that is Q-0073's finding rather than a preference: *a count is not
+ * an identity*, and there the no-contraction guard was two floors that passed while a collected
+ * literal was swapped out. Measured on this register before this list existed, deleting a row and
+ * decrementing the digit beside it was **green in 22 of 22 tests**. An identity survives that
+ * substitution — swapping one row for another over different files changes the multiset and not the
+ * total — and it names, in the failure message, which row went.
+ *
+ * Duplicates are entries and not accidents: three `re-aimed` rows dispose of three separate sites
+ * in `git-identity.test.ts`, so the comparison is over a multiset.
+ */
+const ROWS: readonly string[] = [
+  'kept packages/core/src/test-command.test.ts',
+  'kept packages/core/turbo.json',
+  'moved packages/core/src/backlog/backlog.test.ts + packages/cli/src/ticket.ts',
+  'moved packages/shared/src/flow.test.ts + packages/shared/test/corpus.ts',
+  're-aimed harness/architecture.md',
+  're-aimed packages/cli/src/package.test.ts',
+  're-aimed packages/cli/src/templates.test.ts',
+  're-aimed packages/cli/src/ticket.ts + packages/shared/src/role.ts',
+  're-aimed packages/core/src/git-identity.test.ts',
+  're-aimed packages/core/src/git-identity.test.ts',
+  're-aimed packages/core/src/git-identity.test.ts',
+  're-aimed packages/core/src/lint/lint.test.ts',
+  're-aimed packages/core/src/test-command.test.ts + .github/scripts/git-identity-sweep.sh',
+  're-aimed packages/shared/src/constants.test.ts',
+  're-aimed packages/shared/src/docs.test.ts',
+  're-aimed packages/shared/src/events.test.ts',
+  're-aimed packages/shared/src/project.test.ts',
+  're-aimed packages/shared/src/project.test.ts',
+  're-aimed packages/shared/src/role.test.ts',
+  're-aimed packages/shared/src/step-output.ts + packages/shared/src/step-output.test.ts',
+  're-aimed packages/shared/test/corpus.ts + packages/shared/src/ticket.test.ts',
+  'retired .github/scripts/git-identity-sweep.sh',
+  'retired packages/cli/src/templates.test.ts',
+  'retired packages/core/src/adapters/adapters.source.test.ts + packages/core/src/contracts/contracts.source.test.ts + packages/core/src/fanout/fanout.source.test.ts + packages/core/src/lint/lint.source.test.ts + packages/core/src/run-history/run-history.source.test.ts',
+  'retired packages/core/src/backlog/backlog.source.test.ts',
+  'retired packages/core/src/contracts/contracts.source.test.ts',
+  'retired packages/core/src/engine/q0050.source.test.ts',
+  'retired packages/core/src/git-identity.test.ts',
+  'retired packages/core/src/test-command.test.ts',
+  'retired packages/shared/src/constants.test.ts',
+  'retired packages/shared/src/constants.test.ts',
+  'retired packages/shared/src/events.test.ts',
+  'retired packages/shared/src/events.test.ts',
+  'retired packages/shared/src/stages.test.ts',
+  'retired packages/shared/turbo.json + packages/core/turbo.json + packages/cli/turbo.json',
+];
+
+/** How a row is named in {@link ROWS}, so the two spellings cannot drift. */
+const identity = (row: Disposition): string => `${row.verdict} ${row.files.join(' + ')}`;
+
 // ---------------------------------------------------------------------------------------------
-// AC-29 — the two registers compared against the tree, one to one
+// AC-29 — the two registers compared against the tree
 // ---------------------------------------------------------------------------------------------
 
 /** Every read of the tree the workspace still makes, which is {@link EXCLUSIONS}' derived half. */
@@ -656,6 +739,14 @@ describe('Q-0107 AC-30 — no file under packages/** reads anything under the sp
     const files = corpus();
     expect(files.length, 'the packages inventory').toBeGreaterThan(150);
     expect(files.map(([file]) => file), 'this file is scanned like any other').toContain(SELF);
+    // And "the tracked one" is asserted rather than only claimed in the name above, because the
+    // two spellings of `git ls-files` differ in exactly one case — an untracked-unignored file —
+    // so a clause that fires exactly then is complete rather than conditional. Restoring
+    // `--others --exclude-standard` puts a scratch `.ts` somebody left under `packages/` into this
+    // list, and its verdict would then be a property of the checkout (2026-08-30).
+    const tracked = new Set(trackedUnder('packages'));
+    expect(files.map(([file]) => file).filter((file) => !tracked.has(file)), 'an untracked file is not in the commit')
+      .toStrictEqual([]);
   });
 
   test('every site the scan reaches is a registered exclusion carrying its reason', () => {
@@ -756,6 +847,23 @@ describe('Q-0107 AC-29 — the register\'s key set is the tree, and every subjec
 
   test('and no row names a subject the tree does not have', () => {
     expect(stale(treeFiles()), 'a claim about a file that is not there').toStrictEqual([]);
+  });
+
+  test('and this comparison does NOT catch a row dropped from the register, which is why ROWS exists', () => {
+    // The boundary, demonstrated rather than described — Q-0054's device, where the defective
+    // expression was shown PASSING over a fixture rather than called defective in prose. Subject
+    // claims overlap by design: four sites read `src/backlog.js`, so dropping the row that names
+    // one of them leaves the file claimed by its neighbours and this check green. Review round 2
+    // named exactly this, and it is right; what closes it is `ROWS`, one register along, and the
+    // part of it nothing closes is in the header and in the implement report.
+    const dropped = DISPOSITIONS.filter((row) => !row.site.startsWith('packages/shared/src/stages.test.ts'));
+    expect(dropped.length, 'a row is gone').toBe(DISPOSITIONS.length - 1);
+    const claimed = [...new Set([...dropped.flatMap((row) => row.subject),
+      ...liveSites().map((site) => relativeToTree(site.literal))])];
+    expect(unaccounted(treeFiles(), claimed), 'still empty, and that is the limit rather than a pass')
+      .toStrictEqual([]);
+    // Whereas the register that is keyed by the row rather than by its subject does see it.
+    expect(dropped.map(identity).sort(), 'ROWS is what notices').not.toStrictEqual([...ROWS].sort());
   });
 
   test('both directions have teeth, over listings this file builds', () => {
@@ -876,14 +984,24 @@ describe('Q-0107 AC-10 — every dependency is dispositioned, and each verdict n
     }
   });
 
-  test('the class counts are what this ticket did, stated rather than left to be counted', () => {
+  test('no row leaves this register without somebody removing it by name', () => {
+    // Q-0073's *a count is not an identity*, applied to the one property of this register that
+    // nothing in the tree can witness. It is not a check that can fail on its own — both operands
+    // are in this file, which the header says in as many words — it is what makes a contraction an
+    // edit two places wide, one of which names the row that went. That is 079(c) rather than
+    // 079(b), and the distinction is deliberate rather than a shortfall nobody noticed.
+    expect(DISPOSITIONS.map(identity).sort(), 'a row was added or removed').toStrictEqual([...ROWS].sort());
+  });
+
+  test('and the register\'s own arithmetic is pinned to it, so the two cannot drift', () => {
     // A register that reports only "everything is classified" cannot tell a reader whether the
     // change deleted coverage or moved it, which is R-1's question. The shape of the answer is the
     // point: most retirements had a sibling already green in the same test body, two things moved
     // rather than being rewritten, and exactly two sites are kept as tripwires for Q-0103 — the
     // declared input that feeds `spike-parity.test.ts`, and `CI_JOBS`' row for the job the workflow
-    // still declares.
-    const count = (verdict: Verdict): number => DISPOSITIONS.filter((row) => row.verdict === verdict).length;
+    // still declares. Counted off ROWS rather than off DISPOSITIONS, so the arithmetic is a
+    // statement about the pinned list and the test above is what ties that list to the rows.
+    const count = (verdict: Verdict): number => ROWS.filter((row) => row.startsWith(`${verdict} `)).length;
     expect({
       retired: count('retired'),
       're-aimed': count('re-aimed'),
@@ -891,9 +1009,25 @@ describe('Q-0107 AC-10 — every dependency is dispositioned, and each verdict n
       transcribed: count('transcribed'),
       moved: count('moved'),
     }).toStrictEqual({ retired: 14, 're-aimed': 17, kept: 2, transcribed: 0, moved: 2 });
+    expect(ROWS.length, 'and the classes account for every row').toBe(DISPOSITIONS.length);
     // Nothing was transcribed, and that is a finding rather than an omission: 079 permits it only
     // where the value is this workspace's own contract, and every literal in question was evidence
     // ABOUT the deleted tree — which is the case it forbids.
     expect(count('transcribed'), 'no literal was frozen out of the tree that is going').toBe(0);
+  });
+
+  test('the identity register discriminates where a count did not, over rows this file builds', () => {
+    // Both halves of Q-0073's finding, demonstrated rather than cited. A count sees (a) and not (b);
+    // this register sees both, and the measured starting point is that (b) WAS green here — the
+    // whole reason the digit was replaced.
+    const real = DISPOSITIONS.find((row) => row.site.startsWith('packages/shared/src/stages.test.ts'));
+    if (!real) throw new Error('the register no longer holds the row this demonstration is built from');
+    const dropped = DISPOSITIONS.filter((row) => row !== real);
+    expect(dropped.length, 'a row is gone').toBe(DISPOSITIONS.length - 1);
+    expect(dropped.map(identity).sort(), '(a) a row removed').not.toStrictEqual([...ROWS].sort());
+    const swapped = [...dropped, { ...real, files: ['packages/core/src/git/git.test.ts'] }];
+    expect(swapped.length, 'the total is restored').toBe(ROWS.length);
+    expect(swapped.map(identity).sort(), '(b) one row swapped for another, which a count cannot see')
+      .not.toStrictEqual([...ROWS].sort());
   });
 });
