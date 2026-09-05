@@ -1,0 +1,3 @@
+# Q-0101 code review — chore run 2, iteration 2
+
+blocker: backlog/Q-0101-the-mock-end-to-end-s-gate-rollback-and-/dev/chore/run-2/implement-iter-2.md:143 GO-5 requires the git-identity sweep to be sampled N times at the implement branch’s merge base and N times on the implement branch, with failure counts and failing files. The report explicitly says no sample was taken at `edcc7ad`; measurements from other commits cannot substitute for the fixed-commit comparison. Materialise an isolated checkout through an authorised gate/human action and record a matched base sample, or land an erratum changing GO-5 before accepting this change.

@@ -1,13 +1,14 @@
 ---
 id: Q-0101
 title: The mock end-to-end's gate, rollback and register half
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0101/integration
 priority: p2
 created: 2026-09-04
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,30 @@ history:
     stage_after: requirements
     at: 2026-09-04T14:19:20.022Z
     cost: 10.2
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-04T22:17:52.229Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-04T22:54:04.096Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-04T23:30:06.322Z
+    cost: 73.192
 ---
 **Split from Q-0095 at its requirements gate on 2026-09-04**, where the head-of-product loop
 exhausted at limit 1 with the split as its first blocker. Q-0095 keeps the **spawn harness and the

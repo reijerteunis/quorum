@@ -107,6 +107,50 @@ broad, unstable failure count across many files is what a timeout ceiling produc
 and two cores would reach it far sooner than sixteen. This was not reproduced at 1.5x slowdown and
 is not adopted as the cause; it is where the next measurement should aim, on CI's hardware.
 
+## A second instance, in a different test, measured 2026-09-05
+
+**The same shape as the subject above, found while merging Q-0101 and worth recording here rather
+than in that ticket, because the ticket it belongs to is this one.**
+
+Immediately after `harness/Q-0101/integration` merged to `main`, the post-merge verification —
+Q-0072's *"verify forced in both environment rows"* — went **red in the working checkout**:
+`@quorum/cli`'s `build.test.ts` failed Q-0098's AC-19/AC-20 packer-agreement test, *"pnpm pack and
+npm pack disagree on which files @quorum/cli ships"*, one packer seeing 57 files including `dist/`
+and the other 21. Measured at **2 failures in 6** runs.
+
+**The commit is not the variable, again.** Twelve interleaved iterations per arm, each arm a fresh
+clone installed and built so `dist/` exists — the precondition without which the race cannot be
+observed at all:
+
+| arm | commit | clone | runs | failures |
+| --- | --- | --- | --- | --- |
+| post-merge | `8b8781f` | fresh, built | 12 | **0** |
+| pre-merge | `edcc7ad` | fresh, built | 12 | **0** |
+
+The working checkout then stopped reproducing it too — 2 in the first 6, **0 in the next 6**, and 0
+in a further 4. So: a verdict that changed without the tree changing, in a window, and then
+resolved. `main` is green as of this writing, both suites forced 7/7 with 0 cached, and the sweep
+exit 0.
+
+**Why it belongs to this ticket.** It is not the git-identity sweep and not `worktree-lifecycle.test.ts`,
+so it is not the same *defect*. It is the same *class*, and it is the second measured instance of
+this ticket's central claim — that **load is a third term beside the checkout and the account** — now
+in a test whose subject is packaging rather than git identity. A hypothesis that only explains the
+sweep is too narrow.
+
+**What it excludes.** Four candidate causes are measured and excluded across both instances: the
+commit, the checkout shape (bare and populated both), CPU saturation, and a concurrent second suite
+run. What survives is something about a long-lived working checkout under sustained use, which
+neither instance has pinned.
+
+**One methodological warning, recorded because it cost an hour and nearly cost a revert.** The first
+A/B compared a *working tree* against a *fresh clone* and attributed the 2-of-6 difference to the
+commit. Those two differ in far more than the commit, and the second design — cloning both arms —
+removed the confound and reversed the conclusion. **A verdict read off a checkout rather than a
+commit is this ticket's own subject**, and it was reproduced by the investigation into it. The
+smaller sample was p ≈ 0.45 and was reported as not significant at the time; it still pointed the
+wrong way.
+
 ## Why it is p1
 
 `.claude/rules/engineering.md` calls the sweep's subject safety by construction, and Q-0079 built it
