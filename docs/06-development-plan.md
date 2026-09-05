@@ -1176,6 +1176,29 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     `main` was ever built is answering half its own question. **OQ-2 is the one to settle first**:
     a column assuming a CI service would be product knowledge leaking into a product-agnostic tool,
     while a push-lag column assumes only a git remote.
+  - Q-0106 The commands, context files and roles stop naming the spike. *(Child A of Q-0103, opened
+    2026-09-05 at its requirements gate, `draft`.)* **Runs first of three.** Its criteria are AC-1 to
+    AC-7 of Q-0103's merged requirement, numbered continuously across the children so a criterion
+    keeps its name if the cut moves. It exists as its own child because **its `integrate` runs the
+    OLD commands** — `runFlow` takes `config` as a parameter and never re-reads it — which still work
+    because `spike/` is still on disk. `harness.yaml`'s two commands, the comment blocks claiming two
+    suites, `rules.md`, `architecture.md`, the three role files, and **AC-7**, measured at the gate
+    and not a maybe: `developer-tooling`'s `paths:` minus its spike halves is a proper subset of
+    `developer-backend`'s and **excludes `packages/cli`**, the package `architecture.md:29` says the
+    role exists for. **It cannot prove its own commands** — that is Q-0107's `integrate`.
+  - Q-0107 The workspace stops depending on the spike. *(Child B of Q-0103, opened 2026-09-05,
+    `draft`.)* **The child where every judgement lives**, twelve criteria (AC-8 to AC-19) against a
+    ceiling of fifteen. The ruling that created it: **you cannot demonstrate a re-aimed oracle
+    red-before-green once its subject is deleted** — so `spike/` stays for the whole of this child and
+    AC-11 requires every re-aimed site shown red then green against the live tree. Doing this in the
+    change that deletes the tree would verify all twelve by reading, which is *"A check is not
+    established by reading it"* (2026-08-29) arriving at its own funeral.
+    **Nine of the twenty-five dependencies fail silently or not at all** — six subject-less import
+    guards, `step-output.test.ts:61–63` which *requires* production source to carry three `spike/src/`
+    citations, and two sites in a file no candidate gave a criterion. A silent failure is green, which
+    is why decision 035's manual route is **rejected for B** and kept only as a fallback for C.
+    Its dispositions are ruled by *"A check outlives its subject only if it can still fail"*
+    (2026-09-05), which is also the only authority AC-10's `transcribed` verdict has.
     written.
   **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
