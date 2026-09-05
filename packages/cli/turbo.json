@@ -65,6 +65,15 @@
         // `harness/architecture.md` are this ticket's, the last because the disposition register
         // reads it.
         "../../harness/architecture.md",
+        // Q-0107 AC-29 adds the tree that is going away, and it is a LISTING read rather than a
+        // content one: `spike-dependencies.test.ts`'s key set is `git ls-files` over that directory,
+        // so a file added there must be dispositioned and a cached pass would report a register
+        // that had never seen it. Turbo has no names-only input, so this over-declares contents,
+        // which is the direction that package configuration's own comment above prefers — and it
+        // costs nothing while the tree is frozen for the cutover. It does not disturb
+        // `packages/core/turbo.json`'s retained `spike/test/**`: that one is declared for the sole
+        // reader in THAT package, and Q-0103 removes this line, that line and both readers together.
+        "../../spike/**",
         "../../packages/*/src/**",
         "../../packages/*/test/**",
         "../../packages/*/turbo.json",

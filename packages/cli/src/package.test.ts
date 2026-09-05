@@ -166,6 +166,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'packages/shared/src': 'spike-dependencies.test.ts — the same scan, and AC-10\'s evidence for six shared-side dispositions',
     'packages/core/test': 'spike-dependencies.test.ts — the same scan; packages/*/test/** is in the corpus because corpus.ts and repo.ts live there and a read added to either would otherwise be invisible',
     'packages/shared/test': 'spike-dependencies.test.ts — the same, and where corpus.ts\'s three retired spike helpers used to be',
+    spike: 'spike-dependencies.test.ts — Q-0107 AC-29, the disposition register\'s key set is git ls-files over the tree the cutover deletes, so every file in it must be claimed by a verdict, a live read or a registered silence; a listing read rather than a content one, and hashed by nothing else because that tree is outside the workspace entirely',
   };
 
   /**
@@ -194,7 +195,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     '../../pnpm-workspace.yaml',
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
     '../../harness/flows/*.yaml', '../../harness/roles/code-reviewer.md',
-    '../../harness/architecture.md',
+    '../../harness/architecture.md', '../../spike/**',
     '../../packages/*/src/**', '../../packages/*/test/**',
     '../../packages/*/turbo.json', '../../packages/*/package.json',
   ];
