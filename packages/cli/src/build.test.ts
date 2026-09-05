@@ -1600,6 +1600,33 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     return path.resolve(destination, out.trim().split('\n').at(-1)?.trim() ?? '');
   };
 
+  /**
+   * A third-party dependency's installed directory, as a tarball, **copied whole rather than
+   * packed**.
+   *
+   * Why not {@link packWith}: `npm pack` re-applies *publish* semantics — the package's own `files`
+   * field, its ignore files, and whatever `npm-packlist` in the ambient npm makes of them. That is
+   * the right thing for the three packages this suite is *about*, whose declared allow-list is the
+   * subject of AC-19. It is the wrong thing for the offline mirror, which only has to reproduce the
+   * tree pnpm already installed and verified against the lockfile. Re-deriving a publishable file
+   * set there adds a failure mode belonging to neither this repository nor its criteria, and one
+   * that is a property of the machine: a mirror packed on one npm and installed on another can lose
+   * a file the dependency needs at run time, which surfaces as an opaque ERR_MODULE_NOT_FOUND from
+   * inside somebody else's package. `Why: see Q-0104` — CI, 2026-09-05, run 33967146498.
+   *
+   * A copy cannot lose a file, because it consults no rule. The `package/` prefix is the one thing
+   * a tarball must carry, and staging it as a real directory keeps this portable: GNU `tar` spells
+   * the rewrite `--transform` and BSD `tar` spells it `-s`, and this suite runs on both.
+   */
+  const mirror = (name: string, directory: string, destination: string): string => {
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-mirror-'));
+    temporaries.push(staging);
+    fs.cpSync(directory, path.join(staging, 'package'), { recursive: true, dereference: true });
+    const tarball = path.join(destination, `mirror-${name.replace(/[^a-zA-Z0-9]+/g, '-')}.tgz`);
+    execFileSync('tar', ['-czf', tarball, '-C', staging, 'package'], { encoding: 'utf8' });
+    return tarball;
+  };
+
   /** The files a tarball carries, named relative to the package root. */
   const pathsIn = (tarball: string): string[] =>
     execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
@@ -1746,7 +1773,17 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
       for (const dependency of Object.keys(own.dependencies ?? {})) collect(dependency, directory);
     }
     expect(closure.size, 'the third-party closure is empty — the install below would prove less than it appears to').toBeGreaterThan(0);
-    const mirrored = [...closure.values()].map((directory) => packWith('npm', directory, tarballs));
+    const mirrored = [...closure].map(([name, directory]) => mirror(name, directory, tarballs));
+
+    // The mirror is proven complete before it is installed, so a dependency that arrives short says
+    // so here — naming the package and the count — instead of surfacing as ERR_MODULE_NOT_FOUND
+    // from inside it once the binary runs. A check names what it examined (2026-08-27).
+    for (const [name, directory] of closure) {
+      const onDisk = execFileSync('find', [directory, '-type', 'f'], { encoding: 'utf8' })
+        .split('\n').filter(Boolean).length;
+      const inTarball = pathsIn(mirrored[[...closure.keys()].indexOf(name)]).length;
+      expect(inTarball, `the offline mirror of ${name} is short of its installed tree`).toBe(onDisk);
+    }
 
     fs.writeFileSync(path.join(project, 'package.json'),
       JSON.stringify({ name: 'quorum-consumer-fixture', version: '1.0.0', private: true }, null, 2));

@@ -151,6 +151,40 @@ commit is this ticket's own subject**, and it was reproduced by the investigatio
 smaller sample was p ≈ 0.45 and was reported as not significant at the time; it still pointed the
 wrong way.
 
+## CI measured at last, 2026-09-05 — red, but not for this ticket's reason
+
+**The premise above had never been observed.** This ticket says CI *"runs it as two required jobs,
+so CI is red or flaky right now"*. That was an inference from a local sweep failure: `main` was **89
+commits ahead of `origin/main`** and CI had not run since **2026-09-01**, when all seven jobs — both
+sweep cells included — were **green**. Q-0073 recorded the same gap at 15 commits; it reached 89.
+
+Pushed 2026-09-05 (`729dcb3..b26413d`). CI run **33967146498**: three jobs failed —
+`workspace (lint, typecheck, test)` and **both** sweep cells — and **all three failed on the same
+single test**, deterministically:
+
+```
+FAIL src/build.test.ts > Q-0098 AC-19 and AC-20 — the packed set installs outside the
+     workspace with the registry dead, and runs
+ERR_MODULE_NOT_FOUND: .../node_modules/zod/v4/core/json-schema.js
+```
+
+**So CI is red, and this ticket is not why.** The failure is `@quorum/cli`'s packaging fixture, one
+test, three jobs, identical message — not the unstable `@quorum/core` cluster on
+`worktree-lifecycle.test.ts` and `undecided.test.ts` this ticket describes, and not flaky. It is
+**Q-0104**, opened and fixed the same day.
+
+**What that does to this ticket.** The sweep cells fail here *because they run the workspace suite*,
+which contains the broken test — so their red is inherited rather than their own, and nothing in
+this run is evidence about the flake. **The `p1` argument survives on its other half**: a flaky
+oracle trains the reader to re-run until green, which does not depend on a rate. What does not
+survive is *"every push is red or lucky"* as a statement about observed CI, and the body above now
+says so.
+
+**What is still owed here.** The sweep has now been run **35 times locally with no failure** and
+CI's own verdict is uninformative until Q-0104 lands. The next CI run after that fix is the first
+measurement of this ticket's subject on the instrument that matters — two cores rather than sixteen,
+which is where contention was always likeliest and which no local run can stand in for.
+
 ## Why it is p1
 
 `.claude/rules/engineering.md` calls the sweep's subject safety by construction, and Q-0079 built it

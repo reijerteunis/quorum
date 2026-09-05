@@ -1126,6 +1126,34 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     mistake there is caught by the next run failing in its worktree rather than by a test, which is
     why the ticket's ground rule 2 requires them proven by a real `integrate` rather than by reading.
     `docs/decisions/` is **not** edited: an entry describing the spike stays true of when it was
+  - Q-0104 The offline mirror re-packs third-party dependencies and can lose files. *(Opened and
+    fixed 2026-09-05 from CI run 33967146498, `draft`.)* **The first CI run in four days, and the
+    first ever to execute Q-0098's packed-install fixture.** Three of seven jobs failed —
+    `workspace` and **both** sweep cells — all on one test, deterministically:
+    `quorum help` from a packed install dying on `ERR_MODULE_NOT_FOUND` for
+    `zod/v4/core/json-schema.js`. Not a flake and **not Q-0102**, whose subject is an unstable
+    `@quorum/core` cluster.
+    **Four hypotheses were measured and refuted before anything was changed**: the packer (`npm pack`
+    of zod's directory is 718 entries, the file present), npm's version (11.12.1 and 10.9.9 both pack
+    718), Node's version (the fixture passes under 24.15.0 and CI's exact 22.23.2), and a stale
+    installed tree (published `zod@4.4.3` is 718 entries; the store directory is 718 files). **The
+    mechanism is still unidentified**, and the fix does not depend on it: the mirror is *re-derived*
+    rather than copied, so its verdict is a property of the machine that packs it. `npm pack` applies
+    publish semantics — `files`, ignore rules, whatever `npm-packlist` makes of them — which is right
+    for the three packages AC-19 is about and wrong for scaffolding whose only job is to reproduce a
+    tree pnpm already installed. It now copies each dependency whole through a staging directory, and
+    a guard proves each mirrored tarball matches its installed tree **before** the install, so a short
+    mirror names the package and the counts instead of surfacing from inside somebody else's package.
+    Shown red by mutation: *"the offline mirror of ajv is short of its installed tree: expected 465 to
+    be 466"*.
+    **It also corrects two entries on this page by implication.** Q-0098's and Q-0093's both record
+    the packed path as *"verified end to end after the gate"*; both verifications were local, and the
+    path they certified was broken on a clean machine for three days. The entries are history and are
+    not edited — what changes is that this page stops presenting that verification as covering CI.
+    **The root process failure is larger than the defect**: `main` was **89 commits and four days**
+    ahead of `origin/main`, so nothing this month had been validated by CI at all. Q-0073 recorded the
+    same gap at 15 commits. **Nothing checks it**, which is a fifth direction of the drift this page
+    already records four instances of, and the one that hid a broken installation path.
     written.
   **Inherits three obligations**, and the first is now recorded in the ticket itself: (1) Q-0037's OQ-2, ruled 2026-09-01: an occurrence's usage is not a
   roll-up row and is not rendered as one — four measures separately, nulls as `n/a`, no
