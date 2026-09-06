@@ -1,7 +1,7 @@
 ---
 id: Q-0103
 title: "The cutover: delete the spike, retire its CI job and its charter"
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0103/integration
@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-05
 iterations:
   requirements.head-of-product: 2
+  chore.review: 3
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,22 @@ history:
     stage_after: requirements
     at: 2026-09-05T14:34:43.727Z
     cost: 11.205
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-06T13:26:27.952Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-06T13:42:30.020Z
+    cost: 47.639
 ---
 **Q-0010 §5's follow-up, allocated at Q-0101's close per that ticket's GO-4** rather than
 remembered. Every child of the CLI cut is `reviewed` and `main:contained`, so the spike has no

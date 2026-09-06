@@ -22,7 +22,6 @@ about any specific SaaS product.
 ## Working in this repo
 
 - Stack: pnpm + Turborepo, TypeScript strict, Node ≥ 22, Vitest, ESLint. See docs/04-architecture.md for the package map.
-- Until M2 lands, the runnable code is the spike in `spike/` (plain Node ESM). Do not extend the spike beyond M0/M1 needs; port it into `packages/core` instead.
 - Every behaviour change ships with a test. The mock-adapter end-to-end test is the regression suite; keep it green.
 - Never add an API-key path. Adapters run on the vendor CLI's own login. `check()` must refuse if `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `CODEX_API_KEY` is set.
 - Never write to the user's working tree from a flow. Worktrees under `.harness/worktrees/` (run history is the one thing under `.quorum/`), integration branch `harness/<id>/integration`, step branches beside it.
@@ -32,7 +31,10 @@ about any specific SaaS product.
 ## Commands
 
 - `pnpm test` — all tests · `pnpm lint` · `pnpm typecheck`
-- Spike (M0/M1): `node spike/bin/harness.js <init|ticket|board|run|lint|adapters>`
+- `quorum` — the binary, by the two paths this repository claims and tests: in the workspace,
+  `pnpm install && pnpm turbo run build`, then `pnpm exec quorum <init|ticket|board|run|lint|validate|runs|adapters>`;
+  or from a locally packed install, three tarballs installed together. Registry-resolved `npx quorum` is
+  refused while every package is `"private": true` — that is Q-0029's, in M6.
 
 ## Slash commands and agents
 

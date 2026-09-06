@@ -40,3 +40,44 @@ parsed from the file rather than grepped, so AC-22's *"exactly three retained"* 
 commit, which no step of this run can observe: the run merges to `harness/{id}/integration`, and the
 push to `origin/main` is the human's act afterwards. It is discharged at the gate, and Q-0105 is the
 open ticket about nobody checking that.
+
+## E-2 — AC-6 governs `CLAUDE.md`, not AC-24, and the four surviving majors are the human's. 2026-09-06, at the exhaustion gate of run 2.
+
+**Ruling: AC-6 wins.** `CLAUDE.md` is not written by this ticket's implement step, and AC-24's
+clause naming `CLAUDE.md:25,35` is **struck**. Its `README.md:8` half stands and is satisfied.
+
+**The requirement contradicts itself, and the implementer found it rather than picking a side.**
+AC-6 names the file and excludes it — *"`CLAUDE.md` is excluded and stays the human's, being the
+vendor dialect of the canonical harness"* — while AC-24 lists two of its line numbers as work. AC-6
+is the half that **reasons**; AC-24's is a pair of line numbers written before Q-0106 settled the
+role's `paths:`. Same construction as AC-4's *"`.claude/rules/` is named by no criterion … its sync
+is the human's"*: where the author meant a derived surface to be the human's, they said so.
+Corroborated on disk — `harness/roles/developer-generalist.md:3` lists `README.md` and **not**
+`CLAUDE.md`. This is Q-0101 E-3's shape: a merged requirement contradicting itself, ruled at a gate
+rather than resolved by an implementer choosing.
+
+**A requirement may not name a surface its flow cannot write** (2026-08-25). AC-24 did, and this is
+the fourth instance in this repository. Q-0106's AC-6 widened the role by three paths for exactly
+this reason and stopped one file short of the one AC-24 would need.
+
+**All four surviving majors are closed by human commit, never by iteration**, and the implement step
+refused each of them three times **correctly**, with a ground each time:
+
+| finding | surface | why no round could close it |
+| --- | --- | --- |
+| `CLAUDE.md:25`, `:35` | not in the role's `paths:` | excluded by AC-6 by name |
+| `.claude/agents/flow-author.md:6` | `.claude` is not in the role's `paths:` | outside the role entirely |
+| `.claude/settings.json:8`, `:10` | the same | the same |
+
+Round 3 changed no product file and the reviewer wrote *"during the gate-owned synchronization"* — so
+both steps knew. **Fifteenth appearance of a loop handed work no agent in it can perform**, and the
+second on this ticket's own cut after Q-0101's. Q-0083 remains the mechanism owed.
+
+**Sequencing, recorded because it is not obvious.** The four are fixed **after** the merge, not
+before: they describe a repository with no `spike/`, and until `harness/Q-0103/integration` lands on
+`main` that tree still exists. Fixing them first would make `CLAUDE.md` false about the tree it sits
+in — which is precisely the defect Q-0106's spine names, *a description that runs ahead of its
+subject*.
+
+**AC-28 stays an exit condition** (E-1): CI green on the merged commit is observed after the push,
+which is the human's act.
