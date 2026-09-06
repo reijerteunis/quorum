@@ -645,45 +645,55 @@ const DISPOSITIONS: readonly Disposition[] = [
  * in `git-identity.test.ts`, so the comparison is over a multiset.
  */
 const ROWS: readonly string[] = [
-  'kept packages/core/src/test-command.test.ts',
-  'kept packages/core/turbo.json',
-  'moved packages/core/src/backlog/backlog.test.ts + packages/cli/src/ticket.ts',
-  'moved packages/shared/src/flow.test.ts + packages/shared/test/corpus.ts',
-  're-aimed harness/architecture.md',
-  're-aimed packages/cli/src/package.test.ts',
-  're-aimed packages/cli/src/templates.test.ts',
-  're-aimed packages/cli/src/ticket.ts + packages/shared/src/role.ts',
-  're-aimed packages/core/src/git-identity.test.ts',
-  're-aimed packages/core/src/git-identity.test.ts',
-  're-aimed packages/core/src/git-identity.test.ts',
-  're-aimed packages/core/src/lint/lint.test.ts',
-  're-aimed packages/core/src/test-command.test.ts + .github/scripts/git-identity-sweep.sh',
-  're-aimed packages/shared/src/constants.test.ts',
-  're-aimed packages/shared/src/docs.test.ts',
-  're-aimed packages/shared/src/events.test.ts',
-  're-aimed packages/shared/src/project.test.ts',
-  're-aimed packages/shared/src/project.test.ts',
-  're-aimed packages/shared/src/role.test.ts',
-  're-aimed packages/shared/src/step-output.ts + packages/shared/src/step-output.test.ts',
-  're-aimed packages/shared/test/corpus.ts + packages/shared/src/ticket.test.ts',
-  'retired .github/scripts/git-identity-sweep.sh',
-  'retired packages/cli/src/templates.test.ts',
-  'retired packages/core/src/adapters/adapters.source.test.ts + packages/core/src/contracts/contracts.source.test.ts + packages/core/src/fanout/fanout.source.test.ts + packages/core/src/lint/lint.source.test.ts + packages/core/src/run-history/run-history.source.test.ts',
-  'retired packages/core/src/backlog/backlog.source.test.ts',
-  'retired packages/core/src/contracts/contracts.source.test.ts',
-  'retired packages/core/src/engine/q0050.source.test.ts',
-  'retired packages/core/src/git-identity.test.ts',
-  'retired packages/core/src/test-command.test.ts',
-  'retired packages/shared/src/constants.test.ts',
-  'retired packages/shared/src/constants.test.ts',
-  'retired packages/shared/src/events.test.ts',
-  'retired packages/shared/src/events.test.ts',
-  'retired packages/shared/src/stages.test.ts',
-  'retired packages/shared/turbo.json + packages/core/turbo.json + packages/cli/turbo.json',
+  'kept packages/core/src/test-command.test.ts — packages/core/src/test-command.test.ts:511 and the WITHOUT_SPIKE fixture — CI_JOBS\' spike row',
+  'kept packages/core/turbo.json — packages/core/turbo.json:46 — ../../spike/test/**',
+  'moved packages/core/src/backlog/backlog.test.ts + packages/cli/src/ticket.ts — spike/test/q0080-allocation.json — the allocation table both trees read',
+  'moved packages/shared/src/flow.test.ts + packages/shared/test/corpus.ts — packages/shared/src/flow.test.ts — seven tests running spike/src/lint.js, and corpus.ts\'s spikeLintFlow and lintAccepts',
+  're-aimed harness/architecture.md — harness/architecture.md:51 and :78 — the role-table checker and the template-sharing chain',
+  're-aimed packages/cli/src/package.test.ts — packages/cli/src/package.test.ts:161 and :187 — the OUTSIDE row and the declared-input copy',
+  're-aimed packages/cli/src/templates.test.ts — packages/cli/src/templates.test.ts:50 — SPIKE_TEMPLATES and the whole-tree comparison',
+  're-aimed packages/cli/src/ticket.ts + packages/shared/src/role.ts — packages/cli/src/ticket.ts:8 and packages/shared/src/role.ts:30 — two production citations of a moved or replaced subject',
+  're-aimed packages/core/src/git-identity.test.ts — packages/core/src/git-identity.test.ts:217 — spike/test must be in the corpus',
+  're-aimed packages/core/src/git-identity.test.ts — packages/core/src/git-identity.test.ts:249 — the exempt fixture naming a spike test file',
+  're-aimed packages/core/src/git-identity.test.ts — packages/core/src/git-identity.test.ts:33 — CORPUS_FLOOR\'s stated derivation',
+  're-aimed packages/core/src/lint/lint.test.ts — packages/core/src/lint/lint.test.ts:871 — SHIPPED\'s second directory',
+  're-aimed packages/core/src/test-command.test.ts + .github/scripts/git-identity-sweep.sh — packages/core/src/test-command.test.ts:467 — the five-phase literal, matched to the sweep script',
+  're-aimed packages/shared/src/constants.test.ts — packages/shared/src/constants.test.ts — the five base_branch fallback sites in spike/src/engine.js',
+  're-aimed packages/shared/src/docs.test.ts — packages/shared/src/docs.test.ts — TERMINAL_STATUSES read out of spike/src/contracts.js',
+  're-aimed packages/shared/src/events.test.ts — packages/shared/src/events.test.ts — the emitting lines in four spike adapters',
+  're-aimed packages/shared/src/project.test.ts — packages/shared/src/project.test.ts — spike/templates/harness/harness.yaml, four sites',
+  're-aimed packages/shared/src/project.test.ts — packages/shared/src/project.test.ts — withRetry\'s defaults oracled against both trees',
+  're-aimed packages/shared/src/role.test.ts — packages/shared/src/role.test.ts — nothing in the spike reads a role\'s paths',
+  're-aimed packages/shared/src/step-output.ts + packages/shared/src/step-output.test.ts — packages/shared/src/step-output.ts:12,14,16,19 and step-output.test.ts:61-63 — the FOUR-VALIDATIONS block',
+  're-aimed packages/shared/test/corpus.ts + packages/shared/src/ticket.test.ts — packages/shared/test/corpus.ts — frontmatterRegexMatchesSpike, and ticket.test.ts:10',
+  'retired .github/scripts/git-identity-sweep.sh — .github/scripts/git-identity-sweep.sh:117 and :119-121 — the spike install and suite phases',
+  'retired packages/cli/src/templates.test.ts — packages/cli/src/templates.test.ts — link 2 of the chain holds today',
+  'retired packages/core/src/adapters/adapters.source.test.ts + packages/core/src/contracts/contracts.source.test.ts + packages/core/src/fanout/fanout.source.test.ts + packages/core/src/lint/lint.source.test.ts + packages/core/src/run-history/run-history.source.test.ts — packages/core/src/{adapters,contracts,fanout,lint,run-history}/*.source.test.ts — five line scans for the substring',
+  'retired packages/core/src/backlog/backlog.source.test.ts — packages/core/src/backlog/backlog.source.test.ts:60 — parsed specifiers over all of coreSourceFiles()',
+  'retired packages/core/src/contracts/contracts.source.test.ts — packages/core/src/contracts/contracts.source.test.ts:185 — the resolved ajv path must not contain the word',
+  'retired packages/core/src/engine/q0050.source.test.ts — packages/core/src/engine/q0050.source.test.ts:109 — the engine folder imports no spike specifier',
+  'retired packages/core/src/git-identity.test.ts — packages/core/src/git-identity.test.ts:28 — the spike/test corpus row',
+  'retired packages/core/src/test-command.test.ts — packages/core/src/test-command.test.ts:52-57, :87, :93 — spikeSources() and its two consumers',
+  'retired packages/shared/src/constants.test.ts — packages/shared/src/constants.test.ts — six tests\' spike halves, thirteen spikeSource calls',
+  'retired packages/shared/src/constants.test.ts — packages/shared/src/constants.test.ts — the spike\'s default verdict path',
+  'retired packages/shared/src/events.test.ts — packages/shared/src/events.test.ts — spike/src/engine.js\'s onEvent: (e) => ui.trace(step.id, e)',
+  'retired packages/shared/src/events.test.ts — packages/shared/src/events.test.ts — the six ui methods in spike/bin/harness.js',
+  'retired packages/shared/src/stages.test.ts — packages/shared/src/stages.test.ts — the exported tuple deep-equals the spike declaration',
+  'retired packages/shared/turbo.json + packages/core/turbo.json + packages/cli/turbo.json — packages/{shared,core,cli}/turbo.json — six of the seven declared spike inputs',
 ];
 
-/** How a row is named in {@link ROWS}, so the two spellings cannot drift. */
-const identity = (row: Disposition): string => `${row.verdict} ${row.files.join(' + ')}`;
+/**
+ * How a row is named in {@link ROWS}, so the two spellings cannot drift.
+ *
+ * **The site is part of the name, and that is the whole point of the register.** Without it a row
+ * reduces to verdict-plus-files, five of the thirty-five collapse onto four such values, and a row
+ * can be replaced by a different site carrying the same verdict and files while `ROWS`, the
+ * site-uniqueness check and the evidence check all stay green — so the disposed half could silently
+ * lose a site, which is the failure `ROWS` exists to make loud. `Why: see requirements/errata.md
+ * E-1`, which rules that half a *visible* register and rests on this being an identity rather than
+ * a multiset — Q-0073's *"a count is not an identity"*, one register along.
+ */
+const identity = (row: Disposition): string => `${row.verdict} ${row.files.join(' + ')} — ${row.site}`;
 
 // ---------------------------------------------------------------------------------------------
 // AC-29 — the two registers compared against the tree
@@ -864,6 +874,30 @@ describe('Q-0107 AC-29 — the register\'s key set is the tree, and every subjec
       .toStrictEqual([]);
     // Whereas the register that is keyed by the row rather than by its subject does see it.
     expect(dropped.map(identity).sort(), 'ROWS is what notices').not.toStrictEqual([...ROWS].sort());
+  });
+
+  test('and ROWS is an identity: a site swapped for another with the same verdict and files fails', () => {
+    // The check on the check, and the reason `identity` carries the site. Five of the thirty-five
+    // rows share a verdict-plus-files value, so under the previous spelling a row could be replaced
+    // by a DIFFERENT site with the same verdict and files and nothing here noticed — site
+    // uniqueness passes, because the substitute is unique; the evidence check passes, because it
+    // reads the substitute's own evidence; and ROWS passed, because the reduced value was unchanged.
+    // That is the disposed half silently losing a site, which is what E-1's ruling rests on it not
+    // being able to do.
+    const collapsed = (row: Disposition): string => `${row.verdict} ${row.files.join(' + ')}`;
+    const reduced = DISPOSITIONS.map(collapsed);
+    expect(new Set(reduced).size, 'the previous spelling was not an identity, which is why this test exists')
+      .toBeLessThan(DISPOSITIONS.length);
+
+    const victim = DISPOSITIONS.findIndex((row, i) => reduced.indexOf(collapsed(row)) !== i);
+    expect(victim, 'a row sharing another row\'s reduced value').toBeGreaterThan(-1);
+    const substituted = DISPOSITIONS.map((row, i) =>
+      i === victim ? { ...row, site: `${row.site} (substituted)` } : row);
+
+    // Unchanged under the spelling that dropped the site, and red under the one that keeps it.
+    expect(substituted.map(collapsed).sort(), 'the substitution is invisible without the site')
+      .toStrictEqual([...reduced].sort());
+    expect(substituted.map(identity).sort(), 'and visible with it').not.toStrictEqual([...ROWS].sort());
   });
 
   test('both directions have teeth, over listings this file builds', () => {
