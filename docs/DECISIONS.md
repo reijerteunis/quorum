@@ -144,3 +144,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-05
 
 - [A check outlives its subject only if it can still fail](decisions/079-a-check-outlives-its-subject-only-if-it-can-still-fail.md)
+
+## 2026-09-06
+
+- [The board reports push lag, and never a CI conclusion](decisions/080-the-board-reports-push-lag-and-never-a-ci-conclusion.md)
