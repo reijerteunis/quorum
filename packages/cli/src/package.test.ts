@@ -158,7 +158,15 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'harness/harness.yaml': 'build.test.ts — Q-0097 AC-14, commands.install and commands.test grew no build phase',
     'harness/flows': 'lint.test.ts — Q-0091 AC-5, the shipped flow directory is copied into a fixture and asserted to lint clean, which is `q0033-surface.js` S1.3; and board.test.ts — Q-0099 AC-3, the same directory copied into a fixture to prove the requirements column\'s hint is `chore` today',
     packages: 'validate.test.ts — Q-0091 AC-9, every workspace package\'s src is walked to prove the frozen skip notice has exactly one copy under packages/**',
-    'spike/templates/harness': 'templates.test.ts — Q-0093 AC-4, the shipped template tree this package carries is asserted byte-identical to the spike\'s in both directions, and link 2 of that chain reads harness/flows beside it',
+    'harness/roles/code-reviewer.md': 'templates.test.ts — Q-0093 AC-4 as Q-0107 AC-14 re-aims it: the byte-shared set is the flow directory above and this one role, so the shipped template tree is compared against what this repository runs rather than against the spike\'s copy of it, which Q-0103 deletes',
+    'harness/architecture.md': 'spike-dependencies.test.ts — Q-0107 AC-10, the disposition register requires the two sentences that named machinery this ticket replaced to name what replaced it, in the document every chore implement step is fed at run time',
+    'packages/core/turbo.json': 'spike-dependencies.test.ts — Q-0107 AC-30, the one declared spike input AC-17 keeps, scanned as a read position like any other and registered as an exclusion with its sole reader named',
+    'packages/shared/turbo.json': 'spike-dependencies.test.ts — Q-0107 AC-10, the six declared inputs that went with their last readers',
+    'packages/core/src': 'spike-dependencies.test.ts — Q-0107 AC-29/AC-30, every tracked source file under packages/ is scanned for a read position naming the spike, and AC-10\'s named evidence is read out of eight files here',
+    'packages/shared/src': 'spike-dependencies.test.ts — the same scan, and AC-10\'s evidence for six shared-side dispositions',
+    'packages/core/test': 'spike-dependencies.test.ts — the same scan; packages/*/test/** is in the corpus because corpus.ts and repo.ts live there and a read added to either would otherwise be invisible',
+    'packages/shared/test': 'spike-dependencies.test.ts — the same, and where corpus.ts\'s three retired spike helpers used to be',
+    spike: 'spike-dependencies.test.ts — Q-0107 AC-29, the disposition register\'s key set is git ls-files over the tree the cutover deletes, so every file in it must be claimed by a verdict, a live read or a registered silence; a listing read rather than a content one, and hashed by nothing else because that tree is outside the workspace entirely',
   };
 
   /**
@@ -176,15 +184,20 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
    * walks, which no edge covers either. That glob over-declares `core` and `shared`, and the
    * alternative is a scan whose verdict can go stale behind a cache hit.
    *
-   * Q-0093's one is the same shape: `spike/` is hashed by nothing here — the spike is outside the
-   * workspace's dependency graph entirely — so an edited template would leave `templates.test.ts`
-   * reporting byte identity from a replay of a comparison it never made.
+   * Q-0093's one is the same shape and Q-0107 AC-14 moved it: it was `spike/templates/harness/**`,
+   * hashed by nothing here because that tree is outside the workspace's dependency graph entirely,
+   * and it is `harness/roles/code-reviewer.md` now, hashed by nothing here because `harness/` is
+   * not a package. Either way an edit to the other half of the comparison must move this hash, or
+   * `templates.test.ts` reports byte identity from a replay of a comparison it never made.
    */
   const DECLARED = [
     '../../pnpm-lock.yaml', '../../package.json', '../../turbo.json', '../../.gitignore',
     '../../pnpm-workspace.yaml',
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
-    '../../harness/flows/*.yaml', '../../packages/*/src/**', '../../spike/templates/harness/**',
+    '../../harness/flows/*.yaml', '../../harness/roles/code-reviewer.md',
+    '../../harness/architecture.md', '../../spike/**',
+    '../../packages/*/src/**', '../../packages/*/test/**',
+    '../../packages/*/turbo.json', '../../packages/*/package.json',
   ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {

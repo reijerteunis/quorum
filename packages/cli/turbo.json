@@ -36,12 +36,14 @@
     // and the four scaffold packages the scan also reads arrive through nothing at all, so the
     // choice is between over-declaring two and under-declaring four.
     //
-    // Q-0093 adds one. `src/templates.test.ts` asserts that this package's own
-    // `templates/harness/**` is byte-identical to `spike/templates/harness/**` in both directions,
-    // which is what stops an adopter's first `harness/flows` being a stale copy of the shipped ones.
-    // This package's half of that comparison is covered by `$TURBO_DEFAULT$`, which keeps the
-    // package's own tracked files; the spike's half is hashed by nothing at all, so an edit there
-    // must move this task's hash or the guard reports agreement from a replay.
+    // Q-0093 adds one, and Q-0107 AC-17 re-aims it. `src/templates.test.ts` asserts that this
+    // package's own `templates/harness/**` is byte-identical to the byte-shared set in both
+    // directions, which is what stops an adopter's first `harness/flows` being a stale copy of the
+    // shipped ones. That set was `spike/templates/harness/**` and is `harness/flows/*.yaml` plus
+    // `harness/roles/code-reviewer.md` now — the first was already declared, for `src/lint.test.ts`.
+    // This package's half of the comparison is covered by `$TURBO_DEFAULT$`, which keeps the
+    // package's own tracked files; the other half is hashed by nothing else, so an edit there must
+    // move this task's hash or the guard reports agreement from a replay.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -54,8 +56,28 @@
         "../../.github/scripts/git-identity-sweep.sh",
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
+        "../../harness/roles/code-reviewer.md",
+        // Q-0107 AC-29/AC-30 add the rest of the packages tree and one document.
+        // `src/spike-dependencies.test.ts` scans every tracked source file under `packages/` for a
+        // read position naming the spike — so a read ADDED anywhere in the workspace must move this
+        // task's hash, or the guard reports a clean tree from a replay of a scan it never ran. The
+        // `src` glob was already here for `src/validate.test.ts`; `test/**`, the two manifests and
+        // `harness/architecture.md` are this ticket's, the last because the disposition register
+        // reads it.
+        "../../harness/architecture.md",
+        // Q-0107 AC-29 adds the tree that is going away, and it is a LISTING read rather than a
+        // content one: `spike-dependencies.test.ts`'s key set is `git ls-files` over that directory,
+        // so a file added there must be dispositioned and a cached pass would report a register
+        // that had never seen it. Turbo has no names-only input, so this over-declares contents,
+        // which is the direction that package configuration's own comment above prefers — and it
+        // costs nothing while the tree is frozen for the cutover. It does not disturb
+        // `packages/core/turbo.json`'s retained `spike/test/**`: that one is declared for the sole
+        // reader in THAT package, and Q-0103 removes this line, that line and both readers together.
+        "../../spike/**",
         "../../packages/*/src/**",
-        "../../spike/templates/harness/**"
+        "../../packages/*/test/**",
+        "../../packages/*/turbo.json",
+        "../../packages/*/package.json"
       ]
     }
   }

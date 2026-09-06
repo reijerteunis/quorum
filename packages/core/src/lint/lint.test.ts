@@ -7,14 +7,17 @@
 // every one of them was obtained by RUNNING spike/src/lint.js rather than transcribed by eye. The
 // merged requirement records what happens otherwise: it introduced a defect into message 12 while
 // copying it.
+import fs from 'node:fs';
 import path from 'node:path';
 
+import { flowSchema } from '@quorum/shared';
+import YAML from 'yaml';
 import { afterAll, describe, expect, test } from 'vitest';
 
 import {
   FlowError, flattenSteps, lintDirectory, lintFlow, lintFlowDirectory, validateFlowDirectory,
 } from './lint.js';
-import { repoRoot } from '../../test/corpus.js';
+import { repoFile, repoRoot } from '../../test/corpus.js';
 import { removeTempDirs, tempDir, write } from '../../test/repo.js';
 
 afterAll(removeTempDirs);
@@ -868,7 +871,18 @@ describe('AC-10 — lintDirectory is presentation-free, and the printed bytes ar
 });
 
 describe('AC-11 — every shipped flow still lints clean, through the ported code', () => {
-  const SHIPPED = ['harness/flows', 'spike/templates/harness/flows'];
+  /**
+   * The two flow directories this repository keeps: the ones its own runs load, and the ones an
+   * adopter's first `quorum init` copies.
+   *
+   * Q-0107 AC-14 — `re-aimed`. The second was `spike/templates/harness/flows` until then, and it
+   * was link 2 of a three-link chain: `packages/cli/templates` ≡ `spike/templates` (by
+   * `packages/cli/src/templates.test.ts`), `spike/templates` ≡ `harness/flows` (here), and
+   * `harness/flows` carries the scoping rule (by `packages/shared/src/flow.test.ts`). Q-0103
+   * deletes the middle link, so the chain becomes one direct comparison rather than losing a step:
+   * this pair now names the copy that ships, which is also the one the property is about.
+   */
+  const SHIPPED = ['harness/flows', 'packages/cli/templates/harness/flows'];
 
   test('both directories hold six flows and none is refused', () => {
     const seen: Record<string, string[]> = {};
@@ -994,5 +1008,209 @@ describe('AC-12 — FlowError, and the nine preserved defects', () => {
     // A zod parse at the top of `lintFlow` would refuse this and replace sixteen messages with a
     // path like `steps[0].max_turns`. See AC-1 and docs/DECISIONS.md, 2026-08-25.
     expect(lintFlow({ consumes: 'a', produces: 'b', cross_vendor: 42, steps: [{ id: 42, adapter: 42, gate: 42, max_turns: 'many' }] })).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The property, asserted against the real linter rather than against a reading of it.
+//
+// **Q-0107 AC-9/AC-10 — `moved`, from `packages/shared/src/flow.test.ts`.** It stood there and
+// reached the real `lintFlow` by importing `spike/src/lint.js` through a file URL, because that was
+// the only linter `packages/shared` could execute: the dependency direction is `core → shared` and
+// never the reverse (04-architecture.md), so this package's linter was out of reach from there.
+// Q-0103 deletes the spike, and the property has no counterpart to re-aim at from that side — so
+// the tests come to the linter rather than the linter going to the tests. Nothing about them
+// changed except which `lintFlow` they run and where the citations point.
+//
+// `requirements/errata.md` E-1 (2026-08-25) supersedes Q-0041 AC-3's original wording. The property
+// is about PRESENCE — "lint succeeding implies the schema requires no key that is absent" — and the
+// type divergence below is the boundary E-1 draws, asserted as `lint accepts / schema rejects` and
+// named as such. It is not a list of exceptions to be argued down one at a time: three review
+// rounds were spent on that, from reading `lintFlow` rather than running it.
+//
+// Every verdict here comes from `./lint.js` itself, called rather than transcribed. If the linter
+// changes, this file fails rather than continuing to assert a property about a linter that no
+// longer exists.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Whether the real `lintFlow` accepts a flow object.
+ *
+ * A `FlowError` is a refusal and is the answer; anything else thrown is not, and is re-raised
+ * rather than counted as one — a linter that crashed has not accepted or rejected anything, and
+ * reading a crash as "rejected" is the conflation the containment decision of 2026-08-24 forbids in
+ * its own domain. Moved from `packages/shared/test/corpus.ts`, whose only callers these tests were.
+ */
+function lintAccepts(flow: unknown): boolean {
+  try {
+    return lintFlow(flow) === true;
+  } catch (error) {
+    if (error instanceof FlowError) return false;
+    throw error;
+  }
+}
+
+/**
+ * A shipped flow, parsed the way the engine parses it.
+ *
+ * The loader assigns `flow.file = file` onto the parsed object BEFORE lint or anything else sees
+ * it, so every corpus flow is read with the injected key included: that is the object the rest of
+ * the product actually holds.
+ */
+function loadAsTheEngineDoes(file: string): Record<string, unknown> {
+  const flow = YAML.parse(repoFile(file)) as Record<string, unknown>;
+  flow.file = file;
+  return flow;
+}
+
+/** The shipped flow files, relative to the repository root, and never an empty list. */
+function shippedFlows(): string[] {
+  const dir = 'harness/flows';
+  const files = fs.readdirSync(path.join(repoRoot, dir))
+    .filter((name) => name.endsWith('.yaml')).sort().map((name) => `${dir}/${name}`);
+  if (!files.length) throw new Error(`corpus empty: ${dir} holds no flow — this test proves nothing without one`);
+  return files;
+}
+
+describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no absent key is required', () => {
+  /** Flows the real `lintFlow` accepts. Each must therefore parse, unchanged. */
+  const PRESENCE_CASES: [string, Record<string, unknown>][] = [
+    ['no name — the refusal header prints `flow.name ?? flow.file`',
+      { consumes: 'green', produces: 'reviewed', steps: [] }],
+    ['no steps — `flattenSteps(steps = [])` defaults the key away',
+      { name: 'x', consumes: 'green', produces: 'reviewed' }],
+    ['neither', { consumes: 'green', produces: 'reviewed' }],
+    ['the loader-injected `file`, which is in no YAML file',
+      { consumes: 'green', produces: 'reviewed', file: '/abs/harness/flows/review.yaml' }],
+    ['a key nothing reads', { consumes: 'green', produces: 'reviewed', notes: 'hand-added' }],
+    ['stages outside the ten-member list — lint.ts:245 checks presence only',
+      { name: 'x', consumes: 'custom', produces: 'custom-next', steps: [] }],
+    ['a gate step with no id — chore.yaml:58',
+      { consumes: 'green', produces: 'reviewed', steps: [{ gate: 'human', reason: 'approve' }] }],
+    ['a script step with no `run` — lint has no rule for it',
+      { consumes: 'red', produces: 'green', steps: [{ id: 's', type: 'script' }] }],
+    ['an agent step carrying nothing but an id',
+      { consumes: 'draft', produces: 'requirements', steps: [{ id: 'a' }] }],
+  ];
+
+  /**
+   * The same flow written once per step kind, each with its step carrying NO id.
+   *
+   * `lintFlow` requires an id on none of them: it gathers ids with `steps.filter((step) => step.id)`
+   * (lint.ts:171), so an id-less step is absent from the duplicate-id check and no other rule in
+   * the function looks for one. Until Q-0041 iteration 5 the schema required `id` on the agent,
+   * script, integrate and fan-out kinds — and `parallel` members inherited the requirement through
+   * `agentStepSchema` — which is four presence rules lint does not have, and the exact failure E-1
+   * names. The gate step was never the exception it looked like; it was the only kind that had been
+   * checked.
+   *
+   * Each row carries whatever else its kind needs to lint clean (`branches` on integrate, a `step:`
+   * template on fan-out), so the only thing under test is the missing id.
+   */
+  const ID_LESS_CASES: [string, Record<string, unknown>][] = [
+    ['a plain agent step',
+      { consumes: 'a', produces: 'b', steps: [{ role: 'r', adapter: 'claude' }] }],
+    ['a `parallel` member',
+      { consumes: 'a', produces: 'b', steps: [{ parallel: [{ role: 'r', adapter: 'claude' }, { role: 'r', adapter: 'codex' }] }] }],
+    ['a script step',
+      { consumes: 'a', produces: 'b', steps: [{ type: 'script', run: 'pnpm test' }] }],
+    ['an integrate step',
+      { consumes: 'a', produces: 'b', steps: [{ type: 'integrate', branches: ['harness/{id}/implement'] }] }],
+    ['a fan-out step',
+      { consumes: 'a', produces: 'b', steps: [{ fan_out: { by: 'role' }, step: { role: 'developer-{role}' } }] }],
+    ['a gate step — chore.yaml:58, the one kind that was already right',
+      { consumes: 'a', produces: 'b', steps: [{ gate: 'human', reason: 'approve' }] }],
+  ];
+
+  /**
+   * Flows the real `lintFlow` also accepts, and `flowSchema` rejects — because `lintFlow`
+   * type-checks almost nothing: where a value reaches it at all it reaches `String()` or
+   * `.includes()`, which accept anything. This is E-1's boundary, in the direction E-1 chose:
+   * describing what a value may be is `packages/shared`'s reason to exist, and closing the gap the
+   * other way means `z.unknown()` on every field.
+   */
+  const TYPE_DIVERGENCE_CASES: [string, Record<string, unknown>][] = [
+    ['a step adapter that is a number', { consumes: 'a', produces: 'b', steps: [{ id: 'a', adapter: 42 }] }],
+    ['a step id that is a number', { consumes: 'a', produces: 'b', steps: [{ id: 42 }] }],
+    ['a gate that is a number', { consumes: 'a', produces: 'b', steps: [{ gate: 42 }] }],
+    ['`cross_vendor` that is a number', { consumes: 'a', produces: 'b', cross_vendor: 42, steps: [] }],
+    ['a bare string where a step object belongs', { consumes: 'a', produces: 'b', steps: ['just-a-string'] }],
+    ['`max_turns` that is a word', { consumes: 'a', produces: 'b', steps: [{ id: 'a', max_turns: 'many' }] }],
+  ];
+
+  test('presence: every flow the real lintFlow accepts parses, unchanged', () => {
+    for (const [why, flow] of PRESENCE_CASES) {
+      expect(lintAccepts(flow), `lintFlow must accept: ${why}`).toBe(true);
+      const result = flowSchema.safeParse(flow);
+      expect(result.error?.issues ?? [], `schema must accept: ${why}`).toEqual([]);
+      expect(result.data, `schema must not alter: ${why}`).toEqual(flow);
+    }
+  });
+
+  test('presence: no step kind requires an id, because lintFlow requires one on none of them', () => {
+    for (const [what, flow] of ID_LESS_CASES) {
+      expect(lintAccepts(flow), `lintFlow accepts ${what} with no id — that is the premise`).toBe(true);
+      const result = flowSchema.safeParse(flow);
+      expect(result.error?.issues ?? [], `the schema must accept ${what} with no id`).toEqual([]);
+      expect(result.data, `the schema must not alter ${what}`).toEqual(flow);
+    }
+  });
+
+  test('presence: the six shipped flows lint clean and parse, as the engine hands them over', () => {
+    const files = shippedFlows();
+    expect(files.length, 'the shipped set is six flows').toBe(6);
+    for (const file of files) {
+      const flow = loadAsTheEngineDoes(file);
+      expect(lintAccepts(flow), `${path.basename(file)} must lint clean`).toBe(true);
+      expect(flowSchema.parse(flow), `${path.basename(file)} must parse unchanged`).toEqual(flow);
+    }
+  });
+
+  test('types: the boundary E-1 draws — lint accepts these, the schema rejects them', () => {
+    for (const [why, flow] of TYPE_DIVERGENCE_CASES) {
+      expect(lintAccepts(flow), `lintFlow accepts ${why} — that is the premise`).toBe(true);
+      expect(flowSchema.safeParse(flow).success, `the schema rejects ${why} — that is the boundary`).toBe(false);
+    }
+  });
+
+  test('`consumes` and `produces` stay required, because lint requires them too', () => {
+    // lint.ts:245 pushes "flow needs consumes/produces", so requiring them adds no rule.
+    expect(lintAccepts({})).toBe(false);
+    expect(flowSchema.safeParse({}).success).toBe(false);
+    expect(lintAccepts({ consumes: 'a', steps: [] })).toBe(false);
+    expect(flowSchema.safeParse({ consumes: 'a', steps: [] }).success).toBe(false);
+  });
+
+  test('`steps` present but not an array is not part of the divergence — lint does not accept it either', () => {
+    // E-1 names this shape explicitly. `flattenSteps` throws a raw TypeError — NOT a FlowError — on
+    // both, so `lintAccepts` re-raises rather than counting a crash as a refusal, and the schema
+    // narrows nothing by rejecting them.
+    for (const steps of [null, [null]]) {
+      expect(() => lintAccepts({ name: 'x', consumes: 'a', produces: 'b', steps })).toThrow(TypeError);
+      expect(flowSchema.safeParse({ name: 'x', consumes: 'a', produces: 'b', steps }).success).toBe(false);
+    }
+  });
+
+  test('no zod issue replaces a lint message: the semantic refusals stay lint\'s', () => {
+    // Q-0041 AC-4 rule 1, which E-1 leaves untouched. Each of these is a flow the SCHEMA accepts and
+    // LINT refuses — the opposite direction from the property, and the one that must keep working,
+    // since a schema that rejected first would take the sixteen messages out of `quorum lint`'s
+    // output.
+    const semantic: [string, Record<string, unknown>][] = [
+      ['duplicate step ids', { consumes: 'a', produces: 'b', steps: [{ id: 'x' }, { id: 'x' }] }],
+      ['a goto that resolves nowhere', { consumes: 'a', produces: 'b', steps: [{ id: 'x', on_fail: { goto: 'nope', max_iterations: 1, on_exhausted: 'gate' } }] }],
+      ['on_exhausted that is not "gate"', { consumes: 'a', produces: 'b', steps: [{ id: 'x', on_fail: { goto: 'x', max_iterations: 1, on_exhausted: 'abort' } }] }],
+      ['an `iterations.`-prefixed counter', { consumes: 'a', produces: 'b', steps: [{ id: 'x', on_fail: { goto: 'x', counter: 'iterations.review', max_iterations: 1, on_exhausted: 'gate' } }] }],
+      ['a verdict that routes nowhere', { consumes: 'a', produces: 'b', steps: [{ id: 'x', output: { verdict: 'approve|revise' } }] }],
+      ['an integrate step with no branches', { consumes: 'a', produces: 'b', steps: [{ id: 'i', type: 'integrate' }] }],
+      ['a fan_out with no step template', { consumes: 'a', produces: 'b', steps: [{ id: 'f', fan_out: { by: 'role' } }] }],
+      ['an out-of-class input.diff range', { consumes: 'a', produces: 'b', steps: [{ id: 'x', input: { diff: 'main...some/other/ref' } }] }],
+      ['a deploy flow with no human-locked gate', { consumes: 'a', produces: 'deployed', steps: [{ gate: 'human' }] }],
+    ];
+    for (const [why, flow] of semantic) {
+      expect(lintAccepts(flow), `lint must refuse ${why}`).toBe(false);
+      const result = flowSchema.safeParse(flow);
+      expect(result.error?.issues ?? [], `the schema must NOT refuse ${why} — that message is lint's`).toEqual([]);
+    }
   });
 });

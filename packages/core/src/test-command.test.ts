@@ -49,17 +49,11 @@ const codeLines = (text: string): string[] =>
     return trimmed !== '' && !trimmed.startsWith('*') && !trimmed.startsWith('//') && !trimmed.startsWith('/*');
   });
 
-/** Every `.js` under `spike/src`, at any depth, as `[path below the repository root, text]`. */
-function spikeSources(dir = path.join(repoRoot, 'spike/src'), prefix = 'spike/src'): [string, string][] {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const files = entries.flatMap((entry): [string, string][] => {
-    const key = `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) return spikeSources(path.join(dir, entry.name), key);
-    return entry.name.endsWith('.js') ? [[key, fs.readFileSync(path.join(dir, entry.name), 'utf8')]] : [];
-  });
-  if (!files.length) throw new Error(`corpus empty: ${prefix} holds no .js file — this test proves nothing without one`);
-  return files;
-}
+// Q-0107 AC-16 — `retired`. `spikeSources()` walked `spike/src` and fed two of the three tests
+// below, on the reasoning that the spike was *"the engine that runs integrate today"*. Since
+// Q-0106 it is not: `harness.yaml`'s `commands.test` no longer runs that tree, and Q-0103 deletes
+// it. The property — no engine names a test runner in code, and neither parses a runner's output —
+// is asserted over `coreSourceFiles()` in the tests that remain, which is the engine that runs.
 
 describe('AC-5 — no engine coupling: the runner is configuration, never code', () => {
   /**
@@ -83,14 +77,10 @@ describe('AC-5 — no engine coupling: the runner is configuration, never code',
     sweep(coreSourceFiles());
   });
 
-  test('nothing in spike/src does either — the engine that runs integrate today', () => {
-    sweep(spikeSources());
-  });
-
-  test('and neither tree parses a runner\'s output or counts its cache hits', () => {
+  test('and it parses no runner\'s output and counts no cache hits', () => {
     // The two shapes this ticket refused: read a cache-hit signal out of the output, or inject the
     // one tool's environment variable. Both put a vendor's output format inside the engine.
-    for (const [name, text] of [...coreSourceFiles(), ...spikeSources()]) {
+    for (const [name, text] of coreSourceFiles()) {
       for (const needle of ['cache hit', 'Cached:', 'FULL TURBO']) {
         expect(text.includes(needle), `${name} must not read a runner's cache report: ${needle}`).toBe(false);
       }
@@ -462,11 +452,29 @@ describe('Q-0079 — the hostile-environment sweep is defined once and CI runs b
     expect(script, 'a local or worktree identity would make the sweep permissive').toContain('--"${scope}" --get');
   });
 
-  test('each of the five phases is named, so a failure says which one', () => {
+  test('every phase the script names is a registered one, so a failure says which one', () => {
+    // Q-0107 AC-16. This was a hand-written five-name literal iterated with `toContain`, which is
+    // the fail-OPEN shape Q-0051 found in `q0050.source.test.ts`: it fails when a phase is removed
+    // and says nothing when one is added, so the two sides could only ever disagree in one
+    // direction. It is derived from the script now and compared against a register, so a phase
+    // added, removed or renamed all fail — and the register is what records that AC-16 dropped
+    // `spike suite`, per *"A check outlives its subject only if it can still fail"* (2026-09-05),
+    // class (c).
+    const PHASES = {
+      isolation: 'the environment is put into the hostile state, and says so if it cannot be',
+      probe: 'the negative and positive probes prove the environment discriminates before it certifies',
+      install: 'pnpm install --frozen-lockfile, byte-identically what the workspace job runs',
+      'workspace suite': 'pnpm turbo run test --force, the suite whose verdict this sweep is about',
+    };
     const script = sweep();
-    for (const phase of ['isolation', 'probe', 'install', 'spike suite', 'workspace suite']) {
-      expect(script, `phase '${phase}'`).toContain(`phase="${phase}"`);
-    }
+    //
+    // One clause, not two. A floor beside it — `expect(named.length).toBeGreaterThan(3)` — is
+    // exactly the assertion Q-0050 round 5 found could not fail unless the register above it had
+    // already failed: an extraction that stopped matching yields an empty list, which the equality
+    // below refuses on its own.
+    const named = [...script.matchAll(/^phase="([^"]+)"$/gm)].map(([, phase]) => phase);
+    expect(named, 'the script names exactly the registered phases, in order')
+      .toStrictEqual(Object.keys(PHASES));
     expect(script, 'an install that did not complete leaves its suite UNRUN, not passing').toContain('UNRUN');
   });
 

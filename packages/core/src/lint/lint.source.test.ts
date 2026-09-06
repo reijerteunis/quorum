@@ -30,9 +30,24 @@ const moduleSources = (): [string, string][] => {
   return files;
 };
 
-/** Every module specifier the file imports from, in source order. */
+/**
+ * Every module specifier the file reaches for, in source order — three shapes.
+ *
+ * `from '…'` was all it read. Q-0107 AC-12 added the other two, and both are shapes the spike line
+ * scan below it caught and this loop did not: that scan read every `import`/`export`/`require(`
+ * LINE for the word, where this iterated PARSED specifiers of one shape. Retiring it without
+ * widening this would have lost two shapes rather than moving them, which is the *"deleting
+ * coverage under cover of a re-aim"* failure Q-0107 R-1 names.
+ *
+ * **The side-effect form is not hypothetical, and finding it is what AC-11 bought.** The first
+ * attempt at this widening added `require(` alone; demonstrating it red against the live tree —
+ * `import '../../../../spike/src/lint.js';` in `lint.ts`, which resolves — left the suite GREEN,
+ * because a bare `import '…'` carries no `from`. The retired scan would have caught it. Every one
+ * of the five folders had the same hole.
+ */
 const importsOf = (text: string): string[] =>
-  [...text.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]);
+  [...text.matchAll(/\bfrom\s*'([^']+)'|\brequire\s*\(\s*'([^']+)'\s*\)|^\s*import\s+'([^']+)'/gm)]
+    .map((match) => match[1] ?? match[2] ?? match[3]);
 
 describe('AC-1 — the surface, and the entry point left alone', () => {
   test('exactly the six names the port declares, all of them functions or the class', () => {
@@ -51,20 +66,35 @@ describe('AC-1 — the surface, and the entry point left alone', () => {
       .toStrictEqual(['FlowError', 'lintDirectory', 'lintFlowDirectory']);
   });
 
-  test('it imports node builtins, yaml and @quorum/shared — never spike, never zod', () => {
+  test('it imports node builtins, yaml and @quorum/shared — and nothing else at all', () => {
     // Deliberately about SPECIFIERS rather than the file's text: this package cites spike paths in
     // comments as its evidence, which is the house style, and a check that forbade the word would
     // forbid the citations instead of the dependency.
+    //
+    // Q-0107 AC-12 — `retired`, the line scan that stood below this loop. It read every
+    // import/export/`require(` LINE for the substring `spike`, and 079 classes it (b): after the
+    // cutover it can still fail, but only over a comment on an export line, which is not a
+    // dependency and not a hazard anybody would act on. The allow-list here is the sibling and is
+    // strictly stronger — it names what is permitted rather than one thing that is not, so a
+    // specifier under the spike, under a sibling package, or under any tree at all fails it.
+    // `importsOf` gained the `require(` shape in the same change, which is the one thing the
+    // retired scan saw and this loop did not.
+    const ALLOWED = ['node:fs', 'node:path', 'yaml', '@quorum/shared'];
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
-        expect(
-          ['node:fs', 'node:path', 'yaml', '@quorum/shared'].includes(specifier),
-          `${name} imports ${specifier}`,
-        ).toBe(true);
+        expect(ALLOWED.includes(specifier), `${name} imports ${specifier}`).toBe(true);
       }
-      for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
-        expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
-      }
+    }
+    // The sibling has teeth over both shapes it inherited, demonstrated on assembled text rather
+    // than asserted: no file in this folder uses either, so a widening that matched nothing would
+    // report the same green as one whose subject is genuinely clean. The second row is the one
+    // that was missing, and a green suite over a real spike import is how it was found.
+    for (const [shape, escape] of [
+      ['a CommonJS specifier', `const lint = require('../../../../${'spi'}ke/src/lint.js');`],
+      ['a side-effect import', `import '../../../../${'spi'}ke/src/lint.js';`],
+    ] as const) {
+      expect(importsOf(escape), `the parser sees ${shape}`).toHaveLength(1);
+      expect(ALLOWED.includes(importsOf(escape)[0]), `and the allow-list refuses ${shape}`).toBe(false);
     }
   });
 });

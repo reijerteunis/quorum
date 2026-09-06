@@ -30,7 +30,18 @@ const sourceOf = (key: string): string => {
 };
 
 /** Every module specifier a file imports from, in source order. */
-const importsOf = (text: string): string[] => [...text.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+/**
+ * Every module specifier a file reaches for — three shapes.
+ *
+ * Q-0107 AC-12 added `require('…')` and the side-effect `import '…'` to the `from '…'` this read.
+ * Both are shapes the retired spike line scan caught and this parser did not, so retiring that scan
+ * without widening here would have lost them rather than moved them. The side-effect form was found
+ * by demonstrating the first widening red and watching the suite stay green — see
+ * `lint.source.test.ts`, where the same hole is recorded at length.
+ */
+const importsOf = (text: string): string[] =>
+  [...text.matchAll(/\bfrom\s*'([^']+)'|\brequire\s*\(\s*'([^']+)'\s*\)|^\s*import\s+'([^']+)'/gm)]
+    .map((m) => m[1] ?? m[2] ?? m[3]);
 
 /**
  * The run-history namespace written as a value rather than named in prose.
@@ -102,7 +113,12 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     expect(importsOf(sourceOf(WRITER_SOURCE))).toContain('./manifest.js');
   });
 
-  test('the folder imports node builtins, shared and four siblings — and never the spike', () => {
+  test('the folder imports node builtins, shared and four siblings — and nothing else', () => {
+    // Q-0107 AC-12 — `retired`, the line scan that stood at the foot of this test. Decision 079
+    // classes it (b): it can still fail after the cutover, but only over a comment on an export
+    // line, which is not a dependency. The two lists below are the sibling and are strictly
+    // stronger, naming what is permitted rather than one thing that is not; `importsOf` gained the
+    // `require(` shape in the same change, which is what the retired scan saw and this did not.
     /** Specifiers a file may name exactly. */
     const EXACT = ['node:fs', 'node:path', '@quorum/shared', './manifest.js'];
     /**
@@ -112,14 +128,19 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
      * `tsc --noEmit`'s to refuse, not this test's.
      */
     const SIBLINGS = ['/adapters/adapters.js', '/backlog/backlog.js', '/git/git.js', '/lint/lint.js'];
+    const admits = (specifier: string): boolean =>
+      EXACT.includes(specifier) || SIBLINGS.some((sibling) => specifier.endsWith(sibling));
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
-        const allowed = EXACT.includes(specifier) || SIBLINGS.some((sibling) => specifier.endsWith(sibling));
-        expect(allowed, `${name} imports ${specifier}`).toBe(true);
+        expect(admits(specifier), `${name} imports ${specifier}`).toBe(true);
       }
-      for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
-        expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
-      }
+    }
+    for (const [shape, escape] of [
+      ['a CommonJS specifier', `const engine = require('../../../../${'spi'}ke/src/engine.js');`],
+      ['a side-effect import', `import '../../../../${'spi'}ke/src/engine.js';`],
+    ] as const) {
+      expect(importsOf(escape), `the parser sees ${shape}`).toHaveLength(1);
+      expect(admits(importsOf(escape)[0]), `and the two lists refuse ${shape}`).toBe(false);
     }
   });
 

@@ -7,10 +7,11 @@
 // disk, none of them counted, T-0001 handed out every time, and create() then replacing the folder
 // it collided with. So every fixture here that must fail carries ids that are not `T-`.
 //
-// The table below is not written here: q0080-allocation.json is the one copy, and
-// packages/core/src/backlog/backlog.test.ts asserts the same rows. A fix in one tree alone passes
-// its own suite while the other — the tree that actually runs every flow in this repository today
-// — keeps handing out T-0001.
+// The table below is not written here: packages/core/src/backlog/q0080-allocation.json is the one
+// copy, and packages/core/src/backlog/backlog.test.ts asserts the same rows beside it. A fix in one
+// tree alone passes its own suite while the other keeps handing out T-0001. Q-0107 AC-8 moved that
+// file out of this directory and into the tree that survives the cutover, so this reader reaches
+// across the boundary rather than the workspace reaching into a tree it is about to delete.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -21,7 +22,8 @@ import { Backlog, parseTicketId } from '../src/backlog.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const bin = path.join(here, '..', 'bin', 'harness.js');
-const TABLE = JSON.parse(fs.readFileSync(path.join(here, 'q0080-allocation.json'), 'utf8'));
+const TABLE = JSON.parse(fs.readFileSync(
+  path.join(here, '..', '..', 'packages', 'core', 'src', 'backlog', 'q0080-allocation.json'), 'utf8'));
 
 let failed = 0;
 const scenario = (id, title, fn) => {

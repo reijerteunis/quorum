@@ -10,15 +10,29 @@ import { describe, expect, test } from 'vitest';
 
 import { adapterConfigSchema, projectConfigSchema, retryPolicySchema } from './project.js';
 import type { ProjectConfig } from './project.js';
-import { repoFile, parseYaml, spikeSource, repoRoot } from '../test/corpus.js';
+import { repoFile, parseYaml, repoRoot } from '../test/corpus.js';
 
 import YAML from 'yaml';
 
 import path from 'node:path';
 
+/**
+ * The shipped template config, which is `packages/cli/templates/harness/harness.yaml`.
+ *
+ * Q-0107 AC-9/AC-10 — `re-aimed`. It was `spike/templates/harness/harness.yaml` until then, and
+ * the two are byte-identical today (`packages/cli/src/templates.test.ts`), so the swap is the same
+ * bytes at the address that survives Q-0103. It is also the more honest of the two: this is the
+ * file an adopter's first `quorum init` copies, which is what makes it a witness at all.
+ *
+ * Read as TEXT and never imported — `packages/shared` depends on no workspace package
+ * (04-architecture.md) and this is an asset rather than a module. It is a declared input of this
+ * package's `test` task, registered in `packages/core/src/turbo-inputs.test.ts`.
+ */
+const TEMPLATE_CONFIG = 'packages/cli/templates/harness/harness.yaml';
+
 const shippedConfigs = (): [string, unknown][] => [
   ['harness/harness.yaml', parseYaml(path.join(repoRoot, 'harness/harness.yaml'))],
-  ['spike/templates/harness/harness.yaml', YAML.parse(spikeSource('templates/harness/harness.yaml'))],
+  [TEMPLATE_CONFIG, YAML.parse(repoFile(TEMPLATE_CONFIG))],
 ];
 
 describe('AC-11 — every shipped config parses, with no key added and none removed', () => {
@@ -172,7 +186,7 @@ describe('Q-0065 AC-3 — the configured test command defeats this repository\'s
 /** The two configs Quorum ships, as `[name, text]`. Both readers throw when their file is gone. */
 const shippedText = (): [string, string][] => [
   ['harness/harness.yaml', repoFile('harness/harness.yaml')],
-  ['spike/templates/harness/harness.yaml', spikeSource('templates/harness/harness.yaml')],
+  [TEMPLATE_CONFIG, repoFile(TEMPLATE_CONFIG)],
 ];
 
 /** A whole-line comment: its indentation, and its body after the `#` and one optional space. */
@@ -337,15 +351,19 @@ describe('Q-0058 AC-1 — the shipped example is spelled the way the code reads 
   });
 });
 
-describe('Q-0058 AC-2 — uncommenting the example is a no-op, oracled against both trees', () => {
-  test('both trees destructure the same defaults, and the example is exactly them', () => {
-    const spike = retryDefaults(spikeSource('src/adapters/index.js'), 'spike/src/adapters/index.js');
+describe('Q-0058 AC-2 — uncommenting the example is a no-op, oracled against the code that runs', () => {
+  // Q-0107 AC-9/AC-10 — `re-aimed`. This was *"oracled against both trees"*: the same three
+  // defaults were extracted from `spike/src/adapters/index.js` and from `packages/core`, required
+  // to agree, and the shipped example compared against the spike's copy. The cross-tree agreement
+  // was the port's drift check and its subject is a tree Q-0103 deletes; what the criterion is
+  // about — the commented example is exactly what `withRetry` would have defaulted to anyway — is
+  // a property of the code that runs, so it is oracled against that alone.
+  test('the code destructures three defaults, and the example is exactly them', () => {
     const core = retryDefaults(repoFile('packages/core/src/adapters/adapters.ts'), 'packages/core/src/adapters/adapters.ts');
-    expect(core, 'the port and its witness disagree about a default').toStrictEqual(spike);
-    expect(Object.keys(spike)).toStrictEqual(['attempts', 'baseDelayMs', 'maxDelayMs']);
+    expect(Object.keys(core)).toStrictEqual(['attempts', 'baseDelayMs', 'maxDelayMs']);
     for (const [name, text] of shippedText()) {
       const doc = uncommented(text) as { adapters?: { codex?: { retry?: unknown } } };
-      expect(doc.adapters?.codex?.retry, `${name}: uncommenting the example would change behaviour`).toStrictEqual(spike);
+      expect(doc.adapters?.codex?.retry, `${name}: uncommenting the example would change behaviour`).toStrictEqual(core);
     }
   });
 
@@ -429,9 +447,9 @@ describe('Q-0058 AC-5 — the restoration rule selects examples and not prose', 
       'the weaker rule really does select prose').toBe(true);
     expect(restoreExamples(repoFile('harness/harness.yaml')).restored).toHaveLength(3);
 
-    const template = weak(spikeSource('templates/harness/harness.yaml'));
+    const template = weak(repoFile(TEMPLATE_CONFIG));
     expect(template.selected).toHaveLength(6);
-    expect(restoreExamples(spikeSource('templates/harness/harness.yaml')).restored).toHaveLength(3);
+    expect(restoreExamples(repoFile(TEMPLATE_CONFIG)).restored).toHaveLength(3);
   });
 });
 

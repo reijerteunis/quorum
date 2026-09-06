@@ -2,10 +2,13 @@
 # The hostile-environment sweep for "A test's verdict is a property of the commit, not of the
 # checkout or the account" (docs/decisions, 2026-08-30).
 #
-# It runs both suites in an environment where git can resolve no identity, so a test that depends
-# on the account it runs as fails here and nowhere else. It is the ORACLE: complete over the whole
-# class, and slow. packages/core/src/git-identity.test.ts is the tripwire — cheap, inside the
+# It runs the workspace suite in an environment where git can resolve no identity, so a test that
+# depends on the account it runs as fails here and nowhere else. It is the ORACLE: complete over the
+# whole class, and slow. packages/core/src/git-identity.test.ts is the tripwire — cheap, inside the
 # ordinary suite, and partial, because it sees literals only.
+#
+# It ran the spike suite too until Q-0107 AC-16. That half went with the last workspace read of the
+# spike tree; CI's own `spike` job still runs it until Q-0103 deletes it.
 #
 # Defined once, in this file, because CI and a maintainer must run byte-identically the same thing.
 # A definition restated in ci.yml or in a package.json script would drift, and a developer could
@@ -107,21 +110,23 @@ done
 echo "git-identity sweep: environment discriminates (negative and positive probes both as expected)"
 
 # ---- phase: install ---------------------------------------------------------------------------
-# Byte-identically what the `workspace` and `spike` jobs run. A sweep that installs differently
-# from the jobs it is the strict twin of can differ in verdict for a reason other than the
-# environment, which is the one variable it exists to isolate. `npm install` is not lockfile-frozen
-# and Q-0038 measured one moving fast-uri and producing a different tree.
+# Byte-identically what the `workspace` job runs. A sweep that installs differently from the job it
+# is the strict twin of can differ in verdict for a reason other than the environment, which is the
+# one variable it exists to isolate. `npm install` is not lockfile-frozen and Q-0038 measured one
+# moving fast-uri and producing a different tree.
+#
+# Q-0107 AC-16 removed `( cd spike && npm ci )` from here and the `spike suite` phase below it. The
+# spike's own CI job still runs that suite until Q-0103 deletes the tree; what this script is for is
+# the workspace's verdict under a git configuration that resolves no identity, and after Q-0106 no
+# workspace test reads that tree. Stated rather than left to be noticed: this sweep covers less than
+# it did, and Q-0107 R-2 is the warning that a green sweep after this change is NOT evidence about
+# Q-0102, whose subject is this script red under load.
 phase="install"
 
 pnpm install --frozen-lockfile || fail "pnpm install --frozen-lockfile did not complete; the workspace suite below is UNRUN, not passing"
-( cd spike && npm ci ) || fail "npm ci in spike/ did not complete; the spike suite below is UNRUN, not passing"
-
-# ---- phase: spike suite -----------------------------------------------------------------------
-phase="spike suite"
-( cd spike && npm test ) || fail "the spike regression suite is RED under a git configuration that resolves no identity"
 
 # ---- phase: workspace suite -------------------------------------------------------------------
 phase="workspace suite"
 pnpm turbo run test --force || fail "the workspace suite is RED under a git configuration that resolves no identity"
 
-echo "git-identity sweep: both suites executed and green with no resolvable git identity"
+echo "git-identity sweep: the workspace suite executed and green with no resolvable git identity"

@@ -99,14 +99,19 @@ describe('Q-0050 AC-1/AC-5e/AC-13c — module boundary', () => {
     expect(undocumentedExports([['channel.ts', stripped]])).toStrictEqual(['channel.ts:export function createEventChannel']);
   });
 
-  test('engine code prints nothing, exits nowhere, installs no signals and imports no spike', () => {
+  test('engine code prints nothing, exits nowhere and installs no signals', () => {
     const all = production.map(source).join('\n');
     // Every way to subscribe, not the two names AC-5 happened to spell: `addListener`,
     // `prependListener` and `prependOnceListener` are the same subscription and passed the
     // narrower alternation. The rule — a library that exits the process cannot host M3's daemon —
     // governs every file Q-0051 to Q-0053 will add here, so it is widened while the folder is six.
     expect(all).not.toMatch(/console\.|process\.(stdout|stderr|exit|on|once|addListener|prependListener|prependOnceListener)\b|\u001b\[/);
-    expect(all).not.toMatch(/from ['"][^'"]*spike\//);
+    // Q-0107 AC-12 — `retired`, the second clause: `not.toMatch(/from ['"][^'"]*spike\//)`. After
+    // the cutover such an import fails `tsc --noEmit` before it reaches any assertion, so the
+    // clause could only report something the compiler had already refused. Its sibling is
+    // `packages/cli/src/spike-dependencies.test.ts`, which covers this folder as part of
+    // `packages/**` and covers two shapes this regex never saw — a bare quoted segment handed to a
+    // path join, and a path literal that is not an import specifier at all.
   });
 
   test('engine.ts reaches the occurrence-event mutation through lifecycle.ts, never beside it', () => {
@@ -153,6 +158,32 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     expect(template, 'scoped to one run').toContain('run-{run}');
     expect(template, 'scoped to one traversal').toContain('{iter}');
     expect(template, 'still names the step').toMatch(/\$\{stepId\}/);
+  });
+
+  // Q-0107 AC-9/AC-10 — `re-aimed`. `packages/shared/src/constants.test.ts` counted the spike's
+  // `base_branch ?? 'main'` sites (five in `engine.js`, one in the CLI) beside
+  // `DEFAULT_BASE_BRANCH`; that count is evidence about a tree Q-0103 deletes. The property worth
+  // keeping is not how many literals the spike had but that this folder has none — so it is
+  // asserted here, over the tree that survives, where `lint.source.test.ts` already asserts the
+  // same thing for its own folder.
+  // It is a register rather than a prohibition because the port did NOT convert every site, and
+  // that is reported rather than repaired here: `composite.ts:94` and `:248` still write
+  // `context.config.repo?.base_branch ?? 'main'`, exactly as `spike/src/engine.js` did, while
+  // `diff.ts` and `engine.ts` reach `DEFAULT_BASE_BRANCH`. Q-0107 AC-19 admits three production
+  // files and this is not one of them, and R-5 says a production change beyond those is a finding
+  // to bring to the gate. So the divergence is pinned in both directions: a THIRD bare literal
+  // fails, and closing the two that exist fails too, which is how a repair becomes a deliberate
+  // act rather than a silence.
+  test('Q-0107: the base-branch default is reached through shared, except where the port left it', () => {
+    const bare = production.flatMap((name) => {
+      const hits = source(name).match(/base_branch \?\? 'main'/g) ?? [];
+      return hits.map(() => name);
+    });
+    expect(bare, 'the two sites the port left spelled out, and no third').toStrictEqual(['composite.ts', 'composite.ts']);
+    // The other half: a folder that named neither the constant nor a literal would satisfy a
+    // prohibition by having no default at all, which is the vacuous reading of the same claim.
+    const readers = production.filter((name) => source(name).includes('DEFAULT_BASE_BRANCH'));
+    expect(readers, 'the sites that do reach it through shared').toStrictEqual(['diff.ts', 'engine.ts']);
   });
 
   test('AC-9d: no engine helper resets or deletes task branches', () => {

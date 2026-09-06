@@ -55,7 +55,18 @@ const sourceOf = (key: string): string => {
 };
 
 /** Every module specifier a file imports from, in source order. */
-const importsOf = (text: string): string[] => [...text.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]);
+/**
+ * Every module specifier a file reaches for — three shapes.
+ *
+ * Q-0107 AC-12 added `require('…')` and the side-effect `import '…'` to the `from '…'` this read.
+ * Both are shapes the retired spike line scan caught and this parser did not, so retiring that scan
+ * without widening here would have lost them rather than moved them. The side-effect form was found
+ * by demonstrating the first widening red and watching the suite stay green — see
+ * `lint.source.test.ts`, where the same hole is recorded at length.
+ */
+const importsOf = (text: string): string[] =>
+  [...text.matchAll(/\bfrom\s*'([^']+)'|\brequire\s*\(\s*'([^']+)'\s*\)|^\s*import\s+'([^']+)'/gm)]
+    .map((match) => match[1] ?? match[2] ?? match[3]);
 
 describe('AC-1 — the surface, the folder, the dependencies, and the entry point left alone', () => {
   test('adapters.ts exports exactly the eight runtime names', () => {
@@ -115,19 +126,29 @@ describe('AC-1 — the surface, the folder, the dependencies, and the entry poin
     });
   });
 
-  test('it imports node builtins, shared and its own siblings — never the spike', () => {
+  test('it imports node builtins, shared and its own siblings — and nothing else', () => {
     // Deliberately about SPECIFIERS: this package cites spike paths in comments as its evidence,
     // which is the house style, and a check that forbade the word would forbid the citations.
     // `node:child_process` joined the list with Q-0047: `exec.ts` cannot spawn a CLI without it,
     // and it is the only file in the folder that may reach for it — asserted just below.
+    //
+    // Q-0107 AC-12 — `retired`, the line scan that stood below this loop. Decision 079 classes it
+    // (b): it can still fail after the cutover, but only over a comment on an export line, which is
+    // not a dependency. This allow-list is the sibling and is strictly stronger; `importsOf` gained
+    // the `require(` shape in the same change, which is what the retired scan saw and this did not.
     const allowed = ['node:child_process', 'node:fs', 'node:os', 'node:path', '@quorum/shared'];
+    const admits = (specifier: string): boolean => allowed.includes(specifier) || /^\.\/[a-z-]+\.js$/.test(specifier);
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
-        expect(allowed.includes(specifier) || /^\.\/[a-z-]+\.js$/.test(specifier), `${name} imports ${specifier}`).toBe(true);
+        expect(admits(specifier), `${name} imports ${specifier}`).toBe(true);
       }
-      for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
-        expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
-      }
+    }
+    for (const [shape, escape] of [
+      ['a CommonJS specifier', `const claude = require('../../../../${'spi'}ke/src/adapters/claude.js');`],
+      ['a side-effect import', `import '../../../../${'spi'}ke/src/adapters/claude.js';`],
+    ] as const) {
+      expect(importsOf(escape), `the parser sees ${shape}`).toHaveLength(1);
+      expect(admits(importsOf(escape)[0]), `and the allow-list refuses ${shape}`).toBe(false);
     }
   });
 

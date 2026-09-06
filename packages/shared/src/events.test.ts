@@ -2,7 +2,31 @@ import { describe, expect, test } from 'vitest';
 
 import { adapterEventSchema, eventSchema } from './events.js';
 import { flowSchema } from './flow.js';
-import { codeLines, sharedSourceFiles, spikeSource } from '../test/corpus.js';
+import { codeLines, repoFile, sharedSourceFiles } from '../test/corpus.js';
+
+/**
+ * The four files the product emits events from, read as text.
+ *
+ * Q-0107 AC-9/AC-10 — `re-aimed`. These assertions read `spike/src/adapters/*.js` until then,
+ * because *"the event union is derived from what the product emits"* (2026-08-25) needs a witness
+ * that emits, and the spike was the only one. `packages/core` is now that witness and the spike is
+ * about to stop being one, so the derivation is aimed at the tree it will still be true of.
+ *
+ * Read as **text** rather than imported: the dependency direction is `core → shared` and never the
+ * reverse (04-architecture.md), and this is the same read `project.test.ts` already makes of
+ * `packages/core/src/adapters/adapters.ts` and `packages/core/src/backlog/project.ts`. All four are
+ * declared inputs of this package's `test` task and registered in
+ * `packages/core/src/turbo-inputs.test.ts`, so a cache hit still names what this suite opens.
+ *
+ * Named in full, one constant each, rather than through a shared directory prefix: that guard
+ * classifies a quoted string naming a directory as a walk the task must declare, and this suite
+ * opens four files rather than walking a folder. Four literals say what happens; a prefix would
+ * have claimed the other thing.
+ */
+const CLAUDE = 'packages/core/src/adapters/claude.ts';
+const CODEX = 'packages/core/src/adapters/codex.ts';
+const MOCK = 'packages/core/src/adapters/mock.ts';
+const CONTRACT_LAYER = 'packages/core/src/adapters/adapters.ts';
 
 describe('AC-8 — the union is derived from what the product emits', () => {
   test('the three adapter events, sampled verbatim from the lines that emit them', () => {
@@ -16,18 +40,28 @@ describe('AC-8 — the union is derived from what the product emits', () => {
     }
   });
 
-  test('those three shapes are still what the spike emits', () => {
+  test('those three shapes are still what the product emits', () => {
     // The samples above are only evidence while the emitting lines still look like this.
-    expect(spikeSource('src/adapters/claude.js')).toContain("onEvent?.({ type: 'spawn', vendor: 'claude', cmd:");
-    expect(spikeSource('src/adapters/claude.js')).toContain("onEvent?.({ type: 'stdout', line: l })");
-    expect(spikeSource('src/adapters/codex.js')).toContain("onEvent?.({ type: 'spawn', vendor: 'codex', cmd:");
-    expect(spikeSource('src/adapters/mock.js')).toContain("onEvent?.({ type: 'stdout', line:");
-    expect(spikeSource('src/adapters/index.js')).toContain("opts.onEvent?.({ type: 'retry', vendor: adapter.vendor, attempt, of: attempts, delayMs, reason: why, message:");
+    expect(repoFile(CLAUDE)).toContain("onEvent?.({ type: 'spawn', vendor: 'claude', cmd:");
+    expect(repoFile(CLAUDE)).toContain("onEvent?.({ type: 'stdout', line })");
+    expect(repoFile(CODEX)).toContain("onEvent?.({ type: 'spawn', vendor: 'codex', cmd:");
+    expect(repoFile(CODEX)).toContain("onEvent?.({ type: 'stdout', line })");
+    expect(repoFile(MOCK)).toContain("onEvent?.({ type: 'stdout', line:");
+    // The retry event is the contract layer's rather than an adapter's, and it is the one shape
+    // spelled across several lines, so it is matched as the fields it carries rather than as one
+    // literal — a reformat must not read as a missing emit.
+    const retry = /onEvent\?\.\(\{\s*type: 'retry',\s*vendor: adapter\.vendor,\s*attempt,\s*of: attempts,\s*delayMs,\s*reason: why,\s*message:/;
+    expect(repoFile(CONTRACT_LAYER)).toMatch(retry);
   });
 
   test('an adapter emits no identity; a run supplies the step id', () => {
-    // spike/src/engine.js:247 — `onEvent: (e) => ui.trace(step.id, e)`. That is the whole envelope.
-    expect(spikeSource('src/engine.js')).toContain('onEvent: (e) => ui.trace(step.id, e)');
+    // Q-0107 AC-9/AC-10 — `retired`. `spike/src/engine.js:247`'s `onEvent: (e) => ui.trace(step.id,
+    // e)` stood here as the whole envelope. Its counterpart is
+    // `packages/core/src/engine/steps.ts:262`, and the property — an adapter event acquires the id
+    // on its way out — is asserted where it can be EXECUTED rather than read:
+    // `packages/core/src/engine/engine.test.ts:528–530` runs a flow and reads the `stepId` off a
+    // `stdout` event, and `:563–571` covers the parallel case a text match could never see. What
+    // stays here is the half that is this package's own: the two schemas disagree about identity.
     expect(adapterEventSchema.safeParse({ type: 'spawn', vendor: 'claude', cmd: 'claude -p' }).success).toBe(true);
     expect(eventSchema.safeParse({ type: 'spawn', vendor: 'claude', cmd: 'claude -p' }).success).toBe(false);
     expect(eventSchema.safeParse({ type: 'spawn', stepId: 'implement', vendor: 'claude', cmd: 'claude -p' }).success).toBe(true);
@@ -51,20 +85,20 @@ describe('AC-8 — the union is derived from what the product emits', () => {
     }
   });
 
-  test('the six ui methods this union covers still exist, with these payloads', () => {
-    const cli = spikeSource('bin/harness.js');
-    expect(cli).toContain('info: (m) =>');
-    expect(cli).toContain('warn: (m) =>');
-    expect(cli).toContain('step: (id, m) =>');
-    expect(cli).toContain('done: (id, m) =>');
-    expect(cli).toContain('trace: (id, e) =>');
-    expect(cli).toContain('gate: async ({ kind, reason, ticketDir, retry }) =>');
-  });
+  // Q-0107 AC-9/AC-10 — `retired`. A test stood here reading the six `ui` methods out of
+  // `spike/bin/harness.js`, which is what consumed this union before `packages/cli` existed. The
+  // spike's `ui` object is not ported and has no counterpart to re-aim at: Q-0050 replaced the
+  // interface the engine drove with a stream the caller drives, and Q-0090's `trace.ts` is the
+  // renderer. So the property — every member of this union is rendered by somebody — is carried by
+  // `packages/cli/src/trace.test.ts`'s *"the switch is exhaustive over the shipped union"*, which
+  // derives the kinds from `eventSchema` itself and is strictly stronger than six method names:
+  // it fails to COMPILE when a tenth member is added here, where the retired test could only fail
+  // when the spike's CLI was edited.
 
   test('`tool` and `text` are not invented — nothing emits them', () => {
-    for (const file of ['src/adapters/claude.js', 'src/adapters/codex.js', 'src/adapters/mock.js', 'src/adapters/index.js']) {
-      expect(spikeSource(file), `${file}`).not.toContain("type: 'tool'");
-      expect(spikeSource(file), `${file}`).not.toContain("type: 'text'");
+    for (const file of [CLAUDE, CODEX, MOCK, CONTRACT_LAYER]) {
+      expect(repoFile(file), file).not.toContain("type: 'tool'");
+      expect(repoFile(file), file).not.toContain("type: 'text'");
     }
     expect(eventSchema.safeParse({ type: 'tool', stepId: 'x', name: 'Read' }).success).toBe(false);
     expect(eventSchema.safeParse({ type: 'text', stepId: 'x', text: 'hello' }).success).toBe(false);
@@ -78,7 +112,7 @@ describe('AC-9 — vendor identity is one neutral, open label', () => {
   });
 
   test('an unknown adapter name is already refused where it should be', () => {
-    expect(spikeSource('src/adapters/index.js')).toContain('throw new Error(`unknown adapter "${name}"');
+    expect(repoFile(CONTRACT_LAYER)).toContain('throw new Error(`unknown adapter "${name}"');
   });
 
   test('vendor names appear in this package only as documentation, never in code', () => {
