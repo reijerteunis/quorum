@@ -216,10 +216,11 @@ interface Walk {
  * member is required to be a hashed input.
  */
 const WALKS: readonly Walk[] = [
-  // Q-0107 AC-15 removed a walk that stood here: `{ '@quorum/core#test', 'spike/test', *.js }`,
-  // `corpusFiles()` in `git-identity.test.ts`. That file's corpus is `packages` and `apps` now, so
-  // the walk is gone and the declared input it justified is kept by `spike-parity.test.ts` alone,
-  // which the entry further down names.
+  // Q-0107 AC-15 removed a walk that stood here — `corpusFiles()` in `git-identity.test.ts`, over
+  // the spike's test directory — because that file's corpus is `packages` and `apps` now. Q-0103
+  // removed the second walk of the same directory, `spike-parity.test.ts`'s `readdirSync`, together
+  // with that suite and the tree it compared against; the declared input the two of them justified
+  // went in the same change. No walk in this list leaves the workspace any more.
   {
     taskId: '@quorum/shared#test',
     dir: 'harness/flows',
@@ -269,12 +270,6 @@ const WALKS: readonly Walk[] = [
   },
   {
     taskId: '@quorum/core#test',
-    dir: 'spike/test',
-    collects: () => true,
-    why: 'readdirSync — spike-parity.test.ts, whose register is keyed by every entry in the directory rather than only by the .js files, so the fixture beside them is hashed too',
-  },
-  {
-    taskId: '@quorum/core#test',
     dir: 'packages',
     collects: (below) => !below.split('/').includes('node_modules')
       && (/^[^/]+\/(?:package\.json|vitest\.config\.js)$/.test(below) || below.endsWith('.test.ts')),
@@ -297,8 +292,12 @@ const WALKS: readonly Walk[] = [
  */
 const NOT_READ: Record<string, string> = {
   'harness/architecture.md': 'role.test.ts asserts this string appears in role.ts\'s own doc comment; no suite opens the file',
-  'harness/port-charter.md': 'named in doc comments in both packages, opened by neither',
-  'spike/src/fanout.js': 'fanout.test.ts uses the path as task-fixture data — a plausible-looking value in a tasks.yaml fixture — and opens nothing at it. Q-0107 removed the walk this entry used to name as the file\'s real reader, so nothing under packages/** opens it at all now; Q-0103 deletes the path and this row with it',
+  // Q-0103 removed two rows here rather than leaving them to go quiet, which is what the clause
+  // below refuses. `harness/port-charter.md` and the spike's own `src/fanout.js` were both named
+  // without being opened — the second is still a value in a `tasks.yaml` fixture — but neither path
+  // is in the tracked-and-unignored inventory any more, so the classifier no longer reads either
+  // literal as a path and there is nothing left for a row to excuse. A key the scan cannot see
+  // excuses nothing while reading as coverage, which is Q-0073's finding.
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
@@ -378,7 +377,7 @@ function listing(root: string = repoRoot): string[] {
  * state:
  *
  * - **`filesBelow`'s walks** — `backlog`, `harness/flows`, `harness/roles`, `docs/decisions`,
- *   `packages/cli/templates/harness/flows`, `spike/test`, and the two workspace globs. An
+ *   `packages/cli/templates/harness/flows`, and the two workspace globs. An
  *   untracked-unignored addition moves clause A's two sides
  *   together rather than one of them: turbo hashes such a file, measured here — an untracked
  *   `backlog/<id>/ticket.md` appears in both packages' reported inputs, through the backlog glob
@@ -663,11 +662,6 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoRoot → f': 'a path walk() found beneath one of those two literal directories',
     'repoRoot → rel': 'a member of corpusFiles(), which since Q-0107 AC-15 is the packages and apps walks alone',
     'repoRoot → SELF': 'the literal naming this file, excluded from its own corpus so its fixtures are not read as violations',
-  },
-  'packages/core/src/spike-parity.test.ts': {
-    'repoFile → counterpart': 'a member of an entry\'s carriedBy list, every one of which is a literal in the register at the top of that file',
-    'repoRoot → SPIKE_TESTS': "the constant is 'spike/test', a literal in the same file, and the walk WALKS declares above",
-    'repoFile → `${SPIKE_TESTS}/${entry.name}`': 'that same literal joined to a name readdir returned from it — the walk, again',
   },
   'packages/core/src/test-discovery.test.ts': {
     'repoRoot → relative': "entriesIn's parameter: a workspace glob's parent, a package below it, or a directory found beneath one — all inside the two walks WALKS declares above",
@@ -1104,9 +1098,6 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   'packages/core/src/run-history/reader.ts': {
     '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
   },
-  'packages/core/src/spike-parity.test.ts': {
-    '../src/': 'the prefix a spike test file\'s own import specifiers are compared against, to decide whether it imports the spike\'s source; nothing is opened through it',
-  },
   'packages/core/src/run-history/reader.test.ts': {
     '..': 'the same token, handed to the guard and asserted refused',
     '../secret': 'a hostile run id, asserted refused; its target is built under os.tmpdir by the test itself',
@@ -1115,7 +1106,6 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '..': 'the value `escapes` compares a normalised path against, and the key of two entries above',
     '../': 'the prefix it compares against, and the key of two entries above',
     '../git/git.js': 'the key of the fanout entry above',
-    '../src/': 'the key of the spike-parity entry above',
     '../secret': 'the key of the run-history reader entry above',
     '../../../etc/passwd': 'the key of the git entry above',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
@@ -1801,6 +1791,17 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * `events.test.ts` names its four adapter sources individually where `spikeSource` had taken a
  * relative name. `packages/core/src/adapters/adapters.ts` was already a literal here from Q-0058,
  * so two of the ten add an occurrence and not a literal.
+ *
+ * **Q-0103 removed one and added none, and it is the last spike read of any kind.**
+ * `fanout.test.ts: spike/src/fanout.js` was never a read — the path is a plausible-looking value in
+ * a `tasks.yaml` fixture, which is why it had a {@link NOT_READ} row rather than a declared input —
+ * and it leaves this register for a reason none of the sixteen before it had: **the literal is
+ * unchanged and stopped being classified as a path**, because the cutover took its target out of
+ * the tracked-and-unignored inventory the classifier asks. That is the third kind of departure
+ * this register has seen, beside Q-0096's lost subjects and Q-0107's changed ones, and it is worth
+ * separating: nothing about the assertion moved. **Seventy-one minus one: seventy over forty-two**,
+ * counted from the array below rather than continued from this sentence. The literal count falls by
+ * one too, that file being the only place it occurred.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
@@ -1829,7 +1830,6 @@ const COLLECTED_BASELINE = [
   'packages/core/src/corpus.test.ts: packages/core/src',
   'packages/core/src/engine/engine.test.ts: harness/harness.yaml',
   'packages/core/src/fanout/fanout.source.test.ts: packages/core/package.json',
-  'packages/core/src/fanout/fanout.test.ts: spike/src/fanout.js',
   'packages/core/src/git/git.source.test.ts: packages/shared/package.json',
   'packages/core/src/git/git.source.test.ts: packages/shared/src/containment.ts',
   'packages/core/src/git/git.source.test.ts: packages/shared/src/index.ts',
@@ -1981,9 +1981,9 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(71);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(70);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
-      'distinct literals in the baseline').toBe(43);
+      'distinct literals in the baseline').toBe(42);
     // And the eight the classifier calls directories, which is the class the defect lived in: a
     // checkout that had run a flow made it ten. Q-0107 took the spike's source and template-flow
     // directories out with the reads that named them and put the shipped template flows in, which
