@@ -49,12 +49,17 @@ export type PushLagState = (typeof PUSH_LAG_STATES)[number];
  * - `no upstream` — a remote exists and the base tracks nothing, so git knows of somewhere to push
  *   and has not been told this branch goes there. Worth saying: it is the state that most resembles
  *   the incident this was built for, a base branch nothing is watching.
- * - `missing ref` — the configured base branch does not resolve. As containment's reason of the
- *   same name, and about the same ref.
+ * - `missing ref` — one of the two refs the count is over does not resolve: the configured base
+ *   branch, or the tracking ref its own configuration names, which git renders as `[gone]` and
+ *   which outlives the objects it pointed at. Containment's reason of the same name is about the
+ *   base alone, because containment counts over a ticket branch that it has already seen listed.
  * - `shallow clone` — history is truncated, so a count of commits the upstream lacks can only
  *   understate. A number that can only be too small is not reported as a number.
  * - `git failed` — any spawn failure, non-zero exit, timeout, or no git on the path at all, at any
- *   step after the repository itself probed successfully.
+ *   step from the work-tree probe onward. **Including that probe**: git's own fatal saying there is
+ *   no repository here is an answer and is not this reason, and every other way of failing to
+ *   answer is, because for a fact whose success output is silence an unexamined subject that says
+ *   nothing is indistinguishable from a clean one (2026-08-25).
  */
 export const PUSH_LAG_REASONS = [
   'no remote', 'no upstream', 'missing ref', 'shallow clone', 'git failed',

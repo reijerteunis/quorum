@@ -696,6 +696,71 @@ describe('Q-0105 — push lag, the one repository-level fact this board reports'
       .not.toMatch(/\bmain\b/i);
   });
 
+  /**
+   * A repository healthy enough to be probed and unable to answer the one question asked of it: an
+   * intermediate commit's object is removed, so both endpoints of the range still resolve and only
+   * the walk between them fails.
+   *
+   * A real state — an interrupted `gc`, a truncated copy — reached without a shim, because the
+   * claim under test is what the BOARD does with a failed probe and a shimmed `git` would be
+   * proving it about a process this test invented. Returns the sha it broke, so a caller can say so.
+   */
+  function breakHistoryBetween(root: string, branch = 'main'): string {
+    git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '--allow-empty', '-m', 'middle');
+    const middle = git(root, 'rev-parse', 'HEAD');
+    git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '--allow-empty', '-m', 'tip');
+    const loose = path.join(root, '.git', 'objects', middle.slice(0, 2), middle.slice(2));
+    expect(fs.existsSync(loose), 'the object is packed, so removing the loose copy proves nothing')
+      .toBe(true);
+    fs.rmSync(loose);
+    // Both endpoints still resolve, which is what makes this a failed WALK rather than a missing
+    // ref: without this the test would be asserting the neighbouring state's behaviour.
+    for (const ref of [`refs/heads/${branch}`, `refs/remotes/backup/${branch}`]) {
+      expect(() => git(root, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`),
+        `${ref} does not resolve, so this fixture is a missing ref rather than a failed count`)
+        .not.toThrow();
+    }
+    return middle;
+  }
+
+  test('AC-3 and AC-11 — a git failure inside a work tree says so, and the board still exits 0', async () => {
+    // Round 1's first review finding, at the surface a reader meets. A probe that could not answer
+    // must reach the cannot-say line: for a fact whose success output is SILENCE, a failure rendered
+    // as nothing is indistinguishable from a clean bill of health — which is the whole shape of the
+    // incident this ticket was opened for.
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root);
+    breakHistoryBetween(root);
+
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(requireLagLine(result, 'a git command failed and the board said nothing at all'))
+      .toMatch(/cannot say whether main has been pushed \(git failed\)/);
+    // The rest of the board is unharmed: the failure is one legend, not a broken command.
+    expect(out(result), 'the ticket rows did not render').toMatch(/T-0001/);
+  });
+
+  test('AC-3 — a tracking ref that is gone is a missing ref, and never a failed git', async () => {
+    // Round 1's second review finding. `%(upstream)` is computed from configuration, so deleting the
+    // remote-tracking ref leaves the upstream NAMED and unresolvable — `git branch -vv` calls it
+    // `[gone]`. Counting over it fatals, and reporting that as `git failed` blames the instrument
+    // for a fact about the subject.
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 2 });
+    git(root, 'update-ref', '-d', 'refs/remotes/backup/main');
+    expect(git(root, 'for-each-ref', '--format=%(upstream)', 'refs/heads/main'),
+      'the configuration went with the ref, so this fixture is `no upstream` and proves nothing')
+      .toBe('refs/remotes/backup/main');
+
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    const line = requireLagLine(result, 'an unresolvable upstream printed nothing');
+    expect(line).toMatch(/cannot say whether main has been pushed \(missing ref\)/);
+    expect(line, 'the absent ref was reported as a broken git').not.toMatch(/git failed/);
+  });
+
   test('AC-4 — it reads: no ref moves, no file appears, and FETCH_HEAD is untouched', async () => {
     // The FETCH_HEAD clause is what proves no network call was made, and it is stronger and cheaper
     // than auditing the source for a verb. The fixture fetches first so the file exists — over an

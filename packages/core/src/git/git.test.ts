@@ -665,6 +665,9 @@ function tracking(
 
 describe('Q-0105 AC-3 — every push-lag state is selected from an answer git gave', () => {
   test('outside a work tree there is no question, and the answer is null', () => {
+    // git ANSWERED here: it exits 128 saying there is no repository, which is what `null` is for.
+    // Its neighbour below — a probe that could not answer at all — is `git failed`, and the two are
+    // told apart by git's exit code rather than by its prose, which a locale would decide.
     expect(pushLag(notARepo(), 'main')).toBeNull();
   });
 
@@ -705,14 +708,16 @@ describe('Q-0105 AC-3 — every push-lag state is selected from an answer git ga
   let diverged: string | undefined;
   const divergedRepo = (): string => (diverged ??= tracking({ local: 2 }));
 
-  // The mutation AC-3 names, run against each step in turn. `rev-parse` is the outermost probe and
-  // its failure is `null` — no question could be asked at all — which is the one case that is
-  // deliberately not a reason.
+  // The mutation AC-3 names, run against each step in turn. Every one of them is a failure INSIDE a
+  // work tree, so every one of them is a reason — `rev-parse` included, which is round 1's first
+  // review finding: a probe that could not answer used to be returned as `null` and rendered as
+  // silence, which for a fact whose success output is silence is a clean bill of health nobody
+  // earned. `null` is now reachable only from git's own "there is no repository here".
   const FAILING_STEPS: [string, PushLagResult | null][] = [
     ['remote', { state: 'indeterminate', reason: 'git failed' }],
     ['for-each-ref', { state: 'indeterminate', reason: 'git failed' }],
     ['rev-list', { state: 'indeterminate', reason: 'git failed' }],
-    ['rev-parse', null],
+    ['rev-parse', { state: 'indeterminate', reason: 'git failed' }],
   ];
 
   test.each(FAILING_STEPS)('breaking git %s is answered honestly, never as `pushed`', (subcommand, expected) => {
@@ -723,6 +728,37 @@ describe('Q-0105 AC-3 — every push-lag state is selected from an answer git ga
       `case "$1" in ${subcommand}) exit 3 ;; esac`);
     expect(result, `breaking git ${subcommand} did not produce the honest answer`)
       .toStrictEqual(expected);
+  });
+
+  // The three probes that are `rev-parse` invocations of their own, broken one at a time by matching
+  // the WHOLE argv rather than the subcommand. Breaking `rev-parse` wholesale stops at the work-tree
+  // probe, so without these the steps behind it have no subject — and two of the three are branches
+  // where a broken git would otherwise be reported as a fact about the repository: an absent ref.
+  const FAILING_PROBES: [string, string][] = [
+    ['the shallow probe', 'rev-parse --is-shallow-repository'],
+    ['the base ref check', 'rev-parse --verify --quiet refs/heads/trunk^{commit}'],
+    ['the upstream ref check', 'rev-parse --verify --quiet refs/remotes/backup/trunk^{commit}'],
+  ];
+
+  test.each(FAILING_PROBES)('a probe that fails inside a confirmed work tree is `git failed` (%s)', (_name, argv) => {
+    const dir = divergedRepo();
+    const { result } = counting(() => pushLag(dir, 'trunk'), `case "$*" in "${argv}") exit 3 ;; esac`);
+    expect(result, `breaking \`git ${argv}\` did not produce the honest answer`)
+      .toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+  });
+
+  test('an upstream whose tracking ref is gone is `missing ref`, not `git failed`', () => {
+    // Round 1's second review finding. The configuration outlives the ref: deleting
+    // `refs/remotes/backup/trunk` leaves `branch.trunk.remote` and `.merge` in place, so
+    // `%(upstream)` still names it — measured, it prints `refs/remotes/backup/trunk` and
+    // `%(upstream:track)` prints `[gone]` — and only counting over it fails. A ref that does not
+    // resolve is `missing ref`; reporting it as `git failed` blames the instrument for the subject.
+    const dir = tracking({ local: 2 });
+    git(dir, 'update-ref', '-d', 'refs/remotes/backup/trunk');
+    expect(git(dir, 'for-each-ref', '--format=%(upstream)', 'refs/heads/trunk'),
+      'the configuration went with the ref, so this fixture is `no upstream` and proves nothing')
+      .toBe('refs/remotes/backup/trunk');
+    expect(pushLag(dir, 'trunk')).toStrictEqual({ state: 'indeterminate', reason: 'missing ref' });
   });
 });
 
@@ -782,13 +818,15 @@ describe('Q-0105 AC-4 and AC-5 — it reads, it never reaches the network, and i
     expect(named).toStrictEqual({ state: 'unpushed', ahead: 1, upstream: 'somewhere-else/release' });
   });
 
-  test('it costs at most five spawns, and that is constant in the number of tickets', () => {
+  test('it costs seven spawns, and that is constant in the number of tickets', () => {
     // The measured half of `containment`'s revised budget sentence: 2n + 3 for the board's rows,
-    // plus this, which does not move when n does.
+    // plus this, which does not move when n does. Pinned exactly rather than bounded, so that a
+    // probe added or removed moves the number the JSDoc states instead of hiding inside a ceiling
+    // — the budget is a sentence somebody reads, and a sentence nothing checks goes stale.
     const dir = tracking({ local: 2 });
     const { calls } = counting(() => pushLag(dir, 'trunk'));
-    expect(calls).toBeLessThanOrEqual(5);
+    expect(calls, 'the longest path costs what the JSDoc says it costs').toBe(7);
     expect(counting(() => pushLag(repo(), 'main')).calls,
-      'the cheap answers must not cost more than the expensive one').toBeLessThanOrEqual(5);
+      'the cheap answers must not cost more than the expensive one').toBeLessThanOrEqual(7);
   });
 });

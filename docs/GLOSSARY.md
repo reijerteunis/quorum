@@ -45,8 +45,11 @@ tracking ref does not — `<upstream>..<base>`, never the symmetric difference �
 repository-level fact rather than a per-ticket annotation, derived from git alone, selected from a
 closed set of states, and never reported as an answer git did not give. Five of those states are
 reasons the board could not answer — `no remote` (the repository has no remotes at all), `no
-upstream` (a remote exists and the base tracks nothing), `missing ref`, `shallow clone` (truncated
-history can only make the count too small) and `git failed` — of which `no remote` renders nothing,
+upstream` (a remote exists and the base tracks nothing), `missing ref` (the base branch, or the
+tracking ref its configuration names, does not resolve — an upstream can be named and gone, which
+git renders as `[gone]`), `shallow clone` (truncated history can only make the count too small) and
+`git failed` (the probe could not answer, which is not the same as git answering that there is no
+repository here — that is silence) — of which `no remote` renders nothing,
 because a repository with nowhere to push has nothing to be ahead of. Rendered as at most one dim
 legend line naming the base, its upstream and the count, and **never as a `<base>:` token**, which
 is containment's grammar. **The line may warn and may never reassure**: a `git push` updates the
