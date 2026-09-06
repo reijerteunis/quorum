@@ -32,8 +32,16 @@
  * scanner meeting a construct it cannot read and carrying on **silently skips its subject and
  * reports success**, which is the 2026-08-25 failure arriving inside the guard written to close it.
  * Being able to lex every construct is not the property that matters; making the unexamined case
- * loud is. {@link readSlash} is the one refusal the tree exercises and {@link readLiteral} carries
- * the other.
+ * loud is.
+ *
+ * **Two refusals, and the second is one predicate rather than a list.** {@link readSlash} refuses a
+ * `/` it cannot classify, which is the construct the live tree exercises. Everything else is caught
+ * at the end of the input by {@link literals}: a scan that ends in any state but the default one
+ * ran out of file inside a construct, so whatever follows the point that construct opened was read
+ * as its contents and inspected by nobody. E-2 rules that invariant and amends E-1's wording,
+ * because enumerating constructs has no last member where {@link Open} has finitely many states —
+ * there is no fifth case to find after the fourth. Every function that enters one pushes it and
+ * pops it on the way out; what is still on the stack at the end is what was never left.
  *
  * Its subject is this package's production modules **plus one file in `core`**: `project.ts`, whose
  * `ProjectNotFoundError` is the only sentence in `packages/core` that a user reads and that carries
@@ -173,15 +181,56 @@ const escapeAt = (text: string, i: number): [value: string, span: number] => {
   return [ch, 2];
 };
 
+/** A string literal, and the state a `'` or a `"` enters. */
+const STRING = 'a string literal';
+/** A template literal, and the state a backtick enters. */
+const TEMPLATE = 'a template literal';
+/** A `/*` comment, and the state it enters — round 4's finding, silently swallowed until E-2. */
+const BLOCK_COMMENT = 'a block comment';
 /**
- * Stops the scan where the source holds syntax this scanner cannot classify, naming the file and
- * the offset — the refusal `requirements/errata.md` E-1 rules, and the reason the header gives.
+ * The state a `/` in code position enters. *Possible*, because telling a regular-expression literal
+ * from division needs the token before it and {@link readSlash} has no grammar; what it can decide
+ * is whether reading it either way could change the quote parity below, which is the only question
+ * this guard can be hurt by.
+ */
+const REGEX = 'a possible regular-expression literal';
+
+/**
+ * A construct the scan entered and has not left yet, and the offset of the character that opened it.
+ *
+ * **The set is finite, and that is why E-2's invariant terminates where E-1's did not.**
+ * *"Unterminated X"* is not a list of constructs to be extended a round at a time; it is one
+ * predicate over the state at end of input, and a lexer has as many states as it has.
+ */
+interface Open {
+  readonly state: typeof STRING | typeof TEMPLATE | typeof BLOCK_COMMENT | typeof REGEX;
+  readonly at: number;
+}
+
+/**
+ * One scan of one file: the text, the name a refusal reports it by, the literals collected so far,
+ * and the stack of constructs currently open.
+ *
+ * Threaded as one value rather than as four parameters because the stack has to reach every
+ * function that can enter a state, and {@link scan} and {@link readLiteral} already call each other.
+ */
+interface Scan {
+  readonly text: string;
+  readonly where: string;
+  readonly found: string[];
+  readonly open: Open[];
+}
+
+/**
+ * Stops the scan where the source holds syntax this scanner cannot classify, or where the input
+ * ended inside a construct — the two refusals `requirements/errata.md` E-1 and E-2 rule, naming the
+ * file and the offset the reader has to go to.
  *
  * A line number goes with the offset because an offset alone sends a reader counting characters.
  */
-const refuse = (where: string, text: string, at: number, why: string): never => {
-  const line = text.slice(0, at).split('\n').length;
-  throw new Error(`${where}:${line} (offset ${at}): ${why} — see requirements/errata.md E-1`);
+const refuse = (s: Scan, at: number, why: string): never => {
+  const line = s.text.slice(0, at).split('\n').length;
+  throw new Error(`${s.where}:${line} (offset ${at}): ${why} — see requirements/errata.md E-1, E-2`);
 };
 
 /**
@@ -207,15 +256,21 @@ const refuse = (where: string, text: string, at: number, why: string): never => 
  * The middle case is deliberately permissive and the last deliberately conservative: `a / b + 'x/y'`
  * is division and is refused, because this scanner cannot prove that it is. Refusing a legible line
  * costs a message naming it; admitting an illegible one costs a false green.
+ *
+ * There is a fourth case and it is not decided here: **the line has no ending**, the input running
+ * out before either a terminator or a newline. The {@link REGEX} state is then never left, and
+ * {@link literals} reports it with the other three at end of input rather than this function
+ * refusing twice for one reason.
  */
-const readSlash = (text: string, at: number, where: string): void => {
-  for (let i = at + 1; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === '\n') return;
+const readSlash = (s: Scan, at: number): void => {
+  s.open.push({ state: REGEX, at });
+  for (let i = at + 1; i < s.text.length; i += 1) {
+    const ch = s.text[i];
+    if (ch === '\n') { s.open.pop(); return; }
     if (ch === '\\') { i += 1; continue; }
     if (ch !== '/') continue;
-    if (!QUOTE.test(text.slice(at + 1, i))) return;
-    refuse(where, text, at, 'this `/` opens a regular-expression literal whose body carries a quote,'
+    if (!QUOTE.test(s.text.slice(at + 1, i))) { s.open.pop(); return; }
+    refuse(s, at, 'this `/` opens a regular-expression literal whose body carries a quote,'
       + ' or divides an expression that does; either reading changes the quote parity below it and'
       + ' this scanner cannot tell them apart');
   }
@@ -239,36 +294,35 @@ const readSlash = (text: string, at: number, where: string): void => {
  * template inside a `c.dim(…)` inside a template, seven lines above one of the eight sentences this
  * ticket moves, whose inner text a scanner that stopped at the first backtick collects nowhere.
  *
- * **A literal that never closes is refused rather than swallowed.** Reaching the end of the file
- * means the delimiter this started from was not one, so the scanner had already misread something
- * and the rest of the module has become the value of a single string nobody inspects. Same failure
- * as {@link readSlash}'s, arriving as a consequence instead of as a construct, and refused for the
- * same reason: the silent version of it is a clean tree reported over an unread file.
+ * **A literal that never closes leaves its state open rather than being swallowed.** Reaching the
+ * end of the file means the delimiter this started from was not one, so the scanner had already
+ * misread something and the rest of the module has become the value of a single string nobody
+ * inspects. Nothing is collected from it and {@link literals} refuses at end of input, which is
+ * where the same failure in a comment and in a `/` is reported too.
  */
-const readLiteral = (text: string, at: number, found: string[], where: string): number => {
-  const quote = text[at];
+const readLiteral = (s: Scan, at: number): number => {
+  const quote = s.text[at];
+  s.open.push({ state: quote === '`' ? TEMPLATE : STRING, at });
   let value = '';
   let i = at + 1;
-  for (; i < text.length && text[i] !== quote; i += 1) {
-    if (text[i] === '\\') {
-      const [decoded, span] = escapeAt(text, i);
+  for (; i < s.text.length && s.text[i] !== quote; i += 1) {
+    if (s.text[i] === '\\') {
+      const [decoded, span] = escapeAt(s.text, i);
       value += decoded;
       i += span - 1;
       continue;
     }
-    if (quote === '`' && text[i] === '$' && text[i + 1] === '{') {
-      const close = scan(text, i + 2, found, true, where);
-      value += text.slice(i, close + 1);
+    if (quote === '`' && s.text[i] === '$' && s.text[i + 1] === '{') {
+      const close = scan(s, i + 2, true);
+      value += s.text.slice(i, close + 1);
       i = close;
       continue;
     }
-    value += text[i];
+    value += s.text[i];
   }
-  if (i >= text.length) {
-    refuse(where, text, at, 'a string literal opened here and never closed, so the rest of the file'
-      + ' was read as its contents');
-  }
-  found.push(value);
+  if (i >= s.text.length) return i;
+  s.open.pop();
+  s.found.push(value);
   return i;
 };
 
@@ -293,44 +347,61 @@ const readLiteral = (text: string, at: number, found: string[], where: string): 
  * A brace inside an interpolation is followed rather than counted, so the `}` of an object literal
  * closes what it opened and not the interpolation around it.
  */
-const scan = (text: string, from: number, found: string[], inside: boolean, where: string): number => {
-  for (let i = from; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i += 1;
+const scan = (s: Scan, from: number, inside: boolean): number => {
+  for (let i = from; i < s.text.length; i += 1) {
+    const ch = s.text[i];
+    if (ch === '/' && s.text[i + 1] === '/') {
+      while (i < s.text.length && s.text[i] !== '\n') i += 1;
       continue;
     }
-    if (ch === '/' && text[i + 1] === '*') {
-      const close = text.indexOf('*/', i + 2);
-      if (close < 0) return text.length;
+    if (ch === '/' && s.text[i + 1] === '*') {
+      const close = s.text.indexOf('*/', i + 2);
+      // No `*/` anywhere below: the comment state is entered and never left, and the rest of the
+      // file is its contents. Left on the stack rather than returned quietly — round 4's finding.
+      if (close < 0) {
+        s.open.push({ state: BLOCK_COMMENT, at: i });
+        return s.text.length;
+      }
       i = close + 1;
       continue;
     }
     if (ch === '/') {
-      readSlash(text, i, where);
+      readSlash(s, i);
       continue;
     }
     if (inside && ch === '}') return i;
     if (inside && ch === '{') {
-      i = scan(text, i + 1, found, true, where);
+      i = scan(s, i + 1, true);
       continue;
     }
     if (ch !== '\'' && ch !== '"' && ch !== '`') continue;
-    i = readLiteral(text, i, found, where);
+    i = readLiteral(s, i);
   }
-  return text.length;
+  return s.text.length;
 };
 
 /**
  * Every string literal in `text`, with comments skipped and escape sequences decoded.
  *
+ * **The end-of-input invariant lives here, checked once**, which is what E-2 rules and what makes
+ * this a property rather than a growing list of constructs: a scan that ends in any state but the
+ * default one never left that state, so everything after the character that opened it went unread.
+ * The **outermost** open state is what the refusal names — the first construct that never closed is
+ * the cause, and the states nested under it are consequences of it having been misread.
+ *
  * @param where names the file in a refusal, and is the only reason this parameter exists.
- * @throws where `text` holds syntax the scanner cannot classify — see {@link refuse}.
+ * @throws where `text` holds syntax the scanner cannot classify, or ends inside a construct.
  */
 const literals = (text: string, where: string): string[] => {
-  const found: string[] = [];
-  scan(text, SHEBANG.exec(text)?.[0].length ?? 0, found, false, where);
-  return found;
+  const s: Scan = { text, where, found: [], open: [] };
+  scan(s, SHEBANG.exec(text)?.[0].length ?? 0, false);
+  const unterminated = s.open[0];
+  if (unterminated) {
+    refuse(s, unterminated.at, `the file ended inside ${unterminated.state}, which opened here and`
+      + ' was never left, so everything after this point was read as its contents and inspected by'
+      + ' nobody');
+  }
+  return s.found;
 };
 
 /** Whether a literal is one a user could read: a sentence has whitespace, a path segment has not. */
@@ -411,7 +482,7 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
  */
 const FIXTURE = 'a-module.ts';
 
-describe('AC-5 — the filter discriminates in the three directions it has to, and the scanner in the five beside them', () => {
+describe('AC-5 — the filter discriminates in the three directions it has to, and the scanner in the six beside them', () => {
   test('(1) it removes a folder spelling and leaves a bare mention', () => {
     // `commands.test.ts` proves this over `HELP`; proved again here because this is a second copy of
     // the regex and a copy taken on trust is how two guards drift into disagreeing.
@@ -583,11 +654,49 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
       .toStrictEqual(['harness init here']);
     expect(literals('#!/bin/sh -c \'x\'\nconst a = \'usage: harness run\';\n', FIXTURE))
       .toStrictEqual(['usage: harness run']);
+  });
 
-    // The other refusal, and the one that catches this failure as a consequence rather than as a
-    // construct: a literal that reaches the end of the file has swallowed the rest of the module,
-    // which is the silent skip in its most complete form.
-    expect(() => literals('const a = \'harness init;\n', FIXTURE))
-      .toThrow(/a-module\.ts:1 \(offset 10\).*never closed/s);
+  test('(9) the input ending in any lexer state is refused, and the state is named', () => {
+    // `requirements/errata.md` E-2, which amends E-1 rather than adding to it. E-1 said the scanner
+    // refuses *"syntax it cannot lex"*, and round 4 read that as constructs — reasonably, since the
+    // three rounds before it had each been one — closed the constructs, and left the *unterminated*
+    // case ending the scan quietly. That is the same silent skip one level up: nothing is
+    // unclassifiable about a `/*`, the file merely stops before its `*/`.
+    //
+    // The reformulation is what ends the list. `Open` has four states and "unterminated" is one
+    // predicate over the state at end of input, not a construct to be enumerated: whatever state
+    // the scan ends in, if it is not the default one the input was not lexable and the scan is
+    // refused. There is no fifth case to find after the fourth. One check, four fixtures.
+
+    expect(() => literals('const a = \'harness init;\n', FIXTURE), 'a string ran to the end')
+      .toThrow(/a-module\.ts:1 \(offset 10\): the file ended inside a string literal.*never left/s);
+    expect(() => literals('const a = `harness init;\n', FIXTURE), 'a template ran to the end')
+      .toThrow(/a-module\.ts:1 \(offset 10\): the file ended inside a template literal.*never left/s);
+    expect(() => literals('/*\nconst usage = \'usage: harness run\';\n', FIXTURE), 'round 4\'s finding')
+      .toThrow(/a-module\.ts:1 \(offset 0\): the file ended inside a block comment.*never left/s);
+    expect(() => literals('const RE = /[\'"]', FIXTURE), 'a line with no ending after a `/`')
+      .toThrow(/a-module\.ts:1 \(offset 11\): the file ended inside a possible regular-expression/);
+
+    // Where states are nested, the **outermost** one is named: a template whose interpolation holds
+    // an unterminated string leaves both open, and the template at offset 10 is the construct that
+    // never closed — the string at 14 is a consequence of the file already having been misread.
+    // Reporting the innermost instead names offset 14 here and, in the regex fixture above, names
+    // the string the misread `/` let open at offset 13 rather than the `/` itself.
+    expect(() => literals('const a = `x${\'y`;\n', FIXTURE), 'the outermost state, not the innermost')
+      .toThrow(/a-module\.ts:1 \(offset 10\): the file ended inside a template literal/);
+
+    // What each refusal replaces, shown rather than described: the block-comment fixture above
+    // carries a sentence this guard refuses, so the quiet version of it reported a clean tree over
+    // a module printing the old binary name. Its twin closes the comment one line up.
+    expect(offending('/* a comment */\nconst usage = \'usage: harness run\';\n', FIXTURE))
+      .toStrictEqual(['usage: harness run']);
+    // And the `/` one newline apart: with the line ended the state is left, nothing is open at the
+    // end of the input, and the sentence beside it is collected. So the refusal has a subject
+    // rather than a signature, and division on a line that ends is not refused.
+    expect(offending('const usage = \'usage: harness run\';\nconst x = a / b;\n', FIXTURE))
+      .toStrictEqual(['usage: harness run']);
+
+    // The refusal reaches the guard's own path and is not swallowed on the way.
+    expect(() => offending('/*\nconst usage = \'usage: harness run\';\n', FIXTURE)).toThrow();
   });
 });
