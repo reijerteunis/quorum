@@ -39,14 +39,15 @@ import type { CommandHandler } from './main.js';
 import { renderEvent } from './trace.js';
 
 /**
- * The usage line, preserved verbatim from `spike/bin/harness.js:536`.
+ * The usage line: the flag list preserved verbatim from `spike/bin/harness.js:536`, named for the
+ * binary this package actually installs.
  *
- * Why: preserved — it says `harness`, which the binary is not called. Q-0100 owns that class and
- * this is its fifth instance, after the three in that ticket's body and Q-0093's `init` next-steps
- * line; `validate.ts:62` and `ticket.ts:68` both keep theirs, so spelling this one `quorum` would
- * make one command disagree with its two neighbours while pre-empting the ruling.
+ * Why: the binary is `quorum` (Q-0100), which ruled the whole class at once — this line, the two
+ * sibling usage lines, the board's hint, `init`'s next steps and `core`'s `ProjectNotFoundError`.
+ * Everything but the name is the spike's, including the placeholder notation: `<advance|retry|abort>`
+ * is a form and not a string any implementation prints (Q-0094 erratum E-1).
  */
-const USAGE = 'usage: harness run <flow> <ticket> [--auto] [--dry] [--base <ref>] [--adapter mock]'
+const USAGE = 'usage: quorum run <flow> <ticket> [--auto] [--dry] [--base <ref>] [--adapter mock]'
   + ' [--verbose] [--gate-answer advance|retry|abort]';
 
 /** What driving one run's event stream produced. */
@@ -140,7 +141,7 @@ export function runOn(terminal: GateTerminal): CommandHandler {
     // argument validation and before any project is opened, so a malformed command fails before
     // anything is read from disk. Why: preserved, see `spike/bin/harness.js:539` and Q-0077 B5.
     const base = flags.base;
-    if (base === true) die('--base needs a revision: harness run <flow> <ticket> --base <ref>');
+    if (base === true) die('--base needs a revision: quorum run <flow> <ticket> --base <ref>');
 
     const project = openProject(flags.project);
     // Fresh from disk, before the ticket is loaded, before anything is written, and before
@@ -221,7 +222,8 @@ export function runOn(terminal: GateTerminal): CommandHandler {
  *
  * `loadProject` throws where the CLI's own version called `die`; uncaught, the sentence would reach
  * `dieOnUnexpected` and print a Node stack. `lint.ts` catches it the same way and for the same
- * reason, and the message is `core`'s byte for byte, `harness` included.
+ * reason, and the message is `core`'s, rendered unaltered — this module composes no recovery advice
+ * of its own, which is what keeps one sentence in one place.
  */
 function openProject(project: FlagValue | readonly FlagValue[] | undefined): ReturnType<typeof loadProject> {
   try {

@@ -31,8 +31,9 @@ import type { CommandHandler } from './main.js';
  * Why: divergence 3 — a fifth copy of `lint.ts`'s block rather than a shared helper, because a frame
  * module naming `loadProject` is what `frame.source.test.ts`'s AC-10 partition forbids (Q-0099 AC-3);
  * and this command needs all four fields where `lint.ts`'s helper answers one directory.
- * Why: preserved — `core`'s message names the binary `harness`, which this one is not called. That
- * whole class is Q-0100's. `--project` is passed through per Q-0091 erratum E-6.
+ * The message is `core`'s, rendered unaltered — this module composes no recovery advice of its own,
+ * which is what keeps one sentence in one place. `--project` is passed through per Q-0091 erratum
+ * E-6.
  */
 function projectOf(project: FlagValue | readonly FlagValue[] | undefined): ReturnType<typeof loadProject> {
   try {
@@ -111,10 +112,8 @@ export const board: CommandHandler = ({ flags }) => {
     const column = tickets.filter((ticket) => ticket.meta.stage === stage);
     if (!column.length && !ALWAYS_RENDERED.includes(stage)) continue;
     const next = flows.find((flow) => flow.consumes === stage);
-    // Why: preserved — the binary in this hint is called `harness` and this one is not. Q-0100 owns
-    // every such sentence at once; renaming it here would be that ticket done one command at a time.
     // The empty span is the spike's too: a column with no consuming flow emits `dim('')`.
-    console.log(c.bold(stage.padEnd(14)) + c.dim(next ? `→ harness run ${next.name} <id>` : ''));
+    console.log(c.bold(stage.padEnd(14)) + c.dim(next ? `→ quorum run ${next.name} <id>` : ''));
     for (const ticket of column) {
       const found = where?.stateOf(ticket.meta.branch);
       const spot = found?.reason === 'no branch' && !BRANCH_EXPECTED.has(ticket.meta.stage)

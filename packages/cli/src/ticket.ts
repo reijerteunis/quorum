@@ -52,8 +52,8 @@ import type { CommandHandler } from './main.js';
  * path of its own. Q-0091 erratum E-6 governs the argument: the spike reads that flag *inside* its
  * own `loadProject`, so passing it here is what keeps `--project` deciding which backlog is written.
  *
- * Why: preserved — `core`'s message names the binary `harness`, which this one is not called. That
- * whole class is Q-0100's.
+ * The message is `core`'s, rendered unaltered — this module composes no recovery advice of its own,
+ * which is what keeps one sentence in one place.
  */
 function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backlog {
   try {
@@ -64,8 +64,8 @@ function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backl
   }
 }
 
-/** The usage line, preserved from `spike/bin/harness.js:342`. Why: the binary name is Q-0100's. */
-const USAGE = 'usage: harness ticket new "<title>" --intent "..." [--id Q-0081]';
+/** The usage line: the argument shape from `spike/bin/harness.js:342`, named `quorum` per Q-0100. */
+const USAGE = 'usage: quorum ticket new "<title>" --intent "..." [--id Q-0081]';
 
 /** Allocate one ticket folder and print where it landed. */
 export const ticket: CommandHandler = ({ rest, flags }) => {

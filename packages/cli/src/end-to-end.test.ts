@@ -441,6 +441,14 @@ beforeAll(() => {
   invoke('validate-ok', ['validate', artifact('contract.schema.json'), artifact('conforming.json')]);
   invoke('validate-bad', ['validate', artifact('contract.schema.json'), artifact('violating.json')]);
 
+  // Q-0100 AC-9 — the three usage refusals, which are user-facing sentences no other invocation in
+  // this chain reaches: every command above is called with the arguments it wants. Recorded through
+  // `invoke` rather than `mustPass` because a refusal exits 1 by design, and taken BEFORE the last
+  // porcelain reading below so they are inside AC-6's "nothing was written" claim as well.
+  invoke('run-usage', ['run']);
+  invoke('ticket-usage', ['ticket']);
+  invoke('validate-usage', ['validate']);
+
   // The last reading, after every invocation this fixture makes. Nothing the four commands above do
   // is supposed to write anywhere, and this is the assertion that says so rather than assuming it.
   const finalPorcelain = git(repo, 'status', '--porcelain', '-z');
@@ -727,6 +735,61 @@ describe('AC-7 — the four commands that ride the chain rather than being its s
   });
 });
 
+describe('Q-0100 AC-9 — every sentence naming a command comes out of a real process', () => {
+  /**
+   * The six commands whose output names another command to run, and what each must say.
+   *
+   * **Through the spawned binary and not in process**, which is the whole of what this block adds
+   * over the six command suites: Q-0101 measured that `invoke()`'s `exitCode` in those files is an
+   * argument handed to a spied `process.exit` and never a status an operating system reported, and
+   * the reviewer on five of the last six chore runs could not execute the suite at all under
+   * `--sandbox read-only`. The sentence an adopter reads comes out of a real process or it is not
+   * verified.
+   *
+   * Each row is a *positive* pin and a *negative* one: without the second, a line naming neither
+   * binary would pass, and the eight sentences this ticket moved are eight chances to write a line
+   * that names nothing.
+   */
+  const named: readonly [label: string, stream: 'stdout' | 'stderr', says: string, notThis: string][] = [
+    ['init', 'stdout', 'next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001', 'harness adapters'],
+    ['board', 'stdout', '→ quorum run ', '→ harness run '],
+    ['adapters', 'stdout', 'run `quorum adapters --probe` before a real run', '`harness adapters'],
+    ['run-usage', 'stderr', 'usage: quorum run <flow> <ticket>', 'usage: harness run'],
+    ['ticket-usage', 'stderr', 'usage: quorum ticket new "<title>"', 'usage: harness ticket'],
+    ['validate-usage', 'stderr', 'usage: quorum validate <schema.json> <file…>', 'usage: harness validate'],
+  ];
+
+  test.each(named)('%s names quorum on %s', (label, stream, says, notThis) => {
+    const invocation = chain.ran[label];
+    expect(invocation, `${label} was never invoked, so this row asserts nothing`).toBeDefined();
+    expect(invocation?.[stream], `${label} no longer prints the sentence this row is about`).toContain(says);
+    expect(invocation?.[stream], `${label} names a binary this package does not install`).not.toContain(notThis);
+  });
+
+  test('and the three refusals exit 1 and wrote nothing, which is what makes them refusals', () => {
+    // The exit codes are unchanged by this ticket and are asserted here because the invocations are
+    // new: a usage refusal that started exiting 0 would satisfy every assertion above.
+    for (const label of ['run-usage', 'ticket-usage', 'validate-usage']) {
+      expect(chain.ran[label]?.status, `${label} did not refuse`).toBe(1);
+      expect(chain.ran[label]?.stdout, `${label} printed a refusal on stdout`).toBe('');
+    }
+  });
+
+  test('the folder survived the rename, which a blanket substitution would have destroyed', () => {
+    // `core`'s one sentence carries both senses of the word, and only one of them moved. Taken from
+    // a spawned process in a directory holding no project, so it is the sentence an adopter meets.
+    const orphan = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-e2e-orphan-')));
+    temporaries.push(orphan);
+    const result = spawnSync(process.execPath, [chain.bin, 'board'], {
+      cwd: orphan, encoding: 'utf8', env: sanitised(process.env, {}), timeout: SPAWN_TIMEOUT_MS,
+    });
+    const stderr = plain(result.stderr ?? '');
+    expect(stderr).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+    expect(stderr, 'the folder was renamed along with the command').toContain('harness/harness.yaml');
+    expect(stderr, 'a blanket substitution reached the path').not.toContain('quorum/quorum.yaml');
+  });
+});
+
 describe('Q-0101 AC-7(b2) — base-sync reporting, off the solutioning run this file already made', () => {
   test('a base branch that does not exist yet is stated, and no failure is reported with an empty reason', () => {
     // **Here rather than in `failure-paths.test.ts`, and that is measured rather than tidy.** The
@@ -796,13 +859,16 @@ describe('AC-9 — the verdict is a property of the commit', () => {
   test('and no invocation inherited one: each carried only what its own call declared', () => {
     const set = Object.fromEntries([...refusedBy('claude'), ...refusedBy('codex')]
       .map((name) => [name, SET_BY_THE_FIXTURE]));
-    // The twelve labels written out rather than mapped from `chain.ran`, so a thirteenth invocation
-    // has to be classified here instead of arriving with an empty expectation of its own.
+    // The fifteen labels written out rather than mapped from `chain.ran`, so a sixteenth invocation
+    // has to be classified here instead of arriving with an empty expectation of its own. It was
+    // twelve until Q-0100 AC-9 added the three usage refusals, and this register is what made adding
+    // them a classified act rather than a silent one.
     expect(Object.fromEntries(Object.entries(chain.ran).map(([label, i]) => [label, i.steering])))
       .toStrictEqual({
         init: {}, lint: {}, ticket: {}, 'wrong-stage': {}, requirements: {}, solutioning: {},
         'qa-red': {}, development: { MOCK_DEV_FLAKY: '1' }, board: {}, adapters: set,
         'validate-ok': {}, 'validate-bad': {},
+        'run-usage': {}, 'ticket-usage': {}, 'validate-usage': {},
       });
   });
 
@@ -824,10 +890,17 @@ describe('AC-9 — the verdict is a property of the commit', () => {
   test('every run selects the mock, so nothing here reaches a vendor or the network', () => {
     const runs = Object.values(chain.ran).filter((invocation) => invocation.argv[0] === 'run');
     // An identity rather than a floor: a count would pass whether or not the five flows this chain
-    // walks were still the ones being run.
-    expect(runs.map((invocation) => invocation.argv[1]))
-      .toStrictEqual(['solutioning', 'requirements', 'solutioning', 'qa-red', 'development']);
-    for (const invocation of runs) {
+    // walks were still the ones being run. Q-0100 AC-9's bare `run` joins the list as `<no flow>`
+    // rather than being filtered out of it, so it is still an invocation this register accounts for.
+    expect(runs.map((invocation) => invocation.argv[1] ?? '<no flow>'))
+      .toStrictEqual(['solutioning', 'requirements', 'solutioning', 'qa-red', 'development', '<no flow>']);
+    // Exactly one is excused, and which one is asserted rather than described: a bare `run` dies in
+    // argument validation before any project is opened, so it reaches no adapter and selecting one
+    // is not a claim that can be made about it. An exclusion nobody pins is one that widens.
+    const excused = runs.filter((invocation) => invocation.argv.length === 1);
+    expect(excused.map((invocation) => invocation.argv.join(' ')), 'a run invocation was excused from the mock claim')
+      .toStrictEqual(['run']);
+    for (const invocation of runs.filter((invocation) => invocation.argv.length > 1)) {
       expect(invocation.argv.join(' '), `${invocation.argv.join(' ')} does not select the mock`)
         .toContain('--adapter mock');
     }

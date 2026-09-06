@@ -20,12 +20,12 @@
 
 **Backlog**: The per-project (or central, multi-repo) folder of ticket folders in git. Replaces Jira. Its `stage` fields drive which flow can run next.
 
-**Ticket**: One folder in the backlog: `ticket.md` (frontmatter state + intent) and per-stage artifact subfolders (requirements/, solution/, qa/, dev/, review/, deploy/). Its **id** is `<PREFIX>-nnnn`, the grammar `/^[A-Z]+-[0-9]{4}$/` that `harness runs <token>` already resolves against, and the prefix belongs to the adopter rather than to the product: `harness ticket new` allocates within the one prefix the backlog's tickets already carry, so a `PROJ-0041` backlog allocates `PROJ-0042` with no configuration step. An **empty** backlog allocates `T-0001`, which is the id `harness init` prints as its own next command. A backlog the allocator **cannot read** — no id parses, more than one prefix does, or the prefix is full at `9999` — refuses and names what it found, rather than answering; `--id <ID>` allocates explicitly through the same checks, and `create` refuses a taken id or an occupied folder instead of overwriting one. Reading is not constrained by any of this: every id on disk still lists, reads and resolves, whatever its prefix.
+**Ticket**: One folder in the backlog: `ticket.md` (frontmatter state + intent) and per-stage artifact subfolders (requirements/, solution/, qa/, dev/, review/, deploy/). Its **id** is `<PREFIX>-nnnn`, the grammar `/^[A-Z]+-[0-9]{4}$/` that `quorum runs <token>` already resolves against, and the prefix belongs to the adopter rather than to the product: `quorum ticket new` allocates within the one prefix the backlog's tickets already carry, so a `PROJ-0041` backlog allocates `PROJ-0042` with no configuration step. An **empty** backlog allocates `T-0001`, which is the id `quorum init` prints as its own next command. A backlog the allocator **cannot read** — no id parses, more than one prefix does, or the prefix is full at `9999` — refuses and names what it found, rather than answering; `--id <ID>` allocates explicitly through the same checks, and `create` refuses a taken id or an occupied folder instead of overwriting one. Reading is not constrained by any of this: every id on disk still lists, reads and resolves, whatever its prefix.
 
-**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` a later one — usually the next, though the **chore flow** produces `reviewed` from `requirements`. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `harness board` as **Containment**.
+**Stage**: The ticket's position in the SDLC state machine (draft → requirements → solutioned → red → green → reviewed → qa-passed → deployed, plus blocked/abandoned). Flows `consume` one stage and `produce` a later one — usually the next, though the **chore flow** produces `reviewed` from `requirements`. `green` means the ticket's integration branch integrated and passed its configured suite; no stage — `green` or any later one — implies the branch is contained in the base branch. Where the code actually is appears on `quorum board` as **Containment**.
 
 **Containment**: The git-derived relationship between a ticket branch tip and the configured base
-branch, computed on every `harness board` invocation and never stored. Exactly three states,
+branch, computed on every `quorum board` invocation and never stored. Exactly three states,
 rendered as one token beside the ticket: contained (`main:contained` — the branch tip is an
 ancestor of the base tip), not contained (`main:not-contained(+12)` — with the count of commits
 reachable from the branch and not from the base), and indeterminate (`main:indeterminate(missing
@@ -102,14 +102,14 @@ reports one as having failed to resolve. A preflight that declines to examine so
 it — reporting success for an unexamined subject is the failure recorded in the 2026-08-25
 decision.
 
-**Base override** (`--base <ref>`): `harness run … --base <ref>` aims a run's `{base}` at an
+**Base override** (`--base <ref>`): `quorum run … --base <ref>` aims a run's `{base}` at an
 arbitrary revision instead of `repo.base_branch`. It moves the **diff anchor** only — what a review
 compares the ticket's work against — and never the branch a rework step or `integrate` merges from,
 which keeps reading the configured base. Without it a ticket whose branch is contained in the base
 has an empty review range and cannot be reviewed at all, which is why a merged ticket needed a
 hand-run review before Q-0077. Not a way to change what a run writes.
 
-**Dry run** (`--dry`): `harness run … --dry` walks a flow without invoking an adapter or writing
+**Dry run** (`--dry`): `quorum run … --dry` walks a flow without invoking an adapter or writing
 anything, reporting what each step would do. It is the same run machinery, not a separate code
 path, which is why its preflight must be as honest as a real run's. Not called a "preview" —
 DECISIONS entries before 2026-08-25 use that word for it.

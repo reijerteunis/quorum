@@ -338,7 +338,7 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
     const validate = await invoke(['validate', 'contract.schema.json', 'artifact.json']);
     expect(validate.stdout, 'validate read the artifact').toContain('matches contract.schema.json');
     const board = await invoke(['board']);
-    expect(board.stdout, 'board read the flow directory').toContain('harness run sample <id>');
+    expect(board.stdout, 'board read the flow directory').toContain('quorum run sample <id>');
     expect(board.stdout, 'board rendered its columns').toContain('requirements');
     for (const name of ['board', 'lint', 'validate']) {
       expect(READ_ONLY.map((argv) => argv[0]), `${name} is not in the snapshot's list`).toContain(name);

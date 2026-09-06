@@ -94,9 +94,9 @@ describe('AC-7 — the schema is read once, first, and a bad one dies with its o
     const { stdout, stderr, exitCode, hard } = await invoke(['validate', ...argv()]);
     expect(exitCode).toBe(ERROR);
     expect(hard, 'a usage failure exits hard, as the spike does').toBe(true);
-    // Why: preserved verbatim, `harness` and all — the binary name in this sentence belongs to the
-    // OQ-2 successor, which owns every user-facing occurrence of it at once.
-    expect(plain(stderr)).toContain('usage: harness validate <schema.json> <file…>');
+    // Everything but the binary name is preserved verbatim, the `…` in `<file…>` included; the name
+    // is `quorum` since Q-0100 ruled the class.
+    expect(plain(stderr)).toContain('usage: quorum validate <schema.json> <file…>');
     expect(stdout).toBe('');
   });
 

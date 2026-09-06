@@ -12,7 +12,9 @@ contract layer rather than by any vendor — was missing. Two invocation blocks 
 (Q-0047), against the ported adapters line by line: the codex block omitted `--add-dir`, which the
 adapter passes for every extra directory and which the table below already called verified present,
 and the claude block drew `--model <alias>` unqualified where the flag is passed only when a flow
-step names a model — the same rule codex's line already carried.*
+step names a model — the same rule codex's line already carried. §"check() is not proof of login"
+corrected 2026-09-06 (Q-0100): its two commands are `quorum adapters` and `quorum adapters --probe`,
+the binary `packages/cli` installs, where they had named one that does not exist.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -90,7 +92,7 @@ subscription's OAuth token expired. `check()` cannot see that: it makes no reque
 login status` cannot always see it either — it reported "Logged in using ChatGPT" while the
 refresh token was dead (Q-0001, 2026-08-22).
 
-So `harness adapters` prints presence only and says so; `harness adapters --probe` performs the
+So `quorum adapters` prints presence only and says so; `quorum adapters --probe` performs the
 smallest possible authenticated request per adapter and reports round-trip time and cost.
 **Run `--probe` before a real run**, and before trusting any green tick in this document.
 

@@ -19,9 +19,10 @@
  * erratum E-3 already ruled that this contract's prose states what must be *conveyed*. No erratum is
  * owed for it; see Q-0092 merged.md OQ-4.
  *
- * **Five preserved defects reach this command, and none of them is repaired here** (ground rule 3,
- * Q-0092 AC-12). Two are pinned by assertion in `runs.test.ts` so a later fix is a deliberate act,
- * and three are recorded where they are reached:
+ * **Four preserved defects reach this command, and none of them is repaired here** (ground rule 3,
+ * Q-0092 AC-12). Those that are pinned by assertion are pinned in `runs.test.ts`, so a later fix is
+ * a deliberate act; the rest are recorded where they are reached. It was five until Q-0100 ruled the
+ * binary's name and removed the one that had been waiting on that ruling:
  *
  * 1. *The listing and the detail disagree about a symlinked run directory.* `readdirSync` with
  *    `withFileTypes` has `lstat` semantics, so a symlink to a sibling run is silently absent from a
@@ -32,13 +33,11 @@
  *    Why: ruled rather than fixed, see Q-0037 AC-7 — no adapter can produce that row, and summing
  *    its cache breakdown would print a number that is not a token total in the one place run history
  *    exists to report one.
- * 3. *`ProjectNotFoundError` calls the binary `harness`.* Reached through {@link repoDirOf}, and
- *    Q-0100's to rule for every command at once.
- * 4. *`manifestShapeError` proves five things and then casts*, so a document that reaches a
+ * 3. *`manifestShapeError` proves five things and then casts*, so a document that reaches a
  *    formatter here can still carry a field of the wrong type; and a detail read validates no schema
  *    at all. Both deliberate — refusing in a listing would make one sibling's damage take the whole
  *    listing down, and `quorum validate` against the frozen contract is the job that proves more.
- * 5. *{@link runDetailJSON}'s `warnings` is always empty*, because a detail request collects none.
+ * 4. *{@link runDetailJSON}'s `warnings` is always empty*, because a detail request collects none.
  */
 import path from 'node:path';
 
@@ -65,8 +64,8 @@ import type { CommandHandler } from './main.js';
  * that flag *inside* its own `loadProject`, so passing it here is what keeps `--project` deciding
  * which project is read rather than a new behaviour.
  *
- * Why: preserved — `core`'s message names the binary `harness`, which this one is not called. That
- * whole class is Q-0100's, which exists to rule it once rather than once per command.
+ * The message is `core`'s, rendered unaltered — this module composes no recovery advice of its own,
+ * which is what keeps one sentence in one place.
  */
 function repoDirOf(project: FlagValue | readonly FlagValue[] | undefined): string {
   try {
