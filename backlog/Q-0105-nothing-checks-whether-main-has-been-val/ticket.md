@@ -1,14 +1,23 @@
 ---
 id: Q-0105
 title: Nothing checks whether main has been validated by CI
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0105/integration
 priority: p1
 created: 2026-09-05
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-06T21:36:11.118Z
+    cost: 12.934
 ---
 **Opened 2026-09-05, from the session that closed Q-0101.** `main` stood **89 commits and four
 days** ahead of `origin/main`, so **nothing this month had been validated by CI at all** — the whole
