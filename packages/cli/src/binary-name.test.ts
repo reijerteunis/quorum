@@ -71,13 +71,28 @@ const CORE_SUBJECTS = ['packages/core/src/backlog/project.ts'] as const;
 const FOLDER = /harness\/\S*/g;
 
 /**
- * Every string literal in `text`, with comments skipped.
+ * The escapes that decode to whitespace, which is the one question {@link printable} asks.
+ *
+ * Every other escape decodes to the character it escapes, so `\'` is an apostrophe and `\x1b` is
+ * `x1b` — a fragment with no whitespace in it, and therefore not a sentence, which is what it is.
+ */
+const WHITESPACE_ESCAPES: Record<string, string | undefined> = { n: '\n', t: '\t', r: '\r' };
+
+/**
+ * Every string literal in `text`, with comments skipped and escape sequences consumed.
  *
  * A character scanner and not a regular expression, for the reason the header gives: the two are
  * distinguishable only by knowing whether you are inside a comment, and getting that wrong turns
  * every backticked word in a JSDoc block into product output. It is not a TypeScript parser and
  * does not claim to be — what it must get right is that a comment is not a literal, which is the
  * clause AC-5(3) demonstrates.
+ *
+ * **A backslash consumes the character after it, and that is a correctness property rather than a
+ * nicety.** Skipping the backslash alone leaves the character behind it to be read as code, so an
+ * escaped quote closes the literal it was written inside — and the cost is not the split value but
+ * the **parity**: every delimiter after an odd number of them means its opposite, so the scan is
+ * outside a string exactly where the file is inside one, and a sentence below is collected by
+ * nobody while this file reports a clean tree. AC-5(4) pins it with the measured naive output.
  */
 const literals = (text: string): string[] => {
   const found: string[] = [];
@@ -97,8 +112,13 @@ const literals = (text: string): string[] => {
     let value = '';
     i += 1;
     for (; i < text.length && text[i] !== ch; i += 1) {
-      if (text[i] === '\\') continue;
-      value += text[i];
+      if (text[i] !== '\\') {
+        value += text[i];
+        continue;
+      }
+      i += 1;
+      if (i >= text.length) break;
+      value += WHITESPACE_ESCAPES[text[i]] ?? text[i];
     }
     found.push(value);
   }
@@ -174,7 +194,7 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
   });
 });
 
-describe('AC-5 — the filter discriminates, in the three directions it has to', () => {
+describe('AC-5 — the filter discriminates, in the three directions it has to and the two the scan needs', () => {
   test('(1) it removes a folder spelling and leaves a bare mention', () => {
     // `commands.test.ts` proves this over `HELP`; proved again here because this is a second copy of
     // the regex and a copy taken on trust is how two guards drift into disagreeing.
@@ -217,5 +237,52 @@ describe('AC-5 — the filter discriminates, in the three directions it has to',
     // `//` in a module and report a clean tree.
     expect(literals('// run `harness init`\nconst a = \'run `harness init` here\';\n'))
       .toStrictEqual(['run `harness init` here']);
+  });
+
+  test('(4) an escaped quote does not end the literal, and does not hide the one after it', () => {
+    // A quote escaped inside its own delimiter, which is the evasion this clause closes. Consuming
+    // the backslash alone leaves the quote behind it to be read as the terminator, and the damage
+    // is not the split literal — it is the **parity**: every quote after an odd number of them
+    // swaps its meaning, so the scan is outside a string where the file is inside one. An offending
+    // sentence below is then read as code and collected by nobody, and the guard reports a clean
+    // tree over a module that prints `harness`. The escape is consumed with the character it
+    // escapes, so the parity never inverts.
+    const escaped = 'const a = \'it\\\'s fine\';\nconst b = \'usage: harness run <flow>\';\n';
+    expect(literals(escaped)).toStrictEqual(['it\'s fine', 'usage: harness run <flow>']);
+    // The half that makes it load-bearing rather than cosmetic. Against a scan that consumed only
+    // the backslash this file yields `['it', ';\nconst b = ', ';\n']` — measured, and the failure
+    // this test showed before the scanner was fixed — in which the usage line appears in no entry
+    // at all and the filters below have nothing to refuse.
+    const offending = literals(escaped).filter(printable)
+      .filter((literal) => outsideAPath(literal).includes('harness'));
+    expect(offending).toStrictEqual(['usage: harness run <flow>']);
+  });
+
+  test('(5) a template literal is collected whole, interpolations and escapes included', () => {
+    // The interpolating shapes the subject actually has: `board.ts:117` is the hint with the flow
+    // name in it, and `init.ts:63` wraps the next-steps constant in a template of its own. A scan
+    // stopping at an interpolation reads half of each. The expression source is kept rather than
+    // evaluated — over-reading can only make the guard fire, where under-reading is what lets a
+    // sentence through.
+    expect(literals('const a = `→ quorum run ${next.name} <id>`;\n'))
+      .toStrictEqual(['→ quorum run ${next.name} <id>']);
+    // A quote inside an interpolation is content and not a delimiter, which is `init.ts:63`'s shape.
+    expect(literals('const a = `${c.green(\'✓\')} harness/ created`;\n'))
+      .toStrictEqual(['${c.green(\'✓\')} harness/ created']);
+    // And an escaped backtick does not close the template, which is clause (4) in a third delimiter.
+    expect(literals('const a = `run \\`harness init\\` in your repo`;\n'))
+      .toStrictEqual(['run `harness init` in your repo']);
+  });
+
+  test('and a whitespace escape counts as whitespace, because the printed string has it', () => {
+    // `printable` asks what the user sees. `\n` is a newline once printed, so a literal whose only
+    // whitespace is escaped is a sentence and not a path segment; decoding it is what keeps that
+    // question honest. `lint.ts:71` and `trace.ts:67` are the live subjects.
+    expect(literals('const a = \'harness\\ninit\';\n')).toStrictEqual(['harness\ninit']);
+    expect(printable('harness\ninit')).toBe(true);
+    // Every other escape decodes to the character it escapes, which is what keeps `\x1b` a path-like
+    // fragment rather than a sentence.
+    expect(literals('const a = \'\\x1b[0m\';\n')).toStrictEqual(['x1b[0m']);
+    expect(printable('x1b[0m')).toBe(false);
   });
 });

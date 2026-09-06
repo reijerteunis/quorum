@@ -152,7 +152,7 @@ export class Backlog {
    */
   nextId(): string {
     const tickets = this.list();
-    // Why: `quorum init` prints `quorum run requirements T-0001` as the next command, so this is
+    // Why: `harness init` prints `harness run requirements T-0001` as the next command, so this is
     // the id the product already advertises for a fresh backlog (Q-0080 AC-3).
     if (!tickets.length) return 'T-0001';
 
