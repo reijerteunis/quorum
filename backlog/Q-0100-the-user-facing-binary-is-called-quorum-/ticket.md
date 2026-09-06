@@ -1,7 +1,7 @@
 ---
 id: Q-0100
 title: The user-facing binary is called quorum, not harness
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0100/integration
@@ -9,7 +9,7 @@ priority: p2
 created: 2026-09-03
 iterations:
   requirements.head-of-product: 1
-  chore.review: 3
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -35,6 +35,14 @@ history:
     stage_after: requirements
     at: 2026-09-06T19:24:26.511Z
     cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-06T20:28:06.364Z
+    cost: 68.994
 ---
 **Opened at Q-0091's requirements gate on 2026-09-03**, from finding 3 of a head-of-product loop
 that exhausted rather than shipping a document naming a surface it could not write. `backlog/` is

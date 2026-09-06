@@ -43,7 +43,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { configDefaults } from 'vitest/config';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
 import { HELP } from './commands.js';
 import {
@@ -445,6 +445,40 @@ describe('AC-14 — the four places that could have grown a build phase did not,
     expect(INVOKES_BUILD.some((pattern) => pattern.test('      - run: pnpm turbo run build --force\n'))).toBe(true);
     expect(INVOKES_BUILD.some((pattern) => pattern.test('  test: pnpm build && pnpm turbo run test --force'))).toBe(true);
     expect(INVOKES_BUILD.some((pattern) => pattern.test('# a comment about how the emit is built'))).toBe(false);
+  });
+});
+
+describe('the build oracle reads turbo, not the terminal', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  // Not a criterion of any ticket — a defect found on 2026-09-06 when this file failed 24 of 57
+  // assertions on a tree that built correctly, and passed 57 of 57 with one variable unset.
+  //
+  // `runBuild` reads the `Summary:` line out of turbo's own output, anchored `^\s*Summary:`. With
+  // `FORCE_COLOR` in the environment turbo wraps that line in escape sequences even when stdout is
+  // a pipe, `\s*` does not match an escape, and every assertion downstream of the oracle fails
+  // with "turbo wrote no run summary". The verdict was a property of the shell — *"A test's verdict
+  // is a property of the commit, not of the checkout or the account"* (2026-08-30), the account
+  // case, in the file that verifies the build. CI never saw it because runners set no colour
+  // forcer; a contributor whose terminal does would have seen nothing else.
+  test('turboEnv strips the colour forcers, so the oracle reads what turbo emits with no options', () => {
+    vi.stubEnv('FORCE_COLOR', '3');
+    vi.stubEnv('CLICOLOR_FORCE', '1');
+    const env = turboEnv();
+    expect(env.FORCE_COLOR, 'FORCE_COLOR reaches turbo and colours the line the oracle parses').toBeUndefined();
+    expect(env.CLICOLOR_FORCE, 'CLICOLOR_FORCE does the same by another name').toBeUndefined();
+    // The stripping is what matters, not the deletion: an inherited PATH must still arrive, or the
+    // subprocess is a different failure wearing this one's clothes.
+    expect(env.PATH, 'the rest of the environment still reaches turbo').toBe(process.env.PATH);
+  });
+
+  test('and the anchor the oracle uses is what a coloured line defeats, shown rather than asserted', () => {
+    // Why the fix is in the environment rather than in the regex: this is the exact shape turbo
+    // emits under a colour forcer, and it is the parser's failure that follows from it.
+    const ANCHOR = /^\s*Summary:\s*(\S+)\s*$/m;
+    expect(ANCHOR.exec('  Summary:    /tmp/runs/a.json\n')?.[1], 'the plain line parses').toBe('/tmp/runs/a.json');
+    expect(ANCHOR.exec('\u001b[1mSummary:    /tmp/runs/a.json\u001b[0m\n'), 'the coloured line does not')
+      .toBeNull();
   });
 });
 

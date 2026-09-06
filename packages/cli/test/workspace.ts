@@ -66,6 +66,17 @@ export const turboBin = (): string => {
 export const turboEnv = (): NodeJS.ProcessEnv => {
   const env = { ...process.env };
   delete env.TURBO_FORCE;
+  // The colour forcers go for the same reason `TURBO_FORCE` does, one property along: they change
+  // what turbo *prints*, and `build.test.ts`'s oracle reads a formatted line out of it. With
+  // `FORCE_COLOR` set — three of this workspace's own scripts and many terminals set it — turbo
+  // wraps its summary line in escape sequences even when stdout is a pipe, and the `^\s*Summary:`
+  // anchor stops matching, so 24 assertions fail on a tree that builds correctly. That is *"A
+  // test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30),
+  // the account case: the suite passed or failed on an environment variable nobody set for it.
+  // Stripped here rather than tolerated in the parser, because a deterministic subprocess is the
+  // narrower fix and leaves the oracle reading exactly what turbo emits with no options.
+  delete env.FORCE_COLOR;
+  delete env.CLICOLOR_FORCE;
   return env;
 };
 
