@@ -5,8 +5,12 @@
 // repository came to answer the same question two ways before Q-0035.
 import { describe, expect, test } from 'vitest';
 
-import type { AncestryReason, ContainmentReason, ContainmentResult } from '@quorum/shared';
-import { ANCESTRY_REASONS, CONTAINMENT_REASONS, CONTAINMENT_STATES } from '@quorum/shared';
+import type {
+  AncestryReason, ContainmentReason, ContainmentResult, PushLagReason, PushLagResult,
+} from '@quorum/shared';
+import {
+  ANCESTRY_REASONS, CONTAINMENT_REASONS, CONTAINMENT_STATES, PUSH_LAG_REASONS, PUSH_LAG_STATES,
+} from '@quorum/shared';
 
 import * as gitModule from './git.js';
 import * as barrel from '../index.js';
@@ -24,28 +28,30 @@ const gitSource = (): string => {
   return found[1];
 };
 
-describe('AC-1 — the module exports ten functions, and core reads ancestry in one file', () => {
-  test('exactly the ten functions this module owns', () => {
+describe('AC-1 — the module exports eleven functions, and core reads ancestry in one file', () => {
+  test('exactly the eleven functions this module owns', () => {
     // Eight at Q-0042. `mergeBase` is the ninth, and it is here rather than in the engine because
     // the guard below permits `merge-base` in this file alone — Q-0053 AC-3a and OQ-1.
     // `currentBranch` is the tenth, and it is here for the reason this file exists: every git call
     // in `core` goes through one runner, and a probe spelled inside `backlog/scaffold.ts` would be
-    // a second one (Q-0093 AC-9(b)).
+    // a second one (Q-0093 AC-9(b)). `pushLag` is the eleventh, for that same reason: it is a
+    // second git-derived fact and a probe spelled inside `packages/cli/src/board.ts` would be a
+    // second runner (Q-0105 AC-1).
     expect(Object.keys(gitModule).sort()).toEqual([
       'ancestry', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
-      'ensureWorktree', 'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
+      'ensureWorktree', 'mergeBase', 'pushLag', 'removeWorktree', 'shallowState', 'shortSha',
     ]);
     for (const value of Object.values(gitModule)) expect(typeof value).toBe('function');
   });
 
-  test('and that pin moved rather than being widened — the nine it held before Q-0093 are refused', () => {
+  test('and that pin moved rather than being widened — the ten it held before Q-0105 are refused', () => {
     // Shown red against the value it replaces rather than edited to fit, which is the demonstration
-    // Q-0091 and Q-0092 each wrote for their own registers. A `toContain` here would have accepted
-    // either list and recorded nothing.
-    expect(Object.keys(gitModule).sort(), 'the module still exports the nine it had before Q-0093')
+    // Q-0091 and Q-0092 each wrote for their own registers, and which Q-0093 wrote here against the
+    // nine before it. A `toContain` here would have accepted either list and recorded nothing.
+    expect(Object.keys(gitModule).sort(), 'the module still exports the ten it had before Q-0105')
       .not.toEqual([
-        'ancestry', 'containment', 'emptyRangeEvidence', 'ensureExcluded', 'ensureWorktree',
-        'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
+        'ancestry', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
+        'ensureWorktree', 'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
       ]);
   });
 
@@ -64,10 +70,30 @@ describe('AC-1 — the module exports ten functions, and core reads ancestry in 
   test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {
     // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte, asserting that this
     // port child added no public re-export. Q-0096 opens the surface, so what survives is the half
-    // still under decision: `containment` is what the board renders and the only name here a
-    // consumer outside the package may reach.
+    // still under decision: which of this folder's names a consumer outside the package may reach.
+    // Two since Q-0105 — `containment` and `pushLag`, the two git-derived facts the board renders —
+    // and the comment moves with the pin, because it said "the only name" and that is now false.
     expect(Object.keys(gitModule).filter((symbol) => symbol in barrel).sort())
-      .toStrictEqual(['containment']);
+      .toStrictEqual(['containment', 'pushLag']);
+  });
+
+  test('and that pin moved rather than widened — the one name it held before Q-0105 is refused', () => {
+    // The same demonstration the export pin above carries: a register is moved by being shown to
+    // refuse the value it replaces, never by being edited to fit. Without this, adding a third
+    // export to the barrel would silently pass a `toStrictEqual` somebody had rewritten by hand.
+    expect(Object.keys(gitModule).filter((symbol) => symbol in barrel).sort(),
+      'the folder still contributes only `containment` to the barrel')
+      .not.toStrictEqual(['containment']);
+  });
+
+  test('`currentBranch` is still withheld, so the rule did not move with the arithmetic', () => {
+    // Q-0105 added a name to the barrel, which is exactly when the rule that governs the list is
+    // worth re-asserting rather than assuming: a symbol reaches the surface because a COMMAND needs
+    // it. No command asks git for a branch name, so `currentBranch` stays off it — and this is the
+    // clause that would fail if a later ticket read "the barrel grew" as permission.
+    expect(Object.keys(gitModule)).toContain('currentBranch');
+    expect(Object.keys(barrel), 'currentBranch reached the barrel and no command needs it')
+      .not.toContain('currentBranch');
   });
 });
 
@@ -118,6 +144,26 @@ describe('AC-11 — the closed sets live in shared, and no literal is re-spelled
     }
   });
 
+  test('Q-0105 AC-2 — push lag declares its own closed sets in shared, beside containment\'s', () => {
+    // A sibling module rather than an addition to `containment.ts`, because it is a second SUBJECT
+    // under the same rules. `missing ref`, `shallow clone` and `git failed` are deliberately spelled
+    // in both sets and the sets stay separate: `ANCESTRY_REASONS` and `CONTAINMENT_REASONS` already
+    // overlap on two, for the same reason — a shared string is not a shared question.
+    expect(PUSH_LAG_STATES).toEqual(['pushed', 'unpushed', 'indeterminate']);
+    expect(PUSH_LAG_REASONS).toEqual([
+      'no remote', 'no upstream', 'missing ref', 'shallow clone', 'git failed',
+    ]);
+    // The two reasons only this fact can reach, asserted so a later edit that folded the two sets
+    // together would fail here rather than pass by containing everything.
+    for (const only of ['no remote', 'no upstream']) {
+      expect(CONTAINMENT_REASONS as readonly string[],
+        `${only} is containment's reason too, so the two sets have merged`).not.toContain(only);
+    }
+    expect(PUSH_LAG_REASONS as readonly string[],
+      'no branch is a ticket\'s question and has no meaning for a base branch').not.toContain('no branch');
+    expect(repoFile('packages/shared/src/index.ts')).toContain("export * from './push-lag.js';");
+  });
+
   test('an out-of-set reason, and an impossible combination, do not compile', () => {
     // Each directive fails the build if the line it guards ever starts compiling, so these are
     // assertions about the type declarations rather than about this run.
@@ -131,7 +177,16 @@ describe('AC-11 — the closed sets live in shared, and no literal is re-spelled
     const unknown: ContainmentResult = { state: 'indeterminate' };
     // @ts-expect-error the board has no surface that can produce this ancestry reason (fact 2)
     const boardOnly: ContainmentReason = 'shallow state unknown';
+    // @ts-expect-error 'no branch' is containment's reason: a base branch is not a ticket (Q-0105)
+    const wrongSet: PushLagReason = 'no branch';
+    // @ts-expect-error a pushed base carries no count and no upstream name (Q-0105 AC-2)
+    const level: PushLagResult = { state: 'pushed', ahead: 0 };
+    // @ts-expect-error an unpushed base has to name the upstream the sentence renders (Q-0105 AC-2)
+    const behind: PushLagResult = { state: 'unpushed', ahead: 2 };
+    // @ts-expect-error an indeterminate push lag carries a reason and never a count (Q-0105 AC-2)
+    const cannotSay: PushLagResult = { state: 'indeterminate', reason: 'no upstream', ahead: 1 };
 
-    expect([outOfSet, contained.state, negative.state, unknown.state, boardOnly]).toHaveLength(5);
+    expect([outOfSet, contained.state, negative.state, unknown.state, boardOnly,
+      wrongSet, level.state, behind.state, cannotSay.state]).toHaveLength(9);
   });
 });

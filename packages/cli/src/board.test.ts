@@ -510,3 +510,245 @@ describe('AC-6 — the two legends, each printed only when a row earned it', () 
       .not.toMatch(/git could not answer/);
   });
 });
+
+describe('Q-0105 — push lag, the one repository-level fact this board reports', () => {
+  /**
+   * Give `root`'s branch somewhere to push to, and push it there.
+   *
+   * The remote is not called `origin` and, wherever a test can choose, the branch is not called
+   * `main`: a rendered name that came from git survives this fixture and a name the code composed
+   * does not. `local` further commits are then made on top of the pushed tip, and `remoteAhead`
+   * commits are made on the remote side only, through a clone that is discarded.
+   */
+  function withUpstream(
+    root: string,
+    { remote = 'backup', branch = 'main', local = 0, remoteAhead = 0 } = {},
+  ): void {
+    const bare = tmp('quorum-cli-board-remote-');
+    git(bare, 'init', '-q', '--bare', '-b', branch);
+    git(root, 'remote', 'add', remote, bare);
+    git(root, 'push', '-q', '-u', remote, branch);
+    if (remoteAhead > 0) {
+      const other = tmp('quorum-cli-board-other-');
+      git(other, 'clone', '-q', bare, other);
+      for (let i = 0; i < remoteAhead; i += 1) {
+        git(other, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '--allow-empty', '-m', `theirs ${String(i)}`);
+      }
+      git(other, 'push', '-q', 'origin', branch);
+      git(root, 'fetch', '-q', remote);
+    }
+    for (let i = 0; i < local; i += 1) {
+      git(root, '-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit', '-q', '--allow-empty', '-m', `ours ${String(i)}`);
+    }
+    // The fixture asserts its own topology: every claim below tells one count from another, and a
+    // divergence that silently did not happen would make them agree and prove nothing.
+    const upstream = `refs/remotes/${remote}/${branch}`;
+    expect(git(root, 'rev-list', '--count', `refs/heads/${branch}..${upstream}`),
+      'the fixture is not behind by what it was asked for').toBe(String(remoteAhead));
+    expect(git(root, 'rev-list', '--count', `${upstream}..refs/heads/${branch}`),
+      'the fixture is not ahead by what it was asked for').toBe(String(local));
+  }
+
+  /**
+   * A configured remote that `root`'s branch does not track — the `no upstream` state.
+   *
+   * The directory it points at is deliberately never initialised: the state under test is a
+   * property of this repository's own configuration, and reaching the far end would be a network
+   * call in everything but distance.
+   */
+  const remoteWithNoTracking = (root: string, remote = 'backup'): void => {
+    git(root, 'remote', 'add', remote, tmp('quorum-cli-board-remote-'));
+  };
+
+  /** The push-lag legend line, or `null` where the board printed none. */
+  const lagLine = (result: Invocation): string | null =>
+    out(result).split('\n').find((line) => line.includes('push lag')) ?? null;
+
+  /**
+   * The push-lag legend, asserted to have rendered at all before anything is claimed about it.
+   *
+   * Without this a `toMatch` over an absent line reports *"expects to receive a string, but got
+   * object"* — a failure that names the assertion's plumbing instead of the defect, which is what a
+   * reader meeting a red suite has to work backwards from. Measured while demonstrating the
+   * threshold mutation: applying a floor made three tests fail and none of them said so.
+   */
+  const requireLagLine = (result: Invocation, why: string): string => {
+    const line = lagLine(result);
+    expect(line, why).not.toBeNull();
+    return line ?? '';
+  };
+
+  test('AC-10 — a project with no remote gains not one word, and neither does a pushed one', async () => {
+    // The cold-clone claim, and it is asserted over BOTH silent states in the same test, because
+    // they are silent for different reasons and a fix that suppressed only one would still add a
+    // line to the path M6 turns on.
+    const quiet = await projectFixture();
+    await makeTicket(quiet);
+    const before = await board(quiet);
+    expect(before.exitCode, out(before)).toBe(SUCCESS);
+    expect(lagLine(before), 'a repository with no remote was told about push lag').toBeNull();
+
+    withUpstream(quiet);
+    const after = await board(quiet);
+    expect(after.exitCode, out(after)).toBe(SUCCESS);
+    expect(lagLine(after), 'a base level with its upstream was told about push lag').toBeNull();
+    // Byte-identical, which is the claim AC-10 actually makes: acquiring a remote and pushing to it
+    // changes nothing a reader sees.
+    expect(out(after), 'the two silent states do not render identically').toBe(out(before));
+  });
+
+  test('AC-7 — one unpushed commit prints, so the threshold is 1 and there is no floor', async () => {
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 1 });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    const line = requireLagLine(result, 'a lag of one printed nothing, so a floor was applied');
+    expect(line).toMatch(/1 commit that backup\/main does not/);
+    // Singular, because a line that says "1 commits" is a line nobody trusts the rest of.
+    expect(line).not.toMatch(/1 commits/);
+  });
+
+  test('AC-6 — the count is upstream..base, and a symmetric difference would read one more', async () => {
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 2, remoteAhead: 1 });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(requireLagLine(result, 'the diverged fixture printed no legend'))
+      .toMatch(/holds 2 commits that backup\/main does not/);
+    expect(out(result), 'a symmetric-difference count would read 3').not.toMatch(/holds 3 commits/);
+  });
+
+  test('AC-9 — the sentence claims what it can prove and no word of it is about testing', async () => {
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 2 });
+    const result = await board(root);
+    const line = requireLagLine(result, 'the legend this criterion is about did not render');
+
+    // The positive half: base, upstream and count are all named, and the freshness limit is stated
+    // in words. A line naming nothing would satisfy a forbidden-substring list on its own.
+    expect(line, 'the base branch is not named').toContain('main');
+    expect(line, 'the upstream is not named').toContain('backup/main');
+    expect(line, 'the count is not named').toContain('2 commits');
+    expect(line, 'the answer is presented as live rather than as of the last fetch')
+      .toContain('as of the last fetch');
+    expect(line, 'the line does not say what it is about').toMatch(/have not been pushed/);
+
+    // The forbidden half. This is the criterion the ticket exists for: the failure being fixed is
+    // four documents claiming a path worked, and a board line implying validation is that same
+    // failure wearing a fix's clothes.
+    const forbidden = [/\bci\b/i, /validated/i, /verified/i, /tested/i, /green/i, /build/i,
+      /github/i, /actions/i, /pipeline/i];
+    for (const pattern of forbidden) {
+      expect(pattern.test(out(result)),
+        `the board's output can be read as a claim about testing: ${pattern.source}`).toBe(false);
+    }
+    // And that list has a subject: it recognises the claim it exists to forbid where one is written.
+    expect(forbidden.some((pattern) => pattern.test('main was validated by CI')),
+      'the forbidden-substring list does not recognise the sentence it forbids').toBe(true);
+  });
+
+  test('AC-8 — the legend borrows none of containment\'s vocabulary', async () => {
+    // Structurally required, not merely tidy: `indeterminate` is containment's closed vocabulary and
+    // a second fact borrowing it makes both legends ambiguous. Mechanically it is what keeps six
+    // landed assertions in this file green without one of them being edited.
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 2 });
+    const withCount = requireLagLine(await board(root), 'the unpushed legend did not render');
+
+    const noUpstream = await projectFixture();
+    remoteWithNoTracking(noUpstream);
+    const cannotSay = requireLagLine(await board(noUpstream), 'the cannot-say legend did not render');
+
+    for (const [name, line] of [['unpushed', withCount], ['cannot say', cannotSay]] as const) {
+      expect(line.length, `the ${name} legend did not render, so this proves nothing`)
+        .toBeGreaterThan(0);
+      expect(line, `the ${name} legend spells a containment token`).not.toMatch(/main:/);
+      expect(line, `the ${name} legend spells containment's word`).not.toMatch(/indeterminate/);
+      expect(line, `the ${name} legend reuses the phrase C4 counts`).not.toMatch(/git could not answer/);
+    }
+  });
+
+  test('AC-3 and AC-5 — a base tracking nothing says so, in the repository\'s own names', async () => {
+    // `trunk` tracking `somewhere-else`, so a result carrying `origin` or `main` would have had to
+    // invent it. `init` aims `repo.base_branch` at the branch the checkout is on, so naming the
+    // branch at `git init` is all this needs.
+    const untrackedRoot = await projectFixture({ branch: 'trunk' });
+    await makeTicket(untrackedRoot);
+    remoteWithNoTracking(untrackedRoot, 'somewhere-else');
+    const untracked = await board(untrackedRoot);
+    expect(untracked.exitCode, out(untracked)).toBe(SUCCESS);
+    expect(requireLagLine(untracked, 'a base branch nothing is watching is the state worth saying'))
+      .toMatch(/cannot say whether trunk has been pushed \(no upstream\)/);
+
+    const root = await projectFixture({ branch: 'trunk' });
+    await makeTicket(root);
+    withUpstream(root, { remote: 'somewhere-else', branch: 'trunk', local: 3 });
+    const tracked = await board(root);
+    expect(tracked.exitCode, out(tracked)).toBe(SUCCESS);
+    expect(requireLagLine(tracked, 'the tracked fixture printed no legend'))
+      .toMatch(/trunk holds 3 commits that somewhere-else\/trunk does not/);
+    expect(out(tracked), 'a remote name was composed rather than read out of git').not.toMatch(/origin/i);
+    expect(out(tracked), 'a base branch name was composed rather than read out of config')
+      .not.toMatch(/\bmain\b/i);
+  });
+
+  test('AC-4 — it reads: no ref moves, no file appears, and FETCH_HEAD is untouched', async () => {
+    // The FETCH_HEAD clause is what proves no network call was made, and it is stronger and cheaper
+    // than auditing the source for a verb. The fixture fetches first so the file exists — over an
+    // absent one the assertion would hold vacuously.
+    const root = await projectFixture();
+    await makeTicket(root);
+    withUpstream(root, { local: 2, remoteAhead: 1 });
+    const fetchHead = path.join(root, '.git', 'FETCH_HEAD');
+    expect(fs.existsSync(fetchHead), 'the fixture never fetched, so this claim would be vacuous')
+      .toBe(true);
+
+    const bytesBefore = fs.readFileSync(fetchHead);
+    const mtimeBefore = fs.statSync(fetchHead).mtimeMs;
+    const refsBefore = git(root, 'for-each-ref');
+    const filesBefore = ['backlog', 'harness', '.quorum'].map((dir) => walk(path.join(root, dir)));
+
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(lagLine(result), 'the path under test did not run').not.toBeNull();
+    expect(fs.readFileSync(fetchHead), 'FETCH_HEAD moved, so something fetched')
+      .toStrictEqual(bytesBefore);
+    expect(fs.statSync(fetchHead).mtimeMs, 'FETCH_HEAD was rewritten with the same bytes')
+      .toBe(mtimeBefore);
+    expect(git(root, 'for-each-ref'), 'no ref may move').toBe(refsBefore);
+    expect(['backlog', 'harness', '.quorum'].map((dir) => walk(path.join(root, dir))),
+      'no file may appear or vanish').toStrictEqual(filesBefore);
+  });
+
+  test('AC-11 — every outcome still exits 0, including the ones git could not answer', async () => {
+    // `board` is one of the two commands that can only exit 0, and an instrument that starts failing
+    // the command it annotates has replaced a silent gap with a loud one.
+    const noRemote = await projectFixture();
+    const unpushed = await projectFixture();
+    withUpstream(unpushed, { local: 1 });
+    const missingRef = await projectFixture();
+    withUpstream(missingRef);
+    const config = path.join(missingRef, 'harness', 'harness.yaml');
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('base_branch: main', 'base_branch: gone'), 'utf8');
+    const notARepo = tmp('quorum-cli-board-plain-');
+    const created = await invoke(['init', notARepo]);
+    expect(created.exitCode, plain(created.stderr)).toBe(SUCCESS);
+
+    for (const [name, root] of [['no remote', noRemote], ['unpushed', unpushed],
+      ['missing ref', missingRef], ['not a git repository', notARepo]] as const) {
+      const result = await board(root);
+      expect(result.exitCode, `${name}: ${out(result)}`).toBe(SUCCESS);
+    }
+    // And the two that must say something did, so the loop is not four silent passes.
+    expect(requireLagLine(await board(unpushed), 'the unpushed fixture said nothing'))
+      .toMatch(/1 commit/);
+    expect(requireLagLine(await board(missingRef), 'the missing-ref fixture said nothing'))
+      .toMatch(/\(missing ref\)/);
+    expect(lagLine(await board(notARepo)), 'a directory that is not a work tree has no fact to report')
+      .toBeNull();
+  });
+});

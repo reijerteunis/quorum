@@ -9,8 +9,10 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
+import type { PushLagResult } from '@quorum/shared';
+
 import {
-  ancestry, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, mergeBase,
+  ancestry, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, mergeBase, pushLag,
   removeWorktree, shallowState, shortSha,
 } from './git.js';
 import {
@@ -603,5 +605,190 @@ describe('AC-10 — ensureExcluded resolves the exclude file through git and nev
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Q-0105 — pushLag
+// -------------------------------------------------------------------------------------------
+//
+// Every fixture below builds its own remote, its own tracking ref and its own identity, so no
+// verdict here is a property of this repository, of the checkout, or of the account running it
+// ("A test's verdict is a property of the commit, not of the checkout or the account", 2026-08-30).
+// That matters more than usual for this subject: the one fact under test is about a remote, and the
+// checkout these tests run in has one.
+
+/** A bare repository, which is what a remote is when nobody has to check anything out of it. */
+function bareRemote(branch: string): string {
+  const dir = tempDir('remote-');
+  git(dir, 'init', '-q', '--bare', '-b', branch);
+  return dir;
+}
+
+/**
+ * A repository whose `branch` tracks `<remote>/<branch>` in a bare repository of its own, with
+ * `local` further commits on top of the pushed tip.
+ *
+ * The remote is deliberately not called `origin` and the branch deliberately not `main`, so a
+ * result that carried either name would have had to invent it. Nothing in this fixture depends on
+ * git's `init.defaultBranch` or on the machine's configuration.
+ */
+function tracking(
+  { remote = 'backup', branch = 'trunk', local = 0, remoteAhead = 0 } = {},
+): string {
+  const dir = tempDir('tracking-');
+  git(dir, 'init', '-q', '-b', branch);
+  commit(dir, 'shared history');
+  git(dir, 'remote', 'add', remote, bareRemote(branch));
+  git(dir, 'push', '-q', '-u', remote, branch);
+  if (remoteAhead > 0) {
+    // Moved on the remote side only, from a second clone that is then discarded — the repository
+    // under test must not hold these commits anywhere but in its tracking ref. `git clone` names
+    // its own remote `origin` whatever this fixture calls the one it is imitating.
+    const other = tempDir('other-');
+    git(other, 'clone', '-q', git(dir, 'remote', 'get-url', remote), other);
+    for (let i = 0; i < remoteAhead; i += 1) commit(other, `theirs ${String(i)}`);
+    git(other, 'push', '-q', 'origin', branch);
+    git(dir, 'fetch', '-q', remote);
+  }
+  for (let i = 0; i < local; i += 1) commit(dir, `ours ${String(i)}`);
+  // The fixture asserts its own topology, because every claim below is about telling one count from
+  // another: if the divergence silently failed to happen, `ahead` and the symmetric difference
+  // would be the same number and the discriminating tests would pass while discriminating nothing.
+  const upstream = `refs/remotes/${remote}/${branch}`;
+  expect(git(dir, 'rev-list', '--count', `refs/heads/${branch}..${upstream}`),
+    'the fixture is not behind by what it was asked for').toBe(String(remoteAhead));
+  expect(git(dir, 'rev-list', '--count', `${upstream}..refs/heads/${branch}`),
+    'the fixture is not ahead by what it was asked for').toBe(String(local));
+  return dir;
+}
+
+describe('Q-0105 AC-3 — every push-lag state is selected from an answer git gave', () => {
+  test('outside a work tree there is no question, and the answer is null', () => {
+    expect(pushLag(notARepo(), 'main')).toBeNull();
+  });
+
+  test('a repository with no remotes is `no remote`, and never `pushed`', () => {
+    // The state an adopter's freshly initialised project is in. It is an ANSWER — there is nowhere
+    // the base could be ahead of — and it is not silence invented by the caller.
+    expect(pushLag(repo(), 'main')).toStrictEqual({ state: 'indeterminate', reason: 'no remote' });
+  });
+
+  test('a base branch that does not resolve is `missing ref`', () => {
+    expect(pushLag(tracking(), 'nosuchbranch'))
+      .toStrictEqual({ state: 'indeterminate', reason: 'missing ref' });
+  });
+
+  test('a remote exists and the base tracks nothing: `no upstream`, not `pushed`', () => {
+    const dir = repo();
+    git(dir, 'remote', 'add', 'backup', bareRemote('main'));
+    expect(pushLag(dir, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'no upstream' });
+  });
+
+  test('truncated history is `shallow clone`, because the count could only be too small', () => {
+    // A clone is the one fixture that arrives with a remote and a tracking ref already set up, so
+    // this reaches the shallow branch through the same path a real shallow checkout would.
+    const clone = shallowCloneOf(repo());
+    expect(pushLag(clone, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'shallow clone' });
+  });
+
+  /**
+   * The fixture the four failure cases below share, built once on first use.
+   *
+   * Shared rather than rebuilt because building it costs about a dozen git spawns; **one test per
+   * case** rather than one loop because four shim installations plus four probes in a single test
+   * measured 3.5 s under the git-identity sweep's load against Vitest's 5-second default, and a
+   * test that is merely near a timeout is a test whose verdict is a property of the machine — which
+   * is what this file's own rules forbid, and the shape Q-0102 names. Splitting weakens no
+   * assertion: the same four mutations run, each inside its own budget.
+   */
+  let diverged: string | undefined;
+  const divergedRepo = (): string => (diverged ??= tracking({ local: 2 }));
+
+  // The mutation AC-3 names, run against each step in turn. `rev-parse` is the outermost probe and
+  // its failure is `null` — no question could be asked at all — which is the one case that is
+  // deliberately not a reason.
+  const FAILING_STEPS: [string, PushLagResult | null][] = [
+    ['remote', { state: 'indeterminate', reason: 'git failed' }],
+    ['for-each-ref', { state: 'indeterminate', reason: 'git failed' }],
+    ['rev-list', { state: 'indeterminate', reason: 'git failed' }],
+    ['rev-parse', null],
+  ];
+
+  test.each(FAILING_STEPS)('breaking git %s is answered honestly, never as `pushed`', (subcommand, expected) => {
+    // Built BEFORE the shim is installed. Inside `counting` the fixture's own `git remote add` runs
+    // under the mutation and fails, which is a broken fixture wearing a failed assertion's clothes.
+    const dir = divergedRepo();
+    const { result } = counting(() => pushLag(dir, 'trunk'),
+      `case "$1" in ${subcommand}) exit 3 ;; esac`);
+    expect(result, `breaking git ${subcommand} did not produce the honest answer`)
+      .toStrictEqual(expected);
+  });
+});
+
+describe('Q-0105 AC-6 — the count is upstream..base, and behind-only is not push lag', () => {
+  test('two local commits against one remote commit report 2, never the symmetric difference', () => {
+    // The discriminating topology: a symmetric-difference count would read 3, which is the shape
+    // `containment`'s own ahead count is pinned with.
+    expect(pushLag(tracking({ local: 2, remoteAhead: 1 }), 'trunk'))
+      .toStrictEqual({ state: 'unpushed', ahead: 2, upstream: 'backup/trunk' });
+  });
+
+  test('a base that is only behind its upstream has nothing waiting, so it is `pushed`', () => {
+    expect(pushLag(tracking({ remoteAhead: 3 }), 'trunk')).toStrictEqual({ state: 'pushed' });
+  });
+
+  test('a base level with its upstream is `pushed`, and carries no count', () => {
+    expect(pushLag(tracking(), 'trunk')).toStrictEqual({ state: 'pushed' });
+  });
+
+  test('one unpushed commit is one, so nothing here has a floor above 1', () => {
+    expect(pushLag(tracking({ local: 1 }), 'trunk'))
+      .toStrictEqual({ state: 'unpushed', ahead: 1, upstream: 'backup/trunk' });
+  });
+});
+
+describe('Q-0105 AC-4 and AC-5 — it reads, it never reaches the network, and it spells no name', () => {
+  test('no git argv it issues can touch a remote, and the shim reads argv rather than source', () => {
+    // A source scan for these verbs cannot tell a git argument from a function called `pushLag`,
+    // and gets weaker every time something is renamed. This reads what git was actually handed.
+    const dir = tracking({ local: 2 });
+    const { args } = counting(() => pushLag(dir, 'trunk'));
+    expect(args.length, 'the shim recorded nothing, so this proves nothing').toBeGreaterThan(0);
+    for (const argv of args) {
+      for (const verb of ['fetch', 'ls-remote', 'push', 'remote update']) {
+        expect(argv.split(' ').join(' ').includes(verb),
+          `pushLag issued a git command that reaches the network: git ${argv}`).toBe(false);
+      }
+    }
+    // And `git remote` alone — which lists what is configured and asks nobody anything — is what it
+    // does use, so the clause above is discriminating rather than vacuously true.
+    expect(args.some((argv) => argv === 'remote'), 'the local remote probe is not being made').toBe(true);
+  });
+
+  test('it writes nothing: no ref moves and no file appears or vanishes', () => {
+    const dir = tracking({ local: 2 });
+    const refsBefore = git(dir, 'for-each-ref');
+    const filesBefore = walk(dir);
+    expect(pushLag(dir, 'trunk')?.state).toBe('unpushed');
+    expect(git(dir, 'for-each-ref'), 'no ref may move').toBe(refsBefore);
+    expect(walk(dir), 'no file may appear or vanish').toStrictEqual(filesBefore);
+    expect(refsBefore, 'the fixture has no tracking ref, so half this claim is vacuous')
+      .toContain('refs/remotes/backup/trunk');
+  });
+
+  test('the remote name comes out of git, so a repository that calls it something else renders that', () => {
+    const named = pushLag(tracking({ remote: 'somewhere-else', branch: 'release', local: 1 }), 'release');
+    expect(named).toStrictEqual({ state: 'unpushed', ahead: 1, upstream: 'somewhere-else/release' });
+  });
+
+  test('it costs at most five spawns, and that is constant in the number of tickets', () => {
+    // The measured half of `containment`'s revised budget sentence: 2n + 3 for the board's rows,
+    // plus this, which does not move when n does.
+    const dir = tracking({ local: 2 });
+    const { calls } = counting(() => pushLag(dir, 'trunk'));
+    expect(calls).toBeLessThanOrEqual(5);
+    expect(counting(() => pushLag(repo(), 'main')).calls,
+      'the cheap answers must not cost more than the expensive one').toBeLessThanOrEqual(5);
   });
 });

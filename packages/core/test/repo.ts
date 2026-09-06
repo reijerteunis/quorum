@@ -90,6 +90,16 @@ export const walk = (dir: string): string[] =>
 export interface GitShim {
   /** How many git processes have been spawned since the shim was installed. */
   calls(): number;
+  /**
+   * The argument list of every git process spawned since the shim was installed, one entry per
+   * call, joined by spaces.
+   *
+   * What it is for: a criterion of the form "this module never runs a command that touches the
+   * network" is otherwise checked by scanning the source for a verb, which cannot tell a git
+   * argument from a function called `pushLag` and gets weaker every time somebody renames
+   * something. Reading the argv git was actually handed has a subject that cannot drift.
+   */
+  args(): string[];
   restore(): void;
 }
 
@@ -106,11 +116,13 @@ export interface GitShim {
 export function installGitShim(body = ''): GitShim {
   const dir = tempDir('shim-');
   const log = path.join(dir, 'calls');
+  const argv = path.join(dir, 'argv');
   const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   const shim = path.join(dir, 'git');
   fs.writeFileSync(shim, [
     '#!/bin/sh',
     `printf . >> ${JSON.stringify(log)}`,
+    `printf '%s\\n' "$*" >> ${JSON.stringify(argv)}`,
     body,
     `exec ${JSON.stringify(realGit)} "$@"`,
     '',
@@ -120,6 +132,9 @@ export function installGitShim(body = ''): GitShim {
   process.env.PATH = `${dir}${path.delimiter}${previous ?? ''}`;
   return {
     calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').length : 0),
+    args: () => (fs.existsSync(argv)
+      ? fs.readFileSync(argv, 'utf8').split('\n').filter(Boolean)
+      : []),
     restore: () => {
       if (previous === undefined) delete process.env.PATH;
       else process.env.PATH = previous;
@@ -127,12 +142,15 @@ export function installGitShim(body = ''): GitShim {
   };
 }
 
-/** Runs `fn` with the shim installed, and hands back its result and the number of git spawns. */
-export function counting<T>(fn: () => T, body = ''): { result: T; calls: number } {
+/**
+ * Runs `fn` with the shim installed, and hands back its result, the number of git spawns and the
+ * argv of each.
+ */
+export function counting<T>(fn: () => T, body = ''): { result: T; calls: number; args: string[] } {
   const shim = installGitShim(body);
   try {
     const result = fn();
-    return { result, calls: shim.calls() };
+    return { result, calls: shim.calls(), args: shim.args() };
   } finally {
     shim.restore();
   }

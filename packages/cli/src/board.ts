@@ -13,12 +13,18 @@
  * name out of agent-written frontmatter is handed to that interface as a value and is never
  * assembled into a git argument here.
  *
+ * **Since Q-0105 there is a third fact, and it belongs to the repository rather than to a row.**
+ * {@link pushLag} answers where the base branch itself stands against the upstream it tracks, on the
+ * same terms as containment — derived from git on this invocation, stored nowhere, and selected from
+ * a closed set. It renders as at most one dim legend and most often as nothing at all; see
+ * {@link pushLagLegend} for why silence is the common case and why it is never a reassurance.
+ *
  * Why: behaviour preserved from `spike/bin/harness.js:353–398` (Q-0099 AC-3 to AC-6).
  */
 import path from 'node:path';
 
-import { containment, lintFlowDirectory, loadProject, ProjectNotFoundError } from '@quorum/core';
-import { STAGES, type ContainmentResult, type Flow, type Ticket } from '@quorum/shared';
+import { containment, lintFlowDirectory, loadProject, ProjectNotFoundError, pushLag } from '@quorum/core';
+import { STAGES, type ContainmentResult, type Flow, type PushLagResult, type Ticket } from '@quorum/shared';
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
@@ -92,6 +98,38 @@ const token = (spot: ContainmentResult, base: string): string => {
   return ` ${base}:indeterminate(${spot.reason})`;
 };
 
+/**
+ * The push-lag legend, or nothing at all.
+ *
+ * **Silence means git answered and there was nothing to say** — never that anything was checked
+ * anywhere. Two states are silent and they are silent for different reasons: `pushed`, where the
+ * upstream already holds every commit the base does, and `no remote`, where the repository has
+ * nowhere to push and an adopter who has just run `quorum init` would otherwise meet a line about a
+ * remote they do not have. Everything else prints, because an instrument that cannot answer has to
+ * say so: reporting success over an unexamined subject is the failure of 2026-08-25.
+ *
+ * The asymmetry is the design. A `git push` updates the tracking ref locally, so absent a fetch this
+ * count can only be too large — which is why the sentence carries *as of the last fetch* and why
+ * **this line may warn and may never reassure**. It names commits that have not been pushed and it
+ * makes no claim about anything having been run elsewhere; a reader who takes it for one is
+ * repeating the failure the ticket was opened for. See "The board reports push lag, and never a CI
+ * conclusion" (2026-09-06).
+ *
+ * It borrows none of containment's grammar: no `<base>:` token, so a repository-level fact can never
+ * be misread as an annotation about a ticket, and none of the words that vocabulary has already
+ * spent.
+ */
+const pushLagLegend = (lag: PushLagResult, base: string): string | null => {
+  if (lag.state === 'pushed' || lag.reason === 'no remote') return null;
+  if (lag.state === 'unpushed') {
+    const commits = `${String(lag.ahead)} commit${lag.ahead === 1 ? '' : 's'}`;
+    return `· push lag = ${base} holds ${commits} that ${lag.upstream} does not, as of the last fetch`
+      + ' — they have not been pushed, which is the whole of what this says';
+  }
+  return `· push lag = the board cannot say whether ${base} has been pushed (${lag.reason}),`
+    + ' as of the last fetch';
+};
+
 /** One ticket's line: its id, its title, and the dim span carrying everything measured about it. */
 const row = (meta: Ticket, annotation: string): string => {
   const cost = (meta.history ?? []).reduce((total, entry) => total + (entry.cost ?? 0), 0);
@@ -134,4 +172,10 @@ export const board: CommandHandler = ({ flags }) => {
   if (anyIndeterminate) {
     console.log(c.dim(`· indeterminate = the board cannot say whether that branch is contained in ${base} — git could not answer (missing ref, shallow clone, a failed git command), or the ticket's branch does not exist (no branch) — it does not mean the code is missing`));
   }
+  // The one repository-level fact on this board: where the base itself stands against its upstream.
+  // Unconditional on the tickets, because it is a property of the repository rather than of any row
+  // — an empty backlog can still be holding commits nobody has pushed.
+  const lag = pushLag(repoDir, base);
+  const legend = lag === null ? null : pushLagLegend(lag, base);
+  if (legend !== null) console.log(c.dim(legend));
 };
