@@ -100,3 +100,49 @@ unfixed.
 - Publishing, or anything about what `npx quorum` may claim — Q-0029's, in M6.
 
 Belongs to M2 in `docs/06-development-plan.md`. Opened from **Q-0091**'s requirements gate.
+
+---
+
+## Re-measured after the cutover, 2026-09-06 — this supersedes the counts above
+
+**The body was written 2026-09-03, before Q-0103 deleted `spike/`.** Two of its three open questions
+are now closed by events, and its count is low.
+
+**Closed by the cutover.** *"Whether `spike/bin/` changes before the cutover deletes it"* — there is
+no `spike/bin/`, so the question is void and no second tree has to move in step. That was the
+constraint making this ticket awkward; it is gone. *"How the hint moves in step with Q-0099's AC-2,
+which pins it"* — still live, and now one of thirteen test files rather than a special case.
+
+**Eight live sites across six files, not the three named plus one predicted.** Measured with
+`git grep` over `packages/*/src/*.ts` excluding tests:
+
+| file:line | string |
+| --- | --- |
+| `packages/cli/src/adapters.ts:115` | ``run `harness adapters --probe` before a real run`` |
+| `packages/cli/src/board.ts:117` | `→ harness run <flow> <id>` — the hint Q-0099 AC-2 pins |
+| `packages/cli/src/init.ts:49` | `next: harness adapters · harness ticket new "…" · harness run requirements T-0001` — **three in one line**, the fourth instance this body predicted and Q-0093 confirmed on the cold-clone path |
+| `packages/cli/src/run.ts:49` | `usage: harness run <flow> <ticket> …` |
+| `packages/cli/src/run.ts:143` | `--base needs a revision: harness run <flow> <ticket> --base <ref>` |
+| `packages/cli/src/ticket.ts:68` | `usage: harness ticket new "<title>" …` |
+| `packages/cli/src/validate.ts:62` | `usage: harness validate <schema.json> <file…>` |
+| `packages/core/src/backlog/project.ts:33` | ``no harness/harness.yaml found — run `harness init` in your repo`` |
+
+**`project.ts:33` is why a blanket substitution is refused, and it is now demonstrable rather than
+argued.** That one string carries **both** senses: `harness/harness.yaml` is the **folder**, which
+`product-boundaries.md` requires be kept, and `harness init` is the **command**, which must become
+`quorum init`. A `sed s/harness/quorum/` corrupts the path and passes every test that only checks
+for the word.
+
+**Thirteen test files pin these strings** — nine in `packages/cli`, four in `packages/core` — so the
+change is six source files and thirteen test files, and the tests move with the strings rather than
+after them.
+
+**What is still undecided is narrower than the body suggests.** Not the target word: it is `quorum`,
+which is what `packages/cli`'s `bin` now installs and what `pnpm exec quorum` runs. What remains is
+**whether a user-facing instruction belongs in a `core` error message at all** — `project.ts:33` is
+`core`'s, and M3's server will surface that same error over HTTP where *"run `quorum init` in your
+repo"* is advice to someone who may not have a shell. That is the one question worth a requirements
+run, and it is the reason this is not a `sed`.
+
+**Distinct from Q-0068**, whose subject is the BYOS refusal string — *"Harness runs on subscription
+OAuth only"* — in the adapter files, for a different reason and on a different surface.
