@@ -27,8 +27,18 @@ const sourceOf = (key: string): string => {
   return found[1];
 };
 
-/** Every module specifier a file imports from, in source order. */
-const importsOf = (text: string): string[] => [...text.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+/**
+ * Every module specifier a file reaches for, in source order — three shapes.
+ *
+ * Q-0107 AC-12 added `require('…')` and the side-effect `import '…'` to the `from '…'` this read.
+ * Both are shapes the retired spike line scan caught and this parser did not, so retiring that scan
+ * without widening here would have lost them rather than moved them. The side-effect form was found
+ * by demonstrating the first widening red and watching the suite stay green — see
+ * `lint.source.test.ts`, where the same hole is recorded at length.
+ */
+const importsOf = (text: string): string[] =>
+  [...text.matchAll(/\bfrom\s*'([^']+)'|\brequire\s*\(\s*'([^']+)'\s*\)|^\s*import\s+'([^']+)'/gm)]
+    .map((m) => m[1] ?? m[2] ?? m[3]);
 
 describe('AC-1 — two files, the exact surface, no dependency, and nothing printed', () => {
   test('the folder is exactly the two files, and neither is a barrel', () => {
@@ -110,21 +120,29 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
     expect(fields.length).toBe(15);
   });
 
-  test('it imports node builtins, yaml, shared and its own siblings — never the spike', () => {
+  test('it imports node builtins, yaml, shared and its own siblings — and nothing else', () => {
     // About SPECIFIERS: this package cites spike paths in comments as its evidence, which is the
-    // house style, and a check that forbade the word would forbid the citations. The freeze itself
-    // is not asserted here — it is evidence, per requirements/errata.md E-1, and CI's `port freeze
-    // (branch scope)` job is the enforcement.
+    // house style, and a check that forbade the word would forbid the citations.
     // node:os is Q-0070's, and deliberate: the capture directory belongs under os.tmpdir() because
     // anywhere inside the worktree would be committed onto the step branch by commitAll's git add -A.
+    //
+    // Q-0107 AC-12 — `retired`, the line scan that stood below this loop. Decision 079 classes it
+    // (b): after the cutover it can still fail, but only over a comment on an export line, which is
+    // not a dependency. This allow-list is the sibling and is strictly stronger, naming what is
+    // permitted rather than one thing that is not; `importsOf` gained the `require(` shape in the
+    // same change, which is the one thing the retired scan saw and this loop did not.
     const allowed = ['node:child_process', 'node:fs', 'node:os', 'node:path', 'yaml', '@quorum/shared', '../git/git.js'];
     for (const [name, text] of moduleSources()) {
       for (const specifier of importsOf(text)) {
         expect(allowed.includes(specifier), `${name} imports ${specifier}`).toBe(true);
       }
-      for (const line of text.split('\n').filter((l) => /^\s*(import|export)\b/.test(l) || l.includes('require('))) {
-        expect(line.includes('spike'), `${name} must not reach into the spike: ${line}`).toBe(false);
-      }
+    }
+    for (const [shape, escape] of [
+      ['a CommonJS specifier', `const git = require('../../../../${'spi'}ke/src/git.js');`],
+      ['a side-effect import', `import '../../../../${'spi'}ke/src/git.js';`],
+    ] as const) {
+      expect(importsOf(escape), `the parser sees ${shape}`).toHaveLength(1);
+      expect(allowed.includes(importsOf(escape)[0]), `and the allow-list refuses ${shape}`).toBe(false);
     }
   });
 });

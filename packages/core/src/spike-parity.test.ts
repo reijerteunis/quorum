@@ -339,12 +339,18 @@ const REGISTER: Record<string, Entry> = {
  *
  * `run.js` is excluded **by name**, and the exclusion is grounded rather than assumed: a test below
  * reads it and requires it to be the discovering runner it claims to be. The four verdicts describe
- * a test file, so the second entry — a shared data fixture — is classified here for the same reason
- * and by the same mechanism, rather than by inventing a fifth verdict for it.
+ * a test file, so a shared data fixture would be classified here for the same reason and by the
+ * same mechanism, rather than by inventing a fifth verdict for it.
+ *
+ * **It held a second entry until Q-0107 AC-8, and the removal is the record** (*"A check outlives
+ * its subject only if it can still fail"*, 2026-09-05, class (c)): `q0080-allocation.json` was the
+ * allocation table both trees read, and it now lives at
+ * `packages/core/src/backlog/q0080-allocation.json`, beside the suite that owns it. The row goes
+ * because the file is no longer an entry of this directory, not because the fixture stopped
+ * mattering — `q0080-allocation.js` still drives it, from across the boundary.
  */
 const NOT_A_SUITE: Record<string, string> = {
   'run.js': 'the runner itself: it reads this directory and executes every *.js it finds, and is not one of them',
-  'q0080-allocation.json': 'the allocation table both trees assert over, read by q0080-allocation.js and by backlog/backlog.test.ts; it is a .json precisely so run.js, which discovers *.js, does not execute it',
 };
 
 /** What the recomputation decides about one spike test file, from its own text. */
@@ -1208,12 +1214,21 @@ describe('Q-0054 AC-2 — the verdict is checked against the file, and an unclas
     // survives. What did move is the register's shape rather than its arithmetic — two rows gained
     // a `binaryCarriedBy`, which is the first time this file has been able to say that a binary half
     // was carried rather than owed.
+    //
+    // Re-measured a fifth time for Q-0107 AC-8, and this time it MOVED — the first ticket since
+    // Q-0091 to write under `spike/test/` at all. `q0080-allocation.json` left this directory for
+    // `packages/core/src/backlog/`, beside the suite that owns it, and `q0080-allocation.js` gained
+    // two lines reaching across the boundary for it: `both` 2739 → 2741 and the total 5428 → 5430.
+    // The JSON never contributed a line, being `NOT_A_SUITE` rather than a suite, so the whole of
+    // the movement is the two lines in the reader. The share is 55% either side — 54.51% before and
+    // 54.53% after — and is re-derived rather than carried, because a share that moves silently is
+    // what this register exists to prevent.
     const entangled = [...named('binary-only'), ...named('both')];
     const total = linesOf(Object.keys(FACTS));
     expect(linesOf(named('binary-only'))).toBe(220);
-    expect(linesOf(named('both'))).toBe(2739);
+    expect(linesOf(named('both'))).toBe(2741);
     expect(linesOf(named('library-only'))).toBe(2469);
-    expect(total).toBe(5428);
+    expect(total).toBe(5430);
     // 55% of the suite transfers at Q-0010, which is the fact the routing decision turns on.
     expect(Math.round((linesOf(entangled) / total) * 100)).toBe(55);
   });
@@ -1470,8 +1485,11 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
   test('the register describes this tree with nothing left over', () => {
     expect(audit(REGISTER, FILES)).toEqual([]);
     expect(Object.keys(REGISTER).length, 'files with a verdict').toBe(19);
-    expect(Object.keys(NOT_A_SUITE).length, 'entries that are not test files').toBe(2);
-    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(21);
+    // One rather than two, and the total twenty rather than twenty-one, since Q-0107 AC-8 moved
+    // `q0080-allocation.json` out of this directory. Both numbers move together or the audit above
+    // has already failed.
+    expect(Object.keys(NOT_A_SUITE).length, 'entries that are not test files').toBe(1);
+    expect(Object.keys(FILES).length, 'entries in spike/test').toBe(20);
     const verdicts = Object.values(REGISTER).map((entry) => entry.verdict);
     expect(verdicts.filter((verdict) => verdict === 'cli').length).toBe(1);
     expect(verdicts.filter((verdict) => verdict === 'split').length).toBe(8);
@@ -1836,6 +1854,25 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
     }), FILES)).toContain("smoke.js: binary 'packages/core/test/repo.ts' exists and no include collects it");
   });
 
+  test('(t) Q-0107 — a spike file WAS edited, so the totals moved, and the move is the record', () => {
+    // Seventh instance and the first that is not "unmoved": AC-8 moved `q0080-allocation.json` out
+    // of this directory and `q0080-allocation.js` gained two lines reaching across the boundary for
+    // it. Stated as a delta against the six clauses around it rather than as a fresh tuple, because
+    // what a reader needs is which two lines moved and why — the numbers themselves are re-derived
+    // from `FACTS` in every one of those clauses already.
+    expect(linesOf(named('both')) - 2, 'the whole movement is q0080-allocation.js\'s two lines').toBe(2739);
+    expect(linesOf(Object.keys(FACTS)) - 2, 'and the total moved by exactly the same two').toBe(5428);
+    // The fixture is out of this tree and readable at its new address, which is the half arithmetic
+    // cannot show: a `FILES` key that vanished because the directory was misread would fail the
+    // audit above, and a move that lost the bytes would fail here.
+    expect(Object.keys(FILES), 'the fixture is no longer an entry of spike/test').not.toContain('q0080-allocation.json');
+    expect(repoFile('packages/core/src/backlog/q0080-allocation.json'), 'and it is at its new address')
+      .toContain('"grammar"');
+    // Its reader stays, and stays classified as it was: a verdict describes the spike file's own
+    // text, and re-pointing one read does not move `q0080-allocation.js` between buckets.
+    expect(REGISTER['q0080-allocation.js'].verdict).toBe('split');
+  });
+
   test('(s) Q-0101 — no spike file was edited, so the five line totals are re-derived unmoved a sixth time', () => {
     // Sixth instance, independent of the five around it for the reason each of those gives. This
     // ticket READS `smoke.js` and `q0033-surface.js` while translating their remaining halves and
@@ -1849,7 +1886,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
     // The classification is unchanged too, and that is the half arithmetic cannot show: a verdict
     // describes the spike file's own text, which translating the rest of it does not alter — the
     // distinction Q-0091's E-2 made when it added a field rather than a fourth verdict.
@@ -1871,7 +1908,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
     // The classification is unchanged too, and that is the half arithmetic cannot show: `smoke.js`
     // stays `split` because a verdict describes the spike file's own text, which translating it does
     // not alter — the distinction E-2 made when it added a field rather than a fourth verdict.
@@ -1893,7 +1930,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
   });
 
   test('(o) Q-0094 — no spike file was edited, so the five line totals are re-derived unmoved a third time', () => {
@@ -1909,7 +1946,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
   });
 
   test('(q) Q-0099 — no spike file was edited, so the five line totals are re-derived unmoved a fourth time', () => {
@@ -1925,7 +1962,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
     expect(named('binary-only'), 'the bucket this ticket carried whole').toStrictEqual(['q0036-board-containment.js']);
   });
 
@@ -1941,7 +1978,7 @@ describe('Q-0054 AC-4 — the register is identities with pinned arithmetic, and
       libraryOnly: linesOf(named('library-only')),
       total,
       share: Math.round((linesOf([...named('binary-only'), ...named('both')]) / total) * 100),
-    }).toStrictEqual({ binaryOnly: 220, both: 2739, libraryOnly: 2469, total: 5428, share: 55 });
+    }).toStrictEqual({ binaryOnly: 220, both: 2741, libraryOnly: 2469, total: 5430, share: 55 });
   });
 
   test('(e) an entry that names no counterpart, or names one it may not have, fails', () => {

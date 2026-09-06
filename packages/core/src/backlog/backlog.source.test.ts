@@ -48,18 +48,21 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
     }
   });
 
-  test('the two modules take their vocabulary from shared and import nothing from spike', () => {
+  test('the two modules take their vocabulary from shared', () => {
     const backlog = source(BACKLOG_SOURCE);
     expect(backlog).toContain('integrationBranch');
     expect(backlog).toContain('RUNS_LOG_FILE');
     // The branch shape and the log filename belong to shared; a second spelling would drift.
     expect(backlog.includes('harness/${'), 'the branch shape belongs to shared').toBe(false);
     expect(backlog.includes("'runs.log'"), 'the log filename belongs to shared').toBe(false);
-    for (const [name, text] of coreSourceFiles()) {
-      for (const specifier of [...text.matchAll(/\b(?:from|import)\s+['"]([^'"\n]+)['"]/g)].map((m) => m[1])) {
-        expect(specifier.includes('spike'), `${name} imports ${specifier}`).toBe(false);
-      }
-    }
+    // Q-0107 AC-12 — `retired`, the whole-package specifier scan that stood here. It was the widest
+    // of the eight silent guards, reaching every file `coreSourceFiles()` returns rather than one
+    // folder, and it is the one whose sibling is genuinely wider still:
+    // `packages/cli/src/spike-dependencies.test.ts` scans every tracked file under `packages/**` —
+    // this package, `shared`, `cli` and their `test/` directories — for a read position naming that
+    // tree, in three shapes rather than one, over an exclusion register that must carry a reason.
+    // Leaving both would have left the narrower one reading as the coverage, which is what 079
+    // forbids: a clause may not remain while being described as what it used to be.
   });
 
   test('the barrel re-exports exactly this folder\'s public contribution (Q-0096 AC-2)', () => {

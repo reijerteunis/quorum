@@ -170,11 +170,18 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'docs/DECISIONS.md': 'docs.test.ts — both entries exist in the required shape',
     'docs/GLOSSARY.md': 'docs.test.ts — the Event term',
     'harness/harness.yaml': 'project.test.ts — the config corpus, and the Q-0065 --force guard',
-    'spike/bin/harness.js': 'events.test.ts, constants.test.ts — the six ui methods',
-    'spike/templates/harness/harness.yaml': 'project.test.ts — the shipped template config',
+    'harness/architecture.md': 'role.test.ts — Q-0107 AC-18, the role table\'s third column against every role\'s paths: frontmatter, which spike/test/smoke.js was the only thing checking',
+    'packages/cli/templates/harness/harness.yaml': 'project.test.ts — Q-0107 AC-9, the shipped template config, re-aimed off spike/templates/harness/harness.yaml onto the byte-identical copy an adopter\'s quorum init actually copies',
     'packages/core/package.json': 'index.test.ts — core declares shared as a workspace dependency',
-    'packages/core/src/adapters/adapters.ts': 'project.test.ts — Q-0058 AC-2, withRetry\'s defaults are the oracle for the shipped example, so a change to one must move this task\'s hash',
+    'packages/core/src/adapters/adapters.ts': 'project.test.ts — Q-0058 AC-2, withRetry\'s defaults are the oracle for the shipped example, so a change to one must move this task\'s hash; and events.test.ts — Q-0107 AC-9, the retry event this union is derived from',
+    'packages/core/src/adapters/claude.ts': 'events.test.ts — Q-0107 AC-9, the spawn and stdout lines the adapter-event samples are taken from, re-aimed off spike/src/adapters/claude.js',
+    'packages/core/src/adapters/codex.ts': 'events.test.ts — Q-0107 AC-9, the same, for the second vendor',
+    'packages/core/src/adapters/mock.ts': 'events.test.ts — Q-0107 AC-9, the same, for the adapter the end-to-end suite runs',
+    'packages/core/src/backlog/backlog.ts': 'corpus.ts — Q-0107 AC-9, parseFrontmatter\'s regular expression, which the copy in test/corpus.ts is required to match',
     'packages/core/src/backlog/project.ts': 'project.test.ts — loadProject runs no schema',
+    'packages/core/src/contracts/contracts.ts': 'step-output.test.ts — Q-0107 AC-13, one of the four validators the FOUR-VALIDATIONS block cites, required to exist',
+    'packages/core/src/contracts/run-manifest.ts': 'docs.test.ts — Q-0107 AC-9, TERMINAL_STATUSES, re-aimed off spike/src/contracts.js onto the module-private const the product ships',
+    'packages/core/src/engine/prompt.ts': 'step-output.test.ts — Q-0107 AC-13, schemaFor, the second of the four validators that block cites',
   },
   '@quorum/core#test': {
     '.github/workflows/ci.yml': 'test-command.test.ts — Q-0071 AC-4, CI executes rather than replays',
@@ -209,12 +216,10 @@ interface Walk {
  * member is required to be a hashed input.
  */
 const WALKS: readonly Walk[] = [
-  {
-    taskId: '@quorum/core#test',
-    dir: 'spike/test',
-    collects: (below) => below.endsWith('.js') && !below.includes('/'),
-    why: 'corpusFiles() — git-identity.test.ts, which scans the spike test tree for commit-creating git calls',
-  },
+  // Q-0107 AC-15 removed a walk that stood here: `{ '@quorum/core#test', 'spike/test', *.js }`,
+  // `corpusFiles()` in `git-identity.test.ts`. That file's corpus is `packages` and `apps` now, so
+  // the walk is gone and the declared input it justified is kept by `spike-parity.test.ts` alone,
+  // which the entry further down names.
   {
     taskId: '@quorum/shared#test',
     dir: 'harness/flows',
@@ -239,23 +244,16 @@ const WALKS: readonly Walk[] = [
     collects: (below) => below.endsWith('.md') && !below.includes('/'),
     why: 'decisionFiles() — docs.test.ts, which checks the index against the folder',
   },
-  {
-    taskId: '@quorum/shared#test',
-    dir: 'spike/src',
-    collects: (below) => below.endsWith('.js'),
-    why: 'spikeSource(), and spikeLintFlow() which imports and executes spike/src/lint.js',
-  },
+  // Q-0107 AC-9 removed the shared walk of the spike's source directory — `spikeSource()` and
+  // `spikeLintFlow()`, both of which that package no longer exports — and AC-16 removed core's walk
+  // of the same directory, which was `spikeSources()` in `test-command.test.ts`. Neither tree read
+  // survives, so neither walk does. (Both are described rather than quoted: this file audits its
+  // own path literals, and a quoted path in a comment is collected as one.)
   {
     taskId: '@quorum/core#test',
     dir: 'backlog',
     collects: (below) => /^[^/]+\/ticket\.md$/.test(below),
     why: 'corpusTickets() — backlog.test.ts',
-  },
-  {
-    taskId: '@quorum/core#test',
-    dir: 'spike/src',
-    collects: (below) => below.endsWith('.js'),
-    why: 'spikeSources() — test-command.test.ts',
   },
   {
     taskId: '@quorum/core#test',
@@ -265,9 +263,9 @@ const WALKS: readonly Walk[] = [
   },
   {
     taskId: '@quorum/core#test',
-    dir: 'spike/templates/harness/flows',
+    dir: 'packages/cli/templates/harness/flows',
     collects: (below) => below.endsWith('.yaml') && !below.includes('/'),
-    why: 'lintFlowDirectory over SHIPPED — lint.test.ts',
+    why: 'lintFlowDirectory over SHIPPED — lint.test.ts, Q-0107 AC-14, which re-aimed the second half of that pair off spike/templates/harness/flows onto the copy that ships',
   },
   {
     taskId: '@quorum/core#test',
@@ -300,7 +298,7 @@ const WALKS: readonly Walk[] = [
 const NOT_READ: Record<string, string> = {
   'harness/architecture.md': 'role.test.ts asserts this string appears in role.ts\'s own doc comment; no suite opens the file',
   'harness/port-charter.md': 'named in doc comments in both packages, opened by neither',
-  'spike/src/fanout.js': 'fanout.test.ts uses the path as task-fixture data; the file itself is read only through the spike/src walk',
+  'spike/src/fanout.js': 'fanout.test.ts uses the path as task-fixture data — a plausible-looking value in a tasks.yaml fixture — and opens nothing at it. Q-0107 removed the walk this entry used to name as the file\'s real reader, so nothing under packages/** opens it at all now; Q-0103 deletes the path and this row with it',
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
@@ -379,8 +377,9 @@ function listing(root: string = repoRoot): string[] {
  * Every remaining place the verdict reads the working tree, and why it does not vary with untracked
  * state:
  *
- * - **`filesBelow`'s five walks** — `backlog`, `spike/src`, `harness/flows`, `harness/roles`,
- *   `spike/templates/harness/flows`. An untracked-unignored addition moves clause A's two sides
+ * - **`filesBelow`'s walks** — `backlog`, `harness/flows`, `harness/roles`, `docs/decisions`,
+ *   `packages/cli/templates/harness/flows`, `spike/test`, and the two workspace globs. An
+ *   untracked-unignored addition moves clause A's two sides
  *   together rather than one of them: turbo hashes such a file, measured here — an untracked
  *   `backlog/<id>/ticket.md` appears in both packages' reported inputs, through the backlog glob
  *   each package configuration declares. **The residual is the other half:** a file git *ignores* that
@@ -564,7 +563,7 @@ const ROUTE_MODULES: Record<string, RouteModule> = {
     inert: { SourceCollector: 'a type: it names no path and opens nothing' },
   },
   'packages/shared/test/corpus.ts': {
-    routes: ['repoRoot', 'repoFile', 'spikeSource', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'decisionFiles', 'read', 'parseYaml'],
+    routes: ['repoRoot', 'repoFile', 'corpusFiles', 'ticketFiles', 'flowFiles', 'roleFiles', 'decisionFiles', 'read', 'parseYaml'],
     inert: {
       FRONTMATTER: 'a regular expression',
       parseFrontmatter: 'parses text a caller has already read',
@@ -572,9 +571,10 @@ const ROUTE_MODULES: Record<string, RouteModule> = {
       sharedAllFiles: 'the same directory, likewise fixed',
       codeLines: 'filters text',
       importSpecifiers: 'parses text',
-      frontmatterRegexMatchesSpike: 'reads spike/src/backlog.js through spikeSource — a fixed path the spike/src walk covers',
-      spikeLintFlow: 'imports spike/src/lint.js — a fixed path the same walk covers',
-      lintAccepts: 'calls a function the caller already holds',
+      // Q-0107 AC-9: `spikeSource` left the routes and `spikeLintFlow` and `lintAccepts` left the
+      // module entirely. `frontmatterRegexMatchesSpike` became this, and it stays inert for the
+      // same reason: one fixed path, named in its own body, which a caller cannot redirect.
+      frontmatterRegexMatchesProduct: 'reads packages/core/src/backlog/backlog.ts through repoFile — a fixed path this file names and the manifest declares',
     },
   },
 };
@@ -605,10 +605,16 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'read → file': 'the value comes from ticketFiles(), the audited walk of backlog/*/ticket.md, exactly as in ticket.test.ts',
   },
   'packages/shared/src/events.test.ts': {
-    'spikeSource → file': 'the loop iterates a literal array of the four adapter sources, in the same test',
+    // Q-0107 AC-9: this was `spikeSource → file` over a literal array of four spike adapters. The
+    // four are four `packages/core` files now, one named constant each, so every call passes a
+    // constant this file declares from a literal — which clause B collects and the manifest names.
+    'repoFile → file': 'the loop iterates a literal array of the four constants declared at the top of that file, each of them a path literal the manifest names',
+    'repoFile → CLAUDE': 'the constant is a literal path at the top of that file, which clause B collects and the manifest names',
+    'repoFile → CODEX': 'the same, for the second vendor',
+    'repoFile → MOCK': 'the same, for the mock adapter',
+    'repoFile → CONTRACT_LAYER': 'the same, for the contract layer that emits the retry event',
   },
   'packages/shared/src/role.test.ts': {
-    'spikeSource → file': 'the loop iterates a literal array of the four spike modules, in the same test',
     'read → file': 'the loops iterate roleFiles(), the audited walk of harness/roles',
   },
   'packages/shared/src/index.test.ts': {
@@ -623,6 +629,10 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/shared/src/project.test.ts': {
     'parseYaml → path.join(repoRoot, \'harness/harness.yaml\')': 'the path is a literal inside the argument, which clause B collects and the manifest names',
+    'repoFile → TEMPLATE_CONFIG': 'the constant is \'packages/cli/templates/harness/harness.yaml\', a literal at the top of that file which clause B collects and the manifest names — Q-0107 AC-9 re-aimed it off spike/templates/harness/harness.yaml',
+  },
+  'packages/shared/src/step-output.test.ts': {
+    'repoFile → file': 'the loop iterates `cited`, a literal four-element array in the same test, each element split on its colon — Q-0107 AC-13, and all four files are named in the manifest',
   },
   'packages/core/src/contracts/contracts.test.ts': {
     'repoFile → file': 'frontmatterOf\'s parameter; both call sites in this file pass a literal ticket path, and clause B collects each',
@@ -632,6 +642,8 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/lint/lint.test.ts': {
     'repoRoot → relative': 'the loop iterates SHIPPED, a literal array of the two flow directories',
+    'repoFile → file': 'loadAsTheEngineDoes\'s parameter; every value reaching it comes from shippedFlows(), which joins the literal \'harness/flows\' to a name readdir returned from it — Q-0107 AC-9',
+    'repoRoot → dir': 'shippedFlows\'s own body: the literal \'harness/flows\', which clause B collects and WALKS declares',
   },
   'packages/core/src/backlog/backlog.test.ts': {
     'repoRoot → file': 'path.relative, which builds a name for a failure message and opens nothing',
@@ -649,7 +661,7 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/core/src/git-identity.test.ts': {
     'repoRoot → dir': 'CORPUS, a literal array of the two directories this guard walks, in the same file',
     'repoRoot → f': 'a path walk() found beneath one of those two literal directories',
-    'repoRoot → rel': 'a member of corpusFiles(), which is the audited spike/test walk plus the packages walk within this package',
+    'repoRoot → rel': 'a member of corpusFiles(), which since Q-0107 AC-15 is the packages and apps walks alone',
     'repoRoot → SELF': 'the literal naming this file, excluded from its own corpus so its fixtures are not read as violations',
   },
   'packages/core/src/spike-parity.test.ts': {
@@ -1564,7 +1576,8 @@ const READ_BASES: Record<string, Record<string, string>> = {
     stray: 'path.join(history.dir, \'manifest.json.tmp\') — likewise',
   },
   'packages/core/src/test-command.test.ts': {
-    dir: 'spikeSources\' parameter, defaulting to path.join(repoRoot, \'spike/src\') — the walk WALKS declares above',
+    // Q-0107 AC-16 removed `dir` with `spikeSources()`, whose walk of the spike's source directory
+    // is the read that needed a base at all.
     bin: 'path.join(repoRoot, \'node_modules/.bin/turbo\') — the installed toolchain, which git ignores and turbo therefore cannot hash, so no declaration could cover it and its absence fails loudly instead',
   },
   'packages/core/src/turbo-inputs.test.ts': {
@@ -1770,6 +1783,24 @@ const AFTER_A_FLOW = ['.harness/worktrees/w/package.json', '.quorum/runs/1/manif
  * A contraction is the one direction this register exists to catch, so it is recorded here rather
  * than absorbed: what makes these eight legitimate is that the read stopped happening, not that an
  * assertion was weakened.
+ *
+ * **Q-0107 removed five and added seven, and every removal is a spike read.** The five:
+ * `lint.test.ts: spike/templates/harness/flows` and `project.test.ts:
+ * spike/templates/harness/harness.yaml`, both re-aimed at the `packages/cli/templates` copies that
+ * ship; `test-command.test.ts: spike/src`, whose `spikeSources()` walk retired with the engine it
+ * described; `step-output.test.ts: spike/src/contracts.js`, re-aimed at the four validators'
+ * `packages/**` addresses; and `corpus.ts: spike/src/lint.js`, whose `spikeLintFlow()` moved to
+ * `packages/core/src/lint/lint.test.ts`, where the linter is importable.
+ *
+ * What makes these legitimate is the same thing that made Q-0096's eight legitimate — the read
+ * stopped happening — and it is worth naming the difference: those eight lost a subject, these five
+ * *changed* subject, and the ten additions are where each went. **Sixty-six minus five, plus ten:
+ * seventy-one over forty-three**, counted from the array below rather than continued from the
+ * sentence above it. Ten rather than five because two of the re-aims fan out: `step-output.test.ts`
+ * now cites the four validators at three `packages/**` addresses where it cited one spike file, and
+ * `events.test.ts` names its four adapter sources individually where `spikeSource` had taken a
+ * relative name. `packages/core/src/adapters/adapters.ts` was already a literal here from Q-0058,
+ * so two of the ten add an occurrence and not a literal.
  */
 const COLLECTED_BASELINE = [
   'packages/core/src/adapters/adapters.source.test.ts: packages/core/package.json',
@@ -1804,7 +1835,7 @@ const COLLECTED_BASELINE = [
   'packages/core/src/git/git.source.test.ts: packages/shared/src/index.ts',
   'packages/core/src/index.test.ts: packages/core/src/index.ts',
   'packages/core/src/lint/lint.test.ts: harness/flows',
-  'packages/core/src/lint/lint.test.ts: spike/templates/harness/flows',
+  'packages/core/src/lint/lint.test.ts: packages/cli/templates/harness/flows',
   'packages/core/src/run-history/manifest.test.ts: contracts/Q-0011/run-manifest.schema.json',
   'packages/core/src/run-history/reader.test.ts: backlog/Q-0011-run-history-on-disk/ticket.md',
   'packages/core/src/run-history/reader.test.ts: harness/flows/development.yaml',
@@ -1815,8 +1846,11 @@ const COLLECTED_BASELINE = [
   'packages/core/src/run-history/writer.test.ts: harness/flows/chore.yaml',
   'packages/core/src/test-command.test.ts: .github/workflows/ci.yml',
   'packages/core/src/test-command.test.ts: packages/core/src/adapters/real-cli.probe.test.ts',
-  'packages/core/src/test-command.test.ts: spike/src',
   'packages/core/test/corpus.ts: packages/core/src',
+  'packages/shared/src/events.test.ts: packages/core/src/adapters/adapters.ts',
+  'packages/shared/src/events.test.ts: packages/core/src/adapters/claude.ts',
+  'packages/shared/src/events.test.ts: packages/core/src/adapters/codex.ts',
+  'packages/shared/src/events.test.ts: packages/core/src/adapters/mock.ts',
   'packages/shared/src/docs.test.ts: docs/02-sdlc-pipeline-spec.md',
   'packages/shared/src/docs.test.ts: docs/03-adapter-contract.md',
   'packages/shared/src/docs.test.ts: docs/04-architecture.md',
@@ -1827,17 +1861,19 @@ const COLLECTED_BASELINE = [
   'packages/shared/src/project.test.ts: harness/harness.yaml',
   'packages/shared/src/project.test.ts: packages/core/src/adapters/adapters.ts',
   'packages/shared/src/project.test.ts: packages/core/src/backlog/project.ts',
+  'packages/shared/src/project.test.ts: packages/cli/templates/harness/harness.yaml',
   'packages/shared/src/project.test.ts: packages/shared/src/index.ts',
-  'packages/shared/src/project.test.ts: spike/templates/harness/harness.yaml',
   'packages/shared/src/role.test.ts: harness/architecture.md',
   'packages/shared/src/role.test.ts: packages/core',
   'packages/shared/src/role.test.ts: packages/shared',
-  'packages/shared/src/step-output.test.ts: spike/src/contracts.js',
+  'packages/shared/src/step-output.test.ts: packages/core/src/adapters/adapters.ts',
+  'packages/shared/src/step-output.test.ts: packages/core/src/contracts/contracts.ts',
+  'packages/shared/src/step-output.test.ts: packages/core/src/engine/prompt.ts',
   'packages/shared/test/corpus.ts: docs/decisions',
   'packages/shared/test/corpus.ts: harness/flows',
   'packages/shared/test/corpus.ts: harness/roles',
+  'packages/shared/test/corpus.ts: packages/core/src/backlog/backlog.ts',
   'packages/shared/test/corpus.ts: packages/shared/src',
-  'packages/shared/test/corpus.ts: spike/src/lint.js',
 ];
 
 describe('Q-0073 — membership is decided from git, so the verdict does not move with the checkout', () => {
@@ -1945,14 +1981,17 @@ describe('Q-0073 — membership is decided from git, so the verdict does not mov
       'these baseline occurrences are no longer collected').toEqual([]);
     // And the baseline itself has not been trimmed to make that pass — the arithmetic AC-5 states,
     // asserted over the register rather than over the scan.
-    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(66);
+    expect(COLLECTED_BASELINE.length, 'per-file-distinct occurrences in the baseline').toBe(71);
     expect(new Set(COLLECTED_BASELINE.map((entry) => entry.split(': ')[1])).size,
-      'distinct literals in the baseline').toBe(40);
-    // And the nine the classifier calls directories, which is the class the defect lived in: a
-    // checkout that had run a flow made it eleven.
+      'distinct literals in the baseline').toBe(43);
+    // And the eight the classifier calls directories, which is the class the defect lived in: a
+    // checkout that had run a flow made it ten. Q-0107 took the spike's source and template-flow
+    // directories out with the reads that named them and put the shipped template flows in, which
+    // is where the second of those was re-aimed. (Named in prose rather than in backticks: this
+    // file audits its own path literals, and a backticked path in a comment is collected as one.)
     for (const directory of ['docs/decisions', 'harness/flows', 'harness/roles', 'packages/core',
-      'packages/core/src', 'packages/shared', 'packages/shared/src', 'spike/src',
-      'spike/templates/harness/flows']) {
+      'packages/core/src', 'packages/cli/templates/harness/flows', 'packages/shared',
+      'packages/shared/src']) {
       expect(INVENTORY.isDirectory(directory), `${directory} is no longer classified as a directory`).toBe(true);
     }
   });

@@ -1,12 +1,15 @@
 {
   "about": [
-    "Q-0080: what a backlog allocates, as one table both trees assert over — spike/test/q0080-allocation.js",
-    "and packages/core/src/backlog/backlog.test.ts. A fix in one tree alone passes its own suite and",
-    "leaves the other handing out T-0001; two transcriptions of a table drift the same way, so there",
-    "is one. Each row builds a backlog from `tickets` ([folder, id]) and asks nextId() for `id`, or",
-    "expects it to throw `throws` — the whole message, because a refusal that names no evidence is",
-    "the defect this ticket is about. It is a .json rather than a .js so spike/test/run.js, which",
-    "discovers *.js, does not try to execute it."
+    "Q-0080: what a backlog allocates, as one table, in the tree that keeps it — this workspace.",
+    "Its owner is packages/core/src/backlog/backlog.test.ts, which sits beside it; two",
+    "transcriptions of a table drift the same way, so there is one. Each row builds a backlog from",
+    "`tickets` ([folder, id]) and asks nextId() for `id`, or expects it to throw `throws` — the",
+    "whole message, because a refusal that names no evidence is the defect this ticket is about.",
+    "It is data rather than a module: it is read with fs and parsed, never imported, so no test",
+    "runner in either tree tries to execute it.",
+    "Q-0107 AC-8 moved it here from the spike, which had been the copy both trees read. Until",
+    "Q-0103 deletes that tree, its q0080-allocation.js reaches this file across the boundary — the",
+    "direction that survives the cutover, and the reason the move happened before the deletion."
   ],
   "rows": [
     {

@@ -23,11 +23,11 @@ export const roleSchema = z.looseObject({
    */
   model: z.string().optional(),
   /**
-   * The role's write allow-list — and it is ADVISORY. Nothing reads it: a search of the spike's
-   * source for `paths` returns no reader, and ownership reaches an agent only as prose, in the
-   * role body and in a task's `description` (harness/architecture.md;
+   * The role's write allow-list — and it is ADVISORY. Nothing reads it: a search of
+   * `packages/core/src` for `.paths` returns no reader, and ownership reaches an agent only as
+   * prose, in the role body and in a task's `description` (harness/architecture.md;
    * harness/roles/principal-architect.md:17-18). Typing it here must not be read as enforcement.
-   * `spike/test/smoke.js` compares it against the third column of the role table in
+   * `role.test.ts` compares it against the third column of the role table in
    * harness/architecture.md, which is the only thing that checks it at all.
    */
   paths: z.array(z.string()).optional(),

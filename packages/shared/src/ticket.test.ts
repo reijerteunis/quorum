@@ -3,11 +3,15 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { ticketHistoryEntrySchema, ticketSchema } from './ticket.js';
-import { frontmatterRegexMatchesSpike, parseFrontmatter, read, ticketFiles } from '../test/corpus.js';
+import { frontmatterRegexMatchesProduct, parseFrontmatter, read, ticketFiles } from '../test/corpus.js';
 
 describe('AC-5 — the ticket schema parses every ticket.md in this repository', () => {
-  test('the corpus is read the way the spike reads it', () => {
-    expect(frontmatterRegexMatchesSpike(), 'spike/src/backlog.js:12 no longer matches the copy in test/corpus.ts').toBe(true);
+  test('the corpus is read the way the product reads it', () => {
+    // Q-0107 AC-9/AC-10 — `re-aimed`. It compared the copy in `test/corpus.ts` against
+    // `spike/src/backlog.js:12`; the subject is now `packages/core/src/backlog/backlog.ts:69`, the
+    // function Q-0043 ported and the one that survives Q-0103. Same claim, live subject.
+    expect(frontmatterRegexMatchesProduct(),
+      'packages/core/src/backlog/backlog.ts:69 no longer matches the copy in test/corpus.ts').toBe(true);
   });
 
   test('every backlog/*/ticket.md parses', () => {

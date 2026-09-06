@@ -5,9 +5,9 @@
  * **The allocation is `core`'s and is not re-specified here.** `Backlog.nextId` reads the one prefix
  * the backlog's tickets already carry and refuses rather than guessing when it cannot read one;
  * `Backlog.create` refuses a taken id and an occupied folder rather than allocating around either.
- * That table is Q-0080's, it is asserted from `spike/test/q0080-allocation.json` — the one copy both
- * trees read — and a second description of it here is the transcription defect this repository keeps
- * paying for. What this module claims is the **binary half**: that the CLI reaches that behaviour,
+ * That table is Q-0080's, it is asserted from `packages/core/src/backlog/q0080-allocation.json` —
+ * the one copy, moved there by Q-0107 AC-8 — and a second description of it here is the
+ * transcription defect this repository keeps paying for. What this module claims is the **binary half**: that the CLI reaches that behaviour,
  * and that a refusal is one line and an exit code rather than a stack trace.
  *
  * **Four preserved defects reach this command, and none of them is repaired here** (ground rule 3).

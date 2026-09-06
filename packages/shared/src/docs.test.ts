@@ -280,9 +280,14 @@ describe('Q-0050 AC-13b — run event-stream documentation', () => {
  *
  * §3.3 has carried a hand-written list of statuses since 2026-08-21 and nothing compared it to the
  * code, which is how a sentence in a document drifts silently from what it describes. The set is
- * read out of `spike/src/contracts.js` rather than retyped here, so this file adds no third copy to
- * keep in step; `packages/core/src/contracts/run-manifest.ts` keeps the same seven words and its
- * own suite pins them.
+ * read out of the product rather than retyped here, so this file adds no second copy to keep in
+ * step.
+ *
+ * Q-0107 AC-9/AC-10 — `re-aimed`. It read `spike/src/contracts.js` until then and this comment
+ * pointed at `packages/core/src/contracts/run-manifest.ts` as the tree that *also* held the words;
+ * that file is now the subject. It is a module-private const in a package this one may not import
+ * (04-architecture.md), so it is read as TEXT — which is what `project.test.ts` already does with
+ * two other `packages/core` files, and it is a declared input of this package's `test` task.
  */
 describe('Q-0040 AC-12 — the documented status vocabulary is the shipped one', () => {
   /**
@@ -302,11 +307,11 @@ describe('Q-0040 AC-12 — the documented status vocabulary is the shipped one',
     return [...sentence[1].matchAll(/`([a-z]+)`/g)].map(([, word]) => word);
   };
 
-  /** The words the spike ships, read out of its own source rather than imported across the port. */
+  /** The words the product ships, read out of its own source rather than imported across packages. */
   const shipped = (): string[] => {
-    const source = repoFile('spike/src/contracts.js');
-    const declaration = /export const TERMINAL_STATUSES = \[([^\]]+)\]/.exec(source);
-    if (!declaration) throw new Error('spike/src/contracts.js no longer declares TERMINAL_STATUSES');
+    const file = 'packages/core/src/contracts/run-manifest.ts';
+    const declaration = /const TERMINAL_STATUSES: readonly string\[\] = \[([^\]]+)\]/.exec(repoFile(file));
+    if (!declaration) throw new Error(`${file} no longer declares TERMINAL_STATUSES as an array literal`);
     return [...declaration[1].matchAll(/'([a-z]+)'/g)].map(([, word]) => word);
   };
 

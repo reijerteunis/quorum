@@ -84,3 +84,26 @@ describe('Q-0052 AC-3c — the finding pattern has one spelling', () => {
     expect(source('prompt.ts')).toContain('FINDING_PATTERN');
   });
 });
+
+describe('Q-0107 AC-9/AC-10 — a role\'s `paths` is advisory, and nothing here reads it', () => {
+  // `re-aimed`, and written rather than named: `packages/shared/src/role.test.ts` asserted this
+  // over four `spike/src/*.js` files as the executable half of `role.ts`'s claim that the field is
+  // ADVISORY, and no counterpart existed on this side — OQ-5's *"no sibling exists, so write it"*
+  // case, and the only one this ticket met. The claim is about the engine that runs, so it is
+  // asserted over the whole of `packages/core/src` rather than over the four modules the spike
+  // happened to have: `loadRole` and `taskPromptSection` read `meta.adapter` and `meta.model`, and
+  // a reader of `meta.paths` would turn advice into enforcement without anyone deciding to.
+  test('no source file in packages/core reads the field', () => {
+    const readers = coreSourceFiles()
+      .filter(([, text]) => /\.paths\b/.test(text))
+      .map(([name]) => name);
+    expect(readers, 'a reader of `paths` would make the allow-list enforcement').toStrictEqual([]);
+  });
+
+  test('the scan has teeth: it sees the read it forbids', () => {
+    // Over the violating text rather than over the corpus, because a scan that matched nothing —
+    // a typo in the pattern, say — reports the same green as one whose subject is genuinely clean.
+    expect(/\.paths\b/.test('for (const dir of role.meta.paths ?? []) allow(dir);')).toBe(true);
+    expect(/\.paths\b/.test('const { adapter, model } = role.meta;')).toBe(false);
+  });
+});

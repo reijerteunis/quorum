@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import { agentStepResultSchema, stepOutputDeclarationSchema } from './step-output.js';
-import { importSpecifiers, sharedSourceFiles } from '../test/corpus.js';
+import { importSpecifiers, repoFile, sharedSourceFiles } from '../test/corpus.js';
 
 describe('AC-7 — a declaration and a result cannot be confused', () => {
   test('a step\'s output declaration: the four keys the engine reads', () => {
@@ -52,14 +52,47 @@ describe('AC-7 — a declaration and a result cannot be confused', () => {
   });
 
   test('the module names all four validators and where each lives', () => {
+    // Q-0107 AC-13 — `re-aimed`, assertion and comment block together, in one change. The
+    // FOUR-VALIDATIONS block cited `spike/src/contracts.js`, `spike/src/adapters/index.js:181`,
+    // `spike/src/engine.js:679` and `spike/src/adapters/index.js:169`; this assertion pinned three
+    // of the four and left `schemaFor`'s unpinned, so correcting only what was pinned would have
+    // left the block half naming a deleted tree. The unit is the block.
+    //
+    // The other eight `spike/` citations in that file are elsewhere in it, are a mechanical sweep
+    // of their own, and are deliberately untouched — the file is left mixed on purpose.
     const module = sharedSourceFiles().find(([name]) => name === 'step-output.ts');
     if (!module) throw new Error('packages/shared/src/step-output.ts is missing');
     const text = module[1];
     for (const marker of ['zod', 'checkAgainstSchema', 'ajv', 'extractJson']) {
       expect(text, `the four-validator note must name ${marker}`).toContain(marker);
     }
-    expect(text).toContain('spike/src/contracts.js');
-    expect(text).toContain('spike/src/adapters/index.js:181');
-    expect(text).toContain('spike/src/adapters/index.js:169');
+    // Four citations rather than three, and each is required to EXIST rather than merely to be
+    // spelled: a pin naming a file nobody kept is a pin that cannot say so.
+    // Path and line are separate so the path is a bare literal: `turbo-inputs.test.ts` decides
+    // whether a quoted string is a repository path, and `…/adapters.ts:548` is not one.
+    const cited: [string, number | null][] = [
+      ['packages/core/src/contracts/contracts.ts', null],
+      ['packages/core/src/adapters/adapters.ts', 548],
+      ['packages/core/src/engine/prompt.ts', 92],
+      ['packages/core/src/adapters/adapters.ts', 511],
+    ];
+    for (const [file, line] of cited) {
+      const citation = line === null ? file : `${file}:${String(line)}`;
+      expect(text, `the four-validator note must cite ${citation}`).toContain(citation);
+      const lines = repoFile(file).split('\n');
+      if (line !== null) {
+        expect(lines[line - 1], `${citation} must still be the declaration it names`)
+          .toMatch(/^export function/);
+      }
+    }
+    // The block names no path under the tree Q-0103 deletes. Scoped to the block rather than to the
+    // file, because eight citations below it are a later sweep's and would fail a whole-file clause.
+    const block = /FOUR VALIDATIONS EXIST[\s\S]*?Adding\n\/\/ zod must not tempt anyone to collapse them\./.exec(text);
+    expect(block, 'the FOUR-VALIDATIONS block must still be findable').not.toBeNull();
+    // The needle is assembled so this file carries no path under that tree of its own — the device
+    // `index.test.ts:11` uses, and what keeps `packages/cli/src/spike-dependencies.test.ts` from
+    // having to excuse this line as a read.
+    expect(block?.[0], 'the block names no path under the tree the cutover deletes')
+      .not.toContain(`${'spi'}ke/`);
   });
 });
