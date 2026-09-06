@@ -1207,9 +1207,41 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     and not a maybe: `developer-tooling`'s `paths:` minus its spike halves is a proper subset of
     `developer-backend`'s and **excludes `packages/cli`**, the package `architecture.md:29` says the
     role exists for. **It cannot prove its own commands** — that is Q-0107's `integrate`.
-  - Q-0107 The workspace stops depending on the spike. *(Child B of Q-0103, opened 2026-09-05,
-    `draft`.)* **The child where every judgement lives**, twelve criteria (AC-8 to AC-19) against a
-    ceiling of fifteen. The ruling that created it: **you cannot demonstrate a re-aimed oracle
+  - Q-0107 The workspace stops depending on the spike. *(`reviewed` and `main:contained` 2026-09-06,
+    **finished by hand after a vendor failure**.)* **$136.94** — $10.53 requirements ready on the
+    first pass, $126.41 chore across three implement rounds ($90.22 / $21.00 / $15.19) — and the
+    most expensive ticket of the project after Q-0050's $131.03. **The run died at 22:33** on
+    *"codex exited 1: You've hit your usage limit"*, after round 3's implement completed and before
+    its review, so `finish()` recorded it `failed` and rolled the ticket branch back — a no-op,
+    `integrate` never having run. Nothing was lost: Q-0062's rule kept the worktree, and all three
+    rounds survived on `harness/Q-0107/implement`.
+    **It was finished by hand rather than re-run, and the arithmetic is why**: a fresh chore run
+    starts `run=3` with a new implement step at round 1's price, and `chore.yaml`'s implement reads
+    `review/chore/run-{run}/chore-iter-*.md`, so a run-3 implementer meets an **empty** review
+    directory — the findings that shaped rounds 2 and 3 invisible to it, against a branch already
+    containing their answers. Q-0096's precedent.
+    **The hand review is where this entry earns its length.** Round 3 was reviewed cross-vendor by a
+    direct adapter call; the **first pass returned `approve`** and the **second, on the identical
+    prompt, returned a blocker** — run only because a durable artifact was wanted rather than a
+    terminal read. The blocker is real and was verified before it was believed: `identity()` was
+    `verdict + files`, omitting the unique `site`, and **5 of the 35 rows collapse onto 4 such
+    values**, so a row could be replaced by a different site carrying the same verdict and files
+    while `ROWS`, site-uniqueness and the evidence check all stayed green. That is Q-0051's
+    distrust-a-first-pass-approve rule paying for itself in one measurement, and it is the strongest
+    evidence for it this project has.
+    **It also refuted this session's own erratum.** E-1 had ruled the disposed half a *visible*
+    register resting on `ROWS` being *"an identity rather than a count"* — Q-0073's phrase — and
+    `ROWS` was measurably closer to a count. The repair makes E-1 true rather than withdrawing it:
+    `identity()` carries the site, `ROWS` is regenerated from the file's own data at 35 entries and
+    **zero** duplicates, and a substitution guard was **demonstrated red against a *consistent*
+    collapse** — reverting `identity()` alone only fires the neighbouring `ROWS` comparison, so a
+    guard shown red by its neighbour has not been established. Two independent codex passes then
+    approved round 4.
+    **GO-3 is discharged, which is what unblocks Q-0103.** The hand `integrate` is the first real one
+    to run Q-0106's **new** commands: install exit 0, `pnpm turbo run test --force --continue` 7/7
+    tasks 0 cached, re-verified on `main` after the merge with spike **19/19** and intact at **54**
+    tracked files, and the sweep exit 0. *(Original scope follows.)* **The child where every
+    judgement lives**, twelve criteria (AC-8 to AC-19) against a ceiling of fifteen. The ruling that created it: **you cannot demonstrate a re-aimed oracle
     red-before-green once its subject is deleted** — so `spike/` stays for the whole of this child and
     AC-11 requires every re-aimed site shown red then green against the live tree. Doing this in the
     change that deletes the tree would verify all twelve by reading, which is *"A check is not

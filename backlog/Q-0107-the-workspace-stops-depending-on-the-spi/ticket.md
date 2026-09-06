@@ -1,7 +1,7 @@
 ---
 id: Q-0107
 title: The workspace stops depending on the spike
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0107/integration
