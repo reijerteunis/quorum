@@ -741,6 +741,31 @@ describe('Q-0105 — push lag, the one repository-level fact this board reports'
     expect(out(result), 'the ticket rows did not render').toMatch(/T-0001/);
   });
 
+  test('AC-3 and AC-11 — a repository git refuses to OPEN says so, and absence still says nothing', async () => {
+    // Round 2's review finding, at the surface a reader meets. git exits 128 both to say there is no
+    // repository and to say there is one it will not open — an unreadable format here, dubious
+    // ownership in the field — so reading that code as absence rendered a refused repository exactly
+    // as it renders a directory git has nothing to say about. One of those two is a failed probe
+    // INSIDE the subject, and the pair below is what keeps them apart at the board.
+    const refused = await projectFixture();
+    await makeTicket(refused);
+    withUpstream(refused, { local: 2 });
+    git(refused, 'config', 'core.repositoryformatversion', '99');
+
+    const result = await board(refused);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(requireLagLine(result, 'a repository git refused to open printed nothing at all'))
+      .toMatch(/cannot say whether main has been pushed \(git failed\)/);
+    expect(out(result), 'the ticket rows did not render').toMatch(/T-0001/);
+
+    // The neighbour, in the same test so the pair cannot drift apart: a directory that is not a
+    // repository is still silent, which is the half AC-10 and C6 rest on.
+    const absent = tmp('quorum-cli-board-plain-');
+    expect((await invoke(['init', absent])).exitCode).toBe(SUCCESS);
+    expect(lagLine(await board(absent)), 'absence stopped being silent, which AC-10 forbids')
+      .toBeNull();
+  });
+
   test('AC-3 — a tracking ref that is gone is a missing ref, and never a failed git', async () => {
     // Round 1's second review finding. `%(upstream)` is computed from configuration, so deleting the
     // remote-tracking ref leaves the upstream NAMED and unresolvable — `git branch -vv` calls it

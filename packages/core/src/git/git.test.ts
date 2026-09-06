@@ -618,6 +618,12 @@ describe('AC-10 — ensureExcluded resolves the exclude file through git and nev
 // That matters more than usual for this subject: the one fact under test is about a remote, and the
 // checkout these tests run in has one.
 
+/**
+ * git's exit code for a fatal. Declared here rather than imported: the module keeps it private, and
+ * a test that shared the constant with the code would agree with it about the one thing under test.
+ */
+const GIT_FATAL = 128;
+
 /** A bare repository, which is what a remote is when nobody has to check anything out of it. */
 function bareRemote(branch: string): string {
   const dir = tempDir('remote-');
@@ -669,6 +675,56 @@ describe('Q-0105 AC-3 — every push-lag state is selected from an answer git ga
     // Its neighbour below — a probe that could not answer at all — is `git failed`, and the two are
     // told apart by git's exit code rather than by its prose, which a locale would decide.
     expect(pushLag(notARepo(), 'main')).toBeNull();
+  });
+
+  /**
+   * The exit status git ended with, or `null` where it did not fail. The two fixtures below turn on
+   * a refusal being indistinguishable from absence by exit code, and a test that asserted that by
+   * reading the source would be establishing it by reading it (2026-08-29).
+   */
+  function statusOf(dir: string): number | null {
+    try { git(dir, 'rev-parse', '--is-inside-work-tree'); return null; }
+    catch (error) { return (error as { status?: number }).status ?? null; }
+  }
+
+  test('a repository git refuses to OPEN is `git failed`, and absence alone is silent', () => {
+    // Round 2's review finding. git spends 128 on every fatal, so the code that says "there is no
+    // repository" is the same one it says "there is a repository and I will not open it" with —
+    // and reading it as absence rendered a refused repository as silence, which for a fact whose
+    // success output is silence is the clean bill of health nobody earned.
+    const refused = repo();
+    git(refused, 'config', 'core.repositoryformatversion', '99');
+    const absent = notARepo();
+
+    // The premise, measured rather than asserted from the code: both fatal, with the same status.
+    expect(statusOf(refused), 'the fixture opens fine, so it is not a refused repository')
+      .toBe(GIT_FATAL);
+    expect(statusOf(absent), 'the neighbour is not fatal, so the pair discriminates nothing')
+      .toBe(GIT_FATAL);
+
+    expect(pushLag(refused, 'main'), 'a repository git refused was reported as no repository')
+      .toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    expect(pushLag(absent, 'main'), 'absence stopped being silent, which AC-10 forbids').toBeNull();
+  });
+
+  test('a repository git refuses to open for OWNERSHIP is `git failed` too', () => {
+    // The review's other named cause, and it fails at a different moment — ownership is refused
+    // during discovery, an unreadable format during setup — so one fixture does not stand in for
+    // the other. `GIT_TEST_ASSUME_DIFFERENT_OWNER` is git's own hook for a check that otherwise
+    // needs a second user account; the premise assertion below is what keeps this honest if a
+    // future git drops it, since the failure then names the hook rather than the code.
+    const dir = repo();
+    vi.stubEnv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1');
+    try {
+      expect(statusOf(dir), 'this git build did not refuse the repository, so nothing is under test')
+        .toBe(GIT_FATAL);
+      expect(pushLag(dir, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    // And the refusal was the only thing between it and an answer: unstubbed, the same directory
+    // reports an ordinary state, so the assertion above is about ownership and not about the fixture.
+    expect(pushLag(dir, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'no remote' });
   });
 
   test('a repository with no remotes is `no remote`, and never `pushed`', () => {

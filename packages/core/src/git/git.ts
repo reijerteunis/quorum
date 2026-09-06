@@ -40,30 +40,60 @@ const exitStatus = (error: unknown): number | null => {
 };
 
 /**
- * git's exit code for a fatal, which is also the code it issues where there is no repository —
- * `fatal: not a git repository`, measured at 128 on git 2.55. {@link insideWorkTree} turns on it.
+ * git's exit code for a fatal, and it spends the same one on every kind. Measured on git 2.55:
+ * `not a git repository`, `Expected git repo version <= 1, found 99`, `unknown repository extension
+ * found` and `detected dubious ownership in repository at …` all exit 128. So the code says *git
+ * gave up* and never why, which is what {@link repositoryAt} is for.
  */
 const GIT_FATAL = 128;
 
+/** What the work-tree probe established, which is three answers rather than a boolean. */
+type WorkTreeProbe =
+  /** git answered `true`: there is a work tree here and it can be asked questions. */
+  | 'inside'
+  /** git established there is no work tree to ask about — it answered `false`, or it proved absence. */
+  | 'outside'
+  /** The probe could not answer, which is never reported as either of the other two. */
+  | 'failed';
+
 /**
- * Is `repoDir` inside a work tree? `true` and `false` are git's own answers; `null` is **the probe
- * could not answer**, which is a different thing from either and is never collapsed into `false`.
+ * Does a repository sit at `repoDir` — one git found and then refused to open?
  *
- * The distinction is what {@link pushLag} needs and {@link containment} does not: git exits
- * {@link GIT_FATAL} to say there is no repository here, and anything else — no git on the path, a
- * killed process, a shim — is the probe failing rather than answering. Selected from git's exit code
- * and from nothing else, which is {@link ancestry}'s rule one function along; stderr is not read,
- * because git translates it and a locale would then decide the state.
- *
- * The residual limit, stated rather than hidden: git spends 128 on every fatal, so a repository it
- * refuses to *open* — dubious ownership, an unsupported format version — is read here as "no
- * repository", and a caller is silent about it. That is the same answer {@link containment} gives
- * the same directory, and telling the two apart needs git's prose, which is exactly what may not
- * decide a state.
+ * `--resolve-git-dir` asks whether a *path* is a gitdir, or a gitfile naming one, and it is the
+ * only probe measured here that answers while the repository is unopenable: on git 2.55 it exits 0
+ * for a repository whose format version is 99, for one carrying an unknown extension and for one
+ * whose ownership git refuses, and 128 where there is no gitdir at that path. It runs neither the
+ * ownership check nor the format check, which is precisely why it can discriminate between them and
+ * absence — and it is git's own answer rather than a guess read off git's prose, which is
+ * translated and so may never decide a state.
  */
-function insideWorkTree(repoDir: string): boolean | null {
-  try { return git(['rev-parse', '--is-inside-work-tree'], repoDir) === 'true'; }
-  catch (error) { return exitStatus(error) === GIT_FATAL ? false : null; }
+function repositoryAt(repoDir: string): boolean {
+  return safe(() => git(['rev-parse', '--resolve-git-dir', path.join(repoDir, '.git')], repoDir)) != null;
+}
+
+/**
+ * Is `repoDir` inside a work tree? Three answers, because a probe that could not answer is a
+ * different thing from either of git's own and is never collapsed into one of them.
+ *
+ * The distinction is what {@link pushLag} needs and {@link containment} does not. Anything that is
+ * not {@link GIT_FATAL} — no git on the path, a killed process, a shim — is the probe failing. A
+ * fatal is git giving up for one of two very different reasons, so it is asked a second question:
+ * where a repository is really there, git refused to open one and that is a failed probe *inside*
+ * the subject, which for a fact whose success output is silence must not be rendered as nothing.
+ *
+ * The residual limit, stated rather than hidden and narrower than it was: a repository git refuses
+ * is caught where it sits at `repoDir`, which is where a project's own `.git` is. A project root
+ * *below* the refused repository's root still reads as absence, because closing that needs either
+ * git's translated prose or a reimplementation of git's upward discovery walk — and the second would
+ * make a fixture's verdict depend on whether the directory it was built in happens to sit under a
+ * repository, which is the one thing a verdict may not turn on (2026-08-30).
+ */
+function workTreeProbe(repoDir: string): WorkTreeProbe {
+  try { return git(['rev-parse', '--is-inside-work-tree'], repoDir) === 'true' ? 'inside' : 'outside'; }
+  catch (error) {
+    if (exitStatus(error) !== GIT_FATAL) return 'failed';
+    return repositoryAt(repoDir) ? 'failed' : 'outside';
+  }
 }
 
 /**
@@ -322,11 +352,12 @@ export function containment(repoDir: string, base: string): Containment | null {
  * How far the configured base branch is ahead of the upstream it tracks — commits that have never
  * left this machine — derived from git at the moment of asking and never stored.
  *
- * `null` means **git said there is no work tree here**, and nothing else: the caller renders as it
- * always did, which is what keeps a freshly initialised project's board byte-identical. A probe that
- * *could not answer* is not that — it is `git failed`, and it prints. The two are told apart by
- * {@link insideWorkTree}, and conflating them is how a repository with a broken git reported
- * silence, which for this fact is the shape of a clean bill of health.
+ * `null` means **git established there is no work tree here**, and nothing else: the caller renders
+ * as it always did, which is what keeps a freshly initialised project's board byte-identical. A
+ * probe that *could not answer* is not that — it is `git failed`, and it prints, and so is a
+ * repository git found and refused to open. {@link workTreeProbe} tells the three apart; conflating
+ * them is how a repository with a broken git reported silence, which for this fact is the shape of a
+ * clean bill of health.
  *
  * **A second fact under {@link containment}'s rules, not a second way of doing it**, which is why it
  * is a separate function: `containment` asks where a *ticket branch* stands against the base and
@@ -353,16 +384,17 @@ export function containment(repoDir: string, base: string): Containment | null {
  * forbids a caller reassuring on it.
  *
  * At most seven spawns, constant in the number of tickets a board holds, and measured by the spawn
- * counter rather than counted by eye.
+ * counter rather than counted by eye. The second work-tree probe does not raise that ceiling: it is
+ * reached only where git has already given up, which is a path that returns two spawns in.
  */
 export function pushLag(repoDir: string, base: string): PushLagResult | null {
   // Two probes rather than one, because they answer two questions and only the first decides
-  // whether there is a question at all. A work tree git could not confirm is `null` — the caller
-  // renders as it always did — and every failure AFTER that is reported, silence being this fact's
-  // success output: a check that skips its subject must not report success (2026-08-25).
-  const inWorkTree = insideWorkTree(repoDir);
-  if (inWorkTree === null) return { state: 'indeterminate', reason: 'git failed' };
-  if (!inWorkTree) return null;
+  // whether there is a question at all. `null` is reached only where git established that there is
+  // no work tree here; every failure, before that point and after it, is reported — silence being
+  // this fact's success output: a check that skips its subject must not report success (2026-08-25).
+  const probe = workTreeProbe(repoDir);
+  if (probe === 'failed') return { state: 'indeterminate', reason: 'git failed' };
+  if (probe === 'outside') return null;
   // No remotes at all is an answer, not a failure: there is nowhere the base could be ahead of. A
   // freshly initialised project is this, and what to DO with it is the caller's decision.
   const remotes = safe(() => git(['remote'], repoDir));
