@@ -48,7 +48,7 @@ so the fix may not live in `packages/**/*.test.ts`.
 
 That leaves surfaces that are allowed to know about the outside world:
 
-1. **`harness board`** — it already derives **containment** from git on every invocation and never
+1. **`quorum board`** — it already derives **containment** from git on every invocation and never
    stores it (2026-08-24). A push-lag column is the same kind of fact, computed the same way, and the
    board is *"the one question a board exists to answer"*: what is open and where is the code.
 2. **A gate** — a chore run's human gate could report the lag beside its verdict, since a gate is
@@ -87,3 +87,24 @@ answering half its own question.
 
 Belongs to M2 in `docs/06-development-plan.md`. Opened from CI runs 33967146498, 33968439312 and
 33969196058 — red, red, green.
+
+## Corrected 2026-09-06, before the requirements run
+
+**The surface in option 1 is spelled `quorum board`.** This body said `harness board`, written
+2026-09-05; **Q-0100 merged on 2026-09-06** and ruled the class — the user-facing binary is called
+`quorum`, and `board.ts:116` now prints `→ quorum run <flow> <id>` where it printed `harness run`.
+One word, corrected here rather than left for the run to inherit, because a requirement that names a
+binary which does not exist is what Q-0100 existed to stop.
+
+**The push-lag premise is a past state, and it is worth saying that it is.** `main` is **level with
+`origin/main`** as of this writing and the last fourteen CI runs are green. The 89 commits are what
+happened, not what is; the ticket's subject is that **nothing noticed**, which is unchanged by the
+lag currently being zero. A reader meeting this body later should not take the zero as the gap
+having closed.
+
+**One thing the gap hid has since been re-measured and is now recorded elsewhere.** Q-0102 —
+listed above as one of the two defects the push surfaced — was **parked at `p2` on 2026-09-06**
+after 0 failures in 36 local sweeps and 0 in 28 CI sweep cells. That does not weaken this ticket:
+the point was never that those two defects were severe, it is that four documents said a path
+worked when it did not, and Q-0104's three-day break on the cold-clone path is untouched by
+Q-0102's parking.
