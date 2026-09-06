@@ -11,9 +11,9 @@
  * only `adapters --probe` proves login"* (2026-08-22).
  *
  * **Nothing here decides what a refusal says.** The BYOS refusal is each vendor adapter's own, in
- * `@quorum/core`, and this module renders `e.message` unaltered; the sentence it still carries is
- * Q-0068's, and the notice's `harness adapters --probe` is Q-0100's — a fifth user-facing sentence
- * naming a binary that is not called that. Both are preserved verbatim (Q-0099 AC-8(a), (b)).
+ * `@quorum/core`, and this module renders `e.message` unaltered; the sentence it still carries calls
+ * the *product* a harness, which is Q-0068's and is preserved verbatim (Q-0099 AC-8(a)). The notice
+ * below names the *binary*, and that class was ruled by Q-0100: it is `quorum`.
  *
  * **Two preserved defects reach this command and neither is repaired here** (ground rule 3):
  *
@@ -41,8 +41,9 @@ import type { CommandHandler } from './main.js';
  *
  * Why: a sixth copy of `lint.ts`'s block rather than a shared helper, because a frame module naming
  * `loadProject` is what `frame.source.test.ts`'s AC-10 partition forbids (Q-0099 AC-3, OQ-5).
- * Why: preserved — `core`'s message names the binary `harness`, which this one is not called; that
- * whole class is Q-0100's. `--project` is passed through per Q-0091 erratum E-6.
+ * The message is `core`'s, rendered unaltered — this module composes no recovery advice of its own,
+ * which is what keeps one sentence in one place. `--project` is passed through per Q-0091 erratum
+ * E-6.
  */
 function projectOf(project: FlagValue | readonly FlagValue[] | undefined): ReturnType<typeof loadProject> {
   try {
@@ -110,9 +111,7 @@ export const adapters: CommandHandler = async ({ flags }) => {
     }
     report.push({ adapter: name, installed: true, version, login: result.ok ? 'verified' : 'failed', ...result });
   }
-  // Why: preserved — the binary named here is `harness` and this one is not called that. Q-0100 owns
-  // that class; renaming it here would be that ticket done one sentence at a time.
-  if (!probe) console.log(c.dim('· presence only — logins NOT verified; run `harness adapters --probe` before a real run'));
+  if (!probe) console.log(c.dim('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run'));
   // After the human lines rather than instead of them: `--json` is a combined stream in the spike
   // and a consumer piping it gets both. Redefining it as JSON-only is a contract change.
   if (asJson) console.log(JSON.stringify({ probed: probe, adapters: report }, null, 2));

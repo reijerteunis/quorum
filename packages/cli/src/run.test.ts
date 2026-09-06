@@ -100,20 +100,24 @@ describe('AC-1 — the frame dispatches run, and its two argument refusals are t
       expect({ exitCode: result.exitCode, hard: result.hard }, argv.join(' '))
         .toStrictEqual({ exitCode: ERROR, hard: true });
       expect(plain(result.stderr)).toContain(
-        'usage: harness run <flow> <ticket> [--auto] [--dry] [--base <ref>] [--adapter mock]'
+        'usage: quorum run <flow> <ticket> [--auto] [--dry] [--base <ref>] [--adapter mock]'
         + ' [--verbose] [--gate-answer advance|retry|abort]',
       );
     }
   });
 
-  test('Q-0100 fifth instance — the usage line says `harness`, preserved rather than fixed', async () => {
-    // Registered, not repaired (non-goal 3). Its two landed neighbours keep theirs, so spelling this
-    // one `quorum` would make one command disagree with the other two while pre-empting the ruling
-    // that owns all of them. The pin is what makes the eventual fix a deliberate act.
+  test('Q-0100 — the usage line says `quorum`, which is the binary `bin` installs', async () => {
+    // **Inverted rather than deleted** (Q-0037 AC-4h). It pinned the old name with a negative clause
+    // refusing the new one; both halves turn round, so a regression to `harness` fails here instead
+    // of passing an absent check.
+    //
+    // The self-contradiction this closes is worth naming: `commands.ts`'s HELP has said
+    // `usage: quorum <command> [options]` since Q-0090, so one binary answered to two names one
+    // screen apart.
     const result = await invoke(['run']);
-    expect(plain(result.stderr)).toContain('usage: harness run');
-    expect(plain(result.stderr), 'the usage line was renamed here rather than by Q-0100')
-      .not.toContain('usage: quorum run');
+    expect(plain(result.stderr)).toContain('usage: quorum run');
+    expect(plain(result.stderr), 'the usage line names a binary this package does not install')
+      .not.toContain('usage: harness run');
   });
 
   test('B5 — a valueless --base is refused before any project is opened, and the usage names the flag', async () => {
@@ -121,7 +125,7 @@ describe('AC-1 — the frame dispatches run, and its two argument refusals are t
     // rather than coerced into the string "true" and interpolated into a diff range.
     const refused = await invoke(['run', 'review', 'T-9', '--base']);
     expect({ exitCode: refused.exitCode, hard: refused.hard }).toStrictEqual({ exitCode: ERROR, hard: true });
-    expect(plain(refused.stderr)).toContain('--base needs a revision: harness run <flow> <ticket> --base <ref>');
+    expect(plain(refused.stderr)).toContain('--base needs a revision: quorum run <flow> <ticket> --base <ref>');
     // Before any project is opened: this ran in a directory with no `harness/harness.yaml` anywhere
     // above it, and the refusal is the flag's rather than `no harness/harness.yaml found`.
     expect(plain(refused.stderr), 'a project was opened first').not.toContain('harness.yaml found');

@@ -142,9 +142,9 @@ describe('AC-7 — presence', () => {
     const lines = out(result).split('\n');
     expect(lines[0]).toBe('✓ claude: 2.1.231');
     expect(lines[1]).toBe('✓ codex: 0.149.1');
-    // Preserved verbatim, `harness` included: the binary named in it is Q-0100's, which owns all
-    // five such sentences at once rather than one command at a time.
-    expect(out(result)).toContain('· presence only — logins NOT verified; run `harness adapters --probe` before a real run');
+    // Everything but the binary name is preserved verbatim; the name is `quorum` since Q-0100 ruled
+    // the class, and the notice is the one place this command tells an adopter what to run next.
+    expect(out(result)).toContain('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run');
     // check() proves presence and nothing else, so nothing was probed and nothing was billed.
     expect(vi.mocked(probeAdapter), 'presence alone must make no authenticated request').not.toHaveBeenCalled();
     expect(vi.mocked(getAdapter).mock.calls.map((call) => call[0])).toStrictEqual(['claude', 'codex']);

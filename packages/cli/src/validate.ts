@@ -57,9 +57,7 @@ const inapplicable = (semantic: ArtifactValidationResult['semantic']): boolean =
 /** Validate each artifact against one schema, in argv order, and fail if any of them did not. */
 export const validate: CommandHandler = ({ rest }) => {
   const [schemaFile, ...dataFiles] = rest;
-  // Why: preserved verbatim, including the binary name this one is not called — see the OQ-2
-  // successor, which owns every user-facing occurrence of it at once rather than one per command.
-  if (!schemaFile || dataFiles.length === 0) die('usage: harness validate <schema.json> <file…>');
+  if (!schemaFile || dataFiles.length === 0) die('usage: quorum validate <schema.json> <file…>');
   // Read once, here, purely so an unreadable schema dies with its own message before any artifact is
   // opened. Selection itself is `validateArtifact`'s and is annotation-driven.
   try {

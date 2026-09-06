@@ -243,7 +243,7 @@ describe('AC-4 — the project-not-found sentence survives the port unchanged', 
       const { stdout, stderr, exitCode, hard } = await invoke(['lint']);
       expect(exitCode).toBe(ERROR);
       expect(hard, 'a missing project stops the command through die').toBe(true);
-      expect(plain(stderr)).toContain('no harness/harness.yaml found — run `harness init` in your repo');
+      expect(plain(stderr)).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
       expect(stdout).toBe('');
       // The regression AC-4 names: an uncaught ProjectNotFoundError reaches `dieOnUnexpected` and
       // prints a Node stack where the spike prints one sentence.

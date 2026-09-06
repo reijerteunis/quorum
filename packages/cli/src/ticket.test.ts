@@ -111,17 +111,19 @@ describe('AC-2 — the allocation is reached through the CLI, and the table\'s b
   });
 
   test('AC-2(a)/(b) — a subcommand that is not `new` prints the usage line, and an absent title refuses', async () => {
-    refusal(await invoke(['ticket']), 'usage: harness ticket new "<title>" --intent "..." [--id Q-0081]');
-    refusal(await invoke(['ticket', 'list']), 'usage: harness ticket new');
+    refusal(await invoke(['ticket']), 'usage: quorum ticket new "<title>" --intent "..." [--id Q-0081]');
+    refusal(await invoke(['ticket', 'list']), 'usage: quorum ticket new');
     refusal(await invoke(['ticket', 'new']), 'title required');
     expect(folders(), 'a refusal allocated a folder anyway').toStrictEqual([]);
   });
 
-  test('and that usage line calls the binary `harness`, which is preserved and is Q-0100\'s to rule', async () => {
-    // Why: preserved — the class is Q-0100's, which exists to rule the board's hint,
-    // `ProjectNotFoundError`'s sentence, `validate`'s usage and `init`'s next steps at once. Pinned
-    // so the successor has an executable subject and so a rename here would be a deliberate act.
-    expect(plain((await invoke(['ticket'])).stderr)).toContain('harness ticket new');
+  test('Q-0100 — and that usage line calls the binary `quorum`, which is the one that exists', async () => {
+    // **Inverted rather than deleted** (Q-0037 AC-4h): it pinned the old name so a rename would be a
+    // deliberate act, and it pins the new one so a regression is. The negative half is what makes it
+    // discriminate — a usage line naming neither binary would satisfy the positive one alone.
+    expect(plain((await invoke(['ticket'])).stderr)).toContain('quorum ticket new');
+    expect(plain((await invoke(['ticket'])).stderr), 'the usage line names a binary that does not exist')
+      .not.toContain('harness ticket new');
   });
 
   test('AC-2(c) — an absent --intent falls back to the title, which is the ticket\'s body', async () => {
