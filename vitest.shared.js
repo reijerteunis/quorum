@@ -4,9 +4,11 @@
 // The include is Vitest's own default, taken by reference rather than transcribed, and it is
 // deliberately not narrowed. Discovery is the point: qa-red proves a red phase by writing NEW test
 // files and asserting the suite fails, so a pattern that collects none of them leaves `pnpm test`
-// green and `integrate --expect fail` looping to a gate having proved nothing — which is the
-// reasoning `spike/test/run.js`'s own header carries, arriving on the workspace side. Until Q-0054
-// this narrowed the include to `src`, and a red test written to `packages/core/test/x.test.ts`, to
+// green and `integrate --expect fail` looping to a gate having proved nothing. The reasoning
+// arrived here from the runner of the second suite this repository used to have, which discovered
+// its own directory and whose header carried the argument; Q-0103 deleted that tree, and the
+// argument survives it because the property is the workspace's now. Until Q-0054 this narrowed the
+// include to `src`, and a red test written to `packages/core/test/x.test.ts`, to
 // `packages/core/x.test.ts` or as `packages/core/src/x.test.js` was collected by nothing at all.
 //
 // `packages/core/src/test-discovery.test.ts` is what fails when a `*.test.ts` lands somewhere

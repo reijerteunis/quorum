@@ -8,9 +8,6 @@
  * test process (AC-6, AC-7) so the invocation `real-cli.probe.test.ts` documents is a command that
  * works (AC-8).
  *
- * Neither `spike/src` nor `packages/core/src` is written by this ticket. Reading either is what the
- * corpus tests already do, and the port freeze forbids only writing (harness/port-charter.md §3).
- *
  * Q-0071 adds the same class of claim one layer up. `integrate` runs `harness.yaml`'s command and
  * CI runs `package.json`'s, so Q-0065 closed one of two independent paths; the block at the end of
  * this file asserts that `.github/workflows/ci.yml` closes the other (Q-0071 AC-4).
@@ -49,9 +46,9 @@ const codeLines = (text: string): string[] =>
     return trimmed !== '' && !trimmed.startsWith('*') && !trimmed.startsWith('//') && !trimmed.startsWith('/*');
   });
 
-// Q-0107 AC-16 — `retired`. `spikeSources()` walked `spike/src` and fed two of the three tests
-// below, on the reasoning that the spike was *"the engine that runs integrate today"*. Since
-// Q-0106 it is not: `harness.yaml`'s `commands.test` no longer runs that tree, and Q-0103 deletes
+// Q-0107 AC-16 — `retired`. `spikeSources()` walked the spike's source directory and fed two of the
+// three tests below, on the reasoning that it was *"the engine that runs integrate today"*. Since
+// Q-0106 it was not: `harness.yaml`'s `commands.test` stopped running that tree, and Q-0103 deleted
 // it. The property — no engine names a test runner in code, and neither parses a runner's output —
 // is asserted over `coreSourceFiles()` in the tests that remain, which is the engine that runs.
 
@@ -418,11 +415,13 @@ describe('Q-0072 AC-9 — package.json and CI name the same task set', () => {
 });
 
 /**
- * Q-0079 — the sweep's static shape. These assertions live here rather than beside
- * `port-freeze-guard.test.mjs`, whose sibling would have been the obvious home: that file is
- * executed by nothing — not CI, not `pnpm test`, not the spike suite — so the guard against
- * machine-dependent tests would itself have been unrun. This ticket's own class, one degree worse
- * than its three instances. `pnpm test` runs this file, and it already reads `ci.yml`.
+ * Q-0079 — the sweep's static shape. These assertions live here rather than beside the freeze
+ * guard's own suite under `.github/scripts/`, which would have been the obvious home: at the time
+ * that file was executed by nothing — not CI, not `pnpm test`, not the spike suite — so the guard
+ * against machine-dependent tests would itself have been unrun. That ticket's own class, one degree
+ * worse than its three instances. `pnpm test` runs this file, and it already reads `ci.yml`, which
+ * is why the placement outlives the sibling: Q-0103 deleted the freeze guard with the charter it
+ * read, and these assertions did not have to move.
  */
 describe('Q-0079 — the hostile-environment sweep is defined once and CI runs both cells', () => {
   const sweep = (): string => repoFile('.github/scripts/git-identity-sweep.sh');
@@ -478,7 +477,7 @@ describe('Q-0079 — the hostile-environment sweep is defined once and CI runs b
     expect(script, 'an install that did not complete leaves its suite UNRUN, not passing').toContain('UNRUN');
   });
 
-  test('CI runs both cells from their own checkouts, and the spike job configures no identity', () => {
+  test('CI runs both cells from their own checkouts', () => {
     const wf = workflow(ciText());
     expect(Object.keys(wf.jobs ?? {})).toEqual(expect.arrayContaining([
       'git-identity-sweep-bare', 'git-identity-sweep-populated',
@@ -490,8 +489,11 @@ describe('Q-0079 — the hostile-environment sweep is defined once and CI runs b
     const populated = jobSteps(wf, 'git-identity-sweep-populated').map((step) => step.run ?? '').join('\n');
     expect(populated, 'the populated cell creates the two paths Q-0072 registered by hand')
       .toContain('mkdir -p .harness/worktrees .quorum/runs');
-    const spikeRuns = jobSteps(wf, 'spike').map((step) => step.run ?? '').join('\n');
-    expect(spikeRuns, 'the spike job no longer supplies an ambient identity').not.toContain('git config --global');
+    // Q-0103 AC-22 — `retired`. A third clause here read the `spike` job's steps and asserted it
+    // supplied no ambient identity. Its subject is a job this ticket removed, and a job that does
+    // not exist cannot configure one, so the clause could only ever pass — *"A check outlives its
+    // subject only if it can still fail"* (2026-09-05). What is left of it is CI_JOBS below, which
+    // is where the removal is recorded rather than silent.
     expect(ciText(), 'the uncovered fourth cell is named in the workflow rather than left to be inferred')
       .toContain('deliberately uncovered');
   });
@@ -500,34 +502,51 @@ describe('Q-0079 — the hostile-environment sweep is defined once and CI runs b
 /**
  * Every job `.github/workflows/ci.yml` declares, and what its green tick claims.
  *
- * Q-0054 AC-8. Until now nothing asserted the job **set**: each block above reached for the job it
- * cared about, and `(jobs['spike']?.steps ?? [])` was satisfied by that job's removal. A register
- * makes adding or removing one a visible act — the test names what is gone rather than passing over
- * it — and it is what the two suites' division of labour rests on, since the `workspace` job proves
- * the port at library level and the `spike` job proves the harness the port is developed with.
+ * Q-0054 AC-8. Until that ticket nothing asserted the job **set**: each block above reached for the
+ * job it cared about, and `(jobs['spike']?.steps ?? [])` was satisfied by that job's removal. A
+ * register makes adding or removing one a visible act — the test names what is gone rather than
+ * passing over it.
  *
- * **This register pins a job the cutover will delete**, which is deliberate rather than a guard
- * resisting its own removal: Q-0009 drops the `spike` job together with `spike/` and
- * `src/spike-parity.test.ts`, and updating one line here is how that becomes a decision instead of
- * a silence.
+ * **Q-0103 AC-22 took it from seven rows to three, which is the register doing the job it was
+ * written for.** It pinned four jobs the cutover deletes — `spike`, which ran the second regression
+ * suite, and the three `port-freeze-*` jobs, whose subject was `harness/port-charter.md` — and this
+ * file said in advance that *"updating one line here is how that becomes a decision instead of a
+ * silence"*. The three freeze jobs are not merely pointless without the charter: `port-freeze-guard.sh`
+ * refused to pass on a policy it could not read, so all three would have gone red on every push the
+ * moment the charter went. {@link BEFORE_THE_CUTOVER} is what stops the contraction being a
+ * self-approving edit — the register is shown refusing the job set it used to accept.
  */
 const CI_JOBS: Record<string, string> = {
   workspace: 'lint, typecheck and test EXECUTED against this commit — forced, so no task is replayed (Q-0071)',
-  'port-freeze-policy': 'the charter parses, and the freeze guard\'s own suite runs (Q-0009 §3)',
-  'port-freeze-branch-scope': 'this branch changed no spike/src file it may not (Q-0009 §3)',
-  'port-freeze-sha': 'the base holds no spike/src change since the freeze SHA harness/port-charter.md records — which it does, so this job is live and its tick is an executed claim; it skips, rather than passing, only while the charter still reads not-yet-recorded (Q-0009 §3)',
-  spike: 'the spike suite is green — the harness the port is being developed with, and the port\'s only independent witness. Deleted at the cutover by Q-0009, after Q-0010',
-  'git-identity-sweep-bare': 'both suites pass with no resolvable git identity, in a checkout that has neither gitignored directory (Q-0079)',
+  'git-identity-sweep-bare': 'the suite passes with no resolvable git identity, in a checkout that has neither gitignored directory (Q-0079)',
   'git-identity-sweep-populated': 'the same, in a checkout that has both — the cell Q-0072\'s instance lived in',
 };
 
 /**
- * The `workspace` job with `spike` removed, and nothing else changed.
+ * The four job ids Q-0103 retired, and what each stops being able to claim.
  *
- * Q-0054 AC-8 asks for the defect to be exhibited rather than asserted: the existing assertion is
- * shown **passing** over this fixture, which is what makes the register the thing that catches it.
+ * A register that only says *"three jobs"* cannot tell a reader whether a check was removed or
+ * renamed, which is Q-0073's *a count is not an identity* one layer up. These are named so the
+ * comparison against {@link BEFORE_THE_CUTOVER} fails with the four ids in its message rather than
+ * with two sorted lists.
  */
-const WITHOUT_SPIKE = `name: CI
+const RETIRED_BY_THE_CUTOVER: Record<string, string> = {
+  spike: 'the spike suite was green — the harness the port was developed with, and the port\'s only independent witness. Its tree is deleted, so the job has no suite to run',
+  'port-freeze-policy': 'the charter parsed, and the freeze guard\'s own suite ran. harness/port-charter.md is deleted and port-freeze-guard.sh refuses a policy it cannot read, so this job would fail on every push',
+  'port-freeze-branch-scope': 'a branch changed no spike/src file it may not — a diff over a directory that no longer exists',
+  'port-freeze-sha': 'the base held no spike/src change since the freeze SHA the charter recorded; both the SHA and the file that recorded it are gone',
+};
+
+/**
+ * `.github/workflows/ci.yml`'s job set as it stood before the cutover, one step per job.
+ *
+ * The register is shown **red** against it, which is what AC-22 asks for and what stops a
+ * three-row register from being a claim about nothing: a register that accepted both job sets
+ * would be recording neither. Compact rather than verbatim, because the subject is the job
+ * **set** — {@link WITHOUT_A_SWEEP_CELL} is the same device pointed the other way, and Q-0054's
+ * own fixture was compact for the same reason.
+ */
+const BEFORE_THE_CUTOVER = `name: CI
 
 on:
   push:
@@ -535,13 +554,49 @@ on:
 
 jobs:
   workspace:
-    name: workspace (lint, typecheck, test)
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: pnpm turbo run lint --force
-      - run: pnpm turbo run typecheck --force
       - run: pnpm turbo run test --force
+  port-freeze-policy:
+    steps:
+      - run: bash .github/scripts/port-freeze-guard.sh
+  port-freeze-branch-scope:
+    steps:
+      - run: bash .github/scripts/port-freeze-guard.sh
+  port-freeze-sha:
+    steps:
+      - run: bash .github/scripts/port-freeze-guard.sh
+  spike:
+    steps:
+      - run: npm test
+  git-identity-sweep-bare:
+    steps:
+      - run: bash .github/scripts/git-identity-sweep.sh
+  git-identity-sweep-populated:
+    steps:
+      - run: bash .github/scripts/git-identity-sweep.sh
+`;
+
+/**
+ * A workflow one registered job short, with nothing else wrong with it.
+ *
+ * Q-0054 AC-8 asks for the defect to be exhibited rather than asserted, and the exhibition needs a
+ * fixture missing a job the register **still names** — the spike job it was originally built from
+ * having gone. The cell it drops is the one Q-0072's instance lived in, which is the one whose
+ * silent disappearance would cost most.
+ */
+const WITHOUT_A_SWEEP_CELL = `name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  workspace:
+    steps:
+      - run: pnpm turbo run test --force
+  git-identity-sweep-bare:
+    steps:
+      - run: bash .github/scripts/git-identity-sweep.sh
 `;
 
 describe('Q-0054 AC-8 — the workflow\'s job set is a register, and no job leaves unnoticed', () => {
@@ -556,32 +611,44 @@ describe('Q-0054 AC-8 — the workflow\'s job set is a register, and no job leav
     expect(jobSteps(workflow(repoFile('.github/workflows/ci.yml')), id).length).toBeGreaterThan(0);
   });
 
-  test('the register has a subject — a workflow missing the spike job fails it', () => {
-    expect(Object.keys(workflow(WITHOUT_SPIKE).jobs ?? {}).sort()).not.toStrictEqual(Object.keys(CI_JOBS).sort());
-    expect(() => jobSteps(workflow(WITHOUT_SPIKE), 'spike')).toThrow(/no `spike` job with steps/);
+  test('the register has a subject — the job set it accepted before the cutover fails it now', () => {
+    // Q-0103 AC-22, and the direction that matters for a register that has just contracted: a
+    // three-row register accepting the seven-job workflow would have recorded nothing.
+    const before = Object.keys(workflow(BEFORE_THE_CUTOVER).jobs ?? {});
+    expect(before.sort(), 'the fixture is the set this register used to accept')
+      .not.toStrictEqual(Object.keys(CI_JOBS).sort());
+    expect(before.filter((id) => !(id in CI_JOBS)).sort(), 'and the difference is exactly the four retired jobs')
+      .toStrictEqual(Object.keys(RETIRED_BY_THE_CUTOVER).sort());
+    // The other direction, over a fixture short of a job the register still names.
+    expect(Object.keys(workflow(WITHOUT_A_SWEEP_CELL).jobs ?? {}).sort())
+      .not.toStrictEqual(Object.keys(CI_JOBS).sort());
+    expect(() => jobSteps(workflow(WITHOUT_A_SWEEP_CELL), 'git-identity-sweep-populated'))
+      .toThrow(/no `git-identity-sweep-populated` job with steps/);
   });
 
   test('and the assertion it replaces passes over that same fixture, which is why it was replaced', () => {
     // The defect exhibited rather than described: the old expression yields an empty list for a job
-    // that is not there, an empty string contains no `git config --global`, and the one check that
-    // mentions the spike job reports success over its absence.
-    const jobs = workflow(WITHOUT_SPIKE).jobs as Record<string, { steps?: WorkflowStep[] } | undefined>;
-    const asItWas = (jobs['spike']?.steps ?? []).map((step) => step.run ?? '').join('\n');
+    // that is not there, an empty string contains no `mkdir -p`, and a check written that way
+    // reports success over its subject's absence. Q-0103 re-aimed it off the spike job, which is
+    // gone, onto a job the register still names — the demonstration is of the SHAPE, so it needs a
+    // live job to be about.
+    const jobs = workflow(WITHOUT_A_SWEEP_CELL).jobs as Record<string, { steps?: WorkflowStep[] } | undefined>;
+    const asItWas = (jobs['git-identity-sweep-populated']?.steps ?? []).map((step) => step.run ?? '').join('\n');
     expect(asItWas).toBe('');
-    expect(asItWas).not.toContain('git config --global');
+    expect(asItWas).not.toContain('mkdir -p .harness/worktrees .quorum/runs');
   });
 
-  test('no job is filtered, conditioned away or allowed to fail — except the one that says why', () => {
+  test('no job is filtered, conditioned away or allowed to fail — and none is conditioned at all', () => {
     // A path or branch filter, or `continue-on-error`, turns a required tick into a claim about a
-    // subset nobody named. `port-freeze-sha`'s `if:` is the one condition kept, and it is kept
-    // because a skipped job renders grey rather than green: its subject does not exist until a SHA
-    // is recorded, which is "skipped is not passed" applied rather than broken.
+    // subset nobody named. `port-freeze-sha`'s `if:` was the one condition kept, because a skipped
+    // job renders grey rather than green and its subject did not exist until a SHA was recorded —
+    // "skipped is not passed" applied rather than broken. Q-0103 retired that job, so the count is
+    // zero and the exemption goes with it: every remaining job runs on every push, unconditionally.
     const text = repoFile('.github/workflows/ci.yml');
     for (const marker of ['continue-on-error', 'paths:', 'paths-ignore:', 'branches:', 'branches-ignore:']) {
       expect(text, `${marker} would narrow what a green tick claims`).not.toContain(marker);
     }
-    expect([...text.matchAll(/^ {4}if:/gm)].length, 'exactly one job is conditioned, and it is port-freeze-sha').toBe(1);
-    expect(text).toContain("if: needs.port-freeze-policy.outputs.freeze_sha != 'not-yet-recorded'");
+    expect([...text.matchAll(/^ {4}if:/gm)].length, 'no job is conditioned').toBe(0);
   });
 
   test('the workspace job still installs frozen and runs on both events', () => {

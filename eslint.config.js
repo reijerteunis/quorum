@@ -9,14 +9,11 @@
 // `@typescript-eslint/no-deprecated` is the rule that sees one, and it is the reason type-aware
 // parsing is on below: for that rule alone, never for the `strict` preset it also ships in.
 // See docs/DECISIONS.md, "Type-aware linting is on for exactly one rule" (2026-08-27).
-//
-// `spike/` is out of scope: it is plain Node ESM on npm and keeps its own tooling until Q-0009.
-// Nothing lints it, so nothing detects a deprecated API there either.
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '**/.turbo/**', '**/coverage/**', 'spike/**'],
+    ignores: ['**/node_modules/**', '**/dist/**', '**/.turbo/**', '**/coverage/**'],
   },
   {
     files: ['packages/**/*.ts', 'apps/**/*.ts'],

@@ -326,8 +326,15 @@ const WRITE_APIS = [
 const writesIn = (text: string): string[] =>
   WRITE_APIS.filter((api) => new RegExp(`\\b${api}\\s*\\(`).test(text));
 
-describe('Q-0054 AC-5 — neither new guard writes to the reader\'s tree', () => {
-  test.each(['packages/core/src/test-discovery.test.ts', 'packages/core/src/spike-parity.test.ts'])(
+describe('Q-0054 AC-5 — this guard writes nothing to the reader\'s tree', () => {
+  // Q-0103 AC-21 — `retired`. Q-0054 shipped two guards and this list named both; the second was
+  // `src/spike-parity.test.ts`, whose subject was the relationship between two suites and which the
+  // cutover deletes with the tree on the other side of it. The row goes rather than the criterion:
+  // AC-5's property is asserted over the guard that remains, and a list naming a file that is not
+  // there could not have passed at all — `repoFile` throws — so the removal is loud rather than a
+  // silence. What replaces the lost coverage is nothing, and it is nothing deliberately: the file
+  // it covered no longer exists to write anywhere.
+  test.each(['packages/core/src/test-discovery.test.ts'])(
     '%s calls no filesystem write', (guard) => {
       expect(writesIn(repoFile(guard)), `${guard} writes to the tree it is judging`).toEqual([]);
     });

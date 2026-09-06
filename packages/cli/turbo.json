@@ -57,27 +57,19 @@
         "../../harness/harness.yaml",
         "../../harness/flows/*.yaml",
         "../../harness/roles/code-reviewer.md",
-        // Q-0107 AC-29/AC-30 add the rest of the packages tree and one document.
-        // `src/spike-dependencies.test.ts` scans every tracked source file under `packages/` for a
-        // read position naming the spike — so a read ADDED anywhere in the workspace must move this
-        // task's hash, or the guard reports a clean tree from a replay of a scan it never ran. The
-        // `src` glob was already here for `src/validate.test.ts`; `test/**`, the two manifests and
-        // `harness/architecture.md` are this ticket's, the last because the disposition register
-        // reads it.
-        "../../harness/architecture.md",
-        // Q-0107 AC-29 adds the tree that is going away, and it is a LISTING read rather than a
-        // content one: `spike-dependencies.test.ts`'s key set is `git ls-files` over that directory,
-        // so a file added there must be dispositioned and a cached pass would report a register
-        // that had never seen it. Turbo has no names-only input, so this over-declares contents,
-        // which is the direction that package configuration's own comment above prefers — and it
-        // costs nothing while the tree is frozen for the cutover. It does not disturb
-        // `packages/core/turbo.json`'s retained `spike/test/**`: that one is declared for the sole
-        // reader in THAT package, and Q-0103 removes this line, that line and both readers together.
-        "../../spike/**",
+        // Q-0107 AC-29/AC-30 added four more and one document, all for
+        // `src/spike-dependencies.test.ts` — the register whose key set was the tree the cutover
+        // deletes. Q-0103 deleted that register with its subject and took four of the five with it:
+        // the `../../spike/**` listing input, `harness/architecture.md`, `packages/*/test/**` and
+        // `packages/*/package.json`, none of which any file in this package reads now. The two
+        // manifests reach this task through the `^test` edge the workspace dependencies create, as
+        // they did before that register existed.
+        //
+        // The fifth stays with a different reader: `src/build.test.ts` reads every package that
+        // declares a `turbo.json` to prove none of them declares more than `inputs` (Q-0097 AC-13),
+        // and the four scaffold packages it also reaches are covered by no edge.
         "../../packages/*/src/**",
-        "../../packages/*/test/**",
-        "../../packages/*/turbo.json",
-        "../../packages/*/package.json"
+        "../../packages/*/turbo.json"
       ]
     }
   }
