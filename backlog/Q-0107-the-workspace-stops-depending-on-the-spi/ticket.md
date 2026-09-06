@@ -7,7 +7,8 @@ repos: []
 branch: harness/Q-0107/integration
 priority: p2
 created: 2026-09-05
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-09-05T20:30:48.733Z
     cost: 10.53
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-05T22:33:09.984Z
+    cost: 126.405
 ---
 **Child B of the cutover, ruled at Q-0103's requirements gate 2026-09-05**, and the child where every
 judgement lives. Order is **A → B → C**: **Q-0106** is A and runs first, **Q-0103** is C. One at a
