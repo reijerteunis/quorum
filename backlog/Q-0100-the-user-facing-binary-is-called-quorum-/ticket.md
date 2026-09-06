@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-03
 iterations:
   requirements.head-of-product: 1
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,22 @@ history:
     stage_after: requirements
     at: 2026-09-06T17:33:33.491Z
     cost: 11.553
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-06T18:51:27.123Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-06T19:24:26.511Z
+    cost: 0
 ---
 **Opened at Q-0091's requirements gate on 2026-09-03**, from finding 3 of a head-of-product loop
 that exhausted rather than shipping a document naming a surface it could not write. `backlog/` is
