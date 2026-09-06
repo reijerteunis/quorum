@@ -511,9 +511,17 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     2026-08-21 count as a present-tense requirement; both now state that two required suites exist
     until the cutover, what each proves, and the four-link chain from a new failing file to a red
     `pnpm test`. The append-only decision entry that is the origin of "30 checks" is untouched.
-- Q-0010 CLI package; `npx quorum` entry. *(Folder created 2026-09-01, `draft`, with a measured
-  body and a proposed cut awaiting a ruling.)* **M2's last substantive item; the cutover and M3 both
-  queue behind it.**
+- Q-0010 CLI package; `npx quorum` entry. *(`reviewed` 2026-09-06, closed by hand once all eleven
+  children were `reviewed` and `main:contained` — the Q-0009 shape, where a parent ports nothing
+  and its closure is a record rather than a run.)* **$727.62 across Q-0090 to Q-0099, Q-0101 and
+  Q-0095**, measured from those tickets' own history rather than transcribed — mean **$66.15**,
+  range $38.46 (Q-0096) to $91.39 (Q-0097). Against Q-0009's port at $657.47 for fourteen
+  children, mean $46.96: **a command child cost 41% more than a port child**, and the cut moved
+  twice because a run measured something it had assumed. The board carried it at `draft` for a
+  day after its last child shipped, which is the M0 finding repeating — *a board that lists a
+  closed milestone's work as open is wrong about the one question a board exists to answer*.
+  Its suite half is now gone with the spike: `spike-parity.test.ts`, the register that carried
+  the cut's file-by-file accounting, was deleted by Q-0103 by design.
   **The measurement that reframes it: this is not a port.** Every domain helper the spike CLI
   defines locally already exists in `packages/core` — `findProject`/`loadProject` (Q-0043), the six
   run-history readers (Q-0049), `lintDirectory` (Q-0044), `overrideAdapters` (Q-0047), `containment`
@@ -1155,8 +1163,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     `node spike/bin/harness.js` did all week. **The product runs its own development**, which is what
     M2 was for. `docs/decisions/` was not edited: an entry describing the spike stays true of when it
     was written.
-  - Q-0104 The offline mirror re-packs third-party dependencies and can lose files. *(Opened and
-    fixed 2026-09-05 from CI run 33967146498, `draft`.)* **The first CI run in four days, and the
+  - Q-0104 The offline mirror re-packs third-party dependencies and can lose files. *(`reviewed` 2026-09-06; opened and
+    fixed 2026-09-05 from CI run 33967146498, closed by hand — no engine run advanced it.)* **The first CI run in four days, and the
     first ever to execute Q-0098's packed-install fixture.** Three of seven jobs failed —
     `workspace` and **both** sweep cells — all on one test, deterministically:
     `quorum help` from a packed install dying on `ERR_MODULE_NOT_FOUND` for

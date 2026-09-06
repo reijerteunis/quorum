@@ -1,7 +1,7 @@
 ---
 id: Q-0010
 title: CLI package and npx quorum entry
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0010/integration

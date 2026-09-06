@@ -1,7 +1,7 @@
 ---
 id: Q-0104
 title: The offline mirror re-packs third-party dependencies and can lose files
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0104/integration
