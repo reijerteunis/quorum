@@ -1,9 +1,10 @@
 // Which files this workspace's Vitest configuration collects, as a question a test can ask.
 //
-// Two guards ask it and neither may answer it for itself: `src/test-discovery.test.ts` asks it of
-// every `*.test.ts` in every workspace package, and `src/spike-parity.test.ts` asks it of every
-// counterpart the parity register names. Two copies would let one go on passing while the
-// configuration moved under the other, which is the shape this repository keeps recording.
+// One guard asks it and may not answer it for itself: `src/test-discovery.test.ts` asks it of every
+// `*.test.ts` in every workspace package. A second asked it until Q-0103 — the parity register, of
+// every counterpart it named — and the module stays shared rather than being folded back into its
+// one caller, because two copies would let one go on passing while the configuration moved under
+// the other, which is the shape this repository keeps recording.
 //
 // **The answer is read out of `vitest.shared.js` rather than assumed**, and that is load-bearing
 // rather than tidy. Taking Vitest's defaults directly would leave every behavioural clause green

@@ -33,105 +33,6 @@ jobs:
       - run: pnpm turbo run typecheck --force
       - run: pnpm turbo run test --force
 
-  # Q-0009's port freeze. The spike stays authoritative and green until the cutover, so none of
-  # the port's fourteen children may edit spike/src — and every other ticket still may, which is
-  # why this keys on branch name rather than on a role's paths. The policy lives in
-  # harness/port-charter.md §3; the script reads it rather than restating it.
-  #
-  # The freeze has two halves and they are two jobs, because a check that skips its subject must
-  # not report success (DECISIONS, 2026-08-25). The branch-scope half is live now. The freeze-SHA
-  # half has no subject until a SHA is recorded in the charter, so its job is *conditioned* on one
-  # existing: GitHub then renders it as skipped — grey — rather than as a green tick over a check
-  # nobody ran. `port freeze (policy)` is what reads the charter and decides that.
-  port-freeze-policy:
-    name: port freeze (policy)
-    runs-on: ubuntu-latest
-    outputs:
-      freeze_sha: ${{ steps.policy.outputs.freeze_sha }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - id: policy
-        run: bash .github/scripts/port-freeze-guard.sh
-        env:
-          HALF: policy
-      # The guard's own suite, which until now was executed by nothing — not CI, not `pnpm test`,
-      # not the spike suite. It builds a throwaway repository and exercises every direction of both
-      # halves. It caught a real regression the day the freeze SHA was recorded, having been red in
-      # the meantime with nobody to see it; a guard nobody runs is a guard nobody has.
-      - run: node .github/scripts/port-freeze-guard.test.mjs
-
-  # Deliberately not `needs: port-freeze-policy`. It parses the charter itself and uses none of
-  # that job's outputs, so a dependency would only delay it — and worse, an unparseable charter
-  # would *skip* this job instead of failing it. The freeze's active half should go red in that
-  # case, not grey.
-  port-freeze-branch-scope:
-    name: port freeze (branch scope)
-    runs-on: ubuntu-latest
-    steps:
-      # Full history: the guard needs a merge base, and it fails closed on a shallow clone
-      # rather than reading an uncomputable diff as a clean one. `ref` is explicit because on a
-      # pull_request the default checkout is main-merged-into-the-branch, whose merge base with
-      # main is main itself — the diff would come back empty for the wrong reason and the guard
-      # would report clear on a branch it had not actually examined.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.head_ref || github.ref }}
-      - run: bash .github/scripts/port-freeze-guard.sh
-        env:
-          HALF: branch-scope
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-          BASE: origin/main
-
-  # Skipped, not passed, while the charter reads `freeze-sha: not-yet-recorded`. Once a SHA is
-  # recorded this job runs on every push and verifies it: the base must hold no spike/src change
-  # since the freeze point.
-  port-freeze-sha:
-    name: port freeze (base unchanged since the freeze SHA)
-    needs: port-freeze-policy
-    if: needs.port-freeze-policy.outputs.freeze_sha != 'not-yet-recorded'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: bash .github/scripts/port-freeze-guard.sh
-        env:
-          HALF: freeze-sha
-          BASE: origin/main
-
-  spike:
-    name: spike (regression suite)
-    runs-on: ubuntu-latest
-    steps:
-      # Full history: S11.5 and S13.8 assert that frozen inputs are unchanged since a named
-      # baseline commit, which a depth-1 clone does not contain — `git cat-file -e` then fails and
-      # the scenario goes red for want of history rather than for a real change. Same reasoning as
-      # `port freeze (branch scope)` above, which has always fetched depth 0 for its merge base.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      # No git identity is configured here, and the comment that used to justify one was false:
-      # it claimed the engine commits worktrees with the ambient identity, while
-      # spike/src/fanout.js:92 and :112 both carry explicit -c flags and no other commit path
-      # exists in spike/src, spike/bin or packages/cli/src. Since Q-0079's AC-2 the suite's own
-      # merge calls carry them too.
-      #
-      # This job's resulting strictness is INCIDENTAL — a GitHub runner image happens to ship no
-      # identity and an empty gecos name. That is a property of the image, not of the repository,
-      # so it is not the guard. The guard is the `git identity sweep` jobs below, which construct
-      # the hostile environment deliberately and prove it discriminates before trusting it.
-      - run: npm ci
-        working-directory: spike
-      - run: npm test
-        working-directory: spike
-
   # The oracle half of "A test's verdict is a property of the commit, not of the checkout or the
   # account" (docs/decisions, 2026-08-30). Both cells run .github/scripts/git-identity-sweep.sh,
   # which is where the environment is defined — restating it here would drift from what a
@@ -143,7 +44,7 @@ jobs:
   #
   # The fourth cell — a bare checkout WITH an identity present — is deliberately uncovered. A defect
   # visible only there is one where HAVING an identity breaks a test: a rarer shape, with no
-  # measured instance in this repository, and covering it costs a further full run of both suites.
+  # measured instance in this repository, and covering it costs a further full run of the suite.
   git-identity-sweep-bare:
     name: git identity sweep (bare checkout)
     runs-on: ubuntu-latest

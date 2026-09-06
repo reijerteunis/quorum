@@ -24,7 +24,7 @@ role body. Frontmatter and prose must nevertheless agree so tooling can validate
 
 | role | vendor | directories it may write | typical contracts |
 | --- | --- | --- | --- |
-| generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `spike/`, `harness/`, `docs/`, `README.md`, `eslint.config.js`, `vitest.shared.js` | scaffolds, CI, tool and workspace configuration |
+| generalist | claude | `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig*.json`, `.npmrc`, `.gitignore`, `.github/`, `packages/`, `apps/`, `harness/`, `docs/`, `README.md`, `eslint.config.js`, `vitest.shared.js` | scaffolds, CI, tool and workspace configuration |
 | backend | codex | `packages/core/`, `packages/shared/`, `harness/`, `docs/`, `backlog/` | engine behaviour, YAML flows and roles, Markdown documentation |
 | tooling | claude | `packages/core/`, `packages/shared/`, `packages/cli/` | argument parsing, terminal output, exit codes, the regression suite |
 | frontend | claude | `apps/*`, `packages/ui`, `packages/i18n` | component props, view states, user-facing strings |

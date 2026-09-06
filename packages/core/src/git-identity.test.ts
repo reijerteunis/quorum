@@ -21,9 +21,9 @@ import { repoRoot } from '../test/corpus.js';
 /**
  * Directories the corpus is drawn from, each relative to the repository root.
  *
- * Q-0107 AC-15 dropped a third row, `{ dir: 'spike/test', … }`. The rule this file enforces is
- * about a test's verdict, and after Q-0103 there are no tests in that tree to have one; the row
- * would be a directory nobody could scan. What replaces it is not a substitute corpus but the
+ * Q-0107 AC-15 dropped a third row, the one naming the spike's test directory. The rule this file
+ * enforces is about a test's verdict, and after Q-0103 there are no tests in that tree to have one;
+ * the row would be a directory nobody could scan. What replaces it is not a substitute corpus but the
  * assertion below, which names the directories this list DOES cover rather than requiring one of
  * them by name — a list that shrinks to nothing must fail, and a list that quietly lost `packages`
  * would have passed the clause it replaces.
@@ -229,11 +229,14 @@ describe('Q-0079 — a commit-creating git call in a test carries an explicit id
     const files = corpusFiles();
     expect(files.length, `corpus is ${files.length} files; the floor is ${CORPUS_FLOOR}`)
       .toBeGreaterThanOrEqual(CORPUS_FLOOR);
-    // Q-0107 AC-15 — `re-aimed`. `expect(files.some((f) => f.startsWith('spike/test/')))` stood
-    // here and named the one directory Q-0103 removes; a tripwire must not lose its subject in the
-    // change that shrinks it. What replaces it says what the corpus DOES cover, derived from the
-    // listing rather than from `CORPUS`, so a row silently dropped fails here — which is the
-    // failure the old clause would have reported for `spike/test` and for nothing else.
+    // Q-0107 AC-15 — `re-aimed`. A `files.some(…startsWith…)` clause stood here naming the spike's
+    // test directory, the one Q-0103 removed; a tripwire must not lose its subject in the change
+    // that shrinks it. What replaces it says what the corpus DOES cover, derived from the listing
+    // rather than from `CORPUS`, so a row silently dropped fails here — which is the failure the
+    // old clause would have reported for that one directory and for nothing else. (The path is
+    // described rather than quoted: this file's literals are read by `turbo-inputs.test.ts`'s
+    // scan, which asks whether each names something git will hash and cannot tell a citation in a
+    // comment from a read.)
     const covered = [...new Set(files.map((file) => file.split('/')[0]))].sort();
     expect(covered, 'every top-level directory the corpus reaches, named').toStrictEqual(['apps', 'packages']);
     expect(files.some((f) => f === 'packages/core/test/repo.ts'),
@@ -268,7 +271,7 @@ describe('Q-0079 — a commit-creating git call in a test carries an explicit id
     // test. The earlier version asserted over the predicates and would have survived that edit.
     expect(exempt(SELF, line), 'the marker works here').toBe(true);
     expect(exempt('packages/core/src/engine/diff.test.ts', line), 'and nowhere else').toBe(false);
-    // Q-0107 AC-15 — `re-aimed`. The third fixture was `'spike/test/q0035-empty-range.js'`, chosen
+    // Q-0107 AC-15 — `re-aimed`. The third fixture was a file in the spike's test directory, chosen
     // when the corpus spanned two trees and `exempt` had to refuse the marker in the other one.
     // `exempt` is a pure predicate over a string, so it would still have refused that path after
     // Q-0103 — and the row would have been asserting about a file nobody could point at, which is

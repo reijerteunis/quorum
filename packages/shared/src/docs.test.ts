@@ -419,7 +419,12 @@ describe('Q-0098 AC-21 — the documentation separates three installation claims
     const whole = flowed('docs/06-development-plan.md');
     expect(surface.length, 'the Done when extraction matched nothing').toBeGreaterThan(400);
     expect(surface.length, 'the extraction is the whole file, so nothing was excluded').toBeLessThan(whole.length);
-    expect(surface, 'M2\'s done-when is outside the scanned surface').toContain('`packages/cli` wraps core with the spike\'s commands');
+    // Q-0103 AC-26 moved this literal. It read '`packages/cli` wraps core with the spike\'s
+    // commands' until the cutover rewrote that bullet, and the pin has to move in the same change
+    // or the file it pins goes red for a sentence nobody may keep. What it is for is unchanged: a
+    // sentence that lives inside M2's Done when block and outside every other, so a narrowing that
+    // matched nothing would fail here rather than pass over an empty string.
+    expect(surface, 'M2\'s done-when is outside the scanned surface').toContain('`packages/cli` dispatches all eight commands the spike had');
     expect(surface, 'the corrected bullet names neither claimed path').toMatch(/workspace-local/);
     // And the excluded region really is what it is said to be: mentions that are records.
     expect(whole.length - surface.length, 'nothing was excluded').toBeGreaterThan(1000);

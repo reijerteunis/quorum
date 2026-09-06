@@ -7,8 +7,9 @@
 # whole class, and slow. packages/core/src/git-identity.test.ts is the tripwire — cheap, inside the
 # ordinary suite, and partial, because it sees literals only.
 #
-# It ran the spike suite too until Q-0107 AC-16. That half went with the last workspace read of the
-# spike tree; CI's own `spike` job still runs it until Q-0103 deletes it.
+# It ran a second suite too until Q-0107 AC-16. That half went with the last workspace read of the
+# spike tree, and Q-0103 then deleted the tree, that suite and the CI job that ran it. There is one
+# suite now, so this script covers all of what a green tick claims rather than part of it.
 #
 # Defined once, in this file, because CI and a maintainer must run byte-identically the same thing.
 # A definition restated in ci.yml or in a package.json script would drift, and a developer could
@@ -115,12 +116,12 @@ echo "git-identity sweep: environment discriminates (negative and positive probe
 # one variable it exists to isolate. `npm install` is not lockfile-frozen and Q-0038 measured one
 # moving fast-uri and producing a different tree.
 #
-# Q-0107 AC-16 removed `( cd spike && npm ci )` from here and the `spike suite` phase below it. The
-# spike's own CI job still runs that suite until Q-0103 deletes the tree; what this script is for is
-# the workspace's verdict under a git configuration that resolves no identity, and after Q-0106 no
-# workspace test reads that tree. Stated rather than left to be noticed: this sweep covers less than
-# it did, and Q-0107 R-2 is the warning that a green sweep after this change is NOT evidence about
-# Q-0102, whose subject is this script red under load.
+# Q-0107 AC-16 removed a second install and a `spike suite` phase from here, when the last workspace
+# read of that tree went; Q-0103 then deleted the tree and the CI job that was still running it, so
+# nothing runs a second suite anywhere. What this script is for is the workspace's verdict under a
+# git configuration that resolves no identity. Stated rather than left to be noticed: this sweep
+# covers less than it did before Q-0107, and Q-0107 R-2 is the warning that a green sweep after that
+# change is NOT evidence about Q-0102, whose subject is this script red under load.
 phase="install"
 
 pnpm install --frozen-lockfile || fail "pnpm install --frozen-lockfile did not complete; the workspace suite below is UNRUN, not passing"
