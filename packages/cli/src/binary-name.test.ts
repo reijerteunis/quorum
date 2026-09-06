@@ -25,6 +25,16 @@
  *    exemption register** — a register being the thing that goes stale (Q-0073) — and excludes the
  *    `harnessDir` identifier, which is not a literal at all.
  *
+ * **It fails closed, and that is the property rather than completeness.** The scanner lexes what it
+ * claims to lex — comments, the three literal delimiters, template interpolations, escape
+ * sequences — and on syntax it cannot classify it {@link refuse}s, naming the file and the offset.
+ * It is not a TypeScript parser and does not become one: `requirements/errata.md` E-1 rules that a
+ * scanner meeting a construct it cannot read and carrying on **silently skips its subject and
+ * reports success**, which is the 2026-08-25 failure arriving inside the guard written to close it.
+ * Being able to lex every construct is not the property that matters; making the unexamined case
+ * loud is. {@link readSlash} is the one refusal the tree exercises and {@link readLiteral} carries
+ * the other.
+ *
  * Its subject is this package's production modules **plus one file in `core`**: `project.ts`, whose
  * `ProjectNotFoundError` is the only sentence in `packages/core` that a user reads and that carries
  * the word (Q-0100 OQ-2). Widening to all of `core` would add every engine literal for no measured
@@ -101,6 +111,19 @@ const UNREADABLE_ESCAPE = ' ';
 /** Hexadecimal and nothing else — the digits of an `\xHH`, four-digit `\u` or `\u{…}` escape. */
 const HEX = /^[0-9a-fA-F]+$/;
 
+/** The three delimiters whose parity {@link readSlash} exists to protect. */
+const QUOTE = /['"`]/;
+
+/**
+ * The interpreter line, which only ever opens a file and which Node and TypeScript both read as a
+ * comment. `quorum.ts` is the one module in this package that carries one.
+ *
+ * Lexed rather than walked because it is the fifth construct that can hold a quote without that
+ * quote being a delimiter, and the other four are already lexed — leaving it to be read as code
+ * would be a gap kept open on the grounds that today's shebang happens not to contain one.
+ */
+const SHEBANG = /^#![^\n]*/;
+
 /** The code unit `digits` names, or {@link UNREADABLE_ESCAPE} unless it is exactly `width` of them. */
 const codeUnit = (digits: string, width: number): string => (
   digits.length === width && HEX.test(digits)
@@ -151,6 +174,54 @@ const escapeAt = (text: string, i: number): [value: string, span: number] => {
 };
 
 /**
+ * Stops the scan where the source holds syntax this scanner cannot classify, naming the file and
+ * the offset — the refusal `requirements/errata.md` E-1 rules, and the reason the header gives.
+ *
+ * A line number goes with the offset because an offset alone sends a reader counting characters.
+ */
+const refuse = (where: string, text: string, at: number, why: string): never => {
+  const line = text.slice(0, at).split('\n').length;
+  throw new Error(`${where}:${line} (offset ${at}): ${why} — see requirements/errata.md E-1`);
+};
+
+/**
+ * Classifies the `/` at `text[at]` — which is neither `//` nor an opening `/*` — or refuses it.
+ *
+ * It is division, or it opens a regular-expression literal, and telling those apart needs the
+ * token before it: grammar this scanner does not have and does not acquire. What it can decide is
+ * the only question that matters here — **whether reading it the wrong way could change the quote
+ * parity of everything below it.** A regex literal closes on its own line, so its whole body is
+ * between this `/` and the next one before the newline:
+ *
+ * - **no `/` before the end of the line** — it cannot be a regex literal, so it is division, and
+ *   there is nothing to misread. This is the whole of the live tree: `runs.ts:136` and
+ *   `trace.ts:66`, both `… / 1000` inside a template interpolation, are the only two `/` characters
+ *   in code position anywhere in the subject once {@link SHEBANG} has taken `quorum.ts:1`'s three.
+ * - **a closing `/` whose body carries no quote** — read as a regex or as code, the same literals
+ *   are collected either way, so the ambiguity is not one this guard can be hurt by.
+ * - **a closing `/` whose body carries a quote** — **refused.** Read as code, that quote becomes a
+ *   delimiter, every delimiter after it means its opposite, and a sentence below is collected by
+ *   nobody while this file reports a clean tree. Review round 3's finding, and the third shape of
+ *   the parity defect that clauses (4) and (6) close in the two other delimiters.
+ *
+ * The middle case is deliberately permissive and the last deliberately conservative: `a / b + 'x/y'`
+ * is division and is refused, because this scanner cannot prove that it is. Refusing a legible line
+ * costs a message naming it; admitting an illegible one costs a false green.
+ */
+const readSlash = (text: string, at: number, where: string): void => {
+  for (let i = at + 1; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '\n') return;
+    if (ch === '\\') { i += 1; continue; }
+    if (ch !== '/') continue;
+    if (!QUOTE.test(text.slice(at + 1, i))) return;
+    refuse(where, text, at, 'this `/` opens a regular-expression literal whose body carries a quote,'
+      + ' or divides an expression that does; either reading changes the quote parity below it and'
+      + ' this scanner cannot tell them apart');
+  }
+};
+
+/**
  * Reads the literal whose delimiter is `text[at]`, pushes its printed value onto `found`, and
  * returns the index of the closing delimiter.
  *
@@ -167,8 +238,14 @@ const escapeAt = (text: string, i: number): [value: string, span: number] => {
  * not this literal's. `adapters.ts:108` is why that is a measurement rather than a precaution — a
  * template inside a `c.dim(…)` inside a template, seven lines above one of the eight sentences this
  * ticket moves, whose inner text a scanner that stopped at the first backtick collects nowhere.
+ *
+ * **A literal that never closes is refused rather than swallowed.** Reaching the end of the file
+ * means the delimiter this started from was not one, so the scanner had already misread something
+ * and the rest of the module has become the value of a single string nobody inspects. Same failure
+ * as {@link readSlash}'s, arriving as a consequence instead of as a construct, and refused for the
+ * same reason: the silent version of it is a clean tree reported over an unread file.
  */
-const readLiteral = (text: string, at: number, found: string[]): number => {
+const readLiteral = (text: string, at: number, found: string[], where: string): number => {
   const quote = text[at];
   let value = '';
   let i = at + 1;
@@ -180,12 +257,16 @@ const readLiteral = (text: string, at: number, found: string[]): number => {
       continue;
     }
     if (quote === '`' && text[i] === '$' && text[i + 1] === '{') {
-      const close = scan(text, i + 2, found, true);
+      const close = scan(text, i + 2, found, true, where);
       value += text.slice(i, close + 1);
       i = close;
       continue;
     }
     value += text[i];
+  }
+  if (i >= text.length) {
+    refuse(where, text, at, 'a string literal opened here and never closed, so the rest of the file'
+      + ' was read as its contents');
   }
   found.push(value);
   return i;
@@ -201,10 +282,18 @@ const readLiteral = (text: string, at: number, found: string[]): number => {
  * does not claim to be — what it must get right is that a comment is not a literal (AC-5(3)), that
  * a literal decodes to what the user reads ({@link escapeAt}), and that no literal is skipped.
  *
+ * **The last of those is what the refusals enforce, and it is why this is a finish line rather than
+ * one more entry on a list.** A quote read the wrong way is the whole of how a sentence goes
+ * uncollected, and five constructs can hold one without it being a delimiter: a comment, a string
+ * literal, a template interpolation, a {@link SHEBANG}, and a regular-expression literal. Four are
+ * lexed. The fifth is the one this scanner cannot lex, so {@link readSlash} either proves it
+ * harmless or refuses the file. Everything else an identifier, a number or an operator can be is
+ * skipped because it cannot hold a quote, not because it looks safe.
+ *
  * A brace inside an interpolation is followed rather than counted, so the `}` of an object literal
  * closes what it opened and not the interpolation around it.
  */
-const scan = (text: string, from: number, found: string[], inside: boolean): number => {
+const scan = (text: string, from: number, found: string[], inside: boolean, where: string): number => {
   for (let i = from; i < text.length; i += 1) {
     const ch = text[i];
     if (ch === '/' && text[i + 1] === '/') {
@@ -217,21 +306,30 @@ const scan = (text: string, from: number, found: string[], inside: boolean): num
       i = close + 1;
       continue;
     }
+    if (ch === '/') {
+      readSlash(text, i, where);
+      continue;
+    }
     if (inside && ch === '}') return i;
     if (inside && ch === '{') {
-      i = scan(text, i + 1, found, true);
+      i = scan(text, i + 1, found, true, where);
       continue;
     }
     if (ch !== '\'' && ch !== '"' && ch !== '`') continue;
-    i = readLiteral(text, i, found);
+    i = readLiteral(text, i, found, where);
   }
   return text.length;
 };
 
-/** Every string literal in `text`, with comments skipped and escape sequences decoded. */
-const literals = (text: string): string[] => {
+/**
+ * Every string literal in `text`, with comments skipped and escape sequences decoded.
+ *
+ * @param where names the file in a refusal, and is the only reason this parameter exists.
+ * @throws where `text` holds syntax the scanner cannot classify — see {@link refuse}.
+ */
+const literals = (text: string, where: string): string[] => {
   const found: string[] = [];
-  scan(text, 0, found, false);
+  scan(text, SHEBANG.exec(text)?.[0].length ?? 0, found, false, where);
   return found;
 };
 
@@ -266,13 +364,13 @@ const subjects = (): [string, string][] => [
 ];
 
 /** Every literal of `source` the guard would refuse: printable, and still naming the word. */
-const offending = (source: string): string[] => literals(source)
+const offending = (source: string, where: string): string[] => literals(source, where)
   .filter(printable)
   .filter((literal) => outsideAPath(literal).includes('harness'));
 
 describe('AC-4 — no printed string calls the product or the binary a harness', () => {
   test('every printable literal in the subject survives the folder filter with the word gone', () => {
-    const found = subjects().flatMap(([name, text]) => offending(text)
+    const found = subjects().flatMap(([name, text]) => offending(text, name)
       .map((literal) => `${name}: ${literal}`));
     expect(found, 'a printed sentence names a binary this package does not install')
       .toStrictEqual([]);
@@ -284,9 +382,9 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
     // report success"* (2026-08-25), which is the failure this whole file exists to close and which
     // would be at its most embarrassing here. Anchored on the sentence the ticket is named for.
     const found = new Map(subjects());
-    expect(literals(found.get('init.ts') ?? ''))
+    expect(literals(found.get('init.ts') ?? '', 'init.ts'))
       .toContain('  next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001');
-    expect(literals(found.get(CORE_SUBJECTS[0]) ?? ''))
+    expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
       .toContain('no harness/harness.yaml found — run `quorum init` in your repo');
   });
 
@@ -307,7 +405,13 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
   });
 });
 
-describe('AC-5 — the filter discriminates in the three directions it has to, and the scanner in the four beside them', () => {
+/**
+ * The name a refusal reports for a fixture, chosen to look like a module so that the assertions
+ * below read the message a real subject would produce.
+ */
+const FIXTURE = 'a-module.ts';
+
+describe('AC-5 — the filter discriminates in the three directions it has to, and the scanner in the five beside them', () => {
   test('(1) it removes a folder spelling and leaves a bare mention', () => {
     // `commands.test.ts` proves this over `HELP`; proved again here because this is a second copy of
     // the regex and a copy taken on trust is how two guards drift into disagreeing.
@@ -337,18 +441,18 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     expect(outsideAPath('see spike/bin/harness.js:124'), 'FOLDER strips a citation it must not')
       .toContain('harness');
     const provenance = '/** Why: preserved from `spike/bin/harness.js:342`, run `harness init`. */\nconst a = 1;\n';
-    expect(literals(provenance), 'a comment was read as product output').toStrictEqual([]);
+    expect(literals(provenance, FIXTURE), 'a comment was read as product output').toStrictEqual([]);
     const printed = 'const a = \'run `harness init` in your repo\';\n';
-    expect(literals(printed)).toStrictEqual(['run `harness init` in your repo']);
+    expect(literals(printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
     // Both halves over one file, which is the shape a production module actually has.
-    expect(literals(provenance + printed)).toStrictEqual(['run `harness init` in your repo']);
+    expect(literals(provenance + printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
   });
 
   test('and a line comment does not hide the literal after it', () => {
     // The other comment form, and the one whose scan must stop at the newline rather than at the
     // next quote — a scanner that ran to end-of-file would swallow every literal below the first
     // `//` in a module and report a clean tree.
-    expect(literals('// run `harness init`\nconst a = \'run `harness init` here\';\n'))
+    expect(literals('// run `harness init`\nconst a = \'run `harness init` here\';\n', FIXTURE))
       .toStrictEqual(['run `harness init` here']);
   });
 
@@ -361,12 +465,12 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // tree over a module that prints `harness`. The escape is consumed with the character it
     // escapes, so the parity never inverts.
     const escaped = 'const a = \'it\\\'s fine\';\nconst b = \'usage: harness run <flow>\';\n';
-    expect(literals(escaped)).toStrictEqual(['it\'s fine', 'usage: harness run <flow>']);
+    expect(literals(escaped, FIXTURE)).toStrictEqual(['it\'s fine', 'usage: harness run <flow>']);
     // The half that makes it load-bearing rather than cosmetic. Against a scan that consumed only
     // the backslash this file yields `['it', ';\nconst b = ', ';\n']` — measured, and the failure
     // this test showed before the scanner was fixed — in which the usage line appears in no entry
     // at all and the filters below have nothing to refuse.
-    expect(offending(escaped)).toStrictEqual(['usage: harness run <flow>']);
+    expect(offending(escaped, FIXTURE)).toStrictEqual(['usage: harness run <flow>']);
   });
 
   test('(5) a template literal is collected whole, interpolations and escapes included', () => {
@@ -375,15 +479,15 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // stopping at an interpolation reads half of each. The expression source is kept rather than
     // evaluated — over-reading can only make the guard fire, where under-reading is what lets a
     // sentence through.
-    expect(literals('const a = `→ quorum run ${next.name} <id>`;\n'))
+    expect(literals('const a = `→ quorum run ${next.name} <id>`;\n', FIXTURE))
       .toStrictEqual(['→ quorum run ${next.name} <id>']);
     // `init.ts:63`'s shape: the interpolation is kept in the outer value *and* walked, so the
     // literal inside it is collected too. Both, in that order — a nested literal is finished before
     // the one containing it.
-    expect(literals('const a = `${c.green(\'✓\')} harness/ created`;\n'))
+    expect(literals('const a = `${c.green(\'✓\')} harness/ created`;\n', FIXTURE))
       .toStrictEqual(['✓', '${c.green(\'✓\')} harness/ created']);
     // And an escaped backtick does not close the template, which is clause (4) in a third delimiter.
-    expect(literals('const a = `run \\`harness init\\` in your repo`;\n'))
+    expect(literals('const a = `run \\`harness init\\` in your repo`;\n', FIXTURE))
       .toStrictEqual(['run `harness init` in your repo']);
   });
 
@@ -395,11 +499,11 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // entry, the filters never see it, and the guard is green over a module that prints it. Third
     // shape of the same defect as clauses (4) and (7), and the only one measured in the subject.
     const nested = 'log(`  ${c.dim(`usage: harness run <flow>`)}`);\n';
-    expect(literals(nested)).toContain('usage: harness run <flow>');
-    expect(offending(nested)).toContain('usage: harness run <flow>');
+    expect(literals(nested, FIXTURE)).toContain('usage: harness run <flow>');
+    expect(offending(nested, FIXTURE)).toContain('usage: harness run <flow>');
     // A brace inside the interpolation closes what it opened, so the interpolation ends where it
     // ends and the literal after it is still this literal's.
-    expect(literals('const a = `${f({ x: 1 })} harness init`;\n'))
+    expect(literals('const a = `${f({ x: 1 })} harness init`;\n', FIXTURE))
       .toStrictEqual(['${f({ x: 1 })} harness init']);
   });
 
@@ -416,27 +520,74 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // The four spellings of one space, each shown through the whole pipeline rather than at the
     // decoder — the claim is not that `\x20` decodes correctly but that a sentence spelled with it
     // is refused. `\u{20}` is in a template because that is the shape it occurs in.
-    expect(offending('const a = \'usage: harness run\';\n')).toHaveLength(1);
-    expect(offending('const a = \'usage: harness\\x20run\';\n')).toHaveLength(1);
-    expect(offending('const a = \'usage: harness\\u0020run\';\n')).toHaveLength(1);
-    expect(offending('const a = `usage: harness\\u{20}run`;\n')).toHaveLength(1);
+    expect(offending('const a = \'usage: harness run\';\n', FIXTURE)).toHaveLength(1);
+    expect(offending('const a = \'usage: harness\\x20run\';\n', FIXTURE)).toHaveLength(1);
+    expect(offending('const a = \'usage: harness\\u0020run\';\n', FIXTURE)).toHaveLength(1);
+    expect(offending('const a = `usage: harness\\u{20}run`;\n', FIXTURE)).toHaveLength(1);
     // And the two control escapes the old table missed, which `\s` matches like the three it had.
-    expect(offending('const a = \'usage: harness\\vrun\';\n')).toHaveLength(1);
-    expect(offending('const a = \'usage: harness\\frun\';\n')).toHaveLength(1);
-    expect(offending('const a = \'usage: harness\\nrun\';\n')).toHaveLength(1);
+    expect(offending('const a = \'usage: harness\\vrun\';\n', FIXTURE)).toHaveLength(1);
+    expect(offending('const a = \'usage: harness\\frun\';\n', FIXTURE)).toHaveLength(1);
+    expect(offending('const a = \'usage: harness\\nrun\';\n', FIXTURE)).toHaveLength(1);
 
     // The other direction, which is what keeps the guard from firing on the tree it has to pass:
     // an escape that prints no whitespace leaves a path-like fragment, not a sentence. `colour.ts`
     // is the live subject — `\x1b[…m` around an interpolation, and no space in any of it.
-    expect(literals('const a = \'\\x1b[0m\';\n')).toStrictEqual(['\x1b[0m']);
+    expect(literals('const a = \'\\x1b[0m\';\n', FIXTURE)).toStrictEqual(['\x1b[0m']);
     expect(printable('\x1b[0m')).toBe(false);
-    expect(offending('const a = \'harness\\x1binit\';\n')).toStrictEqual([]);
+    expect(offending('const a = \'harness\\x1binit\';\n', FIXTURE)).toStrictEqual([]);
     // A line continuation prints nothing at all, so it joins the two halves rather than spacing
     // them: what the user reads is `harnessinit`, which is not a sentence and is not claimed to be.
-    expect(literals('const a = \'harness\\\ninit\';\n')).toStrictEqual(['harnessinit']);
+    expect(literals('const a = \'harness\\\ninit\';\n', FIXTURE)).toStrictEqual(['harnessinit']);
     // And a malformed escape decodes to a space, so the one direction that can go wrong makes the
     // guard look harder. Unreachable over the subject — `typecheck` reads every file this scan
     // does, and this is a syntax error — so it is pinned here or nowhere.
-    expect(offending('const a = \'harness\\xZZinit\';\n')).toStrictEqual(['harness init']);
+    expect(offending('const a = \'harness\\xZZinit\';\n', FIXTURE)).toStrictEqual(['harness init']);
+  });
+
+  test('(8) syntax the scanner cannot classify is refused, naming the file and the offset', () => {
+    // The clause `requirements/errata.md` E-1 rules, and the reason it is a clause rather than a
+    // fourth lexing rule: three rounds each closed one construct — an escaped quote, an escape that
+    // decodes to whitespace, a regex literal — and the list under them has no end. What ends it is
+    // that an unclassifiable construct is loud. Demonstrated, per *"A check is not established by
+    // reading it"* (2026-08-29), against the construct this scanner does **not** claim to handle.
+
+    // Review round 3's fixture: a regex whose body carries a quote, above a sentence naming the old
+    // binary. Read as code, the `'` opens a literal that swallows to the next quote, so the usage
+    // line lands in no entry at all — measured, the naive scan yields `['"]/g;\nconst usage = ',
+    // ';\n']` — and the guard reports a clean tree over a module that prints it. Refused instead.
+    const hidden = 'const RE = /[\'"]/g;\nconst usage = \'usage: harness run <flow>\';\n';
+    expect(() => literals(hidden, FIXTURE), 'a regex the scanner cannot lex was stepped over')
+      .toThrow(/a-module\.ts:1 \(offset 11\)/);
+    expect(() => literals(hidden, FIXTURE)).toThrow(/regular-expression literal/);
+    expect(() => offending(hidden, FIXTURE), 'the refusal does not reach the guard\'s own path')
+      .toThrow();
+
+    // And the same shape one character apart, to show the refusal has a subject rather than a
+    // signature: with a quote-free body the `/` is classified, the scan continues, and the sentence
+    // below it is collected. So what is refused above is a sentence this guard would otherwise see.
+    const lexable = 'const RE = /[a-z]/g;\nconst usage = \'usage: harness run <flow>\';\n';
+    expect(offending(lexable, FIXTURE)).toStrictEqual(['usage: harness run <flow>']);
+
+    // Division is not refused, which is what keeps the guard runnable rather than merely safe.
+    // Measured over the whole subject, exactly two `/` characters reach code position —
+    // `runs.ts:136` and `trace.ts:66`, both dividing inside a template interpolation — and neither
+    // has a closing `/` before its newline, so neither can be a regex literal and there is nothing
+    // to misread. A guard that refused these would be unrunnable rather than strict.
+    expect(literals('const a = `d=${(m.duration_ms / 1000).toFixed(1)}s`;\n', FIXTURE))
+      .toStrictEqual(['d=${(m.duration_ms / 1000).toFixed(1)}s']);
+
+    // And `quorum.ts:1`'s three are not classified at all, because the interpreter line is lexed:
+    // it is the fifth construct that can hold a quote which is not a delimiter, and a shebang read
+    // as code would open a literal on one. Node and TypeScript both treat it as a comment.
+    expect(literals('#!/usr/bin/env node\nconst a = \'harness init here\';\n', FIXTURE))
+      .toStrictEqual(['harness init here']);
+    expect(literals('#!/bin/sh -c \'x\'\nconst a = \'usage: harness run\';\n', FIXTURE))
+      .toStrictEqual(['usage: harness run']);
+
+    // The other refusal, and the one that catches this failure as a consequence rather than as a
+    // construct: a literal that reaches the end of the file has swallowed the rest of the module,
+    // which is the silent skip in its most complete form.
+    expect(() => literals('const a = \'harness init;\n', FIXTURE))
+      .toThrow(/a-module\.ts:1 \(offset 10\).*never closed/s);
   });
 });
