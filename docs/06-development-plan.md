@@ -1114,19 +1114,47 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     that changes without the tree changing trains the reader to re-run until green — and **it is an
     instance of its own subject**, load being a third term beside the checkout and the account that
     nobody had measured. GO-2 refuses any fix that makes it green by weakening what it runs.
-  - Q-0103 The cutover: delete the spike, retire its CI job and its charter. *(Opened 2026-09-05 at
-    Q-0101's close per that ticket's GO-4, `draft`.)* **Q-0010 §5's follow-up, and the last item of
-    the CLI cut.** Every command child is `reviewed` and `main:contained`, so the spike has no
-    remaining reader. It deletes `spike/` — **55 tracked files, 9,732 lines** —
-    `packages/core/src/spike-parity.test.ts` (1,957 lines, which goes *with* `spike/test/**` because
-    its whole subject is the relationship between two suites) and `harness/port-charter.md` (516).
-    **Seven CI jobs become three**: the `spike` job goes, and with it the three port-freeze jobs that
-    exist only to police a freeze on a deleted tree, leaving `workspace` and the two sweep cells.
-    **The highest-risk edit is not a deletion.** `harness/harness.yaml`'s `commands.install` and
-    `commands.test` each chain a spike half, and every flow's `integrate` step runs them — so a
-    mistake there is caught by the next run failing in its worktree rather than by a test, which is
-    why the ticket's ground rule 2 requires them proven by a real `integrate` rather than by reading.
-    `docs/decisions/` is **not** edited: an entry describing the spike stays true of when it was
+  - Q-0103 The cutover: delete the spike, retire its CI job and its charter. *(`reviewed` and
+    `main:contained` 2026-09-06.)* **$58.84** — $11.21 requirements, $47.64 chore across three
+    implement rounds ($32.63 / $10.02 / $4.99), ending at an exhaustion gate answered `advance`.
+    **M2's last substantive item, and Q-0010 §5's follow-up.** `spike/` is gone — **54** tracked
+    files and **9,644** lines, not the 55 and 9,732 this bullet claimed, because Q-0107's AC-8 moved
+    `q0080-allocation.json` out first — together with `spike-parity.test.ts` (**1,994** by then, not
+    1,957) and `harness/port-charter.md` (516). **Seven CI jobs are three**: `workspace` and the two
+    sweep cells, with the `spike` job and the three port-freeze jobs retired.
+    **It could not run as one ticket, and the mechanism was measured before anything was spent.**
+    `runFlow` receives `config` as a parameter (`engine.js:61`) and never re-reads it, while
+    `integrate` reads `ctx.config.commands.install/.test` — so a single run would have deleted
+    `spike/` in implement and then executed the **run-start** `npm install --prefix spike` against
+    the directory it had just deleted, paying for implement and review before dying with no merge.
+    That is *"Do not drive harness-machinery work through the harness"* (2026-08-23) with a mechanism
+    rather than a principle, and **Q-0057's shape made fatal**: that run merely could not benefit
+    from its own fix, this one would have been killed by it. Hence **Q-0106 → Q-0107 → Q-0103**, cut
+    at the commands, each an ordinary chore ticket.
+    **The run's four surviving majors were all the human's, and the implement step refused each of
+    them three times correctly** — `CLAUDE.md:25,35`, `.claude/agents/flow-author.md:6` and two dead
+    grants in `.claude/settings.json`, none of them in `developer-generalist`'s `paths:`. The
+    reviewer wrote *"during the gate-owned synchronization"*, so both steps knew. **Erratum E-2 rules
+    AC-6 over AC-24**: the requirement named `CLAUDE.md` as work in one criterion and excluded it by
+    name in another — *"stays the human's, being the vendor dialect of the canonical harness"* — and
+    AC-6 is the half that reasons. **A requirement may not name a surface its flow cannot write**
+    (2026-08-25), fourth instance; fifteenth appearance of a loop handed work no agent in it can
+    perform, and Q-0083 is still the mechanism owed.
+    **A fifth fix was found by hand that both review rounds lost.** `.claude/rules/engineering.md`
+    still said *"`spike/**` is outside ESLint's scope entirely and stays unlinted"* — present tense
+    about a deleted tree. Iteration 1 raised it, **iteration 2 dropped it**, and the implementer had
+    refused it correctly, `.claude/rules/` being a derived copy whose sync AC-4 makes the human's.
+    Working only the four the final review listed would have shipped it.
+    **AC-27 is clean and AC-28 is discharged**: no live instruction, command or CI reference to the
+    deleted tree survives on a human-owned surface — what remains under `packages/**` is past-tense
+    JSDoc provenance AC-19 forbids touching — and CI is **green on the merged commit across all
+    three retained jobs** (run 34037093200).
+    **What it proves is larger than what it deletes.** `integrate` ran `pnpm turbo run test --force
+    --continue` with no spike half and went green, so the workspace needs nothing from the tree it
+    removed; and `pnpm exec quorum board` and `quorum lint` now do what
+    `node spike/bin/harness.js` did all week. **The product runs its own development**, which is what
+    M2 was for. `docs/decisions/` was not edited: an entry describing the spike stays true of when it
+    was written.
   - Q-0104 The offline mirror re-packs third-party dependencies and can lose files. *(Opened and
     fixed 2026-09-05 from CI run 33967146498, `draft`.)* **The first CI run in four days, and the
     first ever to execute Q-0098's packed-install fixture.** Three of seven jobs failed —
