@@ -39,14 +39,15 @@ import type { CommandHandler } from './main.js';
 const TEMPLATES = new URL('../templates/harness/', import.meta.url);
 
 /**
- * What `init` prints when it has scaffolded, preserved from `spike/bin/harness.js:338`.
+ * What `init` prints when it has scaffolded — the first three commands an adopter is told to run,
+ * and the shape preserved from `spike/bin/harness.js:338`.
  *
- * Why: preserved — the three commands are named `harness`, which the binary is not called. That
- * class is **Q-0100**'s, which exists to rule it once for the board's hint, `ProjectNotFoundError`'s
- * sentence, `validate`'s usage line and this one, rather than once per command. Renaming it here
- * would be this ticket pre-deciding that ruling while three other sentences still disagree.
+ * Why: the binary is `quorum`, which is what `package.json`'s `bin` installs (Q-0100). The three
+ * commands here named `harness` until that ticket ruled the class, and Q-0093 confirmed on a real
+ * packed install that a stranger who has just installed `quorum` was told to run a binary that does
+ * not exist — at roughly minute three of the thirty the cold-clone test allows.
  */
-const NEXT_STEPS = '  next: harness adapters · harness ticket new "…" · harness run requirements T-0001';
+const NEXT_STEPS = '  next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001';
 
 /** Scaffold `harness/` and `backlog/` in `rest[0]`, or in the working directory when there is none. */
 export const init: CommandHandler = ({ rest }) => {

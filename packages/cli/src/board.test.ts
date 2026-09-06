@@ -169,7 +169,7 @@ describe('AC-3 — the columns, and the hint over the flow set core already comp
     });
     const result = await board(root);
     expect(result.exitCode, out(result)).toBe(SUCCESS);
-    expect(out(result)).toContain('→ harness run alpha <id>');
+    expect(out(result)).toContain('→ quorum run alpha <id>');
     expect(out(result), 'the later-sorting flow won the column').not.toContain('run zebra');
   });
 
@@ -185,7 +185,7 @@ describe('AC-3 — the columns, and the hint over the flow set core already comp
     expect(
       out(result),
       'chore.yaml and solutioning.yaml both consume requirements, and chore sorts first',
-    ).toContain('requirements  → harness run chore <id>');
+    ).toContain('requirements  → quorum run chore <id>');
   });
 
   test('a project with no flows directory renders every column, prints no hint, and exits 0', async () => {
@@ -221,9 +221,12 @@ describe('AC-3 — the columns, and the hint over the flow set core already comp
     const result = await board(root);
     const lines = out(result).split('\n');
     // `draft` is 5 and `requirements` is 12, so the padding is 9 and 2 — the two ends of the range a
-    // stage name can occupy, and enough to tell `padEnd(14)` from any fixed separator.
-    expect(lines, 'the shortest stage name').toContain(`draft${' '.repeat(9)}→ harness run requirements <id>`);
-    expect(lines, 'the longest stage name').toContain(`requirements${' '.repeat(2)}→ harness run chore <id>`);
+    // stage name can occupy, and enough to tell `padEnd(14)` from any fixed separator. The two
+    // numbers are `stage.padEnd(14)`'s and are independent of the hint beside them, so Q-0100's
+    // rename moved the binary's name and neither count: a round that "corrects" 9 or 2 because the
+    // line got shorter has misread what this test measures.
+    expect(lines, 'the shortest stage name').toContain(`draft${' '.repeat(9)}→ quorum run requirements <id>`);
+    expect(lines, 'the longest stage name').toContain(`requirements${' '.repeat(2)}→ quorum run chore <id>`);
     // And a column with no consuming flow is the padded name and nothing else: the spike emits an
     // empty dim span there, which is preserved and which nothing rendering through `plain` can see.
     expect(lines, 'a column with no consuming flow').toContain(`deployed${' '.repeat(6)}`);

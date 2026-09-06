@@ -33,9 +33,8 @@ import type { CommandHandler } from './main.js';
  * `loadProject` throws {@link ProjectNotFoundError} where the CLI's own version called `die` — a
  * library may not stop its host — so the sentence reaches the terminal only if somebody catches it.
  * Uncaught it would reach `dieOnUnexpected` and print a Node stack, which is a visible regression
- * against the spike. The message is `core`'s, byte for byte, including the `harness` the binary is
- * not called: Why: preserved defect, see `backlog/Q-0091-…/requirements/merged.md` OQ-2, whose
- * successor owns every user-facing occurrence of the old name at once.
+ * against the spike. The message is `core`'s, rendered unaltered — this module composes no recovery
+ * advice of its own, which is what keeps one sentence in one place.
  *
  * @param project `--project`'s value, passed through as `spike/bin/harness.js:55` passes it — the
  *   spike reads that flag *inside* `loadProject`, which is why its `lint` case names no flag and why

@@ -120,7 +120,7 @@ describe('AC-10 — loadProject returns a value or throws, and never ends the ru
         expect.unreachable('loadProject should have refused');
       } catch (error) {
         expect((error as Error).name).toBe('ProjectNotFoundError');
-        expect((error as Error).message).toBe('no harness/harness.yaml found — run `harness init` in your repo');
+        expect((error as Error).message).toBe('no harness/harness.yaml found — run `quorum init` in your repo');
       }
     });
   });

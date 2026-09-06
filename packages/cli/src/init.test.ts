@@ -177,13 +177,18 @@ describe('AC-6 — it scaffolds where it was pointed, refuses rather than overwr
     }
   });
 
-  test('and that line calls the binary `harness`, which is preserved and is Q-0100\'s to rule', async () => {
-    // Why: preserved — Q-0100's body predicts this line by name as the fourth of its instances,
-    // beside the board's hint, `ProjectNotFoundError`'s sentence and `validate`'s usage. Pinned so
-    // that renaming it is a deliberate act taken with the other three rather than here alone, and so
-    // that the successor has an executable subject to move.
+  test('Q-0100 — and that line calls the binary `quorum`, which is the binary that exists', async () => {
+    // **Inverted rather than deleted** (Q-0037 AC-4h): this pinned the old name so that renaming it
+    // would be a deliberate act, and it now pins the new one so that regressing is. The negative
+    // half is what carries that — without it a line naming neither binary would pass.
+    //
+    // This is the instance Q-0093 confirmed on a real packed install rather than predicted: a
+    // stranger who had just installed `quorum` was told three times to run `harness`, and all three
+    // failed with *command not found* inside the first five minutes of the cold-clone path.
     const { stdout } = await invoke(['init']);
-    expect(plain(stdout)).toContain('harness adapters · harness ticket new "…" · harness run requirements T-0001');
+    expect(plain(stdout)).toContain('quorum adapters · quorum ticket new "…" · quorum run requirements T-0001');
+    expect(plain(stdout), 'the next steps name a binary this package does not install')
+      .not.toContain('harness adapters');
   });
 });
 

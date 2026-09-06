@@ -115,8 +115,16 @@ describe('AC-10 — the lift does not exit the run or write to the terminal', ()
     expect(text).toContain('ProjectNotFoundError');
   });
 
-  test('the sentence is the CLI\'s, byte for byte', () => {
-    expect(source(PROJECT_SOURCE)).toContain('no harness/harness.yaml found — run `harness init` in your repo');
+  test('Q-0100 — the sentence keeps the folder and names the binary that exists', () => {
+    // It was a byte-identity against `spike/bin/harness.js`, whose tree Q-0103 deleted; what it
+    // pins now is the distinction that made Q-0100 a ruling rather than a `sed`. One sentence
+    // carries both senses of the word: `harness/harness.yaml` is the **folder**, which
+    // `product-boundaries.md` requires be kept, and `quorum init` is the **command**.
+    const text = source(PROJECT_SOURCE);
+    expect(text).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+    // The half a blanket substitution would have destroyed, asserted on its own so it can fail on
+    // its own: `s/harness/quorum/g` yields `no quorum/quorum.yaml found`, which is wrong twice.
+    expect(text, 'the folder was renamed with the command').toContain('harness/harness.yaml');
   });
 });
 

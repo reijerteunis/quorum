@@ -26,11 +26,21 @@ const DEFAULT_BACKLOG_PATH = 'backlog';
 /**
  * No `harness/harness.yaml` was found at or above the starting directory.
  *
- * Why: the message is the sentence the CLI prints today, unchanged — including that it names
- * `harness` where the binary will be `quorum` (Q-0010). Carried, not fixed (charter §2).
+ * **The one sentence in the product carrying both senses of the word**, which is why Q-0100 is a
+ * ruling rather than a substitution: `harness/harness.yaml` is the **folder**, which
+ * `product-boundaries.md` requires be kept, and `quorum init` is the **command**, which is what
+ * `packages/cli`'s `bin` installs. A blanket replacement of the word yields
+ * `no quorum/quorum.yaml found`, which is wrong twice and passes any check that only looks for it.
+ *
+ * Why: the imperative stays here for now, and moving it is a separate ticket rather than a deferral
+ * — the six CLI catch sites all render `error.message` unaltered, so splitting the sentence means
+ * six sites each composing an instruction, which is the drift this ticket closed. What that ticket
+ * owes first is a decision entry against `04-architecture.md`'s statement of what `core` is
+ * responsible for, because M3's server will surface this same error over HTTP, where an imperative
+ * naming a shell is advice to somebody who may not have one. Nothing is broken while it waits.
  */
 export class ProjectNotFoundError extends Error {
-  constructor(message = 'no harness/harness.yaml found — run `harness init` in your repo') {
+  constructor(message = 'no harness/harness.yaml found — run `quorum init` in your repo') {
     super(message);
     this.name = 'ProjectNotFoundError';
   }
