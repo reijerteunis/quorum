@@ -5,7 +5,7 @@ stage: draft
 owner: ruud
 repos: []
 branch: harness/Q-0102/integration
-priority: p1
+priority: p2
 created: 2026-09-04
 iterations: {}
 history: []
@@ -276,3 +276,92 @@ discriminate.
 - Q-0039's concurrent-run lock, which is a different subject that happens to share the word.
 
 Belongs to M2 in `docs/06-development-plan.md`. Found at Q-0095's merge, 2026-09-04.
+
+## The instrument that matters has now answered, 2026-09-06 — 28 sweep cells, all green
+
+**The section above says the next CI run after Q-0104 is the first measurement of this ticket's
+subject on the instrument that matters. That run has now happened fourteen times.** Measured at tip
+`a86c3fa`, by reading every CI run from the `fail.test.ts` fix (`33969196058`, *"AC-5 asserts the
+guarantee, not the race"*, 2026-09-05 13:32Z) to the current tip, and the conclusion of each sweep
+job in each:
+
+| window | CI jobs | runs | sweep cells | failures |
+| --- | --- | --- | --- | --- |
+| fix → Q-0103's cutover | 7 | 8 | 16 | **0** |
+| cutover → tip `a86c3fa` | 3 | 6 | 12 | **0** |
+| **total** | — | **14** | **28** | **0** |
+
+Every run is `success` at the run level as well, so no other job was red behind them. **`main` is
+level with `origin/main`** as of this writing, which is the condition Q-0105 exists to keep — the 89
+commits that hid Q-0104 for four days are not the state today.
+
+**Both halves of the ticket's opening claim are now dead, and they died for different reasons.**
+*"`pnpm sweep:git-identity` exits 1 on `main`"* has not been true in **36 local sweeps** — the 35 the
+section above records, plus one run here at `a86c3fa`, exit 0, 7/7 tasks 0 cached. And *"every push
+is red or lucky"* was already withdrawn as an inference rather than an observation; the 28 cells
+above now refute it as a prediction too.
+
+**The load the leading hypothesis rests on has halved underneath the ticket, which is the change
+nobody planned for.** Q-0107 AC-16 and Q-0103 took the second suite out of the sweep, so it runs one
+suite where it ran two — measured locally at **57.7 s** against this ticket's own table of 105–132 s.
+A contention hypothesis is being tested against roughly half the contention it was formed on, and
+16 of the 28 green cells above ran *before* that change while 12 ran after. So the greens are not
+explained by the cutover, and the cutover is not exonerated by them either.
+
+**What survives, unchanged and re-verified here rather than transcribed.** The named lead is intact:
+`grep -rn testTimeout` over the tree outside `node_modules` and `dist/` returns **nothing**, so every
+test still runs against Vitest's 5-second default, while `worktree-lifecycle.test.ts` still makes
+**18** `git(` calls and `undecided.test.ts` **4**, all of them `execFileSync` — synchronous spawns —
+through `packages/core/test/repo.ts:29`. Both files are still present and still the cluster the
+original sighting named. The `p1` argument's other half also survives untouched: a flaky oracle
+trains the reader to re-run until green, and that does not depend on a rate.
+
+**What this does to the ticket, stated rather than implied.** There is no longer a red to fix. The
+one instance ever reproduced on CI was diagnosed and fixed inside this body's own last section, and
+the local `@quorum/core` sighting stands at one occurrence and 36 non-reproductions. GO-1 —
+*establish a failure rate at a fixed commit before repairing* — is now the binding constraint rather
+than a caution: at an observed rate of 0 in 36 local and 0 in 28 CI, **no fix can be demonstrated to
+work**, because nothing can be shown red first. A ticket whose acceptance criteria cannot be
+satisfied by any measurement is not ready for a requirements run in the shape this body describes.
+
+**Not measured, and deliberately not inferred.** Nothing here explains the original sighting, and it
+is not withdrawn — it was first-hand, twice consecutively, and two consecutive reds against a
+36-and-28 green record is not a coincidence anyone should be comfortable with. What is unknown is
+still what it was: whether the triggering condition was present that day and is absent now, and
+whether it can return. The instrument has answered; the mechanism has not.
+
+## Parked at p2 on 2026-09-06, and what would reopen it
+
+**Decided by the human at the start of the session that would otherwise have launched its
+requirements run**, on the measurement above rather than on a judgement about whether the sighting
+was real.
+
+**Why parking is the honest move and not an abandonment.** GO-1 binds: *establish a failure rate at
+a fixed commit — N runs, count reds — before and after, and state both*. The rate is **0 in 36**
+locally and **0 in 28** on CI. At that rate no fix can be demonstrated red before green, so every
+shape in the list above would ship as a change nothing could prove was a repair — which is the
+defect class *"A check is not established by reading it"* (2026-08-29) names, arriving one layer up
+as a whole ticket rather than as an assertion. A requirements run could not have rescued it either:
+no step in that flow can produce a failure rate, so launching would have been the sixteenth
+appearance of a loop handed work no agent in it can perform.
+
+**The `p1` argument is superseded rather than refuted.** The section *"Why it is p1"* above rests on
+two halves. The first — *"the two CI jobs are required, so every push is now either red or lucky"* —
+is measurably false: fourteen consecutive green runs, 28 sweep cells, 0 failures. The second — *a
+flaky oracle trains the reader to re-run until green* — still stands and does not depend on a rate,
+and it is what keeps this at `p2` rather than closing it. An oracle observed to flake once is not an
+oracle anyone should forget about.
+
+**The sighting is not withdrawn.** It was first-hand, twice consecutively, in phase `workspace
+suite`, and no mechanism has ever explained it. What is recorded is that it cannot be reproduced,
+not that it did not happen.
+
+**What reopens this at p1, stated so the next reader does not have to re-derive the threshold.**
+Any one of: a sweep cell failing on CI on the `@quorum/core` cluster rather than on an unrelated
+broken test; a local sweep failing again at a tip whose workspace suite passes unswept; or a
+third measured instance of the class in a third test, which would make *load is a third term beside
+the checkout and the account* a pattern rather than two sightings. The first of those is now cheap
+to notice, because `main` is level with `origin/main` and Q-0105 exists to keep it that way.
+
+**Non-goal while parked:** do not make the sweep green by weakening it, and do not adopt the
+timeout lead as a cause. GO-2 outlives the parking.
