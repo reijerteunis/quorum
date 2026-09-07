@@ -6,3 +6,16 @@
 2026-09-06T21:36:11.112Z run=1 gate=human answer=advance
 2026-09-06T21:36:11.120Z run=1 completed stage=draft→requirements cost=12.934 tokens=7265168
 2026-09-06T21:50:00.000Z GO-1 discharged (out-of-band: the decision entry is written and indexed — "The board reports push lag, and never a CI conclusion" (2026-09-06), docs/decisions/080. It rules all three things GO-1 names — push lag is a git fact and never a CI conclusion, the surface belongs to the product rather than to this repository, and the print threshold is lag >= 1 — and names "Containment is derived from git on each board invocation, never stored" (2026-08-24) as the entry it extends. Written by the human at the requirements gate, because no step on the chore route may write one (developer-generalist.md:26-27). Its four transcribed measurements were re-run before it landed rather than carried from requirements/merged.md: the remote-awareness grep is 0 hits over 63 production files; %(ahead-behind:<missing ref>) yields no per-ref line at all on git 2.55.0 and rev-list --count <missing>..HEAD exits 128; %(upstream) returns the empty string for a branch that tracks nothing; and Q-0104's three-day window holds — 68a83f0 landed 2026-09-02, the CI run before it was 729dcb3 at 2026-09-01T23:10Z and the next was 2026-09-05T12:49Z. One transcription error was found and fixed in the entry: 04-architecture.md:44 does not bold "It never touches the network", and a quote claimed verbatim may not add emphasis. GO-2 and GO-3 remain open; no engine run advanced this ticket.)
+2026-09-06T21:52:53.369Z run=2 flow=chore start stage=requirements
+2026-09-06T22:47:26.303Z run=2 step=implement vendor=claude model=- verdict=- cost=32.66882149999998 ms=3272642
+2026-09-06T22:48:00.970Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=34622
+2026-09-06T23:11:37.614Z run=2 step=implement vendor=claude model=- verdict=- cost=15.119575500000005 ms=1416492
+2026-09-06T23:12:25.133Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=47468
+2026-09-06T23:32:05.043Z run=2 step=implement vendor=claude model=- verdict=- cost=12.820084499999998 ms=1179770
+2026-09-06T23:33:06.780Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=61683
+2026-09-06T23:33:06.797Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-07T05:55:33.604Z run=2 gate=human-locked answer=advance
+2026-09-07T05:56:41.200Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-07T05:59:30.738Z run=2 gate=human answer=advance
+2026-09-07T05:59:31.895Z run=2 removed-worktrees=2 kept=0
+2026-09-07T05:59:31.896Z run=2 completed stage=requirements→reviewed cost=60.608 tokens=92280614
