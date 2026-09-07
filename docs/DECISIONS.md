@@ -148,3 +148,8 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-06
 
 - [The board reports push lag, and never a CI conclusion](decisions/080-the-board-reports-push-lag-and-never-a-ci-conclusion.md)
+
+## 2026-09-07
+
+- [A deferral is not a skip, and the preflight says nothing about one](decisions/081-a-deferral-is-not-a-skip.md)
+- [A `core` error names the condition; the remedy belongs to the surface](decisions/082-a-core-error-names-the-condition.md)

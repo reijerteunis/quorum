@@ -54,6 +54,25 @@ cannot see is not core. The entry has to say which reading holds, and it is the 
 which is why this is its own ticket rather than a criterion inside one whose implement step could
 never satisfy it.
 
+## RULED 2026-09-07 — the entry this ticket owed has landed
+
+See *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07). **Shape 2
+wins, and shape 1 is refused as correct-by-accident**: the sentence is right for the only surface
+that exists, and the moment a second renders it there is no rule saying which of the two it is right
+for. Shape 3 is *"what this becomes if a third surface arrives"*, not premature work now.
+
+**What remains for this ticket is the code**, and the entry measured that it is smaller than this
+body claimed. All six catch sites are byte-identical — `if (!(error instanceof
+ProjectNotFoundError)) throw error; return die(error.message);` — so **the CLI composes nothing, it
+transports**, and the remedy lands at one mapping site rather than six. The paragraph below arguing
+that a split *"means six sites each composing an instruction"* is the cost this entry disproved; it
+is left standing as the record of what was assumed.
+
+`ProjectNotFoundError`'s message becomes `no harness/harness.yaml found` — the folder stays, per
+Q-0100 — and `packages/cli` maps the class to ``run `quorum init` in your repo`` so the terminal
+output is unchanged. The criterion that matters is that the rendered sentence a stranger sees does
+not move.
+
 ## Three shapes, none decided here
 
 1. **Leave it.** The sentence is correct for every surface that exists, and M3 can strip or replace
