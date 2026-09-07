@@ -1,11 +1,11 @@
 ---
 id: Q-0068
-title: The BYOS refusal calls the product "Harness"
+title: A healthy login reads unusable, and the refusal misnames the product
 stage: draft
 owner: ruud
 repos: []
 branch: harness/Q-0068/integration
-priority: p3
+priority: p2
 created: 2026-08-27
 iterations: {}
 history: []
@@ -14,6 +14,11 @@ history: []
 > every path, line number and landing rule below that names it is **void** — read *"After the
 > cutover"* at the end of this body before acting on anything here. The defect itself is
 > unchanged and was re-verified against the tree on 2026-09-07.
+>
+> **Q-0066 was absorbed into this ticket on 2026-09-07** and is `abandoned`; its body stays in
+> place as the evidence. This ticket was *"The BYOS refusal calls the product 'Harness'"* and now
+> carries both defects `quorum adapters` reports wrongly — see *"Absorbed: Q-0066"* at the end.
+> **Priority moved p3 → p2** with it: a word is a p3, a healthy login reported unusable is not.
 
 Reported by Q-0046's implement report and again by Q-0047's merged requirement (Q-4), both of which
 correctly refused to fix it in passing. The two BYOS refusal messages call the product **"Harness"**,
@@ -105,3 +110,81 @@ keep in step.
 
 **Void: the non-goal naming the binary (Q-0010)**, which closed. Q-0047's AC-3 ordering and coverage
 non-goal stands and must stay green.
+
+## Absorbed 2026-09-07: Q-0066, the other thing `quorum adapters` gets wrong
+
+**The two merged on one surface rather than on one defect, and the difference is worth stating.**
+Q-0074 and Q-0109 merged because they were literally one function declared twice. These two are not
+that: Q-0066 is a **crash misattributed** — `probeAdapter` dereferences a null `usage` and blames the
+login for its own `TypeError` — and this ticket is a **word**, the product called "Harness" in the
+refusal. What they share is the surface, and the shipped source already says so.
+
+**`packages/cli/src/adapters.ts`'s module header names both tickets in one docblock**, as the things
+this one command must report and must not repair: `:13–16` for the refusal sentence, *"which is
+Q-0068's and is preserved verbatim (Q-0099 AC-8(a))"*, and `:24–27` for Q-0066's null dereference,
+under a heading reading *"Two preserved defects reach this command and neither is repaired here"*.
+One file, one header, both subjects.
+
+**The combined surface is eleven files, and they are the same eleven.**
+
+| | Q-0066 | this ticket |
+| --- | --- | --- |
+| `core/src/adapters/adapters.ts` | the defect, `:488` | — |
+| `core/src/adapters/claude.ts`, `codex.ts` | — | the two strings, `:95` and `:89` |
+| `core/src/adapters/probe.test.ts` | the pin, `:145–156` | — |
+| `core/src/adapters/adapters.test.ts`, `claude.test.ts`, `codex.test.ts` | names it at `claude.test.ts:381` | three pins, `:314`, `:62`, `:87` |
+| `cli/src/adapters.ts` | preserved defect 2, `:24–27` | the refusal note, `:13–16` |
+| `cli/src/adapters.test.ts` | the pin, `:315–320` | the pin, `:286` |
+| `cli/src/end-to-end.test.ts`, `commands.ts`, `commands.test.ts` | — | `:723`, `:54`, `:44` |
+
+**So one requirements gate rules both, and neither owes a `docs/decisions/` entry.** That is the
+actual argument for merging, and it is the one that matters in this repository: the code is a guard
+and a sentence, while the *process* — two requirements runs, two chore runs, two cross-vendor
+reviews over the same eleven files — is what costs. Measured against this cut's own history, a
+second ticket here is roughly $50–70 of gate for about ten lines of code. Both questions are
+answerable by one person at one gate: *what does `tokens` mean when nothing was measured*, and *what
+does the sentence say instead*.
+
+**Sizing: about eleven criteria, under the ceiling.** Q-0066 needs roughly six — the guard, the
+nullable `tokens`, its two pins, the CLI rendering, and the choice among its three shapes — and this
+ticket about five. That is comfortably inside the fifteen that forced splits at Q-0091 and Q-0096,
+which is the other half of why the merge is safe. **If it splits anyway, the seam is the two
+questions**, not the two packages: every file above is touched by both halves.
+
+**Two corrections to Q-0066's body, found while merging.**
+
+1. **The defect site carries no authority line.** Its body says the behaviour is *"pinned in both
+   trees — … `packages/core/src/adapters/adapters.ts:483`, the latter carrying its `Why:` line and a
+   test."* Measured: `packages/core/src/adapters/adapters.ts` contains **no occurrence of Q-0066 at
+   all**, and the line is `:488`. Every authority for the preserved defect lives *downstream* — in
+   `packages/cli`'s `adapters.ts:24–27` and `adapters.test.ts:319`, plus a passing mention in
+   `core`'s `claude.test.ts:381`. So `core` alone shows three bare `res.usage!` non-null assertions
+   with nothing saying they are deliberate, which is `.claude/rules/engineering.md`'s *"one line
+   naming the authority"* unmet at the one site that most needs it. **Adding that line is part of the
+   repair even under the shape that changes no behaviour.**
+2. **It reaches `packages/cli`, which its body does not mention.** Q-0099's **AC-8(d)** pins the
+   rendered consequence — *"Q-0066's crash renders as an unusable login rather than being caught in
+   passing"* (`cli/src/adapters.test.ts:315`) — so the fix moves a CLI test as well as a `core` one,
+   and the ticket is not the single-file change its body implies.
+
+**Three source comments carry a landing rule that is now false, and they move with the fix rather
+than before it.** `cli/src/adapters.ts:26` and `cli/src/adapters.test.ts:319` both read *"which lands
+in both trees together — a fix here would leave the spike disagreeing with `core` until the
+cutover"*, and `core/src/adapters/claude.test.ts:380` reads *"Fixing it belongs in both trees at
+once, like Q-0066 and Q-0068"*. All three name a tree deleted on 2026-09-06.
+
+They are deliberately **not** corrected by this triage. Q-0103's AC-19 made its production-source
+citation list exhaustive and ruled that *"citations that merely name a deleted path without claiming
+it is read and without a test pinning them"* are a non-goal — but these three do more than name a
+path: they state how a future fix must land, and following them is now impossible. They are this
+ticket's to correct, in the change that makes them true, and a criterion should say so.
+
+**A third defect sits on this same command and has no ticket at all.** `cli/src/adapters.ts:20–23`,
+item 1 under the `:18` heading quoted above, records that `quorum adapters` **exits 0 when both CLIs
+are absent**, so an adopter's CI step reports
+success on a machine with no vendor CLI installed — preserved under Q-0099 AC-8(c), with its
+successor named as *"Q-0090's GA-4"*. GA-4 says *"open the successor"*; searched on 2026-09-07, it
+appears only inside Q-0090's own `requirements/merged.md`, and **no such ticket exists**. Q-0090
+closed on 2026-09-02. That is the second obligation found this week living only inside a closed
+ticket, after Q-0100's, and it is explicitly **out of scope here** — named so it stops being
+invisible, not folded in.

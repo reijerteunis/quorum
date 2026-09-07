@@ -1,7 +1,7 @@
 ---
 id: Q-0066
 title: probeAdapter reports its own crash as an unusable login
-stage: draft
+stage: abandoned
 owner: ruud
 repos: []
 branch: harness/Q-0066/integration
@@ -14,6 +14,16 @@ history: []
 > every path, line number and landing rule below that names it is **void** — read *"After the
 > cutover"* at the end of this body before acting on anything here. The defect itself is
 > unchanged and was re-verified against the tree on 2026-09-07.
+
+> **Absorbed into Q-0068 on 2026-09-07, and `abandoned` rather than closed.** Not withdrawn: the
+> defect is real, unfixed, and now carried there — with that ticket's priority raised to p2 to
+> match this one's. They merged on a **surface** rather than on a defect: `quorum adapters` is
+> what reports both, and `packages/cli/src/adapters.ts`'s own module header already named the two
+> tickets in one docblock. This body stays in place as the evidence, the Q-0061 shape.
+>
+> **Two of its claims were corrected in the merge and are wrong as written below:** the defect
+> site is `adapters.ts:488` and carries **no** `Why:` line — every authority for it lives in
+> `packages/cli` — and the fix reaches `packages/cli` too, through Q-0099's AC-8(d).
 
 Raised by Q-0046's merged requirement as OQ-6 and by its implement report, 2026-08-26, both of which
 correctly refused to fix it in passing: the port preserves behaviour, and a quiet fix in `core` while
