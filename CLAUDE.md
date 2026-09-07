@@ -10,7 +10,7 @@ about any specific SaaS product.
 - @docs/README.md — index; start with 01, 02, 04, 06
 - @docs/DECISIONS.md — the index of every decision, one file each in `docs/decisions/`; read the
   entry a change touches, and never contradict one silently — add a new entry
-- @docs/GLOSSARY.md — use exactly these terms (harness, flow, gate, adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule, panel, chore flow, occurrence, preflight, dry run, BYOS)
+- @docs/GLOSSARY.md — use exactly these terms (harness, flow, gate, adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule, panel, chore flow, occurrence, preflight, dry run, BYOS, build task, emitted artifact, push lag)
 - @docs/06-development-plan.md — current milestone and its tickets
 
 ## Rules (full text in .claude/rules/)
