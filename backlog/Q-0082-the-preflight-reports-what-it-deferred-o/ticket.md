@@ -103,7 +103,8 @@ for a derived fact: **silence means the probe answered and there is nothing to s
 unanswerable that is worth saying prints. That is adjacent rather than governing — a deferral is not
 an answer, it is an examination postponed — but it is the entry a requirements run should read
 first, because it is this repository's most recent reasoning about when a check may say nothing at
-all. Q-0109 turns on the same sentence from the other side.
+all. Q-0074 turns on the same sentence from the other side, having absorbed Q-0109 on
+2026-09-07.
 
 **The rule this is measured against is unchanged**: *"Q-0035 accepted: a check that skips its subject
 must not report success"* (2026-08-25), and `docs/GLOSSARY.md`'s **Preflight** entry, which states it

@@ -1,6 +1,6 @@
 ---
 id: Q-0074
-title: The engine cannot tell git failed from an absent branch
+title: A failed git probe is read as a proven negative
 stage: draft
 owner: ruud
 repos: []
@@ -14,6 +14,11 @@ history: []
 > every path, line number and landing rule below that names it is **void** — read *"After the
 > cutover"* at the end of this body before acting on anything here. The defect itself is
 > unchanged and was re-verified against the tree on 2026-09-07.
+>
+> **Q-0109 was absorbed into this ticket on 2026-09-07** and is `abandoned`; its body stays in
+> place as the evidence. The two were one defect in one duplicated primitive — see
+> *"Absorbed: Q-0109"* at the end. This ticket keeps the id because *"What a run's event stream
+> carries"* (2026-08-28) cites **Q-0074** by name, and a landed entry is never edited.
 
 Opened 2026-08-28 from Q-0050's OQ-4, whose successor body the merged requirement wrote out in full
 so the obligation could not expire — *a deferred obligation dies unless it is written into a
@@ -133,3 +138,80 @@ re-deriving the shape.
 E-1: `repositoryAt` collapses every failure of `rev-parse --resolve-git-dir` to `false`, so a
 malformed gitfile reads as proven absence. The two tickets share a decision and could sensibly share
 a requirements run.
+
+## Absorbed 2026-09-07: Q-0109, which is this defect in the other copy of one function
+
+**Why the two merged, measured rather than argued.** They are not adjacent classes. `safe()` —
+
+    const safe = <T>(fn: () => T): T | null => {
+      try { return fn(); } catch { return null; }
+    };
+
+— is declared **exactly twice in the workspace, byte for byte**: `packages/core/src/fanout/fanout.ts:206–208`,
+which is this ticket's subject, and `packages/core/src/git/git.ts:19–21`, which was Q-0109's. Same
+name, same signature, same body, two modules, and nothing else in `packages/*/src` carries a third
+copy. Neither ticket knew this; both were written as though they were about a function each.
+
+**So the real subject is one primitive with 23 call sites**, and the two ticket bodies between them
+name five:
+
+| module | `safe()` call sites | named by a ticket |
+| --- | --- | --- |
+| `git/git.ts` | 15 | 1 — `repositoryAt` (`:71`), Q-0109's |
+| `fanout/fanout.ts` | 8 | 4 — `branchExists` (`:224`), `branchHead` (`:239`), `commitAll` (`:283–284`), `mergeInto` (`:316–317`) |
+
+**The first task is therefore a census, not a widening.** Most of the other eighteen are almost
+certainly right as they are: `git.ts:157`'s `branch -D` and `fanout.ts:317`'s `merge --abort` are
+best-effort cleanups where a failure genuinely is nothing to say, and turning every `safe()` into a
+tri-state would be a change nobody asked for. What has to be decided per site is the question this
+ticket already owes — **what does a caller do with "could not answer"** — and the census is what
+turns that into a list rather than a principle.
+
+**The answer's shape is already written, twice, in the file Q-0109 was opened against.** Q-0105
+needed exactly this discrimination for push lag and did **not** reach for `safe()`: `workTreeProbe`
+(`git.ts:91–97`) returns `'inside' | 'outside' | 'failed'` and `resolvesToCommit` (`git.ts:104–105`)
+returns `boolean | null`, each with its own `try`/`catch` that reads git's exit status instead of
+discarding it. Both landed under *"The board reports push lag, and never a CI conclusion"*
+(2026-09-06). So the decision this ticket owes has a worked precedent in the same package, written
+by the ticket that raised the second half.
+
+**Q-0109's own subject, carried forward verbatim in substance.** `workTreeProbe` asks `repositoryAt`
+after a git fatal, and `repositoryAt` (`git.ts:70–72`) is a `safe()` call compared against `null` —
+so a **malformed gitfile** at `repoDir/.git` and an **unreadable `.git`** both come back as absence,
+`workTreeProbe` answers `'outside'`, and the board renders nothing. That gives silence a second
+meaning the 2026-09-06 entry did not give it, whose rule is that silence means only that git
+answered. **It is a residual and not an unmet criterion** — Q-0105's AC-3 binds on *none of them
+reaches `pushed`*, which is why erratum E-1 registered it rather than failing the ticket.
+
+**Two things Q-0109 settled that this ticket inherits and must not re-open.**
+
+1. **E-1's third case is closed as unclosable.** A project root *below* a repository git refuses
+   cannot be caught without either git's translated prose, which may never decide a state, or a
+   reimplementation of git's upward discovery walk, whose verdict would then depend on where a
+   fixture happens to sit — refused by *"A test's verdict is a property of the commit, not of the
+   checkout or the account"* (2026-08-30). Do not reopen it without new evidence.
+2. **The obvious instrument for the remaining two collides with a landed entry.** A filesystem
+   existence check at `repoDir/.git` runs into *"Membership is a git question, not a filesystem one"*
+   (2026-08-28). Whether that collision is real, or whether that entry is scoped to
+   `turbo-inputs.test.ts` and its argument about what turbo hashes has no analogue here, is part of
+   the work. **Q-0090's E-1 is the precedent for ruling exactly that kind of scope question**, and it
+   ruled the entry did **not** govern the case in front of it. Measure before choosing.
+
+**The `git/` half has no pin and no in-tree pointer, which is the half that gets lost.** This
+ticket's four `fanout/` cases are each pinned by a test carrying a `Why: preserved defect` line
+(`fanout.test.ts:249, 332, 352, 406`) and named in `composite.ts:17`. Q-0109's two have neither —
+`repositoryAt`'s JSDoc at `git.ts:59–68` actually claims the opposite, that `--resolve-git-dir` *"can
+discriminate between them and absence"*, which is true of the git invocation and false of what
+`safe()` does with its failure. **That sentence is part of the repair**, and a criterion should say
+so, because a comment claiming a discrimination the code discards is how this one survived a
+cross-vendor review.
+
+**Sizing, and the split seam if it is needed — written now rather than discovered at a gate.** This
+ticket already carries four pins, two `--dry` mutations and a decision entry; adding the census and
+the `git/` half plausibly puts it past the fifteen-criteria ceiling that forced splits at Q-0091 and
+Q-0096, both of them at cost. **If it splits, the seam is the module, and the decision entry stays
+with whichever half runs first**: the entry and `core/git`'s two cases in one, `core/fanout`'s four
+pins in the other. It is one ticket because one ruling governs both, not because the code is one
+change.
+
+**Q-0082 cites this ticket in place of Q-0109** as of the same day, so no pointer is left dangling.
