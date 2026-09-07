@@ -10,6 +10,11 @@ created: 2026-08-26
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Found by Q-0043's implement step while porting `spike/src/backlog.js`, reported and not fixed per
 *"The port preserves behaviour"* (`docs/DECISIONS.md`, 2026-08-25). Two of its nine reported items —
 the silent no-match fallback and the LF requirement — are **one defect seen from two sides**, and
@@ -121,3 +126,41 @@ requirements rather than leaving a body that outgrew its title.
 `backlog.source.test.ts` are the regression net. The byte-fidelity criterion (AC-3, all 30
 `ticket.md` files round-tripping unchanged) must stay green — this ticket adds a refusal, it does
 not touch the writer. Belongs to M2 in `docs/06-development-plan.md`.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: two paragraphs.** *"Landing constraint, which this ticket did not have before"* is void in
+full — there is no second tree for `loadTasks` to land in, no freeze, and no charter. The *Scope*
+paragraph's freeze clause is void with it, and its target path is stale: the file is
+`packages/core/src/backlog/backlog.ts`, moved into a folder by Q-0064.
+
+**The first defect, re-measured.** `parseFrontmatter` is `backlog.ts:68–72`, and the code is the same
+two lines the body quotes. Its own JSDoc at `:64–66` now records the defect and names this ticket as
+the carrier, which it did not when the body was written.
+
+**The generic-reader constraint survives and its site moved.** `loadRole` is
+`packages/core/src/engine/loaders.ts`, imported by `steps.ts:25` and `composite.ts:31`, not
+`spike/src/engine.js:727–732`. Q-0043's AC-2 still requires `parseFrontmatter` to stay generic, so
+shape (b) — put the check in `Backlog.read`, which knows it is reading a ticket — is still the
+smaller blast radius.
+
+**The second defect survives the port, and it survives it in a way worth naming.** `loadTasks` is
+`packages/core/src/fanout/fanout.ts:106–115`, and line 108 reads
+`parsedTasks(YAML.parse(fs.readFileSync(f, 'utf8'))).tasks ?? []`. `parsedTasks` **looks like a
+parse and is a cast** — `fanout.ts:89` is `(value: unknown) => value as { tasks?: Task[] | null }` —
+so it narrows the type and validates nothing, and `YAML.parse('')` still returns `null`.
+**Measured on 2026-09-07 by executing it against an empty `solution/tasks.yaml`, not by reading it:
+`TypeError: Cannot read properties of null (reading 'tasks')`**, unchanged. The discrimination table
+above still holds; only the empty file crashes.
+
+**The CLI half is now `packages/cli/src/run.ts:215`.** A `FlowError` or an `IntegrationError` gets
+one red sentence and exit 1; **anything else is rethrown** to `main().catch(dieOnUnexpected)`, which
+prints the stack. So the symptom the body describes — a Node stack trace instead of the name of the
+file that is wrong — is intact, and it is now reachable through a shipped binary rather than through
+the spike's `bin/`.
+
+**The byte-fidelity criterion moved.** `backlog.test.ts:173–179` asserts every real
+`backlog/*/ticket.md` round-trips byte for byte; the corpus is **85** files, not the 30 the body
+records, and the count is derived from `readdir` rather than pinned. This edit was checked against it.
+
+**The title is still under-describing the ticket** and the rename note above still applies.

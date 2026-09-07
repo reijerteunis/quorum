@@ -10,6 +10,11 @@ created: 2026-08-31
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Opened by hand 2026-08-31 at id `Q-0039`, which is where `docs/06-development-plan.md` has cited
 it since 2026-08-24. It had a plan entry and no folder for a week — the plan-vs-backlog drift that
 page names for Q-0074, one direction over — so this body transcribes what the plan, the M1 closing
@@ -73,3 +78,32 @@ a person in a hurry; with a server accepting HTTP it needs one impatient click.
 flow in this repository until the cutover, so a `core`-only fix protects nothing today. Not blocked
 by the port — Q-0062 was not in the charter's `children:` list and neither is this. Belongs to M2 in
 `docs/06-development-plan.md`, and its plan entry says it should land before M3.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Scope* above.** It says a `core`-only fix *"protects nothing today"* because
+the spike is what runs every flow. The opposite is now true: Q-0103's own `integrate` ran the
+workspace suite with no spike half and went green, and `pnpm exec quorum board` and `quorum run` are
+what drive this repository. `packages/core` is the only tree, and a fix there protects every run.
+The port-charter `children:` argument is void with the file.
+
+**The three collisions, re-measured against the current tree.**
+
+| Resource | Where it is now |
+| --- | --- |
+| the run id | `nextRunId` (`packages/core/src/run-history/writer.ts:188`), still `max(run= in runs.log, history) + 1` read at run start |
+| the ticket branch | captured at `engine.ts:252` as `branchHeadAtStart`, rolled back at `lifecycle.ts:136–145` through `resetBranchTo` (`fanout.ts:254`) |
+| the worktree | one directory per branch, registered at `steps.ts:206` and given back by `finish` — Q-0062's map |
+
+**Re-verified: there is still no lock of any kind.** A search for `lockfile`, `acquireLock` and
+`.lock` across `packages/core/src` returns only test fixtures and pnpm lockfiles.
+
+**The engine's disclaimer now names this ticket by id**, which it did not when the body was written:
+`writer.ts:257` reads *"does not make the engine safe for concurrent runs, which is Q-0039 and still
+open."* So the guard on the symptom points at the ticket for the cause, and the pointer is in the
+tree rather than only here.
+
+**The timing argument is now due rather than approaching.** M2's substantive work is done — the
+cutover ran, `packages/cli` dispatches every command, and M3 is the next milestone. Both the M1
+closing entry and Q-0034's say this lands before the daemon makes concurrent runs ordinary; that is
+now the next milestone rather than a later one.

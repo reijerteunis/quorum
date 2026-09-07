@@ -10,6 +10,11 @@ created: 2026-08-30
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 resolveModel suppresses a role's default model on adapter INEQUALITY and never on ABSENCE, so a role carrying model: without adapter: passes that model to whichever adapter resolved. Register row 2's third clause, AC-4(a) of Q-0052 and the Q-0052 ticket body all state the strict form — inherit only on equality — and the code has never agreed. Decide which one moves, and land it in spike/src/engine.js and packages/core/src/engine/steps.ts together.
 
 ## The defect, measured three ways
@@ -87,3 +92,36 @@ today there is none.
 - **Depends on:** nothing · **Blocks:** nothing
 - **Non-goals:** the rest of `resolveModel`; adapter resolution (`AC-4(b)`); anything about
   `config.adapterOverride`; the port's remaining children.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Land in one tree*.** There is one tree, no freeze SHA to re-record and no
+`harness/port-charter.md` §3 table to add a row to. The fix lands in
+`packages/core/src/engine/steps.ts` alone.
+
+**Void: the spike half of the last bullet.** *"`smoke.js:621–627` wants the same row added on the
+spike side"* names a deleted file. The discriminating row is needed once, in `steps.test.ts`.
+
+**The defect, re-measured.** `resolveModel` is `packages/core/src/engine/steps.ts:136–149` and the
+guard is `:147` — `if (roleAdapter && roleAdapter !== adapterName) return undefined;`, still
+suppressing on inequality and never on absence. Its `Why: preserved defect, see Q-0052 errata E-1`
+line at `:144–146` names this ticket by id.
+
+**Latency re-verified 2026-09-07, same verdict, re-derived rather than transcribed.** **21 role
+files** — 11 in `harness/roles/`, 10 in `packages/cli/templates/harness/roles/` (Q-0093 moved that
+copy) — of which **11 carry `model:` and none carries `model:` without `adapter:`**. `code-reviewer.md`
+still names neither, which is how the cross-vendor rule gives it the step's adapter. So no shipped
+flow reaches the defect and an adopter's role file is still what would.
+
+**One more thing moves with the fix, and it is the kind of thing that gets left behind.** The comment
+at `packages/core/src/engine/steps.test.ts:39–43` sits directly on the assertion that discriminates
+the two readings — *"a role naming no adapter lends its model to any vendor, which E-1 preserves"*,
+`:44–47` — and it carries **two** references that no longer resolve: it cites
+`spike/src/engine.js:702-707` for the behaviour, and it closes *"this pins the spike and goes red if
+either tree drifts. Q-0081 carries the strict form into both trees together."* There is one tree, so
+the comment now describes a guard against drift that cannot happen. Whichever shape wins, those two
+sentences are corrected in the same change.
+
+**Everything else stands**: the two defensible shapes, the instruction not to adopt Q-0052's round-3
+draft because that round was never asked the question, and the `REGISTERED` marker in
+`q0050.source.test.ts` that comes out with the defect and moves the arithmetic with it.

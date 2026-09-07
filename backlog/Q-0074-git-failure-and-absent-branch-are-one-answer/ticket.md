@@ -10,6 +10,11 @@ created: 2026-08-28
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Opened 2026-08-28 from Q-0050's OQ-4, whose successor body the merged requirement wrote out in full
 so the obligation could not expire — *a deferred obligation dies unless it is written into a
 successor's body; an implement report is not a durable record and is not read again after the gate*.
@@ -87,3 +92,44 @@ Q-0050's four routed diagnostics were **preserved deliberately**, at that ticket
 default applied and recorded: a fix needs a decision entry accepted first, a freeze exemption, and a
 change in two trees, and doing it inside the child already carrying the port's only interface change
 would have divided its reviewer. That reasoning is why this is a ticket and not a patch.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the first paragraph of *Constraints*.** There is no `spike/src/fanout.js`, no freeze, no
+`port-freeze-guard.sh` and no exemption trailer to carry. The fix lands in
+`packages/core/src/fanout/` alone. The second paragraph stands unchanged and is the one that
+matters: **each of the four pinned tests is rewritten, not deleted.**
+
+**Void by implication: the last sentence of *Not in scope*.** It gives *"a freeze exemption, and a
+change in two trees"* as two of the three reasons Q-0050 deferred this. Only the first reason — a
+decision entry accepted first — survives, and it survives intact.
+
+**The four pins, re-measured.** Each is one line later than the body records:
+
+| pin | the test as it reads today |
+| --- | --- |
+| `fanout.test.ts:249` | *a git that FAILS returns the same negative as an absent branch — preserved, not endorsed* |
+| `fanout.test.ts:332` | *a revert that FAILED still reports as though it had discarded — preserved, not endorsed* |
+| `fanout.test.ts:352` | *the FIRST reported name loses its first character when the file is only modified* |
+| `fanout.test.ts:406` | *a content conflict reports an EMPTY error, because git wrote its reason to stdout* |
+
+**The two sites that matter, re-measured.** The start-of-run branch head is `engine.ts:252`
+(`branchHeadAtStart = branchHead(repoDir, ticket.meta.branch)`), and the rollback read is
+`lifecycle.ts:136` — `if (restoresBranch(status) && context.branchHeadAtStart)`. **The truthiness
+guard the body names is still there**, now as the second half of that conjunction, so a git that
+failed at `engine.ts:252` still makes the rollback skip itself silently. Q-0062 split the predicate
+into `restoresBranch`, which changed which statuses roll back and not this.
+
+**The decision this ticket owes now has a precedent in the same package, which it did not when the
+body was written.** Q-0105 shipped exactly the three-valued discipline this ticket asks for, under
+*"The board reports push lag, and never a CI conclusion"* (2026-09-06): `git.ts`'s `WorkTreeProbe` is
+`'inside' | 'outside' | 'failed'` with *"a probe that could not answer is a different thing from
+either of git's own and is never collapsed into one of them"* written into its JSDoc, and
+`resolvesToCommit` returns `boolean | null` so *"a broken git is never reported as an absent ref"*.
+That is this ticket's question answered for one subsystem. Read it before choosing rather than
+re-deriving the shape.
+
+**Q-0109 is the same class, in that same new code**, and was opened 2026-09-07 from Q-0105's erratum
+E-1: `repositoryAt` collapses every failure of `rev-parse --resolve-git-dir` to `false`, so a
+malformed gitfile reads as proven absence. The two tickets share a decision and could sensibly share
+a requirements run.

@@ -10,6 +10,11 @@ created: 2026-08-27
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Opened at Q-0047's requirements gate, 2026-08-27, as the deferred half of one sentence in
 `docs/04-architecture.md:62`: *"Adapter behaviour that is CLI-version-specific (flag names, JSONL
 fields) lives in a per-adapter `capabilities.ts` **with a version probe**, so a CLI update breaks one
@@ -59,3 +64,32 @@ designing the report before there is anything to print it.
 by branching capability sets — that is a much larger ticket and needs its own case; and the CLI's
 rendering and exit codes beyond whatever Q-0010 establishes. Belongs to M2 in
 `docs/06-development-plan.md`.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: *Runs after Q-0010*. This ticket is unblocked.** Q-0010 closed 2026-09-06 and
+`quorum adapters --probe` exists — `packages/cli/src/adapters.ts`, dispatched by the frame since
+Q-0099, running through an emitted binary since Q-0098. The surface this ticket was waiting to
+report on is there, so the ordering argument is discharged rather than pending.
+
+**Void: the charter reference.** `harness/port-charter.md` §2 was deleted with the spike. The
+argument it carried survives as *"The port preserves behaviour; one exception is authorised and
+everything else stops the child"* (2026-08-25) and does not depend on the file.
+
+**Q-0047's extraction is where the body says it is**: `packages/core/src/adapters/claude-capabilities.ts`
+and `codex-capabilities.ts`, each carrying `versionArgs: ['--version']` as **inert data** and each
+saying so in its own header — `claude-capabilities.ts:7–9` and `codex-capabilities.ts:7–8` both name
+Q-0067 by id as the owner of the probe half. The plumbing is still nearly free.
+
+**The staleness evidence is stronger than the body records, and that is the point of re-measuring
+it.** `docs/03-adapter-contract.md:130` still pins its verification table to *"Claude Code 2.1.220
+and codex-cli 0.149.0"* and `:144` still describes the codex JSONL *"as observed on 0.149.0"*. The
+body recorded the machine at **2.1.231 / 0.149.1** on 2026-08-27. Measured again on **2026-09-07**:
+**2.1.236 / 0.150.1** — codex has crossed a minor version since. So the gap widened twice in eleven
+days, nothing noticed either time, and nothing would have said if something had broken. That is a
+second independent data point for the ticket's own argument, and equally for its caution about what
+a probe should do when it disagrees.
+
+**The three questions are unchanged**, and question 3 — *does anything actually branch on the
+version, or is the probe only ever reported?* — is now easier to answer, because there is a real
+command with a real `--json` report to answer it against.

@@ -10,6 +10,11 @@ created: 2026-08-28
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Opened 2026-08-28 from Q-0070's OQ-5, whose body the merged requirement wrote out **in full** rather
 than promising it, so the obligation could not expire with the ticket that raised it. This body is
 that text; do not re-derive its numbers from Q-0070's headroom measurements, which measure a
@@ -43,3 +48,36 @@ gone from the record the product calls its database.
 this one unless the archival-or-diagnostic answer moves them.
 
 Belongs to M2 in `docs/06-development-plan.md`.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the `persistArtifact` site.** The engine-side name is `persistArtifact`
+(`packages/core/src/engine/types.ts:168`, wired at `engine.ts:234`) and the write itself is
+`packages/core/src/run-history/writer.ts:369–381` — `fs.writeFileSync(target, String(text))`, still
+with no cap, and Q-0049 split it into a `writer.ts` that is the only file in `packages/core`
+permitted to write under `.quorum/`. The finding is unchanged: this is a bound Q-0070 removed, not a
+defect it introduced.
+
+**Re-measured 2026-09-07 against `.quorum/runs/` as it stands.** The body's instruction not to
+re-derive its numbers from Q-0070's headroom measurements still binds — this is a re-derivation of
+the ticket's *own* measurement, taken the same way, and every figure has moved:
+
+| | at Q-0070's gate | 2026-09-07 |
+| --- | --- | --- |
+| total `.quorum/runs` | 16 MB | **62 MB** across 107 run directories |
+| largest `output.txt` | 71,318 B | **171,480 B** (`Q-0050-3/steps/007-prove-red`) |
+| largest file of any kind | 242,181 B review `prompt.txt` | **337,730 B** review `prompt.txt` (`Q-0103-2/steps/006-review`) |
+| prompt-to-output ratio | 3.4× | **1.97×** |
+
+**The headline moved and the question did not.** *"Prompts are the largest thing in it"* is still
+true, and **the margin has nearly halved** because outputs grew faster than prompts — so the body's
+3.4× is the wrong number to reason from, and a treatment aimed only at prompts now leaves a 171 KB
+artifact untouched. The archival-or-diagnostic question is unchanged and is still what has to be
+decided before anything is written.
+
+**The shape to copy is where the body says**, with its site moved: `testReport` is
+`packages/core/src/engine/suite-output.ts:58` and keeps `maxBytes = 24000` — 12,000 of head and
+12,000 of tail with a middle omission marker.
+
+**The inherited non-goals stand**: `testReport`'s existing treatment and `ctx.lastIntegration`'s
+`slice(-3000)` stay out unless the archival-or-diagnostic answer moves them.

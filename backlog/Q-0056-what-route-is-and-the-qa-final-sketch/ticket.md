@@ -10,6 +10,11 @@ created: 2026-08-25
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Opened from Q-0041's erratum E-2 (`backlog/Q-0041-…/requirements/errata.md`), which decided that the
 zod flow schema carries `route` untyped and preserved — and could only decide that because there is
 no settled shape to type. This ticket settles the shape. **It blocks Q-0012**, which ships
@@ -61,3 +66,32 @@ reports it and moves on — Q-0044 (`core/lint`) ports `lint.js:77` as it stands
 lands against `packages/core` after Q-0044, or against the spike before the port reaches lint;
 sequencing is the first thing to settle at its requirements gate. Belongs to M2 in
 `docs/06-development-plan.md`.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Do not fix this inside a port child*.** Q-0044 shipped and ported `lint.js:77`
+verbatim, `spike/src` no longer exists and the charter was deleted with it. The sequencing question
+that paragraph left *"the first thing to settle at its requirements gate"* is settled by events:
+there is one tree, and it is `packages/core`.
+
+**The three incompatible descriptions, re-measured — all three survive.**
+
+1. **A property of a step**: `packages/core/src/lint/lint.ts:191` — `maybe(view.output)?.verdict &&
+   !view.on_fail && !view.route`. Lint still tests truthiness and never looks inside.
+2. **A step of its own**: `docs/02-sdlc-pipeline-spec.md:503` — the bare `- route:` list item, still
+   inside §5.6's `qa-final.yaml` sketch. §5.6 and §5.7 remain registered as sketches rather than
+   files by `packages/shared/src/docs.test.ts`, so nothing checks them against a shipped flow and
+   nothing will until Q-0012 writes one.
+3. **The engine implements neither**: `runStep` (`packages/core/src/engine/routing.ts:56`) has no
+   branch for a route.
+
+**Re-verified: no shipped flow uses it.** `grep -rn route harness/flows/ packages/cli/templates/harness/flows/`
+returns nothing. Note the second path — Q-0093 moved the shipped templates from `packages/templates`
+to `packages/cli/templates/`, so a search of the old location now proves nothing.
+
+**The counter contradiction survives with its line moved.** `lint.ts:185–187` rejects an
+`iterations.`-prefixed `on_fail` counter — *"counter must be unprefixed"* — and the sketch's route
+branches still spell `counter: iterations.qa`. The rule does not fire only because it is scoped to
+`step.on_fail` and a route is not one.
+
+**It still blocks Q-0012**, which is one of the two M2 tickets deliberately without a folder.

@@ -10,6 +10,11 @@ created: 2026-08-26
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Found by Q-0043's implement step while porting `spike/src/backlog.js`, reported and not fixed per
 *"The port preserves behaviour"* (`docs/DECISIONS.md`, 2026-08-25). The behaviour is now in
 `packages/core/src/backlog/backlog.ts` as well, carried forward deliberately and pinned by test.
@@ -47,3 +52,30 @@ from the read side. `spike/src` is frozen (`harness/port-charter.md` §3), so th
 regression net; the criterion to add is that a traversing or symlinked argument raises rather than
 resolves, and the existing "ticket not found" message for a genuine miss is unchanged. Belongs to
 M2 in `docs/06-development-plan.md`, and wants settling before M3.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the freeze clause in *Scope*.** `spike/src` no longer exists, so *"is frozen
+(`harness/port-charter.md` §3)"* names a deleted file. The rest of that paragraph is right and
+unchanged: this lands against `packages/core/src/backlog/backlog.ts`.
+
+**The defect, re-measured.** `dirOf` is `packages/core/src/backlog/backlog.ts:120–125` and its first
+branch is the same existence check on the joined path:
+
+    if (fs.existsSync(path.join(this.root, idOrFolder))) return path.join(this.root, idOrFolder);
+
+**The confinement precedent moved and is now in the same package**, which makes the fix cheaper than
+the body suggests. The `realPath` guard the body points at in `spike/bin/harness.js` is
+`packages/core/src/run-history/reader.ts:74`, used at `:213–214` — `realPath(runsRoot)` compared
+against `realPath(path.resolve(...))`, which is exactly the resolve-then-verify shape this ticket
+wants, already written, already tested, and one import away. Q-0049's AC-11 is the test that proves
+its `realpath` clause is load-bearing rather than shadowed by the lexical ones.
+
+**The write side named in Q-0043's non-goals is `Backlog.write` (`backlog.ts:137–139`)**, still
+writing to `path.join(ticket.dir, 'ticket.md')` with no check of its own. Q-0080 since added
+confinement-adjacent refusals to `create` (`:198–207`) — a taken id, an occupied folder, and an
+exclusive `mkdirSync` — so the module now contains a worked example of refusing rather than
+resolving, in the function next door.
+
+**The regression net is `backlog.test.ts` (46 tests) and `backlog.source.test.ts` (14)**, not the 37
+the body records. The criterion to add is unchanged.

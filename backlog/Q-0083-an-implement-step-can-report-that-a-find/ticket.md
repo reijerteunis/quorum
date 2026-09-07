@@ -10,6 +10,11 @@ created: 2026-08-30
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 chore.yaml's implement step has no verdict, so an implementer that refuses a review finding on charter grounds can only say so in prose nobody reads until the gate. Give it a verdict — proceed or blocked — where blocked routes to a gate instead of another revise round, and decide what the engine does with it. Named as the owed mechanism by the 2026-08-31 decision entry.
 
 Opened 2026-08-31, named as the owed mechanism by *"A refused finding is a gate, not another
@@ -75,3 +80,37 @@ either answer.
 - **Depends on:** nothing · **Blocks:** nothing
 - **Non-goals:** `route` and the qa-final sketch (Q-0056); the exhaustion gate's own semantics;
   `max_iterations` tuning, which the 2026-08-31 entry considered and rejected.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Land in one tree*.** There is one tree. `chore.yaml` exists at
+`harness/flows/chore.yaml` and `packages/cli/templates/harness/flows/chore.yaml` — Q-0093 moved the
+template copy out of `packages/templates` — and the engine change is `packages/core/src/engine/`
+alone. There is no freeze SHA and no charter §3 row.
+
+**Void: *Sequencing*. This ticket is unblocked.** Q-0053 and Q-0054 both closed on 2026-08-31, so the
+question of whether it runs before them to protect them cannot be asked. Nothing sequences it now.
+
+**The gap, re-measured.** `harness/flows/chore.yaml:6` is `implement` with `output.writes` and no
+verdict; `:27` is `review`, whose `:35` declares `verdict: approve|revise`. Unchanged, in both copies.
+
+**The evidence is no longer one run — the pattern has been priced three more times since, with
+numbers.** The body rests on Q-0052's chore run. What has happened since:
+
+- **Q-0091** — rounds 2 and 3 cost **$14.28** holding refusals that were right the first time, and
+  round 3 changed **no files at all**, byte-identical to round 2's commit. The plan records it as the
+  eleventh appearance and the first where the cost was written down.
+- **Q-0101** — rounds 3, 4 and 5 cost **$31.16** on two blockers no step on the route could clear,
+  round 3 again changing no files. Twelfth and thirteenth.
+- **Q-0103** — the implement step refused four majors **three times each**, correctly: none of the
+  four surfaces was in `developer-generalist`'s `paths:`. Fifteenth.
+- **Q-0102** — parked rather than launched, because no step in the requirements flow can produce a
+  failure rate. Sixteenth, and **the first recognised before the money was spent**.
+
+**So the measured waste attributable to this ticket's absence is at least $45.44 across two tickets**,
+in rounds that changed nothing, and the mechanism is named as owed by a decision entry. That is a
+stronger case than the body carries and it should be the requirement's opening measurement.
+
+**Everything else stands**: the three things it must decide, the two things it must not do — an agent
+may not write the erratum, and the verdict must not become a way to refuse work an agent merely finds
+hard — and the non-goals.

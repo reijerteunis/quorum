@@ -10,6 +10,11 @@ created: 2026-08-25
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Found by Q-0041's fifth implement round, as the premise of the fix that round shipped. Recorded as a
 stop-and-report under *"The port preserves behaviour; one exception is authorised and everything else
 stops the child"* (`docs/DECISIONS.md`, 2026-08-25), because closing it inside Q-0041 would have been
@@ -57,3 +62,32 @@ rather than twice. Until then `spike/src` is frozen (`harness/port-charter.md` �
 destroys an earlier run's, because `chore.yaml:34`'s `{iter}` is run-scoped while `review.yaml`'s
 `{round}` is ticket-scoped. It hit this pair of tickets' own parent — run 3 overwrote two of run 2's
 three reviews on Q-0041 — and it will hit the thirteen remaining children of Q-0009.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the *Sequencing* paragraph's freeze clause.** Q-0044 shipped, `spike/src` no longer exists
+and `harness/port-charter.md` was deleted with it, so *"until then `spike/src` is frozen"* names
+nothing. What survives of that paragraph is the part that was always the point: this is a behaviour
+change and so could not go **into** Q-0044. It lands against `packages/core` alone.
+
+**The three sites, re-measured.**
+
+| the body says | it is now |
+| --- | --- |
+| `spike/src/lint.js:59` | `packages/core/src/lint/lint.ts:171` — `steps.filter((step) => loose(step).id)`, the same shape, so an id-less step is still simply absent from the duplicate-id check and no other rule looks for one |
+| `spike/src/engine.js:211` | `packages/core/src/engine/steps.ts:200` — `ticketBranch(ticket.meta.id, stepId)`; fan-out task branches take the same shape at `composite.ts:193` |
+| `spike/src/engine.js:541` | `packages/core/src/engine/routing.ts:110` — `` `${flow.name}.${step.id}` `` |
+
+**The gate exception still holds and its line moved**: the id-less gate is `harness/flows/chore.yaml:59`.
+
+**A second in-tree pointer exists that did not when this was written.** The diff preflight's member
+loop, `packages/core/src/engine/diff.ts:465–467`, carries a comment naming this ticket by id —
+*"A step with no `id` — which lint does not yet refuse; see Q-0055 — names its branch
+`harness/<ticket>/undefined`, as the worktree step itself does"*. So the engine now records, in
+place, that it is compensating for the missing lint rule, and it renders the absent id two ways on
+purpose (`undefined` for the branch, `null` for the producer a diagnostic quotes). Both renderings
+lose their reason once lint refuses the step, which is worth deciding rather than discovering.
+
+**Void: the closing neighbour paragraph.** Q-0057 shipped 2026-08-30, and Q-0086, Q-0087 and Q-0088
+then generalised the rule — a write path carries `{run}`, and one a bounded loop can re-enter also
+carries `{iter}`. The neighbour is closed; it is left above as the record of where it was found.

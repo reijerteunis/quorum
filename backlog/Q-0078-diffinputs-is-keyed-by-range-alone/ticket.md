@@ -10,6 +10,11 @@ created: 2026-08-30
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Found by Q-0038's round-4 reviewer — the first review round in that run to examine the code rather
 than the implement report — and ruled out of scope there by `requirements/errata.md` E-3(b), which
 this body carries forward so the obligation does not expire. Belongs to M2 in
@@ -60,3 +65,38 @@ by reading it"* (2026-08-29).
 a two-tree change (the Q-0066/Q-0068 shape). Doing it before Q-0051 keeps it to one tree — the same
 argument that put Q-0038 ahead of Q-0051 — but unlike Q-0038 it does not block the port, because
 Q-0051 preserves whatever behaviour is here.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Sequencing*.** Q-0051 shipped on 2026-08-30 and the spike is gone, so this is
+a one-tree change — but for the opposite reason to the one the body gives. It is not *"before
+Q-0051, keeping it to one tree"*; it is after Q-0051, in the ported subsystem, and there is only one
+tree left to change.
+
+**The defect, re-measured — it survives the port with authority lines at both halves.**
+
+| half | site |
+| --- | --- |
+| the preflight that records a deferral and leaves the cache alone | `packages/core/src/engine/diff.ts:441` |
+| the read that prefers the cache unconditionally | `packages/core/src/engine/prompt.ts:157` |
+
+Both carry a `Why: preserved defect, see Q-0038 E-3(b) / Q-0078` line, so the fix removes two
+markers rather than one.
+
+**A registration the body could not know about, and the fix must move it.**
+`packages/core/src/engine/q0050.source.test.ts:227` lists `diff.ts`'s markers as
+`['behaviour-from-spike', 'deliberate addition', 'behaviour-from-spike', 'preserved behaviour/Q-0038',
+'preserved defect/Q-0078']` and `:252` names this ticket in prose — *"which it registers rather than
+disguises as newly correct"*. That register pins cross-file arithmetic, so removing the marker
+without moving the count turns the suite red for the right reason and should be expected rather than
+discovered.
+
+**Unreachability re-verified 2026-09-07, and it still holds.** `harness/flows/chore.yaml:32` is the
+only diff site in that flow and follows its producer; `review.yaml:12` and `:19` are parallel members
+of one group with no producer between them. The second copy is
+`packages/cli/templates/harness/flows/`, moved there from `packages/templates` by Q-0093 — a search
+of the old path now proves nothing, which is worth knowing before repeating the body's check.
+
+**Everything else stands**: the three candidate shapes, Q-0038's AC-10 identical-bytes guarantee that
+rules out the naive invalidation, and the discriminating test that must be written and shown red
+before a shape is chosen.

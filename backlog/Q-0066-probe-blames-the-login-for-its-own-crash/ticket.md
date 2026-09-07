@@ -10,6 +10,11 @@ created: 2026-08-26
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 Raised by Q-0046's merged requirement as OQ-6 and by its implement report, 2026-08-26, both of which
 correctly refused to fix it in passing: the port preserves behaviour, and a quiet fix in `core` while
 `spike` keeps the old behaviour leaves **both suites green over a product that disagrees with
@@ -71,3 +76,34 @@ spike route is open the same way it was for Q-0063 and Q-0065.
 E-1); the `adapters --probe` CLI command's presence loop, `--json` report and exit codes, which stay
 in the CLI until Q-0010; `withRetry`'s `usage: null`, which is correct and is Q-0034's deliberate
 fix. Belongs to M2 in `docs/06-development-plan.md`.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the whole of *Both trees, and the order matters*.** There is one tree. The fix lands in
+`packages/core/src/adapters/adapters.ts` alone, and *"the port loses its only independent witness"*
+no longer names anything.
+
+**The defect, re-measured.** It is `adapters.ts:488`, not `:483`, and the port changed how it is
+spelled in a way a reader should know about:
+
+    cost_usd: res.usage!.cost_usd ?? null, tokens: (res.usage!.input_tokens ?? 0) + (res.usage!.output_tokens ?? 0)
+
+**The dereference is now a TypeScript non-null assertion.** `res.usage` is typed nullable and `!` is
+what lets it compile under `strict` — so the defect is asserted rather than overlooked, and anyone
+grepping for `res.usage.` finds nothing. Three reads, all three assertions, all on one line.
+
+**The pin is `packages/core/src/adapters/probe.test.ts:145–156`** (Q-0046 AC-11 defect 1), which
+asserts the exact string `"Cannot read properties of null (reading 'cost_usd')"`. It goes red on
+purpose under any of the three shapes and is updated rather than deleted, as the body says.
+**Its comment must move with it**: it reads *"Preserved on purpose: the spike still does it, and a
+quiet fix here would leave both suites green over a product that disagrees with itself"*, and both
+halves of that sentence are now false.
+
+**Nothing else changed.** `withRetry` still answers `usage: null` when no attempt reported a measure,
+which is Q-0034's deliberate fix and still correct; no shipped adapter reaches the defect; a
+contributor's adapter still does. The three shapes and the open question — what `tokens` means when
+nothing was measured — are untouched.
+
+**One-line neighbour, since the body lists `check()` as a non-goal:** the BYOS refusal in the same
+two adapter files is **Q-0068**, which is now also a one-tree change. They are separate decisions and
+could sensibly be one run.

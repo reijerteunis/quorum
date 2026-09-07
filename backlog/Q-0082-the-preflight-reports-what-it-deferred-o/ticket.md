@@ -10,6 +10,11 @@ created: 2026-08-30
 iterations: {}
 history: []
 ---
+> **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
+> every path, line number and landing rule below that names it is **void** — read *"After the
+> cutover"* at the end of this body before acting on anything here. The defect itself is
+> unchanged and was re-verified against the tree on 2026-09-07.
+
 preflightDiffs defers a range whose endpoint an earlier step of the same flow creates, records it in deferredDiffs, and says nothing. Decide whether it emits one info per deferred range naming the range and its producing step, or whether the skipped-subject rule is amended to say a deferral is not a skip. The decision entry is the deliverable; under the second reading no code changes.
 
 Opened 2026-08-31 as GO-1 of Q-0052's merged requirement, whose body is transcribed below rather
@@ -71,3 +76,35 @@ wrong about it three times.
 - **Depends on:** nothing · **Blocks:** nothing
 - **Non-goals:** the rest of the preflight; `materialiseDiff`; Q-0078's cache keying, which is a
   different defect in the same subsystem; anything about `--dry` beyond this one string.
+
+## After the cutover — corrected 2026-09-07
+
+**Void: the freeze clauses in *If an event is added*.** There is one tree, no recorded freeze SHA
+and no charter §3 table. An event lands in `packages/core/src/engine/diff.ts` alone. **The substance
+of that section stands and is the useful half**: the text must not claim the range failed — a
+deferral is an ordering fact, not an error — and the shape to copy is the empty-range diagnostic's
+discipline of quoting what is true and claiming nothing about how the code got there.
+
+**The subject, re-measured.** `preflightDiffs` is `packages/core/src/engine/diff.ts`, it records a
+deferral in `deferredDiffs` (declared at `:68–69`, mirroring producer `ref` and `step` at `:48–51`)
+and emits nothing. The only text describing a deferral still surfaces at failure time, inside
+`emptyRangeFailure` (`:357`) and the diagnosis at `:300–305` — that is, **only when something has
+already gone wrong**, which is not a report that the preflight declined to examine something.
+
+**The caution about re-deriving the placeholder's reachability stands, with its reason updated.** The
+body omits line numbers because `spike/src/engine.js` shifted twice in three days; the file is gone,
+and the advice survives for the better reason — re-read `runAgentStep` (`packages/core/src/engine/steps.ts`)
+in order and find the `dry` short-circuit's position relative to `allocateOccurrence` and
+`persistArtifact` yourself. Q-0052's R-6 is still the only account written from the code.
+
+**The nearest precedent since the body was written, and it is not a ruling on this ticket.**
+*"The board reports push lag, and never a CI conclusion"* (2026-09-06) settled what silence may mean
+for a derived fact: **silence means the probe answered and there is nothing to say**, and anything
+unanswerable that is worth saying prints. That is adjacent rather than governing — a deferral is not
+an answer, it is an examination postponed — but it is the entry a requirements run should read
+first, because it is this repository's most recent reasoning about when a check may say nothing at
+all. Q-0109 turns on the same sentence from the other side.
+
+**The rule this is measured against is unchanged**: *"Q-0035 accepted: a check that skips its subject
+must not report success"* (2026-08-25), and `docs/GLOSSARY.md`'s **Preflight** entry, which states it
+as reporting a declined examination as *skipped*.
