@@ -455,8 +455,14 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
     const found = new Map(subjects());
     expect(literals(found.get('init.ts') ?? '', 'init.ts'))
       .toContain('  next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001');
+    // Q-0111 split that sentence across two files, so the anchor is both halves — which makes this
+    // a stronger subject check than the one it replaces: the scan is now shown to reach `core`'s
+    // condition AND this package's remedy, and losing either would leave the clause above vacuous
+    // over the half that went missing.
     expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
-      .toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+      .toContain('no harness/harness.yaml found');
+    expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
+      .toContain('run \\`quorum init\\` in your repo');
   });
 
   test('the subject is every production module and the named core files, and one exclusion', () => {

@@ -16,7 +16,7 @@ import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { ERROR, SUCCESS } from './exit.js';
-import { die, dieOnUnexpected, failSoftly } from './fail.js';
+import { die, dieNoProject, dieOnUnexpected, failSoftly } from './fail.js';
 
 /** What the replaced `process.exit` throws, so control flow matches `die`'s `never` return. */
 class Exited extends Error {
@@ -286,5 +286,43 @@ describe('AC-5 — demonstrated, in two spawned children', () => {
     // exactly. `Why: see Q-0102`, where the machine-dependence was measured on CI 33968439312.
     expect(hard.bytes, 'the hard child produced nothing, so the pair demonstrates nothing')
       .toBeGreaterThan(0);
+  });
+});
+
+describe('Q-0111 — the remedy is the surface\'s, and it exists in one place', () => {
+  /**
+   * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
+   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
+   */
+  test('the composed sentence is what a stranger saw before the split, byte for byte', () => {
+    // The criterion the entry named: the ruling is about WHERE the remedy is composed, not about
+    // what it says, so the rendered line must not move. `core`'s condition plus this module's
+    // remedy is the sentence Q-0100 shipped.
+    const { stderr, code } = observe(() => dieNoProject('no harness/harness.yaml found'));
+    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
+    expect(code).toBe(ERROR);
+  });
+
+  test('it composes from whatever condition it is given, so it renders core\'s message and not a copy', () => {
+    // A `dieNoProject` that ignored its argument and printed a whole hard-coded sentence would pass
+    // the assertion above and be a second copy of `core`'s condition. This is what tells them apart.
+    expect(observe(() => dieNoProject('something else entirely')).stderr)
+      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
+  });
+
+  test('the imperative appears in exactly one production module, and it is this one', () => {
+    // The whole point of the ruling, and the regression it forbids: six commands rendering the same
+    // advice, or `core` composing it again. Derived from the tree rather than from a list — a
+    // seventh command that composed its own would fail here without anyone remembering to add it.
+    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
+    // inside a template literal, where the backticks are escaped: a search for the sentence as it
+    // READS matches nothing, which this guard found by going red on its own subject.
+    const src = path.join(import.meta.dirname);
+    const composing = fs.readdirSync(src, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+      .map((e) => [path.relative(src, path.join(e.parentPath, e.name)), fs.readFileSync(path.join(e.parentPath, e.name), 'utf8')] as const)
+      .filter(([, text]) => text.includes('in your repo'))
+      .map(([name]) => name);
+    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
   });
 });

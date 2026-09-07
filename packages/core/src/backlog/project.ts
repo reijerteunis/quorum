@@ -32,15 +32,13 @@ const DEFAULT_BACKLOG_PATH = 'backlog';
  * `packages/cli`'s `bin` installs. A blanket replacement of the word yields
  * `no quorum/quorum.yaml found`, which is wrong twice and passes any check that only looks for it.
  *
- * Why: the imperative stays here for now, and moving it is a separate ticket rather than a deferral
- * — the six CLI catch sites all render `error.message` unaltered, so splitting the sentence means
- * six sites each composing an instruction, which is the drift this ticket closed. What that ticket
- * owes first is a decision entry against `04-architecture.md`'s statement of what `core` is
- * responsible for, because M3's server will surface this same error over HTTP, where an imperative
- * naming a shell is advice to somebody who may not have one. Nothing is broken while it waits.
+ * The message is the condition alone: what is missing, never what to type about it. A surface
+ * discriminates on the class and composes its own next step.
+ *
+ * Why: see *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
  */
 export class ProjectNotFoundError extends Error {
-  constructor(message = 'no harness/harness.yaml found — run `quorum init` in your repo') {
+  constructor(message = 'no harness/harness.yaml found') {
     super(message);
     this.name = 'ProjectNotFoundError';
   }

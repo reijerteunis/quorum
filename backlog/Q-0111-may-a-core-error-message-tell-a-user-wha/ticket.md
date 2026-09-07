@@ -1,7 +1,7 @@
 ---
 id: Q-0111
 title: May a core error message tell a user what to type
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0111/integration

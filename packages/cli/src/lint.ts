@@ -23,7 +23,7 @@ import { lintDirectory, loadProject, ProjectNotFoundError, type FlowFileReport }
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
-import { die, failSoftly } from './fail.js';
+import { dieNoProject, failSoftly } from './fail.js';
 import type { CommandHandler } from './main.js';
 
 /**
@@ -53,7 +53,7 @@ function flowsDir(project: FlagValue | readonly FlagValue[] | undefined): string
     return path.join(loadProject(project as string | undefined).harnessDir, 'flows');
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
-    return die(error.message);
+    return dieNoProject(error.message);
   }
 }
 

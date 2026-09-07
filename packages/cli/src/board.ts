@@ -28,7 +28,7 @@ import { STAGES, type ContainmentResult, type Flow, type PushLagResult, type Tic
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
-import { die } from './fail.js';
+import { dieNoProject } from './fail.js';
 import type { CommandHandler } from './main.js';
 
 /**
@@ -46,7 +46,7 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
     return loadProject(project as string | undefined);
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
-    return die(error.message);
+    return dieNoProject(error.message);
   }
 }
 

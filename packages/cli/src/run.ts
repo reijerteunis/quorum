@@ -32,7 +32,7 @@ import type { Event, RunTerminalEvent } from '@quorum/shared';
 
 import type { FlagValue } from './argv.js';
 import { EXIT_CODE_FOR_STATUS, ERROR, type ExitCode } from './exit.js';
-import { die } from './fail.js';
+import { die, dieNoProject } from './fail.js';
 import { createGateReader, type GateReader } from './gate.js';
 import { renderFlowReport } from './lint.js';
 import type { CommandHandler } from './main.js';
@@ -230,7 +230,7 @@ function openProject(project: FlagValue | readonly FlagValue[] | undefined): Ret
     return loadProject(project as string | undefined);
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
-    return die(error.message);
+    return dieNoProject(error.message);
   }
 }
 

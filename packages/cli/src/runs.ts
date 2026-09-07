@@ -51,7 +51,7 @@ import { MANIFEST_FILE, RUN_HISTORY_ROOT, parseTicketId } from '@quorum/shared';
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
-import { die, failSoftly } from './fail.js';
+import { dieNoProject, failSoftly } from './fail.js';
 import type { CommandHandler } from './main.js';
 
 /**
@@ -72,7 +72,7 @@ function repoDirOf(project: FlagValue | readonly FlagValue[] | undefined): strin
     return loadProject(project as string | undefined).repoDir;
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
-    return die(error.message);
+    return dieNoProject(error.message);
   }
 }
 

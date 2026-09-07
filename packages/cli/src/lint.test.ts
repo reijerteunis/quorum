@@ -252,12 +252,19 @@ describe('AC-4 — the project-not-found sentence survives the port unchanged', 
     });
   });
 
-  test('and the sentence is core\'s, not a second copy of it in this package', async () => {
-    // A copy here would drift from `core`'s the day the OQ-2 successor renames the binary in it.
-    // Read out of the error class rather than transcribed, and compared with what was printed.
+  test('and the condition is core\'s, not a second copy of it in this package', async () => {
+    // A copy here would drift from `core`'s the day anything renames the binary in it. Read out of
+    // the error class rather than transcribed, and compared with what was printed.
+    //
+    // Q-0111 split the sentence — `core` states the condition, this surface appends the remedy — so
+    // what is pinned is that the printed line BEGINS with the class's own message and that the rest
+    // is exactly the surface's addition. The anti-transcription property is unchanged and now says
+    // something it could not before: neither half may be a copy of the other's.
     await inAnOrphanDirectory(async () => {
       const { stderr } = await invoke(['lint']);
-      expect(plain(stderr).trim()).toBe(`✗ ${new ProjectNotFoundError().message}`);
+      const condition = new ProjectNotFoundError().message;
+      expect(plain(stderr).trim()).toBe(`✗ ${condition} — run \`quorum init\` in your repo`);
+      expect(condition, 'core composed a remedy again').not.toContain('in your repo');
     });
   });
 

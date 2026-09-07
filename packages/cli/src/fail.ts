@@ -24,6 +24,18 @@ export function die(message: string): never {
 }
 
 /**
+ * Fail because no project was found, appending the remedy this surface offers for it.
+ *
+ * The one place that imperative exists; six commands call it and none composes anything. It takes
+ * the condition as a string rather than the error, so this frame module names no `core` symbol.
+ *
+ * Why: see *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
+ */
+export function dieNoProject(condition: string): never {
+  return die(`${condition} — run \`quorum init\` in your repo`);
+}
+
+/**
  * Record that the command failed without stopping it, so pending output still reaches the terminal.
  *
  * The counterpart to {@link die}, and never a synonym for it.

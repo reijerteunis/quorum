@@ -121,7 +121,15 @@ describe('AC-10 — the lift does not exit the run or write to the terminal', ()
     // carries both senses of the word: `harness/harness.yaml` is the **folder**, which
     // `product-boundaries.md` requires be kept, and `quorum init` is the **command**.
     const text = source(PROJECT_SOURCE);
-    expect(text).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+    expect(text).toContain('no harness/harness.yaml found');
+    // Q-0111 moved the remedy out of `core`, so the DEFAULT MESSAGE may no longer tell anyone what
+    // to type. Pinned on the constructor's default rather than on the file's prose, because the
+    // prose above it has to quote the imperative to explain where it went — a scan of the whole
+    // source would go red on its own explanation. See "A `core` error names the condition; the
+    // remedy belongs to the surface" (2026-09-07).
+    const fallback = /constructor\(message = '([^']*)'\)/.exec(text);
+    expect(fallback, 'ProjectNotFoundError no longer has a default message to check').not.toBeNull();
+    expect(fallback?.[1], 'the default message composes a remedy again').toBe('no harness/harness.yaml found');
     // The half a blanket substitution would have destroyed, asserted on its own so it can fail on
     // its own: `s/harness/quorum/g` yields `no quorum/quorum.yaml found`, which is wrong twice.
     expect(text, 'the folder was renamed with the command').toContain('harness/harness.yaml');

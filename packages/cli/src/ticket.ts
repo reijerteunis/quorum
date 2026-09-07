@@ -36,7 +36,7 @@ import { loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
-import { die } from './fail.js';
+import { die, dieNoProject } from './fail.js';
 import type { CommandHandler } from './main.js';
 
 /**
@@ -60,7 +60,7 @@ function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backl
     return loadProject(project as string | undefined).backlog;
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
-    return die(error.message);
+    return dieNoProject(error.message);
   }
 }
 

@@ -1,0 +1,1936 @@
+OpenAI Codex v0.150.1
+--------
+[1mworkdir:[0m /Users/ruudvanengelenhoven/Development/quorum
+[1mmodel:[0m gpt-5.6-sol
+[1mprovider:[0m openai
+[1mapproval:[0m never
+[1msandbox:[0m read-only
+[1mreasoning effort:[0m none
+[1mreasoning summaries:[0m none
+[1msession id:[0m 01a07da6-788f-7840-837f-1db8c24fe1bc
+--------
+[36muser[0m
+---
+---
+You are a senior code reviewer. Read the supplied requirements, solution, and code diff,
+then report concrete findings without editing or rewriting any code. This is a read-only
+review: do not change repository files.
+
+Classify every finding as exactly `blocker`, `major`, or `nit`. Cite every finding at the
+relevant `file:line`, explain the problem and its impact, and keep the recommendation
+actionable. If there are no findings, say so clearly.
+
+## What you are reviewing
+
+Q-0111's implementation of a decision entry that landed today,
+`docs/decisions/082-a-core-error-names-the-condition.md`. That entry ruled:
+
+> an error raised by `packages/core` states **what is wrong** and not **what to type**. The remedy is
+> composed by the surface that renders it, once at that surface's boundary rather than once per
+> command. `ProjectNotFoundError`'s message becomes `no harness/harness.yaml found`, and
+> `packages/cli` maps the error's identity to ``run `quorum init` in your repo`` so the terminal
+> output a stranger sees is unchanged.
+
+The requirement is that entry. There is no merged.md — the ticket was implemented by hand.
+
+## What was done
+
+- `packages/core/src/backlog/project.ts` — the default message is now the condition alone.
+- `packages/cli/src/fail.ts` — a new `dieNoProject(condition)` composes the remedy. It takes the
+  MESSAGE rather than the error, so this frame module names no `core` symbol and the `instanceof`
+  narrowing stays in each command's catch, where it already was.
+- The six command catch sites call it instead of `die(error.message)`; four lost a now-unused `die`
+  import.
+- Guards moved rather than deleted: `backlog.source.test.ts` now pins the constructor's default
+  rather than scanning the file (the prose has to quote the imperative to explain where it went);
+  `lint.test.ts` pins that the printed line begins with the class's own message and that `core` does
+  not compose a remedy; `binary-name.test.ts`'s anti-vacuity anchor now names both halves.
+- New in `fail.test.ts`: the composed sentence byte for byte, a test that `dieNoProject` composes
+  from its argument rather than hard-coding a second copy of the condition, and a tree-derived guard
+  that the imperative appears in exactly one production module.
+
+Verified: the built binary prints `✗ no harness/harness.yaml found — run `quorum init` in your repo`
+and exits 1, byte-identical to before. 7/7 tasks forced, 0 cached, 582 cli tests.
+
+## What to look for
+
+- Is the split actually where the entry said, and is `dieNoProject` in the right module? Consider
+  `frame.source.test.ts`'s rule that a frame module may name none of `core`'s domain helpers.
+- Do the moved guards still forbid what they forbade? A guard re-aimed during a change is the thing
+  this repository most often gets wrong.
+- Is the new one-place guard falsifiable, and does it have a subject?
+- Anything now unreachable, unused, or asserting something weaker than it did.
+
+Findings only. Prefix each exactly `blocker`, `major` or `nit`, always with a `file:line`.
+
+```diff
+diff --git a/packages/cli/src/adapters.ts b/packages/cli/src/adapters.ts
+index 5e5ae5c..a01d4d8 100644
+--- a/packages/cli/src/adapters.ts
++++ b/packages/cli/src/adapters.ts
+@@ -32,7 +32,7 @@ import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@qu
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -50,7 +50,7 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/binary-name.test.ts b/packages/cli/src/binary-name.test.ts
+index 146afbd..f7bc0f5 100644
+--- a/packages/cli/src/binary-name.test.ts
++++ b/packages/cli/src/binary-name.test.ts
+@@ -455,8 +455,14 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
+     const found = new Map(subjects());
+     expect(literals(found.get('init.ts') ?? '', 'init.ts'))
+       .toContain('  next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001');
++    // Q-0111 split that sentence across two files, so the anchor is both halves — which makes this
++    // a stronger subject check than the one it replaces: the scan is now shown to reach `core`'s
++    // condition AND this package's remedy, and losing either would leave the clause above vacuous
++    // over the half that went missing.
+     expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
+-      .toContain('no harness/harness.yaml found — run `quorum init` in your repo');
++      .toContain('no harness/harness.yaml found');
++    expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
++      .toContain('run \\`quorum init\\` in your repo');
+   });
+ 
+   test('the subject is every production module and the named core files, and one exclusion', () => {
+diff --git a/packages/cli/src/board.ts b/packages/cli/src/board.ts
+index 960497c..fe0a2c2 100644
+--- a/packages/cli/src/board.ts
++++ b/packages/cli/src/board.ts
+@@ -28,7 +28,7 @@ import { STAGES, type ContainmentResult, type Flow, type PushLagResult, type Tic
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -46,7 +46,7 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/fail.test.ts b/packages/cli/src/fail.test.ts
+index e30b7c3..d349ecb 100644
+--- a/packages/cli/src/fail.test.ts
++++ b/packages/cli/src/fail.test.ts
+@@ -16,7 +16,7 @@ import { Writable } from 'node:stream';
+ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+ import { ERROR, SUCCESS } from './exit.js';
+-import { die, dieOnUnexpected, failSoftly } from './fail.js';
++import { die, dieNoProject, dieOnUnexpected, failSoftly } from './fail.js';
+ 
+ /** What the replaced `process.exit` throws, so control flow matches `die`'s `never` return. */
+ class Exited extends Error {
+@@ -288,3 +288,41 @@ describe('AC-5 — demonstrated, in two spawned children', () => {
+       .toBeGreaterThan(0);
+   });
+ });
++
++describe('Q-0111 — the remedy is the surface\'s, and it exists in one place', () => {
++  /**
++   * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
++   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
++   */
++  test('the composed sentence is what a stranger saw before the split, byte for byte', () => {
++    // The criterion the entry named: the ruling is about WHERE the remedy is composed, not about
++    // what it says, so the rendered line must not move. `core`'s condition plus this module's
++    // remedy is the sentence Q-0100 shipped.
++    const { stderr, code } = observe(() => dieNoProject('no harness/harness.yaml found'));
++    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
++    expect(code).toBe(ERROR);
++  });
++
++  test('it composes from whatever condition it is given, so it renders core\'s message and not a copy', () => {
++    // A `dieNoProject` that ignored its argument and printed a whole hard-coded sentence would pass
++    // the assertion above and be a second copy of `core`'s condition. This is what tells them apart.
++    expect(observe(() => dieNoProject('something else entirely')).stderr)
++      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
++  });
++
++  test('the imperative appears in exactly one production module, and it is this one', () => {
++    // The whole point of the ruling, and the regression it forbids: six commands rendering the same
++    // advice, or `core` composing it again. Derived from the tree rather than from a list — a
++    // seventh command that composed its own would fail here without anyone remembering to add it.
++    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
++    // inside a template literal, where the backticks are escaped: a search for the sentence as it
++    // READS matches nothing, which this guard found by going red on its own subject.
++    const src = path.join(import.meta.dirname);
++    const composing = fs.readdirSync(src, { recursive: true, withFileTypes: true })
++      .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
++      .map((e) => [path.relative(src, path.join(e.parentPath, e.name)), fs.readFileSync(path.join(e.parentPath, e.name), 'utf8')] as const)
++      .filter(([, text]) => text.includes('in your repo'))
++      .map(([name]) => name);
++    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
++  });
++});
+diff --git a/packages/cli/src/fail.ts b/packages/cli/src/fail.ts
+index f84ae7e..ea37d48 100644
+--- a/packages/cli/src/fail.ts
++++ b/packages/cli/src/fail.ts
+@@ -23,6 +23,21 @@ export function die(message: string): never {
+   process.exit(ERROR);
+ }
+ 
++/**
++ * Fail because no project was found, with the remedy this surface offers for it.
++ *
++ * **The one place the imperative exists**, which is what *"A `core` error names the condition; the
++ * remedy belongs to the surface"* (2026-09-07) rules: `core` raises the condition and cannot know
++ * whether a terminal or M3's server is rendering it, so the sentence a shell user needs is composed
++ * here and nowhere else. Six commands call this; none of them composes anything.
++ *
++ * It takes the **message** rather than the error, so this frame module names no `core` symbol and
++ * the `instanceof` narrowing stays where it already was, in each command's own catch.
++ */
++export function dieNoProject(condition: string): never {
++  return die(`${condition} — run \`quorum init\` in your repo`);
++}
++
+ /**
+  * Record that the command failed without stopping it, so pending output still reaches the terminal.
+  *
+diff --git a/packages/cli/src/lint.test.ts b/packages/cli/src/lint.test.ts
+index 9404c6c..e15f3ce 100644
+--- a/packages/cli/src/lint.test.ts
++++ b/packages/cli/src/lint.test.ts
+@@ -252,12 +252,19 @@ describe('AC-4 — the project-not-found sentence survives the port unchanged',
+     });
+   });
+ 
+-  test('and the sentence is core\'s, not a second copy of it in this package', async () => {
+-    // A copy here would drift from `core`'s the day the OQ-2 successor renames the binary in it.
+-    // Read out of the error class rather than transcribed, and compared with what was printed.
++  test('and the condition is core\'s, not a second copy of it in this package', async () => {
++    // A copy here would drift from `core`'s the day anything renames the binary in it. Read out of
++    // the error class rather than transcribed, and compared with what was printed.
++    //
++    // Q-0111 split the sentence — `core` states the condition, this surface appends the remedy — so
++    // what is pinned is that the printed line BEGINS with the class's own message and that the rest
++    // is exactly the surface's addition. The anti-transcription property is unchanged and now says
++    // something it could not before: neither half may be a copy of the other's.
+     await inAnOrphanDirectory(async () => {
+       const { stderr } = await invoke(['lint']);
+-      expect(plain(stderr).trim()).toBe(`✗ ${new ProjectNotFoundError().message}`);
++      const condition = new ProjectNotFoundError().message;
++      expect(plain(stderr).trim()).toBe(`✗ ${condition} — run \`quorum init\` in your repo`);
++      expect(condition, 'core composed a remedy again').not.toContain('in your repo');
+     });
+   });
+ 
+diff --git a/packages/cli/src/lint.ts b/packages/cli/src/lint.ts
+index 821894a..6b51d59 100644
+--- a/packages/cli/src/lint.ts
++++ b/packages/cli/src/lint.ts
+@@ -23,7 +23,7 @@ import { lintDirectory, loadProject, ProjectNotFoundError, type FlowFileReport }
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die, failSoftly } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -53,7 +53,7 @@ function flowsDir(project: FlagValue | readonly FlagValue[] | undefined): string
+     return path.join(loadProject(project as string | undefined).harnessDir, 'flows');
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/run.ts b/packages/cli/src/run.ts
+index 22c39ad..f9580ca 100644
+--- a/packages/cli/src/run.ts
++++ b/packages/cli/src/run.ts
+@@ -32,7 +32,7 @@ import type { Event, RunTerminalEvent } from '@quorum/shared';
+ 
+ import type { FlagValue } from './argv.js';
+ import { EXIT_CODE_FOR_STATUS, ERROR, type ExitCode } from './exit.js';
+-import { die } from './fail.js';
++import { die, dieNoProject } from './fail.js';
+ import { createGateReader, type GateReader } from './gate.js';
+ import { renderFlowReport } from './lint.js';
+ import type { CommandHandler } from './main.js';
+@@ -230,7 +230,7 @@ function openProject(project: FlagValue | readonly FlagValue[] | undefined): Ret
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/runs.ts b/packages/cli/src/runs.ts
+index 101cc54..ff82281 100644
+--- a/packages/cli/src/runs.ts
++++ b/packages/cli/src/runs.ts
+@@ -51,7 +51,7 @@ import { MANIFEST_FILE, RUN_HISTORY_ROOT, parseTicketId } from '@quorum/shared';
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die, failSoftly } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -72,7 +72,7 @@ function repoDirOf(project: FlagValue | readonly FlagValue[] | undefined): strin
+     return loadProject(project as string | undefined).repoDir;
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/ticket.ts b/packages/cli/src/ticket.ts
+index 0b95ca2..fbbdc2b 100644
+--- a/packages/cli/src/ticket.ts
++++ b/packages/cli/src/ticket.ts
+@@ -36,7 +36,7 @@ import { loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { die, dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -60,7 +60,7 @@ function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backl
+     return loadProject(project as string | undefined).backlog;
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/core/src/backlog/backlog.source.test.ts b/packages/core/src/backlog/backlog.source.test.ts
+index 82d888a..24f7eb5 100644
+--- a/packages/core/src/backlog/backlog.source.test.ts
++++ b/packages/core/src/backlog/backlog.source.test.ts
+@@ -121,7 +121,15 @@ describe('AC-10 — the lift does not exit the run or write to the terminal', ()
+     // carries both senses of the word: `harness/harness.yaml` is the **folder**, which
+     // `product-boundaries.md` requires be kept, and `quorum init` is the **command**.
+     const text = source(PROJECT_SOURCE);
+-    expect(text).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
++    expect(text).toContain('no harness/harness.yaml found');
++    // Q-0111 moved the remedy out of `core`, so the DEFAULT MESSAGE may no longer tell anyone what
++    // to type. Pinned on the constructor's default rather than on the file's prose, because the
++    // prose above it has to quote the imperative to explain where it went — a scan of the whole
++    // source would go red on its own explanation. See "A `core` error names the condition; the
++    // remedy belongs to the surface" (2026-09-07).
++    const fallback = /constructor\(message = '([^']*)'\)/.exec(text);
++    expect(fallback, 'ProjectNotFoundError no longer has a default message to check').not.toBeNull();
++    expect(fallback?.[1], 'the default message composes a remedy again').toBe('no harness/harness.yaml found');
+     // The half a blanket substitution would have destroyed, asserted on its own so it can fail on
+     // its own: `s/harness/quorum/g` yields `no quorum/quorum.yaml found`, which is wrong twice.
+     expect(text, 'the folder was renamed with the command').toContain('harness/harness.yaml');
+diff --git a/packages/core/src/backlog/project.test.ts b/packages/core/src/backlog/project.test.ts
+index a15218b..549edde 100644
+--- a/packages/core/src/backlog/project.test.ts
++++ b/packages/core/src/backlog/project.test.ts
+@@ -120,7 +120,11 @@ describe('AC-10 — loadProject returns a value or throws, and never ends the ru
+         expect.unreachable('loadProject should have refused');
+       } catch (error) {
+         expect((error as Error).name).toBe('ProjectNotFoundError');
+-        expect((error as Error).message).toBe('no harness/harness.yaml found — run `quorum init` in your repo');
++        // Q-0111: the condition and nothing else. The remedy is the surface's, composed once in
++        // `packages/cli`'s `dieNoProject` — see "A `core` error names the condition; the remedy
++        // belongs to the surface" (2026-09-07). Asserted as an equality rather than a `toContain`
++        // so a remedy creeping back into `core` fails here rather than passing under a substring.
++        expect((error as Error).message).toBe('no harness/harness.yaml found');
+       }
+     });
+   });
+diff --git a/packages/core/src/backlog/project.ts b/packages/core/src/backlog/project.ts
+index b940589..f9d1d7d 100644
+--- a/packages/core/src/backlog/project.ts
++++ b/packages/core/src/backlog/project.ts
+@@ -32,15 +32,19 @@ const DEFAULT_BACKLOG_PATH = 'backlog';
+  * `packages/cli`'s `bin` installs. A blanket replacement of the word yields
+  * `no quorum/quorum.yaml found`, which is wrong twice and passes any check that only looks for it.
+  *
+- * Why: the imperative stays here for now, and moving it is a separate ticket rather than a deferral
+- * — the six CLI catch sites all render `error.message` unaltered, so splitting the sentence means
+- * six sites each composing an instruction, which is the drift this ticket closed. What that ticket
+- * owes first is a decision entry against `04-architecture.md`'s statement of what `core` is
+- * responsible for, because M3's server will surface this same error over HTTP, where an imperative
+- * naming a shell is advice to somebody who may not have one. Nothing is broken while it waits.
++ * **The message states the condition and not the remedy**, which is the whole of Q-0111. `core`
++ * cannot know which surface is rendering this: a terminal, or M3's server over HTTP, where
++ * *"run `quorum init` in your repo"* is advice to somebody who may not have a shell. It does not
++ * have to know — this is a **class**, so a surface has everything it needs to compose its own next
++ * step from the type alone, and `packages/cli` does exactly that in one place. The folder stays in
++ * the sentence because it is the folder that is missing; the command left with the remedy.
++ *
++ * Why: see *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07),
++ * which measured that the six CLI catch sites render `error.message` unaltered — the objection that
++ * a split would cost six compositions was false, and the surface composes at one site.
+  */
+ export class ProjectNotFoundError extends Error {
+-  constructor(message = 'no harness/harness.yaml found — run `quorum init` in your repo') {
++  constructor(message = 'no harness/harness.yaml found') {
+     super(message);
+     this.name = 'ProjectNotFoundError';
+   }
+```
+
+[35m[3mcodex[0m[0m
+I’ll review the decision, repository constraints, and the affected source/tests, then report only concrete findings with exact locations. I’ll keep the repository untouched.
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "sed -n '1,240p' docs/decisions/082-a-core-error-names-the-condition.md && sed -n '1,220p' docs/04-architecture.md && sed -n '1,220p' .Codex/rules/engineering.md && sed -n '1,220p' .Codex/rules/product-boundaries.md && sed -n '1,220p' .Codex/rules/docs-and-decisions.md"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[31m exited 1 in 0ms:[0m
+# A `core` error names the condition; the remedy belongs to the surface — 2026-09-07
+
+**Decision:** an error raised by `packages/core` states **what is wrong** and not **what to type**.
+The remedy is composed by the surface that renders it, once at that surface's boundary rather than
+once per command. `ProjectNotFoundError`'s message becomes
+`no harness/harness.yaml found`, and `packages/cli` maps the error's identity to
+``run `quorum init` in your repo`` so the terminal output a stranger sees is unchanged. Q-0111
+implements it; this entry is what that ticket said it owed first.
+
+**The measurement that decides it, and it inverts the cost the ticket assumed.** Q-0111's body — and
+the JSDoc at `packages/core/src/backlog/project.ts` that Q-0100 left it in — both argue that
+splitting condition from advice means *"six sites each composing an instruction, which is the drift
+this ticket closed."* Measured on 2026-09-07, all six catch sites are byte-identical:
+
+    if (!(error instanceof ProjectNotFoundError)) throw error;
+    return die(error.message);
+
+`adapters.ts:52`, `board.ts:48`, `lint.ts:55`, `runs.ts:74`, `run.ts:232`, `ticket.ts:62`. **The CLI
+composes nothing; it transports.** So the advice does not have to be written six times — the surface
+has a single exit-with-message point (`fail.ts`'s `die`) and a single error class to discriminate on,
+which is one mapping site. The objection that made this look expensive was measured and is false.
+
+**Why the condition and the remedy separate at all.** `docs/04-architecture.md:44`, verbatim:
+*"**`core` has no I/O it doesn't own.** … Everything else is a thin shell around it."* A shell that
+only forwards is thin; a shell that forwards advice it did not choose is a pipe. The imperative
+presumes a shell — and M3's `packages/server` will surface this same error over HTTP, where *"run
+`quorum init` in your repo"* is advice to somebody who may not have one. `core` cannot know which
+surface it is speaking to, and it does not have to: `ProjectNotFoundError` is a **class**, so
+everything a surface needs to compose a remedy is already in the type. Nothing is lost by dropping
+the sentence and nothing new is needed to restore it.
+
+**The message keeps `harness/harness.yaml` and that is deliberate.** Q-0100 ruled the one sentence in
+the product carrying both senses of the word: `harness/harness.yaml` is the **folder**, which
+`.claude/rules/product-boundaries.md` requires be kept, and `harness init` was the **command**, which
+that ticket moved to `quorum init`. The folder stays in the condition; the command moves out with
+the remedy. That is the same split by a second route, which is why this entry does not reopen it.
+
+**Alternatives considered.** *Leave it.* The sentence is correct for the only surface that exists,
+and it costs nothing today — rejected because it is correct by accident: it is right for one surface
+and there will be two, and the moment a second renders it the sentence is wrong for one of them with
+no rule to say which. *Make the advice structured data on the error — what is missing, what would fix
+it — and let each surface render it.* The shape M3 would want, and rejected as premature rather than
+wrong: with one surface it is a schema serving a single consumer, and `ProjectNotFoundError`'s
+identity already carries the discrimination a second surface needs. If a third arrives and the
+mapping stops being one line, this is what it becomes. *Sweep every `core` error message in the same
+change* — rejected: this entry rules the class by deciding one instance, and a sweep needs a census
+of what else composes advice, which is the implementing ticket's to run and not this entry's to
+assume.
+
+**Why now, when nothing is broken.** Because a rule stated after the code is written is a rule the
+code has already contradicted. Q-0081 is this project's own record of the alternative: three
+documents state a form `resolveModel` has never matched, and nobody caught it because the coverage
+could not tell the two readings apart. Deciding at M3 means deciding while the server is being
+written, which is when the pressure is to make the error convenient rather than correct. Q-0111 is
+`p3` and it may wait; **what it may not do is wait undecided**, which is the state Q-0100 left it in
+— an obligation recorded in a JSDoc and in no ticket, found only because a triage went looking.
+# Quorum — Technical Architecture (v1)
+
+*Status: proposed 2026-08-22; scaffold created 2026-08-24 (Q-0008) — the pnpm + Turborepo workspace, the single strict `tsconfig.base.json`, Vitest, ESLint and CI now exist, and the seven package boundaries drawn below are real directories, empty on purpose until Q-0009 ports the spike into them. 2026-08-25 docs review: worktrees are under `.harness/worktrees/`, and budget caps are specified rather than enforced. 2026-08-25 (Q-0009): `packages/core` states that it imports `shared`'s zod schemas rather than declaring its own, settling a contradiction with the development plan, and the `core` → `shared` dependency direction is written down. 2026-08-25 (Q-0041): `shared` is populated — zod schemas for flow, ticket, role and step output, the trace/event union and the cross-package constants — and principle 2 is corrected to the events that exist rather than the six it had named since it was written. 2026-08-26 (Q-0064): `core/src` is organised into one folder per module and `shared` stays flat, with the asymmetry explained. 2026-08-27 (Q-0047): the per-adapter `capabilities.ts` exists, and the version probe the same sentence asks for is recorded as deferred to Q-0067 so nobody reads it as shipped. 2026-08-27 (Q-0071): the testing strategy says what CI's `workspace` job executes and that it is forced, and separates the pnpm download cache from a task-result cache. 2026-08-28 (Q-0072): the testing strategy says what a *cache hit* claims, now that each suite's out-of-package reads are declared and `core`'s checks depend on `shared`'s. 2026-08-30 (Q-0079): the testing strategy names what a green tick does *not* claim — no suite ran where git resolves no identity until the sweep — and points at the oracle, the tripwire and the measured table separating them. 2026-08-31 (Q-0054): the testing strategy states that two required suites exist until the cutover and what each proves — the parenthesis calling the mock end-to-end "the 30-check smoke test, ported" described a port that had not happened, and its half of the suite transfers at Q-0010 — and adds the four-link chain from a new failing file to a red `pnpm test`. Changes go through DECISIONS.md. 2026-08-31 (Q-0062): principle 6 states the worktree lifecycle — a finished run gives back the worktrees it obtained, a run that did not finish keeps them, a worktree that is not clean is kept and says so, and no ref is ever deleted; and the testing strategy's entangled share is 49% rather than 53%, re-derived by `spike-parity.test.ts` after that ticket added a library-only test file, with the earlier figure kept beside it so the movement is visible rather than silent. 2026-09-01 (Q-0040): the entangled share is 55% rather than the 50% Q-0037 left, because that ticket's `q0040-undecided.js` is entangled in full — two of the five gate sites it covers live in `bin/` and no library test can reach them — and the sentence had gone three review rounds carrying a figure the guard beside it had already moved. 2026-09-02 (Q-0097): the testing strategy gains what a cache hit *gives back*, now that a `build` task with the workspace's first non-empty `outputs` replays an artifact rather than a verdict, and the `packages/core` entry says the emit is described there and not twice. 2026-09-02 (Q-0098): the shape paragraph separates the three installation claims — the workspace-local path and the locally packed path are supported and tested, and registry-resolved `npx quorum` is refused rather than deferred until Q-0029 — `packages/server`'s *"serves the built `apps/web`"* is scoped to M3 rather than left reading as present tense, and `packages/cli` records that the binary exists and what fixes its depth. 2026-09-03 (Q-0091): `packages/cli` records that the binary dispatches its first two commands, one module each, and the rule that separates a frame module from a command module. 2026-09-03 (Q-0092): that count is three, and `packages/cli` gains a paragraph on where the run-history division falls — six names moved onto `core`'s public surface, of which one is a new single-run read, because a detail request may not be coupled to the health of siblings it did not ask about. 2026-09-04 (Q-0093): that count is five, and the package map's `templates/` line is corrected — it described `packages/templates` as the shipped templates' home while line 66 and decision 078(e) put them under `packages/cli`, so two sentences of this document disagreed; `packages/templates` is a three-file scaffold holding no assets, and `packages/cli` gains a paragraph on where `init`'s division falls, which is the first place a command needed a new `core` symbol rather than a new export. 2026-09-04 (Q-0094): that count is six, which is the whole of this document's change — the sentence named five and `run` is the sixth, so it was false the moment that command landed; no paragraph was added for it, because Q-0094's requirement records that no numbered document claims anything it changes and this one sentence is the exception rather than an invitation. 2026-09-04 (Q-0099): that count is eight and the set is complete, and `packages/cli` gains a paragraph on the pair — the first to need nothing added to `core`'s public surface, and the pair whose two forced divergences from the spike are consequences of the frame/command rule rather than choices. 2026-09-05 (Q-0107): the testing strategy's sweep paragraph says the oracle runs the **workspace** suite rather than both, because AC-16 removed the spike phase with the last workspace read of that tree — CI's own `spike` job still runs it until Q-0103 — and the tripwire's corpus is named as `packages/` and `apps/`, the spike row having lost its subject. One sentence, and it is here rather than left for the cutover because a document describing an enforcer as covering more than it does is the failure this ticket is about. **2026-09-06 (Q-0103): the cutover.** The testing strategy describes **one** required suite rather than two — the spike tree, its CI job and `packages/core/src/spike-parity.test.ts` are deleted — and with them go the transfer share, which was a measurement of how much of a suite that no longer exists still had to move, and the sentence promising that register would record it. Three paragraphs that named the second suite as a live thing are corrected in the same edit: the discovery chain, which cites the spike runner as the origin of a property the workspace now owns; the cache-hit paragraph, which said *"both real suites"*; and the sweep paragraph, which said CI still ran the second one. The run-history section says `core` where it said the spike. What is NOT rewritten is provenance — `packages/core` is still *"seeded from the spike"* and `packages/cli` still dispatches *"the whole of the spike's set"*, because those sentences are about where the code came from and stay true of a tree that has gone. **2026-09-06 (Q-0105): `packages/cli` records the second git fact `board` derives** — push lag, the base branch against its upstream — and that it is the first command here to need a `core` symbol *after* it shipped, which the sentence above it had described as a pair needing nothing. That sentence moves to the past tense rather than being deleted: it was true of Q-0099 and stays true of Q-0099. Principle 2 was rewritten 2026-08-29 (Q-0050): `runFlow` is a lazy, single-consumer `AsyncIterable<Event>` whose cancellation belongs to the caller's `AbortSignal`, and the public-API line names it — see *What a run's event stream carries, and how a gate answer travels back* (2026-08-28) and its 2026-08-29 erratum.*
+
+## Shape
+
+A pnpm + Turborepo monorepo, TypeScript strict everywhere, Node ≥ 22. One command starts a local
+daemon and opens the browser UI; the same daemon serves the CLI. **Three claims are kept apart
+here, because only two of them are true today.** The **workspace-local** path is supported and
+tested: `pnpm install && pnpm turbo run build`, then `pnpm exec quorum` from the repository root.
+The **locally packed** path is supported and tested: `pnpm pack` in each of the three emitting
+packages and an install of the three tarballs together into a project outside the repository.
+**Registry-resolved `npx quorum` is refused rather than deferred** — every package is
+`"private": true`, so that command resolves against the public registry and fetches a stranger's
+package or nothing; publishing is Q-0029's, in M6. See *"The emit serves the binary, and no test
+verdict moves behind it"* (2026-09-02), clause (d), and Q-0098, which is where the two supported
+paths acquired tests.
+
+```
+quorum/
+  apps/
+    web/            Vite + React UI (mission control, gate screen, backlog board, editors)
+  packages/
+    core/           engine, backlog, lint, contracts, git/worktrees, adapters, fanout, run-history
+      src/          one folder per module, named as Q-0009's children are (Q-0064):
+                      adapters/ backlog/ contracts/ engine/ fanout/ git/ lint/ run-history/
+                    index.ts stays at src/ root; tests are colocated with the code they test
+    server/         Hono HTTP + WebSocket daemon: runs flows, streams traces, serves web/
+    cli/            `quorum` binary: init · ticket · board · run · lint · adapters · open
+    compiler/       canonical harness/ → CLAUDE.md / AGENTS.md / GEMINI.md (thin, linked)
+    templates/      a three-file scaffold that holds no assets and has no build task: the
+                    shipped harness/ (flows, roles, context files) lives in cli/templates/,
+                    where `quorum init` reads it and where the CLI tarball ships it (Q-0093)
+    shared/         types, schemas (zod), event/trace format, constants  ← declarations only
+                    deliberately flat: ten leaf modules, and index.test.ts pins index.ts to
+                    `export * from './<name>.js';` lines, which a folder path cannot satisfy
+  docs/             these documents
+  harness/          Quorum's own harness — it is developed with itself from M2 onwards
+  backlog/          Quorum's own backlog (files in git, like every other project)
+```
+
+## Principles that shape the code
+
+1. **`core` has no I/O it doesn't own.** It spawns CLIs, reads/writes the project folder and git. It never touches the network, never stores secrets, never reads API keys. Everything else is a thin shell around it.
+2. **One trace format.** Every adapter maps its CLI's output to `shared`'s event schema, and nothing above the adapter layer branches on which vendor produced an event. Two shapes, because two interfaces exist. An **adapter** emits `spawn` and `stdout` and knows nothing about the run around it; the contract layer's retry wrapper adds `retry`. A **run** emits those three with the step id the engine supplies, plus `step`, `done`, `info`, `warn`, the correlated gate question and one final `terminal` event. Vendor identity survives as one neutral, open `vendor` label — per-vendor cost roll-ups require it and a blended number is forbidden — but no field is one a single vendor could populate. `tool` and `text` are named nowhere in this list on purpose: they were documented here before anything emitted them, and they arrive when an adapter normalises vendor JSONL into them (Q-0041, 2026-08-25). `runFlow` exposes a lazy, single-consumer `AsyncIterable<Event>` over a lossless FIFO: order is stable within one step, while parallel members have no global ordering or interleaving promise. A gate is emitted before the out-of-band `answerGate` callback is invoked. Cancellation belongs to the caller through an `AbortSignal`; core installs no process signal handler. Events deliberately carry no timestamp or sequence number, and only the terminal event carries run identity. The UI, the CLI and run history all consume the same stream; nothing persists it in v1. These boundaries follow *What a run's event stream carries, and how a gate answer travels back* (2026-08-28) and its 2026-08-29 erratum.
+3. **Files are the database.** Tickets, flows, roles, run logs and traces live in the project folder (`backlog/`, `harness/`, `.quorum/runs/`). The daemon keeps an in-memory index and rebuilds it from disk on start. No SQLite in v1.
+4. **The daemon is stateless across restarts.** A run that was interrupted is resumable from its last completed step because every step's result is on disk.
+5. **UI is a view, never the source of truth.** Editing a flow in the UI writes the YAML file; the form is generated from the flow schema in `shared`.
+6. **Safety by construction.** Worktrees under `.harness/worktrees/` (git-excluded), integration branch per ticket, human-locked gates — enforced in `core`, not in the UI. Budget caps are specified in `harness.yaml` but not yet enforced anywhere. **A worktree is not permanent.** A run that finished — `completed` or `regressed` — removes the worktrees it obtained, keeping any that is not clean and naming the paths that kept it; a run that did not finish keeps every one of them, because the directory it stopped in is the thing a maintainer is about to open. It is the same predicate the ticket-branch rollback reads, the other way round. **No ref is ever deleted** — not a task branch, not a step branch, not the integration branch — so a removed directory is always re-creatable from its branch, and a review after the run still has something to read. Cleanup is registration and never enumeration: a run removes what it obtained and nothing else, whoever created it. See *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
+
+## Packages in detail
+
+### `packages/core`
+Seeded from the spike (`engine`, `backlog`, `fanout`, `git`, `adapters/*`), converted to TypeScript and validated against the zod schemas for flows, tickets, roles and step outputs that `shared` defines — `core` imports them and declares none of its own. Public API: `loadProject(dir)`, `runFlow(opts): AsyncIterable<Event>`, `lintFlow`, `Backlog`, `Adapter` interface. The mock adapter stays in the package for tests and demos.
+
+Laid out as one folder per module (`adapters/`, `backlog/`, `contracts/`, `engine/`, `fanout/`, `git/`, `lint/`, `run-history/`), the names Q-0009's fourteen children already carry, with `index.ts` at `src/` root and tests colocated. `shared` stays flat, for the reason given above. See the 2026-08-26 DECISIONS entry.
+
+Since Q-0096 the package publishes that API through a conditional `exports` map, and since Q-0097 it emits the artifact the map's default condition names. What the emit is and what a cache hit on it gives back is described once, under **Testing strategy** — deliberately not restated here, because a transcription of configuration drifts silently while going on looking like the thing it describes.
+
+**The dependency direction is one-way: `core` → `shared`, never the reverse.** `shared` depends on no other workspace package, and nothing in it may import from `core`, `cli`, `server`, `compiler`, `templates` or `apps/web`. No cycle between workspace packages is permitted.
+
+### `packages/server`
+Hono app: REST for project/backlog/flows/history, WebSocket for live run events and gate prompts. Will serve `apps/web`'s build output — that app has no build task and emits nothing today, so *"the built `apps/web`"* is what M3 will serve rather than something that exists; the three packages that emit are named under **Testing strategy**. Exposes `POST /runs` (start), `POST /runs/:id/gate` (advance/retry/override with reason), `POST /runs/:id/stop`. Single-user, localhost-only by default.
+
+### `packages/cli`
+Same commands as the spike plus `quorum open` (start daemon + open browser), `quorum compile` (harness → vendor files), `quorum history`. Gates in the CLI are terminal prompts; gates in the UI are the gate screen; both call the same `core` API.
+
+Since Q-0098 the package is **runnable**: `bin.quorum` names an emitted target one directory below the package root, so `path.join(here, '..')` from the binary's own file resolves to the package root and Q-0093's `init` reads the shipped templates from `<package>/templates/`. The depth is fixed by the ruling above rather than discovered, and the target carries a `#!/usr/bin/env node` shebang and an executable bit the build sets, both proven to survive a cache replay.
+
+Since Q-0099 it dispatches eight commands as well as its help — `lint` and `validate` from Q-0091, `runs` from Q-0092, `init` and `ticket` from Q-0093, which are the first two that write, `run` from Q-0094, which is the one that executes, and `board` and `adapters`, which are the two that can only exit 0. That is the whole of the spike's set, so the frame now lists every command it dispatches and dispatches every command it lists. Each is one module named after the command the frame registers, which is what lets `frame.source.test.ts` derive the frame/command split from `COMMANDS` rather than from a list: **a frame module may name none of `core`'s domain helpers, and a command module only the ones its own command needs.** The presentation is the CLI's and the walk is `core`'s, so a lint record reaching a terminal, a browser and a WebSocket carries an escape byte in exactly one of the three.
+
+**Since Q-0105 `board` reports a second git fact**, and it is the first command in this package to acquire a new need after it shipped. `pushLag` answers where the configured base branch stands against the upstream it tracks — **push lag**, one repository-level fact derived on every invocation and stored nowhere, on containment's own terms — and it is `core`'s for the reason the rest are: a command module may not derive a git fact itself, and `packages/core/src/git/git.ts` is where every git call in `core` goes through one runner. It is the second name `git/` contributes to the barrel, and the whole of what `packages/cli` adds is one dim legend line, printed only when git had something to say. Nothing on this path reaches the network: there is no fetch, no `ls-remote` and no credential, which is what makes it a git fact rather than a CI one — see *"The board reports push lag, and never a CI conclusion"* (2026-09-06).
+
+`board` and `adapters` were the first pair to need **nothing** added to `@quorum/core`'s public surface — `containment`, `lintFlowDirectory`, `getAdapter`, `probeAdapter` and `loadProject` were all already on it — which is what "the CLI is a presentation layer over an API that exists" looks like when it is true rather than asserted. The rule above is what shaped the board's two forced divergences from the spike: it reaches the flow set through `lintFlowDirectory` rather than reading the directory itself, and a missing `flows/` is a narrow `ENOENT` catch rather than an `fs.existsSync` guard, because a command module may import `node:path` and no production module in the package may import `node:fs`. The same rule is why the help line for `board` glosses containment rather than naming it: `commands.ts` is a frame module, and `containment` is a domain symbol.
+
+`init` is where that division needed a new `core` symbol rather than a new export: the CLI may import no filesystem, process-spawning or terminal module at all, so the scaffolding — copy the template tree, create the backlog, refuse an occupied `harness/`, and aim `repo.base_branch` at the branch the checkout is on — is `packages/core/src/backlog/scaffold.ts`, beside the project reader M3's server will want it next to. What the command owns is one expression: the templates are `new URL('../templates/harness/', import.meta.url)`, relative to the module's own location and to nothing else, which answers `packages/cli/templates/harness` from `src/` under the workspace condition and from `dist/` under a plain `node`. `frame.source.test.ts` permits exactly one module to resolve its own location and no frame module to do it at all.
+
+`runs` is where that division is sharpest, and it is why `@quorum/core`'s public surface grew by six names rather than by one: the selection, the ordering, the completeness test, the occurrence sequence, the token arithmetic and the confinement guard are all `core`'s, and what `packages/cli` adds is the markers, the colours, the two JSON shapes and four sentences. One of the six is new — a single-run read, because `readRunsDir` parses every sibling manifest and a detail request may not be coupled to the health and size of a store it did not ask about. It is one function taking a runs root and a token and answering a discriminated result, so confinement and the read cannot come apart at a call site.
+
+### `packages/compiler`
+The second headline feature. Reads `harness/rules.md`, `architecture.md`, `product-context.md`, `commands/*.md` and emits `CLAUDE.md` (with `@harness/...` imports), `AGENTS.md` and `GEMINI.md` (inlined where the vendor can't reference), plus a marked native pass-through section for `.claude/agents`, skills and commands. Drift detection: hash of sources vs generated header.
+
+### `apps/web`
+React + Vite, Tailwind, dark "ground control" theme from the design prompt. Screens: projects home, backlog board, ticket page, harness editor, flow editor (form + YAML preview), mission control (live traces, parallel columns, per-vendor cost tickers), gate screen, step chat, run history. State from the WebSocket stream; no client-side persistence beyond UI preferences.
+
+## Adapters
+
+`Adapter` interface per `03-adapter-contract.md`. v1 ships `claude` and `codex`; `gemini` is the first community milestone and is designed as a copy-and-edit of `codex`. Adapter behaviour that is CLI-version-specific (flag names, JSONL fields) lives in a per-adapter `capabilities.ts` with a version probe, so a CLI update breaks one file. Q-0047 shipped the first half of that sentence and not the second: `claude-capabilities.ts` and `codex-capabilities.ts` exist and hold every flag, enumerated value and vendor field name, but **the version probe is deferred to Q-0067** — a probe adds a CLI invocation, a supported range that goes stale and a policy for an unsupported version, all of which are behaviour rather than layout. Each module carries the version-probe argv as inert data so that ticket is a small one; nothing reads a version back today.
+
+## Testing strategy
+
+- **There is one required suite, and it is the whole of what a green tick claims.** The `workspace`
+  job runs Vitest over `packages/**` and `apps/**`: every module the port wrote, the frame and the
+  eight commands `packages/cli` dispatches, and the mock end-to-end *through the binary*, which
+  `packages/cli/src/end-to-end.test.ts` and `src/failure-paths.test.ts` carry. There were **two**
+  required suites from Q-0008 until Q-0103, because the spike was the harness this repository was
+  developed with while its own core was being written, and neither suite was a subset of the other.
+  The cutover deleted that tree once `packages/cli` dispatched every command it had, and deleted
+  `packages/core/src/spike-parity.test.ts` with it — the file-by-file record of which spike scenario
+  the workspace suite carried, which transferred at Q-0010, and which was carried by nobody. That
+  register's subject was the relationship between two suites, so it could not outlive one of them:
+  see *"A check outlives its subject only if it can still fail"* (2026-09-05). Nothing replaces it,
+  and nothing needs to — a parity register over one tree has no second side to compare against.
+- **What makes a new failing test file fail `pnpm test`**, since Q-0054, link by link. The include
+  is Vitest's own default (`vitest.shared.js`), so a `*.test.ts` written anywhere below a package is
+  **collected** — until this ticket it was `src/**` only, and a red test written to
+  `packages/core/test/`, to a package root, or as `*.test.js` was collected by nothing at all. Every
+  package declares a `test` script, so turbo **runs** it rather than skipping the package in silence.
+  `$TURBO_DEFAULT$` puts the new file in that package's `test` hash, so a cached pass **cannot stand
+  over it**. And CI **forces** regardless. `packages/core/src/test-discovery.test.ts` holds the first
+  two links; the third is `turbo-inputs.test.ts`'s and the fourth `test-command.test.ts`'s. This is
+  a property the spike's own runner had by discovering its directory, brought over to the workspace
+  before that tree was deleted, and the reason it matters is qa-red: a red phase is proved by writing
+  a new failing file, and a runner blind to it reports green while `integrate --expect fail` loops to
+  a gate having proved nothing.
+- CI's `workspace` job runs `lint`, `typecheck` and `test` over the whole workspace **forced** — `pnpm turbo run <task> --force` — so a green tick means those three tasks were executed against that commit rather than served from a cached conclusion. The two caches in play are not the same thing and only one of them can make a tick a lie: `actions/setup-node`'s `cache: pnpm` replays a *download* and stays; no turbo result cache is restored, because that would replay a *verdict*. `integrate` reaches the same property by an independent route, since it runs `harness/harness.yaml`'s `commands.test` rather than `package.json`'s and that command carries its own `--force` (Q-0065). A developer's local `pnpm test` is unforced and keeps its cache, which is where a cache earns its keep.
+- **What a cache hit claims, since Q-0072.** A hit means *no file this task reads, and no same-kind task in a package it depends on, has changed since the cached result*. Before Q-0072 it meant only *nothing inside this package has changed*, which was a materially weaker thing to believe: turbo's default input set is package-scoped, while the suite asserts over `docs/`, `harness/`, `contracts/`, `backlog/`, `.github/` and each package from another. `packages/core/turbo.json` and `packages/shared/turbo.json` declare those out-of-package reads as `inputs` beside `$TURBO_DEFAULT$`, and the root `test`, `lint` and `typecheck` tasks each depend on their own kind in a package's dependencies (`^test`, `^lint`, `^typecheck`), so a change in `shared` invalidates all three of `core`'s. `packages/core/src/turbo-inputs.test.ts` is what fails when a read stops being covered. **CI's claim is different and stronger:** it forces, so its tick says these tasks *executed* against this commit, which no hit can say however well its inputs are declared.
+- **What a cache hit *gives back*, since Q-0097.** The three tasks above declare `"outputs": []`, so
+  a hit on any of them replays a **verdict** — a claim that work once passed. `build` is the first
+  task in this workspace whose hit replays an **artifact**, and an artifact something downstream
+  executes fails differently: the stale tick lies about the past, the stale artifact lies about the
+  present. It is declared once, at the root, with `dependsOn: ["^build"]` so one invocation from a
+  clean checkout produces prerequisites before consumers, and its `outputs` is `dist/**` — the only
+  non-empty `outputs` in the workspace. `@quorum/shared`, `@quorum/core` and `@quorum/cli` each
+  declare a `build` script driven by a per-package `tsconfig.build.json`, which adds `outDir`,
+  `rootDir` and `declaration` and excludes test files, so the `tsconfig.json` that `lint` and
+  `typecheck` read — and that ESLint's `projectService` needs a project from — is untouched. Each
+  script removes its own emit directory before compiling, because turbo prunes an output directory
+  on neither the miss path nor the hit path, so a file whose source has gone would otherwise survive
+  both. **No verdict that exists today moves behind it:** `test` and `typecheck` gain no `^build`
+  edge, the workspace suites go on resolving TypeScript source through the `quorum-source` export
+  condition, and the emit is consumed by a plain `node` process, by a packed install, and by
+  Q-0095's end-to-end suite. `packages/cli/src/build.test.ts` proves the declaration covers exactly
+  what the build writes, in both directions, and that a replayed build restores something that runs;
+  `src/build-fixture.test.ts` proves the leftover rules in a workspace it builds itself. See *"The
+  emit serves the binary, and no test verdict moves behind it"* (2026-09-02).
+- **What a green tick does not claim, since Q-0079.** Both suites run on a machine whose git can
+  resolve an identity, so a test that depends on the *account* it runs as is green everywhere it is
+  looked at. Three merged changes did exactly that — the two directories a working checkout has and
+  a fresh clone does not (Q-0072), `fs.existsSync` used to classify (Q-0073), and `git merge
+  --no-ff` resolving a committer identity (Q-0051's merge, which turned CI red). The rule is *A
+  test's verdict is a property of the commit, not of the checkout or the account* (2026-08-30), and
+  it has two enforcers with different reach. The **oracle** is
+  `.github/scripts/git-identity-sweep.sh`: it runs the workspace suite with no resolvable identity,
+  in a
+  bare checkout and again in one carrying `.harness/worktrees` and `.quorum/runs`, and it proves its
+  own environment discriminates before trusting it — a permissive sweep is green over everything.
+  `pnpm sweep:git-identity` is byte-identically what CI runs. It ran a second suite too until
+  Q-0107 AC-16, which removed that phase with the last workspace read of the spike tree; Q-0103 then
+  deleted the tree, that suite and the CI job that ran it, so the sweep covers all of what a green
+  tick claims again rather than part of it. The **tripwire** is
+  `packages/core/src/git-identity.test.ts`, inside the ordinary suite and therefore visible at
+  `integrate`, which sees literals only and is not coverage for the checkout-shaped instances; its
+  corpus is `packages/` and `apps/` since Q-0107 AC-15, the spike row having lost its subject. The
+  measured table of what does and does not discriminate — including the two environments that look
+  hostile and are not — is in the sweep script's header, because that is where the next person
+  editing it will look.
+- Adapters: a nightly "real CLI" job is **not** feasible in CI (subscription auth); instead a `quorum adapters --probe` command runs the four contract checks locally and writes `.quorum/adapter-probe.json`; contributors attach it to PRs that touch adapters.
+- `web`: Playwright against the daemon with the mock adapter.
+- Quorum develops itself with itself from M2: every feature ticket goes through the backlog and the flows.
+
+## Run history on disk
+
+`core` persists every non-dry run beneath `.quorum/runs/<ticket-id>-<n>/`. Its atomically
+replaced `manifest.json` is the source of truth for lifecycle, adapter/script/integrate
+occurrences, vendor-neutral usage, errors, and per-vendor roll-ups. Adapter occurrences retain
+their exact `prompt.txt` and final or raw-invalid `output.txt`; script and integrate occurrences
+retain `output.txt`. Gates and fan-out parents do not allocate occurrences. There is no persisted
+event stream in this version, and incomplete `running` manifests are reported rather than repaired.
+
+## Non-goals for v1 (so nobody builds them by accident)
+
+Multi-user, remote daemon, cloud sync, any API-key path, a plugin marketplace, visual node canvas, eval suites, Windows support beyond WSL.
+sed: .Codex/rules/engineering.md: No such file or directory
+
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "find . -maxdepth 3 -iname 'engineering.md' -o -iname 'product-boundaries.md' -o -iname 'docs-and-decisions.md'; sed -n '1,220p' packages/cli/src/frame.source.test.ts; sed -n '1,380p' packages/cli/src/fail.test.ts; sed -n '1,180p' packages/cli/src/fail.ts; git status --short; git diff --check; git diff -- packages/cli/src packages/core/src/backlog"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 147ms:[0m
+./.claude/rules/engineering.md
+./.claude/rules/docs-and-decisions.md
+./.claude/rules/product-boundaries.md
+/**
+ * Q-0090 AC-8 (no command is implemented and no domain helper is copied), AC-4(d) (no signal
+ * handler) and AC-12 (BYOS), as properties of this package's source rather than of one file
+ * somebody remembered to list.
+ *
+ * **No file list is written down here**, and there are two of them because the criteria have two
+ * subjects. AC-8 is about *modules*, so it derives recursively from `src`. AC-12 and AC-4(d) say
+ * `packages/cli`, so they derive from what the package carries in any extension — see
+ * {@link packageFiles}. A hand-written list is the failure Q-0051 found in
+ * `q0050.source.test.ts`'s third list: it mapped over six names, a seventh file went unscanned, and
+ * the suite reported green.
+ */
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, test } from 'vitest';
+
+import { COMMANDS } from './commands.js';
+
+/** The directory the module scans walk — this package's `src`, reached package-relatively. */
+const SRC = fileURLToPath(new URL('.', import.meta.url));
+
+/** This package's root, the subject AC-12 and AC-4(d) name. */
+const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * This file, excluded from the scans below because it quotes every string they look for.
+ *
+ * Spelled twice because the two inventories speak two vocabularies, and derived rather than typed
+ * so that renaming this file cannot leave an exclusion excusing a file that is no longer here.
+ */
+const GUARD = path.relative(SRC, fileURLToPath(import.meta.url));
+const GUARD_IN_PACKAGE = path.relative(PACKAGE, fileURLToPath(import.meta.url));
+
+/** Every TypeScript file below `src`, as `[path relative to src, text]`, derived from the tree. */
+const files = (): [string, string][] => fs
+  .readdirSync(SRC, { withFileTypes: true, recursive: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+  .map((entry) => {
+    const full = path.join(entry.parentPath, entry.name);
+    return [path.relative(SRC, full), fs.readFileSync(full, 'utf8')];
+  });
+
+/** The production half: everything that is not a test, and the subject AC-8 names. */
+const production = (): [string, string][] => files().filter(([name]) => !name.endsWith('.test.ts'));
+
+/**
+ * The production half, split into the two kinds AC-10 and AC-11 treat differently.
+ *
+ * **Derived from {@link COMMANDS} rather than hand-listed**, which is what makes the split a rule
+ * instead of a list somebody remembers to extend: a module is a *command module* exactly when its
+ * basename is a registered command name, so `validate.ts` is one because `validate` is dispatched,
+ * and `main.ts` is not because `main` is not. A command added without a module, or a module named
+ * after a command that is not registered, both fall out of the same derivation — and
+ * {@link COMMAND_DOMAIN} is then required to name exactly the modules this produces, so neither can
+ * happen silently. The failure this replaces is `q0050.source.test.ts`'s third list, which mapped
+ * over six hand-written names while a seventh file went unscanned and the suite reported green
+ * (Q-0051).
+ */
+const isCommandModule = ([name]: [string, string]): boolean =>
+  (COMMANDS as readonly string[]).includes(path.basename(name, '.ts'));
+
+/** The command modules: one per registered command that has a module of its own name. */
+const commandModules = (): [string, string][] => production().filter(isCommandModule);
+
+/** The frame: every production module that is not a command's. */
+const frameModules = (): [string, string][] => production().filter((entry) => !isCommandModule(entry));
+
+/**
+ * Directory names the walk prunes, and the whole of what {@link inventory} excludes.
+ *
+ * Enumerated rather than delegated to `.gitignore`, because the two guards that ask for an
+ * inventory ask two different questions. `packages/core/src/turbo-inputs.test.ts` asks *what does
+ * turbo hash*, and answers it with `git ls-files --exclude-standard` — see *"Membership is a git
+ * question, not a filesystem one"* (2026-08-28), whose argument is about a build tool's inputs.
+ * AC-12 asks whether a credential is **present in this package's tree**, and a credential in an
+ * ignored file is still on disk, still readable by any agent given `input.repo: true`, and still
+ * one `git add -f` from being published — so the question is what exists, and existence is a
+ * filesystem question. Two questions, two inventories, and neither decision needs amending. Ruled
+ * in `requirements/errata.md` E-1, which exists to pre-empt the reading that would restore
+ * `--exclude-standard` here.
+ *
+ * Every entry is installed or generated, nothing under any of them is authored, and each is
+ * demonstrated below to excuse a real file rather than to sit in the list unexercised.
+ *
+ * **`dist` is the emitted output, and it is here because Q-0097 built it.** This said *"emitted
+ * output is deliberately not among them"* while the workspace emitted nothing and the layout was
+ * Q-0096's to choose — correct then, and false the moment a `build` task wrote `packages/cli/dist`.
+ * `tsconfig.build.json` excludes every test file under `src`, so what lands there today is
+ * production modules; the exclusion is what makes that a *choice* rather than something the scan
+ * happens not to trip over, because an emitted copy of THIS file would carry every pattern below and
+ * turn the scan red — and only in a checkout that had run a build, which is the
+ * verdict-from-the-checkout defect Q-0096's round 2 caught in the assertion next door. Demonstrated
+ * below in both directions.
+ *
+ * **There is no binary exclusion either**, and that direction is deliberate: text is decoded as
+ * UTF-8 unconditionally, and a lossy decode can only make a scan report *more* than it should,
+ * where an exclusion is the only thing that can make it report less.
+ */
+const GENERATED = ['node_modules', '.turbo', 'dist'];
+
+/**
+ * Every file below `root`, as paths relative to it, with {@link GENERATED} pruned.
+ *
+ * Pruned during the walk rather than filtered after it, so an installed dependency tree is never
+ * read — the exclusion is what keeps this affordable as well as what keeps it narrow.
+ *
+ * An entry that is neither a file nor a directory **stops the guard** rather than being dropped
+ * silently: a third case nobody enumerated is an exclusion nobody wrote down, which is exactly what
+ * E-1 rules against. This package has none today and the refusal is demonstrated over a sandbox
+ * below, so the clause is known to fire rather than assumed to.
+ *
+ * @param root the directory to walk — this package, unless a test hands it a sandbox.
+ * @param prune the directory names to skip. A parameter so a fixture can ask the same question of
+ *   the list as it stood **before** Q-0097 added the emit, which is what makes that entry
+ *   demonstrable rather than asserted — the shape `collects(relative, patterns)` already uses in
+ *   `packages/core/test/vitest-include.ts` for the same reason.
+ */
+function inventory(root: string, prune: readonly string[] = GENERATED): string[] {
+  const found: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!prune.includes(entry.name)) walk(full);
+      } else if (entry.isFile()) {
+        found.push(path.relative(root, full));
+      } else {
+        throw new Error(
+          `inventory: ${path.relative(root, full)} is neither a file nor a directory — this guard `
+          + 'answers for everything the package carries, so it refuses to drop an entry it cannot classify',
+        );
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/**
+ * Every file this package carries, as `[package-relative path, text]`, whatever its extension.
+ *
+ * AC-12 names `packages/cli/**` rather than `packages/cli/src/**`, so the manifest, the three
+ * configuration files and any fixture or documentation a later ticket adds are all in scope — a
+ * credential in `package.json` is a credential.
+ *
+ * **Membership is the filesystem's question here**, for the reason {@link GENERATED} gives: an
+ * ignored file is still a file, and a guard enforcing a product boundary answers for what is on
+ * disk. The exclusions are the two names in that list plus this file, all three enumerated and each
+ * asserted to excuse something.
+ *
+ * **No verdict below depends on whether this checkout has run a build**, which since Q-0097 is a
+ * property the {@link GENERATED} entry for `dist` *restores* rather than one the workspace supplies:
+ * the emit exists after `turbo run build` and not before, and it is pruned, so the answer is the
+ * same either way. Asserted rather than claimed — a test below runs both scans over this package
+ * with the artifact present and absent and requires identical verdicts. The same reasoning covers
+ * `node_modules/` and `.turbo/`, which exist after an install and a test run and not before, so what
+ * they contain is asserted over a directory this file builds rather than over this package — a
+ * gitignored directory that *use* creates may not move an answer (Q-0073).
+ */
+const packageFiles = (): [string, string][] => inventory(PACKAGE)
+  .map((name) => [name, fs.readFileSync(path.join(PACKAGE, name), 'utf8')]);
+
+/**
+ * Modules **no** production module in this package may import: every read, spawn and prompt goes
+ * through `@quorum/core`, which is ground rule 4 as an executable property rather than an intention.
+ *
+ * `node:path` left this list at Q-0091 and moved to {@link FRAME_ONLY_IO}. It is admitted for a
+ * command module because `<harnessDir>/flows` has to be joined somewhere and `Project` carries no
+ * `flowsDir` — the alternative, adding one, moves `project.test.ts:78`'s four-key pin in the package
+ * Q-0092 to Q-0094 all consume, to save one import. **`node:url` stays forbidden everywhere in
+ * production, and it is the one entry `init` could have needed**: `quorum init` copies a tree and
+ * asks git for a branch name, and both are `@quorum/core`'s, so the list is unchanged and neither
+ * new command module has an exemption from it (Q-0093 AC-10(a)).
+ *
+ * **What this regex does not see is an import, and that is why it never saw the thing its comment
+ * claimed to forbid.** Until Q-0093 the sentence above went on to say that *"a module resolving its
+ * own location is the mechanism Q-0090 AC-7 replaced"* — a promise this scan cannot keep, because
+ * `import.meta.url` imports nothing: `URL` and `import.meta` are both ambient, so a module resolving
+ * its own location passed here in silence. {@link resolvesOwnLocation} is the clause that sees it,
+ * and Q-0093 is the first ticket to give it a subject.
+ */
+const IO_MODULE = /from '(node:fs[^']*|node:child_process|node:os|node:url)'/;
+
+/** The one module a command may import and the frame may not. */
+const FRAME_ONLY_IO = /from 'node:path'/;
+
+/**
+ * The terminal module, whose one importer is named by identity below.
+ *
+ * `node:readline` left {@link IO_MODULE} at Q-0094, and the clause was **split rather than
+ * deleted** — the sentence the block above carried since Q-0090 said in as many words that the gate
+ * reader that owns it "will need this clause split again rather than deleted", and a blanket
+ * exemption would excuse a prompt in a module that has no business asking one. The `[^']*` tail is
+ * what the package-wide list carried, so `node:readline/promises` is the same import.
+ */
+const TERMINAL_IO = /from 'node:readline[^']*'/;
+
+/**
+ * The production modules permitted to open a terminal, with why.
+ *
+ * One entry, on the {@link SELF_LOCATING} shape and for the same reason: a register that only
+ * refused an *extra* importer would let this one be deleted without anyone noticing that the reader
+ * had stopped prompting. `gate.ts` is a frame module rather than a command's, because `run.ts` is
+ * the command and the reader beneath it is what M3's server will want without one.
+ */
+const TERMINAL_OWNER: Record<string, string> = {
+  'gate.ts': 'the interactive gate reader is the one place a human is asked a question — Q-0094 AC-7',
+};
+
+/** Everything wrong with `modules` as a description of who may open a terminal, one sentence each. */
+function terminalOffenders(modules: readonly [string, string][], allowed: Record<string, string>): string[] {
+  const problems: string[] = [];
+  for (const [name, text] of modules) {
+    if (TERMINAL_IO.test(text) && allowed[name] === undefined) {
+      problems.push(`${name}: it opens a terminal and no entry says why it may`);
+    }
+/**
+ * Q-0090 AC-3 (`die`) and AC-5 (hard exit and soft exit are two mechanisms).
+ *
+ * `die` is observed rather than suffered: `process.exit` is replaced with a throw, so the assertion
+ * runs in this process and the suite survives it. AC-5 cannot be observed that way — truncation is
+ * a property of a real process leaving a real pipe unflushed — so it is demonstrated in two spawned
+ * children instead, written to a directory this test creates under `os.tmpdir` and removes again.
+ */
+import { execFileSync } from 'node:child_process';
+import { Console } from 'node:console';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Writable } from 'node:stream';
+
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { ERROR, SUCCESS } from './exit.js';
+import { die, dieNoProject, dieOnUnexpected, failSoftly } from './fail.js';
+
+/** What the replaced `process.exit` throws, so control flow matches `die`'s `never` return. */
+class Exited extends Error {
+  constructor(readonly code: unknown) {
+    super(`process.exit(${String(code)})`);
+  }
+}
+
+/** A stream that keeps what is written to it. */
+const sink = (): { text: () => string; stream: Writable } => {
+  let text = '';
+  const stream = new Writable({
+    write(chunk: unknown, _encoding: unknown, done: () => void) {
+      text += String(chunk);
+      done();
+    },
+  });
+  return { text: () => text, stream };
+};
+
+/** How a body ended: it exited through `die`, it raised before reaching one, or it just returned. */
+type Outcome =
+  | { kind: 'exited'; code: unknown; stdout: string; stderr: string }
+  | { kind: 'raised'; error: unknown; stdout: string; stderr: string }
+  | { kind: 'returned'; stdout: string; stderr: string };
+
+/**
+ * Run `body` with the global console bound to two streams this test owns, and `process.exit`
+ * replaced with a throw, and report which of the three ways it ended.
+ *
+ * A real `node:console` over two distinct streams is what makes the *stream* assertable rather than
+ * the function: spying on `console.error` would only prove `die` called it, and spying on
+ * `process.stderr.write` proves nothing under Vitest, which routes console output through its own
+ * interception. Here the bytes have to arrive in one stream or the other.
+ *
+ * The three outcomes are distinguished here rather than at the call sites because two of AC-3's
+ * rows *raise* instead of exiting, and a helper that could only express "it exited" would have to
+ * be worked around to test them — which is how a check stops discriminating.
+ */
+function attempt(body: () => void): Outcome {
+  const out = sink();
+  const err = sink();
+  const saved = globalThis.console;
+  globalThis.console = new Console({ stdout: out.stream, stderr: err.stream });
+  vi.spyOn(process, 'exit').mockImplementation((code?: number | string | null): never => {
+    throw new Exited(code);
+  });
+  let raised: { error: unknown } | undefined;
+  try {
+    body();
+  } catch (error) {
+    raised = { error };
+  } finally {
+    globalThis.console = saved;
+  }
+  const streams = { stdout: out.text(), stderr: err.text() };
+  if (!raised) return { kind: 'returned', ...streams };
+  if (raised.error instanceof Exited) return { kind: 'exited', code: raised.error.code, ...streams };
+  return { kind: 'raised', error: raised.error, ...streams };
+}
+
+/** {@link attempt} for a body that must reach `die`, which every command's error path does. */
+function observe(body: () => void): { stdout: string; stderr: string; code: unknown } {
+  const outcome = attempt(body);
+  if (outcome.kind !== 'exited') throw new Error(`expected die, and the body ${outcome.kind}`);
+  return { stdout: outcome.stdout, stderr: outcome.stderr, code: outcome.code };
+}
+
+/**
+ * {@link attempt} for a body that must raise before anything is printed.
+ *
+ * It refuses an `exited` outcome rather than reporting one, which is what makes it discriminate: an
+ * implementation that guards the property access prints and exits here, and this throws instead of
+ * quietly returning empty streams.
+ */
+function raises(body: () => void): { error: unknown; stdout: string; stderr: string } {
+  const outcome = attempt(body);
+  if (outcome.kind !== 'raised') throw new Error(`expected a raise, and the body ${outcome.kind}`);
+  return { error: outcome.error, stdout: outcome.stdout, stderr: outcome.stderr };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  process.exitCode = undefined;
+});
+
+describe('AC-3 — die', () => {
+  test('writes to stderr, in red, with the space inside the span, and exits 1', () => {
+    // Why: preserved, see Q-0090 AC-3. `spike/bin/harness.js:124` puts the space *inside* the red
+    // span, unlike every other call site in that file, and the port keeps it there.
+    const { stderr, code } = observe(() => die('no harness/harness.yaml found'));
+    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found\n');
+    expect(code).toBe(ERROR);
+  });
+
+  test('and nothing reaches stdout, which is the half that makes it the error stream', () => {
+    const { stdout, stderr } = observe(() => die('nothing here'));
+    expect(stdout).toBe('');
+    expect(stderr).toContain('nothing here');
+  });
+
+  test('the message is written whole, however long, and an empty one still marks the failure', () => {
+    const long = 'x'.repeat(10_000);
+    expect(observe(() => die(long)).stderr).toContain(long);
+    expect(observe(() => die('')).stderr).toBe('\x1b[31m✗ \x1b[0m\n');
+  });
+});
+
+describe('AC-3 — the uncaught-rejection path', () => {
+  test('an Error is reported by its stack', () => {
+    const error = new Error('boom');
+    const { stderr, code } = observe(() => dieOnUnexpected(error));
+    expect(error.stack).toBeDefined();
+    expect(stderr).toContain(error.stack);
+    expect(code).toBe(ERROR);
+  });
+
+  test('a thrown value that is not an Error is reported by String()', () => {
+    expect(observe(() => dieOnUnexpected('just a string')).stderr).toContain('just a string');
+    expect(observe(() => dieOnUnexpected(42)).stderr).toContain('42');
+  });
+
+  test('a stack that is present but not a string is still what is reported', () => {
+    // `spike/bin/harness.js:569` is `e.stack ?? String(e)`: the `??` tests whether the property is
+    // there, never what type it is, and `die`'s `+` coerces whatever comes back. Reading the type
+    // instead reports `[object Object]` here, which is the whole difference.
+    const number = observe(() => dieOnUnexpected({ stack: 42 })).stderr;
+    expect(number).toContain('42');
+    expect(number, 'the value was read, not its type').not.toContain('[object Object]');
+  });
+
+  test('and a stack on a thrown function is reported, since typeof answers "function" there', () => {
+    // Its own test rather than a second assertion above: a clause sharing a test with a failing one
+    // is never run, so it would be carried rather than checked (Q-0071).
+    const carrier = Object.assign(() => undefined, { stack: 'a stack on a function' });
+    expect(observe(() => dieOnUnexpected(carrier)).stderr).toContain('a stack on a function');
+  });
+
+  test('and a nullish stack falls back to the value, which is what the ?? is for', () => {
+    expect(observe(() => dieOnUnexpected({ stack: null })).stderr).toContain('[object Object]');
+    expect(observe(() => dieOnUnexpected({ stack: undefined })).stderr).toContain('[object Object]');
+  });
+
+  // The three rows on which `e.stack ?? String(e)` does not print. Measured against the spike's own
+  // expression rather than reasoned about, and preserved rather than repaired: the path that exists
+  // to turn a crash into a message replaces it with a different crash, which is a defect this
+  // ticket reports (Q-0090 ground rule 3, AC-3).
+  //
+  // One row each, because two clauses in one test means the second is never reached once the first
+  // fails, and the second is exactly the one an implementation is likely to get differently
+  // (Q-0071).
+  test.each([
+    ['null', null],
+    ['undefined', undefined],
+  ])('a thrown %s raises, because the property access is unguarded', (_name, value) => {
+    // An optional chain would print the value and exit 1 here. That is the readable spelling and it
+    // is a behaviour change, so it is not the one that ships.
+    const { error, stderr, stdout } = raises(() => dieOnUnexpected(value));
+    expect(error).toBeInstanceOf(TypeError);
+    expect(stderr, 'die was never reached, so nothing was printed').toBe('');
+    expect(stdout).toBe('');
+  });
+
+  test('a symbol-valued stack raises inside die, where the + cannot coerce it', () => {
+    // The `??` yields the symbol untouched, and `c.red('✗ ') + symbol` is a TypeError. Coercing it
+    // with `String()` on the way in would print `Symbol(unprintable)` instead — the other readable
+    // spelling, and the other behaviour change.
+    const { error, stderr } = raises(() => dieOnUnexpected({ stack: Symbol('unprintable') }));
+    expect(error).toBeInstanceOf(TypeError);
+    expect(stderr, 'the concatenation raised before console.error was called').toBe('');
+  });
+
+  test('while a thrown symbol prints, because the fallback is String() and String() takes one', () => {
+    // The row that discriminates `?? String(e)` from `?? e`: `String(Symbol('s'))` is `'Symbol(s)'`
+    // where `'' + Symbol('s')` raises. A port whose fallback is the bare value passes every other
+    // row in this file and fails this one.
+    expect(observe(() => dieOnUnexpected(Symbol('thrown'))).stderr).toContain('Symbol(thrown)');
+  });
+});
+
+describe('AC-5 — the soft path sets the status and returns', () => {
+  test('failSoftly sets the exit status and calls nothing that would stop the process', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((): never => {
+      throw new Error('failSoftly must not call process.exit');
+    });
+    expect(process.exitCode).toBe(undefined);
+    failSoftly();
+    expect(process.exitCode).toBe(ERROR);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  test('and die reaches the same number through process.exit, which is the difference', () => {
+    expect(observe(() => die('stop now')).code).toBe(ERROR);
+    expect(process.exitCode, 'die never sets the soft status').toBe(undefined);
+  });
+});
+
+/**
+ * The pair of children AC-5 asks for, as one payload written two ways.
+ *
+ * A megabyte, so the write cannot complete in one pass through a pipe whose buffer is 64 KiB — the
+ * measurement Q-0070 made against `runCommand`, arriving here as the reason the two mechanisms are
+ * kept apart rather than as a claim about any particular buffer size. The assertion below is
+ * `< PAYLOAD_BYTES` rather than an exact count, so what is pinned is that output was lost and not
+ * how much.
+ */
+const PAYLOAD_BYTES = 1024 * 1024;
+
+/** A child that writes the payload and then ends the process the way `ending` says. */
+const child = (ending: string): string =>
+  `const payload = 'q'.repeat(${String(PAYLOAD_BYTES)});\nprocess.stdout.write(payload);\n${ending}\n`;
+
+describe('AC-5 — demonstrated, in two spawned children', () => {
+  let dir = '';
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-exit-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Write one child, run it, and report the code it exited with and how much stdout arrived. */
+  const run = (name: string, ending: string): { code: number; bytes: number } => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, child(ending), 'utf8');
+    try {
+      return { code: SUCCESS, bytes: execFileSync(process.execPath, [file], { maxBuffer: PAYLOAD_BYTES * 4 }).length };
+    } catch (thrown) {
+      const failure = thrown as { status?: number; stdout?: Buffer };
+      return { code: failure.status ?? -1, bytes: failure.stdout?.length ?? 0 };
+    }
+  };
+
+  test('the soft code keeps the payload and process.exit loses it, on one payload', () => {
+    const soft = run('soft.mjs', 'process.exitCode = 1;');
+    const hard = run('hard.mjs', 'process.exit(1);');
+
+    // Both report the same failure, which is what makes the difference between them about output.
+    expect(soft.code, 'the soft child exits 1').toBe(ERROR);
+    expect(hard.code, 'the hard child exits 1 too').toBe(ERROR);
+
+    // **The guarantee, which is what `die` rests on and what this criterion is for.** A soft code
+    // lets the event loop drain, so every byte the command produced reaches the caller. This half is
+    // machine-independent and is asserted unconditionally.
+    expect(soft.bytes, 'the soft child wrote everything it had').toBe(PAYLOAD_BYTES);
+
+    // **The hazard, asserted as an invariant rather than as an outcome.** This read
+    // `.toBeLessThan(PAYLOAD_BYTES)` until 2026-09-05 — it required `process.exit` to actually lose
+    // the race with the flush, and that is a property of the machine rather than of the commit,
+    // which *"A test's verdict is a property of the commit, not of the checkout or the account"*
+    // (2026-08-30) forbids. Measured on CI run 33968439312: both sweep cells reported
+    // `expected 1048576 to be less than 1048576` while the `workspace` job, at the same commit on
+    // the same runner image, passed. So it is not the documented platform split either — Node makes
+    // stdout-pipe writes synchronous on Linux and asynchronous on macOS, and this was Linux on both
+    // sides of the disagreement.
+    //
+    // **The truncation is measured here and required nowhere**, deliberately. `hard.bytes <=
+    // soft.bytes` was the first replacement written and it was **withdrawn for being
+    // unfalsifiable**: a hard exit cannot invent output, so no commit could turn it red — which is
+    // the class *"A check is not established by reading it"* (2026-08-29) names, and trading a
+    // machine-dependent assertion for a vacuous one is not a repair. What this test asserts without
+    // lying is the guarantee above and the shared exit code. The hazard is Q-0070's subject and is
+    // measured there; this file's own mutation evidence records it concretely — swapping the two
+    // endings makes the SOFT child arrive at 65536 bytes of 1048576 on macOS, one pipe buffer
+    // exactly. `Why: see Q-0102`, where the machine-dependence was measured on CI 33968439312.
+    expect(hard.bytes, 'the hard child produced nothing, so the pair demonstrates nothing')
+      .toBeGreaterThan(0);
+  });
+});
+
+describe('Q-0111 — the remedy is the surface\'s, and it exists in one place', () => {
+  /**
+   * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
+   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
+   */
+  test('the composed sentence is what a stranger saw before the split, byte for byte', () => {
+    // The criterion the entry named: the ruling is about WHERE the remedy is composed, not about
+    // what it says, so the rendered line must not move. `core`'s condition plus this module's
+    // remedy is the sentence Q-0100 shipped.
+    const { stderr, code } = observe(() => dieNoProject('no harness/harness.yaml found'));
+    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
+    expect(code).toBe(ERROR);
+  });
+
+  test('it composes from whatever condition it is given, so it renders core\'s message and not a copy', () => {
+    // A `dieNoProject` that ignored its argument and printed a whole hard-coded sentence would pass
+    // the assertion above and be a second copy of `core`'s condition. This is what tells them apart.
+    expect(observe(() => dieNoProject('something else entirely')).stderr)
+      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
+  });
+
+  test('the imperative appears in exactly one production module, and it is this one', () => {
+    // The whole point of the ruling, and the regression it forbids: six commands rendering the same
+    // advice, or `core` composing it again. Derived from the tree rather than from a list — a
+    // seventh command that composed its own would fail here without anyone remembering to add it.
+    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
+    // inside a template literal, where the backticks are escaped: a search for the sentence as it
+    // READS matches nothing, which this guard found by going red on its own subject.
+    const src = path.join(import.meta.dirname);
+    const composing = fs.readdirSync(src, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+      .map((e) => [path.relative(src, path.join(e.parentPath, e.name)), fs.readFileSync(path.join(e.parentPath, e.name), 'utf8')] as const)
+      .filter(([, text]) => text.includes('in your repo'))
+      .map(([name]) => name);
+    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
+  });
+});
+/**
+ * The two ways this CLI reports a failure, kept apart because they are two mechanisms and not one
+ * number spelled twice.
+ *
+ * {@link die} exits immediately, which truncates whatever the process had not finished writing.
+ * {@link failSoftly} sets the status and lets the process finish writing, which is what the spike's
+ * four `process.exitCode = 1` assignments on the `runs` paths rely on
+ * (`spike/bin/harness.js:499`, `:517`, `:523`, `:531`): a listing that reports a store warning
+ * still prints the listing. A port collapsing the two into one call loses that output — see
+ * Q-0090 AC-5, whose test demonstrates the difference rather than asserting it.
+ */
+import { c } from './colour.js';
+import { ERROR } from './exit.js';
+
+/**
+ * Print a message to stderr and stop the process immediately with {@link ERROR}.
+ *
+ * Preserved verbatim from `spike/bin/harness.js:124`, including the space *inside* the red span,
+ * which every other call site in that file puts outside it. Why: preserved defect, see Q-0090 AC-3.
+ */
+export function die(message: string): never {
+  console.error(c.red('✗ ') + message);
+  process.exit(ERROR);
+}
+
+/**
+ * Fail because no project was found, with the remedy this surface offers for it.
+ *
+ * **The one place the imperative exists**, which is what *"A `core` error names the condition; the
+ * remedy belongs to the surface"* (2026-09-07) rules: `core` raises the condition and cannot know
+ * whether a terminal or M3's server is rendering it, so the sentence a shell user needs is composed
+ * here and nowhere else. Six commands call this; none of them composes anything.
+ *
+ * It takes the **message** rather than the error, so this frame module names no `core` symbol and
+ * the `instanceof` narrowing stays where it already was, in each command's own catch.
+ */
+export function dieNoProject(condition: string): never {
+  return die(`${condition} — run \`quorum init\` in your repo`);
+}
+
+/**
+ * Record that the command failed without stopping it, so pending output still reaches the terminal.
+ *
+ * The counterpart to {@link die}, and never a synonym for it.
+ */
+export function failSoftly(): void {
+  process.exitCode = ERROR;
+}
+
+/**
+ * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path.
+ *
+ * `spike/bin/harness.js:569` is `main().catch((e) => die(e.stack ?? String(e)))`, and four of its
+ * behaviours belong to that exact expression rather than to the idea behind it, each measured
+ * against it: the property access is unguarded, so a thrown `null` or `undefined` **raises** before
+ * `die` is reached; the `??` tests whether `stack` is *there* and never what type it is, so
+ * `{ stack: 42 }` is reported as `42`; the fallback is `String(e)`, so a thrown symbol prints as
+ * `Symbol(s)`; and a symbol-valued `stack` reaches `die`, where the `+` **raises** because it cannot
+ * coerce one. The expression is therefore written out rather than paraphrased, and the coercion is
+ * left where the spike leaves it — inside {@link die}. Why: preserved, see Q-0090 AC-3.
+ *
+ * The two raising rows are a defect and are reported rather than repaired here: the one path that
+ * exists to turn a crash into a message replaces it with a different crash. Ground rule 3.
+ *
+ * The binary that wires this to the frame's entry does not exist yet and is Q-0096's; the behaviour
+ * is declared and tested here so no sibling command ticket has to invent it.
+ */
+export function dieOnUnexpected(error: unknown): never {
+  const message: unknown = (error as { stack?: unknown }).stack ?? String(error);
+  // The assertion is the point rather than a convenience: `die` takes a string, and this is the one
+  // call site that may hand it something else, so the `+` inside `die` performs the same coercion —
+  // and raises the same TypeError on a symbol — that the spike's does.
+  return die(message as string);
+}
+ M packages/cli/src/adapters.ts
+ M packages/cli/src/binary-name.test.ts
+ M packages/cli/src/board.ts
+ M packages/cli/src/fail.test.ts
+ M packages/cli/src/fail.ts
+ M packages/cli/src/lint.test.ts
+ M packages/cli/src/lint.ts
+ M packages/cli/src/run.ts
+ M packages/cli/src/runs.ts
+ M packages/cli/src/ticket.ts
+ M packages/core/src/backlog/backlog.source.test.ts
+ M packages/core/src/backlog/project.test.ts
+ M packages/core/src/backlog/project.ts
+diff --git a/packages/cli/src/adapters.ts b/packages/cli/src/adapters.ts
+index 5e5ae5c..a01d4d8 100644
+--- a/packages/cli/src/adapters.ts
++++ b/packages/cli/src/adapters.ts
+@@ -32,7 +32,7 @@ import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@qu
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -50,7 +50,7 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/binary-name.test.ts b/packages/cli/src/binary-name.test.ts
+index 146afbd..f7bc0f5 100644
+--- a/packages/cli/src/binary-name.test.ts
++++ b/packages/cli/src/binary-name.test.ts
+@@ -455,8 +455,14 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
+     const found = new Map(subjects());
+     expect(literals(found.get('init.ts') ?? '', 'init.ts'))
+       .toContain('  next: quorum adapters · quorum ticket new "…" · quorum run requirements T-0001');
++    // Q-0111 split that sentence across two files, so the anchor is both halves — which makes this
++    // a stronger subject check than the one it replaces: the scan is now shown to reach `core`'s
++    // condition AND this package's remedy, and losing either would leave the clause above vacuous
++    // over the half that went missing.
+     expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
+-      .toContain('no harness/harness.yaml found — run `quorum init` in your repo');
++      .toContain('no harness/harness.yaml found');
++    expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
++      .toContain('run \\`quorum init\\` in your repo');
+   });
+ 
+   test('the subject is every production module and the named core files, and one exclusion', () => {
+diff --git a/packages/cli/src/board.ts b/packages/cli/src/board.ts
+index 960497c..fe0a2c2 100644
+--- a/packages/cli/src/board.ts
++++ b/packages/cli/src/board.ts
+@@ -28,7 +28,7 @@ import { STAGES, type ContainmentResult, type Flow, type PushLagResult, type Tic
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -46,7 +46,7 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/fail.test.ts b/packages/cli/src/fail.test.ts
+index e30b7c3..d349ecb 100644
+--- a/packages/cli/src/fail.test.ts
++++ b/packages/cli/src/fail.test.ts
+@@ -16,7 +16,7 @@ import { Writable } from 'node:stream';
+ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+ import { ERROR, SUCCESS } from './exit.js';
+-import { die, dieOnUnexpected, failSoftly } from './fail.js';
++import { die, dieNoProject, dieOnUnexpected, failSoftly } from './fail.js';
+ 
+ /** What the replaced `process.exit` throws, so control flow matches `die`'s `never` return. */
+ class Exited extends Error {
+@@ -288,3 +288,41 @@ describe('AC-5 — demonstrated, in two spawned children', () => {
+       .toBeGreaterThan(0);
+   });
+ });
++
++describe('Q-0111 — the remedy is the surface\'s, and it exists in one place', () => {
++  /**
++   * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
++   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
++   */
++  test('the composed sentence is what a stranger saw before the split, byte for byte', () => {
++    // The criterion the entry named: the ruling is about WHERE the remedy is composed, not about
++    // what it says, so the rendered line must not move. `core`'s condition plus this module's
++    // remedy is the sentence Q-0100 shipped.
++    const { stderr, code } = observe(() => dieNoProject('no harness/harness.yaml found'));
++    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
++    expect(code).toBe(ERROR);
++  });
++
++  test('it composes from whatever condition it is given, so it renders core\'s message and not a copy', () => {
++    // A `dieNoProject` that ignored its argument and printed a whole hard-coded sentence would pass
++    // the assertion above and be a second copy of `core`'s condition. This is what tells them apart.
++    expect(observe(() => dieNoProject('something else entirely')).stderr)
++      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
++  });
++
++  test('the imperative appears in exactly one production module, and it is this one', () => {
++    // The whole point of the ruling, and the regression it forbids: six commands rendering the same
++    // advice, or `core` composing it again. Derived from the tree rather than from a list — a
++    // seventh command that composed its own would fail here without anyone remembering to add it.
++    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
++    // inside a template literal, where the backticks are escaped: a search for the sentence as it
++    // READS matches nothing, which this guard found by going red on its own subject.
++    const src = path.join(import.meta.dirname);
++    const composing = fs.readdirSync(src, { recursive: true, withFileTypes: true })
++      .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
++      .map((e) => [path.relative(src, path.join(e.parentPath, e.name)), fs.readFileSync(path.join(e.parentPath, e.name), 'utf8')] as const)
++      .filter(([, text]) => text.includes('in your repo'))
++      .map(([name]) => name);
++    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
++  });
++});
+diff --git a/packages/cli/src/fail.ts b/packages/cli/src/fail.ts
+index f84ae7e..ea37d48 100644
+--- a/packages/cli/src/fail.ts
++++ b/packages/cli/src/fail.ts
+@@ -23,6 +23,21 @@ export function die(message: string): never {
+   process.exit(ERROR);
+ }
+ 
++/**
++ * Fail because no project was found, with the remedy this surface offers for it.
++ *
++ * **The one place the imperative exists**, which is what *"A `core` error names the condition; the
++ * remedy belongs to the surface"* (2026-09-07) rules: `core` raises the condition and cannot know
++ * whether a terminal or M3's server is rendering it, so the sentence a shell user needs is composed
++ * here and nowhere else. Six commands call this; none of them composes anything.
++ *
++ * It takes the **message** rather than the error, so this frame module names no `core` symbol and
++ * the `instanceof` narrowing stays where it already was, in each command's own catch.
++ */
++export function dieNoProject(condition: string): never {
++  return die(`${condition} — run \`quorum init\` in your repo`);
++}
++
+ /**
+  * Record that the command failed without stopping it, so pending output still reaches the terminal.
+  *
+diff --git a/packages/cli/src/lint.test.ts b/packages/cli/src/lint.test.ts
+index 9404c6c..e15f3ce 100644
+--- a/packages/cli/src/lint.test.ts
++++ b/packages/cli/src/lint.test.ts
+@@ -252,12 +252,19 @@ describe('AC-4 — the project-not-found sentence survives the port unchanged',
+     });
+   });
+ 
+-  test('and the sentence is core\'s, not a second copy of it in this package', async () => {
+-    // A copy here would drift from `core`'s the day the OQ-2 successor renames the binary in it.
+-    // Read out of the error class rather than transcribed, and compared with what was printed.
++  test('and the condition is core\'s, not a second copy of it in this package', async () => {
++    // A copy here would drift from `core`'s the day anything renames the binary in it. Read out of
++    // the error class rather than transcribed, and compared with what was printed.
++    //
++    // Q-0111 split the sentence — `core` states the condition, this surface appends the remedy — so
++    // what is pinned is that the printed line BEGINS with the class's own message and that the rest
++    // is exactly the surface's addition. The anti-transcription property is unchanged and now says
++    // something it could not before: neither half may be a copy of the other's.
+     await inAnOrphanDirectory(async () => {
+       const { stderr } = await invoke(['lint']);
+-      expect(plain(stderr).trim()).toBe(`✗ ${new ProjectNotFoundError().message}`);
++      const condition = new ProjectNotFoundError().message;
++      expect(plain(stderr).trim()).toBe(`✗ ${condition} — run \`quorum init\` in your repo`);
++      expect(condition, 'core composed a remedy again').not.toContain('in your repo');
+     });
+   });
+ 
+diff --git a/packages/cli/src/lint.ts b/packages/cli/src/lint.ts
+index 821894a..6b51d59 100644
+--- a/packages/cli/src/lint.ts
++++ b/packages/cli/src/lint.ts
+@@ -23,7 +23,7 @@ import { lintDirectory, loadProject, ProjectNotFoundError, type FlowFileReport }
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die, failSoftly } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -53,7 +53,7 @@ function flowsDir(project: FlagValue | readonly FlagValue[] | undefined): string
+     return path.join(loadProject(project as string | undefined).harnessDir, 'flows');
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/run.ts b/packages/cli/src/run.ts
+index 22c39ad..f9580ca 100644
+--- a/packages/cli/src/run.ts
++++ b/packages/cli/src/run.ts
+@@ -32,7 +32,7 @@ import type { Event, RunTerminalEvent } from '@quorum/shared';
+ 
+ import type { FlagValue } from './argv.js';
+ import { EXIT_CODE_FOR_STATUS, ERROR, type ExitCode } from './exit.js';
+-import { die } from './fail.js';
++import { die, dieNoProject } from './fail.js';
+ import { createGateReader, type GateReader } from './gate.js';
+ import { renderFlowReport } from './lint.js';
+ import type { CommandHandler } from './main.js';
+@@ -230,7 +230,7 @@ function openProject(project: FlagValue | readonly FlagValue[] | undefined): Ret
+     return loadProject(project as string | undefined);
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/runs.ts b/packages/cli/src/runs.ts
+index 101cc54..ff82281 100644
+--- a/packages/cli/src/runs.ts
++++ b/packages/cli/src/runs.ts
+@@ -51,7 +51,7 @@ import { MANIFEST_FILE, RUN_HISTORY_ROOT, parseTicketId } from '@quorum/shared';
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die, failSoftly } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -72,7 +72,7 @@ function repoDirOf(project: FlagValue | readonly FlagValue[] | undefined): strin
+     return loadProject(project as string | undefined).repoDir;
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/cli/src/ticket.ts b/packages/cli/src/ticket.ts
+index 0b95ca2..fbbdc2b 100644
+--- a/packages/cli/src/ticket.ts
++++ b/packages/cli/src/ticket.ts
+@@ -36,7 +36,7 @@ import { loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { die } from './fail.js';
++import { die, dieNoProject } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -60,7 +60,7 @@ function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backl
+     return loadProject(project as string | undefined).backlog;
+   } catch (error) {
+     if (!(error instanceof ProjectNotFoundError)) throw error;
+-    return die(error.message);
++    return dieNoProject(error.message);
+   }
+ }
+ 
+diff --git a/packages/core/src/backlog/backlog.source.test.ts b/packages/core/src/backlog/backlog.source.test.ts
+index 82d888a..24f7eb5 100644
+--- a/packages/core/src/backlog/backlog.source.test.ts
++++ b/packages/core/src/backlog/backlog.source.test.ts
+@@ -121,7 +121,15 @@ describe('AC-10 — the lift does not exit the run or write to the terminal', ()
+     // carries both senses of the word: `harness/harness.yaml` is the **folder**, which
+     // `product-boundaries.md` requires be kept, and `quorum init` is the **command**.
+     const text = source(PROJECT_SOURCE);
+-    expect(text).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
++    expect(text).toContain('no harness/harness.yaml found');
++    // Q-0111 moved the remedy out of `core`, so the DEFAULT MESSAGE may no longer tell anyone what
++    // to type. Pinned on the constructor's default rather than on the file's prose, because the
++    // prose above it has to quote the imperative to explain where it went — a scan of the whole
++    // source would go red on its own explanation. See "A `core` error names the condition; the
++    // remedy belongs to the surface" (2026-09-07).
++    const fallback = /constructor\(message = '([^']*)'\)/.exec(text);
++    expect(fallback, 'ProjectNotFoundError no longer has a default message to check').not.toBeNull();
++    expect(fallback?.[1], 'the default message composes a remedy again').toBe('no harness/harness.yaml found');
+     // The half a blanket substitution would have destroyed, asserted on its own so it can fail on
+     // its own: `s/harness/quorum/g` yields `no quorum/quorum.yaml found`, which is wrong twice.
+     expect(text, 'the folder was renamed with the command').toContain('harness/harness.yaml');
+diff --git a/packages/core/src/backlog/project.test.ts b/packages/core/src/backlog/project.test.ts
+index a15218b..549edde 100644
+--- a/packages/core/src/backlog/project.test.ts
++++ b/packages/core/src/backlog/project.test.ts
+@@ -120,7 +120,11 @@ describe('AC-10 — loadProject returns a value or throws, and never ends the ru
+         expect.unreachable('loadProject should have refused');
+       } catch (error) {
+         expect((error as Error).name).toBe('ProjectNotFoundError');
+-        expect((error as Error).message).toBe('no harness/harness.yaml found — run `quorum init` in your repo');
++        // Q-0111: the condition and nothing else. The remedy is the surface's, composed once in
++        // `packages/cli`'s `dieNoProject` — see "A `core` error names the condition; the remedy
++        // belongs to the surface" (2026-09-07). Asserted as an equality rather than a `toContain`
++        // so a remedy creeping back into `core` fails here rather than passing under a substring.
++        expect((error as Error).message).toBe('no harness/harness.yaml found');
+       }
+     });
+   });
+diff --git a/packages/core/src/backlog/project.ts b/packages/core/src/backlog/project.ts
+index b940589..f9d1d7d 100644
+--- a/packages/core/src/backlog/project.ts
++++ b/packages/core/src/backlog/project.ts
+@@ -32,15 +32,19 @@ const DEFAULT_BACKLOG_PATH = 'backlog';
+  * `packages/cli`'s `bin` installs. A blanket replacement of the word yields
+  * `no quorum/quorum.yaml found`, which is wrong twice and passes any check that only looks for it.
+  *
+- * Why: the imperative stays here for now, and moving it is a separate ticket rather than a deferral
+- * — the six CLI catch sites all render `error.message` unaltered, so splitting the sentence means
+- * six sites each composing an instruction, which is the drift this ticket closed. What that ticket
+- * owes first is a decision entry against `04-architecture.md`'s statement of what `core` is
+- * responsible for, because M3's server will surface this same error over HTTP, where an imperative
+- * naming a shell is advice to somebody who may not have one. Nothing is broken while it waits.
++ * **The message states the condition and not the remedy**, which is the whole of Q-0111. `core`
++ * cannot know which surface is rendering this: a terminal, or M3's server over HTTP, where
++ * *"run `quorum init` in your repo"* is advice to somebody who may not have a shell. It does not
++ * have to know — this is a **class**, so a surface has everything it needs to compose its own next
++ * step from the type alone, and `packages/cli` does exactly that in one place. The folder stays in
++ * the sentence because it is the folder that is missing; the command left with the remedy.
++ *
++ * Why: see *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07),
++ * which measured that the six CLI catch sites render `error.message` unaltered — the objection that
++ * a split would cost six compositions was false, and the surface composes at one site.
+  */
+ export class ProjectNotFoundError extends Error {
+-  constructor(message = 'no harness/harness.yaml found — run `quorum init` in your repo') {
++  constructor(message = 'no harness/harness.yaml found') {
+     super(message);
+     this.name = 'ProjectNotFoundError';
+   }
+
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "rg -n \"COMMAND_DOMAIN|frame module|domain helper|fail\\.ts|ProjectNotFoundError|CORE_SUBJECTS|subjects\\(\\)|in your repo\" packages/cli/src/frame.source.test.ts packages/cli/src/binary-name.test.ts packages/cli/src packages/core/src --glob '*.ts'; nl -ba packages/cli/src/fail.ts | sed -n '1,80p'; nl -ba packages/cli/src/fail.test.ts | sed -n '285,345p'; nl -ba packages/core/src/backlog/backlog.source.test.ts | sed -n '110,145p'; sed -n '1,220p' .claude/rules/engineering.md; sed -n '1,180p' .claude/rules/docs-and-decisions.md"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 0ms:[0m
+packages/cli/src/binary-name.test.ts:47: * `ProjectNotFoundError` is the only sentence in `packages/core` that a user reads and that carries
+packages/cli/src/binary-name.test.ts:49: * subject. If a second `core` sentence appears, {@link CORE_SUBJECTS} is where it is added.
+packages/cli/src/binary-name.test.ts:78:const CORE_SUBJECTS = ['packages/core/src/backlog/project.ts'] as const;
+packages/cli/src/binary-name.test.ts:433:  ...CORE_SUBJECTS.map((relative): [string, string] =>
+packages/cli/src/binary-name.test.ts:444:    const found = subjects().flatMap(([name, text]) => offending(text, name)
+packages/cli/src/binary-name.test.ts:455:    const found = new Map(subjects());
+packages/cli/src/binary-name.test.ts:462:    expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
+packages/cli/src/binary-name.test.ts:464:    expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
+packages/cli/src/binary-name.test.ts:465:      .toContain('run \\`quorum init\\` in your repo');
+packages/cli/src/binary-name.test.ts:479:    for (const relative of CORE_SUBJECTS) {
+packages/cli/src/binary-name.test.ts:509:    expect(printable('run `harness init` in your repo')).toBe(true);
+packages/cli/src/binary-name.test.ts:510:    expect(outsideAPath('run `harness init` in your repo')).toContain('harness');
+packages/cli/src/binary-name.test.ts:522:    const printed = 'const a = \'run `harness init` in your repo\';\n';
+packages/cli/src/binary-name.test.ts:523:    expect(literals(printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/binary-name.test.ts:525:    expect(literals(provenance + printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/binary-name.test.ts:567:    expect(literals('const a = `run \\`harness init\\` in your repo`;\n', FIXTURE))
+packages/cli/src/binary-name.test.ts:568:      .toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/frame.source.test.ts:2: * Q-0090 AC-8 (no command is implemented and no domain helper is copied), AC-4(d) (no signal
+packages/cli/src/frame.source.test.ts:58: * {@link COMMAND_DOMAIN} is then required to name exactly the modules this produces, so neither can
+packages/cli/src/frame.source.test.ts:207: * had stopped prompting. `gate.ts` is a frame module rather than a command's, because `run.ts` is
+packages/cli/src/frame.source.test.ts:266: * frame module resolving its own location is the mechanism Q-0090 AC-7 replaced, and a second
+packages/cli/src/frame.source.test.ts:285:    // nothing would leave "no frame module names a domain symbol" true of nothing at all, which is
+packages/cli/src/frame.source.test.ts:372: * catches — `FlowError`, `IntegrationError`, `ProjectNotFoundError` — are not domain *helpers* and
+packages/cli/src/frame.source.test.ts:373: * are correctly absent from it. That is also what makes the two frame modules under this command
+packages/cli/src/frame.source.test.ts:387:const COMMAND_DOMAIN: Record<string, readonly string[]> = {
+packages/cli/src/frame.source.test.ts:445:  test('no frame module names a run-executing or backlog-writing symbol, and no command names another\'s', () => {
+packages/cli/src/frame.source.test.ts:446:    expect(domainOffenders(frameModules(), commandModules(), COMMAND_DOMAIN), 'AC-10').toStrictEqual([]);
+packages/cli/src/frame.source.test.ts:466:    expect(domainOffenders([], wrongCommand, { 'validate.ts': COMMAND_DOMAIN['validate.ts'] }))
+packages/cli/src/frame.source.test.ts:476:    // point `COMMAND_DOMAIN` gained its row and the fixture stopped producing the sentence below —
+packages/cli/src/frame.source.test.ts:480:    expect(domainOffenders([], unregistered, COMMAND_DOMAIN))
+packages/cli/src/frame.source.test.ts:482:    expect(domainOffenders([], [], COMMAND_DOMAIN))
+packages/cli/src/frame.source.test.ts:492:    expect(domainOffenders([], wasBoard, COMMAND_DOMAIN), 'board.ts is unregistered again')
+packages/cli/src/frame.source.test.ts:499:    expect(domainOffenders([], wasBoard, { 'board.ts': COMMAND_DOMAIN['board.ts'] }))
+packages/cli/src/frame.source.test.ts:511:      const permitted = COMMAND_DOMAIN[module];
+packages/cli/src/frame.source.test.ts:530:    const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
+packages/cli/src/frame.source.test.ts:557:    const permitted = COMMAND_DOMAIN['runs.ts'];
+packages/cli/src/frame.source.test.ts:705:  test('a frame module doing it fails, and so does a second command module', () => {
+packages/cli/src/ticket.ts:35:import { loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
+packages/cli/src/ticket.ts:62:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/package.test.ts:366:    'FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectExistsError', 'ProjectNotFoundError',
+packages/cli/src/package.test.ts:390:    // `ProjectNotFoundError` reaches `dieOnUnexpected` and prints a Node stack where the spike
+packages/cli/src/package.test.ts:396:    expect(ERRORS).toContain('ProjectNotFoundError');
+packages/cli/src/package.test.ts:399:    expect(typeof barrel.ProjectNotFoundError).toBe('function');
+packages/cli/src/package.test.ts:428:      .not.toStrictEqual(['FlowError', 'GateUnansweredError', 'IntegrationError', 'ProjectNotFoundError']);
+packages/cli/src/binary-name.test.ts:47: * `ProjectNotFoundError` is the only sentence in `packages/core` that a user reads and that carries
+packages/cli/src/binary-name.test.ts:49: * subject. If a second `core` sentence appears, {@link CORE_SUBJECTS} is where it is added.
+packages/cli/src/binary-name.test.ts:78:const CORE_SUBJECTS = ['packages/core/src/backlog/project.ts'] as const;
+packages/cli/src/binary-name.test.ts:433:  ...CORE_SUBJECTS.map((relative): [string, string] =>
+packages/cli/src/binary-name.test.ts:444:    const found = subjects().flatMap(([name, text]) => offending(text, name)
+packages/cli/src/binary-name.test.ts:455:    const found = new Map(subjects());
+packages/cli/src/binary-name.test.ts:462:    expect(literals(found.get(CORE_SUBJECTS[0]) ?? '', CORE_SUBJECTS[0]))
+packages/cli/src/binary-name.test.ts:464:    expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
+packages/cli/src/binary-name.test.ts:465:      .toContain('run \\`quorum init\\` in your repo');
+packages/cli/src/binary-name.test.ts:479:    for (const relative of CORE_SUBJECTS) {
+packages/cli/src/binary-name.test.ts:509:    expect(printable('run `harness init` in your repo')).toBe(true);
+packages/cli/src/binary-name.test.ts:510:    expect(outsideAPath('run `harness init` in your repo')).toContain('harness');
+packages/cli/src/binary-name.test.ts:522:    const printed = 'const a = \'run `harness init` in your repo\';\n';
+packages/cli/src/binary-name.test.ts:523:    expect(literals(printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/binary-name.test.ts:525:    expect(literals(provenance + printed, FIXTURE)).toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/binary-name.test.ts:567:    expect(literals('const a = `run \\`harness init\\` in your repo`;\n', FIXTURE))
+packages/cli/src/binary-name.test.ts:568:      .toStrictEqual(['run `harness init` in your repo']);
+packages/cli/src/trace.ts:12: * symbols its command needs, and this is a frame module.
+packages/cli/src/fail.test.ts:295:   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
+packages/cli/src/fail.test.ts:302:    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
+packages/cli/src/fail.test.ts:310:      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
+packages/cli/src/fail.test.ts:317:    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
+packages/cli/src/fail.test.ts:324:      .filter(([, text]) => text.includes('in your repo'))
+packages/cli/src/fail.test.ts:326:    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
+packages/cli/src/quorum.ts:22: * `failSoftly` stay two mechanisms (see `fail.ts`), and the unhandled-rejection path is
+packages/cli/src/run.ts:29:  ProjectNotFoundError, runFlow,
+packages/cli/src/run.ts:46: * sibling usage lines, the board's hint, `init`'s next steps and `core`'s `ProjectNotFoundError`.
+packages/cli/src/run.ts:232:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/adapters.test.ts:16: * `ProjectNotFoundError` real, so the project-opening half is still the shipped path.
+packages/cli/src/run.test.ts:511:    // `--project`, which is the only shape that produces `ProjectNotFoundError`: with an explicit
+packages/cli/src/gate.ts:45: * frame module.
+packages/cli/src/runs.ts:45:  isIncomplete, loadProject, occurrenceSeq, ProjectNotFoundError, readRun, readRunsDir, sortRuns,
+packages/cli/src/runs.ts:74:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/board.ts:26:import { containment, lintFlowDirectory, loadProject, ProjectNotFoundError, pushLag } from '@quorum/core';
+packages/cli/src/board.ts:48:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/end-to-end.test.ts:787:    expect(stderr).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+packages/cli/src/lint.test.ts:21:import { findProject, ProjectNotFoundError } from '@quorum/core';
+packages/cli/src/lint.test.ts:204:    // reached — see fail.ts, and `fail.test.ts:203`, which pins that `failSoftly` calls no exit.
+packages/cli/src/lint.test.ts:246:      expect(plain(stderr)).toContain('no harness/harness.yaml found — run `quorum init` in your repo');
+packages/cli/src/lint.test.ts:248:      // The regression AC-4 names: an uncaught ProjectNotFoundError reaches `dieOnUnexpected` and
+packages/cli/src/lint.test.ts:251:      expect(stderr).not.toContain('ProjectNotFoundError');
+packages/cli/src/lint.test.ts:265:      const condition = new ProjectNotFoundError().message;
+packages/cli/src/lint.test.ts:266:      expect(plain(stderr).trim()).toBe(`✗ ${condition} — run \`quorum init\` in your repo`);
+packages/cli/src/lint.test.ts:267:      expect(condition, 'core composed a remedy again').not.toContain('in your repo');
+packages/core/src/backlog/project.test.ts:12:import { ProjectNotFoundError, findProject, loadProject } from './project.js';
+packages/core/src/backlog/project.test.ts:117:      expect(() => loadProject()).toThrow(ProjectNotFoundError);
+packages/core/src/backlog/project.test.ts:122:        expect((error as Error).name).toBe('ProjectNotFoundError');
+packages/core/src/backlog/backlog.source.test.ts:37:    expect(Object.keys(projectModule).sort()).toStrictEqual(['ProjectNotFoundError', 'findProject', 'loadProject']);
+packages/core/src/backlog/backlog.source.test.ts:38:    expect(projectModule.ProjectNotFoundError.prototype).toBeInstanceOf(Error);
+packages/core/src/backlog/backlog.source.test.ts:76:    // sentence — which makes `ProjectNotFoundError` part of this folder's public contribution
+packages/core/src/backlog/backlog.source.test.ts:80:      .toStrictEqual(['Backlog', 'ProjectNotFoundError', 'findProject', 'loadProject']);
+packages/core/src/backlog/backlog.source.test.ts:115:    expect(text).toContain('ProjectNotFoundError');
+packages/core/src/backlog/backlog.source.test.ts:131:    expect(fallback, 'ProjectNotFoundError no longer has a default message to check').not.toBeNull();
+packages/core/src/backlog/project.ts:7: * {@link ProjectNotFoundError} carrying THE SAME SENTENCE, byte for byte, which Q-0010 prints
+packages/core/src/backlog/project.ts:37: * *"run `quorum init` in your repo"* is advice to somebody who may not have a shell. It does not
+packages/core/src/backlog/project.ts:46:export class ProjectNotFoundError extends Error {
+packages/core/src/backlog/project.ts:49:    this.name = 'ProjectNotFoundError';
+packages/core/src/backlog/project.ts:90: * @throws {ProjectNotFoundError} when no `harness/harness.yaml` is found.
+packages/core/src/backlog/project.ts:94:  if (!repoDir) throw new ProjectNotFoundError();
+packages/cli/src/build.test.ts:1433:    // reason `fail.ts` keeps the two apart, and four spike sites depend on it
+packages/cli/src/frame.source.test.ts:2: * Q-0090 AC-8 (no command is implemented and no domain helper is copied), AC-4(d) (no signal
+packages/cli/src/frame.source.test.ts:58: * {@link COMMAND_DOMAIN} is then required to name exactly the modules this produces, so neither can
+packages/cli/src/frame.source.test.ts:207: * had stopped prompting. `gate.ts` is a frame module rather than a command's, because `run.ts` is
+packages/cli/src/frame.source.test.ts:266: * frame module resolving its own location is the mechanism Q-0090 AC-7 replaced, and a second
+packages/cli/src/frame.source.test.ts:285:    // nothing would leave "no frame module names a domain symbol" true of nothing at all, which is
+packages/cli/src/frame.source.test.ts:372: * catches — `FlowError`, `IntegrationError`, `ProjectNotFoundError` — are not domain *helpers* and
+packages/cli/src/frame.source.test.ts:373: * are correctly absent from it. That is also what makes the two frame modules under this command
+packages/cli/src/frame.source.test.ts:387:const COMMAND_DOMAIN: Record<string, readonly string[]> = {
+packages/cli/src/frame.source.test.ts:445:  test('no frame module names a run-executing or backlog-writing symbol, and no command names another\'s', () => {
+packages/cli/src/frame.source.test.ts:446:    expect(domainOffenders(frameModules(), commandModules(), COMMAND_DOMAIN), 'AC-10').toStrictEqual([]);
+packages/cli/src/frame.source.test.ts:466:    expect(domainOffenders([], wrongCommand, { 'validate.ts': COMMAND_DOMAIN['validate.ts'] }))
+packages/cli/src/frame.source.test.ts:476:    // point `COMMAND_DOMAIN` gained its row and the fixture stopped producing the sentence below —
+packages/cli/src/frame.source.test.ts:480:    expect(domainOffenders([], unregistered, COMMAND_DOMAIN))
+packages/cli/src/frame.source.test.ts:482:    expect(domainOffenders([], [], COMMAND_DOMAIN))
+packages/cli/src/frame.source.test.ts:492:    expect(domainOffenders([], wasBoard, COMMAND_DOMAIN), 'board.ts is unregistered again')
+packages/cli/src/frame.source.test.ts:499:    expect(domainOffenders([], wasBoard, { 'board.ts': COMMAND_DOMAIN['board.ts'] }))
+packages/cli/src/frame.source.test.ts:511:      const permitted = COMMAND_DOMAIN[module];
+packages/cli/src/frame.source.test.ts:530:    const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
+packages/cli/src/frame.source.test.ts:557:    const permitted = COMMAND_DOMAIN['runs.ts'];
+packages/cli/src/frame.source.test.ts:705:  test('a frame module doing it fails, and so does a second command module', () => {
+packages/core/src/backlog/scaffold.ts:12: * `ProjectNotFoundError`: a library may not do that to its host. The refusal carries the spike's
+packages/core/src/backlog/scaffold.ts:29: * `ProjectNotFoundError` is: a command that cannot tell this case from a crash prints a Node stack
+packages/cli/src/lint.ts:18: * `fail.ts`'s own recorded reason — see Q-0091 AC-6.
+packages/cli/src/lint.ts:22:import { lintDirectory, loadProject, ProjectNotFoundError, type FlowFileReport } from '@quorum/core';
+packages/cli/src/lint.ts:33: * `loadProject` throws {@link ProjectNotFoundError} where the CLI's own version called `die` — a
+packages/cli/src/lint.ts:55:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/fail.ts:34: * It takes the **message** rather than the error, so this frame module names no `core` symbol and
+packages/cli/src/fail.ts:38:  return die(`${condition} — run \`quorum init\` in your repo`);
+packages/cli/src/adapters.ts:31:import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@quorum/core';
+packages/cli/src/adapters.ts:42: * Why: a sixth copy of `lint.ts`'s block rather than a shared helper, because a frame module naming
+packages/cli/src/adapters.ts:52:    if (!(error instanceof ProjectNotFoundError)) throw error;
+packages/cli/src/main.ts:6: * overrides `process.exitCode` — collapsing the two mechanisms `fail.ts` exists to keep apart, and
+packages/cli/src/main.ts:16: * prints it instead of `fail.ts`'s `dieOnUnexpected`. The binary that wires the two together does
+packages/core/src/index.ts:10: * Twenty-two of the twenty-seven are the domain helpers `packages/cli/src/frame.source.test.ts` names
+packages/core/src/index.ts:18: * is opened; `ProjectNotFoundError` is the first error every project-opening command can hit, and
+packages/core/src/index.ts:34: * as `ProjectNotFoundError` does for a command that opens a project. `currentBranch` is deliberately
+packages/core/src/index.ts:52:export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
+     1	/**
+     2	 * The two ways this CLI reports a failure, kept apart because they are two mechanisms and not one
+     3	 * number spelled twice.
+     4	 *
+     5	 * {@link die} exits immediately, which truncates whatever the process had not finished writing.
+     6	 * {@link failSoftly} sets the status and lets the process finish writing, which is what the spike's
+     7	 * four `process.exitCode = 1` assignments on the `runs` paths rely on
+     8	 * (`spike/bin/harness.js:499`, `:517`, `:523`, `:531`): a listing that reports a store warning
+     9	 * still prints the listing. A port collapsing the two into one call loses that output — see
+    10	 * Q-0090 AC-5, whose test demonstrates the difference rather than asserting it.
+    11	 */
+    12	import { c } from './colour.js';
+    13	import { ERROR } from './exit.js';
+    14	
+    15	/**
+    16	 * Print a message to stderr and stop the process immediately with {@link ERROR}.
+    17	 *
+    18	 * Preserved verbatim from `spike/bin/harness.js:124`, including the space *inside* the red span,
+    19	 * which every other call site in that file puts outside it. Why: preserved defect, see Q-0090 AC-3.
+    20	 */
+    21	export function die(message: string): never {
+    22	  console.error(c.red('✗ ') + message);
+    23	  process.exit(ERROR);
+    24	}
+    25	
+    26	/**
+    27	 * Fail because no project was found, with the remedy this surface offers for it.
+    28	 *
+    29	 * **The one place the imperative exists**, which is what *"A `core` error names the condition; the
+    30	 * remedy belongs to the surface"* (2026-09-07) rules: `core` raises the condition and cannot know
+    31	 * whether a terminal or M3's server is rendering it, so the sentence a shell user needs is composed
+    32	 * here and nowhere else. Six commands call this; none of them composes anything.
+    33	 *
+    34	 * It takes the **message** rather than the error, so this frame module names no `core` symbol and
+    35	 * the `instanceof` narrowing stays where it already was, in each command's own catch.
+    36	 */
+    37	export function dieNoProject(condition: string): never {
+    38	  return die(`${condition} — run \`quorum init\` in your repo`);
+    39	}
+    40	
+    41	/**
+    42	 * Record that the command failed without stopping it, so pending output still reaches the terminal.
+    43	 *
+    44	 * The counterpart to {@link die}, and never a synonym for it.
+    45	 */
+    46	export function failSoftly(): void {
+    47	  process.exitCode = ERROR;
+    48	}
+    49	
+    50	/**
+    51	 * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path.
+    52	 *
+    53	 * `spike/bin/harness.js:569` is `main().catch((e) => die(e.stack ?? String(e)))`, and four of its
+    54	 * behaviours belong to that exact expression rather than to the idea behind it, each measured
+    55	 * against it: the property access is unguarded, so a thrown `null` or `undefined` **raises** before
+    56	 * `die` is reached; the `??` tests whether `stack` is *there* and never what type it is, so
+    57	 * `{ stack: 42 }` is reported as `42`; the fallback is `String(e)`, so a thrown symbol prints as
+    58	 * `Symbol(s)`; and a symbol-valued `stack` reaches `die`, where the `+` **raises** because it cannot
+    59	 * coerce one. The expression is therefore written out rather than paraphrased, and the coercion is
+    60	 * left where the spike leaves it — inside {@link die}. Why: preserved, see Q-0090 AC-3.
+    61	 *
+    62	 * The two raising rows are a defect and are reported rather than repaired here: the one path that
+    63	 * exists to turn a crash into a message replaces it with a different crash. Ground rule 3.
+    64	 *
+    65	 * The binary that wires this to the frame's entry does not exist yet and is Q-0096's; the behaviour
+    66	 * is declared and tested here so no sibling command ticket has to invent it.
+    67	 */
+    68	export function dieOnUnexpected(error: unknown): never {
+    69	  const message: unknown = (error as { stack?: unknown }).stack ?? String(error);
+    70	  // The assertion is the point rather than a convenience: `die` takes a string, and this is the one
+    71	  // call site that may hand it something else, so the `+` inside `die` performs the same coercion —
+    72	  // and raises the same TypeError on a symbol — that the spike's does.
+    73	  return die(message as string);
+    74	}
+   285	    // endings makes the SOFT child arrive at 65536 bytes of 1048576 on macOS, one pipe buffer
+   286	    // exactly. `Why: see Q-0102`, where the machine-dependence was measured on CI 33968439312.
+   287	    expect(hard.bytes, 'the hard child produced nothing, so the pair demonstrates nothing')
+   288	      .toBeGreaterThan(0);
+   289	  });
+   290	});
+   291	
+   292	describe('Q-0111 — the remedy is the surface\'s, and it exists in one place', () => {
+   293	  /**
+   294	   * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
+   295	   * `ProjectNotFoundError` says what is missing; this module says what to do about it, once.
+   296	   */
+   297	  test('the composed sentence is what a stranger saw before the split, byte for byte', () => {
+   298	    // The criterion the entry named: the ruling is about WHERE the remedy is composed, not about
+   299	    // what it says, so the rendered line must not move. `core`'s condition plus this module's
+   300	    // remedy is the sentence Q-0100 shipped.
+   301	    const { stderr, code } = observe(() => dieNoProject('no harness/harness.yaml found'));
+   302	    expect(stderr).toBe('\x1b[31m✗ \x1b[0mno harness/harness.yaml found — run `quorum init` in your repo\n');
+   303	    expect(code).toBe(ERROR);
+   304	  });
+   305	
+   306	  test('it composes from whatever condition it is given, so it renders core\'s message and not a copy', () => {
+   307	    // A `dieNoProject` that ignored its argument and printed a whole hard-coded sentence would pass
+   308	    // the assertion above and be a second copy of `core`'s condition. This is what tells them apart.
+   309	    expect(observe(() => dieNoProject('something else entirely')).stderr)
+   310	      .toBe('\x1b[31m✗ \x1b[0msomething else entirely — run `quorum init` in your repo\n');
+   311	  });
+   312	
+   313	  test('the imperative appears in exactly one production module, and it is this one', () => {
+   314	    // The whole point of the ruling, and the regression it forbids: six commands rendering the same
+   315	    // advice, or `core` composing it again. Derived from the tree rather than from a list — a
+   316	    // seventh command that composed its own would fail here without anyone remembering to add it.
+   317	    // The needle is `in your repo` rather than the whole imperative because `fail.ts` composes
+   318	    // inside a template literal, where the backticks are escaped: a search for the sentence as it
+   319	    // READS matches nothing, which this guard found by going red on its own subject.
+   320	    const src = path.join(import.meta.dirname);
+   321	    const composing = fs.readdirSync(src, { recursive: true, withFileTypes: true })
+   322	      .filter((e) => e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))
+   323	      .map((e) => [path.relative(src, path.join(e.parentPath, e.name)), fs.readFileSync(path.join(e.parentPath, e.name), 'utf8')] as const)
+   324	      .filter(([, text]) => text.includes('in your repo'))
+   325	      .map(([name]) => name);
+   326	    expect(composing, 'the remedy is composed somewhere other than fail.ts').toStrictEqual(['fail.ts']);
+   327	  });
+   328	});
+   110	describe('AC-10 — the lift does not exit the run or write to the terminal', () => {
+   111	  test('project.ts contains no exit and no terminal write', () => {
+   112	    const text = source(PROJECT_SOURCE);
+   113	    expect(text.includes('process.exit'), 'a library may not end its host').toBe(false);
+   114	    expect(text.includes('console.'), 'what a command prints is Q-0010\'s, not core\'s').toBe(false);
+   115	    expect(text).toContain('ProjectNotFoundError');
+   116	  });
+   117	
+   118	  test('Q-0100 — the sentence keeps the folder and names the binary that exists', () => {
+   119	    // It was a byte-identity against `spike/bin/harness.js`, whose tree Q-0103 deleted; what it
+   120	    // pins now is the distinction that made Q-0100 a ruling rather than a `sed`. One sentence
+   121	    // carries both senses of the word: `harness/harness.yaml` is the **folder**, which
+   122	    // `product-boundaries.md` requires be kept, and `quorum init` is the **command**.
+   123	    const text = source(PROJECT_SOURCE);
+   124	    expect(text).toContain('no harness/harness.yaml found');
+   125	    // Q-0111 moved the remedy out of `core`, so the DEFAULT MESSAGE may no longer tell anyone what
+   126	    // to type. Pinned on the constructor's default rather than on the file's prose, because the
+   127	    // prose above it has to quote the imperative to explain where it went — a scan of the whole
+   128	    // source would go red on its own explanation. See "A `core` error names the condition; the
+   129	    // remedy belongs to the surface" (2026-09-07).
+   130	    const fallback = /constructor\(message = '([^']*)'\)/.exec(text);
+   131	    expect(fallback, 'ProjectNotFoundError no longer has a default message to check').not.toBeNull();
+   132	    expect(fallback?.[1], 'the default message composes a remedy again').toBe('no harness/harness.yaml found');
+   133	    // The half a blanket substitution would have destroyed, asserted on its own so it can fail on
+   134	    // its own: `s/harness/quorum/g` yields `no quorum/quorum.yaml found`, which is wrong twice.
+   135	    expect(text, 'the folder was renamed with the command').toContain('harness/harness.yaml');
+   136	  });
+   137	});
+   138	
+   139	describe('AC-11 — the project config is declared once, in shared, and validated nowhere', () => {
+   140	  test('core imports the type and declares no config shape of its own', () => {
+   141	    const text = source(PROJECT_SOURCE);
+   142	    expect(text).toContain("import type { ProjectConfig } from '@quorum/shared'");
+   143	    expect(text.includes('projectConfigSchema.parse('), 'loadProject does not validate').toBe(false);
+   144	    expect(text.includes('.safeParse('), 'loadProject does not validate').toBe(false);
+   145	    for (const [name, text2] of coreSourceFiles()) {
+# Engineering rules
+
+- TypeScript strict; no `any`, no `@ts-ignore` without a one-line reason on the same line.
+- No deprecated API in new code; one found in code you are already changing is reported, not migrated in passing — the migration is its own change. `tsc --noEmit` does not error on `@deprecated`; it is an editor strikethrough. Since Q-0069 `pnpm lint` does: `@typescript-eslint/no-deprecated` is on at error severity, with the type information it needs, and it is the only type-aware rule enabled. It covers exactly what ESLint covers — `packages/**/*.ts` and `apps/**/*.ts`, tests included.
+- Prefer small, boring, proven libraries. A new dependency needs a one-line justification in the PR and, if it changes architecture, a DECISIONS.md entry.
+- Every behaviour change ships with a test. Core logic is tested through the mock adapter end-to-end suite plus focused unit tests; adapters are tested by the local `adapters --probe` and its JSON report.
+- Files are the database. Anything persistent is a file in `backlog/`, `harness/`, or `.quorum/`; no hidden state in the daemon.
+- One trace/event format (`packages/shared`). Adapters map to it; nothing downstream knows which vendor produced an event.
+- Errors are explicit: invalid structured output saves the raw text next to the ticket and stops the run with a clear message. Never default silently.
+- Safety by construction: worktrees, integration branch, `human-locked` gate on deploy — enforced in `core`, not in the UI or by convention. Budget caps are specified but not yet enforced; do not rely on one stopping a run.
+- Conventional commits, ticket id in the subject (`feat(core): bounded backward edges [Q-0009]`).
+- Comments are JSDoc (`/** … */`) on modules, exported symbols and non-obvious fields; `//` only for a short remark inside a body. Code that needs explaining is written wrong — fix the name or the shape first. Where behaviour is deliberately counterintuitive, one line naming the authority (`Why: preserved defect, see Q-0043 AC-7`); never transcribe DECISIONS.md or a ticket body into a source file.
+- Keep the cold-clone test in mind: if a feature makes the first 30 minutes longer, it needs a reason.
+# Docs and decisions
+
+- The decisions are append-only. Each is one file in `docs/decisions/`, named `NNN-slug.md`, opening `# <title> — <YYYY-MM-DD>` and carrying **Decision**, **Alternatives considered**, **Why**; `docs/DECISIONS.md` is the index and gains one line per entry. A landed entry is never edited — reversing one is a new entry that names the old one. Cite an entry by its title and date, never by its file name or number.
+- **An entry's date is the date it takes its place in the index**, not the date the choice was made; where the two differ the body says when it was decided. `packages/shared/src/docs.test.ts` enforces it — the index's dates never go backwards — so a back-dated entry turns the suite red. See *"An entry's date is the date it takes its place in the index"* (2026-09-01).
+- `docs/GLOSSARY.md` is the vocabulary. When you need a new term, add it there before using it in a second file. Do not introduce synonyms for existing terms.
+- The numbered docs (01–06) are living documents; edit in place and bump the status line at the top with the date and what changed.
+- When code and docs disagree, the docs are wrong until a DECISIONS.md entry says otherwise — fix the docs in the same PR.
+- Milestone ends with a DECISIONS.md entry: what was learned, what changed.
+- Write prose, not bullet walls, in the numbered docs; bullets are fine in rules and plans.
+
+[35m[3mcodex[0m[0m
+nit `packages/cli/src/fail.ts:29` — The new JSDoc substantially restates the decision’s rationale, contrary to `.claude/rules/engineering.md` (“never transcribe DECISIONS.md or a ticket body into a source file”). This duplicates policy that can drift. Keep only the function contract and a one-line authority reference.
+
+nit `packages/core/src/backlog/project.ts:35` — The revised class JSDoc likewise repeats the decision’s surface/server rationale and implementation details. Reduce it to the condition-only contract plus the required title-and-date citation.
+[2mtokens used[0m
+40,126
+nit `packages/cli/src/fail.ts:29` — The new JSDoc substantially restates the decision’s rationale, contrary to `.claude/rules/engineering.md` (“never transcribe DECISIONS.md or a ticket body into a source file”). This duplicates policy that can drift. Keep only the function contract and a one-line authority reference.
+
+nit `packages/core/src/backlog/project.ts:35` — The revised class JSDoc likewise repeats the decision’s surface/server rationale and implementation details. Reduce it to the condition-only contract plus the required title-and-date citation.
