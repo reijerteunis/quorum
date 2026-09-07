@@ -1334,9 +1334,22 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     is ever considered**, whatever the inventory holds — all twelve tracked root-level files are
     invisible to the scanner, and the hand-audited `MANIFEST` is what covers them, **failing open for
     a thirteenth**. That is the `q0050.source.test.ts` shape Q-0051 found, in the guard written to
-    close exactly this class. Registered there by hand with that reason and **reported rather than
-    fixed**: changing the collection rule needs a census of what it would newly collect, which is a
-    ticket and not a line.
+    close exactly this class. **Fixed directly in the same session rather than ticketed**, on the
+    maintainer's instruction: the rule is that a literal with no separator is a path only if the
+    inventory holds it as a **file**, `holds` being true of a directory prefix too — so the
+    separator requirement was that rule by a cheaper proxy, wrong in one direction. The census the
+    fix needed was run before anything changed, by applying the rule and letting the guard
+    enumerate: **six newly-collected literals, audited one at a time.** Two are basenames joined
+    onto a temp directory and written, never the repository's copy, and are `NOT_READ` rows with
+    that reason. **Two are genuine undeclared reads**, and they are the finding:
+    `repoFile('package.json')` in `test-command.test.ts` and `repoFile('vitest.shared.js')` in
+    `test-discovery.test.ts`, neither declared on `@quorum/core#test`. **`package.json`'s `scripts`
+    is the oracle for Q-0065's `--force` guard**, so the check that the test command defeats its own
+    cache was itself replayable over a changed test command — Q-0072's defect surviving inside
+    Q-0072's own guard. Demonstrated on an identical tree with only the classifier differing: with
+    that row and its declaration removed, the old rule passes clause B and the new rule fails it by
+    name, so the scanner covers the read independently of the hand register rather than being shown
+    red by its neighbour (Q-0107's distinction).
     **Verified by mutation rather than by reading, four with distinct signatures**: a term dropped
     from `CLAUDE.md` fails the equality clause naming Q-0105's GO-2 — the real defect reproduced —
     the same terms reordered fail it too, the *"use exactly these terms"* marker removed throws

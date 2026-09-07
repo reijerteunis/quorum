@@ -15,6 +15,11 @@
         "../../.github/scripts/**",
         "../../turbo.json",
         "../../pnpm-lock.yaml",
+        // Q-0108: both are read by this suite and neither was declared, because the classifier could
+        // not see a root-level file. `package.json`'s scripts are Q-0065's oracle and
+        // `vitest.shared.js` is where the discovery guards read the include from.
+        "../../package.json",
+        "../../vitest.shared.js",
         // Q-0050 AC-13d: q0050.source.test.ts scans authority lines against the decisions
         // index and this ticket's body for a transcribed sentence.
         "../../docs/DECISIONS.md",

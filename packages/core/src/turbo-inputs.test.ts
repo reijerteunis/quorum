@@ -163,10 +163,7 @@ const SUITES = [
  */
 const MANIFEST: Record<string, Record<string, string>> = {
   '@quorum/shared#test': {
-    'CLAUDE.md': "docs.test.ts — Q-0108, its term list against docs/README.md's. Registered BY HAND because "
-      + 'the scanner cannot see it: pathLiterals skips any literal with no "/", so no root-level file is ever '
-      + 'considered, whatever the inventory holds. That is why this manifest carries turbo.json below and why a '
-      + 'thirteenth root-level read would be uncovered until someone adds it here',
+    'CLAUDE.md': 'docs.test.ts — Q-0108, its term list against docs/README.md\'s. Registered by hand when the row was written and enforced by the scanner since, in the same change: widening the classifier to root-level files is what this read exposed',
     'turbo.json': 'docs.test.ts — Q-0097 AC-24, 04-architecture.md\'s description of the emit is compared against the shipped build task rather than against a literal',
     'docs/02-sdlc-pipeline-spec.md': 'docs.test.ts — the status line and the §5.8 chore section',
     'docs/03-adapter-contract.md': 'docs.test.ts — the three adapter event kinds',
@@ -197,6 +194,11 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'contracts/Q-0006/ticket-review-state.schema.json': 'contracts.test.ts — the frozen ticket contract',
     'contracts/Q-0011/run-manifest.schema.json': 'run-manifest.test.ts, schema-cache.test.ts, validate-artifact.test.ts, run-history/manifest.test.ts, run-history/writer.test.ts',
     'pnpm-workspace.yaml': 'test-discovery.test.ts — the globs the workspace package list is expanded from, so a package added or removed moves this task\'s hash',
+    // Both found by Q-0108, which widened the classifier to root-level files and turned up two
+    // reads that had never been declared. Neither is new; what is new is that the scanner can see
+    // them, so `undeclaredPaths` now enforces these two rows rather than the rows alone standing.
+    'package.json': 'test-command.test.ts — repoFile(\'package.json\').scripts, which is the oracle for Q-0065\'s --force guard: without this the check that the test command defeats its own cache was itself replayable over a changed test command',
+    'vitest.shared.js': 'test-discovery.test.ts — the include is read out of the shared configuration rather than assumed (Q-0054 AC-6), and test/vitest-include.ts resolves the same file for every discovery clause',
   },
 };
 
@@ -305,6 +307,12 @@ const NOT_READ: Record<string, string> = {
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
+  // The two below became visible when Q-0108 widened the classifier to root-level files. Both are
+  // basenames joined onto a TEMP directory and written, never the repository's own copy — and both
+  // are named here rather than pattern-excused, so a suite that one day opens the real file is
+  // refused until somebody moves the row. That risk is the standing one this register carries.
+  'README.md': 'backlog.test.ts writes one into a temp backlog root to prove `list` ignores a non-ticket file; the repository\'s own README is opened by nothing in either suite',
+  '.gitignore': 'turbo-inputs.test.ts writes one into a temp repository so the inventory fixture has ignored roots to exclude; this file names it as data and opens nothing',
   'docs/05-design-prompt.md': 'named nowhere but this file, as clause A\'s and clause B\'s own fixture below',
 };
 
@@ -515,10 +523,19 @@ function covered(read: string, task: Reported, directory: string): boolean {
 /**
  * Every quoted string literal in `text` that names a repository path the inventory holds.
  *
- * A separator is required, so a bare word that happens to match a directory name — `main`, `test`,
- * `spike` — is not mistaken for a path. Values that are relative (`../..`), absolute, or a bare
- * prefix ending in a separator (`backlog/`, `.harness/`) are dropped as well: those are fragments
- * used in string arithmetic rather than paths handed to a reader.
+ * A bare word that happens to match a directory — `docs`, `packages`, `src` — is not mistaken for a
+ * path, because {@link Inventory.holds} is true of a directory prefix as well as of a file. **A
+ * literal with no separator must therefore be held as a FILE**, which is what distinguishes
+ * `CLAUDE.md` from `docs`. Requiring the separator instead was the same rule by a cheaper proxy, and
+ * the proxy was wrong: it meant no root-level file was ever considered, whatever the inventory held,
+ * so `MANIFEST` was the only thing covering the twelve of them and it failed open for a thirteenth.
+ * Two genuine undeclared reads were sitting behind it — `package.json` and `vitest.shared.js`, both
+ * read by `@quorum/core`'s own suite — and one of those is the oracle for Q-0065's `--force` guard,
+ * so the check that the test command defeats its own cache was itself replayable over a changed test
+ * command. Found by Q-0108, which predicted this scanner would demand a registration it could not
+ * see. Values that are relative (`../..`), absolute, or a bare prefix ending in a separator
+ * (`backlog/`, `.harness/`) are dropped as well: those are fragments used in string arithmetic
+ * rather than paths handed to a reader.
  *
  * What is left is decided by {@link Inventory} and by nothing else — 270 of the 307 distinct
  * literals that reach that decision are lint messages, import specifiers, shell fragments, argv
@@ -532,10 +549,11 @@ function pathLiterals(text: string, inventory: Inventory = INVENTORY): string[] 
   const found = new Set<string>();
   for (const match of text.matchAll(/'([^'\n\\]+)'|"([^"\n\\]+)"/g)) {
     const value = match[1] ?? match[2];
-    if (!value.includes('/') || value.endsWith('/')) continue;
+    if (value.endsWith('/')) continue;
     if (value.startsWith('/') || value.startsWith('..')) continue;
     const normalised = path.posix.normalize(value);
     if (!inventory.holds(normalised)) continue;
+    if (!normalised.includes('/') && inventory.isDirectory(normalised)) continue;
     found.add(normalised);
   }
   return [...found];
