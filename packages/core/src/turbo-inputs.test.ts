@@ -163,6 +163,10 @@ const SUITES = [
  */
 const MANIFEST: Record<string, Record<string, string>> = {
   '@quorum/shared#test': {
+    'CLAUDE.md': "docs.test.ts — Q-0108, its term list against docs/README.md's. Registered BY HAND because "
+      + 'the scanner cannot see it: pathLiterals skips any literal with no "/", so no root-level file is ever '
+      + 'considered, whatever the inventory holds. That is why this manifest carries turbo.json below and why a '
+      + 'thirteenth root-level read would be uncovered until someone adds it here',
     'turbo.json': 'docs.test.ts — Q-0097 AC-24, 04-architecture.md\'s description of the emit is compared against the shipped build task rather than against a literal',
     'docs/02-sdlc-pipeline-spec.md': 'docs.test.ts — the status line and the §5.8 chore section',
     'docs/03-adapter-contract.md': 'docs.test.ts — the three adapter event kinds',

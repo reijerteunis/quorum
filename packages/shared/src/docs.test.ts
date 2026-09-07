@@ -577,3 +577,70 @@ describe('Q-0105 AC-13 — the documents that describe what the board shows carr
       .toMatch(/a git fact rather than a CI one/);
   });
 });
+
+describe('Q-0108 — `CLAUDE.md` and `docs/README.md` carry the same term list', () => {
+  /**
+   * The vocabulary rule is stated twice — `CLAUDE.md`'s "Read first" list and `docs/README.md`'s
+   * GLOSSARY row — and until now nothing compared them.
+   *
+   * **What it costs when nothing does.** Q-0105's GO-2 found `CLAUDE.md` **three terms behind, not
+   * one**: `build task` and `emitted artifact` had been missing since Q-0098 on 2026-09-02 — four
+   * days and eleven merges — while `docs/README.md` carried both. GO-2's own premise is the
+   * finding: no assertion in `packages/` read that list, so an omission was silent, and the silence
+   * had already been running when the obligation was written. This is the clause that would have
+   * caught it the day it happened.
+   *
+   * **Reading `CLAUDE.md` is ruled here rather than assumed, which is what Q-0108 asked for before
+   * any code.** Q-0103's erratum E-2 made that file the human's to **write**, being the vendor
+   * dialect of the canonical harness. Writing and reading are different acts, and the entry is not
+   * stretched to cover both by assumption: this suite already reads three human-owned documents by
+   * exactly this mechanism — `docs/README.md`, `docs/GLOSSARY.md` and the numbered plan — and a
+   * test that reads a file to check it against another takes nothing away from whoever owns it.
+   * *"A check is not established by reading it"* (2026-08-29) argues the same way from the other
+   * side: a rule stated in two places and enforced in neither is not enforced. Q-0090's erratum E-1
+   * is the precedent for ruling that a landed entry does not govern a case it was not scoped to,
+   * and it ruled the entry did not govern. **No new decision entry is owed** — a reading rule that
+   * changes no behaviour and contradicts no landed entry belongs where the next reader meets it,
+   * which is here.
+   *
+   * **What changes at M5, stated now rather than discovered.** `CLAUDE.md` is a vendor dialect the
+   * compiler will one day generate from `harness/` (`docs/GLOSSARY.md`, **Canonical harness**).
+   * When it does, this check stops comparing two hand-maintained lists and starts comparing a
+   * generated one against a hand-maintained one — which is a stronger check, not a broken one, but
+   * it is the moment to decide which of the two is the source.
+   */
+  /** The parenthesised vocabulary a file states the "use exactly these terms" rule with. */
+  function termList(file: string): readonly string[] {
+    const text = repoFile(file);
+    const marker = /[Uu]se exactly these terms \(/.exec(text);
+    if (!marker) throw new Error(`${file} no longer states the vocabulary rule — this check has lost its subject`);
+    const open = marker.index + marker[0].length;
+    const close = text.indexOf(')', open);
+    if (close < 0) throw new Error(`${file}'s term list is never closed`);
+    return text.slice(open, close).replace(/\s+/g, ' ').split(',').map((term) => term.trim());
+  }
+
+  test('both files state the vocabulary rule, and the extractor finds the real list', () => {
+    // Anti-vacuity, and it is the point rather than ceremony: an extractor that matched an empty
+    // group would return [''] from both files and compare EQUAL, which is precisely the shape this
+    // repository has shipped as a check that cannot fail more than once. The anchors are the first
+    // and last terms, so a list that is found but truncated fails here rather than passing below.
+    for (const file of ['CLAUDE.md', 'docs/README.md']) {
+      const terms = termList(file);
+      expect(terms, `${file}: the extracted list is not the vocabulary list`).toContain('harness');
+      expect(terms, `${file}: the extracted list is truncated`).toContain('push lag');
+      // A floor rather than a count: this pins that a list was found, and pinning the exact number
+      // would make every new term a two-file edit for no gain.
+      expect(terms.length, `${file}: the extracted list is implausibly short`).toBeGreaterThan(15);
+    }
+  });
+
+  test('the two lists are the same terms in the same order', () => {
+    // Ordered, because they are meant to be one list written twice: a term that moved in one file
+    // and not the other is the same divergence as a term that is missing, found one edit earlier.
+    expect(
+      termList('CLAUDE.md'),
+      'CLAUDE.md and docs/README.md state different vocabularies — see Q-0105 GO-2, where CLAUDE.md ran three terms behind for four days',
+    ).toStrictEqual(termList('docs/README.md'));
+  });
+});

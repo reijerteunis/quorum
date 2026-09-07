@@ -27,6 +27,12 @@
         "../../docs/DECISIONS.md",
         "../../docs/decisions/*.md",
         "../../docs/GLOSSARY.md",
+        // Q-0108: docs.test.ts compares CLAUDE.md's term list against docs/README.md's, the two
+        // places the vocabulary rule is stated. Declared by hand like `turbo.json` above, because
+        // the scanner in packages/core/src/turbo-inputs.test.ts skips any literal with no "/" and so
+        // never considers a root-level file at all. Reading this file is ruled in docs.test.ts's own
+        // authority comment: Q-0103 E-2 made it the human's to WRITE, which is a different act.
+        "../../CLAUDE.md",
         "../../harness/harness.yaml",
         // Q-0107 AC-18: role.test.ts compares the third column of `harness/architecture.md`'s role
         // table against every role's `paths:` frontmatter. `spike/test/smoke.js` was the only thing

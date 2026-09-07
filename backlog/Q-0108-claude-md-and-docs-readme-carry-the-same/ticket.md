@@ -1,7 +1,7 @@
 ---
 id: Q-0108
 title: CLAUDE.md and docs README carry the same term list, and nothing checks it
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0108/integration
