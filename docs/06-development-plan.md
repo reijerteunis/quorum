@@ -1341,12 +1341,20 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     fix needed was run before anything changed, by applying the rule and letting the guard
     enumerate: **six newly-collected literals, audited one at a time.** Two are basenames joined
     onto a temp directory and written, never the repository's copy, and are `NOT_READ` rows with
-    that reason. **Two are genuine undeclared reads**, and they are the finding:
-    `repoFile('package.json')` in `test-command.test.ts` and `repoFile('vitest.shared.js')` in
-    `test-discovery.test.ts`, neither declared on `@quorum/core#test`. **`package.json`'s `scripts`
-    is the oracle for Q-0065's `--force` guard**, so the check that the test command defeats its own
-    cache was itself replayable over a changed test command — Q-0072's defect surviving inside
-    Q-0072's own guard. Demonstrated on an identical tree with only the classifier differing: with
+    that reason. **One is a genuine undeclared read**, and it is the finding:
+    `repoFile('package.json')` in `test-command.test.ts`, undeclared on `@quorum/core#test`, whose
+    `scripts` are the oracle for **Q-0065's `--force` guard** — so the check that the test command
+    defeats its own cache was itself replayable over a changed test command, Q-0072's defect
+    surviving inside Q-0072's own guard.
+    **It claimed two until a cross-vendor review said otherwise, and that is what the review was
+    for.** `repoFile('vitest.shared.js')` is read by the same suite and is hashed for **every** task
+    as a `globalDependency` of the root `turbo.json`, so it was never undeclared — and
+    `packages/core/turbo.json:58` already said so, below where the redundant declaration
+    was added. What the classifier had actually found there was a **false positive in `covered`**,
+    which reads a task's own `inputs` and knew nothing of the global set; a package-level
+    re-declaration would have papered over it with the same claim written twice, free to drift.
+    `covered` now honours turbo's `globalCacheInputs.files`, taken from its report rather than from
+    the file, per this guard's own rule that the criterion is what turbo does. Demonstrated on an identical tree with only the classifier differing: with
     that row and its declaration removed, the old rule passes clause B and the new rule fails it by
     name, so the scanner covers the read independently of the hand register rather than being shown
     red by its neighbour (Q-0107's distinction).

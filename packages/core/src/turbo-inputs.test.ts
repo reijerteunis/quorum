@@ -194,11 +194,11 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'contracts/Q-0006/ticket-review-state.schema.json': 'contracts.test.ts — the frozen ticket contract',
     'contracts/Q-0011/run-manifest.schema.json': 'run-manifest.test.ts, schema-cache.test.ts, validate-artifact.test.ts, run-history/manifest.test.ts, run-history/writer.test.ts',
     'pnpm-workspace.yaml': 'test-discovery.test.ts — the globs the workspace package list is expanded from, so a package added or removed moves this task\'s hash',
-    // Both found by Q-0108, which widened the classifier to root-level files and turned up two
-    // reads that had never been declared. Neither is new; what is new is that the scanner can see
-    // them, so `undeclaredPaths` now enforces these two rows rather than the rows alone standing.
+    // Found by Q-0108, which widened the classifier to root-level files. ONE genuinely undeclared
+    // read, not the two the change first claimed: `vitest.shared.js` is read by this suite too and
+    // was already hashed for every task as a globalDependency, which the cross-vendor review caught
+    // and `covered` now honours. The read is not new; what is new is that the scanner can see it.
     'package.json': 'test-command.test.ts — repoFile(\'package.json\').scripts, which is the oracle for Q-0065\'s --force guard: without this the check that the test command defeats its own cache was itself replayable over a changed test command',
-    'vitest.shared.js': 'test-discovery.test.ts — the include is read out of the shared configuration rather than assumed (Q-0054 AC-6), and test/vitest-include.ts resolves the same file for every discovery clause',
   },
 };
 
@@ -465,6 +465,18 @@ interface Reported {
 }
 
 /**
+ * The files turbo hashes for **every** task — root `turbo.json`'s `globalDependencies`, taken from
+ * turbo's own report rather than from the file, for the reason {@link reported} gives.
+ *
+ * A global dependency never appears in a task's own `inputs`, so without this a read of one looks
+ * undeclared to {@link covered} while turbo hashes it for that task anyway. That false positive is
+ * what a package-level re-declaration would have papered over — two declarations of one claim, free
+ * to drift, beside a comment in `packages/core/turbo.json` explaining why the entry is deliberately
+ * absent. Found by the cross-vendor review of this change (Q-0108).
+ */
+let globalFiles = new Set<string>();
+
+/**
  * What turbo says it will hash, per task.
  *
  * Read from the real `turbo` this workspace installs, because the criterion is about what turbo
@@ -480,6 +492,7 @@ function reported(): Record<string, Reported> {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
   });
   const parsed = JSON.parse(raw) as {
+    globalCacheInputs?: { files?: Record<string, string> };
     tasks: {
       taskId: string;
       directory: string;
@@ -488,6 +501,8 @@ function reported(): Record<string, Reported> {
       resolvedTaskDefinition: { env?: string[]; dependsOn?: string[] };
     }[];
   };
+  globalFiles = new Set(Object.keys(parsed.globalCacheInputs?.files ?? {}).map((file) => path.posix.normalize(file)));
+  if (globalFiles.size === 0) throw new Error('turbo reports no global file dependencies — this file\'s coverage rule has lost half its subject');
   const out: Record<string, Reported> = {};
   for (const task of parsed.tasks) {
     const inputs = Object.keys(task.inputs ?? {}).map((key) => path.posix.normalize(path.posix.join(task.directory, key)));
@@ -507,13 +522,18 @@ const uncovered = (reads: readonly string[], inputs: Set<string>): string[] => r
 /**
  * Clause B: whether `read` is hashed for the task in `directory`.
  *
- * Three ways, and the second is why removing a `dependsOn` fails this rather than passing quietly:
- * a read inside a package is covered when that package's same-kind task is a declared dependency
- * of this one, which is a fact taken from turbo's report rather than from `turbo.json`'s text.
+ * Four ways: the read is inside the package itself, or turbo hashes it as an input of this task, or
+ * it is one of the files turbo hashes for **every** task ({@link globalFiles}), or it lives inside a
+ * package whose same-kind task is a declared dependency of this one — which is why removing a
+ * `dependsOn` fails this rather than passing quietly, and which, like the rest, is a fact taken from
+ * turbo's report rather than from `turbo.json`'s text.
  */
 function covered(read: string, task: Reported, directory: string): boolean {
   if (read.startsWith(`${directory}/`)) return true;
   if (task.inputs.has(read)) return true;
+  // Hashed for every task, so it is covered by a different route rather than uncovered. See
+  // {@link globalFiles}.
+  if (globalFiles.has(read)) return true;
   return task.dependencies.some((dependency) => {
     const owner = SUITES.find((suite) => suite.taskId === dependency);
     return owner !== undefined && read.startsWith(`${owner.directory}/`);
@@ -529,11 +549,13 @@ function covered(read: string, task: Reported, directory: string): boolean {
  * `CLAUDE.md` from `docs`. Requiring the separator instead was the same rule by a cheaper proxy, and
  * the proxy was wrong: it meant no root-level file was ever considered, whatever the inventory held,
  * so `MANIFEST` was the only thing covering the twelve of them and it failed open for a thirteenth.
- * Two genuine undeclared reads were sitting behind it — `package.json` and `vitest.shared.js`, both
- * read by `@quorum/core`'s own suite — and one of those is the oracle for Q-0065's `--force` guard,
- * so the check that the test command defeats its own cache was itself replayable over a changed test
- * command. Found by Q-0108, which predicted this scanner would demand a registration it could not
- * see. Values that are relative (`../..`), absolute, or a bare prefix ending in a separator
+ * One genuine undeclared read was sitting behind it — `package.json`, read by `test-command.test.ts`
+ * for the `scripts` that are Q-0065's oracle, so the check that the test command defeats its own
+ * cache was itself replayable over a changed test command. The change first claimed two: the second,
+ * `vitest.shared.js`, is hashed for every task as a global dependency and was never undeclared. The
+ * cross-vendor review of this change caught that, and {@link globalFiles} is what stops the
+ * classifier reporting it — a false positive a package-level re-declaration would have hidden.
+ * Found by Q-0108, which predicted this scanner would demand a registration it could not see. Values that are relative (`../..`), absolute, or a bare prefix ending in a separator
  * (`backlog/`, `.harness/`) are dropped as well: those are fragments used in string arithmetic
  * rather than paths handed to a reader.
  *

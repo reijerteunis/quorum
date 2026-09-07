@@ -15,11 +15,12 @@
         "../../.github/scripts/**",
         "../../turbo.json",
         "../../pnpm-lock.yaml",
-        // Q-0108: both are read by this suite and neither was declared, because the classifier could
-        // not see a root-level file. `package.json`'s scripts are Q-0065's oracle and
-        // `vitest.shared.js` is where the discovery guards read the include from.
+        // Q-0108: read by test-command.test.ts and not declared, because the classifier could not
+        // see a root-level file. `package.json`'s scripts are Q-0065's oracle. `vitest.shared.js` is
+        // read by this suite too and is NOT here, for the reason given further down — root
+        // turbo.json hashes it as a globalDependency, and a second declaration would be the same
+        // claim twice, free to drift.
         "../../package.json",
-        "../../vitest.shared.js",
         // Q-0050 AC-13d: q0050.source.test.ts scans authority lines against the decisions
         // index and this ticket's body for a transcribed sentence.
         "../../docs/DECISIONS.md",
