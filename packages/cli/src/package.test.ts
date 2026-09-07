@@ -147,7 +147,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'packages/core/src/adapters/claude.ts': 'end-to-end.test.ts — Q-0095 AC-7, the variable that adapter\'s check() refuses is read out of the guard rather than spelled here, because frame.source.test.ts\'s AC-12 admits exactly one file in this package that names one; and failure-paths.test.ts — Q-0101 §3 R-5, the same derivation for the same reason',
     'packages/core/src/adapters/codex.ts': 'end-to-end.test.ts and failure-paths.test.ts — Q-0095 AC-7 and Q-0101 §3 R-5, the same, for the two that one guards',
     'packages/core/src/adapters/mock.ts': 'end-to-end.test.ts — Q-0095 AC-9, the mock\'s nine switches are read out of the adapter that reads them, so the environment each spawned invocation is handed can be stripped of every one; a switch this list missed would let a shell force the verdict of the three convergent behaviours AC-5 asserts; and failure-paths.test.ts — Q-0101 §3 R-5, where the stakes are the other way round, an inherited MOCK_ALWAYS_PASS reaching a gate its loop never turned',
-    'packages/core/src/backlog/backlog.ts': 'end-to-end.test.ts and failure-paths.test.ts — Q-0095 AC-9 and Q-0101 §3 R-5, the same derivation reaches the owner default at :190, the preserved defect that takes an unpassed owner from the account',
+    'packages/core/src/backlog/backlog.ts': 'end-to-end.test.ts and failure-paths.test.ts — Q-0095 AC-9 and Q-0101 §3 R-5, the same derivation reaches the owner default, which Q-0112 made `unknown`: `core` supplies an admission where it used to supply the account',
     'turbo.json': 'package.test.ts and build.test.ts — Q-0097 AC-7 and AC-13, the build task\'s shape and the tasks every package owes',
     '.gitignore': 'build.test.ts — Q-0097 AC-12, git attributes the emit to the rule that ignores it',
     'eslint.config.js': 'build.test.ts — Q-0097 AC-12, `**/dist/**` keeps emitted JavaScript unlinted',
@@ -369,7 +369,7 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(22);
+    expect(domain()).toHaveLength(23);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
@@ -447,11 +447,16 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // command has needed since it shipped. The counts move to 22 and 27, and the five-symbol clause
     // below is kept unchanged, because what it checks is that the names the board already reached
     // are still reachable.
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(22);
+    // Q-0112 moved them again, to 23 and 28: `configuredUser` is a seventh symbol a command reaches
+    // and `git/`'s third contribution, admitted by the same clause as `pushLag` — `ticket.ts` needs
+    // to know who a ticket belongs to and may not derive a git fact itself.
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(23);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(27);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(28);
     expect(domain(), 'pushLag is not on the register the barrel is derived from').toContain('pushLag');
     expect(typeof barrel.pushLag, 'pushLag is not a function on the barrel').toBe('function');
+    expect(domain(), 'configuredUser is not on the register the barrel is derived from').toContain('configuredUser');
+    expect(typeof barrel.configuredUser, 'configuredUser is not a function on the barrel').toBe('function');
     for (const symbol of ['loadProject', 'containment', 'lintFlowDirectory', 'getAdapter', 'probeAdapter']) {
       expect(domain(), `${symbol} is what the two new commands reach`).toContain(symbol);
       expect(typeof barrel[symbol], `${symbol} is not a function on the barrel`).toBe('function');

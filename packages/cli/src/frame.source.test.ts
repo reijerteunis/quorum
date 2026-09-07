@@ -346,7 +346,7 @@ const DOMAIN = [
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
   'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
-  'initProject', 'pushLag',
+  'initProject', 'pushLag', 'configuredUser',
 ];
 
 /**
@@ -389,7 +389,9 @@ const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   'board.ts': ['loadProject', 'containment', 'lintFlowDirectory', 'pushLag'],
   'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
-  'ticket.ts': ['Backlog', 'loadProject'],
+  // Q-0112: 'configuredUser' — the git fact 'quorum ticket new' attributes a ticket with, which
+  // this module may not derive itself.
+  'ticket.ts': ['Backlog', 'configuredUser', 'loadProject'],
   'run.ts': ['runFlow', 'loadFlowByName', 'lintDirectory', 'loadProject', 'overrideAdapters'],
   'validate.ts': ['validateArtifact', 'readData'],
   'runs.ts': [
@@ -530,9 +532,11 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
     expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
       .toStrictEqual([]);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(22);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(23);
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
       .toContain('pushLag');
+    expect(DOMAIN, 'the name Q-0112 added is not on the list it is supposed to be on')
+      .toContain('configuredUser');
   });
 
   test('Q-0099 AC-10 — two production modules landed and the other two registers kept their size', () => {

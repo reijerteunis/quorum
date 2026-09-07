@@ -345,10 +345,10 @@ const scenario = (label: string): Fixture => {
     .replace(/install: npm install.*/, 'install: sh -c "exit 0"')
     .replace(/test: npm test.*/, 'test: sh -c "exit 0"'));
 
-  // The owner is supplied rather than inherited: `Backlog.create` defaults it from the account
-  // (`backlog.ts:190`, the preserved defect ground rule 3 keeps), and this suite strips that variable
-  // with the rest of {@link STEERING} — so a fixture that passed none would record whatever the
-  // absence produced (Q-0099's finding).
+  // The owner is supplied rather than inherited: `core` writes `unknown` where nobody said and the
+  // CLI resolves git's configured name first (Q-0112), so a fixture that passed none would record
+  // whatever git is configured with on the machine running it (Q-0099's finding). Stripping the
+  // environment with {@link STEERING} no longer settles it, which is why this passes one.
   mustPass('ticket', ['ticket', 'new', label, '--owner', OWNER]);
 
   const folder = fs.readdirSync(path.join(repo, 'backlog'))[0] ?? '';

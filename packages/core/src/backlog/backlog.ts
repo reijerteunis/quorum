@@ -187,7 +187,12 @@ export class Backlog {
    * @throws {Error} when `id` is not of the form `<PREFIX>-nnnn`, when the id already belongs to a
    *   folder, or when the target folder exists. `nextId`'s refusals reach the caller unchanged.
    */
-  create({ title, intent, owner = process.env.USER ?? 'unknown', repos = [], id: given }: NewTicket): TicketRecord {
+  create({ title, intent, owner = UNATTRIBUTED, repos = [], id: given }: NewTicket): TicketRecord {
+    // `ticketSchema` types `owner` as a string, and this is the write boundary — a caller that hands
+    // over a boolean, which `--owner` with no value does, would otherwise put a value in the backlog
+    // that the product's own schema refuses. Refused here rather than at each surface, so the same
+    // guarantee covers M3's server taking an owner from a request body. Q-0112.
+    if (typeof owner !== 'string' || !owner.trim()) throw new Error(notAnOwner(owner));
     if (given !== undefined && !parseTicketId(given)) throw new Error(notATicketId(given));
     const id = given ?? this.nextId();
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
@@ -275,6 +280,27 @@ const SAMPLE = 3;
 const printable = (value: string): string =>
   // eslint-disable-next-line no-control-regex -- the class being escaped is exactly the control range
   value.replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.codePointAt(0)!.toString(16).padStart(2, '0')}`);
+
+/**
+ * What a ticket carries when nobody said who it belongs to.
+ *
+ * `core` does not read the environment for an identity. `process.env.USER` stood here and named the
+ * operating-system account rather than a person — on a shared machine, in CI, in a container and in
+ * every worktree a flow creates — and the backlog carried eleven tickets stamped that way, corrected
+ * by hand four times without the correction ever reaching the code. An admission is honest where a
+ * guess is not; who a ticket belongs to is the surface's to supply. Q-0112.
+ */
+const UNATTRIBUTED = 'unknown';
+
+/**
+ * An owner that is not a name: whatever a caller handed over where a string was required.
+ *
+ * The condition and no remedy — which surface asked, and what it should tell its user to do about
+ * it, is not knowable here. See *"A `core` error names the condition; the remedy belongs to the
+ * surface"* (2026-09-07).
+ */
+const notAnOwner = (given: unknown): string =>
+  `not an owner: ${typeof given === 'string' ? `'${printable(given)}'` : String(given)} — an owner is a non-empty name`;
 
 /** An `--id` the grammar does not recognise, named with the shape it should have had. */
 const notATicketId = (given: string): string =>

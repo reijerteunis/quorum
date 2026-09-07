@@ -55,7 +55,12 @@ export const ticketSchema = z.looseObject({
   /** The ticket's position in the state machine, and only that. Where the code IS is derived from
    * git on every `board` invocation and stored nowhere. */
   stage: stageSchema,
-  /** The human who owns the CURRENT stage. */
+  /**
+   * The human who owns the CURRENT stage, or the sentinel `unknown` where nobody said.
+   *
+   * Supplied by whichever surface created the ticket and never guessed by `core`. See *"A ticket's
+   * owner is supplied, never guessed"* (2026-09-08).
+   */
   owner: z.string(),
   /** Only meaningful in the central backlog layout. Written and never read. */
   repos: z.array(z.string()),

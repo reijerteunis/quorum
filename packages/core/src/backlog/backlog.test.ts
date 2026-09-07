@@ -354,7 +354,10 @@ describe('AC-7 — create() and nextId(), with Q-0038\'s branch-ref defect pinne
       'id: T-0001',
       'title: Port the backlog',
       'stage: draft',
-      'owner: tester',
+      // Q-0112: `unknown` while `$USER` is stubbed to `tester` two functions up, which is the
+      // point — `core` reads no environment for an identity, and the stub is kept rather than
+      // removed so this file demonstrates the ignoring rather than merely not exercising it.
+      'owner: unknown',
       'repos: []',
       'branch: harness/T-0001/integration',
       'priority: p2',

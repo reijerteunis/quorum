@@ -42,6 +42,11 @@
  * itself. `currentBranch` is still withheld beside it — the rule is unchanged and only its
  * arithmetic moved.
  *
+ * **Q-0112 added one, and it is the third `git/` contributes.** `configuredUser` is what lets
+ * `quorum ticket new` attribute a ticket to a person rather than to an operating-system account,
+ * and it is here by the same clause as `pushLag`: a command needs it, and `ticket.ts` may not
+ * derive a git fact itself. `currentBranch` is still withheld, for the reason it always was.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
@@ -57,7 +62,7 @@ export { runFlow } from './engine/engine.js';
 export { loadFlow, loadFlowByName } from './engine/loaders.js';
 export { GateUnansweredError } from './engine/types.js';
 export { IntegrationError } from './fanout/fanout.js';
-export { containment, pushLag } from './git/git.js';
+export { configuredUser, containment, pushLag } from './git/git.js';
 export { FlowError, lintDirectory, lintFlowDirectory } from './lint/lint.js';
 export type { FlowFileReport } from './lint/lint.js';
 export type { Occurrence, OccurrenceUsage, RunManifest, VendorRollup } from './run-history/manifest.js';

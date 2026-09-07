@@ -198,6 +198,22 @@ export function currentBranch(dir: string): string | null {
   return name === null || name === '' ? null : name;
 }
 
+/**
+ * The name git is configured to attribute work to here, or `null` where it is not configured.
+ *
+ * A **fact and not a policy**: this says what git answers, and whether that is who a ticket belongs
+ * to is the caller's to decide. `null` rather than a fallback, because an absent identity is the
+ * state the git-identity sweep runs in and a caller that substitutes something must do it knowingly.
+ *
+ * Unlike {@link currentBranch} above, this IS on the barrel: `quorum ticket new` needs to know who a
+ * ticket belongs to and may not derive a git fact itself. See *"A ticket's owner is supplied, never
+ * guessed"* (2026-09-08).
+ */
+export function configuredUser(dir: string): string | null {
+  const name = safe(() => git(['config', 'user.name'], dir))?.trim();
+  return name ? name : null;
+}
+
 /** What a caller already knows about the repository's history when it asks {@link ancestry}. */
 export interface AncestryOptions {
   /** `true` shallow, `false` not shallow, `null` the probe could not answer — see {@link ancestry}. */

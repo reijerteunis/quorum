@@ -23,8 +23,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { findProject } from '@quorum/core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { Backlog, configuredUser, findProject } from '@quorum/core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { ERROR, SUCCESS } from './exit.js';
 import { invoke, plain, type Invocation } from '../test/invoke.js';
@@ -189,15 +189,54 @@ describe('AC-2 — the allocation is reached through the CLI, and the table\'s b
   });
 });
 
-describe('AC-3 — four preserved defects, demonstrated and pinned rather than repaired', () => {
-  test('(a) `--owner` with no value writes the boolean true into the frontmatter', async () => {
-    // Why: preserved defect — `argv.ts:54` gives a flag the value `true` when the next token is
-    // another flag or absent, and `create`'s destructuring default fires only on `undefined`, so
-    // `owner` is written as `true`. Two lines apart in two packages, and neither is wrong on its own.
-    // The requirement derived this from those two lines without executing it (merged.md R-9); this
-    // is the execution, and the reading holds.
-    expect((await invoke(['ticket', 'new', 'Owned', '--owner'])).exitCode).toBe(SUCCESS);
-    expect(field('T-0001-owned', 'owner')).toBe('true');
+
+/**
+ * Run `body` with git's identity fixed to `name`, or to nothing at all where `name` is null.
+ *
+ * **All three config sources are closed, not two.** `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM`
+ * leave `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_*` pairs, which outrank both and which the
+ * identity sweep itself uses — an inherited pair naming `user.name` would decide these tests on
+ * somebody's machine and nowhere else.
+ *
+ * **The isolation is then proven rather than assumed**, which is the sweep's own discipline: a
+ * `configuredUser` that disagreed would mean the stubs did not take, and every assertion below it
+ * would be measuring the machine.
+ */
+function withGitIdentity<T>(name: string | null, body: () => T): T {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'q0112-git-'));
+  const config = path.join(home, 'gitconfig');
+  if (name !== null) fs.writeFileSync(config, `[user]\n\tname = ${name}\n`);
+  vi.stubEnv('GIT_CONFIG_GLOBAL', config);
+  vi.stubEnv('GIT_CONFIG_SYSTEM', '/dev/null');
+  vi.stubEnv('GIT_CONFIG_COUNT', '0');
+  try {
+    expect(configuredUser(process.cwd()), 'the git-identity stubs did not take').toBe(name);
+    return body();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+}
+
+describe('AC-3 — four defects: Q-0112 repaired the two about `owner`, and two stay preserved', () => {
+  test('(a) Q-0112 — `--owner` with no value is not a name, so it falls through to git', async () => {
+    // The defect this pinned: `argv.ts:54` gives a flag the value `true` when the next token is
+    // another flag or absent, and `create`'s destructuring default fired only on `undefined`, so
+    // `owner: true` reached the frontmatter — a value `ticketSchema` REFUSES, written by the
+    // product's own command. Two lines apart in two packages, and neither wrong on its own.
+    //
+    // Closed at the write boundary rather than at the flag: `argv`'s coercion is unchanged and
+    // still gives `true`, and what changed is that a boolean is no longer a name. `resolveOwner`
+    // therefore ignores it and asks git, which is why this now reads a person.
+    // Git's identity is CONTROLLED rather than read, through an isolated config file: this fixture
+    // is not a repository, so git answers from the GLOBAL file — and an assertion that merely
+    // refused `true` would be satisfied by `unknown`, would not show the fall-through it claims,
+    // and would have a verdict that is a property of the machine ("A test's verdict is a property of
+    // the commit, not of the checkout or the account", 2026-08-30). This is the claim.
+    await withGitIdentity('Grace Hopper', async () => {
+      expect((await invoke(['ticket', 'new', 'Owned', '--owner'])).exitCode).toBe(SUCCESS);
+      expect(field('T-0001-owned', 'owner'), 'the boolean was taken as a name, or git was not asked')
+        .toBe('Grace Hopper');
+    });
   });
 
   test('(b) `--intent` with no value reports a JavaScript message on a user-facing path', async () => {
@@ -236,33 +275,45 @@ describe('AC-3 — four preserved defects, demonstrated and pinned rather than r
     refusal(await invoke(['ticket', 'new', 'Idless', '--intent', 'i', '--id']), "not a ticket id: 'true'");
   });
 
-  test('(d) `owner` defaults to $USER, which is the value guaranteed not to identify anyone', async () => {
-    // Why: preserved defect, see Q-0093 AC-13(a). `Backlog.create` defaults `owner` to
-    // `process.env.USER ?? 'unknown'`, so every ticket allocated without `--owner` is stamped with
-    // the operating-system account of whoever ran the command — on a shared machine, in CI, in a
-    // container, or in any of the worktree-based steps this repository's own flows create. Corrected
-    // by hand in this backlog three times and reproduced every time, because nothing about the
-    // correction reaches the code. Whether the product should default an owner at all is product
-    // behaviour and is its successor's to rule.
+  test('(d) Q-0112 — `$USER` is ignored, and an unattributed ticket says so', async () => {
+    // The defect this pinned: `Backlog.create` defaulted `owner` to `process.env.USER`, the
+    // operating-system account of whoever ran the command — on a shared machine, in CI, in a
+    // container, and in every worktree a flow creates. Eleven tickets in this backlog were stamped
+    // that way and four hand corrections never reached the code.
     //
-    // **The test controls the environment and restores it**, rather than reading the ambient
-    // account: a verdict taken from `$USER` would be a property of the machine — *"A test's verdict
-    // is a property of the commit, not of the checkout or the account"* (2026-08-30) — which is the
-    // defect this repository has now paid for four times, reproduced inside a criterion written to
-    // pin one.
+    // BOTH sources are controlled, which is what makes this a claim rather than an observation:
+    // `$USER` is stubbed to a name that must not appear, and git's config is isolated to nothing so
+    // the CLI's second choice is empty and the answer falls to `core`'s admission. Reading either
+    // ambiently would make the verdict a property of the machine — the rule Q-0079 exists for.
     const saved = process.env.USER;
     try {
       process.env.USER = 'somebody-else';
-      expect((await invoke(['ticket', 'new', 'Stamped', '--intent', 'i'])).exitCode).toBe(SUCCESS);
-      expect(field('T-0001-stamped', 'owner')).toBe('somebody-else');
-
-      delete process.env.USER;
-      expect((await invoke(['ticket', 'new', 'Anonymous', '--intent', 'i'])).exitCode).toBe(SUCCESS);
-      expect(field('T-0002-anonymous', 'owner')).toBe('unknown');
+      await withGitIdentity(null, async () => {
+        expect((await invoke(['ticket', 'new', 'Stamped', '--intent', 'i'])).exitCode).toBe(SUCCESS);
+        expect(field('T-0001-stamped', 'owner'), 'the account or a guess reached the frontmatter')
+          .toBe('unknown');
+      });
     } finally {
       if (saved === undefined) delete process.env.USER;
       else process.env.USER = saved;
     }
+  });
+
+  test('and where git can name nobody either, the ticket is `unknown` rather than a guess', () => {
+    // The honest end of the chain, asserted on `core` directly because it is `core`'s answer: the
+    // CLI supplies a name or omits it, and an omitted owner is an admission and not an account.
+    const backlog = new Backlog(fs.mkdtempSync(path.join(os.tmpdir(), 'q0112-')));
+    expect(backlog.create({ title: 'Nobody', intent: 'i' }).meta.owner).toBe('unknown');
+  });
+
+  test('and a non-string owner is refused by name rather than written', () => {
+    // The guarantee M3's server inherits: `ticketSchema` types `owner` as a string, and this is the
+    // write boundary. A request body carrying `true` is refused here, not at each surface.
+    const backlog = new Backlog(fs.mkdtempSync(path.join(os.tmpdir(), 'q0112-')));
+    expect(() => backlog.create({ title: 'Bad', intent: 'i', owner: true as unknown as string }))
+      .toThrow(/not an owner: true/);
+    expect(() => backlog.create({ title: 'Blank', intent: 'i', owner: '   ' }))
+      .toThrow(/not an owner/);
   });
 
   test('and an explicit --owner is what the flag is for, so the default is a default and not a rule', async () => {

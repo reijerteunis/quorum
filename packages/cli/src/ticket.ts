@@ -10,17 +10,18 @@
  * transcription defect this repository keeps paying for. What this module claims is the **binary half**: that the CLI reaches that behaviour,
  * and that a refusal is one line and an exit code rather than a stack trace.
  *
- * **Four preserved defects reach this command, and none of them is repaired here** (ground rule 3).
- * Each is pinned in `ticket.test.ts` so a later fix is a deliberate act:
+ * **Four defects reached this command; Q-0112 repaired the two about `owner` and the other two are
+ * preserved** (ground rule 3). Each is pinned in `ticket.test.ts` so a later fix is a deliberate act,
+ * and the repaired pair is listed with them because the argument coercion beneath them is unchanged:
+ * a reader meeting only the repair would not know that `--owner` still *arrives* as `true`.
  *
- * 1. *`owner` defaults to `process.env.USER`* (`packages/core/src/backlog/backlog.ts:190`), which is
- *    the one value guaranteed not to identify the person a ticket belongs to on a shared or CI
- *    machine. Corrected by hand in this repository's backlog three times and reproduced every time.
- *    Why: preserved defect, see Q-0093 AC-13(a); whether the product should default an owner at all
- *    is product behaviour and is its successor's.
- * 2. *`--owner` with no following value is the boolean `true`*, because `argv.ts:54` gives a flag
- *    the value `true` when the next token is another flag or absent, and `create`'s destructuring
- *    default fires only on `undefined` — so the frontmatter reads `owner: true`.
+ * 1. ~~*`owner` defaults to `process.env.USER`*~~ — **repaired.** `core` reads no environment for an
+ *    identity; the default is `unknown` and this module resolves the name. See *"A ticket's owner is
+ *    supplied, never guessed"* (2026-09-08).
+ * 2. ~~*`--owner` with no following value is the boolean `true`*~~ — **repaired at the write
+ *    boundary, not at the flag.** `argv.ts:54` still gives a valueless flag `true`; what changed is
+ *    that a boolean is no longer a name, so {@link resolveOwner} ignores it and `create` refuses it
+ *    if it ever arrives from anywhere else.
  * 3. *`--intent` with no value reaches `intent.trim()` on a boolean*, and the `catch` below turns
  *    the resulting `TypeError` into `die('intent.trim is not a function')` — a JavaScript message on
  *    a user-facing path.
@@ -32,7 +33,7 @@
  */
 import path from 'node:path';
 
-import { loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
+import { configuredUser, loadProject, ProjectNotFoundError, type Backlog } from '@quorum/core';
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
@@ -55,21 +56,36 @@ import type { CommandHandler } from './main.js';
  * The message is `core`'s, rendered unaltered — this module composes no recovery advice of its own,
  * which is what keeps one sentence in one place.
  */
-function backlogOf(project: FlagValue | readonly FlagValue[] | undefined): Backlog {
+function projectOf(project: FlagValue | readonly FlagValue[] | undefined): ReturnType<typeof loadProject> {
   try {
-    return loadProject(project as string | undefined).backlog;
+    return loadProject(project as string | undefined);
   } catch (error) {
     if (!(error instanceof ProjectNotFoundError)) throw error;
     return dieNoProject(error.message);
   }
 }
 
+/**
+ * Who the ticket belongs to: the flag if it was given a name, then git's, then nobody.
+ *
+ * **The policy is this surface's and the fact is `core`'s.** `configuredUser` answers what git is
+ * configured to call this user and `null` where nothing is configured; deciding that this is the
+ * owner, and what to do when there is no answer, is the CLI's. `core` reads no environment for an
+ * identity — it stamped `process.env.USER`, the operating-system account, which named a person on
+ * nobody's machine and eleven tickets in this backlog. Q-0112.
+ *
+ * A flag with no value after it is `true` (`argv.ts:54`), which is not a name and is not treated as
+ * one; `create` refuses it if it ever arrives, which is the guarantee M3's server inherits.
+ */
+const resolveOwner = (flag: FlagValue | readonly FlagValue[] | undefined, repoDir: string): string | undefined =>
+  (typeof flag === 'string' && flag.trim() ? flag : configuredUser(repoDir) ?? undefined);
+
 /** The usage line: the argument shape from `spike/bin/harness.js:342`, named `quorum` per Q-0100. */
 const USAGE = 'usage: quorum ticket new "<title>" --intent "..." [--id Q-0081]';
 
 /** Allocate one ticket folder and print where it landed. */
 export const ticket: CommandHandler = ({ rest, flags }) => {
-  const backlog = backlogOf(flags.project);
+  const { backlog, repoDir } = projectOf(flags.project);
   if (rest[0] !== 'new') die(USAGE);
   const title = rest[1];
   if (!title) die('title required');
@@ -84,7 +100,7 @@ export const ticket: CommandHandler = ({ rest, flags }) => {
     created = backlog.create({
       title,
       intent: (flags.intent ?? title) as string,
-      owner: flags.owner as string | undefined,
+      owner: resolveOwner(flags.owner, repoDir),
       id: flags.id === undefined ? undefined : String(flags.id),
     });
   } catch (error) {

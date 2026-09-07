@@ -1,7 +1,7 @@
 ---
 id: Q-0112
 title: What a ticket's owner may be, and where it comes from
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0112/integration

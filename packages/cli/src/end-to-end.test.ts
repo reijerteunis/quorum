@@ -268,8 +268,9 @@ const refusedBy = (vendor: string): string[] =>
  *
  * **Derived, for the reason {@link refusedBy} is derived.** A typed list goes on excusing a name
  * nothing reads and misses the one added next week, and this list's job is to be complete: the mock
- * has nine switches, two of which force a verdict outright, and `Backlog.create` defaults an owner
- * from the account. Reading the four files that read one moves this list when they move.
+ * has nine switches, two of which force a verdict outright, and `Backlog.create` writes `unknown`
+ * where no owner is supplied (Q-0112). Reading the four files that read one moves this list when
+ * they move.
  *
  * **Two clauses, because the mock reaches two of its switches through a variable.**
  * `numericSwitch` (`packages/core/src/adapters/mock.ts:156`) takes the name as an argument, so the
@@ -907,9 +908,10 @@ describe('AC-9 — the verdict is a property of the commit', () => {
   });
 
   test('the owner asserted on the board is one the fixture supplied, not the account it runs as', () => {
-    // `Backlog.create` defaults owner to `process.env.USER` — the preserved defect at
-    // `backlog.ts:190`, which ground rule 3 keeps. A fixture asserting `owner=` without passing one
-    // would take its verdict from the account (Q-0099's finding).
+    // The reasoning is Q-0099's and unchanged; only what it avoids has moved. `core` writes
+    // `unknown` where no owner is supplied and the CLI resolves git's configured name first
+    // (Q-0112), so a fixture asserting `owner=` without passing one would take its verdict from
+    // whatever git is configured with on the machine running it.
     expect(chain.ran.ticket?.argv, 'the ticket was created without an explicit owner').toContain('--owner');
     expect(chain.ran.ticket?.argv).toContain(OWNER);
   });

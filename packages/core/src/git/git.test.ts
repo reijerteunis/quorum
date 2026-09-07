@@ -7,12 +7,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { PushLagResult } from '@quorum/shared';
 
 import {
-  ancestry, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, mergeBase, pushLag,
+  ancestry, configuredUser, containment, emptyRangeEvidence, ensureExcluded, ensureWorktree, mergeBase, pushLag,
   removeWorktree, shallowState, shortSha,
 } from './git.js';
 import {
@@ -909,5 +909,64 @@ describe('Q-0105 AC-4 and AC-5 — it reads, it never reaches the network, and i
     expect(calls, 'the longest path costs what the JSDoc says it costs').toBe(7);
     expect(counting(() => pushLag(repo(), 'main')).calls,
       'the cheap answers must not cost more than the expensive one').toBeLessThanOrEqual(7);
+  });
+});
+
+describe('Q-0112 — configuredUser answers what git is configured to call this user, and nothing else', () => {
+  // `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_*` pairs outranks every file — repository-local
+  // included — and is what the identity sweep itself uses. Closed for EVERY test here, not only the
+  // two that ask for nothing: an inherited pair naming `user.name` decided three of these five on
+  // one machine and nowhere else, which running them under a hostile pair is what showed.
+  beforeEach(() => { vi.stubEnv('GIT_CONFIG_COUNT', '0'); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  /** A repository whose `user.name` is exactly `name`; `repo()` sets none of its own. */
+  function named(name: string): string {
+    const dir = repo();
+    git(dir, 'config', 'user.name', name);
+    return dir;
+  }
+
+  test('a configured name is returned as it is written', () => {
+    expect(configuredUser(named('Ada Lovelace'))).toBe('Ada Lovelace');
+  });
+
+  test('surrounding whitespace is trimmed, because a name is what git holds and not how it is spaced', () => {
+    expect(configuredUser(named('  Ada  '))).toBe('Ada');
+  });
+
+  test('a name that is only whitespace is NOT a name, and reads as unconfigured', () => {
+    // The clause `'' || null` would miss: git stores the value, `--get` returns it, and a caller
+    // that took it would attribute a ticket to a blank string.
+    expect(configuredUser(named('   '))).toBeNull();
+  });
+
+  /**
+   * The same isolation `.github/scripts/git-identity-sweep.sh` uses, and for the same reason.
+   *
+   * Unsetting `user.name` in the repository is NOT enough — `git config user.name` falls back to the
+   * global file, so the first draft of the two tests below asserted `null` and got this developer's
+   * own name. That is the behaviour we want (git's answer, wherever git found it) and a test premise
+   * that was simply wrong, which running it is what caught.
+   */
+  function withNoConfiguredIdentity<T>(body: () => T): T {
+    vi.stubEnv('GIT_CONFIG_GLOBAL', path.join(tempDir('q0112-absent-'), 'nothing-here'));
+    vi.stubEnv('GIT_CONFIG_SYSTEM', '/dev/null');
+    // `GIT_CONFIG_COUNT` is already `0` from the `beforeEach`; these two are what the FILES add.
+    // The isolation is then proven rather than assumed, which is the sweep's own discipline.
+    expect(configuredUser(repo()), 'the git-identity stubs did not take').toBeNull();
+    return body();
+  }
+
+  test('a name configured nowhere at all is null rather than a fallback', () => {
+    const dir = repo();
+    expect(withNoConfiguredIdentity(() => configuredUser(dir))).toBeNull();
+  });
+
+  test('and a directory that is not a repository is null too, rather than throwing', () => {
+    // `ticket.ts` calls this on the way to writing a ticket, so a throw here would turn "git has no
+    // opinion" into a crash on the command's own path. Isolated for the same reason: outside a
+    // repository git still answers from the global file.
+    expect(withNoConfiguredIdentity(() => configuredUser(notARepo()))).toBeNull();
   });
 });

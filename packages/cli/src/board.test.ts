@@ -87,9 +87,9 @@ async function projectFixture(
 /**
  * One ticket at `T-0001`, created through the product's own allocator.
  *
- * `--owner qa` is supplied rather than defaulted, because `Backlog.create` defaults `owner` to
- * `process.env.USER` — the preserved defect ground rule 3 forbids closing here — and a row
- * asserting `owner=` off that default would have a verdict that is a property of the account.
+ * `--owner qa` is supplied rather than defaulted, because the default is not a constant: `core`
+ * writes `unknown` where nobody said and the CLI resolves git's configured name first (Q-0112), so
+ * a row asserting `owner=` off the default would have a verdict that is a property of the machine.
  */
 async function makeTicket(root: string, title = 'Board fixture'): Promise<string> {
   const created = await invoke(['ticket', 'new', title, '--owner', 'qa', '--project', root]);

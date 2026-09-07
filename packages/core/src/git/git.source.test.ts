@@ -28,8 +28,8 @@ const gitSource = (): string => {
   return found[1];
 };
 
-describe('AC-1 — the module exports eleven functions, and core reads ancestry in one file', () => {
-  test('exactly the eleven functions this module owns', () => {
+describe('AC-1 — the module exports twelve functions, and core reads ancestry in one file', () => {
+  test('exactly the twelve functions this module owns', () => {
     // Eight at Q-0042. `mergeBase` is the ninth, and it is here rather than in the engine because
     // the guard below permits `merge-base` in this file alone — Q-0053 AC-3a and OQ-1.
     // `currentBranch` is the tenth, and it is here for the reason this file exists: every git call
@@ -38,7 +38,7 @@ describe('AC-1 — the module exports eleven functions, and core reads ancestry 
     // second git-derived fact and a probe spelled inside `packages/cli/src/board.ts` would be a
     // second runner (Q-0105 AC-1).
     expect(Object.keys(gitModule).sort()).toEqual([
-      'ancestry', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
+      'ancestry', 'configuredUser', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
       'ensureWorktree', 'mergeBase', 'pushLag', 'removeWorktree', 'shallowState', 'shortSha',
     ]);
     for (const value of Object.values(gitModule)) expect(typeof value).toBe('function');
@@ -50,6 +50,9 @@ describe('AC-1 — the module exports eleven functions, and core reads ancestry 
     // nine before it. A `toContain` here would have accepted either list and recorded nothing.
     expect(Object.keys(gitModule).sort(), 'the module still exports the ten it had before Q-0105')
       .not.toEqual([
+        // A snapshot of the past, so it gains nothing: `configuredUser` did not exist before Q-0105
+        // and adding it here would make the historical claim false while the comparison went on
+        // passing. Only the current fixture above moves.
         'ancestry', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
         'ensureWorktree', 'mergeBase', 'removeWorktree', 'shallowState', 'shortSha',
       ]);
@@ -74,7 +77,7 @@ describe('AC-1 — the module exports eleven functions, and core reads ancestry 
     // Two since Q-0105 — `containment` and `pushLag`, the two git-derived facts the board renders —
     // and the comment moves with the pin, because it said "the only name" and that is now false.
     expect(Object.keys(gitModule).filter((symbol) => symbol in barrel).sort())
-      .toStrictEqual(['containment', 'pushLag']);
+      .toStrictEqual(['configuredUser', 'containment', 'pushLag']);
   });
 
   test('and that pin moved rather than widened — the one name it held before Q-0105 is refused', () => {
