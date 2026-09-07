@@ -707,16 +707,41 @@ describe('Q-0105 AC-3 — every push-lag state is selected from an answer git ga
     expect(pushLag(absent, 'main'), 'absence stopped being silent, which AC-10 forbids').toBeNull();
   });
 
-  test('a repository git refuses to open for OWNERSHIP is `git failed` too', () => {
+  /**
+   * Does this git honour `GIT_TEST_ASSUME_DIFFERENT_OWNER` — its own hook for staging a refused
+   * repository without a second user account?
+   *
+   * Asked rather than assumed, because the answer is a property of the git BUILD and not of the
+   * commit: measured on 2026-09-07, git 2.55.0 on darwin refuses and git 2.55.0 on `ubuntu-latest`
+   * does not, same version string either side. A test that needed the hook therefore had a verdict
+   * that turned on the machine, which is the one thing a verdict may not turn on — *"A test's
+   * verdict is a property of the commit, not of the checkout or the account"* (2026-08-30) — and it
+   * was red on CI inside the sweep built to enforce that very rule.
+   */
+  function refusesForOwnership(dir: string): boolean {
+    vi.stubEnv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1');
+    try { return statusOf(dir) === GIT_FATAL; }
+    finally { vi.unstubAllEnvs(); }
+  }
+
+  test('a repository git refuses to open for OWNERSHIP is `git failed` too', (ctx) => {
     // The review's other named cause, and it fails at a different moment — ownership is refused
     // during discovery, an unreadable format during setup — so one fixture does not stand in for
-    // the other. `GIT_TEST_ASSUME_DIFFERENT_OWNER` is git's own hook for a check that otherwise
-    // needs a second user account; the premise assertion below is what keeps this honest if a
-    // future git drops it, since the failure then names the hook rather than the code.
+    // the other AS A FIXTURE. It does as COVERAGE: both reach `repositoryAt` and both must come
+    // back `git failed`, and the format case above stages itself by writing a file, so it needs no
+    // capability and runs everywhere. That is what makes the skip below a lost fixture rather than
+    // a hole — if this ever becomes a permanent skip, `:705` is still the assertion that fails when
+    // a refused repository is read as absence.
     const dir = repo();
+    ctx.skip(!refusesForOwnership(dir),
+      'this git build does not honour GIT_TEST_ASSUME_DIFFERENT_OWNER, so the subject cannot be '
+      + 'staged here; the same code path is covered unconditionally by the repository-format case');
+
     vi.stubEnv('GIT_TEST_ASSUME_DIFFERENT_OWNER', '1');
     try {
-      expect(statusOf(dir), 'this git build did not refuse the repository, so nothing is under test')
+      // The premise still holds inside the test, so a probe that passed and a run that does not
+      // cannot be confused for one another.
+      expect(statusOf(dir), 'the probe said this git refuses, and then it did not')
         .toBe(GIT_FATAL);
       expect(pushLag(dir, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
     } finally {
