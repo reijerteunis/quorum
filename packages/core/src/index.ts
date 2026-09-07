@@ -1,13 +1,13 @@
 /**
  * The public API of `@quorum/core`.
  *
- * Twenty-six value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
+ * Twenty-seven value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
  * command children (Q-0091 to Q-0094) import from here, and what they may reach is settled by
  * whoever adds a name to this file rather than by whoever types an import first. That is why
  * `package.json` publishes `"."` alone and no `./*` subpath — a wildcard would defer the decision
  * to the first consumer (Q-0096 AC-5).
  *
- * Twenty-one of the twenty-six are the domain helpers `packages/cli/src/frame.source.test.ts` names
+ * Twenty-two of the twenty-seven are the domain helpers `packages/cli/src/frame.source.test.ts` names
  * in its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
  * command module may name only where its own command needs them — and the other five are the error
  * classes a caller has to catch. `packages/cli/src/package.test.ts` derives the surface from that
@@ -36,6 +36,12 @@
  * name is added here because a command needs it — the rule Q-0092 applied when it withheld
  * `manifestShapeError`.
  *
+ * **Q-0105 added one, and it is the second name `git/` contributes.** `pushLag` is what lets
+ * `quorum board` say that the base branch holds commits which have never left this machine. It is
+ * here for the reason the rest are: a command needs it, and `board.ts` may not derive a git fact
+ * itself. `currentBranch` is still withheld beside it — the rule is unchanged and only its
+ * arithmetic moved.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
@@ -51,7 +57,7 @@ export { runFlow } from './engine/engine.js';
 export { loadFlow, loadFlowByName } from './engine/loaders.js';
 export { GateUnansweredError } from './engine/types.js';
 export { IntegrationError } from './fanout/fanout.js';
-export { containment } from './git/git.js';
+export { containment, pushLag } from './git/git.js';
 export { FlowError, lintDirectory, lintFlowDirectory } from './lint/lint.js';
 export type { FlowFileReport } from './lint/lint.js';
 export type { Occurrence, OccurrenceUsage, RunManifest, VendorRollup } from './run-history/manifest.js';

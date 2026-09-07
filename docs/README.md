@@ -29,7 +29,7 @@ and the plan. The other three are reference you consult rather than read.
   date, never by its file name.
 - **[GLOSSARY.md](GLOSSARY.md)** — the vocabulary. Use exactly these terms (harness, flow, gate,
   adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule,
-  panel, chore flow, occurrence, preflight, dry run, BYOS, build task, emitted artifact). A new term goes here before it is used in a second file, and synonyms
+  panel, chore flow, occurrence, preflight, dry run, BYOS, build task, emitted artifact, push lag). A new term goes here before it is used in a second file, and synonyms
   for existing terms are not introduced.
 
 ## Conventions

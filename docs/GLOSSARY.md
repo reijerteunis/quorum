@@ -39,6 +39,29 @@ An ancestry fact about two refs at the moment of reading, not a claim about how 
 and not a synonym-carrier: the board and the docs say "contained", never "merged", "landed" or
 "shipped".
 
+**Push lag**: The number of commits the configured base branch holds that its configured upstream
+tracking ref does not — `<upstream>..<base>`, never the symmetric difference — computed on every
+`quorum board` invocation and never stored. **Containment**'s sibling and under the same rules: one
+repository-level fact rather than a per-ticket annotation, derived from git alone, selected from a
+closed set of states, and never reported as an answer git did not give. Five of those states are
+reasons the board could not answer — `no remote` (the repository has no remotes at all), `no
+upstream` (a remote exists and the base tracks nothing), `missing ref` (the base branch, or the
+tracking ref its configuration names, does not resolve — an upstream can be named and gone, which
+git renders as `[gone]`), `shallow clone` (truncated history can only make the count too small) and
+`git failed` (the probe could not answer, which is not the same as git answering that there is no
+repository here — that is silence) — of which `no remote` renders nothing,
+because a repository with nowhere to push has nothing to be ahead of. Rendered as at most one dim
+legend line naming the base, its upstream and the count, and **never as a `<base>:` token**, which
+is containment's grammar. **The line may warn and may never reassure**: a `git push` updates the
+tracking ref locally, so absent a fetch the count can only over-report, and silence means no more
+than *git answered and there is nothing to say*. Not containment (a different pair of refs answering
+a different question), not "behind" (the opposite direction, which is not push lag at all), not "out
+of date", and **not a claim that anything was built, tested or validated anywhere** — it says that
+commits have not left this machine and nothing else, which is why no rendered state, legend or help
+text may use wording equivalent to "CI passed" or "not validated". See *"The board reports push lag,
+and never a CI conclusion"* (2026-09-06), which extends the 2026-08-24 containment entry rather than
+contradicting it.
+
 **Contract**: A machine-checkable artifact emitted by solutioning — interface, schema, stub, migration skeleton — that tests and developers code against.
 
 **Role**: An agent persona file in `harness/roles/` with default adapter, model, write-path allow-list and prompt (product-manager, principal-architect, developer-backend, code-reviewer, …). Tasks reference roles; flows reference roles.

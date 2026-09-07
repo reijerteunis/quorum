@@ -369,7 +369,7 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(21);
+    expect(domain()).toHaveLength(22);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
@@ -439,15 +439,19 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
       .not.toContain('currentBranch');
   });
 
-  test('Q-0099 AC-10 — two commands landed and the surface is the one it was before them', async () => {
-    // The first command child of the cut that needed nothing added, which is worth asserting rather
-    // than observing: Q-0091 added three names, Q-0092 six and Q-0093 two, and each of those three
-    // clauses above is shown red against the count it replaced. This one is shown against the count
-    // it did NOT replace — `board` and `adapters` between them reach five symbols and all five were
-    // already here, so the register and the barrel are both unmoved.
-    expect(domain(), 'the register grew — a command child added a symbol after all').toHaveLength(21);
+  test('Q-0105 AC-12 — the surface grew by exactly one, and it is the name the board reaches', async () => {
+    // Q-0099's version of this test asserted the counts it did NOT move: `board` and `adapters`
+    // between them reached five symbols and all five were already here. That was a true claim about
+    // Q-0099 and it is spelled as a count of today's surface, so Q-0105 falsified the spelling
+    // rather than the claim — `pushLag` is a sixth symbol `board` now reaches and the first this
+    // command has needed since it shipped. The counts move to 22 and 27, and the five-symbol clause
+    // below is kept unchanged, because what it checks is that the names the board already reached
+    // are still reachable.
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(22);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel grew with the register held still').toHaveLength(26);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(27);
+    expect(domain(), 'pushLag is not on the register the barrel is derived from').toContain('pushLag');
+    expect(typeof barrel.pushLag, 'pushLag is not a function on the barrel').toBe('function');
     for (const symbol of ['loadProject', 'containment', 'lintFlowDirectory', 'getAdapter', 'probeAdapter']) {
       expect(domain(), `${symbol} is what the two new commands reach`).toContain(symbol);
       expect(typeof barrel[symbol], `${symbol} is not a function on the barrel`).toBe('function');

@@ -499,3 +499,81 @@ describe('Q-0098 AC-21 — the documentation separates three installation claims
     }
   });
 });
+
+describe('Q-0105 AC-13 — the documents that describe what the board shows carry push lag', () => {
+  /** A document with its line breaks collapsed, because these files are hard-wrapped. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /** The numbered documents this ticket edits, which therefore carry the claim and the date. */
+  const EDITED = ['docs/02-sdlc-pipeline-spec.md', 'docs/04-architecture.md'];
+
+  test('the glossary defines the term, its derivation, and what it is not', () => {
+    // The shape Containment, Event and Undecided already use. The "what it is not" half is what
+    // stops a definition being a paraphrase, and here it is the load-bearing half: this term exists
+    // because four documents claimed a path worked, so a glossary entry that left room to read it
+    // as a claim about testing would reproduce the failure in the vocabulary.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'the glossary does not define **Push lag**:').toContain('**Push lag**:');
+    expect(glossary, 'it does not say which refs it is derived from').toContain('<upstream>..<base>');
+    expect(glossary, 'it does not say it is derived on every invocation and never stored')
+      .toMatch(/every `quorum board` invocation and never stored/);
+    expect(glossary, 'it does not cite the decision by title')
+      .toContain('The board reports push lag, and never a CI conclusion');
+    expect(glossary, 'it does not cite the decision\'s date').toContain('2026-09-06');
+    // The four things it is not, each asserted separately: a list satisfied by naming one of them
+    // would let the other three quietly go.
+    expect(glossary, 'it does not distinguish itself from containment').toMatch(/Not containment/);
+    expect(glossary, 'it does not refuse "behind"').toMatch(/not "behind"/);
+    expect(glossary, 'it does not refuse "out of date"').toMatch(/not "out of date"/);
+    expect(glossary, 'it does not refuse being read as a claim about testing')
+      .toMatch(/not a claim that anything was built, tested or validated/);
+    // And the asymmetry, which is the rule the rendering rests on.
+    expect(glossary, 'it does not say the line may warn and may never reassure')
+      .toMatch(/may warn and may never reassure/);
+  });
+
+  test('README\'s term list gains it, under an assertion that fails when it is missing', () => {
+    // The Q-0098 pin one describe above is `toContain('build task, emitted artifact')` over a list
+    // that ENDS with those two words, so it stays green whether a later term is appended or
+    // omitted — it cannot catch this. A new assertion is therefore owed rather than an edited one,
+    // and the clause below shows the old pin passing over a list this one refuses.
+    expect(repoFile('docs/README.md'), 'the term list does not name push lag').toContain('push lag');
+    const withoutIt = 'BYOS, build task, emitted artifact). A new term goes here';
+    expect(withoutIt.includes('build task, emitted artifact'),
+      'the landed pin does not pass over a list omitting the term, so it was sufficient after all')
+      .toBe(true);
+    expect(withoutIt.includes('push lag'), 'this assertion does not refuse what the old one accepts')
+      .toBe(false);
+  });
+
+  test('both numbered documents state it, and their status lines record Q-0105', () => {
+    for (const file of EDITED) {
+      const text = repoFile(file);
+      expect(flowed(file), `${file} does not name push lag`).toContain('push lag');
+      const start = text.indexOf('*Status:');
+      expect(start, `${file} has no status line`).toBeGreaterThan(-1);
+      const status = text.slice(start, text.indexOf('\n\n', start));
+      expect(status, `${file}'s status line does not record this change`).toContain('Q-0105');
+      expect(status, `${file}'s status line does not carry the landing date`).toContain('2026-09-06');
+    }
+  });
+
+  test('each document refuses the reading its own subject makes available', () => {
+    // AC-9's forbidden-substring treatment belongs to the RENDERED line and is asserted over the
+    // board's real output in `packages/cli/src/board.test.ts`. It is deliberately not repeated over
+    // prose: a scan for those words cannot tell a claim from a rule quoting one, and the first
+    // thing it fired on was the glossary's own prohibition.
+    //
+    // What prose can be held to is that each document refuses the misreading a reader of THAT
+    // document could make. The spec describes what the board shows, so it refuses the claim about
+    // testing; the architecture document describes what the code does, so it refuses the network
+    // call — which is the same refusal one layer down, and the reason this is not one assertion
+    // repeated twice. Emphasis markers are tolerated: the emphasis is not the claim.
+    expect(flowed('docs/02-sdlc-pipeline-spec.md'), 'the spec states the fact without refusing the misreading')
+      .toMatch(/\**not\** a claim that anything was built, tested or validated/);
+    expect(flowed('docs/04-architecture.md'), 'the architecture document does not say this reaches no network')
+      .toMatch(/Nothing on this path reaches the network/);
+    expect(flowed('docs/04-architecture.md'), 'nor that that is what makes it a git fact rather than a CI one')
+      .toMatch(/a git fact rather than a CI one/);
+  });
+});

@@ -346,7 +346,7 @@ const DOMAIN = [
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
   'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
-  'initProject',
+  'initProject', 'pushLag',
 ];
 
 /**
@@ -373,14 +373,20 @@ const DOMAIN = [
  * are correctly absent from it. That is also what makes the two frame modules under this command
  * legal: `gate.ts` and `trace.ts` name no entry of the list at all.
  *
- * **{@link DOMAIN} did not grow for Q-0099's two either**, and that is the first time a command
- * child has needed nothing added: every symbol `board` and `adapters` reach was already on the list
- * and already exported, so `@quorum/core`'s barrel did not move — asserted in `package.test.ts`
- * rather than observed.
+ * **{@link DOMAIN} did not grow for Q-0099's two either**, and that was the first time a command
+ * child had needed nothing added: every symbol `board` and `adapters` reached was already on the
+ * list and already exported, so `@quorum/core`'s barrel did not move at that ticket.
+ *
+ * **Q-0105 grew it by one, and `board.ts` is the row that gained it.** `pushLag` is the second
+ * git-derived fact the board renders, and a command module may not derive one itself — so the
+ * symbol is `core`'s and the row saying `board` reaches it is what keeps the audit honest. That
+ * makes `board.ts` the first row to grow after its command shipped, which is the case worth naming:
+ * a register that only ever grows with a new command would have no way to record a command
+ * acquiring a new need.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   'adapters.ts': ['loadProject', 'getAdapter', 'probeAdapter'],
-  'board.ts': ['loadProject', 'containment', 'lintFlowDirectory'],
+  'board.ts': ['loadProject', 'containment', 'lintFlowDirectory', 'pushLag'],
   'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
   'ticket.ts': ['Backlog', 'loadProject'],
@@ -487,10 +493,14 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
       .not.toContain('board.ts: a command module with no entry saying which domain symbols it may name');
     // What it produces instead, over its own row alone: the register is satisfied that `board.ts`
     // is registered and complains only that the one-line fixture does not name the rest of it.
+    // Three since Q-0105 added `pushLag` to that row, which is this assertion failing closed as it
+    // is meant to: the list is the row's own contents minus what the one-line fixture names, so a
+    // row that grows and a list that does not is a register somebody edited around.
     expect(domainOffenders([], wasBoard, { 'board.ts': COMMAND_DOMAIN['board.ts'] }))
       .toStrictEqual([
         'board.ts: its entry permits loadProject, which the module does not name',
         'board.ts: its entry permits lintFlowDirectory, which the module does not name',
+        'board.ts: its entry permits pushLag, which the module does not name',
       ]);
   });
 
@@ -510,16 +520,19 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     }
   });
 
-  test('Q-0099 AC-10 — neither new command needed a symbol the register did not already have', () => {
-    // The first command child of the cut for which that is true, which is worth asserting rather
-    // than observing: Q-0091 added three names to `DOMAIN`, Q-0092 six and Q-0093 two, and each
-    // addition moved `@quorum/core`'s barrel with it. `package.test.ts` holds the other half — that
-    // the barrel's key set is the one it had before this ticket.
+  test('every row names symbols the register holds, and the register is the size Q-0105 left it', () => {
+    // Q-0099's own claim was that neither of ITS commands needed a symbol adding: Q-0091 added three
+    // names, Q-0092 six, Q-0093 two, and Q-0099 none. That was a fact about Q-0099 and it is still
+    // true of Q-0099; what it could not survive is being spelled as a count of today's register,
+    // because Q-0105 added `pushLag` for `board`. So the count moves to 22 and the message says what
+    // it now guards. The clause above it never depended on the count and is unchanged: an entry
+    // naming a symbol `DOMAIN` lacks is a defect whatever the size.
     const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
     expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
       .toStrictEqual([]);
-    expect(DOMAIN, 'the symbol list moved — the claim above is about a register that did not')
-      .toHaveLength(21);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(22);
+    expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
+      .toContain('pushLag');
   });
 
   test('Q-0099 AC-10 — two production modules landed and the other two registers kept their size', () => {

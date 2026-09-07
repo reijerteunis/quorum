@@ -1094,6 +1094,10 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   },
   'packages/core/src/git/git.test.ts': {
     '../../../etc/passwd': 'hostile input handed to the git argument validator, asserted to be refused',
+    '..': 'git revision-range syntax in `<upstream>..<base>`, which names a range and never a directory',
+  },
+  'packages/core/src/git/git.ts': {
+    '..': 'git revision-range syntax: the two-dot operator in `<upstream>..<base>` and `<base>..<branch>`, which names a range of commits and opens no path',
   },
   'packages/core/src/run-history/reader.ts': {
     '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
@@ -1581,6 +1585,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
   'packages/core/test/repo.ts': {
     dir: 'fs.mkdtempSync(path.join(os.tmpdir(), …)) — this module is where the sandboxes come from',
     log: 'path.join(dir, \'calls\') inside one of them',
+    argv: 'path.join(dir, \'argv\') beside it, where the git shim records the argument list of every call it forwards',
   },
 };
 
