@@ -8,7 +8,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { REPO_WORKTREE_ROOT, worktreeDirName } from '@quorum/shared';
-import type { AncestryReason, AncestryResult, ContainmentReason, ContainmentResult } from '@quorum/shared';
+import type {
+  AncestryReason, AncestryResult, ContainmentReason, ContainmentResult, PushLagResult,
+} from '@quorum/shared';
 
 /** Every git call: argv, never a shell — branch names carry agent-written task ids (Q-0011). */
 const git = (args: readonly string[], cwd: string): string =>
@@ -36,6 +38,73 @@ const exitStatus = (error: unknown): number | null => {
   const status = errorProperty(error, 'status');
   return typeof status === 'number' ? status : null;
 };
+
+/**
+ * git's exit code for a fatal, and it spends the same one on every kind. Measured on git 2.55:
+ * `not a git repository`, `Expected git repo version <= 1, found 99`, `unknown repository extension
+ * found` and `detected dubious ownership in repository at …` all exit 128. So the code says *git
+ * gave up* and never why, which is what {@link repositoryAt} is for.
+ */
+const GIT_FATAL = 128;
+
+/** What the work-tree probe established, which is three answers rather than a boolean. */
+type WorkTreeProbe =
+  /** git answered `true`: there is a work tree here and it can be asked questions. */
+  | 'inside'
+  /** git established there is no work tree to ask about — it answered `false`, or it proved absence. */
+  | 'outside'
+  /** The probe could not answer, which is never reported as either of the other two. */
+  | 'failed';
+
+/**
+ * Does a repository sit at `repoDir` — one git found and then refused to open?
+ *
+ * `--resolve-git-dir` asks whether a *path* is a gitdir, or a gitfile naming one, and it is the
+ * only probe measured here that answers while the repository is unopenable: on git 2.55 it exits 0
+ * for a repository whose format version is 99, for one carrying an unknown extension and for one
+ * whose ownership git refuses, and 128 where there is no gitdir at that path. It runs neither the
+ * ownership check nor the format check, which is precisely why it can discriminate between them and
+ * absence — and it is git's own answer rather than a guess read off git's prose, which is
+ * translated and so may never decide a state.
+ */
+function repositoryAt(repoDir: string): boolean {
+  return safe(() => git(['rev-parse', '--resolve-git-dir', path.join(repoDir, '.git')], repoDir)) != null;
+}
+
+/**
+ * Is `repoDir` inside a work tree? Three answers, because a probe that could not answer is a
+ * different thing from either of git's own and is never collapsed into one of them.
+ *
+ * The distinction is what {@link pushLag} needs and {@link containment} does not. Anything that is
+ * not {@link GIT_FATAL} — no git on the path, a killed process, a shim — is the probe failing. A
+ * fatal is git giving up for one of two very different reasons, so it is asked a second question:
+ * where a repository is really there, git refused to open one and that is a failed probe *inside*
+ * the subject, which for a fact whose success output is silence must not be rendered as nothing.
+ *
+ * The residual limit, stated rather than hidden and narrower than it was: a repository git refuses
+ * is caught where it sits at `repoDir`, which is where a project's own `.git` is. A project root
+ * *below* the refused repository's root still reads as absence, because closing that needs either
+ * git's translated prose or a reimplementation of git's upward discovery walk — and the second would
+ * make a fixture's verdict depend on whether the directory it was built in happens to sit under a
+ * repository, which is the one thing a verdict may not turn on (2026-08-30).
+ */
+function workTreeProbe(repoDir: string): WorkTreeProbe {
+  try { return git(['rev-parse', '--is-inside-work-tree'], repoDir) === 'true' ? 'inside' : 'outside'; }
+  catch (error) {
+    if (exitStatus(error) !== GIT_FATAL) return 'failed';
+    return repositoryAt(repoDir) ? 'failed' : 'outside';
+  }
+}
+
+/**
+ * Does `ref` name a commit in this repository? `false` on git's own "no such ref" exit of 1, which
+ * `--verify --quiet` is documented to use; `null` where the probe failed for any other reason, so a
+ * broken git is never reported as an absent ref.
+ */
+function resolvesToCommit(repoDir: string, ref: string): boolean | null {
+  try { git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], repoDir); return true; }
+  catch (error) { return exitStatus(error) === 1 ? false : null; }
+}
 
 const firstLine = (text: unknown): string | null => {
   const line = String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
@@ -242,9 +311,11 @@ export interface Containment {
  * as it always did, because containment is information, never a failure.
  *
  * The per-invocation probes run once here and each {@link Containment.stateOf} costs at most two
- * more spawns, so a board of n tickets issues at most 2n + 3. A ticket's `branch` — untrusted,
- * agent-written frontmatter — is matched as a plain string against a list that came out of git, so
- * a hostile name never reaches a git command line at all. See Q-0036.
+ * more spawns, so this function's own contribution to a board of n tickets is at most 2n + 3. Since
+ * Q-0105 the board also calls {@link pushLag}, whose cost is constant in n — at most 7, measured by
+ * the spawn counter rather than counted by eye — so the board's whole budget is at most 2n + 10. A
+ * ticket's `branch` — untrusted, agent-written frontmatter — is matched as a plain string against a
+ * list that came out of git, so a hostile name never reaches a git command line at all. See Q-0036.
  */
 export function containment(repoDir: string, base: string): Containment | null {
   let probe: string;
@@ -275,6 +346,87 @@ export function containment(repoDir: string, base: string): Containment | null {
       return { state: 'not-contained', ahead: Number(ahead) };
     },
   };
+}
+
+/**
+ * How far the configured base branch is ahead of the upstream it tracks — commits that have never
+ * left this machine — derived from git at the moment of asking and never stored.
+ *
+ * `null` means **git established there is no work tree here**, and nothing else: the caller renders
+ * as it always did, which is what keeps a freshly initialised project's board byte-identical. A
+ * probe that *could not answer* is not that — it is `git failed`, and it prints, and so is a
+ * repository git found and refused to open. {@link workTreeProbe} tells the three apart; conflating
+ * them is how a repository with a broken git reported silence, which for this fact is the shape of a
+ * clean bill of health.
+ *
+ * **A second fact under {@link containment}'s rules, not a second way of doing it**, which is why it
+ * is a separate function: `containment` asks where a *ticket branch* stands against the base and
+ * returns `null` outside a work tree, so a fact folded into it would be unaskable exactly where a
+ * caller still wants it. See "The board reports push lag, and never a CI conclusion" (2026-09-06).
+ *
+ * **Every state is selected from an answer git gave, never inferred from a failure.** A repository
+ * with no remotes, a base that does not resolve, a base tracking nothing, truncated history and a
+ * git that failed each reach their own reason, and none of them reaches `pushed` — the mistake
+ * "not contained is never inferred from a failure" already forbids one fact along.
+ *
+ * **Probe for existence, then count.** `%(upstream)` returns the empty string rather than failing
+ * when a branch tracks nothing, and `git rev-list --count` emits an integer under every locale. The
+ * tempting single atom is unusable here: `%(ahead-behind:<ref>)` fatals the *whole* `for-each-ref`
+ * invocation on one missing ref, and this feeds a command that must exit 0. **Both** endpoints are
+ * probed, because `%(upstream)` names a ref that configuration asserts and the object store may not
+ * hold; counting over one of those fatals, and the failure would be reported as a broken git rather
+ * than as the absent ref it is.
+ *
+ * Shallow history can only make the count too small, so it is reported as a reason rather than as a
+ * number that is quietly a floor. Nothing here reads or writes the network: there is no fetch, no
+ * `ls-remote` and no credential on this path, and the answer is therefore as of the last fetch —
+ * it may over-report and it may never under-report, which is what lets a caller warn on it and
+ * forbids a caller reassuring on it.
+ *
+ * At most seven spawns, constant in the number of tickets a board holds, and measured by the spawn
+ * counter rather than counted by eye. The second work-tree probe does not raise that ceiling: it is
+ * reached only where git has already given up, which is a path that returns two spawns in.
+ */
+export function pushLag(repoDir: string, base: string): PushLagResult | null {
+  // Two probes rather than one, because they answer two questions and only the first decides
+  // whether there is a question at all. `null` is reached only where git established that there is
+  // no work tree here; every failure, before that point and after it, is reported — silence being
+  // this fact's success output: a check that skips its subject must not report success (2026-08-25).
+  const probe = workTreeProbe(repoDir);
+  if (probe === 'failed') return { state: 'indeterminate', reason: 'git failed' };
+  if (probe === 'outside') return null;
+  // No remotes at all is an answer, not a failure: there is nowhere the base could be ahead of. A
+  // freshly initialised project is this, and what to DO with it is the caller's decision.
+  const remotes = safe(() => git(['remote'], repoDir));
+  if (remotes == null) return { state: 'indeterminate', reason: 'git failed' };
+  if (remotes === '') return { state: 'indeterminate', reason: 'no remote' };
+  const baseRef = `refs/heads/${base}`;
+  const baseResolves = resolvesToCommit(repoDir, baseRef);
+  if (baseResolves === null) return { state: 'indeterminate', reason: 'git failed' };
+  if (!baseResolves) return { state: 'indeterminate', reason: 'missing ref' };
+  // Both fields in one call, separated by a space, which no ref name may contain. Exactly one line
+  // comes back: the ref resolved above, so git's own D/F rule forbids `<baseRef>/…` beside it, and
+  // that is the only other thing this pattern could match.
+  const tracking = safe(() => git(['for-each-ref', '--format=%(upstream) %(upstream:short)', baseRef], repoDir));
+  if (tracking == null) return { state: 'indeterminate', reason: 'git failed' };
+  const [upstreamRef = '', upstream = ''] = tracking.split(' ');
+  if (upstreamRef === '') return { state: 'indeterminate', reason: 'no upstream' };
+  // `%(upstream)` is computed from `branch.<name>.remote` and `.merge`, so it names a ref that may
+  // not be there — what `git branch -vv` renders as `[gone]`, and what a pruned or hand-deleted
+  // tracking ref leaves behind. That is a ref that does not resolve, which is `missing ref` and not
+  // a git that failed; without this the count below fatals and the wrong reason is reported.
+  const upstreamResolves = resolvesToCommit(repoDir, upstreamRef);
+  if (upstreamResolves === null) return { state: 'indeterminate', reason: 'git failed' };
+  if (!upstreamResolves) return { state: 'indeterminate', reason: 'missing ref' };
+  const { shallow } = shallowState(repoDir);
+  if (shallow === null) return { state: 'indeterminate', reason: 'git failed' };
+  if (shallow) return { state: 'indeterminate', reason: 'shallow clone' };
+  // upstream..base, never the symmetric difference: a base that is only behind has nothing waiting.
+  const ahead = safe(() => git(['rev-list', '--count', `${upstreamRef}..${baseRef}`], repoDir));
+  if (ahead == null) return { state: 'indeterminate', reason: 'git failed' };
+  const count = Number(ahead);
+  if (!Number.isInteger(count)) return { state: 'indeterminate', reason: 'git failed' };
+  return count === 0 ? { state: 'pushed' } : { state: 'unpushed', ahead: count, upstream };
 }
 
 /** Append `pattern` to the repository's `info/exclude` if it is not already a line of it. */
