@@ -206,6 +206,67 @@ describe('Q-0050 AC-6/AC-7/AC-8 — failure routing', () => {
     }));
   });
 
+  describe('Q-0083 — a bound of zero gates the FIRST failure, and says so', () => {
+    /** The `chore.yaml` shape: `implement` refuses, and no traversal happens unattended. */
+    const blocked = { id: 'implement', on_fail: { goto: 'implement', max_iterations: 0 } };
+
+    test('the first failure reaches the gate rather than a round that cannot converge', async () => {
+      const events: Event[] = [];
+      const answerGate = vi.fn(async (q: GateQuestionEvent) => ({ gateId: q.gateId, answer: 'advance' as const }));
+      const ctx = context({ emit: (event) => events.push(event), answerGate });
+
+      // No counter is seeded: this is the FIRST failure, which under any positive bound would be a
+      // goto. That is the whole mechanism — Q-0091 and Q-0101 each paid for a round that changed no
+      // files because a refusal had nowhere to go but round two.
+      await expect(handleFail(blocked, ctx)).resolves.toBeNull();
+      expect(ctx.counters, 'the traversal was charged even though none was taken').toStrictEqual({ 'f.implement': 1 });
+      expect(events).toContainEqual(expect.objectContaining({ type: 'gate', kind: 'human-locked', retry: 'implement' }));
+      expect(events, 'a goto was emitted, so a round was spent').not.toContainEqual(
+        expect.objectContaining({ type: 'warn', message: expect.stringContaining('goto') }),
+      );
+    });
+
+    test('and it does not call it exhausted, because nothing looped', async () => {
+      // The gate is the same gate with the same three answers; only the sentence differs. "loop
+      // exhausted" would be a false account of a step that stopped on its first answer, and the
+      // reader answering it is owed what actually happened.
+      const events: Event[] = [];
+      const answerGate = vi.fn(async (q: GateQuestionEvent) => ({ gateId: q.gateId, answer: 'advance' as const }));
+      await handleFail(blocked, context({ emit: (event) => events.push(event), answerGate }));
+
+      const warn = events.find((e) => e.type === 'warn');
+      expect(warn?.message).toContain('stopped on its first failure');
+      expect(warn?.message, 'a step that never looped was reported as a loop').not.toContain('exhausted');
+      const gate = events.find((e) => e.type === 'gate') as GateQuestionEvent;
+      expect(gate.reason).toContain('stopped rather than looping');
+      expect(gate.reason, 'the three answers are unchanged').toContain('advance');
+      expect(gate.reason).toContain('retry');
+      expect(gate.reason).toContain('abort');
+    });
+
+    test('the persisted record still says `exhausted`, which is the narrowed half of the promise', async () => {
+      // Erratum E-2: the vocabulary is not widened for this. `exhausted` names "the run stopped at
+      // an engine-presented gate having spent its bound", and a bound of zero is spent by the first
+      // failure — so the ticket's history and runs.log read the same for both, and only the gate's
+      // sentence differs. Pinned because a promise about what a reader sees must not quietly become
+      // a promise about what is stored.
+      const answerGate = vi.fn(async (q: GateQuestionEvent) => ({ gateId: q.gateId, answer: 'advance' as const }));
+      const ctx = context({ answerGate });
+      await handleFail(blocked, ctx);
+      expect(ctx.persistence.recordOccurrenceEvent).toHaveBeenCalledWith(ctx.ticket, 'qa-red', 'exhausted', 0);
+    });
+
+    test('retry at that gate authorises exactly one traversal, which is what an erratum is for', async () => {
+      // The answer the ticket body called meaningless. It is not: the human's job at this gate is to
+      // change what the step reads — land the erratum — and then let it run again. Q-0101 measured
+      // both rounds after an erratum as cheap and productive, against three before it that were not.
+      const answerGate = vi.fn(async (q: GateQuestionEvent) => ({ gateId: q.gateId, answer: 'retry' as const }));
+      const ctx = context({ answerGate });
+      await expect(handleFail(blocked, ctx)).resolves.toStrictEqual({ goto: 'implement', counter: 'f.implement', limit: 0 });
+      expect(ctx.counters['f.implement'], 'the grant did not reset the counter to its bound').toBe(0);
+    });
+  });
+
   test('AC-6d — the exhausted record is written before the gate promise is awaited', async () => {
     // The criterion's own method — "read both from disk inside the still-unresolved answerGate" —
     // cannot be used here: `askGate` writes its log line AFTER the answer arrives, so nothing is on

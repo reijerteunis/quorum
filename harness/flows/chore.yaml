@@ -10,10 +10,21 @@ steps:
     branch: "harness/{id}/implement"
     base: "harness/{id}/integration"
     input:
-      backlog: [requirements/merged.md, requirements/errata.md, "review/chore/run-{run}/chore-iter-*.md"]
+      backlog: [requirements/merged.md, requirements/errata.md, "review/chore/run-{run}/chore-iter-*.md", "dev/chore/run-{run}/implement-iter-*.md"]
       harness: [rules.md, architecture.md]
       repo: true
-    output: { writes: ["dev/chore/run-{run}/implement-iter-{iter}.md"] }
+    output:
+      writes: ["dev/chore/run-{run}/implement-iter-{iter}.md"]
+      verdict: proceed|blocked
+    # A bound of zero: `blocked` reaches the human on the first refusal rather than after a
+    # round that cannot converge. The two answers that fit a refusal are `retry` — run
+    # implement again, which is what a landed erratum is for — and `abort`. `advance` simply
+    # carries on, and carrying on means `review`, which needs a diff: where the implementer
+    # was blocked before committing anything, the run stops there with the empty-range
+    # diagnostic naming the branch and the step that wrote nothing to it. That is a true
+    # account and not a trap, but it is why `advance` is the answer for a refusal that still
+    # made progress, not for one that made none.
+    on_fail: { goto: implement, max_iterations: 0, on_exhausted: gate }
     instructions: >
       Implement exactly what requirements/merged.md asks for and nothing else: no scope
       creep, no speculative abstraction, no tidying of code you were not sent to change.
@@ -23,6 +34,15 @@ steps:
       authorise. Commit nothing; the harness commits your worktree. Write a report of what
       you changed file by file and what you deliberately left alone — the reviewer reads
       it beside your diff.
+
+      Your verdict is "proceed" unless you are BLOCKED, which means one specific thing:
+      satisfying a criterion or a review finding would require something you are not
+      permitted to do — a decision entry only the human may write, a file outside your
+      paths, or behaviour a landed decision preserves. "blocked" is not for work that is
+      large, unclear or hard; say that in your report and proceed. Name the authority you
+      are appealing to and what you did instead. Answering "blocked" stops the run at a
+      human gate, so it is the one verdict that costs nothing to be right about and a
+      whole round to be wrong about.
 
   - id: review
     role: code-reviewer

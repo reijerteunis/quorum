@@ -176,8 +176,12 @@ export function lintFlow(flow: unknown): boolean {
       const onFail = loose(view.on_fail);
       if (!onFail.goto) problems.push(`${view.id}: on_fail without goto`);
       else if (!String(onFail.goto).startsWith('flow:') && !ids.includes(onFail.goto)) problems.push(`${view.id}: goto target "${onFail.goto}" not found`);
-      if (!Number.isInteger(onFail.max_iterations) || (onFail.max_iterations as number) <= 0) {
-        problems.push(`${view.id}: on_fail.max_iterations must be an integer greater than zero`);
+      // Zero is legal and means something: no traversal happens unattended, so the FIRST failure
+      // is the gate rather than the last. That is what lets a step whose verdict is a refusal —
+      // `chore.yaml`'s `implement`, Q-0083 — reach a human without spending a round first. Negative
+      // is still refused, and so is a non-integer.
+      if (!Number.isInteger(onFail.max_iterations) || (onFail.max_iterations as number) < 0) {
+        problems.push(`${view.id}: on_fail.max_iterations must be an integer of zero or more`);
       }
       const counter = onFail.counter;
       if (counter != null && (typeof counter !== 'string' || !counter.trim())) {

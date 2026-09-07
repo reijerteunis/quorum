@@ -172,6 +172,8 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'docs/GLOSSARY.md': 'docs.test.ts — the Event term',
     'harness/harness.yaml': 'project.test.ts — the config corpus, and the Q-0065 --force guard',
     'harness/architecture.md': 'role.test.ts — Q-0107 AC-18, the role table\'s third column against every role\'s paths: frontmatter, which spike/test/smoke.js was the only thing checking',
+    'packages/cli/templates/harness/flows/chore.yaml': 'flow.test.ts — Q-0083, the shipped chore flow against the adopter\'s copy: the verdict, its zero bound and the input that makes the edge converge',
+    'packages/cli/templates/harness/roles/developer-generalist.md': 'flow.test.ts — Q-0083, the role that answers that verdict, and the negative half of its definition',
     'packages/cli/templates/harness/harness.yaml': 'project.test.ts — Q-0107 AC-9, the shipped template config, re-aimed off spike/templates/harness/harness.yaml onto the byte-identical copy an adopter\'s quorum init actually copies',
     'packages/core/package.json': 'index.test.ts — core declares shared as a workspace dependency',
     'packages/core/src/adapters/adapters.ts': 'project.test.ts — Q-0058 AC-2, withRetry\'s defaults are the oracle for the shipped example, so a change to one must move this task\'s hash; and events.test.ts — Q-0107 AC-9, the retry event this union is derived from',
@@ -666,6 +668,10 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/shared/src/flow.test.ts': {
     'parseYaml → file': 'the loop iterates flowFiles(), the audited walk of harness/flows',
     'read → chore!': 'the value is flowFiles().find(basename === \'chore.yaml\'), so it comes from the same audited walk of harness/flows as the line above',
+    // Q-0083. Added HERE rather than in a second entry for this file: an object literal takes the
+    // last key, so a duplicate would have silently discarded whichever half was written first —
+    // which is exactly what happened on the way to writing this line.
+    'repoFile → role': 'the loop iterates a literal array of the two developer-generalist paths, declared inline in the same test, and clause B collects both — the manifest names them for the same reason',
   },
   'packages/shared/src/ticket.test.ts': {
     'read → file': 'the loops iterate ticketFiles(), the audited walk of backlog/*/ticket.md',

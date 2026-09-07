@@ -82,9 +82,11 @@ describe('AC-2 — the sixteen messages, verbatim', () => {
       .toBe('s: goto target "nope" not found');
   });
 
-  test('4 — max_iterations must be an integer greater than zero', () => {
-    expect(onlyProblem(flowOf(step({ on_fail: { goto: 's', max_iterations: 0, on_exhausted: 'gate' } }))))
-      .toBe('s: on_fail.max_iterations must be an integer greater than zero');
+  test('4 — max_iterations must be an integer of zero or more', () => {
+    // Q-0083 made zero legal and gave it a meaning: no traversal happens unattended, so the FIRST
+    // failure is the gate. Negative is what is refused now, and the message says so.
+    expect(onlyProblem(flowOf(step({ on_fail: { goto: 's', max_iterations: -1, on_exhausted: 'gate' } }))))
+      .toBe('s: on_fail.max_iterations must be an integer of zero or more');
   });
 
   test('5 — counter must be a non-empty unprefixed key', () => {
@@ -176,7 +178,7 @@ describe('AC-2 — the sixteen messages, verbatim', () => {
     const { message } = refusal({
       name: 'many', produces: 'deployed', cross_vendor: 'required',
       steps: [
-        { id: 'dup', role: 'w', adapter: 'claude', output: { write: 'a.md' }, on_fail: { goto: 'dup', max_iterations: 0, counter: 'iterations.x', on_exhausted: 'no' } },
+        { id: 'dup', role: 'w', adapter: 'claude', output: { write: 'a.md' }, on_fail: { goto: 'dup', max_iterations: -1, counter: 'iterations.x', on_exhausted: 'no' } },
         { id: 'dup', role: 'w', adapter: 'claude' },
         { id: 'v', role: 'r', adapter: 'claude', output: { verdict: 'x|y' } },
         { id: 'g', on_fail: { max_iterations: 1, on_exhausted: 'gate' } },
@@ -189,7 +191,7 @@ describe('AC-2 — the sixteen messages, verbatim', () => {
     expect(message).toBe([
       'flow many invalid:',
       '  - duplicate step id "dup"',
-      '  - dup: on_fail.max_iterations must be an integer greater than zero',
+      '  - dup: on_fail.max_iterations must be an integer of zero or more',
       '  - dup: counter "iterations.x" must be unprefixed; use "x"',
       '  - dup: on_exhausted must be "gate"',
       '  - v: has a verdict but no on_fail/route — verdicts must go somewhere',
@@ -495,12 +497,16 @@ describe('AC-5 — both cross-vendor rules, and the short-circuit between them',
 describe('AC-6 — bounds, counter spelling, goto resolution and the verdict-must-route rule', () => {
   const withOnFail = (on_fail: unknown): Record<string, unknown> => flowOf(step({ role: 'r', on_fail }));
 
-  test('S7.1-S7.5 — every invalid bound is refused', () => {
-    for (const max_iterations of [undefined, 'three', 1.5, 0, -1]) {
+  test('S7.1-S7.5 — every invalid bound is refused, and zero is not one of them', () => {
+    for (const max_iterations of [undefined, 'three', 1.5, -1]) {
       expect(onlyProblem(withOnFail({ goto: 's', max_iterations, on_exhausted: 'gate' })), JSON.stringify(max_iterations))
-        .toBe('s: on_fail.max_iterations must be an integer greater than zero');
+        .toBe('s: on_fail.max_iterations must be an integer of zero or more');
     }
     expect(lintFlow(withOnFail({ goto: 's', max_iterations: 3, on_exhausted: 'gate' }))).toBe(true);
+    // Q-0083: zero is a bound and not an absence. It authorises no unattended traversal, which is
+    // how `chore.yaml`'s `implement` reaches a human on its first refusal instead of after a round
+    // that cannot converge. Asserted beside the refusals so the two cannot be confused.
+    expect(lintFlow(withOnFail({ goto: 's', max_iterations: 0, on_exhausted: 'gate' })), 'zero is refused').toBe(true);
   });
 
   test('S7.6/S7.7 — counter spelling, and it is not a verdict-specific rule', () => {

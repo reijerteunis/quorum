@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { flowSchema, flowStepSchema } from './flow.js';
-import { flowFiles, parseYaml, read, sharedSourceFiles } from '../test/corpus.js';
+import { flowFiles, parseYaml, read, repoFile, sharedSourceFiles } from '../test/corpus.js';
 
 // `loadFlow` assigns `flow.file = file` onto the parsed object BEFORE lint or anything else sees
 // it (spike/src/engine.js:15-20). Every corpus flow is parsed the way the engine parses it,
@@ -454,3 +454,49 @@ describe('Q-0087 — every artifact a run can rewrite is named by what makes it 
   });
 });
 
+describe('Q-0083 — the chore flow can report a refusal, and the shipped copies agree', () => {
+  /** Both copies, because `lint.test.ts`'s parity assertion is what catches only one moving. */
+  const chores = (): [string, string][] =>
+    [['harness/flows/chore.yaml', repoFile('harness/flows/chore.yaml')],
+     ['packages/cli/templates/harness/flows/chore.yaml', repoFile('packages/cli/templates/harness/flows/chore.yaml')]];
+
+  test('implement declares a verdict whose first option is the passing one', () => {
+    // The engine routes anything that is not the vocabulary's FIRST option through the step's bound
+    // (`steps.ts`), so the order is the mechanism and not presentation: `blocked|proceed` would gate
+    // every successful round.
+    for (const [name, text] of chores()) {
+      expect(text, `${name}: implement declares no verdict`).toContain('verdict: proceed|blocked');
+    }
+  });
+
+  test('and it is bounded at zero, so the first refusal is the gate rather than the last', () => {
+    // The whole ticket: with any positive bound a refusal buys a round that cannot converge, which
+    // Q-0091 and Q-0101 each paid for — $45.44 between them, in rounds that changed no files.
+    for (const [name, text] of chores()) {
+      expect(text, `${name}: implement's bound is not zero`)
+        .toMatch(/on_fail:\s*\{\s*goto:\s*implement,\s*max_iterations:\s*0,\s*on_exhausted:\s*gate\s*\}/);
+    }
+  });
+
+  test('and a retry round reads its own previous report, which is what makes the edge converge', () => {
+    // Required by the convergence rule — a backward edge must send the target something it reads —
+    // and right on its own: the round after an erratum should see what it refused last time.
+    for (const [name, text] of chores()) {
+      expect(text, `${name}: implement cannot read its own prior rounds`)
+        .toContain('"dev/chore/run-{run}/implement-iter-*.md"');
+    }
+  });
+
+  test('the role that answers it knows what blocked means, and what it does not', () => {
+    // A verdict no agent understands is a field nobody sets. The line that matters is the negative
+    // one: `blocked` is an authority appeal and not a difficulty report, and no lint can tell them
+    // apart — which is why the ticket routed it to a human gate rather than to a validator.
+    for (const role of ['harness/roles/developer-generalist.md',
+                        'packages/cli/templates/harness/roles/developer-generalist.md']) {
+      const text = repoFile(role);
+      expect(text, `${role}: the role never mentions the verdict it must return`).toContain('blocked');
+      expect(text, `${role}: the role does not say what blocked is NOT for`)
+        .toMatch(/not for work that is large, unclear or hard/);
+    }
+  });
+});

@@ -173,7 +173,10 @@ describe('AC-5 — the walk is core\'s and the rendering is the CLI\'s', () => {
   test('S9 — several broken files aggregate, each under its own header', async () => {
     flows({
       a: reviewWith('flow:missing'),
-      b: reviewWith('flow:development', 0).replace('name: review', 'name: b'),
+      // -1 rather than 0: Q-0083 made zero a legal bound with a meaning — no unattended
+      // traversal, so the first failure is the gate — and this fixture needs a value that is
+      // still refused, or the file it stands for would lint clean and prove nothing.
+      b: reviewWith('flow:development', -1).replace('name: review', 'name: b'),
       development: basicFlow('development', 'red', 'green'),
     });
     const { stdout, exitCode } = await invoke(['lint']);

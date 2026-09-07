@@ -45,6 +45,10 @@
         // reader in this package. What replaced them is below — the same assertions, aimed at the
         // tree that survives the cutover, which this package reads as TEXT and never imports.
         "../../packages/cli/templates/harness/harness.yaml",
+        // Q-0083: flow.test.ts compares the shipped chore flow and the role that answers its new
+        // verdict against the adopter's copies, so a change to either half must move this hash.
+        "../../packages/cli/templates/harness/flows/chore.yaml",
+        "../../packages/cli/templates/harness/roles/developer-generalist.md",
         "../core/package.json",
         "../core/src/adapters/adapters.ts",
         "../core/src/adapters/claude.ts",

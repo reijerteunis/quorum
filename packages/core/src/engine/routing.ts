@@ -118,12 +118,28 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
     return { goto: target, counter, limit };
   }
 
-  context.emit({ type: 'warn', message: `${String(step.id)}: loop exhausted (${limit}) → human gate` });
+  // A bound of zero authorises no unattended traversal, so the first failure arrives here and
+  // "exhausted" would be a false account of it — nothing looped. The two are the same gate with the
+  // same three answers; only the sentence differs, because a reader answering it is owed what
+  // actually happened. See Q-0083.
+  // The persisted status is `exhausted` for both, deliberately: it is the existing name for *the run
+  // stopped at an engine-presented gate having spent its bound*, and a bound of zero is spent by the
+  // first failure. What distinguishes them is the SENTENCE below, because a reader answering a gate
+  // is owed what actually happened. See Q-0083 erratum E-2.
+  const exhausted = limit > 0;
+  context.emit({
+    type: 'warn',
+    message: exhausted
+      ? `${String(step.id)}: loop exhausted (${limit}) → human gate`
+      : `${String(step.id)}: stopped on its first failure, which is what a bound of zero asks for → human gate`,
+  });
   await context.persistence.recordOccurrenceEvent(context.ticket, context.ticket.meta.stage, 'exhausted', 0);
   /** Why: preserved behavior; `on_fail.on_exhausted` remains unread under Q-0050. */
   const request: GateQuestionEvent = {
     type: 'gate', gateId: context.nextGateId(), kind: 'human-locked',
-    reason: `loop exhausted at ${String(step.id)} (${counter} = ${count}, limit ${limit}); choose: advance (accept as is), retry (exactly one more ${target}), abort`,
+    reason: exhausted
+      ? `loop exhausted at ${String(step.id)} (${counter} = ${count}, limit ${limit}); choose: advance (accept as is), retry (exactly one more ${target}), abort`
+      : `${String(step.id)} stopped rather than looping (${counter} = ${count}, limit ${limit}); choose: advance (accept its answer and carry on), retry (exactly one more ${target}, for once you have changed what it reads), abort`,
     ticketDir: context.ticket.dir, retry: target,
   };
   const answer = await askGate(request, context);

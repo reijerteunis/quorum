@@ -132,7 +132,11 @@ export const onFailSchema = z.looseObject({
    * spike/src/engine.js:541. Lint rejects an empty or `iterations.`-prefixed one (lint.js:68-74).
    */
   counter: z.string().optional(),
-  /** Lint rejects a non-integer or non-positive value — spike/src/lint.js:65-67. */
+  /**
+   * How many traversals of this edge happen unattended. Lint rejects a non-integer or a negative
+   * value; **zero is legal and means none**, so the first failure is the gate rather than the last
+   * (Q-0083).
+   */
   max_iterations: z.number(),
   /** Lint requires exactly `gate` — spike/src/lint.js:75 — so the value is lint's to refuse. */
   on_exhausted: z.string(),

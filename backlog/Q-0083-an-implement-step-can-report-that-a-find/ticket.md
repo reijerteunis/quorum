@@ -1,7 +1,7 @@
 ---
 id: Q-0083
 title: An implement step can report that a finding demands what it may not do
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0083/integration
