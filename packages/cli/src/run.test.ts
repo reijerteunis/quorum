@@ -153,11 +153,12 @@ describe('AC-9 — the exit code is the terminal event\'s, through the table tha
     expect(read(ticketDir(dir), 'ticket.md'), 'an aborted run moved the stage').toMatch(/stage: draft/);
   });
 
-  test('a backward edge to another flow regresses the ticket and still exits 0', async () => {
-    // Why: preserved defect, see Q-0090 AC-4(c) — `spike/bin/harness.js:557` names only `aborted`
-    // and `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather
-    // than fixed (non-goal 4), and asserted through a whole run rather than only through the table,
-    // because a run that regressed is the one status a script would most want to tell from 0.
+  test('a backward edge to another flow regresses the ticket, and 0 is the ruled answer', async () => {
+    // Ruled rather than fallen into: an exit code reports a run's DISPOSITION and not its
+    // verdict, and a regressed run finished, moved the stage and kept its branch. Asserted
+    // through a whole run as well as through the table, because it is the status a script
+    // would most want to tell from 0 — and it cannot, by decision.
+    // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
     vi.stubEnv('MOCK_ALWAYS_FAIL', '1');
     const dir = await project();
     // `green`, because the whole-directory lint requires a cross-flow `goto` to return to the stage
@@ -194,8 +195,11 @@ describe('AC-9 — the exit code is the terminal event\'s, through the table tha
     } as Parameters<typeof exitCodeFor>[0]);
     expect({
       completed: exitCodeFor(terminal('completed')),
-      // Why: preserved defect, see Q-0090 AC-4(c) — `spike/bin/harness.js:557` names only `aborted`
-      // and `undecided`, so `regressed` reaches the fallthrough and reports success.
+      // Ruled rather than fallen into: an exit code reports a run's DISPOSITION and not its
+      // verdict, and a regressed run finished, moved the stage and kept its branch. Asserted
+      // through a whole run as well as through the table, because it is the status a script
+      // would most want to tell from 0 — and it cannot, by decision.
+      // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
       regressed: exitCodeFor(terminal('regressed')),
       aborted: exitCodeFor(terminal('aborted')),
       undecided: exitCodeFor(terminal('undecided')),

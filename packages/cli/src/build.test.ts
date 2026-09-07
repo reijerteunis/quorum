@@ -1453,16 +1453,22 @@ describe('Q-0098 AC-17 — a non-zero status crosses the process boundary throug
     expect(result.stdout, 'die wrote its message to stdout').not.toContain('a message');
   }, 300_000);
 
-  test('and the preserved unknown-command zero survives the boundary rather than being quietly fixed', () => {
-    // Why: preserved, see Q-0090 AC-6 — `spike/bin/harness.js:560–562` prints usage and returns, so
-    // the process exits 0 and a shell script cannot tell "did the thing" from "did not understand
-    // you". Successor Q-0090 GA-4. Returning 1 here would be a behaviour change wearing a bug fix's
-    // clothes, which ground rule 3 forbids; pinning it across the process boundary is what makes a
-    // later fix a deliberate act.
+  test('and Q-0110\'s unknown-command status crosses the boundary, while asking for help does not', () => {
+    // The zero this pinned was Q-0090's preserved defect, and Q-0090 GA-4's successor — Q-0110 —
+    // changed it. Kept here rather than moved to `main.test.ts` because what THIS file proves is
+    // that the status survives a real process boundary: `main` sets `process.exitCode` and resolves
+    // rather than exiting, so nothing but a spawn can show that the exit actually carries it.
+    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
     runBuild();
-    const result = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
-    expect(result.status, 'the unknown-command zero was changed — that is Q-0090 GA-4 and not this ticket').toBe(0);
-    expect(result.stdout).toContain('usage: quorum');
+    const tripped = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
+    expect(tripped.status, 'an unknown command reported success across the boundary').toBe(1);
+    expect(tripped.stdout, 'the help is still a service, so it is still on stdout').toContain('usage: quorum');
+
+    // The other side of the same ruling, spawned for the same reason: a status set and not exited
+    // is exactly the kind that can be lost, so the success case is proven across the boundary too.
+    const asked = spawnStatus(PACKAGE, [binTarget(), '--help']);
+    expect(asked.status, 'asking for help was reported as a failure').toBe(0);
+    expect(asked.stdout).toContain('usage: quorum');
   }, 300_000);
 });
 

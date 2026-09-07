@@ -56,9 +56,11 @@ export type ExitCode =
  */
 export const EXIT_CODE_FOR_STATUS: Readonly<Record<RunTerminalEvent['status'], ExitCode>> = {
   completed: SUCCESS,
-  // Why: preserved defect, see Q-0090 AC-4(c). `spike/bin/harness.js:557` names only `aborted` and
-  // `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather than
-  // fixed, and routed to Q-0090's GA-4 successor together with the unknown-command zero.
+  // Chosen rather than fallen into, which is what Q-0090 AC-4(c) registered: `regressed` sides with
+  // `completed` in every question `lifecycle.ts` asks of a terminal status, so the exit table agrees
+  // with the engine's own model of a finished run. A caller that needs the verdict reads the
+  // terminal event, which carries the status by name.
+  // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
   regressed: SUCCESS,
   aborted: ABORTED,
   undecided: UNDECIDED,

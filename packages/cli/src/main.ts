@@ -27,6 +27,7 @@ import { adapters } from './adapters.js';
 import { parseArgv, type ParsedArgv } from './argv.js';
 import { board } from './board.js';
 import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
+import { failSoftly } from './fail.js';
 import { init } from './init.js';
 import { lint } from './lint.js';
 import { run } from './run.js';
@@ -77,11 +78,36 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
  * Run one command line. `argv` is `process.argv.slice(2)` when a binary calls it, and a literal
  * array when a test does — the parser reads nothing from the environment, so the two are the same.
  *
- * An unknown or absent command prints the help and returns, so the process exits 0. Why: preserved,
- * see Q-0090 AC-6 — `spike/bin/harness.js:560–562` is a `default:` branch that prints usage and
- * returns. It is registered as a defect rather than carried quietly: a shell script cannot tell
- * "did the thing" from "did not understand you". The successor is Q-0090's GA-4.
+ * An unknown or absent command prints the help and reports {@link ERROR}; asking for help — the
+ * `help` command, `--help` or `-h` — prints the same text and reports success. Help on purpose is
+ * success; help by accident is not.
+ *
+ * The status is **set rather than exited**, so `main` still resolves and the help still reaches the
+ * terminal: `die` and `failSoftly` are two mechanisms and this is the second (Q-0090 AC-5).
+ *
+ * Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08),
+ * which changed this one and ratified the two beside it.
  */
+/** The two ways to ask for help without naming the command. */
+const HELP_TOKENS = new Set(['--help', '-h']);
+
+/**
+ * Whether this invocation asked for the help it is about to get, rather than tripping into it.
+ *
+ * **Help must be the whole request.** `quorum nonsense --help` named something this binary does not
+ * dispatch, so it is ERROR like any other unknown name — a scan of the raw argv would have called it
+ * success and contradicted the ruling it implements.
+ *
+ * `-h` is read as a positional because `parseArgv` recognises only `--` forms (`argv.ts:53`), which
+ * is also why the flag half is checked separately: `--adapter -h` consumes `-h` as that flag's
+ * value, and no help was asked for there.
+ */
+const askedForHelp = ({ cmd, rest, flags }: ParsedArgv): boolean => {
+  const positionals = cmd === undefined ? rest : [cmd, ...rest];
+  if (!positionals.every((token) => HELP_TOKENS.has(token))) return false;
+  return flags.help === true || positionals.length > 0;
+};
+
 export async function main(argv: readonly string[]): Promise<void> {
   const parsed = parseArgv(argv);
   const { cmd } = parsed;
@@ -90,4 +116,5 @@ export async function main(argv: readonly string[]): Promise<void> {
     return;
   }
   console.log(HELP);
+  if (!askedForHelp(parsed)) failSoftly();
 }

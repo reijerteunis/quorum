@@ -153,3 +153,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [A deferral is not a skip, and the preflight says nothing about one](decisions/081-a-deferral-is-not-a-skip.md)
 - [A `core` error names the condition; the remedy belongs to the surface](decisions/082-a-core-error-names-the-condition.md)
+
+## 2026-09-08
+
+- [What an exit code may claim, and the three zeros it was asked about](decisions/083-what-an-exit-code-may-claim.md)

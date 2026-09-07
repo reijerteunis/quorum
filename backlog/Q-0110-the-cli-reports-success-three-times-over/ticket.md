@@ -1,7 +1,7 @@
 ---
 id: Q-0110
 title: The CLI reports success three times over for a non-success
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0110/integration
@@ -10,6 +10,15 @@ created: 2026-09-07
 iterations: {}
 history: []
 ---
+> **RULED AND SHIPPED 2026-09-08.** See *"What an exit code may claim, and the three zeros it was
+> asked about"* (2026-09-08). **Two of the three below were ruled CORRECT and ratified**, so the
+> body's premise — that all three are non-successes — is superseded and left as the record of what
+> was assumed. **Changed:** an unknown or absent command reports `ERROR`, while `help`, `--help` and
+> `-h` report success. **Ratified:** `regressed` keeps `SUCCESS`, because an exit code reports a
+> run's disposition and not its verdict; bare `quorum adapters` keeps `SUCCESS`, because it is a
+> report and its own last line disclaims being the gate. **Also changed, and not in the body:**
+> `adapters --probe` is the check, so an unusable login now reports `ERROR`.
+
 Three exit paths return 0 where nothing succeeded. Each is a registered preserved defect, each
 names this ticket's origin in its own authority line, and the decision they share — **what may an
 exit code claim** — has never been taken. Decide it once, then close all three together.

@@ -130,12 +130,12 @@ describe('AC-4(b) — and each union member is shown to be load-bearing on its o
   });
 });
 
-describe('AC-4(c) — regressed shares completed\'s code, preserved and registered', () => {
-  test('both report success, which is what the spike does today', () => {
-    // Why: preserved defect, see Q-0090 AC-4(c). `spike/bin/harness.js:557` is
-    // `r.status === 'aborted' ? 2 : r.status === 'undecided' ? 3 : 0`, which names `regressed`
-    // nowhere, so a run a backward edge sent back reports the same code as one that finished.
-    // Routed to Q-0090's GA-4 successor together with AC-6's unknown-command zero.
+describe('AC-4(c), as Q-0110 ruled it — regressed shares completed\'s code, chosen and not fallen into', () => {
+  test('both report success, because both are dispositions in which the run finished', () => {
+    // Q-0090 registered this as a defect because nobody had decided it: `spike/bin/harness.js:557`
+    // named `regressed` nowhere. Q-0110 decided, and kept the value — `lifecycle.ts` sides
+    // `regressed` with `completed` in every question it asks of a terminal status.
+    // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
     expect(EXIT_CODE_FOR_STATUS.regressed).toBe(SUCCESS);
     expect(EXIT_CODE_FOR_STATUS.completed).toBe(SUCCESS);
   });

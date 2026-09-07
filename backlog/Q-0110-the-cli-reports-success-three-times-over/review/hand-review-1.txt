@@ -1,0 +1,1754 @@
+OpenAI Codex v0.150.1
+--------
+[1mworkdir:[0m /Users/ruudvanengelenhoven/Development/quorum
+[1mmodel:[0m gpt-5.6-sol
+[1mprovider:[0m openai
+[1mapproval:[0m never
+[1msandbox:[0m read-only
+[1mreasoning effort:[0m none
+[1mreasoning summaries:[0m none
+[1msession id:[0m 01a07dbe-55f6-7722-9d5b-b864fb480351
+--------
+[36muser[0m
+---
+---
+You are a senior code reviewer. Read the supplied requirements, solution, and code diff,
+then report concrete findings without editing or rewriting any code. This is a read-only
+review: do not change repository files.
+
+Classify every finding as exactly `blocker`, `major`, or `nit`. Cite every finding at the
+relevant `file:line`, explain the problem and its impact, and keep the recommendation
+actionable. If there are no findings, say so clearly.
+
+## What you are reviewing
+
+Q-0110 — three exit-code zeros the CLI reported for a non-success, inherited from Q-0090's gate
+obligation GA-4. The ticket asked which of the five closed codes (0, 1, 2, 3, 130) each should take.
+There is no merged.md: the requirement is the new decision entry in this diff,
+`docs/decisions/083-what-an-exit-code-may-claim.md`, written as part of the same change because the
+exit table is explicitly "owned here rather than re-decided by each command".
+
+**Two of the three alleged defects were ruled CORRECT and ratified rather than repaired.** That is
+the substance of the review: judge the rulings, not just the code.
+
+- **(a) unknown or absent command → ERROR; asking for help → SUCCESS.** Changed. `--help`, `-h` and
+  the `help` command all exit 0; a bare invocation or an unknown name prints the same help and sets
+  ERROR. The status is SET rather than exited, so `main` still resolves — Q-0090 AC-5 keeps `die`
+  and `failSoftly` apart and this is the second.
+- **(b) `regressed` → SUCCESS.** NOT changed. Ruled on the ground that an exit code reports a run's
+  disposition rather than its verdict, and `core` already groups `regressed` with `completed` in
+  three places (`advancesStage`, the `finished` predicate, and the spec's "only completed and
+  regressed move the stage").
+- **(c) bare `adapters` → SUCCESS; `adapters --probe` → ERROR when a login is not usable.** The
+  presence path is ratified as a report; the probe is changed to a check.
+
+Four guards were moved rather than deleted, including a spawned one in `build.test.ts` that now
+proves both sides of (a) cross a real process boundary.
+
+## What to judge
+
+1. **Are the rulings right?** (b) is the one most worth attacking — is "disposition not verdict"
+   sound, or is a regressed run something a pipeline must stop on? And (c) splits one command into
+   two exit contracts; is that defensible or is it a trap?
+2. **Is the entry accurate?** Verify its claims against the tree — the three `core` groupings it
+   cites, the command's own disclaimer line it quotes, the `ExitCode` union it says is closed.
+3. **Does `askedForHelp` have holes?** It scans raw argv for `--help`/`-h`.
+4. **Do the moved guards still forbid what they forbade?**
+
+Findings only. Prefix each exactly `blocker`, `major` or `nit`, always with a `file:line`.
+
+```diff
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 30699dc..de1e3ce 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -153,3 +153,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
+ 
+ - [A deferral is not a skip, and the preflight says nothing about one](decisions/081-a-deferral-is-not-a-skip.md)
+ - [A `core` error names the condition; the remedy belongs to the surface](decisions/082-a-core-error-names-the-condition.md)
++
++## 2026-09-08
++
++- [What an exit code may claim, and the three zeros it was asked about](decisions/083-what-an-exit-code-may-claim.md)
+diff --git a/packages/cli/src/adapters.test.ts b/packages/cli/src/adapters.test.ts
+index 8c37495..4b45215 100644
+--- a/packages/cli/src/adapters.test.ts
++++ b/packages/cli/src/adapters.test.ts
+@@ -27,7 +27,7 @@ import path from 'node:path';
+ import { getAdapter, probeAdapter } from '@quorum/core';
+ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+-import { SUCCESS } from './exit.js';
++import { ERROR, SUCCESS } from './exit.js';
+ import { invoke, plain, type Invocation } from '../test/invoke.js';
+ 
+ vi.mock('@quorum/core', async (importOriginal) => {
+@@ -188,7 +188,7 @@ describe('AC-7 — --probe', () => {
+     expect(out(result), 'presence-only was claimed after a probe').not.toContain('presence only');
+   });
+ 
+-  test('a failed login is one bold sentence and the command still exits 0', async () => {
++  test('a failed login is one bold sentence, and the probe reports it as ERROR', async () => {
+     stub(
+       { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
+       {
+@@ -197,7 +197,11 @@ describe('AC-7 — --probe', () => {
+       },
+     );
+     const result = await run('--probe');
+-    expect(result.exitCode, out(result)).toBe(SUCCESS);
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
++    // `--probe` is the check and the presence listing is the report, so only the first answers with
++    // a status. The listing still printed, which is what `failSoftly` buys over `die`.
++    expect(result.exitCode, out(result)).toBe(ERROR);
++    expect(result.hard, 'the listing still reached the terminal').toBe(false);
+     expect(out(result).split('\n')[1]).toBe('  ✗ login not usable: login expired — run `claude /login`');
+     expect(json(await run('--probe', '--json')).adapters[0]).toMatchObject({
+       adapter: 'claude', installed: true, version: '2.1.231', login: 'failed', ok: false,
+@@ -331,7 +335,8 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
+       },
+     );
+     const result = await run('--probe');
+-    expect(result.exitCode, out(result)).toBe(SUCCESS);
++    // Q-0110 made an unusable login ERROR; the defect this pins is the SENTENCE, which is unchanged.
++    expect(result.exitCode, out(result)).toBe(ERROR);
+     expect(out(result).split('\n')[1])
+       .toBe("  ✗ login not usable: Cannot read properties of null (reading 'cost_usd')");
+   });
+diff --git a/packages/cli/src/adapters.ts b/packages/cli/src/adapters.ts
+index a01d4d8..8e6877d 100644
+--- a/packages/cli/src/adapters.ts
++++ b/packages/cli/src/adapters.ts
+@@ -32,7 +32,7 @@ import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@qu
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { dieNoProject } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -115,4 +115,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
+   // After the human lines rather than instead of them: `--json` is a combined stream in the spike
+   // and a consumer piping it gets both. Redefining it as JSON-only is a contract change.
+   if (asJson) console.log(JSON.stringify({ probed: probe, adapters: report }, null, 2));
++  // `--probe` is the check and the presence listing is the report, so only the first answers with a
++  // status. Set rather than thrown, so the listing and the `--json` above still reach the terminal.
++  // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
++  if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();
+ };
+diff --git a/packages/cli/src/build.test.ts b/packages/cli/src/build.test.ts
+index b054c6d..e03d14b 100644
+--- a/packages/cli/src/build.test.ts
++++ b/packages/cli/src/build.test.ts
+@@ -1453,16 +1453,22 @@ describe('Q-0098 AC-17 — a non-zero status crosses the process boundary throug
+     expect(result.stdout, 'die wrote its message to stdout').not.toContain('a message');
+   }, 300_000);
+ 
+-  test('and the preserved unknown-command zero survives the boundary rather than being quietly fixed', () => {
+-    // Why: preserved, see Q-0090 AC-6 — `spike/bin/harness.js:560–562` prints usage and returns, so
+-    // the process exits 0 and a shell script cannot tell "did the thing" from "did not understand
+-    // you". Successor Q-0090 GA-4. Returning 1 here would be a behaviour change wearing a bug fix's
+-    // clothes, which ground rule 3 forbids; pinning it across the process boundary is what makes a
+-    // later fix a deliberate act.
++  test('and Q-0110\'s unknown-command status crosses the boundary, while asking for help does not', () => {
++    // The zero this pinned was Q-0090's preserved defect, and Q-0090 GA-4's successor — Q-0110 —
++    // changed it. Kept here rather than moved to `main.test.ts` because what THIS file proves is
++    // that the status survives a real process boundary: `main` sets `process.exitCode` and resolves
++    // rather than exiting, so nothing but a spawn can show that the exit actually carries it.
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
+     runBuild();
+-    const result = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
+-    expect(result.status, 'the unknown-command zero was changed — that is Q-0090 GA-4 and not this ticket').toBe(0);
+-    expect(result.stdout).toContain('usage: quorum');
++    const tripped = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
++    expect(tripped.status, 'an unknown command reported success across the boundary').toBe(1);
++    expect(tripped.stdout, 'the help is still a service, so it is still on stdout').toContain('usage: quorum');
++
++    // The other side of the same ruling, spawned for the same reason: a status set and not exited
++    // is exactly the kind that can be lost, so the success case is proven across the boundary too.
++    const asked = spawnStatus(PACKAGE, [binTarget(), '--help']);
++    expect(asked.status, 'asking for help was reported as a failure').toBe(0);
++    expect(asked.stdout).toContain('usage: quorum');
+   }, 300_000);
+ });
+ 
+diff --git a/packages/cli/src/main.test.ts b/packages/cli/src/main.test.ts
+index 933cb20..11b65e4 100644
+--- a/packages/cli/src/main.test.ts
++++ b/packages/cli/src/main.test.ts
+@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+ import { parseArgv, type ParsedArgv } from './argv.js';
+ import { COMMANDS, HELP } from './commands.js';
+-import { SUCCESS } from './exit.js';
++import { ERROR, SUCCESS } from './exit.js';
+ import { HANDLERS, main } from './main.js';
+ 
+ /** The four shapes AC-6 names — the ones that must print the help and leave the status at 0. */
+@@ -27,6 +27,16 @@ const INVOCATIONS: readonly (readonly string[])[] = [
+   ['--', '-x', '--gate-answer', '--adapter'],
+ ];
+ 
++/** Of those, the ones that ASKED for the help they get — Q-0110's line, and the only ones still 0. */
++const ASKED_FOR_HELP: readonly (readonly string[])[] = [['--help'], ['-h']];
++
++/** And the ones that tripped into it: no command this binary dispatches, so the status is ERROR. */
++const TRIPPED: readonly (readonly string[])[] = [
++  [],
++  ['nonsense'],
++  ['--', '-x', '--gate-answer', '--adapter'],
++];
++
+ /**
+  * Every shape AC-8's byte-identical-tree snapshot drives, which is the four above plus one real
+  * invocation of the read-only commands this file can run unmocked.
+@@ -101,17 +111,32 @@ afterEach(() => {
+   process.exitCode = undefined;
+ });
+ 
+-describe('AC-6 — an unknown or absent command prints help and exits 0', () => {
+-  test.each(INVOCATIONS)('quorum %j prints the help and leaves the status at 0', async (...argv) => {
+-    // Why: preserved defect, see Q-0090 AC-6. `spike/bin/harness.js:560–562` is a `default:` branch
+-    // that prints usage and returns, so `main()` resolves and the process exits 0 — a shell script
+-    // cannot tell "did the thing" from "did not understand you". Registered rather than fixed,
+-    // because changing it is a behaviour change on the surface a stranger meets first; the
+-    // successor is Q-0090's GA-4.
+-    const { stdout, stderr, exitCode } = await invoke(argv);
++describe('AC-6, as Q-0110 ruled it — every route prints the help; only the ones that asked exit 0', () => {
++  test.each(INVOCATIONS)('quorum %j prints the help, on stdout, whatever its status', async (...argv) => {
++    // The half that did not move: every one of these prints the same text to stdout, because the
++    // help is a service and not an error however the reader arrived at it. What Q-0110 changed is
++    // the status beside it, asserted separately below so each can fail on its own.
++    const { stdout, stderr } = await invoke(argv);
+     expect(stdout.trim(), 'nothing was printed').not.toBe('');
+     expect(stdout).toContain(HELP);
+     expect(stderr, 'the help is not an error, so it goes to stdout').toBe('');
++  });
++
++  test.each(TRIPPED)('quorum %j tripped into the help, so the status is ERROR', async (...argv) => {
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
++    // Q-0090 registered this zero and left it: a shell script could not tell "did the thing" from
++    // "did not understand you". SUCCESS is for a command that did what it was asked, and no command
++    // this binary dispatches was named here.
++    expect((await invoke(argv)).exitCode).toBe(ERROR);
++  });
++
++  test.each(ASKED_FOR_HELP)('quorum %j asked for the help, so the status is SUCCESS', async (...argv) => {
++    // The line the ruling draws, and the reason it is drawn here rather than at the `help` command
++    // alone: `--help` is how a stranger asks, and answering it is the command doing what it was
++    // asked. A ruling that exited 1 on `--help` would be teaching the wrong lesson to the one
++    // reader the cold-clone test is about.
++    const { stdout, exitCode } = await invoke(argv);
++    expect(stdout).toContain(HELP);
+     expect(exitCode ?? SUCCESS).toBe(SUCCESS);
+   });
+ 
+diff --git a/packages/cli/src/main.ts b/packages/cli/src/main.ts
+index 0c97d31..cda9617 100644
+--- a/packages/cli/src/main.ts
++++ b/packages/cli/src/main.ts
+@@ -27,6 +27,7 @@ import { adapters } from './adapters.js';
+ import { parseArgv, type ParsedArgv } from './argv.js';
+ import { board } from './board.js';
+ import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
++import { failSoftly } from './fail.js';
+ import { init } from './init.js';
+ import { lint } from './lint.js';
+ import { run } from './run.js';
+@@ -77,11 +78,26 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
+  * Run one command line. `argv` is `process.argv.slice(2)` when a binary calls it, and a literal
+  * array when a test does — the parser reads nothing from the environment, so the two are the same.
+  *
+- * An unknown or absent command prints the help and returns, so the process exits 0. Why: preserved,
+- * see Q-0090 AC-6 — `spike/bin/harness.js:560–562` is a `default:` branch that prints usage and
+- * returns. It is registered as a defect rather than carried quietly: a shell script cannot tell
+- * "did the thing" from "did not understand you". The successor is Q-0090's GA-4.
++ * An unknown or absent command prints the help and reports {@link ERROR}; asking for help — the
++ * `help` command, `--help` or `-h` — prints the same text and reports success. Help on purpose is
++ * success; help by accident is not.
++ *
++ * The status is **set rather than exited**, so `main` still resolves and the help still reaches the
++ * terminal: `die` and `failSoftly` are two mechanisms and this is the second (Q-0090 AC-5).
++ *
++ * Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08),
++ * which changed this one and ratified the two beside it.
++ */
++/**
++ * Whether this invocation asked for the help it is about to get, rather than tripping into it.
++ *
++ * Read off the raw argv rather than off `flags`, because `parseArgv` recognises only `--` forms
++ * (`argv.ts:53`) and `-h` therefore arrives as a positional. Teaching the parser single-dash flags
++ * would change every command's argument handling to settle one word here.
+  */
++const askedForHelp = (argv: readonly string[]): boolean =>
++  argv.some((token) => token === '--help' || token === '-h');
++
+ export async function main(argv: readonly string[]): Promise<void> {
+   const parsed = parseArgv(argv);
+   const { cmd } = parsed;
+@@ -90,4 +106,5 @@ export async function main(argv: readonly string[]): Promise<void> {
+     return;
+   }
+   console.log(HELP);
++  if (!askedForHelp(argv)) failSoftly();
+ }
+```
+
+[35m[3mcodex[0m[0m
+I’ll inspect the decision, parser/dispatch behavior, exit helpers, core run-state groupings, and the relocated guards. I’ll keep the response to findings only, as requested.
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "sed -n '1,240p' docs/decisions/083-what-an-exit-code-may-claim.md && sed -n '1,180p' packages/cli/src/argv.ts && sed -n '1,150p' packages/cli/src/main.ts && sed -n '1,180p' packages/cli/src/fail.ts && sed -n '1,100p' packages/cli/src/exit.ts"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 0ms:[0m
+# What an exit code may claim, and the three zeros it was asked about — 2026-09-08
+
+**Decision:** an exit code reports **what became of the command**, and `SUCCESS` is reserved for a
+command that did what it was asked. Q-0110 inherited three zeros from Q-0090's gate obligation GA-4
+and asked which of the five codes each should take. **Two of the three are correct as they stand and
+are ratified rather than repaired; one is wrong and changes.** No sixth code is invented — the
+`ExitCode` union is closed at 0, 1, 2, 3, 130, and this entry does not widen it.
+
+**(a) An unknown or absent command exits `ERROR`, and `help` goes on exiting `SUCCESS`.** This is
+the one that changes. `SUCCESS`'s own definition is *"The command did what it was asked"*: a name
+this binary does not dispatch was not done, and a bare invocation asked for nothing. Both print the
+help, both then exit 1, and the line between them and `quorum help` is **help on purpose is success;
+help by accident is not**. The concrete failure is Q-0090's own, in its words — *"a shell script
+cannot tell 'did the thing' from 'did not understand you'"* — and a typo in a pipeline is the case
+that costs something, because it passes silently today.
+
+**(b) `regressed` goes on exiting `SUCCESS`, ruled rather than fallen-through.** Q-0090 registered
+this as a defect because nobody had decided it: `spike/bin/harness.js:557` named only `aborted` and
+`undecided`, so `regressed` reached a fallthrough. It was right that no one had chosen and wrong
+that the value was wrong.
+
+**An exit code here reports a run's disposition, not its verdict.** `regressed` is what a cross-flow
+backward edge produces (`engine.ts:336`): the flow ran to a terminal state, the ticket's stage moved
+to the target flow's `consumes`, and the branch it proved was kept. `core` already groups it with
+`completed` in three places — `advancesStage` (`lifecycle.ts:22`), the `finished` predicate that
+decides rollback, and `02-sdlc-pipeline-spec.md`'s *"only `completed` and `regressed` move the
+stage"*. A CLI that exited non-zero for one of the two stage-moving statuses would put the exit
+table out of step with the engine's own model of what a finished run is, in a file whose stated
+purpose is that *"the meanings are owned here rather than re-decided by each command"*.
+
+The cost is stated rather than hidden: a caller cannot tell an approved review from a regressed one
+by the exit code, and must read the terminal event, which carries the status by name. That is what
+the event stream is for, and a review returning `revise` is the flow working rather than failing —
+teaching a reader that a normal outcome prints a failure is how an oracle stops being read at all.
+
+**(c) `quorum adapters` goes on exiting `SUCCESS` with nothing installed; `--probe` exits `ERROR`
+when a login is not usable.** One command, two contracts, because it answers two questions — the
+shape `git diff` and `git diff --exit-code` already have.
+
+The product says which is which, in the command's own output: without `--probe` it prints
+*"presence only — logins NOT verified; run `quorum adapters --probe` before a real run"*. A command
+that disclaims being the gate is a **report**, and this CLI's reports — `board`, `runs` — exit 0
+over an empty backlog and an empty run store alike. `--probe` is the **check**, and this CLI's
+checks — `lint`, `validate` — exit 1 when the answer is no. *"check() proves presence; only
+`adapters --probe` proves login"* (2026-08-22) drew that line before either command existed; this
+entry gives it an exit code.
+
+So the zero Q-0099 preserved at AC-8(c) was the *presence* path and is correct. What was never
+decided is the probe's, and a probe that reports an unusable login while exiting 0 is the failure
+that decision exists to prevent — two green ticks followed by a vendor stack trace, one command
+earlier.
+
+**Alternatives considered.** *`regressed` → `ERROR`* — the reading Q-0110's body assumed, and the
+one a pipeline argument supports: `quorum run review X && quorum run qa-final X` would chain past a
+regression. Rejected because the second command refuses on its stage precondition anyway, so the
+damage is contained, and because `failed` already holds 1 — collapsing the two would tell a caller
+that a run which broke and a run which did its job are the same thing. *A sixth code for
+"finished, verdict negative"* — rejected: `ExitCode` is closed deliberately so a sixth cannot be
+written by accident, and widening it for one status trades a real guarantee for a distinction the
+terminal event already carries. *Bare `adapters` → `ERROR` with nothing installed* — rejected on the
+command's own disclaimer, and because it would make the only machine-readable inventory of what is
+installed unusable from a script that has to tolerate a missing vendor.
+
+**Why.** GA-4 said *"open the successor for the exit table's two zeros"* and no ticket was ever
+created; Q-0110 was opened 2026-09-07 when a triage found it, and it is one zero wider than GA-4
+named because Q-0099 routed a third to it from a source comment. Deciding the three together is the
+point — each was preserved by a different ticket for a different reason, and none of those tickets
+was in a position to say what 0 means. This entry says it once so the next command inherits an
+answer rather than a fallthrough.
+/**
+ * The command line, parsed exactly as `spike/bin/harness.js:25–42` parses it.
+ *
+ * Deliberately not a library. Two of the behaviours below are defects a well-behaved parser would
+ * silently fix — a single-dash token is a positional, and `--` swallows the token after it instead
+ * of terminating the flags — and fixing either before a single command is ported would change flag
+ * semantics under the eight commands that are about to arrive. They are preserved and pinned in
+ * `argv.test.ts`, one row each, so a later change to them is a deliberate act. Why: preserved
+ * defects, see Q-0090 AC-2 behaviours 4 and 5.
+ */
+
+/** What a flag carries: the token after it, or `true` when the next token is another flag. */
+export type FlagValue = string | true;
+
+/** The flag that accumulates. Every other flag is last-wins. */
+export const GATE_ANSWER = 'gate-answer';
+
+/** One command line, split into the four things the commands read. */
+export interface ParsedArgv {
+  /** The first positional, or `undefined` when there is none. */
+  readonly cmd: string | undefined;
+  /** Every positional after the first, in order, with nothing de-duplicated. */
+  readonly rest: readonly string[];
+  /**
+   * Every flag seen. `gate-answer` holds an array; every other key holds its last value.
+   *
+   * Nothing is coerced to a number: a value is the token as it was typed, or the boolean `true`.
+   */
+  readonly flags: Readonly<Record<string, FlagValue | FlagValue[]>>;
+  /**
+   * Every `--gate-answer` in command-line order, as a copy taken at parse time.
+   *
+   * A non-interactive run may cross several gates in one invocation and each needs its own answer,
+   * which is why this one flag accumulates where every other is last-wins. See Q-0033.
+   */
+  readonly gateAnswers: readonly FlagValue[];
+}
+
+/**
+ * Split `argv` — already sliced past the node executable and the script — into {@link ParsedArgv}.
+ *
+ * There is no parse error, because the spike has none: an unrecognised shape becomes a flag or a
+ * positional, and the command decides what to do with it. Inventing one here would be a behaviour
+ * change, not a port.
+ */
+export function parseArgv(argv: readonly string[]): ParsedArgv {
+  const flags: Record<string, FlagValue | FlagValue[]> = {};
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i];
+    if (token.startsWith('--')) {
+      const key = token.slice(2);
+      const next = argv[i + 1];
+      const value: FlagValue = next && !next.startsWith('--') ? argv[++i] : true;
+      if (key === GATE_ANSWER) {
+        const seen = flags[key];
+        flags[key] = [...(Array.isArray(seen) ? seen : []), value];
+      } else {
+        flags[key] = value;
+      }
+    } else {
+      positional.push(token);
+    }
+  }
+  const [cmd, ...rest] = positional;
+  const answers = flags[GATE_ANSWER];
+  return { cmd, rest, flags, gateAnswers: Array.isArray(answers) ? [...answers] : [] };
+}
+/**
+ * The frame's entry: parse the command line, dispatch, and leave the exit status alone.
+ *
+ * **It returns nothing rather than a code**, which is the spike's shape and not an oversight. A
+ * `main` returning a number would have to be spent as `process.exit(main(argv))`, and that call
+ * overrides `process.exitCode` — collapsing the two mechanisms `fail.ts` exists to keep apart, and
+ * losing the output the soft path is there to preserve. So a command that must stop now calls
+ * `die`, a command that failed but has more to say calls `failSoftly`, and everything else returns
+ * and lets the process exit on its own status. See Q-0090 AC-5.
+ *
+ * **It is `async` and it awaits what it dispatched to**, because `spike/bin/harness.js:569` is
+ * `main().catch(…)`: the uncaught-rejection path is part of what this frame preserves, and it needs
+ * a promise to attach to. The spike's `run` case awaits the engine inside `main`'s own body, so a
+ * failing command reaches that `catch`; a dispatch that called a handler without awaiting would
+ * resolve `main` first and leave the rejection detached, where Node's unhandled-rejection path
+ * prints it instead of `fail.ts`'s `dieOnUnexpected`. The binary that wires the two together does
+ * not exist yet — a `bin` target is Q-0096's, together with everything else about making this
+ * workspace emit JavaScript.
+ *
+ * **No command is implemented here**, and eight now exist beside it: `lint` and `validate` are
+ * Q-0091's, `runs` is Q-0092's, `init` and `ticket` are Q-0093's, `run` — with the gate reader and
+ * the signal handler under it — is Q-0094's, and `board` and `adapters` are Q-0099's, each in one
+ * module of its own, dispatched through {@link HANDLERS}. That is the whole of the spike's set, so
+ * the frame now dispatches every command the help lists and lists every command it dispatches.
+ */
+import { adapters } from './adapters.js';
+import { parseArgv, type ParsedArgv } from './argv.js';
+import { board } from './board.js';
+import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
+import { failSoftly } from './fail.js';
+import { init } from './init.js';
+import { lint } from './lint.js';
+import { run } from './run.js';
+import { runs } from './runs.js';
+import { ticket } from './ticket.js';
+import { validate } from './validate.js';
+
+/**
+ * What one command does with a parsed command line.
+ *
+ * It is handed the whole {@link ParsedArgv} because the spike's eight cases read `cmd`, `rest`,
+ * `flags` and `gateAnswers` out of module scope (`spike/bin/harness.js:40–42`), so every one of them
+ * sees all four. A handler given only its own name would leave Q-0091 to Q-0094 either parsing argv
+ * a second time or widening this contract, which is the duplication the frame exists to prevent.
+ *
+ * It may return a promise, and {@link main} awaits it: `run` is asynchronous, and a command's
+ * failure has to arrive at `main().catch(dieOnUnexpected)` rather than as a detached rejection.
+ */
+export type CommandHandler = (argv: ParsedArgv) => void | Promise<void>;
+
+/**
+ * What each command does.
+ *
+ * Keyed by {@link Command}, so the table and {@link COMMANDS} cannot drift: a handler added without
+ * its name fails to compile, and a name added without its handler fails to compile too. That is the
+ * coupling `commands.test.ts` relies on when it checks the help against the same set.
+ *
+ * Exported because it is the frame's registry rather than an implementation detail: Q-0091 to
+ * Q-0094 and Q-0099 each add their entry to it, and `main.test.ts` reaches through it to exercise
+ * the dispatch — that a handler receives the parsed command line, and that an asynchronous one is
+ * waited for — over the registered set rather than over a command written for the test.
+ */
+export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
+  help: () => {
+    console.log(HELP);
+  },
+  init,
+  ticket,
+  board,
+  run,
+  lint,
+  adapters,
+  validate,
+  runs,
+};
+
+/**
+ * Run one command line. `argv` is `process.argv.slice(2)` when a binary calls it, and a literal
+ * array when a test does — the parser reads nothing from the environment, so the two are the same.
+ *
+ * An unknown or absent command prints the help and reports {@link ERROR}; asking for help — the
+ * `help` command, `--help` or `-h` — prints the same text and reports success. Help on purpose is
+ * success; help by accident is not.
+ *
+ * The status is **set rather than exited**, so `main` still resolves and the help still reaches the
+ * terminal: `die` and `failSoftly` are two mechanisms and this is the second (Q-0090 AC-5).
+ *
+ * Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08),
+ * which changed this one and ratified the two beside it.
+ */
+/**
+ * Whether this invocation asked for the help it is about to get, rather than tripping into it.
+ *
+ * Read off the raw argv rather than off `flags`, because `parseArgv` recognises only `--` forms
+ * (`argv.ts:53`) and `-h` therefore arrives as a positional. Teaching the parser single-dash flags
+ * would change every command's argument handling to settle one word here.
+ */
+const askedForHelp = (argv: readonly string[]): boolean =>
+  argv.some((token) => token === '--help' || token === '-h');
+
+export async function main(argv: readonly string[]): Promise<void> {
+  const parsed = parseArgv(argv);
+  const { cmd } = parsed;
+  if (cmd !== undefined && isCommand(cmd)) {
+    await HANDLERS[cmd](parsed);
+    return;
+  }
+  console.log(HELP);
+  if (!askedForHelp(argv)) failSoftly();
+}
+/**
+ * The two ways this CLI reports a failure, kept apart because they are two mechanisms and not one
+ * number spelled twice.
+ *
+ * {@link die} exits immediately, which truncates whatever the process had not finished writing.
+ * {@link failSoftly} sets the status and lets the process finish writing, which is what the spike's
+ * four `process.exitCode = 1` assignments on the `runs` paths rely on
+ * (`spike/bin/harness.js:499`, `:517`, `:523`, `:531`): a listing that reports a store warning
+ * still prints the listing. A port collapsing the two into one call loses that output — see
+ * Q-0090 AC-5, whose test demonstrates the difference rather than asserting it.
+ */
+import { c } from './colour.js';
+import { ERROR } from './exit.js';
+
+/**
+ * Print a message to stderr and stop the process immediately with {@link ERROR}.
+ *
+ * Preserved verbatim from `spike/bin/harness.js:124`, including the space *inside* the red span,
+ * which every other call site in that file puts outside it. Why: preserved defect, see Q-0090 AC-3.
+ */
+export function die(message: string): never {
+  console.error(c.red('✗ ') + message);
+  process.exit(ERROR);
+}
+
+/**
+ * Fail because no project was found, appending the remedy this surface offers for it.
+ *
+ * The one place that imperative exists; six commands call it and none composes anything. It takes
+ * the condition as a string rather than the error, so this frame module names no `core` symbol.
+ *
+ * Why: see *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07).
+ */
+export function dieNoProject(condition: string): never {
+  return die(`${condition} — run \`quorum init\` in your repo`);
+}
+
+/**
+ * Record that the command failed without stopping it, so pending output still reaches the terminal.
+ *
+ * The counterpart to {@link die}, and never a synonym for it.
+ */
+export function failSoftly(): void {
+  process.exitCode = ERROR;
+}
+
+/**
+ * The handler an unexpected throw reaches, so a crash prints a Node stack through the error path.
+ *
+ * `spike/bin/harness.js:569` is `main().catch((e) => die(e.stack ?? String(e)))`, and four of its
+ * behaviours belong to that exact expression rather than to the idea behind it, each measured
+ * against it: the property access is unguarded, so a thrown `null` or `undefined` **raises** before
+ * `die` is reached; the `??` tests whether `stack` is *there* and never what type it is, so
+ * `{ stack: 42 }` is reported as `42`; the fallback is `String(e)`, so a thrown symbol prints as
+ * `Symbol(s)`; and a symbol-valued `stack` reaches `die`, where the `+` **raises** because it cannot
+ * coerce one. The expression is therefore written out rather than paraphrased, and the coercion is
+ * left where the spike leaves it — inside {@link die}. Why: preserved, see Q-0090 AC-3.
+ *
+ * The two raising rows are a defect and are reported rather than repaired here: the one path that
+ * exists to turn a crash into a message replaces it with a different crash. Ground rule 3.
+ *
+ * The binary that wires this to the frame's entry does not exist yet and is Q-0096's; the behaviour
+ * is declared and tested here so no sibling command ticket has to invent it.
+ */
+export function dieOnUnexpected(error: unknown): never {
+  const message: unknown = (error as { stack?: unknown }).stack ?? String(error);
+  // The assertion is the point rather than a convenience: `die` takes a string, and this is the one
+  // call site that may hand it something else, so the `+` inside `die` performs the same coercion —
+  // and raises the same TypeError on a symbol — that the spike's does.
+  return die(message as string);
+}
+/**
+ * Every status this CLI can exit with, in one place, plus the map from a run's terminal status to
+ * the code that reports it.
+ *
+ * The spike decides these in nine places — `die` at `spike/bin/harness.js:124`, the two
+ * `process.exit(ok ? 0 : 1)` pairs at `:404` and `:460`, the lint preflight at `:548`, the
+ * three-way expression at `:557`, four `process.exitCode = 1` assignments on the `runs` paths, and
+ * the engine's own `process.exit(130)` at `spike/src/engine.js:111`. A shell script wrapping
+ * `quorum run` reads one number and has to be told what it means, so the meanings are owned here
+ * rather than re-decided by each command as it is ported.
+ */
+import type { RunTerminalEvent } from '@quorum/shared';
+
+/** The command did what it was asked, and a run that finished did not abort. */
+export const SUCCESS = 0;
+
+/** Something went wrong: a bad argument, a missing project, an unreadable file, a failed run. */
+export const ERROR = 1;
+
+/** A human was there and chose to stop the run. */
+export const ABORTED = 2;
+
+/**
+ * Nobody was there: the run reached a gate for which no answer was available.
+ *
+ * Distinct from {@link ERROR} on purpose — somebody who supplied a word that is not an answer *was*
+ * there, and that stays an error. See Q-0040, and "A run nobody answered is undecided, and keeps
+ * the branch it proved" (2026-09-01).
+ */
+export const UNDECIDED = 3;
+
+/**
+ * The run was interrupted by a signal, reported as the shell convention 128 + SIGINT.
+ *
+ * A row of this table and nothing more: `core` installs no signal handler (Q-0050 AC-5), and the
+ * handler that produces this code is Q-0094's to place. See Q-0090 AC-4(d).
+ */
+export const SIGNAL = 130;
+
+/** Every code this CLI is allowed to exit with, so a sixth one cannot be written by accident. */
+export type ExitCode =
+  | typeof SUCCESS
+  | typeof ERROR
+  | typeof ABORTED
+  | typeof UNDECIDED
+  | typeof SIGNAL;
+
+/**
+ * What each terminal run status exits with.
+ *
+ * Keyed by `RunTerminalEvent['status']` so a seventh status added to `@quorum/shared`'s terminal
+ * event fails to compile here rather than falling through to {@link SUCCESS} — which is exactly how
+ * `regressed` came to share `completed`'s code. `packages/shared`'s union is the authority and this
+ * is a reader of it; `exit.test.ts` derives the key set from that schema rather than transcribing
+ * it.
+ */
+export const EXIT_CODE_FOR_STATUS: Readonly<Record<RunTerminalEvent['status'], ExitCode>> = {
+  completed: SUCCESS,
+  // Why: preserved defect, see Q-0090 AC-4(c). `spike/bin/harness.js:557` names only `aborted` and
+  // `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather than
+  // fixed, and routed to Q-0090's GA-4 successor together with the unknown-command zero.
+  regressed: SUCCESS,
+  aborted: ABORTED,
+  undecided: UNDECIDED,
+  failed: ERROR,
+  interrupted: SIGNAL,
+};
+
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "rg -n \"advancesStage|finished|regressed|presence only|check\\(\\) proves presence|EXIT_CODE_FOR_STATUS|failSoftly\\(|process\\.exitCode\" packages docs spike | head -n 240 && git diff --check && git status --short && git diff -- packages/cli/src/main.ts packages/cli/src/adapters.ts packages/cli/src/build.test.ts packages/cli/src/main.test.ts packages/cli/src/adapters.test.ts docs/decisions/083-what-an-exit-code-may-claim.md docs/DECISIONS.md"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 0ms:[0m
+rg: spike: No such file or directory (os error 2)
+docs/DECISIONS.md:53:- [check() proves presence; only `adapters --probe` proves login](decisions/022-check-proves-presence.md)
+docs/06-development-plan.md:31:`finished()`. **Something checks this page against `backlog/` from 2026-09-01**, which is what the two instances
+docs/06-development-plan.md:155:- Q-0011 Run history on disk *(pulled forward from M2; green 2026-08-23 — M1's first two-vendor fan-out; its stage was later regressed to `red` by a review backward edge and never moved back, while the code is contained in `main` — see Q-0034's closing entry)*.
+docs/06-development-plan.md:902:    `finished()`, `finish()` rolled the ticket branch back — a no-op, `integrate` never having run —
+docs/06-development-plan.md:1111:    finished after round 2; rounds 3, 4 and 5 cost **$31.16** on two blockers no step on the route
+docs/06-development-plan.md:1416:    **`regressed`** shares `completed`'s `SUCCESS` (`exit.ts:61–63`, Q-0090 AC-4(c)), and
+docs/06-development-plan.md:1420:    under-scopes the ticket by one. The mechanism behind the `regressed` zero is already closed:
+docs/06-development-plan.md:1421:    `EXIT_CODE_FOR_STATUS` is keyed by the terminal-status union so a seventh status fails to
+docs/06-development-plan.md:1532:    **finished by hand after a vendor failure**.)* **$136.94** — $10.53 requirements ready on the
+docs/06-development-plan.md:1539:    **It was finished by hand rather than re-run, and the arithmetic is why**: a fresh chore run
+docs/06-development-plan.md:1909:  widening, since a finished run now removes a directory a concurrent run may be writing in.
+docs/06-development-plan.md:1914:  and `'failed'` is not `finished()`, so `resetBranchTo` fires. The rollback is correct behaviour
+docs/06-development-plan.md:1916:  is that `finished()` is one predicate three behaviours read, so a fourth status splits the stage
+docs/06-development-plan.md:2084:  way round: **a run that finished gives back the worktrees it obtained, and one that did not keeps
+docs/06-development-plan.md:2101:  run that reused it is the run that finished with it; a worktree anyone else left is removed by
+docs/06-development-plan.md:2176:  covered `regressed` and `interrupted`, and these after the round that widened the AC-4 scan. The
+docs/06-development-plan.md:2429:  finished and must be told. **The most valuable finding came after the gate:** the merged,
+docs/03-adapter-contract.md:95:So `quorum adapters` prints presence only and says so; `quorum adapters --probe` performs the
+docs/04-architecture.md:3:*Status: proposed 2026-08-22; scaffold created 2026-08-24 (Q-0008) — the pnpm + Turborepo workspace, the single strict `tsconfig.base.json`, Vitest, ESLint and CI now exist, and the seven package boundaries drawn below are real directories, empty on purpose until Q-0009 ports the spike into them. 2026-08-25 docs review: worktrees are under `.harness/worktrees/`, and budget caps are specified rather than enforced. 2026-08-25 (Q-0009): `packages/core` states that it imports `shared`'s zod schemas rather than declaring its own, settling a contradiction with the development plan, and the `core` → `shared` dependency direction is written down. 2026-08-25 (Q-0041): `shared` is populated — zod schemas for flow, ticket, role and step output, the trace/event union and the cross-package constants — and principle 2 is corrected to the events that exist rather than the six it had named since it was written. 2026-08-26 (Q-0064): `core/src` is organised into one folder per module and `shared` stays flat, with the asymmetry explained. 2026-08-27 (Q-0047): the per-adapter `capabilities.ts` exists, and the version probe the same sentence asks for is recorded as deferred to Q-0067 so nobody reads it as shipped. 2026-08-27 (Q-0071): the testing strategy says what CI's `workspace` job executes and that it is forced, and separates the pnpm download cache from a task-result cache. 2026-08-28 (Q-0072): the testing strategy says what a *cache hit* claims, now that each suite's out-of-package reads are declared and `core`'s checks depend on `shared`'s. 2026-08-30 (Q-0079): the testing strategy names what a green tick does *not* claim — no suite ran where git resolves no identity until the sweep — and points at the oracle, the tripwire and the measured table separating them. 2026-08-31 (Q-0054): the testing strategy states that two required suites exist until the cutover and what each proves — the parenthesis calling the mock end-to-end "the 30-check smoke test, ported" described a port that had not happened, and its half of the suite transfers at Q-0010 — and adds the four-link chain from a new failing file to a red `pnpm test`. Changes go through DECISIONS.md. 2026-08-31 (Q-0062): principle 6 states the worktree lifecycle — a finished run gives back the worktrees it obtained, a run that did not finish keeps them, a worktree that is not clean is kept and says so, and no ref is ever deleted; and the testing strategy's entangled share is 49% rather than 53%, re-derived by `spike-parity.test.ts` after that ticket added a library-only test file, with the earlier figure kept beside it so the movement is visible rather than silent. 2026-09-01 (Q-0040): the entangled share is 55% rather than the 50% Q-0037 left, because that ticket's `q0040-undecided.js` is entangled in full — two of the five gate sites it covers live in `bin/` and no library test can reach them — and the sentence had gone three review rounds carrying a figure the guard beside it had already moved. 2026-09-02 (Q-0097): the testing strategy gains what a cache hit *gives back*, now that a `build` task with the workspace's first non-empty `outputs` replays an artifact rather than a verdict, and the `packages/core` entry says the emit is described there and not twice. 2026-09-02 (Q-0098): the shape paragraph separates the three installation claims — the workspace-local path and the locally packed path are supported and tested, and registry-resolved `npx quorum` is refused rather than deferred until Q-0029 — `packages/server`'s *"serves the built `apps/web`"* is scoped to M3 rather than left reading as present tense, and `packages/cli` records that the binary exists and what fixes its depth. 2026-09-03 (Q-0091): `packages/cli` records that the binary dispatches its first two commands, one module each, and the rule that separates a frame module from a command module. 2026-09-03 (Q-0092): that count is three, and `packages/cli` gains a paragraph on where the run-history division falls — six names moved onto `core`'s public surface, of which one is a new single-run read, because a detail request may not be coupled to the health of siblings it did not ask about. 2026-09-04 (Q-0093): that count is five, and the package map's `templates/` line is corrected — it described `packages/templates` as the shipped templates' home while line 66 and decision 078(e) put them under `packages/cli`, so two sentences of this document disagreed; `packages/templates` is a three-file scaffold holding no assets, and `packages/cli` gains a paragraph on where `init`'s division falls, which is the first place a command needed a new `core` symbol rather than a new export. 2026-09-04 (Q-0094): that count is six, which is the whole of this document's change — the sentence named five and `run` is the sixth, so it was false the moment that command landed; no paragraph was added for it, because Q-0094's requirement records that no numbered document claims anything it changes and this one sentence is the exception rather than an invitation. 2026-09-04 (Q-0099): that count is eight and the set is complete, and `packages/cli` gains a paragraph on the pair — the first to need nothing added to `core`'s public surface, and the pair whose two forced divergences from the spike are consequences of the frame/command rule rather than choices. 2026-09-05 (Q-0107): the testing strategy's sweep paragraph says the oracle runs the **workspace** suite rather than both, because AC-16 removed the spike phase with the last workspace read of that tree — CI's own `spike` job still runs it until Q-0103 — and the tripwire's corpus is named as `packages/` and `apps/`, the spike row having lost its subject. One sentence, and it is here rather than left for the cutover because a document describing an enforcer as covering more than it does is the failure this ticket is about. **2026-09-06 (Q-0103): the cutover.** The testing strategy describes **one** required suite rather than two — the spike tree, its CI job and `packages/core/src/spike-parity.test.ts` are deleted — and with them go the transfer share, which was a measurement of how much of a suite that no longer exists still had to move, and the sentence promising that register would record it. Three paragraphs that named the second suite as a live thing are corrected in the same edit: the discovery chain, which cites the spike runner as the origin of a property the workspace now owns; the cache-hit paragraph, which said *"both real suites"*; and the sweep paragraph, which said CI still ran the second one. The run-history section says `core` where it said the spike. What is NOT rewritten is provenance — `packages/core` is still *"seeded from the spike"* and `packages/cli` still dispatches *"the whole of the spike's set"*, because those sentences are about where the code came from and stay true of a tree that has gone. **2026-09-06 (Q-0105): `packages/cli` records the second git fact `board` derives** — push lag, the base branch against its upstream — and that it is the first command here to need a `core` symbol *after* it shipped, which the sentence above it had described as a pair needing nothing. That sentence moves to the past tense rather than being deleted: it was true of Q-0099 and stays true of Q-0099. Principle 2 was rewritten 2026-08-29 (Q-0050): `runFlow` is a lazy, single-consumer `AsyncIterable<Event>` whose cancellation belongs to the caller's `AbortSignal`, and the public-API line names it — see *What a run's event stream carries, and how a gate answer travels back* (2026-08-28) and its 2026-08-29 erratum.*
+docs/04-architecture.md:49:6. **Safety by construction.** Worktrees under `.harness/worktrees/` (git-excluded), integration branch per ticket, human-locked gates — enforced in `core`, not in the UI. Budget caps are specified in `harness.yaml` but not yet enforced anywhere. **A worktree is not permanent.** A run that finished — `completed` or `regressed` — removes the worktrees it obtained, keeping any that is not clean and naming the paths that kept it; a run that did not finish keeps every one of them, because the directory it stopped in is the thing a maintainer is about to open. It is the same predicate the ticket-branch rollback reads, the other way round. **No ref is ever deleted** — not a task branch, not a step branch, not the integration branch — so a removed directory is always re-creatable from its branch, and a review after the run still has something to read. Cleanup is registration and never enumeration: a run removes what it obtained and nothing else, whoever created it. See *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
+packages/shared/src/ticket.ts:35:  /** completed | regressed | aborted | failed | interrupted | undecided | exhausted. Typed open: the
+docs/decisions/076-a-run-that-nobody-answered-is-undecided.md:27:5. **`finished()` is replaced by three named predicates** — `advancesStage`, `returnsWorktrees`,
+docs/decisions/076-a-run-that-nobody-answered-is-undecided.md:36:   | `regressed` | yes | yes | no |
+docs/decisions/076-a-run-that-nobody-answered-is-undecided.md:54:**Alternatives considered:** **A third member of `finished()`.** Rejected on measurement: returning
+docs/decisions/076-a-run-that-nobody-answered-is-undecided.md:78:changes is only what the run does with work it had already finished. Q-0040.
+docs/decisions/058-a-commands-output-is-captured-whole.md:83:overflow reports a fifteen-minute timeout about a command that finished in twenty-six seconds,
+packages/shared/src/events.ts:152:/** A step finished. Payload: `ui.done(step.id, "verdict=… cost=… 1234ms")`, `"exit 0"`, … */
+packages/shared/src/events.ts:213:    status: z.literal('regressed'),
+packages/shared/src/events.q0050.test.ts:33:      ...base, status: 'regressed', targetFlow: 'qa-red', counter: 'f.s', count: 2,
+packages/shared/src/events.q0050.test.ts:55:  test('the terminal union carries it, in the non-regressed member and with no extra fields', () => {
+docs/decisions/028-red-for-the-right-reason-is-an-engine-property.md:2:**Decision:** Q-0004's remit is retired as written. The `automation-qa` role ships unchanged; a trustworthy red phase is guaranteed by invariants in the engine, not by prompt-tuning. Four are now enforced by `integrate`: dependencies are installed in the worktree before the test command runs; a suite that could not start is rejected rather than counted as red; the ticket branch is synced to `repo.base_branch` first; and every terminal outcome — completed, regressed, failed, interrupted — is written to `runs.log` with its counters persisted.
+docs/decisions/073-a-run-removes-the-worktrees-it-made.md:3:**Decision:** A run that **finished** — `completed` or `regressed` — removes each worktree it
+docs/decisions/073-a-run-removes-the-worktrees-it-made.md:13:run that reused it is the run that finished with it; a worktree anyone else left is removed by
+docs/decisions/073-a-run-removes-the-worktrees-it-made.md:38:ran against branches whose runs had finished. A policy correct in the abstract that deletes the
+docs/decisions/051-core-is-organised-in-folders-named-after-the-ports.md:24:declaration modules, it is finished as of Q-0041, and it is the one package whose house rules
+docs/decisions/062-what-a-runs-event-stream-carries.md:86:*"a review loop cannot decide when a guard is finished, and must be told"* (2026-08-28) describes,
+docs/decisions/043-the-erratum-is-closed-the-sentence-was-true.md:29:| 1 | When did run 10 start and end? | `backlog/Q-0006-…/runs.log` | `2026-08-23T22:58:25.691Z run=10 flow=review start stage=green` … `2026-08-23T23:11:00.943Z run=10 regressed stage=green→red cost=5.023` |
+docs/decisions/070-a-refused-finding-is-a-gate-not-another-round.md:47:anyone judged it unnecessary but because the loop finished first. The human gate caught it, which is
+docs/decisions/038-m1-closed-the-mechanisms-hold.md:2:**Decision:** M1 is complete. Red is proven by a `type: integrate` step with `expect: fail` on three real tickets, a five-task fan-out across two vendors reached green in three iterations, and the review flow ran end to end — a Claude + Codex panel, a `changes-requested` verdict, and a cross-flow `goto: flow:development` that regressed a ticket from `green` back to `red`. The full circuit closed once: development → review → regression → development → green. The contracts-before-tests mechanism and multi-vendor worktree integration are retired as risks.
+docs/decisions/038-m1-closed-the-mechanisms-hold.md:18:**Task size is what made the fan-out work.** Q-0006 serialised into single-vendor waves, because its two tasks share `spike/src/engine.js` and one depends on the other. Q-0011 did span two vendors in a single wave — two tasks, `backend` on codex and `tooling` on claude, both `depends_on: []` — but at a grain too coarse to retry independently, so a failure anywhere sent both back. Q-0033 re-cut into five small tasks ran as one wave across two vendors, reached green in three iterations, and scoped its retries to the tasks that were actually failing — and its retries scoped correctly, with finished tasks reporting "no changes" instead of inventing work. The two-roles-two-vendors criterion was not met by adding a role; it was met by making the tasks smaller.
+docs/decisions/022-check-proves-presence.md:1:# check() proves presence; only `adapters --probe` proves login — 2026-08-22
+docs/decisions/056-a-cache-hit-names-what-the-task-reads.md:68:**2. A review loop cannot decide when a guard is finished, and must be told.** No textual scanner
+docs/decisions/042-q-0034-closed-an-unlanded-branchs-cost.md:31:  `materialiseDiff` that carried no guard at all. Nothing regressed; a stale branch simply arrived.
+docs/decisions/042-q-0034-closed-an-unlanded-branchs-cost.md:97:cannot be answered turns a finished run into a failed one, and **M3's daemon must not inherit that**
+docs/decisions/042-q-0034-closed-an-unlanded-branchs-cost.md:108:  edge regressed it and nothing moved it back. Q-0036's board column now makes the contradiction
+docs/02-sdlc-pipeline-spec.md:18:8. **A run cleans up after itself, and never after anyone else.** A run that finished removes the worktrees it obtained — the writing steps' and the integration one's — and keeps any worktree holding uncommitted content, naming the paths that kept it. A run that did **not** finish removes nothing, so a failed run's worktree is still there to be opened, and neither does a dry run, which obtains none. **No ref is deleted at any point**: the branches outlive their worktrees, which is what makes the removal reversible and what a post-hoc review reads. A worktree an earlier run or a person left behind belongs to nobody's run and is removed by nothing; `harness/<id>/*` branches likewise accumulate until someone deletes them by hand. See *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
+docs/02-sdlc-pipeline-spec.md:127:and are still valid; nothing rewrites them. `status` is one of `completed`, `regressed`, `aborted`,
+docs/02-sdlc-pipeline-spec.md:128:`failed`, `interrupted`, `undecided` or `exhausted` — and note that only `completed` and `regressed`
+docs/decisions/083-what-an-exit-code-may-claim.md:17:**(b) `regressed` goes on exiting `SUCCESS`, ruled rather than fallen-through.** Q-0090 registered
+docs/decisions/083-what-an-exit-code-may-claim.md:19:`undecided`, so `regressed` reached a fallthrough. It was right that no one had chosen and wrong
+docs/decisions/083-what-an-exit-code-may-claim.md:22:**An exit code here reports a run's disposition, not its verdict.** `regressed` is what a cross-flow
+docs/decisions/083-what-an-exit-code-may-claim.md:25:`completed` in three places — `advancesStage` (`lifecycle.ts:22`), the `finished` predicate that
+docs/decisions/083-what-an-exit-code-may-claim.md:26:decides rollback, and `02-sdlc-pipeline-spec.md`'s *"only `completed` and `regressed` move the
+docs/decisions/083-what-an-exit-code-may-claim.md:28:table out of step with the engine's own model of what a finished run is, in a file whose stated
+docs/decisions/083-what-an-exit-code-may-claim.md:31:The cost is stated rather than hidden: a caller cannot tell an approved review from a regressed one
+docs/decisions/083-what-an-exit-code-may-claim.md:41:*"presence only — logins NOT verified; run `quorum adapters --probe` before a real run"*. A command
+docs/decisions/083-what-an-exit-code-may-claim.md:44:checks — `lint`, `validate` — exit 1 when the answer is no. *"check() proves presence; only
+docs/decisions/083-what-an-exit-code-may-claim.md:53:**Alternatives considered.** *`regressed` → `ERROR`* — the reading Q-0110's body assumed, and the
+docs/decisions/083-what-an-exit-code-may-claim.md:58:"finished, verdict negative"* — rejected: `ExitCode` is closed deliberately so a sixth cannot be
+docs/decisions/047-a-requirement-may-not-name-a-surface-its-flow.md:25:optional hands an agent the ticket state that decides whether its own work is finished. (b) Add a
+docs/decisions/047-a-requirement-may-not-name-a-surface-its-flow.md:60:so the work looked finished and was not. Performing that step by hand turned up two real defects in
+docs/decisions/047-a-requirement-may-not-name-a-surface-its-flow.md:66:that fails before `integrate` leaves work in the shape of finished work**, and the branch cannot be
+packages/cli/src/binary-name.test.ts:562:    // literal inside it is collected too. Both, in that order — a nested literal is finished before
+packages/cli/src/main.test.ts:6: * `process.exitCode` never being set — which is the same claim, made without ending the suite.
+packages/cli/src/main.test.ts:103:    return { stdout: out.text(), stderr: err.text(), exitCode: process.exitCode };
+packages/cli/src/main.test.ts:111:  process.exitCode = undefined;
+packages/cli/src/main.test.ts:151:    // overrides `process.exitCode` — collapsing the two mechanisms AC-5 keeps apart.
+packages/cli/src/main.test.ts:208:    let finished = false;
+packages/cli/src/main.test.ts:211:      finished = true;
+packages/cli/src/main.test.ts:220:    expect(finished).toBe(false);
+packages/cli/src/main.test.ts:224:    expect(finished, 'main resolved with its handler still running').toBe(true);
+packages/core/src/run-history/manifest.ts:36:export type RunStatus = 'running' | 'completed' | 'failed' | 'aborted' | 'regressed' | 'exhausted' | 'interrupted' | 'undecided';
+packages/core/src/contracts/validate-artifact.test.ts:37:    status: { enum: ['running', 'completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'] },
+packages/cli/src/run.ts:20: * {@link EXIT_CODE_FOR_STATUS} was extracted from `spike/bin/harness.js:557`'s three-way expression
+packages/cli/src/run.ts:34:import { EXIT_CODE_FOR_STATUS, ERROR, type ExitCode } from './exit.js';
+packages/cli/src/run.ts:104: * A terminal event is required and never inferred: an iterable that merely finished says nothing
+packages/cli/src/run.ts:112:  return EXIT_CODE_FOR_STATUS[terminal.status];
+packages/cli/src/run.ts:208:    if (trace.terminal?.status === 'interrupted') process.exit(EXIT_CODE_FOR_STATUS.interrupted);
+packages/core/src/contracts/run-manifest.ts:24:const TERMINAL_STATUSES: readonly string[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted', 'undecided'];
+packages/core/src/run-history/writer.test.ts:559:    const statuses: Exclude<RunStatus, 'running'>[] = ['completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted', 'undecided'];
+packages/core/src/run-history/writer.ts:102:   * handler safe to point at an occurrence the step path has already finished.
+packages/core/src/engine/lifecycle.test.ts:65:    ['regressed', 'requirements', true],
+packages/core/src/engine/lifecycle.test.ts:76:    const fields = status === 'regressed' ? regression : undefined;
+packages/core/src/engine/lifecycle.test.ts:186:      [false, 'regressed', 'aaaaaaaa', 'bbbbbbbb', 0],
+packages/core/src/engine/lifecycle.test.ts:197:      // The subject of this matrix is ROLLBACK — whether `reset` is called — and `regressed`
+packages/core/src/engine/lifecycle.test.ts:199:      // finish() narrows them at the regressed branch, so the row supplies them rather than
+packages/core/src/engine/lifecycle.test.ts:203:      const fields = status === 'regressed'
+packages/core/src/engine/lifecycle.test.ts:249: * `finished` used to answer all three, and the worktree return and the branch rollback were the
+packages/core/src/engine/lifecycle.test.ts:280:    regressed: { advances: true, returns: true, restores: false },
+packages/core/src/engine/lifecycle.test.ts:299:    const fields = row.status === 'regressed' ? regression : undefined;
+packages/cli/src/failure-paths.test.ts:33: * composes `exitCode` from the argument `die` handed `process.exit`, from `process.exitCode`, or
+packages/cli/src/failure-paths.test.ts:459:  // AC-4 — one branch of a parallel group fails while its sibling's finished work survives.
+packages/cli/src/failure-paths.test.ts:650:      'the surviving sibling lost its finished work at requirements/run-1/candidate-codex.md').toBe(true);
+packages/core/src/run-history/manifest.test.ts:215:      regressed: true, exhausted: true, interrupted: true, undecided: true,
+packages/core/src/lint/lint.test.ts:1086:    ['stages outside the ten-member list — lint.ts:245 checks presence only',
+packages/cli/src/run.test.ts:158:    // and `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather
+packages/cli/src/run.test.ts:160:    // because a run that regressed is the one status a script would most want to tell from 0.
+packages/cli/src/run.test.ts:178:    expect(output(result)).toContain('run #1 regressed');
+packages/cli/src/run.test.ts:198:      // and `undecided`, so `regressed` reaches the fallthrough and reports success.
+packages/cli/src/run.test.ts:199:      regressed: exitCodeFor(terminal('regressed')),
+packages/cli/src/run.test.ts:205:      completed: 0, regressed: 0, aborted: 2, undecided: 3, failed: 1, interrupted: 130,
+packages/core/src/engine/types.ts:63:export type RunStatus = 'completed' | 'regressed' | 'aborted' | 'failed' | 'interrupted' | 'undecided';
+packages/core/src/engine/types.ts:272:   * here too, because a run that reused it is the run that finished with it; a worktree the run
+packages/core/src/engine/types.ts:299:/** The seven fields a regressed run's terminal event and history entry both carry, as one closed group. */
+packages/core/src/engine/types.ts:319: * A regressed outcome. `stage` duplicates {@link RegressionFields.stageAfter} — the same
+packages/core/src/engine/types.ts:324:  status: 'regressed';
+packages/core/src/turbo-inputs.test.ts:1477:    'fixture.ticketDir': "the ticket folder inside the temp repository runFixture() built, for the runs.log line a finished run's cleanup appended",
+packages/core/src/engine/lifecycle.ts:15: * One of three questions that used to be one predicate, `finished`. The worktree return and the
+packages/core/src/engine/lifecycle.ts:22:const advancesStage = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+packages/core/src/engine/lifecycle.ts:30:const returnsWorktrees = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+packages/core/src/engine/lifecycle.ts:122:  if (advancesStage(status)) ticket.meta.stage = stage as typeof ticket.meta.stage;
+packages/core/src/engine/lifecycle.ts:161:  const terminal: Event = status === 'regressed'
+packages/core/src/engine/lifecycle.ts:166:  if (status === 'regressed') {
+packages/core/src/engine/lifecycle.ts:206:  if (!fields) throw new FlowError('regressed run requires complete regression fields');
+packages/core/src/engine/engine.ts:276:    // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
+packages/core/src/engine/engine.ts:336:          await finishRun(targetFlow.consumes, 'regressed', null, {
+packages/core/src/engine/worktree-lifecycle.test.ts:73: * `engine.ts`'s `flow:` branch — the only route to a `regressed` terminal — with both worktrees
+packages/core/src/engine/worktree-lifecycle.test.ts:86:describe('AC-1 — a run that finished gives back the worktrees it obtained, and says so', () => {
+packages/core/src/engine/worktree-lifecycle.test.ts:127:  test('regressed removes them too, because a regressed run is one that did what it set out to do', async () => {
+packages/core/src/engine/worktree-lifecycle.test.ts:130:    // other run that finished. `finished()` is one predicate and this is its second member — were
+packages/core/src/engine/worktree-lifecycle.test.ts:138:    expect(events.at(-1), 'the flow must actually regress, or this asserts nothing about regressed')
+packages/core/src/engine/worktree-lifecycle.test.ts:139:      .toMatchObject({ type: 'terminal', status: 'regressed', stageAfter: 'red' });
+packages/core/src/engine/worktree-lifecycle.test.ts:144:      // AC-4 holds on this path as much as on the completed one, which is what makes the regressed
+packages/core/src/engine/worktree-lifecycle.test.ts:226:    expect(fs.existsSync(reused), 'a run that reused a worktree is the run that finished with it').toBe(false);
+packages/cli/src/lint.test.ts:210:    // `process.exitCode = 0` and never assigning it are the same status and not the same act: the
+packages/cli/src/lint.test.ts:212:    const before = process.exitCode;
+packages/cli/src/lint.test.ts:214:    expect(process.exitCode).toBe(before);
+packages/cli/src/gate.test.ts:483:    // one moment a test can observe the handlers of a run that has not finished.
+packages/cli/src/adapters.test.ts:147:    expect(out(result)).toContain('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run');
+packages/cli/src/adapters.test.ts:148:    // check() proves presence and nothing else, so nothing was probed and nothing was billed.
+packages/cli/src/adapters.test.ts:188:    expect(out(result), 'presence-only was claimed after a probe').not.toContain('presence only');
+packages/cli/src/adapters.test.ts:245:    expect(text.indexOf('presence only'), 'the notice follows the JSON').toBeLessThan(text.indexOf('{'));
+packages/cli/src/adapters.test.ts:280:    expect(out(result)).not.toContain('presence only');
+packages/cli/src/adapters.ts:10: * is recorded `login: 'unverified'` and the notice below says so — see *"check() proves presence;
+packages/cli/src/adapters.ts:114:  if (!probe) console.log(c.dim('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run'));
+packages/cli/src/adapters.ts:121:  if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();
+packages/cli/src/validate.test.ts:63:    status: { enum: ['running', 'completed', 'failed', 'aborted', 'regressed', 'exhausted', 'interrupted'] },
+packages/cli/src/validate.test.ts:266:    const before = process.exitCode;
+packages/cli/src/validate.test.ts:269:    expect(process.exitCode).toBe(before);
+packages/cli/src/build.test.ts:123: * a finished install link anything, so the shim never appears and AC-18 fails for a reason that has
+packages/cli/src/build.test.ts:1441:      + " failSoftly(); process.stdout.write('AFTER-THE-CALL');";
+packages/cli/src/build.test.ts:1443:    expect(result.status, 'the emit swallowed process.exitCode').toBe(1);
+packages/cli/src/build.test.ts:1459:    // that the status survives a real process boundary: `main` sets `process.exitCode` and resolves
+packages/cli/src/exit.ts:7: * three-way expression at `:557`, four `process.exitCode = 1` assignments on the `runs` paths, and
+packages/cli/src/exit.ts:14:/** The command did what it was asked, and a run that finished did not abort. */
+packages/cli/src/exit.ts:53: * `regressed` came to share `completed`'s code. `packages/shared`'s union is the authority and this
+packages/cli/src/exit.ts:57:export const EXIT_CODE_FOR_STATUS: Readonly<Record<RunTerminalEvent['status'], ExitCode>> = {
+packages/cli/src/exit.ts:60:  // `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather than
+packages/cli/src/exit.ts:62:  regressed: SUCCESS,
+packages/core/src/engine/engine.test.ts:377:      type: 'terminal', status: 'regressed', runId: 1,
+packages/core/src/engine/engine.test.ts:382:    // The engine's OWN regressed terminal through the union. events.q0050.test.ts parses a
+packages/core/src/engine/engine.test.ts:473:    // `completed` and `regressed` move it. Asserting the bytes would be unsatisfiable.
+packages/core/src/engine/engine.test.ts:488:    expect(events.at(-1)).toMatchObject({ type: 'terminal', status: 'regressed', count: 3, limit: 2, remaining: 0 });
+packages/core/src/fanout/command.test.ts:96:  const leave = leaves === 'by exit()' ? `process.exit(${status});` : `process.exitCode=${status};`;
+packages/cli/src/lint.ts:77:  if (!ok) failSoftly();
+packages/cli/src/fail.test.ts:103:  process.exitCode = undefined;
+packages/cli/src/fail.test.ts:205:    expect(process.exitCode).toBe(undefined);
+packages/cli/src/fail.test.ts:206:    failSoftly();
+packages/cli/src/fail.test.ts:207:    expect(process.exitCode).toBe(ERROR);
+packages/cli/src/fail.test.ts:213:    expect(process.exitCode, 'die never sets the soft status').toBe(undefined);
+packages/cli/src/fail.test.ts:256:    const soft = run('soft.mjs', 'process.exitCode = 1;');
+packages/cli/test/invoke.ts:53:   * `process.exitCode` the command left behind, or {@link SUCCESS} where it left none.
+packages/cli/test/invoke.ts:68: * `process.exitCode` before returning, so nothing leaks into the next test.
+packages/cli/test/invoke.ts:94:  const savedCode = process.exitCode;
+packages/cli/test/invoke.ts:95:  process.exitCode = undefined;
+packages/cli/test/invoke.ts:111:  const soft = process.exitCode;
+packages/cli/test/invoke.ts:112:  process.exitCode = savedCode;
+packages/cli/test/invoke.ts:117:    // The hard path's number is the argument `die` handed `process.exit`, not `process.exitCode`:
+packages/cli/src/exit.test.ts:7: * member carries `status: z.literal('regressed')` and whose second carries
+packages/cli/src/exit.test.ts:24:  ABORTED, ERROR, EXIT_CODE_FOR_STATUS, SIGNAL, SUCCESS, UNDECIDED, type ExitCode,
+packages/cli/src/exit.test.ts:62:const SHIPPED = ['aborted', 'completed', 'failed', 'interrupted', 'regressed', 'undecided'];
+packages/cli/src/exit.test.ts:65:const tableKeys = (): string[] => Object.keys(EXIT_CODE_FOR_STATUS).sort();
+packages/cli/src/exit.test.ts:74:    expect(EXIT_CODE_FOR_STATUS).toStrictEqual({
+packages/cli/src/exit.test.ts:76:      regressed: SUCCESS,
+packages/cli/src/exit.test.ts:86:    for (const [status, code] of Object.entries(EXIT_CODE_FOR_STATUS)) {
+packages/cli/src/exit.test.ts:95:    // SUCCESS, which is how `regressed` came to share `completed`'s code in the first place.
+packages/cli/src/exit.test.ts:97:      completed: SUCCESS, regressed: SUCCESS, aborted: ABORTED, undecided: UNDECIDED, failed: ERROR,
+packages/cli/src/exit.test.ts:117:    expect(literalMembersOnly()).toStrictEqual(['regressed']);
+packages/cli/src/exit.test.ts:122:  test('reading only the enum member sees five statuses of six, and never regressed', () => {
+packages/cli/src/exit.test.ts:124:    expect(enumMembersOnly()).not.toContain('regressed');
+packages/cli/src/exit.test.ts:133:describe('AC-4(c) — regressed shares completed\'s code, preserved and registered', () => {
+packages/cli/src/exit.test.ts:136:    // `r.status === 'aborted' ? 2 : r.status === 'undecided' ? 3 : 0`, which names `regressed`
+packages/cli/src/exit.test.ts:137:    // nowhere, so a run a backward edge sent back reports the same code as one that finished.
+packages/cli/src/exit.test.ts:139:    expect(EXIT_CODE_FOR_STATUS.regressed).toBe(SUCCESS);
+packages/cli/src/exit.test.ts:140:    expect(EXIT_CODE_FOR_STATUS.completed).toBe(SUCCESS);
+packages/cli/src/validate.ts:89:  if (bad) failSoftly();
+packages/cli/src/main.ts:6: * overrides `process.exitCode` — collapsing the two mechanisms `fail.ts` exists to keep apart, and
+packages/cli/src/main.ts:109:  if (!askedForHelp(argv)) failSoftly();
+packages/cli/src/runs.ts:7: * whether one is finished, how its occurrences are ordered, what a vendor's token total is, and
+packages/cli/src/runs.ts:245: * All four failure paths are soft. The spike ends each of them in `process.exitCode = 1`
+packages/cli/src/runs.ts:254:  failSoftly();
+packages/cli/src/runs.ts:264:  if (warnings.length) failSoftly();
+packages/cli/src/trace.test.ts:125:      type: 'terminal', status: 'regressed', runId: 2, stageBefore: 'green', stageAfter: 'red',
+packages/cli/src/end-to-end.test.ts:196:  /** What git said about the contracts worktree the moment the solutioning run finished. */
+packages/cli/src/end-to-end.test.ts:416:  // The second reading: the last flow has finished by this line, so this is the working tree the
+packages/cli/src/end-to-end.test.ts:619:  test('the architect ran in its own worktree on its own branch, and the finished run gave it back', () => {
+packages/cli/src/end-to-end.test.ts:680:    // the worktree so that it survives the removal a finished run performs (Q-0062).
+packages/cli/src/fail.ts:5: * {@link die} exits immediately, which truncates whatever the process had not finished writing.
+packages/cli/src/fail.ts:7: * four `process.exitCode = 1` assignments on the `runs` paths rely on
+packages/cli/src/fail.ts:43:export function failSoftly(): void {
+packages/cli/src/fail.ts:44:  process.exitCode = ERROR;
+packages/core/src/adapters/adapters.ts:9: * writing any of them ("check() proves presence; only `adapters --probe` proves login",
+packages/cli/templates/harness/harness.yaml:26:  # Kills a test or script command that has not finished in this long. An orchestrator that can
+ M docs/DECISIONS.md
+ M packages/cli/src/adapters.test.ts
+ M packages/cli/src/adapters.ts
+ M packages/cli/src/build.test.ts
+ M packages/cli/src/main.test.ts
+ M packages/cli/src/main.ts
+?? docs/decisions/083-what-an-exit-code-may-claim.md
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 30699dc..de1e3ce 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -153,3 +153,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
+ 
+ - [A deferral is not a skip, and the preflight says nothing about one](decisions/081-a-deferral-is-not-a-skip.md)
+ - [A `core` error names the condition; the remedy belongs to the surface](decisions/082-a-core-error-names-the-condition.md)
++
++## 2026-09-08
++
++- [What an exit code may claim, and the three zeros it was asked about](decisions/083-what-an-exit-code-may-claim.md)
+diff --git a/packages/cli/src/adapters.test.ts b/packages/cli/src/adapters.test.ts
+index 8c37495..4b45215 100644
+--- a/packages/cli/src/adapters.test.ts
++++ b/packages/cli/src/adapters.test.ts
+@@ -27,7 +27,7 @@ import path from 'node:path';
+ import { getAdapter, probeAdapter } from '@quorum/core';
+ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+-import { SUCCESS } from './exit.js';
++import { ERROR, SUCCESS } from './exit.js';
+ import { invoke, plain, type Invocation } from '../test/invoke.js';
+ 
+ vi.mock('@quorum/core', async (importOriginal) => {
+@@ -188,7 +188,7 @@ describe('AC-7 — --probe', () => {
+     expect(out(result), 'presence-only was claimed after a probe').not.toContain('presence only');
+   });
+ 
+-  test('a failed login is one bold sentence and the command still exits 0', async () => {
++  test('a failed login is one bold sentence, and the probe reports it as ERROR', async () => {
+     stub(
+       { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
+       {
+@@ -197,7 +197,11 @@ describe('AC-7 — --probe', () => {
+       },
+     );
+     const result = await run('--probe');
+-    expect(result.exitCode, out(result)).toBe(SUCCESS);
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
++    // `--probe` is the check and the presence listing is the report, so only the first answers with
++    // a status. The listing still printed, which is what `failSoftly` buys over `die`.
++    expect(result.exitCode, out(result)).toBe(ERROR);
++    expect(result.hard, 'the listing still reached the terminal').toBe(false);
+     expect(out(result).split('\n')[1]).toBe('  ✗ login not usable: login expired — run `claude /login`');
+     expect(json(await run('--probe', '--json')).adapters[0]).toMatchObject({
+       adapter: 'claude', installed: true, version: '2.1.231', login: 'failed', ok: false,
+@@ -331,7 +335,8 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
+       },
+     );
+     const result = await run('--probe');
+-    expect(result.exitCode, out(result)).toBe(SUCCESS);
++    // Q-0110 made an unusable login ERROR; the defect this pins is the SENTENCE, which is unchanged.
++    expect(result.exitCode, out(result)).toBe(ERROR);
+     expect(out(result).split('\n')[1])
+       .toBe("  ✗ login not usable: Cannot read properties of null (reading 'cost_usd')");
+   });
+diff --git a/packages/cli/src/adapters.ts b/packages/cli/src/adapters.ts
+index a01d4d8..8e6877d 100644
+--- a/packages/cli/src/adapters.ts
++++ b/packages/cli/src/adapters.ts
+@@ -32,7 +32,7 @@ import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@qu
+ 
+ import type { FlagValue } from './argv.js';
+ import { c } from './colour.js';
+-import { dieNoProject } from './fail.js';
++import { dieNoProject, failSoftly } from './fail.js';
+ import type { CommandHandler } from './main.js';
+ 
+ /**
+@@ -115,4 +115,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
+   // After the human lines rather than instead of them: `--json` is a combined stream in the spike
+   // and a consumer piping it gets both. Redefining it as JSON-only is a contract change.
+   if (asJson) console.log(JSON.stringify({ probed: probe, adapters: report }, null, 2));
++  // `--probe` is the check and the presence listing is the report, so only the first answers with a
++  // status. Set rather than thrown, so the listing and the `--json` above still reach the terminal.
++  // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
++  if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();
+ };
+diff --git a/packages/cli/src/build.test.ts b/packages/cli/src/build.test.ts
+index b054c6d..e03d14b 100644
+--- a/packages/cli/src/build.test.ts
++++ b/packages/cli/src/build.test.ts
+@@ -1453,16 +1453,22 @@ describe('Q-0098 AC-17 — a non-zero status crosses the process boundary throug
+     expect(result.stdout, 'die wrote its message to stdout').not.toContain('a message');
+   }, 300_000);
+ 
+-  test('and the preserved unknown-command zero survives the boundary rather than being quietly fixed', () => {
+-    // Why: preserved, see Q-0090 AC-6 — `spike/bin/harness.js:560–562` prints usage and returns, so
+-    // the process exits 0 and a shell script cannot tell "did the thing" from "did not understand
+-    // you". Successor Q-0090 GA-4. Returning 1 here would be a behaviour change wearing a bug fix's
+-    // clothes, which ground rule 3 forbids; pinning it across the process boundary is what makes a
+-    // later fix a deliberate act.
++  test('and Q-0110\'s unknown-command status crosses the boundary, while asking for help does not', () => {
++    // The zero this pinned was Q-0090's preserved defect, and Q-0090 GA-4's successor — Q-0110 —
++    // changed it. Kept here rather than moved to `main.test.ts` because what THIS file proves is
++    // that the status survives a real process boundary: `main` sets `process.exitCode` and resolves
++    // rather than exiting, so nothing but a spawn can show that the exit actually carries it.
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
+     runBuild();
+-    const result = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
+-    expect(result.status, 'the unknown-command zero was changed — that is Q-0090 GA-4 and not this ticket').toBe(0);
+-    expect(result.stdout).toContain('usage: quorum');
++    const tripped = spawnStatus(PACKAGE, [binTarget(), 'no-such-command']);
++    expect(tripped.status, 'an unknown command reported success across the boundary').toBe(1);
++    expect(tripped.stdout, 'the help is still a service, so it is still on stdout').toContain('usage: quorum');
++
++    // The other side of the same ruling, spawned for the same reason: a status set and not exited
++    // is exactly the kind that can be lost, so the success case is proven across the boundary too.
++    const asked = spawnStatus(PACKAGE, [binTarget(), '--help']);
++    expect(asked.status, 'asking for help was reported as a failure').toBe(0);
++    expect(asked.stdout).toContain('usage: quorum');
+   }, 300_000);
+ });
+ 
+diff --git a/packages/cli/src/main.test.ts b/packages/cli/src/main.test.ts
+index 933cb20..11b65e4 100644
+--- a/packages/cli/src/main.test.ts
++++ b/packages/cli/src/main.test.ts
+@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+ 
+ import { parseArgv, type ParsedArgv } from './argv.js';
+ import { COMMANDS, HELP } from './commands.js';
+-import { SUCCESS } from './exit.js';
++import { ERROR, SUCCESS } from './exit.js';
+ import { HANDLERS, main } from './main.js';
+ 
+ /** The four shapes AC-6 names — the ones that must print the help and leave the status at 0. */
+@@ -27,6 +27,16 @@ const INVOCATIONS: readonly (readonly string[])[] = [
+   ['--', '-x', '--gate-answer', '--adapter'],
+ ];
+ 
++/** Of those, the ones that ASKED for the help they get — Q-0110's line, and the only ones still 0. */
++const ASKED_FOR_HELP: readonly (readonly string[])[] = [['--help'], ['-h']];
++
++/** And the ones that tripped into it: no command this binary dispatches, so the status is ERROR. */
++const TRIPPED: readonly (readonly string[])[] = [
++  [],
++  ['nonsense'],
++  ['--', '-x', '--gate-answer', '--adapter'],
++];
++
+ /**
+  * Every shape AC-8's byte-identical-tree snapshot drives, which is the four above plus one real
+  * invocation of the read-only commands this file can run unmocked.
+@@ -101,17 +111,32 @@ afterEach(() => {
+   process.exitCode = undefined;
+ });
+ 
+-describe('AC-6 — an unknown or absent command prints help and exits 0', () => {
+-  test.each(INVOCATIONS)('quorum %j prints the help and leaves the status at 0', async (...argv) => {
+-    // Why: preserved defect, see Q-0090 AC-6. `spike/bin/harness.js:560–562` is a `default:` branch
+-    // that prints usage and returns, so `main()` resolves and the process exits 0 — a shell script
+-    // cannot tell "did the thing" from "did not understand you". Registered rather than fixed,
+-    // because changing it is a behaviour change on the surface a stranger meets first; the
+-    // successor is Q-0090's GA-4.
+-    const { stdout, stderr, exitCode } = await invoke(argv);
++describe('AC-6, as Q-0110 ruled it — every route prints the help; only the ones that asked exit 0', () => {
++  test.each(INVOCATIONS)('quorum %j prints the help, on stdout, whatever its status', async (...argv) => {
++    // The half that did not move: every one of these prints the same text to stdout, because the
++    // help is a service and not an error however the reader arrived at it. What Q-0110 changed is
++    // the status beside it, asserted separately below so each can fail on its own.
++    const { stdout, stderr } = await invoke(argv);
+     expect(stdout.trim(), 'nothing was printed').not.toBe('');
+     expect(stdout).toContain(HELP);
+     expect(stderr, 'the help is not an error, so it goes to stdout').toBe('');
++  });
++
++  test.each(TRIPPED)('quorum %j tripped into the help, so the status is ERROR', async (...argv) => {
++    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
++    // Q-0090 registered this zero and left it: a shell script could not tell "did the thing" from
++    // "did not understand you". SUCCESS is for a command that did what it was asked, and no command
++    // this binary dispatches was named here.
++    expect((await invoke(argv)).exitCode).toBe(ERROR);
++  });
++
++  test.each(ASKED_FOR_HELP)('quorum %j asked for the help, so the status is SUCCESS', async (...argv) => {
++    // The line the ruling draws, and the reason it is drawn here rather than at the `help` command
++    // alone: `--help` is how a stranger asks, and answering it is the command doing what it was
++    // asked. A ruling that exited 1 on `--help` would be teaching the wrong lesson to the one
++    // reader the cold-clone test is about.
++    const { stdout, exitCode } = await invoke(argv);
++    expect(stdout).toContain(HELP);
+     expect(exitCode ?? SUCCESS).toBe(SUCCESS);
+   });
+ 
+diff --git a/packages/cli/src/main.ts b/packages/cli/src/main.ts
+index 0c97d31..cda9617 100644
+--- a/packages/cli/src/main.ts
++++ b/packages/cli/src/main.ts
+@@ -27,6 +27,7 @@ import { adapters } from './adapters.js';
+ import { parseArgv, type ParsedArgv } from './argv.js';
+ import { board } from './board.js';
+ import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
++import { failSoftly } from './fail.js';
+ import { init } from './init.js';
+ import { lint } from './lint.js';
+ import { run } from './run.js';
+@@ -77,11 +78,26 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
+  * Run one command line. `argv` is `process.argv.slice(2)` when a binary calls it, and a literal
+  * array when a test does — the parser reads nothing from the environment, so the two are the same.
+  *
+- * An unknown or absent command prints the help and returns, so the process exits 0. Why: preserved,
+- * see Q-0090 AC-6 — `spike/bin/harness.js:560–562` is a `default:` branch that prints usage and
+- * returns. It is registered as a defect rather than carried quietly: a shell script cannot tell
+- * "did the thing" from "did not understand you". The successor is Q-0090's GA-4.
++ * An unknown or absent command prints the help and reports {@link ERROR}; asking for help — the
++ * `help` command, `--help` or `-h` — prints the same text and reports success. Help on purpose is
++ * success; help by accident is not.
++ *
++ * The status is **set rather than exited**, so `main` still resolves and the help still reaches the
++ * terminal: `die` and `failSoftly` are two mechanisms and this is the second (Q-0090 AC-5).
++ *
++ * Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08),
++ * which changed this one and ratified the two beside it.
++ */
++/**
++ * Whether this invocation asked for the help it is about to get, rather than tripping into it.
++ *
++ * Read off the raw argv rather than off `flags`, because `parseArgv` recognises only `--` forms
++ * (`argv.ts:53`) and `-h` therefore arrives as a positional. Teaching the parser single-dash flags
++ * would change every command's argument handling to settle one word here.
+  */
++const askedForHelp = (argv: readonly string[]): boolean =>
++  argv.some((token) => token === '--help' || token === '-h');
++
+ export async function main(argv: readonly string[]): Promise<void> {
+   const parsed = parseArgv(argv);
+   const { cmd } = parsed;
+@@ -90,4 +106,5 @@ export async function main(argv: readonly string[]): Promise<void> {
+     return;
+   }
+   console.log(HELP);
++  if (!askedForHelp(argv)) failSoftly();
+ }
+
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "rg -n \"function advancesStage|const advancesStage|returnsWorktrees|rollsBackTicketBranch|finished\" packages/core/src packages/shared/src docs/02-sdlc-pipeline-spec.md && nl -ba packages/cli/src/main.ts | sed -n '78,115p' && nl -ba docs/decisions/083-what-an-exit-code-may-claim.md | sed -n '1,90p' && nl -ba packages/cli/src/adapters.ts | sed -n '50,130p'"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 0ms:[0m
+docs/02-sdlc-pipeline-spec.md:18:8. **A run cleans up after itself, and never after anyone else.** A run that finished removes the worktrees it obtained — the writing steps' and the integration one's — and keeps any worktree holding uncommitted content, naming the paths that kept it. A run that did **not** finish removes nothing, so a failed run's worktree is still there to be opened, and neither does a dry run, which obtains none. **No ref is deleted at any point**: the branches outlive their worktrees, which is what makes the removal reversible and what a post-hoc review reads. A worktree an earlier run or a person left behind belongs to nobody's run and is removed by nothing; `harness/<id>/*` branches likewise accumulate until someone deletes them by hand. See *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
+packages/shared/src/events.ts:152:/** A step finished. Payload: `ui.done(step.id, "verdict=… cost=… 1234ms")`, `"exit 0"`, … */
+packages/core/src/engine/lifecycle.test.ts:249: * `finished` used to answer all three, and the worktree return and the branch rollback were the
+packages/core/src/engine/worktree-lifecycle.test.ts:86:describe('AC-1 — a run that finished gives back the worktrees it obtained, and says so', () => {
+packages/core/src/engine/worktree-lifecycle.test.ts:130:    // other run that finished. `finished()` is one predicate and this is its second member — were
+packages/core/src/engine/worktree-lifecycle.test.ts:226:    expect(fs.existsSync(reused), 'a run that reused a worktree is the run that finished with it').toBe(false);
+packages/core/src/engine/types.ts:272:   * here too, because a run that reused it is the run that finished with it; a worktree the run
+packages/core/src/engine/engine.ts:276:    // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
+packages/core/src/engine/lifecycle.ts:4: * {@link returnsWorktrees}) that no status answers both ways.
+packages/core/src/engine/lifecycle.ts:15: * One of three questions that used to be one predicate, `finished`. The worktree return and the
+packages/core/src/engine/lifecycle.ts:22:const advancesStage = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+packages/core/src/engine/lifecycle.ts:30:const returnsWorktrees = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+packages/core/src/engine/lifecycle.ts:133:    if (returnsWorktrees(status)) {
+packages/core/src/turbo-inputs.test.ts:1477:    'fixture.ticketDir': "the ticket folder inside the temp repository runFixture() built, for the runs.log line a finished run's cleanup appended",
+packages/core/src/run-history/writer.ts:102:   * handler safe to point at an occurrence the step path has already finished.
+    78	 * Run one command line. `argv` is `process.argv.slice(2)` when a binary calls it, and a literal
+    79	 * array when a test does — the parser reads nothing from the environment, so the two are the same.
+    80	 *
+    81	 * An unknown or absent command prints the help and reports {@link ERROR}; asking for help — the
+    82	 * `help` command, `--help` or `-h` — prints the same text and reports success. Help on purpose is
+    83	 * success; help by accident is not.
+    84	 *
+    85	 * The status is **set rather than exited**, so `main` still resolves and the help still reaches the
+    86	 * terminal: `die` and `failSoftly` are two mechanisms and this is the second (Q-0090 AC-5).
+    87	 *
+    88	 * Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08),
+    89	 * which changed this one and ratified the two beside it.
+    90	 */
+    91	/**
+    92	 * Whether this invocation asked for the help it is about to get, rather than tripping into it.
+    93	 *
+    94	 * Read off the raw argv rather than off `flags`, because `parseArgv` recognises only `--` forms
+    95	 * (`argv.ts:53`) and `-h` therefore arrives as a positional. Teaching the parser single-dash flags
+    96	 * would change every command's argument handling to settle one word here.
+    97	 */
+    98	const askedForHelp = (argv: readonly string[]): boolean =>
+    99	  argv.some((token) => token === '--help' || token === '-h');
+   100	
+   101	export async function main(argv: readonly string[]): Promise<void> {
+   102	  const parsed = parseArgv(argv);
+   103	  const { cmd } = parsed;
+   104	  if (cmd !== undefined && isCommand(cmd)) {
+   105	    await HANDLERS[cmd](parsed);
+   106	    return;
+   107	  }
+   108	  console.log(HELP);
+   109	  if (!askedForHelp(argv)) failSoftly();
+   110	}
+     1	# What an exit code may claim, and the three zeros it was asked about — 2026-09-08
+     2	
+     3	**Decision:** an exit code reports **what became of the command**, and `SUCCESS` is reserved for a
+     4	command that did what it was asked. Q-0110 inherited three zeros from Q-0090's gate obligation GA-4
+     5	and asked which of the five codes each should take. **Two of the three are correct as they stand and
+     6	are ratified rather than repaired; one is wrong and changes.** No sixth code is invented — the
+     7	`ExitCode` union is closed at 0, 1, 2, 3, 130, and this entry does not widen it.
+     8	
+     9	**(a) An unknown or absent command exits `ERROR`, and `help` goes on exiting `SUCCESS`.** This is
+    10	the one that changes. `SUCCESS`'s own definition is *"The command did what it was asked"*: a name
+    11	this binary does not dispatch was not done, and a bare invocation asked for nothing. Both print the
+    12	help, both then exit 1, and the line between them and `quorum help` is **help on purpose is success;
+    13	help by accident is not**. The concrete failure is Q-0090's own, in its words — *"a shell script
+    14	cannot tell 'did the thing' from 'did not understand you'"* — and a typo in a pipeline is the case
+    15	that costs something, because it passes silently today.
+    16	
+    17	**(b) `regressed` goes on exiting `SUCCESS`, ruled rather than fallen-through.** Q-0090 registered
+    18	this as a defect because nobody had decided it: `spike/bin/harness.js:557` named only `aborted` and
+    19	`undecided`, so `regressed` reached a fallthrough. It was right that no one had chosen and wrong
+    20	that the value was wrong.
+    21	
+    22	**An exit code here reports a run's disposition, not its verdict.** `regressed` is what a cross-flow
+    23	backward edge produces (`engine.ts:336`): the flow ran to a terminal state, the ticket's stage moved
+    24	to the target flow's `consumes`, and the branch it proved was kept. `core` already groups it with
+    25	`completed` in three places — `advancesStage` (`lifecycle.ts:22`), the `finished` predicate that
+    26	decides rollback, and `02-sdlc-pipeline-spec.md`'s *"only `completed` and `regressed` move the
+    27	stage"*. A CLI that exited non-zero for one of the two stage-moving statuses would put the exit
+    28	table out of step with the engine's own model of what a finished run is, in a file whose stated
+    29	purpose is that *"the meanings are owned here rather than re-decided by each command"*.
+    30	
+    31	The cost is stated rather than hidden: a caller cannot tell an approved review from a regressed one
+    32	by the exit code, and must read the terminal event, which carries the status by name. That is what
+    33	the event stream is for, and a review returning `revise` is the flow working rather than failing —
+    34	teaching a reader that a normal outcome prints a failure is how an oracle stops being read at all.
+    35	
+    36	**(c) `quorum adapters` goes on exiting `SUCCESS` with nothing installed; `--probe` exits `ERROR`
+    37	when a login is not usable.** One command, two contracts, because it answers two questions — the
+    38	shape `git diff` and `git diff --exit-code` already have.
+    39	
+    40	The product says which is which, in the command's own output: without `--probe` it prints
+    41	*"presence only — logins NOT verified; run `quorum adapters --probe` before a real run"*. A command
+    42	that disclaims being the gate is a **report**, and this CLI's reports — `board`, `runs` — exit 0
+    43	over an empty backlog and an empty run store alike. `--probe` is the **check**, and this CLI's
+    44	checks — `lint`, `validate` — exit 1 when the answer is no. *"check() proves presence; only
+    45	`adapters --probe` proves login"* (2026-08-22) drew that line before either command existed; this
+    46	entry gives it an exit code.
+    47	
+    48	So the zero Q-0099 preserved at AC-8(c) was the *presence* path and is correct. What was never
+    49	decided is the probe's, and a probe that reports an unusable login while exiting 0 is the failure
+    50	that decision exists to prevent — two green ticks followed by a vendor stack trace, one command
+    51	earlier.
+    52	
+    53	**Alternatives considered.** *`regressed` → `ERROR`* — the reading Q-0110's body assumed, and the
+    54	one a pipeline argument supports: `quorum run review X && quorum run qa-final X` would chain past a
+    55	regression. Rejected because the second command refuses on its stage precondition anyway, so the
+    56	damage is contained, and because `failed` already holds 1 — collapsing the two would tell a caller
+    57	that a run which broke and a run which did its job are the same thing. *A sixth code for
+    58	"finished, verdict negative"* — rejected: `ExitCode` is closed deliberately so a sixth cannot be
+    59	written by accident, and widening it for one status trades a real guarantee for a distinction the
+    60	terminal event already carries. *Bare `adapters` → `ERROR` with nothing installed* — rejected on the
+    61	command's own disclaimer, and because it would make the only machine-readable inventory of what is
+    62	installed unusable from a script that has to tolerate a missing vendor.
+    63	
+    64	**Why.** GA-4 said *"open the successor for the exit table's two zeros"* and no ticket was ever
+    65	created; Q-0110 was opened 2026-09-07 when a triage found it, and it is one zero wider than GA-4
+    66	named because Q-0099 routed a third to it from a source comment. Deciding the three together is the
+    67	point — each was preserved by a different ticket for a different reason, and none of those tickets
+    68	was in a position to say what 0 means. This entry says it once so the next command inherits an
+    69	answer rather than a fallthrough.
+    50	    return loadProject(project as string | undefined);
+    51	  } catch (error) {
+    52	    if (!(error instanceof ProjectNotFoundError)) throw error;
+    53	    return dieNoProject(error.message);
+    54	  }
+    55	}
+    56	
+    57	/**
+    58	 * The two vendors, in the order the spike reports them.
+    59	 *
+    60	 * `mock` is deliberately absent: it is an adapter a flow may select and not a subscription anybody
+    61	 * has, so reporting it would say a login is fine that nobody logged into.
+    62	 */
+    63	const VENDORS = ['claude', 'codex'];
+    64	
+    65	/**
+    66	 * The machine-readable report, one entry per vendor, in the key order the spike writes it.
+    67	 *
+    68	 * `Record<string, unknown>` rather than a union, because the probe's own result is **spread last**
+    69	 * and `--json`'s shape is that object as it stands: a declared shape here would be a second
+    70	 * description of `ProbeResult` that could drift from it. Preserved key for key, spread included
+    71	 * (Q-0099 AC-7(5)).
+    72	 */
+    73	type Report = Record<string, unknown>[];
+    74	
+    75	/** Report which vendor CLIs are installed, and with `--probe` whether each login answers. */
+    76	export const adapters: CommandHandler = async ({ flags }) => {
+    77	  const { config, repoDir } = projectOf(flags.project);
+    78	  // Both read as truthiness, which is what `argv.ts` leaves them as: a flag given no value is the
+    79	  // boolean `true` and one given a value is that token, so `--probe` and `--probe x` behave alike.
+    80	  const probe = Boolean(flags.probe);
+    81	  const asJson = Boolean(flags.json);
+    82	  const report: Report = [];
+    83	  for (const name of VENDORS) {
+    84	    const adapter = getAdapter(name, config.adapters);
+    85	    let version: string;
+    86	    try {
+    87	      version = await adapter.check();
+    88	      console.log(`${c.green('✓')} ${name}: ${version}`);
+    89	    } catch (error) {
+    90	      // The loop continues: one absent CLI is not a reason to stop reporting the other, which is
+    91	      // the whole of what an adopter is running this to find out. The message is the adapter's own,
+    92	      // rendered unaltered — including the BYOS refusal, which is Q-0068's sentence and not this
+    93	      // module's to rewrite on the way through.
+    94	      console.log(`${c.red('✗')} ${name}: ${(error as Error).message}`);
+    95	      report.push({ adapter: name, installed: false, error: (error as Error).message });
+    96	      continue;
+    97	    }
+    98	
+    99	    if (!probe) {
+   100	      report.push({ adapter: name, installed: true, version, login: 'unverified' });
+   101	      continue;
+   102	    }
+   103	    // check() only proves the binary exists. Only a real request proves the subscription answers.
+   104	    const result = await probeAdapter(adapter, { cwd: repoDir });
+   105	    if (result.ok) {
+   106	      const cost = result.cost_usd != null ? `, $${result.cost_usd.toFixed(4)}` : '';
+   107	      const tokens = result.tokens ? `, ${String(result.tokens)} tokens` : '';
+   108	      console.log(`  ${c.green('✓')}${c.dim(` login verified — round-trip ${String(result.ms)}ms${cost}${tokens}`)}`);
+   109	    } else {
+   110	      console.log(`  ${c.red('✗')} ${c.bold('login not usable')}: ${result.error}`);
+   111	    }
+   112	    report.push({ adapter: name, installed: true, version, login: result.ok ? 'verified' : 'failed', ...result });
+   113	  }
+   114	  if (!probe) console.log(c.dim('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run'));
+   115	  // After the human lines rather than instead of them: `--json` is a combined stream in the spike
+   116	  // and a consumer piping it gets both. Redefining it as JSON-only is a contract change.
+   117	  if (asJson) console.log(JSON.stringify({ probed: probe, adapters: report }, null, 2));
+   118	  // `--probe` is the check and the presence listing is the report, so only the first answers with a
+   119	  // status. Set rather than thrown, so the listing and the `--json` above still reach the terminal.
+   120	  // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
+   121	  if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();
+   122	};
+
+[35m[3mexec[0m[0m
+[1m/bin/zsh -lc "nl -ba packages/core/src/engine/lifecycle.ts | sed -n '1,155p'; nl -ba docs/decisions/076-a-run-that-nobody-answered-is-undecided.md | sed -n '20,65p'; nl -ba packages/cli/src/main.test.ts | sed -n '15,155p'; nl -ba packages/cli/src/exit.ts | sed -n '1,75p'"[0m in /Users/ruudvanengelenhoven/Development/quorum
+[32m succeeded in 0ms:[0m
+     1	/**
+     2	 * Terminal persistence, ticket history, and what a run leaves behind: the branch rollback and the
+     3	 * worktree cleanup, which are two independent questions ({@link restoresBranch},
+     4	 * {@link returnsWorktrees}) that no status answers both ways.
+     5	 */
+     6	import type { Event, TicketHistoryEntry } from '@quorum/shared';
+     7	
+     8	import { FlowError, type LifecycleContext, type RegressionFields, type RunOutcome, type RunStatus } from './types.js';
+     9	
+    10	const round = (value: number): number => Math.round(value * 1000) / 1000;
+    11	
+    12	/**
+    13	 * Whether the run did what it set out to do, and may therefore move the ticket's stage.
+    14	 *
+    15	 * One of three questions that used to be one predicate, `finished`. The worktree return and the
+    16	 * branch rollback were its two arms and were mutually exclusive by construction, so "keep the
+    17	 * worktrees *and* leave the branch alone" could not be said however the predicate was widened —
+    18	 * and that combination is exactly what a gate nobody answered wants. The property the single
+    19	 * predicate bought survives as an invariant a test asserts rather than as an `if`/`else`: no status
+    20	 * both returns its worktrees and restores its branch. See Q-0040.
+    21	 */
+    22	const advancesStage = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+    23	
+    24	/**
+    25	 * Whether the run gives back the worktrees it obtained.
+    26	 *
+    27	 * A run that stopped keeps every one of them, because the directory it stopped in is the thing
+    28	 * somebody is about to open. See Q-0062.
+    29	 */
+    30	const returnsWorktrees = (status: RunStatus): boolean => status === 'completed' || status === 'regressed';
+    31	
+    32	/**
+    33	 * Whether the run puts the ticket branch back where it found it.
+    34	 *
+    35	 * `integrate` merges before anyone knows the outcome, so a run that failed, aborted or was
+    36	 * interrupted must not leave those merges behind (Q-0033). `undecided` is the one non-advancing
+    37	 * status that does not restore: nothing was proved wrong, so the work the run had already proven
+    38	 * green is the work it keeps.
+    39	 */
+    40	const restoresBranch = (status: RunStatus): boolean =>
+    41	  status === 'aborted' || status === 'failed' || status === 'interrupted';
+    42	
+    43	/** The first four of `paths`, marked when there are more — the shape a discarded-edit warning uses. */
+    44	const sample = (paths: readonly string[]): string =>
+    45	  `${paths.slice(0, 4).join(', ')}${paths.length > 4 ? ', …' : ''}`;
+    46	
+    47	/** git's own first line of stderr, or the thrown message when it carried none, truncated. */
+    48	function gitReason(error: unknown): string {
+    49	  const property = (key: 'stderr' | 'message'): string =>
+    50	    typeof error === 'object' && error !== null && key in error
+    51	      ? String((error as Record<string, unknown>)[key] ?? '')
+    52	      : '';
+    53	  const line = [property('stderr'), property('message')]
+    54	    .flatMap((text) => text.split('\n')).map((text) => text.trim()).find(Boolean);
+    55	  return line === undefined ? 'git reported no reason' : line.slice(0, 200);
+    56	}
+    57	
+    58	/**
+    59	 * Give back the worktrees this run obtained, and say what was given back and what was not.
+    60	 *
+    61	 * A worktree holding anything uncommitted is kept and its paths are named: removal runs
+    62	 * `git worktree remove --force`, which discards untracked and modified content, and a delete that
+    63	 * takes a decision on somebody's behalf must at least say it took one.
+    64	 *
+    65	 * Each worktree is guarded on its own, so a directory that cannot be read or removed costs one
+    66	 * `warn` and nothing more. A run that has otherwise completed keeps the status, the stage
+    67	 * transition, the manifest, the history entry, the terminal event and the exit code it had already
+    68	 * earned — a throw from here would corrupt the terminal record of a run that succeeded.
+    69	 *
+    70	 * See Q-0062, and *"A run removes the worktrees it made, and never the refs"* (2026-08-31).
+    71	 */
+    72	function returnObtainedWorktrees(context: LifecycleContext): void {
+    73	  const obtained = context.worktrees === undefined ? [] : [...context.worktrees];
+    74	  if (obtained.length === 0) return;
+    75	  let removed = 0;
+    76	  let kept = 0;
+    77	  for (const [branch, dir] of obtained) {
+    78	    let changes: string[];
+    79	    try {
+    80	      changes = context.readWorktreeChanges(dir);
+    81	    } catch (error) {
+    82	      // Not established is not clean. Two catches rather than one, so each warning says which of
+    83	      // the two questions git declined to answer.
+    84	      kept += 1;
+    85	      context.emit({ type: 'warn', message: `${branch}: worktree kept — could not read ${dir}: ${gitReason(error)}` });
+    86	      continue;
+    87	    }
+    88	    if (changes.length > 0) {
+    89	      kept += 1;
+    90	      context.emit({ type: 'warn', message: `${branch}: worktree kept — ${dir} holds uncommitted content: ${sample(changes)}` });
+    91	      continue;
+    92	    }
+    93	    try {
+    94	      context.removeWorktree(context.repoDir, branch);
+    95	      removed += 1;
+    96	      context.emit({ type: 'info', message: `${branch}: worktree removed — ${dir}` });
+    97	    } catch (error) {
+    98	      kept += 1;
+    99	      context.emit({ type: 'warn', message: `${branch}: worktree kept — could not remove ${dir}: ${gitReason(error)}` });
+   100	    }
+   101	  }
+   102	  // The run's own number, which its `start` line already carries, so the maximum `nextRunId` reads
+   103	  // out of runs.log is where it was. A line carrying any other number moves the next run's id.
+   104	  context.persistence.appendLog(context.ticket, `run=${context.runId} removed-worktrees=${removed} kept=${kept}`);
+   105	}
+   106	
+   107	/** Persist one terminal state, applying its stage rule and restoring the branch when required. */
+   108	export async function finish(
+   109	  context: LifecycleContext,
+   110	  stage: string,
+   111	  status: RunStatus,
+   112	  note: string | null,
+   113	  fields?: RegressionFields,
+   114	): Promise<RunOutcome> {
+   115	  const { ticket, persistence } = context;
+   116	  const before = ticket.meta.stage;
+   117	
+   118	  // Why: preserved defect, see Q-0050 AC-10. (the in-memory ticket advances even under dry)
+   119	  ticket.meta.iterations = context.counters;
+   120	  // `stage` is a plain string on the contracted signature, which is the spike's own shape:
+   121	  // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.
+   122	  if (advancesStage(status)) ticket.meta.stage = stage as typeof ticket.meta.stage;
+   123	  const after = ticket.meta.stage;
+   124	  persistence.finaliseManifest(status, after);
+   125	  // Here, not after `finish` returns — spike/src/engine.js:625-632. Everything below emits or
+   126	  // writes, and `replaceManifest`'s failure warns through the stream, so finalising later puts that
+   127	  // warning behind the terminal event and leaves a window in which a consumer acting on `completed`
+   128	  // reads a manifest still saying `running`.
+   129	  const roundedCost = round(context.stats.cost);
+   130	  ticket.meta.history = [...(ticket.meta.history ?? []), outcome(context, before, after, status, roundedCost)];
+   131	
+   132	  if (!context.dry) {
+   133	    if (returnsWorktrees(status)) {
+   134	      returnObtainedWorktrees(context);
+   135	    }
+   136	    if (restoresBranch(status) && context.branchHeadAtStart) {
+   137	      // Why: preserved defect, see Q-0050 AC-12.
+   138	      const current = context.readBranchHead(context.repoDir, ticket.meta.branch);
+   139	      if (current && current !== context.branchHeadAtStart) {
+   140	        context.resetBranch(context.repoDir, ticket.meta.branch, context.branchHeadAtStart);
+   141	        context.emit({
+   142	          type: 'warn',
+   143	          message: `${ticket.meta.branch}: rolled back to ${context.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`,
+   144	        });
+   145	        persistence.appendLog(ticket, `run=${context.runId} rolled-back branch=${ticket.meta.branch} from=${current.slice(0, 7)} to=${context.branchHeadAtStart.slice(0, 7)}`);
+   146	      }
+   147	    }
+   148	  }
+   149	
+   150	  persistence.writeTicket(ticket);
+   151	  persistence.appendLog(ticket, `run=${context.runId} ${status} stage=${before}→${after} cost=${roundedCost} tokens=${context.stats.tokens}${note ? ` error=${JSON.stringify(note)}` : ''}`);
+   152	  const unpricedSuffix = context.stats.unpriced
+   153	    ? `  (+${context.stats.unpriced} unpriced step${context.stats.unpriced > 1 ? 's' : ''} — vendor reports no price)`
+   154	    : '';
+   155	  context.emit({ type: 'info', message: `run #${context.runId} ${status}: ${before} → ${after}   cost $${roundedCost}  tokens ${context.stats.tokens}${unpricedSuffix}` });
+    20	   words of their message, so a classifier keyed on prose would be a check that cannot see its own
+    21	   subject. **An abort keeps precedence**: `signal.aborted` is tested before the `instanceof`, so an
+    22	   abort arriving during an unanswered gate is `interrupted` — the abort is a decision and the
+    23	   missing answer is not.
+    24	4. **An undecided run completes its event stream rather than throwing.** Both trees currently
+    25	   `finish()` and re-throw; under this decision a `GateUnansweredError` finishes the run, emits its
+    26	   `terminal` event, and does not propagate, because nothing failed.
+    27	5. **`finished()` is replaced by three named predicates** — `advancesStage`, `returnsWorktrees`,
+    28	   `restoresBranch` — and the `if`/`else` that made worktree-return and branch-rollback mutually
+    29	   exclusive becomes two independent `if`s. `undecided` is the only status that takes neither arm,
+    30	   and under the old shape that combination was **unsayable**, which is why this is a structural
+    31	   change and not a new enum member.
+    32	
+    33	   | status | advances the stage | returns worktrees | restores the branch |
+    34	   | --- | --- | --- | --- |
+    35	   | `completed` | yes | yes | no |
+    36	   | `regressed` | yes | yes | no |
+    37	   | `aborted` | no | no | yes |
+    38	   | `failed` | no | no | yes |
+    39	   | `interrupted` | no | no | yes |
+    40	   | `undecided` | no | no | **no** |
+    41	
+    42	6. **`undecided` is terminal, not suspended, and the CLI exits 3.** The run is over; nothing is held
+    43	   open and nothing is resumable by this decision alone. The word is available to Q-0019 if M3's
+    44	   resume wants it, and taking it would be that ticket's decision, not this one's. Exit 3 because 0,
+    45	   1, 2 and 130 are all taken — 2 is `aborted`, so reusing it would lose exactly the distinction
+    46	   this decision exists to draw. `--auto` cannot produce `undecided`: it answers every gate it is
+    47	   allowed to, and a `human-locked` gate it may not answer has no channel, so it reaches the same
+    48	   three sites as any other unattended run and is undecided for the same reason.
+    49	
+    50	`interrupted` **keeps** restoring the branch. It arrives at an arbitrary point — mid-step, mid-merge
+    51	— whereas an unanswered gate is reached at a quiescent point where the preceding step has completed
+    52	and persisted everything. Keeping the branch is safe there and is not safe for an interrupt.
+    53	
+    54	**Alternatives considered:** **A third member of `finished()`.** Rejected on measurement: returning
+    55	worktrees and restoring the branch are the two arms of one `if`/`else`
+    56	(`spike/src/engine.js:748–750`, `packages/core/src/engine/lifecycle.ts:112`), so a status wanting
+    57	one arm's answer from each cannot be expressed however the predicate is widened. This is the case
+    58	that tests *"A run removes the worktrees it made, and never the refs"* (2026-08-31), whose entry
+    59	calls the single predicate a feature; the feature holds for the five statuses that existed and
+    60	breaks on the sixth. **Making `undecided` a gate answer** — rejected because it would invent a
+    61	decision at the gate, which *"Non-auto exhaustion gates require an explicit human or scripted
+    62	answer"* (2026-08-23) forbids; a run status asserts only that nobody spoke. **Classifying by message
+    63	text** — rejected as the defect class this repository keeps finding. **Exit code 2** — rejected by
+    64	census: it is already `aborted`. **Not restoring the branch for `failed` too** — rejected: an
+    65	operator error is an error, and the rollback exists because an exhausted run once left `integrate`'s
+    15	import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+    16	
+    17	import { parseArgv, type ParsedArgv } from './argv.js';
+    18	import { COMMANDS, HELP } from './commands.js';
+    19	import { ERROR, SUCCESS } from './exit.js';
+    20	import { HANDLERS, main } from './main.js';
+    21	
+    22	/** The four shapes AC-6 names — the ones that must print the help and leave the status at 0. */
+    23	const INVOCATIONS: readonly (readonly string[])[] = [
+    24	  [],
+    25	  ['--help'],
+    26	  ['nonsense'],
+    27	  ['--', '-x', '--gate-answer', '--adapter'],
+    28	];
+    29	
+    30	/** Of those, the ones that ASKED for the help they get — Q-0110's line, and the only ones still 0. */
+    31	const ASKED_FOR_HELP: readonly (readonly string[])[] = [['--help'], ['-h']];
+    32	
+    33	/** And the ones that tripped into it: no command this binary dispatches, so the status is ERROR. */
+    34	const TRIPPED: readonly (readonly string[])[] = [
+    35	  [],
+    36	  ['nonsense'],
+    37	  ['--', '-x', '--gate-answer', '--adapter'],
+    38	];
+    39	
+    40	/**
+    41	 * Every shape AC-8's byte-identical-tree snapshot drives, which is the four above plus one real
+    42	 * invocation of the read-only commands this file can run unmocked.
+    43	 *
+    44	 * **Split from {@link INVOCATIONS} by Q-0091 rather than grown in place**: that list is also AC-6's
+    45	 * subject, and `quorum lint` neither prints the help nor is meant to. What AC-8 claims is that a
+    46	 * command introduced no write path, and the cheapest available proof of it is that the tree is
+    47	 * unchanged afterwards. Q-0093's `init` and `ticket` write by design and belong to a different
+    48	 * claim, not to a widening of this one.
+    49	 *
+    50	 * **It said "the list grows with each read-only command as it lands" until Q-0099, and that was
+    51	 * already false** — `runs` is a read and has never been here. What the list actually holds is the
+    52	 * read-only commands whose claim survives being run against the real `@quorum/core`. Two are outside
+    53	 * it, for two different reasons, which is why the promise is replaced by the rule rather than by a
+    54	 * longer list.
+    55	 *
+    56	 * **`adapters` is outside it by decision** (Q-0099 AC-9, merged.md OQ-2). Putting it here would
+    57	 * force `vi.mock('@quorum/core')` into the one file whose whole claim is a snapshot around
+    58	 * **unmocked** commands — the guard would then be proving that a stub writes no files, weakening
+    59	 * `lint` and `validate` to strengthen nothing — and an unmocked `adapters` would spawn a real vendor
+    60	 * CLI, whose presence is a property of the machine. It takes the same two-half snapshot in
+    61	 * `adapters.test.ts` instead, around a file-local stub.
+    62	 *
+    63	 * **`runs` is outside it by omission, and still is.** Nothing snapshots that command — not here and
+    64	 * not in `runs.test.ts`, which carries no tree-and-refs comparison at all. Q-0099 measured that and
+    65	 * records it as owed rather than closing it, because a sentence promising a growing list is what
+    66	 * made the gap invisible; naming it is the fix this ticket makes, and the register is a successor's.
+    67	 */
+    68	const READ_ONLY: readonly (readonly string[])[] = [
+    69	  ...INVOCATIONS,
+    70	  ['help'],
+    71	  ['board'],
+    72	  ['lint'],
+    73	  ['validate', 'contract.schema.json', 'artifact.json'],
+    74	];
+    75	
+    76	/** A stream that keeps what is written to it. */
+    77	const sink = (): { text: () => string; stream: Writable } => {
+    78	  let text = '';
+    79	  const stream = new Writable({
+    80	    write(chunk: unknown, _encoding: unknown, done: () => void) {
+    81	      text += String(chunk);
+    82	      done();
+    83	    },
+    84	  });
+    85	  return { text: () => text, stream };
+    86	};
+    87	
+    88	/**
+    89	 * Run `main` with the global console bound to streams this test owns, returning what reached each
+    90	 * of them and the exit status the call left behind.
+    91	 *
+    92	 * A real `node:console` over two streams rather than a spy on `console.log`, for the reason
+    93	 * `fail.test.ts` gives: it is the stream that is being claimed, and Vitest routes console output
+    94	 * through its own interception.
+    95	 */
+    96	async function invoke(argv: readonly string[]): Promise<{ stdout: string; stderr: string; exitCode: unknown }> {
+    97	  const out = sink();
+    98	  const err = sink();
+    99	  const saved = globalThis.console;
+   100	  globalThis.console = new Console({ stdout: out.stream, stderr: err.stream });
+   101	  try {
+   102	    await main(argv);
+   103	    return { stdout: out.text(), stderr: err.text(), exitCode: process.exitCode };
+   104	  } finally {
+   105	    globalThis.console = saved;
+   106	  }
+   107	}
+   108	
+   109	afterEach(() => {
+   110	  vi.restoreAllMocks();
+   111	  process.exitCode = undefined;
+   112	});
+   113	
+   114	describe('AC-6, as Q-0110 ruled it — every route prints the help; only the ones that asked exit 0', () => {
+   115	  test.each(INVOCATIONS)('quorum %j prints the help, on stdout, whatever its status', async (...argv) => {
+   116	    // The half that did not move: every one of these prints the same text to stdout, because the
+   117	    // help is a service and not an error however the reader arrived at it. What Q-0110 changed is
+   118	    // the status beside it, asserted separately below so each can fail on its own.
+   119	    const { stdout, stderr } = await invoke(argv);
+   120	    expect(stdout.trim(), 'nothing was printed').not.toBe('');
+   121	    expect(stdout).toContain(HELP);
+   122	    expect(stderr, 'the help is not an error, so it goes to stdout').toBe('');
+   123	  });
+   124	
+   125	  test.each(TRIPPED)('quorum %j tripped into the help, so the status is ERROR', async (...argv) => {
+   126	    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
+   127	    // Q-0090 registered this zero and left it: a shell script could not tell "did the thing" from
+   128	    // "did not understand you". SUCCESS is for a command that did what it was asked, and no command
+   129	    // this binary dispatches was named here.
+   130	    expect((await invoke(argv)).exitCode).toBe(ERROR);
+   131	  });
+   132	
+   133	  test.each(ASKED_FOR_HELP)('quorum %j asked for the help, so the status is SUCCESS', async (...argv) => {
+   134	    // The line the ruling draws, and the reason it is drawn here rather than at the `help` command
+   135	    // alone: `--help` is how a stranger asks, and answering it is the command doing what it was
+   136	    // asked. A ruling that exited 1 on `--help` would be teaching the wrong lesson to the one
+   137	    // reader the cold-clone test is about.
+   138	    const { stdout, exitCode } = await invoke(argv);
+   139	    expect(stdout).toContain(HELP);
+   140	    expect(exitCode ?? SUCCESS).toBe(SUCCESS);
+   141	  });
+   142	
+   143	  test('and the one registered command prints the same text', async () => {
+   144	    const { stdout, exitCode } = await invoke(['help']);
+   145	    expect(stdout).toContain(HELP);
+   146	    expect(exitCode ?? SUCCESS).toBe(SUCCESS);
+   147	  });
+   148	
+   149	  test('main resolves rather than exiting, which is what makes the status observable', async () => {
+   150	    // A `main` returning a code would be spent as `process.exit(main(argv))`, and that call
+   151	    // overrides `process.exitCode` — collapsing the two mechanisms AC-5 keeps apart.
+   152	    const exit = vi.spyOn(process, 'exit').mockImplementation((): never => {
+   153	      throw new Error('the frame must not call process.exit');
+   154	    });
+   155	    await invoke([]);
+     1	/**
+     2	 * Every status this CLI can exit with, in one place, plus the map from a run's terminal status to
+     3	 * the code that reports it.
+     4	 *
+     5	 * The spike decides these in nine places — `die` at `spike/bin/harness.js:124`, the two
+     6	 * `process.exit(ok ? 0 : 1)` pairs at `:404` and `:460`, the lint preflight at `:548`, the
+     7	 * three-way expression at `:557`, four `process.exitCode = 1` assignments on the `runs` paths, and
+     8	 * the engine's own `process.exit(130)` at `spike/src/engine.js:111`. A shell script wrapping
+     9	 * `quorum run` reads one number and has to be told what it means, so the meanings are owned here
+    10	 * rather than re-decided by each command as it is ported.
+    11	 */
+    12	import type { RunTerminalEvent } from '@quorum/shared';
+    13	
+    14	/** The command did what it was asked, and a run that finished did not abort. */
+    15	export const SUCCESS = 0;
+    16	
+    17	/** Something went wrong: a bad argument, a missing project, an unreadable file, a failed run. */
+    18	export const ERROR = 1;
+    19	
+    20	/** A human was there and chose to stop the run. */
+    21	export const ABORTED = 2;
+    22	
+    23	/**
+    24	 * Nobody was there: the run reached a gate for which no answer was available.
+    25	 *
+    26	 * Distinct from {@link ERROR} on purpose — somebody who supplied a word that is not an answer *was*
+    27	 * there, and that stays an error. See Q-0040, and "A run nobody answered is undecided, and keeps
+    28	 * the branch it proved" (2026-09-01).
+    29	 */
+    30	export const UNDECIDED = 3;
+    31	
+    32	/**
+    33	 * The run was interrupted by a signal, reported as the shell convention 128 + SIGINT.
+    34	 *
+    35	 * A row of this table and nothing more: `core` installs no signal handler (Q-0050 AC-5), and the
+    36	 * handler that produces this code is Q-0094's to place. See Q-0090 AC-4(d).
+    37	 */
+    38	export const SIGNAL = 130;
+    39	
+    40	/** Every code this CLI is allowed to exit with, so a sixth one cannot be written by accident. */
+    41	export type ExitCode =
+    42	  | typeof SUCCESS
+    43	  | typeof ERROR
+    44	  | typeof ABORTED
+    45	  | typeof UNDECIDED
+    46	  | typeof SIGNAL;
+    47	
+    48	/**
+    49	 * What each terminal run status exits with.
+    50	 *
+    51	 * Keyed by `RunTerminalEvent['status']` so a seventh status added to `@quorum/shared`'s terminal
+    52	 * event fails to compile here rather than falling through to {@link SUCCESS} — which is exactly how
+    53	 * `regressed` came to share `completed`'s code. `packages/shared`'s union is the authority and this
+    54	 * is a reader of it; `exit.test.ts` derives the key set from that schema rather than transcribing
+    55	 * it.
+    56	 */
+    57	export const EXIT_CODE_FOR_STATUS: Readonly<Record<RunTerminalEvent['status'], ExitCode>> = {
+    58	  completed: SUCCESS,
+    59	  // Why: preserved defect, see Q-0090 AC-4(c). `spike/bin/harness.js:557` names only `aborted` and
+    60	  // `undecided`, so `regressed` reaches the fallthrough and reports success. Registered rather than
+    61	  // fixed, and routed to Q-0090's GA-4 successor together with the unknown-command zero.
+    62	  regressed: SUCCESS,
+    63	  aborted: ABORTED,
+    64	  undecided: UNDECIDED,
+    65	  failed: ERROR,
+    66	  interrupted: SIGNAL,
+    67	};
+
+[35m[3mcodex[0m[0m
+major `packages/cli/src/main.ts:98` — `askedForHelp` treats `--help` or `-h` anywhere in raw argv as an intentional help request. Consequently, an unknown command such as `quorum nonsense --help` prints help and exits 0, contradicting the decision that an undispatched name is `ERROR`; tokens consumed as another flag’s value can also trigger success. Determine help status from the parsed command/argument shape and add mixed unknown-command/help test cases.
+
+major `docs/decisions/083-what-an-exit-code-may-claim.md:25` — The entry claims that core still has a `finished` predicate that decides rollback, but decision 076 replaced it with `advancesStage`, `returnsWorktrees`, and `restoresBranch`; current `lifecycle.ts` has no `finished` predicate, and rollback explicitly excludes `regressed`. This contradicts an existing decision and misstates one of the three cited foundations for ruling `regressed` successful. Update the rationale to cite the actual `returnsWorktrees` grouping and describe rollback accurately.
+[2mtokens used[0m
+36,701
+major `packages/cli/src/main.ts:98` — `askedForHelp` treats `--help` or `-h` anywhere in raw argv as an intentional help request. Consequently, an unknown command such as `quorum nonsense --help` prints help and exits 0, contradicting the decision that an undispatched name is `ERROR`; tokens consumed as another flag’s value can also trigger success. Determine help status from the parsed command/argument shape and add mixed unknown-command/help test cases.
+
+major `docs/decisions/083-what-an-exit-code-may-claim.md:25` — The entry claims that core still has a `finished` predicate that decides rollback, but decision 076 replaced it with `advancesStage`, `returnsWorktrees`, and `restoresBranch`; current `lifecycle.ts` has no `finished` predicate, and rollback explicitly excludes `regressed`. This contradicts an existing decision and misstates one of the three cited foundations for ruling `regressed` successful. Update the rationale to cite the actual `returnsWorktrees` grouping and describe rollback accurately.

@@ -15,13 +15,15 @@
  * the *product* a harness, which is Q-0068's and is preserved verbatim (Q-0099 AC-8(a)). The notice
  * below names the *binary*, and that class was ruled by Q-0100: it is `quorum`.
  *
- * **Two preserved defects reach this command and neither is repaired here** (ground rule 3):
+ * **This command answers two questions and reports a status for one of them.** Without `--probe` it
+ * is a report and exits 0 whatever it finds, including a machine with no vendor CLI at all — its
+ * own last line disclaims being the gate. With `--probe` it is a check, and a login that is not
+ * usable is ERROR. Why: see *"What an exit code may claim, and the three zeros it was asked about"*
+ * (2026-09-08), which ratified the first and changed the second.
  *
- * 1. *It exits 0 even when both CLIs are absent.* `spike/bin/harness.js:424` returns, so an
- *    adopter's CI step running `quorum adapters` reports success on a machine with no vendor CLI at
- *    all. Why: preserved defect, see Q-0099 AC-8(c); the successor is Q-0090's GA-4, which carries
- *    the unknown-command zero for the same reason.
- * 2. *`probeAdapter` dereferences a null `usage`*, so an adapter whose login is perfect and which
+ * **One preserved defect reaches this command and is not repaired here** (ground rule 3):
+ *
+ * `probeAdapter` dereferences a null `usage`, so an adapter whose login is perfect and which
  *    reports no measure answers `✗ login not usable: Cannot read properties of null`. Why: preserved
  *    defect, see Q-0066, which lands in both trees together — a fix here would leave the spike
  *    disagreeing with `core` until the cutover.
@@ -32,7 +34,7 @@ import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@qu
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
-import { dieNoProject } from './fail.js';
+import { dieNoProject, failSoftly } from './fail.js';
 import type { CommandHandler } from './main.js';
 
 /**
@@ -115,4 +117,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
   // After the human lines rather than instead of them: `--json` is a combined stream in the spike
   // and a consumer piping it gets both. Redefining it as JSON-only is a contract change.
   if (asJson) console.log(JSON.stringify({ probed: probe, adapters: report }, null, 2));
+  // `--probe` is the check and the presence listing is the report, so only the first answers with a
+  // status. Set rather than thrown, so the listing and the `--json` above still reach the terminal.
+  // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
+  if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();
 };

@@ -1,9 +1,10 @@
 /**
- * Q-0090 AC-6 (an unknown or absent command prints help and exits 0) and AC-8's second half (the
- * frame writes nothing anywhere).
+ * Q-0090 AC-6 — an unknown or absent command prints the help — as Q-0110 ruled its status, and
+ * AC-8's second half (the frame writes nothing anywhere).
  *
- * Everything runs in process. `main` returns rather than exiting, so "exits 0" is observed as
- * `process.exitCode` never being set — which is the same claim, made without ending the suite.
+ * Everything runs in process. `main` returns rather than exiting, so a status is observed as
+ * `process.exitCode`, which is the same claim made without ending the suite — and is why the
+ * spawned half of the ruling lives in `build.test.ts`, where a real boundary can carry it.
  */
 import { execFileSync } from 'node:child_process';
 import { Console } from 'node:console';
@@ -16,13 +17,38 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { parseArgv, type ParsedArgv } from './argv.js';
 import { COMMANDS, HELP } from './commands.js';
-import { SUCCESS } from './exit.js';
+import { ERROR, SUCCESS } from './exit.js';
 import { HANDLERS, main } from './main.js';
 
 /** The four shapes AC-6 names — the ones that must print the help and leave the status at 0. */
 const INVOCATIONS: readonly (readonly string[])[] = [
   [],
   ['--help'],
+  ['nonsense'],
+  ['--', '-x', '--gate-answer', '--adapter'],
+];
+
+/** Of those, the ones that ASKED for the help they get — Q-0110's line, and the only ones still 0. */
+const ASKED_FOR_HELP: readonly (readonly string[])[] = [['--help'], ['-h']];
+
+/**
+ * Help asked for BESIDE something this binary does not dispatch, which is not asking for help.
+ *
+ * The hole the first implementation had: a scan of the raw argv called every one of these success,
+ * so `quorum nonsense --help` contradicted the ruling it was written to implement. `--adapter -h`
+ * is the second shape — `parseArgv` consumes `-h` as that flag's value, so no help was requested at
+ * all — and it passes for a different reason, which is why both are here.
+ */
+const HELP_BESIDE_A_NAME: readonly (readonly string[])[] = [
+  ['nonsense', '--help'],
+  ['nonsense', '-h'],
+  ['-h', 'nonsense'],
+  ['--adapter', '-h'],
+];
+
+/** And the ones that tripped into it: no command this binary dispatches, so the status is ERROR. */
+const TRIPPED: readonly (readonly string[])[] = [
+  [],
   ['nonsense'],
   ['--', '-x', '--gate-answer', '--adapter'],
 ];
@@ -101,18 +127,37 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-describe('AC-6 — an unknown or absent command prints help and exits 0', () => {
-  test.each(INVOCATIONS)('quorum %j prints the help and leaves the status at 0', async (...argv) => {
-    // Why: preserved defect, see Q-0090 AC-6. `spike/bin/harness.js:560–562` is a `default:` branch
-    // that prints usage and returns, so `main()` resolves and the process exits 0 — a shell script
-    // cannot tell "did the thing" from "did not understand you". Registered rather than fixed,
-    // because changing it is a behaviour change on the surface a stranger meets first; the
-    // successor is Q-0090's GA-4.
-    const { stdout, stderr, exitCode } = await invoke(argv);
+describe('AC-6, as Q-0110 ruled it — every route prints the help; only the ones that asked exit 0', () => {
+  test.each(INVOCATIONS)('quorum %j prints the help, on stdout, whatever its status', async (...argv) => {
+    // The half that did not move: every one of these prints the same text to stdout, because the
+    // help is a service and not an error however the reader arrived at it. What Q-0110 changed is
+    // the status beside it, asserted separately below so each can fail on its own.
+    const { stdout, stderr } = await invoke(argv);
     expect(stdout.trim(), 'nothing was printed').not.toBe('');
     expect(stdout).toContain(HELP);
     expect(stderr, 'the help is not an error, so it goes to stdout').toBe('');
+  });
+
+  test.each(TRIPPED)('quorum %j tripped into the help, so the status is ERROR', async (...argv) => {
+    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
+    // Q-0090 registered this zero and left it: a shell script could not tell "did the thing" from
+    // "did not understand you". SUCCESS is for a command that did what it was asked, and no command
+    // this binary dispatches was named here.
+    expect((await invoke(argv)).exitCode).toBe(ERROR);
+  });
+
+  test.each(ASKED_FOR_HELP)('quorum %j asked for the help, so the status is SUCCESS', async (...argv) => {
+    // The line the ruling draws, and the reason it is drawn here rather than at the `help` command
+    // alone: `--help` is how a stranger asks, and answering it is the command doing what it was
+    // asked. A ruling that exited 1 on `--help` would be teaching the wrong lesson to the one
+    // reader the cold-clone test is about.
+    const { stdout, exitCode } = await invoke(argv);
+    expect(stdout).toContain(HELP);
     expect(exitCode ?? SUCCESS).toBe(SUCCESS);
+  });
+
+  test.each(HELP_BESIDE_A_NAME)('quorum %j named something undispatched, so help beside it is still ERROR', async (...argv) => {
+    expect((await invoke(argv)).exitCode).toBe(ERROR);
   });
 
   test('and the one registered command prints the same text', async () => {

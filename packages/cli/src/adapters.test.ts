@@ -27,7 +27,7 @@ import path from 'node:path';
 import { getAdapter, probeAdapter } from '@quorum/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { SUCCESS } from './exit.js';
+import { ERROR, SUCCESS } from './exit.js';
 import { invoke, plain, type Invocation } from '../test/invoke.js';
 
 vi.mock('@quorum/core', async (importOriginal) => {
@@ -188,7 +188,7 @@ describe('AC-7 — --probe', () => {
     expect(out(result), 'presence-only was claimed after a probe').not.toContain('presence only');
   });
 
-  test('a failed login is one bold sentence and the command still exits 0', async () => {
+  test('a failed login is one bold sentence, and the probe reports it as ERROR', async () => {
     stub(
       { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
       {
@@ -197,7 +197,11 @@ describe('AC-7 — --probe', () => {
       },
     );
     const result = await run('--probe');
-    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    // Why: see "What an exit code may claim, and the three zeros it was asked about" (2026-09-08).
+    // `--probe` is the check and the presence listing is the report, so only the first answers with
+    // a status. The listing still printed, which is what `failSoftly` buys over `die`.
+    expect(result.exitCode, out(result)).toBe(ERROR);
+    expect(result.hard, 'the listing still reached the terminal').toBe(false);
     expect(out(result).split('\n')[1]).toBe('  ✗ login not usable: login expired — run `claude /login`');
     expect(json(await run('--probe', '--json')).adapters[0]).toMatchObject({
       adapter: 'claude', installed: true, version: '2.1.231', login: 'failed', ok: false,
@@ -297,16 +301,16 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
       .toStrictEqual([sentence, sentence]);
   });
 
-  test('AC-8(c) — it exits 0 with both CLIs absent, which is preserved and not repaired here', async () => {
-    // Why: preserved defect, see Q-0099 AC-8(c). `spike/bin/harness.js:424` returns rather than
-    // reporting a status, so an adopter's CI step running `quorum adapters` reads success on a
-    // machine with no vendor CLI at all. The successor is **Q-0090's GA-4**, which `main.ts:78`
-    // already names for the identical preserved zero on the unknown-command path.
+  test('AC-8(c), as Q-0110 ruled it — the presence listing is a report, so nothing installed is still 0', async () => {
+    // Q-0099 registered this zero as a defect and Q-0110 ruled it correct: without `--probe` this
+    // command answers "what is installed", and it answered. Its own last line disclaims being the
+    // gate, and `--probe` — which IS the check — reports ERROR for an unusable login.
+    // Why: see *"What an exit code may claim, and the three zeros it was asked about"* (2026-09-08).
     stub({ claude: { refusal: 'not installed' }, codex: { refusal: 'not installed' } });
     const result = await run();
     expect(out(result)).toContain('✗ claude: not installed');
     expect(out(result)).toContain('✗ codex: not installed');
-    expect(result.exitCode, 'the zero is the defect, and changing it here would be Q-0090 GA-4\'s job')
+    expect(result.exitCode, 'the presence listing reported a status it does not own')
       .toBe(SUCCESS);
     expect(result.hard, 'nothing died — the command returned').toBe(false);
     expect(json(await run('--json')).adapters.every((entry) => entry.installed === false)).toBe(true);
@@ -331,7 +335,8 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
       },
     );
     const result = await run('--probe');
-    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    // Q-0110 made an unusable login ERROR; the defect this pins is the SENTENCE, which is unchanged.
+    expect(result.exitCode, out(result)).toBe(ERROR);
     expect(out(result).split('\n')[1])
       .toBe("  ✗ login not usable: Cannot read properties of null (reading 'cost_usd')");
   });
