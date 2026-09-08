@@ -3,9 +3,10 @@
  * stream calls the fields the adapter reads. Nothing else — no function, no I/O, no branch, and no
  * selection between versions.
  *
- * Same purpose and same limit as `claude-capabilities.ts`: one file changes when the CLI does, and
- * the **version probe** half of `docs/04-architecture.md`'s sentence is deferred to Q-0067 because a
- * probe is behaviour rather than layout. {@link CODEX_CAPABILITIES.versionArgs} is inert data.
+ * Same purpose and same limit as `claude-capabilities.ts`: one file changes when the CLI does.
+ * {@link CODEX_CAPABILITIES.versionArgs} is what `check()` spawns and
+ * {@link CODEX_CAPABILITIES.verifiedVersion} is the version the two were last verified against
+ * (Q-0067).
  *
  * Deliberately NOT the same shape as claude's module and sharing no interface with it: claude
  * returns one JSON envelope and codex streams JSONL, so a common type would describe neither.
@@ -18,8 +19,16 @@
 export const CODEX_CAPABILITIES = {
   /** The executable, unless `harness.yaml`'s `adapters.codex.bin` names another. */
   bin: 'codex',
-  /** What `check()` spawns to prove the binary runs. Inert data, exactly as claude's is (Q-0067). */
+  /** What `check()` spawns to prove the binary runs. */
   versionArgs: ['--version'],
+  /**
+   * The CLI version the flags and JSONL field names below were last verified against.
+   *
+   * Why: moving it claims a re-verification nobody performed; see *"An adapter records the version
+   * it was verified against, and never a version it supports"* (2026-09-08). Held equal to
+   * `docs/03-adapter-contract.md`'s verification-status line by `capabilities.source.test.ts`.
+   */
+  verifiedVersion: '0.149.0',
   /** Every token a run invocation passes, in the order it passes them. */
   flags: {
     /** The subcommand, not a flag — first argument, and the only one that is positional but for the last. */

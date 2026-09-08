@@ -69,13 +69,25 @@ const importsOf = (text: string): string[] =>
     .map((match) => match[1] ?? match[2] ?? match[3]);
 
 describe('AC-1 — the surface, the folder, the dependencies, and the entry point left alone', () => {
-  test('adapters.ts exports exactly the eight runtime names', () => {
+  test('adapters.ts exports exactly the nine runtime names', () => {
+    // Eight until Q-0067, which added `cliVersion` — the comparison between the version `check()`
+    // returned and the one the adapter records having been verified against. It is here rather than
+    // in a vendor file for the reason `authError` and `probeAdapter` are: a contributor's adapter
+    // inherits it by recording one string. The register is shown red against the value it replaced
+    // rather than edited to fit.
+    expect(Object.keys(adaptersModule).sort(), 'the register still holds the eight it held before Q-0067')
+      .not.toStrictEqual([
+        'PROBE_SCHEMA', 'authError', 'checkAgainstSchema', 'extractJson',
+        'getAdapter', 'probeAdapter', 'transientError', 'withRetry',
+      ]);
     expect(Object.keys(adaptersModule).sort()).toStrictEqual([
-      'PROBE_SCHEMA', 'authError', 'checkAgainstSchema', 'extractJson',
+      'PROBE_SCHEMA', 'authError', 'checkAgainstSchema', 'cliVersion', 'extractJson',
       'getAdapter', 'probeAdapter', 'transientError', 'withRetry',
     ]);
-    // PROBE_PROMPT, TRANSIENT, AUTH_PATTERNS and RELOGIN stay module-private, as in the spike.
+    // PROBE_PROMPT, TRANSIENT, AUTH_PATTERNS, RELOGIN and VERIFIED_VERSIONS stay module-private.
     expect(Object.keys(adaptersModule)).not.toContain('PROBE_PROMPT');
+    expect(Object.keys(adaptersModule), 'the vendor version map is not a public surface')
+      .not.toContain('VERIFIED_VERSIONS');
   });
 
   test('mock.ts exports exactly one', () => {
@@ -109,8 +121,10 @@ describe('AC-1 — the surface, the folder, the dependencies, and the entry poin
     // still under decision. `overrideAdapters` is public too and lives in ./override.js, which
     // this file does not import — it is covered by the identity register in
     // `packages/cli/src/package.test.ts`, which is the one place the whole surface is pinned.
+    // Q-0067 adds the third: `cliVersion` is a command's need, and the only route it has to a
+    // capabilities module the barrel deliberately does not publish.
     expect([...Object.keys(adaptersModule), ...Object.keys(mockModule)]
-      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['getAdapter', 'probeAdapter']);
+      .filter((symbol) => symbol in barrel).sort()).toStrictEqual(['cliVersion', 'getAdapter', 'probeAdapter']);
   });
 
   test('this ticket adds no dependency: core declares the same four it already had', () => {

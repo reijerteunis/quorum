@@ -1,13 +1,13 @@
 /**
  * The public API of `@quorum/core`.
  *
- * Twenty-seven value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
+ * Twenty-nine value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
  * command children (Q-0091 to Q-0094) import from here, and what they may reach is settled by
  * whoever adds a name to this file rather than by whoever types an import first. That is why
  * `package.json` publishes `"."` alone and no `./*` subpath — a wildcard would defer the decision
  * to the first consumer (Q-0096 AC-5).
  *
- * Twenty-two of the twenty-seven are the domain helpers `packages/cli/src/frame.source.test.ts` names
+ * Twenty-four of the twenty-nine are the domain helpers `packages/cli/src/frame.source.test.ts` names
  * in its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
  * command module may name only where its own command needs them — and the other five are the error
  * classes a caller has to catch. `packages/cli/src/package.test.ts` derives the surface from that
@@ -47,11 +47,19 @@
  * and it is here by the same clause as `pushLag`: a command needs it, and `ticket.ts` may not
  * derive a git fact itself. `currentBranch` is still withheld, for the reason it always was.
  *
+ * **Q-0067 added one, and its result type is re-exported beside it.** `cliVersion` is what lets
+ * `quorum adapters --probe` say how the installed CLI version compares with the one an adapter was
+ * verified against; a command module may not derive it, because the recorded string lives in a
+ * capabilities module that is deliberately not on this surface. `CliVersionResult` is
+ * `@quorum/shared`'s vocabulary and is declared there — re-exported here, and nowhere redeclared,
+ * so a caller of the function can name what it answers from the package it called.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
  */
-export { getAdapter, probeAdapter } from './adapters/adapters.js';
+export { cliVersion, getAdapter, probeAdapter } from './adapters/adapters.js';
+export type { CliVersionResult } from '@quorum/shared';
 export { overrideAdapters } from './adapters/override.js';
 export { Backlog } from './backlog/backlog.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';

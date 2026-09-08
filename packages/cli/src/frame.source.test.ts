@@ -346,7 +346,7 @@ const DOMAIN = [
   'Backlog', 'loadProject', 'findProject', 'getAdapter', 'probeAdapter',
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
   'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
-  'initProject', 'pushLag', 'configuredUser',
+  'initProject', 'pushLag', 'configuredUser', 'cliVersion',
 ];
 
 /**
@@ -383,9 +383,16 @@ const DOMAIN = [
  * makes `board.ts` the first row to grow after its command shipped, which is the case worth naming:
  * a register that only ever grows with a new command would have no way to record a command
  * acquiring a new need.
+ *
+ * **Q-0067 grew it by one, and `adapters.ts` is the second such row.** `cliVersion` compares the
+ * version `check()` returned with the one an adapter records having been verified against, and that
+ * recorded string lives in a capabilities module `@quorum/core` deliberately does not publish — so
+ * a command module could not derive the fact even if it were allowed to.
  */
 const COMMAND_DOMAIN: Record<string, readonly string[]> = {
-  'adapters.ts': ['loadProject', 'getAdapter', 'probeAdapter'],
+  // Q-0067: 'cliVersion' — the comparison between the version `check()` returned and the one the
+  // adapter records; the recorded string lives in a capabilities module this package cannot reach.
+  'adapters.ts': ['loadProject', 'getAdapter', 'probeAdapter', 'cliVersion'],
   'board.ts': ['loadProject', 'containment', 'lintFlowDirectory', 'pushLag'],
   'init.ts': ['initProject'],
   'lint.ts': ['loadProject', 'lintDirectory'],
@@ -532,11 +539,14 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
     expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
       .toStrictEqual([]);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(23);
+    expect(DOMAIN, 'the register still holds the twenty-three it held before Q-0067').not.toHaveLength(23);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(24);
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
       .toContain('pushLag');
     expect(DOMAIN, 'the name Q-0112 added is not on the list it is supposed to be on')
       .toContain('configuredUser');
+    expect(DOMAIN, 'the name Q-0067 added is not on the list it is supposed to be on')
+      .toContain('cliVersion');
   });
 
   test('Q-0099 AC-10 — two production modules landed and the other two registers kept their size', () => {

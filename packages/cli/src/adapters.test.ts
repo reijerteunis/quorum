@@ -27,6 +27,7 @@ import path from 'node:path';
 import { getAdapter, probeAdapter } from '@quorum/core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { HELP } from './commands.js';
 import { ERROR, SUCCESS } from './exit.js';
 import { invoke, plain, type Invocation } from '../test/invoke.js';
 
@@ -166,8 +167,16 @@ describe('AC-7 — presence', () => {
     expect(json(result).adapters[0]).toStrictEqual({
       adapter: 'claude', installed: false, error: 'claude not found on PATH',
     });
+    // Q-0067 moved this register rather than relaxing it: an installed entry gains the two
+    // provenance keys after `version`, and an ABSENT one gains neither — there is no version, so
+    // there is no state, which is the rule that already withholds `version` and `login` from it.
     expect(json(result).adapters[1]).toStrictEqual({
-      adapter: 'codex', installed: true, version: '0.149.1', login: 'unverified',
+      adapter: 'codex',
+      installed: true,
+      version: '0.149.1',
+      version_state: 'ahead',
+      verified_version: '0.149.0',
+      login: 'unverified',
     });
   });
 });
@@ -258,9 +267,12 @@ describe('AC-7 — --json', () => {
     expect(report.probed).toBe(true);
     expect(report.adapters).toHaveLength(2);
     // The key order is the spike's and the spread is last, which is what makes `--json`'s shape the
-    // probe's own result rather than a second description of it that could drift.
+    // probe's own result rather than a second description of it that could drift. Q-0067 inserted
+    // two keys after `version` and left the spread where it was — moved, and deliberately not
+    // relaxed to a length, a `toContain` or a `toMatchObject`, which is the whole value of it.
     expect(Object.keys(report.adapters[0])).toStrictEqual([
-      'adapter', 'installed', 'version', 'login', 'ok', 'vendor', 'ms', 'cost_usd', 'tokens', 'session',
+      'adapter', 'installed', 'version', 'version_state', 'verified_version',
+      'login', 'ok', 'vendor', 'ms', 'cost_usd', 'tokens', 'session',
     ]);
     expect(report.adapters[0]).toMatchObject({ login: 'verified', ms: 1234, cost_usd: 0.0031 });
   });
@@ -390,5 +402,181 @@ describe('AC-9 — the command writes nothing, snapshotted in its own file rathe
     const before = snapshot(root);
     fs.writeFileSync(path.join(root, 'backlog', 'stray.md'), 'x', 'utf8');
     expect(snapshot(root)).not.toStrictEqual(before);
+  });
+});
+
+describe('Q-0067 AC-8, AC-9, AC-10 — the verified version, reported and never ruled on', () => {
+  /**
+   * The four states, reachable by varying nothing but the string `check()` returns.
+   *
+   * `cliVersion` is deliberately NOT stubbed — `vi.mock` replaces `getAdapter` and `probeAdapter`
+   * and leaves the rest of `@quorum/core` real — so what runs here is the shipped derivation over
+   * the shipped record. Every version below is a literal, so no verdict is a property of the
+   * installed CLI: what varies is a fixture, and the recorded side is pinned by
+   * `packages/core/src/adapters/capabilities.source.test.ts`.
+   */
+  const VERSIONS: Record<string, { claude: string; codex: string }> = {
+    ahead: { claude: '2.1.231', codex: '0.149.1' },
+    behind: { claude: '2.1.219', codex: '0.148.9' },
+    'as-verified': { claude: '2.1.220', codex: '0.149.0' },
+    indeterminate: { claude: 'claude beta', codex: 'codex-cli' },
+  };
+
+  /** Both vendors present at one of those pairs, with both logins verified. */
+  const at = (state: string): void => {
+    stub(
+      { claude: { version: VERSIONS[state].claude }, codex: { version: VERSIONS[state].codex } },
+      { claude: verified('claude'), codex: verified('codex') },
+    );
+  };
+
+  describe('AC-8 — under --probe, and nowhere else', () => {
+    test('an ahead state is one dim clause per vendor, under that vendor\'s login line', async () => {
+      at('ahead');
+      const result = await run('--probe');
+      expect(result.exitCode, out(result)).toBe(SUCCESS);
+      const lines = out(result).trim().split('\n');
+      expect(lines).toStrictEqual([
+        '✓ claude: 2.1.231',
+        '  ✓ login verified — round-trip 1234ms, $0.0031, 4200 tokens',
+        '  · verified version = 2.1.220, installed 2.1.231 — the installed CLI is newer than the record',
+        '✓ codex: 0.149.1',
+        '  ✓ login verified — round-trip 1234ms, $0.0031, 4200 tokens',
+        '  · verified version = 0.149.0, installed 0.149.1 — the installed CLI is newer than the record',
+      ]);
+      // Dim, like every other qualifying line this product prints, and asserted over the raw stream
+      // rather than the stripped one — `out()` would hide exactly the thing being claimed.
+      expect(result.stdout).toContain(`\x1b[2m· verified version = 2.1.220`);
+    });
+
+    test('a behind state says so, which is the half worth reading', async () => {
+      // `ahead` is the ordinary state and clears only when somebody re-verifies; `behind` is the one
+      // that can mean the installed CLI predates a flag the adapter passes. Both are reported and
+      // neither is acted on.
+      at('behind');
+      const result = await run('--probe');
+      expect(out(result)).toContain('· verified version = 2.1.220, installed 2.1.219 — the installed CLI is older than the record');
+    });
+
+    test('an unreadable version says the two could not be compared, and never that it is wrong', async () => {
+      at('indeterminate');
+      const result = await run('--probe');
+      expect(out(result)).toContain('· verified version = 2.1.220, installed claude beta — the two could not be compared');
+      expect(out(result)).toContain('· verified version = 0.149.0, installed codex-cli — the two could not be compared');
+    });
+
+    test('an as-verified state adds no characters at all', async () => {
+      at('as-verified');
+      const result = await run('--probe');
+      expect(out(result).trim().split('\n')).toStrictEqual([
+        '✓ claude: 2.1.220',
+        '  ✓ login verified — round-trip 1234ms, $0.0031, 4200 tokens',
+        '✓ codex: 0.149.0',
+        '  ✓ login verified — round-trip 1234ms, $0.0031, 4200 tokens',
+      ]);
+    });
+
+    test('and the bare listing does not move, whatever the state', async () => {
+      // `--probe` is the check and the listing is the report, so the third question belongs to the
+      // first. It is also what keeps an adopter's FIRST command free of a permanent dim line about
+      // this repository's verification record, which they could act on in no way at all.
+      // Why: see *"An adapter records the version it was verified against, and never a version it
+      // supports"* (2026-09-08), clause (e).
+      at('ahead');
+      const result = await run();
+      expect(out(result).trim().split('\n')).toStrictEqual([
+        '✓ claude: 2.1.231',
+        '✓ codex: 0.149.1',
+        '· presence only — logins NOT verified; run `quorum adapters --probe` before a real run',
+      ]);
+    });
+  });
+
+  describe('AC-9 — what it may say, and what it may never say', () => {
+    /**
+     * The vocabulary a version report may not reach for, in any state.
+     *
+     * Each is a claim nothing here measured. The only compatibility evidence this product has is the
+     * `login` line, which is a round-trip that actually happened; a word from this list beside it
+     * would invite a reader to believe a second verdict that was never established. `verified` alone
+     * is deliberately NOT forbidden — it is the glossary's term for the datum and the login line's
+     * own word — and `verified working` is, which is the claim rather than the word.
+     */
+    const FORBIDDEN = [
+      /supported/i, /compatib/i, /validated/i, /verified working/i,
+      /upgrade/i, /downgrade/i, /will fail/i, /out of date/i,
+    ];
+
+    test('no state renders a word from it', async () => {
+      for (const state of Object.keys(VERSIONS)) {
+        at(state);
+        const text = out(await run('--probe'));
+        expect(text, `the ${state} clause is missing — this case has no subject`)
+          .toContain(state === 'as-verified' ? 'login verified' : 'verified version =');
+        for (const pattern of FORBIDDEN) {
+          expect(pattern.test(text), `the ${state} state rendered ${pattern.source}`).toBe(false);
+        }
+      }
+    });
+
+    test('and the command\'s help line does not either', () => {
+      const line = plain(HELP).split('\n').find((text) => text.includes('quorum adapters')) ?? '';
+      expect(line, 'the help no longer describes this command — this check has lost its subject').not.toBe('');
+      for (const pattern of FORBIDDEN) {
+        expect(pattern.test(line), `the help line says ${pattern.source}`).toBe(false);
+      }
+    });
+
+    test('the forbidden list recognises the sentences it forbids', () => {
+      // Anti-vacuity: a list that matched nothing would pass over every state above and read as
+      // coverage. Each sentence is one a version report could plausibly have been written to say.
+      for (const sentence of [
+        'claude 2.1.231 is not supported by this adapter',
+        'the installed CLI is incompatible with these flags',
+        'this combination has not been validated',
+        'upgrade the adapter or downgrade the CLI',
+        'a run will fail with this version',
+      ]) {
+        expect(FORBIDDEN.some((pattern) => pattern.test(sentence)), `nothing forbids: ${sentence}`).toBe(true);
+      }
+    });
+  });
+
+  describe('AC-10 — the machine-readable report carries both facts, in both forms', () => {
+    test('the two keys appear without --probe as well as with it', async () => {
+      // A machine reader asked for the whole record and has no noise budget, which is the difference
+      // between it and AC-8's human lines: those are read by somebody who did not ask for a third
+      // fact, and this is read by something that did.
+      at('ahead');
+      const bare = await run('--json');
+      expect(json(bare).adapters[0]).toMatchObject({ version_state: 'ahead', verified_version: '2.1.220' });
+
+      at('ahead');
+      const probed = await run('--probe', '--json');
+      expect(json(probed).adapters[1]).toMatchObject({ version_state: 'ahead', verified_version: '0.149.0' });
+    });
+
+    test('an unreadable version still carries the record, because the record is not what failed', async () => {
+      at('indeterminate');
+      const result = await run('--json');
+      expect(json(result).adapters[0]).toStrictEqual({
+        adapter: 'claude',
+        installed: true,
+        version: 'claude beta',
+        version_state: 'indeterminate',
+        verified_version: '2.1.220',
+        login: 'unverified',
+      });
+    });
+
+    test('and an absent adapter gains neither key', async () => {
+      // There is no version, so there is no state — the same rule that already withholds `version`
+      // and `login` from this entry, rather than a new one.
+      stub({ claude: { refusal: 'claude not found on PATH' }, codex: { version: '0.149.1' } });
+      const result = await run('--json');
+      expect(json(result).adapters[0]).toStrictEqual({
+        adapter: 'claude', installed: false, error: 'claude not found on PATH',
+      });
+    });
   });
 });

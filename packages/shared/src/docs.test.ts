@@ -687,3 +687,66 @@ describe('Q-0055 AC-13 — the spec states the step-id rule, and states its exce
     expect(status, 'nor carry the landing date').toContain('2026-09-08');
   });
 });
+
+describe('Q-0067 AC-13 — the documents say what a verified version is, and what it is not', () => {
+  /** A document with its line breaks collapsed, because these files are hard-wrapped. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /** The numbered documents this ticket edits, which therefore carry the claim and the date. */
+  const EDITED = ['docs/03-adapter-contract.md', 'docs/04-architecture.md'];
+
+  test('the glossary defines the term, its four states, and its decision', () => {
+    // The shape Containment, Push lag, Event and Undecided already use.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'the glossary does not define **Verified version**:').toContain('**Verified version**:');
+    expect(glossary, 'it does not name where the string is recorded').toContain('verifiedVersion');
+    expect(glossary, 'it does not say the comparison happens on every invocation and stores nothing')
+      .toMatch(/every `quorum adapters --probe` invocation[\s\S]{0,120}nothing stored/);
+    for (const state of ['as-verified', 'ahead', 'behind', 'indeterminate']) {
+      expect(glossary, `it does not name the ${state} state`).toContain(`\`${state}\``);
+    }
+    expect(glossary, 'it does not cite the decision by title')
+      .toContain('An adapter records the version it was verified against, and never a version it supports');
+    expect(glossary, 'it does not cite the decision\'s date').toContain('2026-09-08');
+  });
+
+  test('and the "what it is not" half, each refusal asserted on its own', () => {
+    // A list satisfied by naming one of them would let the others quietly go — and here that half is
+    // the load-bearing one: the whole ticket is the difference between a record and a policy, so an
+    // entry leaving room to read it as a supported range would reproduce the failure in the
+    // vocabulary itself.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'it does not refuse being read as a supported range').toMatch(/not a supported range/);
+    expect(glossary, 'it does not refuse being read as a compatibility claim').toMatch(/not a compatibility claim/);
+    expect(glossary, 'it does not distinguish itself from the login\'s own "verified"')
+      .toMatch(/not a synonym for the `verified` a `--probe` login reports/);
+    expect(glossary, 'it does not say the product never refuses on one')
+      .toMatch(/no state changes an exit code or refuses a command/);
+    // And the term list moves with it, which nothing else checks — the two vocabularies are compared
+    // against each other above, so a term missing from BOTH would pass that comparison.
+    expect(repoFile('docs/README.md')).toContain('push lag, verified version');
+  });
+
+  test('the adapter contract says its verification line is a record rather than a range', () => {
+    // The sentence a contributor meets before they are tempted to bump the two numbers to whatever
+    // their own machine happens to run, which is how a measurement becomes a guess.
+    const contract = flowed('docs/03-adapter-contract.md');
+    expect(contract, 'the document does not refuse the supported-range reading')
+      .toMatch(/a record of what was measured, and never a supported range/);
+    expect(contract, 'it does not say what bumping a number would claim')
+      .toMatch(/re-ran the flag-by-flag verification/);
+    expect(contract, 'it does not say the report refuses nothing')
+      .toMatch(/never a refusal and never an exit code/);
+  });
+
+  test('and the status line of every numbered document this change edits records Q-0067', () => {
+    for (const file of EDITED) {
+      const text = repoFile(file);
+      const start = text.indexOf('*Status:');
+      expect(start, `${file} has no status line`).toBeGreaterThan(-1);
+      const status = text.slice(start, text.indexOf('\n\n', start));
+      expect(status, `${file}'s status line does not record this change`).toContain('Q-0067');
+      expect(status, `${file}'s status line does not carry the landing date`).toContain('2026-09-08');
+    }
+  });
+});
