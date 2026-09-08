@@ -159,3 +159,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [What an exit code may claim, and the three zeros it was asked about](decisions/083-what-an-exit-code-may-claim.md)
 - [A ticket's owner is supplied, never guessed](decisions/084-a-tickets-owner-is-supplied-never-guessed.md)
 - [An adapter records the version it was verified against, and never a version it supports](decisions/085-an-adapter-records-the-version-it-was-verified-against.md)
+
+## 2026-09-09
+
+- [A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed](decisions/086-a-run-holds-a-lock-on-its-ticket.md)
