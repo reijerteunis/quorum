@@ -1,6 +1,6 @@
 ---
 id: Q-0067
-title: The per-adapter version probe, and what an unsupported CLI version does
+title: An adapter records the version it was verified against
 stage: reviewed
 owner: ruud
 repos: []
