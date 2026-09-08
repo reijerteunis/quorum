@@ -6,11 +6,16 @@
  * because it looks like rigour, reformats the frontmatter of every ticket it touches from then on
  * and nothing goes red. Why: behaviour preserved from spike/src/backlog.js (charter §2, Q-0043).
  *
- * **It reads and writes inside its own root and nowhere else.** A ticket token resolves to a
- * directory directly under the backlog root, and every method taking a record works inside that
- * record's folder — file by file rather than folder by folder, because a link at a leaf is an
- * escape every check on the directory above it passes. Both checked in `./confine.js`, which closes
- * Q-0043's path-traversal non-goal on the read side and the write side together (Q-0059).
+ * **A ticket token resolves to a directory directly under the backlog root, and `write`,
+ * `writeFile`, `readFiles` and `log` work only inside a ticket folder** — file by file rather than
+ * folder by folder, because a link at a leaf is an escape every check on the directory above it
+ * passes. Both checked in `./confine.js`, which closes Q-0043's path-traversal non-goal on the write
+ * side and on the globbed read side together (Q-0059).
+ *
+ * `read` and `list` sit OUTSIDE that guarantee, deliberately: they open a ticket's own `ticket.md`
+ * with the name joined on, so a link planted there is still listed and still read, while the store
+ * refuses to write back through it. Why: preserved, see Q-0059 AC-11 — pinned by test, so a later
+ * change to it is a deliberate one.
  */
 import fs from 'node:fs';
 import path from 'node:path';

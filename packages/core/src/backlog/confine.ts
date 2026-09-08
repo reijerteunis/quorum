@@ -48,14 +48,39 @@ const realPath = (target: string): string | null => {
 };
 
 /**
+ * Whether a name stands at `target` — asked of the name itself, so a link is present whether or not
+ * anything is at the other end of it.
+ *
+ * A failure is read as nothing there, which is what the two ordinary shapes are: `ENOENT` for a path
+ * nobody has created, `ENOTDIR` for one whose parent is a file. A failure for any other reason is
+ * one the caller could not act on either — a name it cannot stat is a name it cannot open.
+ */
+const present = (target: string): boolean => {
+  try {
+    fs.lstatSync(target);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * The resolved deepest ancestor of `target` that exists, `target` itself included, or `null` at the
- * filesystem root. What a path that has yet to be created is checked through: the segments below it
- * are names nothing has claimed, so no link can hide under them.
+ * filesystem root and at the first name that stands there and does not resolve. What a path that has
+ * yet to be created is checked through: the segments below the answer are names nothing has claimed,
+ * so no link can hide under them.
+ *
+ * "Does not exist" and "is there and does not resolve" are different answers, and climbing past the
+ * second is how a refused destination becomes a file outside the root: an open with `O_CREAT`
+ * follows a dangling link and CREATES what it points at, while the parent this used to answer with
+ * is inside the folder. An unresolvable name is refused here exactly as {@link isFolderIn} already
+ * refuses one, so the module keeps one rule rather than two.
  */
 const deepestExisting = (target: string): string | null => {
   for (let at = target; ; at = path.dirname(at)) {
     const real = realPath(at);
     if (real !== null) return real;
+    if (present(at)) return null;
     if (path.dirname(at) === at) return null;
   }
 };
@@ -97,7 +122,8 @@ export function isFolderIn(root: string, candidate: string): boolean {
  * one asked for a path of its own rather than for one inside this folder. **On the filesystem**, the
  * deepest existing ancestor is resolved, which is the clause a lexical comparison cannot make —
  * `rel` itself where `rel` already exists, so a link standing at the destination is refused rather
- * than followed, and the first real parent where it does not.
+ * than followed, and the first real parent where nothing stands there at all. A name that stands
+ * there and resolves to nothing is neither, and is refused: see {@link deepestExisting}.
  *
  * @returns `path.join(folder, rel)` — the joined path, never the resolved one, so what a caller
  *   writes to and reports is the path it named.

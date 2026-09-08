@@ -1062,6 +1062,105 @@ describe('Q-0059 AC-6 — a destination or a pattern outside the ticket folder i
     expect(fs.readFileSync(path.join(ticket.dir, 'dev', 'notes.md'), 'utf8')).toBe('rewritten\n');
   });
 
+  // Run 2 review, blocker: a DANGLING link resolves to nothing, and the deepest-existing-ancestor
+  // clause read "does not resolve" as "is not there" and climbed to the parent — which is a real
+  // directory inside the ticket folder, so the destination was admitted and the open then followed
+  // the link and CREATED the file outside the root. Reproduced before it was believed, each case in
+  // its own tree so no earlier write made a later link resolvable: `writeFile`, `write` and `log`
+  // each created an outside file, and `readFiles` admitted the name and died on a raw ENOENT that
+  // quoted an inside path for a failure about an outside one.
+
+  /** A link at `rel` inside the ticket folder, to a path outside the root that NOTHING created. */
+  function dangling(staged: ReturnType<typeof withArtifacts>, rel: string): string {
+    const target = path.join(staged.outside, 'never-created.md');
+    const at = path.join(staged.ticket.dir, rel);
+    fs.rmSync(at, { force: true });
+    fs.symlinkSync(target, at);
+    return target;
+  }
+
+  /** The criterion is that the link's target was never brought into existence (R-3). */
+  function createsNothing(staged: ReturnType<typeof withArtifacts>, target: string, before: string[]): void {
+    expect(fs.existsSync(target), 'the outside file the link named').toBe(false);
+    expect(walk(staged.outside), 'the tree outside the root').toStrictEqual(before);
+  }
+
+  test('writeFile refuses a DANGLING escaping destination, and does not create it', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, path.join('dev', 'leak.md'));
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.writeFile(staged.ticket, 'dev/leak.md', 'x')))
+      .toBe("not a path inside the ticket folder: 'dev/leak.md'");
+    createsNothing(staged, target, before);
+  });
+
+  test('write refuses a DANGLING escaping ticket.md symlink, and does not create its target', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, 'ticket.md');
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.write({ ...staged.ticket, body: 'through the link\n' })))
+      .toBe("not a path inside the ticket folder: 'ticket.md'");
+    createsNothing(staged, target, before);
+  });
+
+  test('log refuses a DANGLING escaping runs.log symlink, and does not create its target', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, 'runs.log');
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.log(staged.ticket, 'run=1 start')))
+      .toBe("not a path inside the ticket folder: 'runs.log'");
+    createsNothing(staged, target, before);
+  });
+
+  // Two tests rather than one, so each branch fails on its own (Q-0071). `readFiles` leaked no
+  // bytes through these — there is nothing at the other end to read — but it admitted the name,
+  // which is the same defect one method along and the same line fixes it.
+
+  test('readFiles refuses a DANGLING escaping symlink the READDIR branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    dangling(staged, path.join('dev', 'leak.md'));
+    expect(refused(() => staged.backlog.readFiles(staged.ticket, 'dev/*.md')))
+      .toBe(`not a path inside the ticket folder: '${path.join('dev', 'leak.md')}'`);
+  });
+
+  test('readFiles refuses a DANGLING escaping symlink the WALK branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    dangling(staged, path.join('dev', 'leak.md'));
+    expect(refused(() => staged.backlog.readFiles(staged.ticket, 'dev/')))
+      .toBe(`not a path inside the ticket folder: '${path.join('dev', 'leak.md')}'`);
+  });
+
+  test('twin — a destination with nothing at all below the folder is still written, parents and all', () => {
+    // R-2's check on this clause specifically: a guard reading every unresolvable name as an escape
+    // refuses every file that does not exist yet, which is most of what a flow writes. This is the
+    // case that separates "resolves to nothing" from "nothing is there".
+    const { backlog, ticket } = withArtifacts();
+    expect(backlog.writeFile(ticket, 'review/chore/run-9/chore-iter-1.md', 'body'))
+      .toBe(path.join(ticket.dir, 'review', 'chore', 'run-9', 'chore-iter-1.md'));
+  });
+
+  test('a DANGLING link pointing INSIDE the ticket folder is refused too — a named behaviour change', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // Stated rather than left to be found. A name that resolves to nothing is refused wherever this
+    // module meets one, which is what `dirOf` has always done with the same resolver: reading a link
+    // target to decide where it *would* have pointed is the string test this guard exists to avoid,
+    // and a chain of them is worse. No shipped flow plants a link in a ticket folder, and refusing
+    // is the direction that cannot create a file.
+    const { backlog, ticket } = withArtifacts();
+    fs.symlinkSync(path.join(ticket.dir, 'dev', 'not-yet.md'), path.join(ticket.dir, 'dev', 'alias.md'));
+    expect(refused(() => backlog.writeFile(ticket, 'dev/alias.md', 'x')))
+      .toBe("not a path inside the ticket folder: 'dev/alias.md'");
+    expect(fs.existsSync(path.join(ticket.dir, 'dev', 'not-yet.md'))).toBe(false);
+  });
+
   test('read still follows an escaping ticket.md symlink — preserved, and pinned so it is deliberate', (ctx) => {
     if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
     // AC-11 requires `read` and `list` behaviourally untouched, and the run-2 review named `write`
