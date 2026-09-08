@@ -5,12 +5,14 @@
 // module, or a well-meaning tidy-up, breaks silently. The byte pin in particular fails at chore's
 // `integrate` rather than at review, after both agents have been paid, so it is asserted here where
 // it fails in seconds instead.
+import path from 'node:path';
+
 import { describe, expect, test } from 'vitest';
 
 import * as backlogModule from './backlog.js';
 import * as projectModule from './project.js';
 import * as barrel from '../index.js';
-import { coreSourceFiles, repoFile } from '../../test/corpus.js';
+import { coreSourceFiles, repoFile, repoRoot } from '../../test/corpus.js';
 
 /**
  * Corpus keys are whole paths below `src`, so a same-named file in another folder can never answer
@@ -156,6 +158,43 @@ describe('AC-11 — the project config is declared once, in shared, and validate
     expect(shared.includes('.catch('), 'a catch invents state the file did not carry').toBe(false);
     const pkg = JSON.parse(repoFile('packages/shared/package.json')) as { dependencies: Record<string, string> };
     expect(Object.keys(pkg.dependencies)).toStrictEqual(['zod']);
+  });
+});
+
+describe('Q-0059 AC-8 — the confinement primitive is declared once, and the duplicate is registered', () => {
+  /**
+   * The two production files that may resolve a real path, and why each is separate.
+   *
+   * A register of identities rather than a count (Q-0073): a THIRD declaration fails here, which is
+   * what makes the next one a visible act rather than the shape Q-0074 is open on — one primitive
+   * declared twice, with nobody's attention on either copy.
+   */
+  const REALPATH_SITES: Record<string, string> = {
+    'packages/core/src/backlog/confine.ts':
+      'the backlog store\'s boundary: it admits a path that does not exist yet, answers the joined path so TicketRecord.dir does not move, and refuses by returning false or null for a caller that raises its own sentence',
+    'packages/core/src/run-history/reader.ts':
+      'run history\'s: resolveRunDirectory requires the directory to EXIST, returns the RESOLVED path to close the check/use window, and answers null — none of which dirOf may do. Not refactored into one: its own JSDoc carries Q-0092 OQ-1, the landed ruling against publishing a path-returning confinement function for callers to use before reading',
+  };
+
+  test('fs.realpathSync appears in exactly those two files across core and cli production source', () => {
+    const scanned = [
+      ...coreSourceFiles().map(([name, text]) => [`packages/core/src/${name}`, text] as const),
+      ...coreSourceFiles(path.join(repoRoot, 'packages/cli/src')).map(([name, text]) => [`packages/cli/src/${name}`, text] as const),
+    ];
+    // A scan over an empty corpus reports success over nothing, and both halves must contribute.
+    expect(scanned.some(([name]) => name.startsWith('packages/core/src/')), 'the core half is missing').toBe(true);
+    expect(scanned.some(([name]) => name.startsWith('packages/cli/src/')), 'the cli half is missing').toBe(true);
+    const found = scanned.filter(([, text]) => text.includes('realpathSync')).map(([name]) => name).sort();
+    expect(found).toStrictEqual(Object.keys(REALPATH_SITES).sort());
+  });
+
+  test('and the backlog store reaches its boundary through that module rather than around it', () => {
+    // The other direction of the same rule: `backlog.ts` may not grow a resolver of its own, and
+    // every method that takes a caller-supplied path must go through one of the three predicates.
+    const text = source(BACKLOG_SOURCE);
+    expect(text.includes('realpathSync'), 'backlog.ts resolves paths through ./confine.js').toBe(false);
+    expect(text).toContain("from './confine.js'");
+    for (const symbol of ['isOneName', 'isFolderIn', 'pathInside']) expect(text).toContain(symbol);
   });
 });
 

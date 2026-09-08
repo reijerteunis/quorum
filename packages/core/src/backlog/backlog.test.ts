@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
-import { YAMLParseError } from 'yaml';
+import YAML, { YAMLParseError } from 'yaml';
 
 import { parseTicketId } from '@quorum/shared';
 
@@ -677,5 +677,545 @@ describe('AC-9 — readFiles keeps its glob semantics exactly', () => {
     expect(backlog.readFiles(ticket, 'requirements/nothing-*.md')).toStrictEqual([]);
     expect(backlog.readFiles(ticket, 'solution/contracts.md')).toStrictEqual([]);
     expect(backlog.readFiles(ticket, 'solution/')).toStrictEqual([]);
+  });
+});
+
+// Q-0059: the store reads and writes inside its own root, and nowhere else.
+//
+// Every guard below carries its own BENIGN twin. A confinement guard is the easiest thing in this
+// repository to ship green and useless, because a guard that refuses everything passes every
+// negative test ever written — so each case that must be refused sits beside one that must still be
+// accepted. AC-7 is not a describe of its own: what it asks for is that the AC-8 and AC-9 blocks
+// above pass UNEDITED, which is a property of this file rather than a new assertion.
+
+/**
+ * A backlog root two levels below the temporary directory, so a fixture can sit genuinely outside
+ * it and still inside the tree `removeTempDirs` deletes — a symlink left in the system temporary
+ * directory is litter the next ticket inherits (the shape `run-history/reader.test.ts` uses).
+ */
+function nestedBacklog(): Backlog {
+  const root = path.join(tempDir('confine-'), 'repo', 'backlog');
+  fs.mkdirSync(root, { recursive: true });
+  return new Backlog(root);
+}
+
+/** A directory outside `backlog.root`, and still inside what `removeTempDirs` deletes. */
+function outsideOf(backlog: Backlog, name: string): string {
+  const dir = path.join(path.dirname(path.dirname(backlog.root)), name);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * Whether this filesystem lets a fixture stage a symlink at all, and what it said if not.
+ *
+ * A test may skip only when the OPERATING SYSTEM refuses to create the link, never when the
+ * implementation rejects the input, and the skip names what could not be staged. An unconditional
+ * test of an environment capability is a verdict about the machine — see *"A test's verdict is a
+ * property of the commit, not of the checkout or the account"* (2026-08-30) and Q-0105's GO-3.
+ */
+const NO_SYMLINKS: string | null = (() => {
+  const dir = tempDir('symlink-probe-');
+  try {
+    fs.symlinkSync(path.join(dir, 'target'), path.join(dir, 'link'));
+    return null;
+  } catch (error) {
+    return `this filesystem refuses to stage a symlink: ${(error as Error).message}`;
+  }
+})();
+
+/** The message a call threw, or `null` when it returned — so a case asserts the WHOLE sentence. */
+function refused(call: () => unknown): string | null {
+  try { call(); return null; } catch (error) { return (error as Error).message; }
+}
+
+describe('Q-0059 AC-2 — a token that is not one name is refused on the string alone', () => {
+  test('the six shapes are refused, each naming the condition and no remedy', () => {
+    const backlog = nestedBacklog();
+    ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    for (const token of ['', '.', '..', '../secret', 'a/b', '/etc', 'Q-0001/']) {
+      expect(refused(() => backlog.dirOf(token)), token)
+        .toBe(`not a ticket token: '${token}' — a ticket is one folder directly under the backlog root`);
+    }
+  });
+
+  test('and a control character in the refused token is escaped, so the refusal stays one line', () => {
+    // The token is attacker-controlled and the message is one line by contract — Q-0080's reviewer's
+    // nit, inherited here by construction rather than by remembering, since every quoted value in
+    // this module goes through the same helper.
+    const backlog = nestedBacklog();
+    const message = refused(() => backlog.dirOf('../Q-0001\nFAKE: injected'));
+    expect(message, 'dirOf must refuse a token that is not one name').not.toBeNull();
+    expect(message!.split('\n')).toHaveLength(1);
+    expect(message!).toContain('\\x0a');
+    expect(message!).not.toContain('\nFAKE');
+  });
+
+  test('and refused before the filesystem is touched at all', () => {
+    // AC-2's other half: the refusal is decided on the string, so it discloses nothing and costs
+    // nothing. Asserted on the calls rather than on the message, because a guard that runs after a
+    // `readdirSync` produces the same sentence and is a different fix.
+    const backlog = nestedBacklog();
+    const spies = (['existsSync', 'readdirSync', 'realpathSync', 'statSync'] as const)
+      .map((api) => vi.spyOn(fs, api));
+    try {
+      expect(refused(() => backlog.dirOf('../secret'))).toContain('not a ticket token');
+      for (const spy of spies) expect(spy, `dirOf reached fs.${spy.getMockName()}`).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  test('twin — a token that reaches the PREFIX branch still resolves', () => {
+    // That branch is guarded too, so it needs a case proving the guard admits its own subject.
+    const backlog = nestedBacklog();
+    ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    expect(backlog.dirOf('Q-0001')).toBe(path.join(backlog.root, 'Q-0001-a-ticket'));
+    expect(backlog.read('Q-0001').meta.id).toBe('Q-0001');
+  });
+
+  test('a file named like a ticket is not a ticket folder — a named behaviour change', () => {
+    // Stated rather than left to be discovered. `existsSync` used to admit it, and `read` then
+    // died on ENOTDIR one line later; the same predicate now answers dirOf and AC-5's record check,
+    // so a value the store would refuse to write to is not one it hands out either.
+    const backlog = nestedBacklog();
+    write(path.join(backlog.root, 'Q-0002'), 'not a folder\n');
+    expect(refused(() => backlog.dirOf('Q-0002'))).toBe('ticket not found: Q-0002');
+  });
+});
+
+describe('Q-0059 AC-3 — a name that resolves outside the root is refused, symlink included', () => {
+  test('a single-segment symlink pointing OUT of the backlog root is refused', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const backlog = nestedBacklog();
+    ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const secret = outsideOf(backlog, 'secret');
+    write(path.join(secret, 'ticket.md'), FIXTURE.replace('id: Q-0001', 'id: SECRET-0001'));
+    fs.symlinkSync(secret, path.join(backlog.root, 'Q-0009-alias'));
+
+    // Every lexical clause passes, and the answer is still a refusal.
+    const token = 'Q-0009-alias';
+    expect(token).toBe(path.basename(token));
+    expect(fs.statSync(path.join(backlog.root, token)).isDirectory(), 'statSync follows the link').toBe(true);
+    expect(refused(() => backlog.dirOf(token))).toBe(`ticket not found: ${token}`);
+    // And it discloses nothing about where the link pointed.
+    expect(refused(() => backlog.read(token))).toBe(`ticket not found: ${token}`);
+    expect(backlog.list().map((t) => String(t.meta.id))).not.toContain('SECRET-0001');
+  });
+
+  test('twin — a symlink pointing at a SIBLING ticket folder is an alias, and is accepted', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // It resolves to a path whose real parent IS the real root, so it is inside the boundary and
+    // the rule admits it with no special case. A write through it writes the sibling's own
+    // `ticket.md`, to the same bytes in the same folder — the answer reader.test.ts already pins
+    // for run history.
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    fs.symlinkSync(ticket.dir, path.join(backlog.root, 'Q-0001-alias'));
+
+    // The JOINED path, not the resolved one — OQ-2, and the divergence from run history's guard.
+    expect(backlog.dirOf('Q-0001-alias')).toBe(path.join(backlog.root, 'Q-0001-alias'));
+    const through = backlog.read('Q-0001-alias');
+    expect(through.meta.id).toBe('Q-0001');
+    through.meta.stage = 'green';
+    backlog.write(through);
+    expect(fs.readFileSync(path.join(ticket.dir, 'ticket.md'), 'utf8'))
+      .toBe(FIXTURE.replace('stage: draft', 'stage: green'));
+  });
+
+  test('twin — a backlog root reached THROUGH a symlink still accepts its own children', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // The over-refusal a half-resolved comparison produces, on the shape this repository's own
+    // fixtures have: `os.tmpdir()` is `/var/folders/…` on macOS and `/private/var/…` resolved.
+    const real = nestedBacklog();
+    ticketAt(real, 'Q-0001-a-ticket', FIXTURE);
+    const aliased = path.join(outsideOf(real, 'aliases'), 'backlog');
+    fs.symlinkSync(real.root, aliased);
+    const backlog = new Backlog(aliased);
+
+    expect(backlog.dirOf('Q-0001')).toBe(path.join(aliased, 'Q-0001-a-ticket'));
+    expect(backlog.read('Q-0001').meta.id).toBe('Q-0001');
+    expect(backlog.readFiles(backlog.read('Q-0001'), 'ticket.md').map((f) => f.rel)).toStrictEqual(['ticket.md']);
+    expect(refused(() => backlog.dirOf('..'))).toContain('not a ticket token');
+  });
+
+  test('a sibling-named root is not this root: /x/backlog-old is outside /x/backlog', () => {
+    // R-5, and the reason the comparison is between path components rather than string prefixes.
+    // No symlink is needed to stage it, which is why it sits outside the three cases above.
+    const backlog = nestedBacklog();
+    const older = new Backlog(`${backlog.root}-old`);
+    ticketAt(older, 'Q-0001-a-ticket', FIXTURE);
+    const foreign = older.read('Q-0001');
+
+    expect(refused(() => backlog.write(foreign)))
+      .toBe(`not a ticket folder in this backlog: '${foreign.dir}'`);
+    expect(older.read('Q-0001').meta.id, 'and the foreign backlog is untouched').toBe('Q-0001');
+  });
+});
+
+describe('Q-0059 AC-5 — every method taking a record verifies the record\'s folder', () => {
+  /** A record whose `dir` is whatever the caller says, which is all a plain interface guarantees. */
+  const forged = (ticket: TicketRecord, dir: string): TicketRecord => ({ ...ticket, dir });
+
+  /** Each of the four, refused, with the tree on BOTH sides of the boundary snapshotted around it. */
+  function refusesAll(backlog: Backlog, record: TicketRecord, outside: string): void {
+    const before = { root: walk(backlog.root), outside: walk(outside) };
+    const sentence = `not a ticket folder in this backlog: '${record.dir}'`;
+    expect(refused(() => backlog.write(record)), 'write').toBe(sentence);
+    expect(refused(() => backlog.writeFile(record, 'dev/note.md', 'x')), 'writeFile').toBe(sentence);
+    expect(refused(() => backlog.readFiles(record, 'ticket.md')), 'readFiles').toBe(sentence);
+    expect(refused(() => backlog.log(record, 'run=1 start')), 'log').toBe(sentence);
+    // R-3: the criterion is that nothing happened, not that the call threw.
+    expect(walk(backlog.root), 'the backlog root').toStrictEqual(before.root);
+    expect(walk(outside), 'the tree outside it').toStrictEqual(before.outside);
+  }
+
+  test('a record pointing outside the root is refused by all four, and nothing moves', () => {
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const outside = outsideOf(backlog, 'elsewhere');
+    write(path.join(outside, 'ticket.md'), FIXTURE);
+    refusesAll(backlog, forged(ticket, outside), outside);
+  });
+
+  test('a record pointing through an ESCAPING symlink is refused by all four too', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const outside = outsideOf(backlog, 'elsewhere');
+    write(path.join(outside, 'ticket.md'), FIXTURE);
+    fs.symlinkSync(outside, path.join(backlog.root, 'Q-0009-alias'));
+    refusesAll(backlog, forged(ticket, path.join(backlog.root, 'Q-0009-alias')), outside);
+  });
+
+  test('twin — every record read, list and create produce is accepted by all four', () => {
+    const backlog = nestedBacklog();
+    ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const records = [backlog.read('Q-0001'), backlog.list()[0], backlog.create({ title: 'made here', intent: 'i' })];
+    for (const record of records) {
+      backlog.write(record);
+      expect(backlog.writeFile(record, 'dev/note.md', 'x')).toBe(path.join(record.dir, 'dev', 'note.md'));
+      expect(backlog.readFiles(record, 'dev/note.md').map((f) => f.text)).toStrictEqual(['x\n']);
+      backlog.log(record, 'run=1 start');
+      expect(fs.existsSync(path.join(record.dir, 'runs.log')), record.folder).toBe(true);
+    }
+  });
+});
+
+describe('Q-0059 AC-6 — a destination or a pattern outside the ticket folder is refused', () => {
+  /** A ticket with the artifacts a shipped flow would have written into it. */
+  function withArtifacts(): { backlog: Backlog; ticket: TicketRecord; outside: string } {
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    write(path.join(ticket.dir, 'requirements', 'candidate-claude.md'), 'claude\n');
+    write(path.join(ticket.dir, 'dev', 'notes.md'), 'notes\n');
+    const outside = outsideOf(backlog, 'elsewhere');
+    write(path.join(outside, 'secret.md'), 'secret\n');
+    return { backlog, ticket, outside };
+  }
+
+  test('writeFile refuses a climbing or absolute destination, and creates no directory', () => {
+    const { backlog, ticket, outside } = withArtifacts();
+    const before = { root: walk(backlog.root), outside: walk(outside) };
+    for (const rel of ['', '../escape.md', '../../etc/passwd', 'dev/../../escape.md', '/etc/passwd']) {
+      expect(refused(() => backlog.writeFile(ticket, rel, 'x')), rel)
+        .toBe(`not a path inside the ticket folder: '${rel}'`);
+    }
+    expect(walk(backlog.root)).toStrictEqual(before.root);
+    expect(walk(outside)).toStrictEqual(before.outside);
+  });
+
+  test('readFiles refuses a climbing or absolute pattern rather than answering []', () => {
+    // The ruling: `[]` is what a legitimately absent directory answers, so returning it here would
+    // shrink an agent's prompt with nothing going red.
+    const { backlog, ticket } = withArtifacts();
+    for (const pattern of ['', '.', '../', '../*.md', '../elsewhere/', '/etc/']) {
+      expect(refused(() => backlog.readFiles(ticket, pattern)), pattern)
+        .toBe(`not a path inside the ticket folder: '${pattern}'`);
+    }
+  });
+
+  test('a symlinked subdirectory pointing OUT is refused by both, on both readFiles branches', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // The clause a lexical comparison cannot make: every one of these is lexically inside the ticket
+    // folder, and the deepest existing ancestor of each resolves outside it.
+    const { backlog, ticket, outside } = withArtifacts();
+    fs.symlinkSync(outside, path.join(ticket.dir, 'out'));
+    const before = walk(outside);
+    for (const rel of ['out/x.md', 'out/deeper/x.md']) {
+      expect(refused(() => backlog.writeFile(ticket, rel, 'x')), rel)
+        .toBe(`not a path inside the ticket folder: '${rel}'`);
+    }
+    for (const pattern of ['out/*.md', 'out/']) {
+      expect(refused(() => backlog.readFiles(ticket, pattern)), pattern)
+        .toBe(`not a path inside the ticket folder: '${pattern}'`);
+    }
+    expect(walk(outside), 'nothing was written through the link').toStrictEqual(before);
+  });
+
+  test('twin — every shape the shipped flows write still works, parents and all', () => {
+    const { backlog, ticket } = withArtifacts();
+    for (const rel of ['dev/rounds/x.md', 'review/chore/run-2/chore-iter-1.md', '.harness/run-1/verdict.json']) {
+      expect(fs.readFileSync(backlog.writeFile(ticket, rel, 'body'), 'utf8'), rel).toBe('body\n');
+    }
+    expect(backlog.readFiles(ticket, 'requirements/candidate-*.md').map((f) => f.text)).toStrictEqual(['claude\n']);
+    expect(backlog.readFiles(ticket, 'dev/').map((f) => f.rel).sort())
+      .toStrictEqual([path.join('dev', 'notes.md'), path.join('dev', 'rounds', 'x.md')]);
+    expect(backlog.readFiles(ticket, 'solution/contracts.md'), 'an absent directory is still []').toStrictEqual([]);
+  });
+
+  test('twin — a symlinked subdirectory pointing INSIDE the ticket folder is written through', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const { backlog, ticket } = withArtifacts();
+    fs.symlinkSync(path.join(ticket.dir, 'dev'), path.join(ticket.dir, 'alias'));
+    expect(backlog.writeFile(ticket, 'alias/through.md', 'body')).toBe(path.join(ticket.dir, 'alias', 'through.md'));
+    expect(fs.readFileSync(path.join(ticket.dir, 'dev', 'through.md'), 'utf8')).toBe('body\n');
+    expect(backlog.readFiles(ticket, 'alias/notes.md').map((f) => f.text)).toStrictEqual(['notes\n']);
+  });
+
+  // Run 2 review, major: the criterion's *base* is the directory a pattern names and the parent a
+  // destination is joined onto, and a LEAF is neither. The three methods that built their leaf with
+  // `path.join` rather than through the predicate were the three gaps, and `writeFile` was not among
+  // them — its destination has always gone through `pathInside`, whose deepest-existing-ancestor
+  // clause resolves the leaf when the leaf exists. Reproduced before it was believed: `readFiles`
+  // returned an outside file's bytes under an inside `rel` on both branches, `write` replaced a file
+  // outside the backlog root, and `log` appended this ticket's history to one.
+
+  /** A ticket folder holding one `dev/leak.md` that is a link to a file outside the backlog root. */
+  function withLeak(): { backlog: Backlog; ticket: TicketRecord; outside: string; leaked: string } {
+    const staged = withArtifacts();
+    fs.symlinkSync(path.join(staged.outside, 'secret.md'), path.join(staged.ticket.dir, 'dev', 'leak.md'));
+    return { ...staged, leaked: path.join('dev', 'leak.md') };
+  }
+
+  // The two branches are asserted in two tests rather than in one, so each fails on its own: a case
+  // whose first expectation dies proves the guard fires and says nothing about the second (Q-0071).
+
+  test('readFiles refuses an escaping FILE symlink the READDIR branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // Every clause the base check makes passes: `dev` is a real directory inside the ticket folder,
+    // and the name under it is one the filesystem supplied rather than one the caller asked for.
+    const { backlog, ticket, leaked } = withLeak();
+    expect(refused(() => backlog.readFiles(ticket, 'dev/*.md')))
+      .toBe(`not a path inside the ticket folder: '${leaked}'`);
+    // R-2: the refusal only matters if the bytes never arrive, so this is asserted rather than
+    // inferred — a guard raising the right sentence after the read would still fail here.
+    expect(backlog.readFiles(ticket, 'requirements/*.md').map((f) => f.text),
+      'and no sibling read carries the outside file either').toStrictEqual(['claude\n']);
+  });
+
+  test('readFiles refuses an escaping FILE symlink the WALK branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const { backlog, ticket, leaked } = withLeak();
+    expect(refused(() => backlog.readFiles(ticket, 'dev/')))
+      .toBe(`not a path inside the ticket folder: '${leaked}'`);
+  });
+
+  test('twin — the same link NAMED outright was already refused, by the base check', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // Not a new clause and recorded as such: a pattern with no wildcard IS its own deepest existing
+    // ancestor, so `pathInside` resolved it before this round. It is pinned because it is what makes
+    // the two cases above a gap in enumeration rather than a gap in the predicate.
+    const { backlog, ticket, leaked } = withLeak();
+    expect(refused(() => backlog.readFiles(ticket, leaked)))
+      .toBe(`not a path inside the ticket folder: '${leaked}'`);
+    expect(refused(() => backlog.writeFile(ticket, leaked, 'x')), 'and so was a write to it')
+      .toBe(`not a path inside the ticket folder: '${leaked}'`);
+  });
+
+  test('write refuses an escaping ticket.md symlink, and the file outside is unchanged', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const { backlog, ticket, outside } = withArtifacts();
+    const target = path.join(outside, 'secret.md');
+    fs.rmSync(path.join(ticket.dir, 'ticket.md'));
+    fs.symlinkSync(target, path.join(ticket.dir, 'ticket.md'));
+
+    expect(refused(() => backlog.write({ ...ticket, body: 'through the link\n' })))
+      .toBe("not a path inside the ticket folder: 'ticket.md'");
+    expect(fs.readFileSync(target, 'utf8'), 'byte for byte, not merely absent').toBe('secret\n');
+  });
+
+  test('log refuses an escaping runs.log symlink, and appends nothing through it', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // An append is the one write that keeps what was there, so a link here grows somebody else's
+    // file a line at a time and the evidence of it is the line itself.
+    const { backlog, ticket, outside } = withArtifacts();
+    const target = path.join(outside, 'secret.md');
+    fs.symlinkSync(target, path.join(ticket.dir, 'runs.log'));
+
+    expect(refused(() => backlog.log(ticket, 'run=1 start')))
+      .toBe("not a path inside the ticket folder: 'runs.log'");
+    expect(fs.readFileSync(target, 'utf8')).toBe('secret\n');
+  });
+
+  test('twin — a file symlinked to a SIBLING inside the ticket folder is still read and written through', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // The alias answer OQ-6 ruled for a folder, one level down: it resolves inside the boundary, so
+    // the rule admits it and a write through it writes the same bytes in the same folder. This is
+    // the twin that separates a guard which discriminates from one which refuses every link.
+    const { backlog, ticket } = withArtifacts();
+    fs.symlinkSync(path.join(ticket.dir, 'dev', 'notes.md'), path.join(ticket.dir, 'dev', 'alias.md'));
+
+    expect(backlog.readFiles(ticket, 'dev/alias.md').map((f) => f.text)).toStrictEqual(['notes\n']);
+    expect(backlog.readFiles(ticket, 'dev/').map((f) => f.text).sort()).toStrictEqual(['notes\n', 'notes\n']);
+    expect(backlog.writeFile(ticket, 'dev/alias.md', 'rewritten')).toBe(path.join(ticket.dir, 'dev', 'alias.md'));
+    expect(fs.readFileSync(path.join(ticket.dir, 'dev', 'notes.md'), 'utf8')).toBe('rewritten\n');
+  });
+
+  // Run 2 review, blocker: a DANGLING link resolves to nothing, and the deepest-existing-ancestor
+  // clause read "does not resolve" as "is not there" and climbed to the parent — which is a real
+  // directory inside the ticket folder, so the destination was admitted and the open then followed
+  // the link and CREATED the file outside the root. Reproduced before it was believed, each case in
+  // its own tree so no earlier write made a later link resolvable: `writeFile`, `write` and `log`
+  // each created an outside file, and `readFiles` admitted the name and died on a raw ENOENT that
+  // quoted an inside path for a failure about an outside one.
+
+  /** A link at `rel` inside the ticket folder, to a path outside the root that NOTHING created. */
+  function dangling(staged: ReturnType<typeof withArtifacts>, rel: string): string {
+    const target = path.join(staged.outside, 'never-created.md');
+    const at = path.join(staged.ticket.dir, rel);
+    fs.rmSync(at, { force: true });
+    fs.symlinkSync(target, at);
+    return target;
+  }
+
+  /** The criterion is that the link's target was never brought into existence (R-3). */
+  function createsNothing(staged: ReturnType<typeof withArtifacts>, target: string, before: string[]): void {
+    expect(fs.existsSync(target), 'the outside file the link named').toBe(false);
+    expect(walk(staged.outside), 'the tree outside the root').toStrictEqual(before);
+  }
+
+  test('writeFile refuses a DANGLING escaping destination, and does not create it', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, path.join('dev', 'leak.md'));
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.writeFile(staged.ticket, 'dev/leak.md', 'x')))
+      .toBe("not a path inside the ticket folder: 'dev/leak.md'");
+    createsNothing(staged, target, before);
+  });
+
+  test('write refuses a DANGLING escaping ticket.md symlink, and does not create its target', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, 'ticket.md');
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.write({ ...staged.ticket, body: 'through the link\n' })))
+      .toBe("not a path inside the ticket folder: 'ticket.md'");
+    createsNothing(staged, target, before);
+  });
+
+  test('log refuses a DANGLING escaping runs.log symlink, and does not create its target', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    const target = dangling(staged, 'runs.log');
+    const before = walk(staged.outside);
+
+    expect(refused(() => staged.backlog.log(staged.ticket, 'run=1 start')))
+      .toBe("not a path inside the ticket folder: 'runs.log'");
+    createsNothing(staged, target, before);
+  });
+
+  // Two tests rather than one, so each branch fails on its own (Q-0071). `readFiles` leaked no
+  // bytes through these — there is nothing at the other end to read — but it admitted the name,
+  // which is the same defect one method along and the same line fixes it.
+
+  test('readFiles refuses a DANGLING escaping symlink the READDIR branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    dangling(staged, path.join('dev', 'leak.md'));
+    expect(refused(() => staged.backlog.readFiles(staged.ticket, 'dev/*.md')))
+      .toBe(`not a path inside the ticket folder: '${path.join('dev', 'leak.md')}'`);
+  });
+
+  test('readFiles refuses a DANGLING escaping symlink the WALK branch enumerated', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    const staged = withArtifacts();
+    dangling(staged, path.join('dev', 'leak.md'));
+    expect(refused(() => staged.backlog.readFiles(staged.ticket, 'dev/')))
+      .toBe(`not a path inside the ticket folder: '${path.join('dev', 'leak.md')}'`);
+  });
+
+  test('twin — a destination with nothing at all below the folder is still written, parents and all', () => {
+    // R-2's check on this clause specifically: a guard reading every unresolvable name as an escape
+    // refuses every file that does not exist yet, which is most of what a flow writes. This is the
+    // case that separates "resolves to nothing" from "nothing is there".
+    const { backlog, ticket } = withArtifacts();
+    expect(backlog.writeFile(ticket, 'review/chore/run-9/chore-iter-1.md', 'body'))
+      .toBe(path.join(ticket.dir, 'review', 'chore', 'run-9', 'chore-iter-1.md'));
+  });
+
+  test('a DANGLING link pointing INSIDE the ticket folder is refused too — a named behaviour change', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // Stated rather than left to be found. A name that resolves to nothing is refused wherever this
+    // module meets one, which is what `dirOf` has always done with the same resolver: reading a link
+    // target to decide where it *would* have pointed is the string test this guard exists to avoid,
+    // and a chain of them is worse. No shipped flow plants a link in a ticket folder, and refusing
+    // is the direction that cannot create a file.
+    const { backlog, ticket } = withArtifacts();
+    fs.symlinkSync(path.join(ticket.dir, 'dev', 'not-yet.md'), path.join(ticket.dir, 'dev', 'alias.md'));
+    expect(refused(() => backlog.writeFile(ticket, 'dev/alias.md', 'x')))
+      .toBe("not a path inside the ticket folder: 'dev/alias.md'");
+    expect(fs.existsSync(path.join(ticket.dir, 'dev', 'not-yet.md'))).toBe(false);
+  });
+
+  test('read still follows an escaping ticket.md symlink — preserved, and pinned so it is deliberate', (ctx) => {
+    if (NO_SYMLINKS) ctx.skip(NO_SYMLINKS);
+    // AC-11 requires `read` and `list` behaviourally untouched, and the run-2 review named `write`
+    // and `log` rather than this. The asymmetry is the safe direction and is stated rather than
+    // implied: a planted link is still LISTED and still READ, and the store now refuses to write
+    // back through it, so nothing leaves the root. Reported rather than given a successor here,
+    // because whether `read` should refuse one is a question about `list` and `quorum board` too.
+    const { backlog, ticket, outside } = withArtifacts();
+    write(path.join(outside, 'ticket.md'), FIXTURE.replace('id: Q-0001', 'id: SECRET-0001'));
+    fs.rmSync(path.join(ticket.dir, 'ticket.md'));
+    fs.symlinkSync(path.join(outside, 'ticket.md'), path.join(ticket.dir, 'ticket.md'));
+
+    expect(backlog.read('Q-0001-a-ticket').meta.id).toBe('SECRET-0001');
+    expect(refused(() => backlog.write(backlog.read('Q-0001-a-ticket'))), 'and the write does not go back')
+      .toBe("not a path inside the ticket folder: 'ticket.md'");
+  });
+});
+
+describe('Q-0059 AC-10 — the guard refuses nothing this product ships', () => {
+  /** Every `write:`, `writes:` and `input.backlog` value a flow file declares, at any depth. */
+  function declaredPaths(document: unknown): string[] {
+    if (Array.isArray(document)) return document.flatMap(declaredPaths);
+    if (document === null || typeof document !== 'object') return [];
+    const node = document as Record<string, unknown>;
+    const here: string[] = [];
+    if (typeof node.write === 'string') here.push(node.write);
+    if (Array.isArray(node.writes)) here.push(...node.writes.filter((v): v is string => typeof v === 'string'));
+    const input = node.input as Record<string, unknown> | undefined;
+    if (Array.isArray(input?.backlog)) here.push(...input.backlog.filter((v): v is string => typeof v === 'string'));
+    return [...here, ...Object.values(node).flatMap(declaredPaths)];
+  }
+
+  /** The values, READ from the files rather than transcribed, so a flow added later is covered. */
+  function shippedPaths(): { file: string; value: string }[] {
+    const found: { file: string; value: string }[] = [];
+    for (const relative of ['harness/flows', 'packages/cli/templates/harness/flows']) {
+      const flowsDir = path.join(repoRoot, relative);
+      const files = fs.readdirSync(flowsDir).filter((name) => name.endsWith('.yaml'));
+      if (!files.length) throw new Error(`corpus missing: ${relative} holds no flow — this check proves nothing without one`);
+      for (const name of files) {
+        const values = declaredPaths(YAML.parse(fs.readFileSync(path.join(flowsDir, name), 'utf8')));
+        if (!values.length) throw new Error(`${relative}/${name} declares no write path or backlog input — the extraction has lost its subject`);
+        for (const value of values) found.push({ file: `${relative}/${name}`, value });
+      }
+    }
+    return found;
+  }
+
+  test('every write path and backlog glob the six flows declare, in both copies, is accepted', () => {
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const refusals = shippedPaths()
+      .filter(({ value }) => refused(() => backlog.readFiles(ticket, value)) !== null
+        || refused(() => backlog.writeFile(ticket, value, 'x')) !== null)
+      .map(({ file, value }) => `${file}: ${value}`);
+    expect(refusals, 'the guard refuses a path this product ships').toStrictEqual([]);
   });
 });
