@@ -133,9 +133,9 @@ function flows(root: string, files: Record<string, string>): void {
   }
 }
 
-/** A flow with no steps, as `lint.test.ts`'s `basicFlow` builds one. */
+/** The smallest flow that lints clean, as `lint.test.ts`'s `basicFlow` builds one (Q-0055). */
 const basicFlow = (name: string, consumes: string, produces: string): string =>
-  `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps: []\n`;
+  `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - id: s\n`;
 
 describe('AC-3 — the columns, and the hint over the flow set core already computes', () => {
   test('every stage with tickets renders, plus the three that always do, in STAGES order', async () => {
@@ -508,6 +508,123 @@ describe('AC-6 — the two legends, each printed only when a row earned it', () 
     expect(out(result)).toMatch(/T-0001/);
     expect(out(result), 'the legend explained a token no row rendered')
       .not.toMatch(/git could not answer/);
+  });
+});
+
+describe('Q-0055 AC-16/AC-17 — a flow the board could not read is named, and nothing else is claimed', () => {
+  /** A flow file whose one step carries no id, which is what Q-0055 refuses. */
+  const idLessFlow = (name: string, consumes: string, produces: string): string =>
+    `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - role: r\n`;
+
+  /**
+   * A flow that lints clean on its own and is refused for its backward edge to a flow that is not
+   * there — the one shape where "did it parse" and "did it lint" disagree, because
+   * `lintFlowDirectory` appends the cross-flow problem to a record that kept its parsed flow.
+   */
+  const danglingFlow = (name: string, consumes: string, produces: string): string =>
+    `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - id: s\n`
+    + '    on_fail:\n      goto: flow:nowhere\n      max_iterations: 1\n      on_exhausted: gate\n';
+
+  test('AC-16 — the good flow keeps its hint and the bad file is named beside it', async () => {
+    // The two halves in one board, because either alone would pass over the defect: a board that
+    // dropped both would still print the legend, and a board that printed no legend would still
+    // show the hint. `broken.yaml` fails lint rather than YAML parsing, so what is being reported
+    // is a flow the board read and refused rather than a file it could not open.
+    const root = await projectFixture();
+    flows(root, {
+      alpha: basicFlow('alpha', 'requirements', 'reviewed'),
+      broken: idLessFlow('broken', 'draft', 'requirements'),
+    });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result), 'the flow that lints must still name its command').toContain('→ quorum run alpha <id>');
+    expect(out(result), 'and the one that does not must be named').toContain('could not read = broken.yaml');
+    // The file it names is the one that failed and not the one that did not — a legend listing both
+    // would be as uninformative as listing neither.
+    expect(out(result), 'a clean flow was reported as unreadable').not.toContain('alpha.yaml');
+  });
+
+  test('AC-16 — with nothing unreadable the line is absent, so silence still means nothing to say', async () => {
+    const root = await projectFixture();
+    flows(root, { alpha: basicFlow('alpha', 'requirements', 'reviewed') });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result), 'a legend printed with nothing to report').not.toContain('could not read');
+  });
+
+  test('AC-16 — a file that will not parse at all is named the same way, and does not stop the board', async () => {
+    // The other route to a record with no flow: a YAML syntax error rather than a lint refusal.
+    // Both arrive as the same absence in `lintFlowDirectory`'s records, and the board must not care
+    // which — what it can say is that it could not read the file.
+    const root = await projectFixture();
+    flows(root, {
+      alpha: basicFlow('alpha', 'requirements', 'reviewed'),
+      torn: 'name: torn\nsteps: [\n',
+    });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result)).toContain('could not read = torn.yaml');
+    expect(out(result), 'one bad file must not cost the good one its hint').toContain('→ quorum run alpha <id>');
+  });
+
+  test('AC-16 — a flow refused for a cross-flow edge loses its hint and is named with the rest', async () => {
+    // Run 2 iteration 1's review finding. `dangling` parses, passes every per-flow rule and is then
+    // refused by the cross-flow pass, which appends the problem to a record still carrying its
+    // flow — so a board classifying on `flow` gave it a hint for a command `quorum run` refuses
+    // (`run.ts` lints the whole directory first) and left it out of the legend that exists to
+    // explain exactly that.
+    const root = await projectFixture();
+    flows(root, {
+      alpha: basicFlow('alpha', 'requirements', 'reviewed'),
+      dangling: danglingFlow('dangling', 'draft', 'requirements'),
+    });
+
+    // The premise, asserted rather than assumed: this fixture must fail on the cross-flow edge and
+    // not on a per-flow rule, or the test is the id-less one again under another name.
+    const linted = await invoke(['lint', '--project', root]);
+    expect(out(linted), 'the fixture stopped being a cross-flow failure')
+      .toContain('target flow nowhere is missing or unloadable');
+
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result), 'a flow the linter refuses kept its hint').not.toContain('quorum run dangling');
+    expect(out(result), 'and it was named nowhere').toContain('could not read = dangling.yaml');
+    expect(out(result), 'the clean flow lost its hint to its neighbour').toContain('→ quorum run alpha <id>');
+  });
+
+  test('AC-16 — two bad files are one line naming both, in filename order', async () => {
+    const root = await projectFixture();
+    flows(root, {
+      zulu: idLessFlow('zulu', 'draft', 'requirements'),
+      apple: idLessFlow('apple', 'solutioned', 'red'),
+      good: basicFlow('good', 'requirements', 'reviewed'),
+    });
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result)).toContain('could not read = apple.yaml, zulu.yaml');
+    expect(out(result).split('could not read').length - 1, 'one line, however many files').toBe(1);
+  });
+
+  test('AC-17 — the board still exits 0, and claims nothing about the flows it did read', async () => {
+    // A refused flow is a fact this board reports, not a failure of the board: `quorum board` is a
+    // report and `quorum lint` is the check, which is what *"What an exit code may claim, and the
+    // three zeros it was asked about"* (2026-09-08) settles for exactly this shape. And the line
+    // may warn and may never reassure — no wording equivalent to "all flows valid" may appear in
+    // either shape, which is why the clean board is checked as well as the broken one.
+    const root = await projectFixture();
+    flows(root, { good: basicFlow('good', 'requirements', 'reviewed'), broken: idLessFlow('broken', 'draft', 'requirements') });
+    const withBad = await board(root);
+    expect(withBad.exitCode, out(withBad)).toBe(SUCCESS);
+
+    flows(root, { good: basicFlow('good', 'requirements', 'reviewed') });
+    const clean = await board(root);
+    expect(clean.exitCode, out(clean)).toBe(SUCCESS);
+
+    for (const [what, result] of [['with a refused flow', withBad], ['with none', clean]] as const) {
+      for (const reassurance of [/all flows/i, /flows are valid/i, /every flow/i, /\bvalid\b/i, /\bok\b/i, /\bpassed\b/i]) {
+        expect(out(result), `${what}: the board reassured about flows it did not check`).not.toMatch(reassurance);
+      }
+    }
   });
 });
 

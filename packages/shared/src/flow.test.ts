@@ -345,6 +345,48 @@ describe('AC-4 — the schema invents nothing and discards nothing', () => {
   });
 });
 
+describe('Q-0055 AC-7 — the schema does not follow lint into a presence rule it now has', () => {
+  /** The declarations that stay optional, one per kind the schema names its own `id` on. */
+  const ID_DECLARATIONS = 5;
+
+  /** This schema's own source, through the corpus reader the package already uses for itself. */
+  const flowSource = (): string => {
+    const found = sharedSourceFiles().find(([name]) => name === 'flow.ts');
+    if (!found) throw new Error('corpus missing: packages/shared/src/flow.ts — this check has lost its subject');
+    return found[1];
+  };
+
+  test('all five `id` declarations are still optional, and `steps` is too', () => {
+    // Lint refuses an id-less step and a stepless flow since Q-0055. This schema deliberately does
+    // NOT, because a presence rule checked in two files is free to drift and nothing runs this one
+    // in front of lint — `loadFlow` casts and never parses. Counted from the source so a sixth
+    // declaration cannot arrive required without failing here.
+    const source = flowSource();
+    expect((source.match(/\bid: z\.string\(\)\.optional\(\),/g) ?? []).length).toBe(ID_DECLARATIONS);
+    expect(source, 'a required id would be Q-0041 iteration 5 undone').not.toMatch(/\bid: z\.string\(\),/);
+    expect(source).toContain('steps: z.array(flowStepSchema).optional(),');
+  });
+
+  test('and no comment in it still claims lint requires an id on no step kind', () => {
+    // The claim was true in five places until Q-0055 and is now false in all of them. A schema
+    // whose prose describes a linter that no longer exists is the drift this repository keeps
+    // paying for, so the sentence is checked rather than corrected once and trusted.
+    const source = flowSource();
+    for (const stale of [
+      'lint requires an id on no step kind',
+      'requires one on no step kind',
+      'because lint requires it on none of them',
+      'a flow with no `steps` returns true from lint today',
+    ]) {
+      expect(source.includes(stale), `flow.ts still asserts: ${stale}`).toBe(false);
+    }
+    // And the anti-vacuity anchor: the block that replaced them has to still be there, or the four
+    // clauses above would pass over a file that had lost the subject entirely.
+    expect(source, 'the PRESENCE block must still say which way each key goes')
+      .toContain('`steps` and `id`, since Q-0055.');
+  });
+});
+
 describe('Q-0069 AC-7 — the deprecated zod object API is gone, and stays gone', () => {
   // THE PIN FOR ONE MIGRATION, and deliberately not more. The general net is
   // `@typescript-eslint/no-deprecated` in eslint.config.js, which catches the NEXT deprecation in

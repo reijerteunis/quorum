@@ -22,7 +22,9 @@ describe('Q-0050 AC-11b..AC-11g — loaders and pure helpers', () => {
   test('loadFlow lints and records its file; loadFlowByName preserves ENOENT', () => {
     const harness = tempDir('q0050-harness-');
     const valid = path.join(harness, 'flows', 'ok.yaml');
-    write(valid, 'name: ok\nconsumes: draft\nproduces: requirements\nsteps: []\n');
+    // The step is what makes this the VALID half: since Q-0055 lint refuses a flow declaring none,
+    // so `steps: []` would now exercise the same throw the `broken` fixture below is for.
+    write(valid, 'name: ok\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: x\n');
     expect(implemented(() => loadFlow(valid))).toMatchObject({ name: 'ok', file: valid });
     expect(() => loadFlowByName('ghost', harness)).toThrow(expect.objectContaining({ code: 'ENOENT' }));
     const broken = path.join(harness, 'flows', 'broken.yaml');

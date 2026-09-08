@@ -69,9 +69,13 @@ export function runFixture(options: RunFixtureOptions = {}): RunFixture {
   const repoDir = repo();
   write(path.join(repoDir, 'harness/harness.yaml'), options.config ?? DEFAULT_CONFIG);
   const flowFile = path.join(repoDir, 'harness/flows/chore.yaml');
-  write(flowFile, 'name: chore\nconsumes: requirements\nproduces: reviewed\nsteps: []\n');
+  // The FILE carries a named step and the flow this fixture hands the engine carries none. Both
+  // halves are deliberate: `loadFlow` lints, and since Q-0055 a flow declaring no step is refused,
+  // so the file must have one; the engine lints no flow object, so the stepless default every
+  // caller here composes its own steps over is exactly what it was.
+  write(flowFile, 'name: chore\nconsumes: requirements\nproduces: reviewed\nsteps:\n  - id: implement\n');
   const project = loadProject(repoDir);
-  const flow = loadFlow(flowFile);
+  const flow = { ...loadFlow(flowFile), steps: [] };
   const ticketDir = path.join(repoDir, 'backlog', TICKET_FOLDER);
   write(path.join(ticketDir, 'ticket.md'), `---\nid: ${TICKET_ID}\n---\nticket body\n`);
   const ticket = {

@@ -640,8 +640,11 @@ function options(repoDir: string, overrides: Partial<RunFlowOptions> = {}): RunF
   write(path.join(repoDir, 'harness', 'harness.yaml'), 'adapterOverride: mock\nrepo:\n  base_branch: main\n');
   const project = loadProject(repoDir);
   const flowFile = path.join(repoDir, 'harness', 'flows', 'probe.yaml');
-  write(flowFile, 'name: probe\nconsumes: draft\nproduces: requirements\nsteps: []\n');
-  const flow: Flow = loadFlow(flowFile);
+  // The FILE carries a named step and the flow handed on carries none. `loadFlow` lints, and since
+  // Q-0055 a flow declaring no step is refused, so the file needs one; the engine lints no flow
+  // object, so the stepless default every caller here overrides is unchanged.
+  write(flowFile, 'name: probe\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: probe-step\n');
+  const flow: Flow = { ...loadFlow(flowFile), steps: [] };
   const ticketDir = path.join(repoDir, 'backlog', `${TICKET}-diff`);
   write(path.join(ticketDir, 'ticket.md'), `---\nid: ${TICKET}\n---\nbody\n`);
   return {
@@ -730,6 +733,29 @@ describe('Q-0051 AC-9 — the preflight walks every diff site once, in flow orde
       producers: [{ side: 'right', ref: `harness/${TICKET}/implement`, step: 'implement', class: 'step-created' }],
     }]]);
     expect(seen[0]?.diffInputs, 'and it is not materialised at run start').toStrictEqual([]);
+  });
+
+  test('Q-0055 AC-10 — the two renderings of an absent id are still reachable, and still differ', async () => {
+    // `lintFlow` refuses an id-less step since Q-0055, and this code is reached anyway: `runFlow`
+    // takes a flow OBJECT and lints nothing, which is how this suite reaches it and how M3's server
+    // will. Deleting the fallback would make the engine correct only for a caller that had linted,
+    // which is safety by convention rather than in `core` (harness/rules.md).
+    //
+    // The two renderings are what the assertion is about and they are deliberately different: the
+    // BRANCH the worktree step names comes out `harness/<ticket>/undefined`, matching what the
+    // worktree step itself would cut, while the PRODUCER a later diagnostic quotes reads the string
+    // `null`, which is what `String(s.id ?? null)` puts there. Collapsing them changes one message.
+    const opts = options(repoWith());
+    withSteps(opts, [
+      { role: 'principal-architect', adapter: 'mock', worktree: true },
+      reviewStep(`{base}...harness/{id}/undefined`),
+    ]);
+    const { error, seen } = await observe(opts);
+    expect(error, 'a range a step creates is deferred, not refused at run start').toBeNull();
+    expect(seen[0]?.deferred).toStrictEqual([[`main...harness/${TICKET}/undefined`, {
+      ref: `harness/${TICKET}/undefined`, step: 'null',
+      producers: [{ side: 'right', ref: `harness/${TICKET}/undefined`, step: 'null', class: 'step-created' }],
+    }]]);
   });
 
   test('P1c/P1d — an outer step\'s unresolved placeholder is not a template, and a deferred sibling is still judged', async () => {
@@ -1027,6 +1053,21 @@ describe('Q-0051 AC-9 — the preflight is one path, not two', () => {
     expect(unreachable).toBeUndefined();
     const source = coreSourceFiles().find(([name]) => name === 'engine/diff.ts')![1];
     expect(source, 'and no conditional in the module mentions it either').not.toMatch(/if\s*\([^)\n]*\bdry\b/);
+  });
+
+  test('Q-0055 AC-10 — and the module no longer claims lint permits an id-less step', () => {
+    // The comment beside the two renderings said "which lint does not yet refuse; see Q-0055", and
+    // that clause became false the day this rule landed. The CODE is kept — a caller holding a flow
+    // object still reaches it — so what has to move is the sentence, and a sentence corrected once
+    // and trusted is how the drift this file's own register exists to catch gets in.
+    const source = coreSourceFiles().find(([name]) => name === 'engine/diff.ts')![1];
+    for (const stale of ['does not yet refuse', 'lint does not', 'not yet refuse']) {
+      expect(source.includes(stale), `diff.ts still claims lint permits it: ${stale}`).toBe(false);
+    }
+    // Anti-vacuity: the fallback and its authority must both still be there, or the clauses above
+    // would pass over a module that had deleted the thing they are about.
+    expect(source, 'the reason the fallback is kept must be stated where it is').toContain('Q-0055');
+    expect(source).toContain('String(s.id ?? null)');
   });
 
   test('preflightDiffs is reachable without a run, over a directly built context', () => {

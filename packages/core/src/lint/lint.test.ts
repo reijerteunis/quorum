@@ -52,9 +52,15 @@ function flowsDir(files: Record<string, string>): string {
 
 const yaml = (lines: string[]): string => lines.join('\n') + '\n';
 
-/** A flow that consumes one stage and produces another, and does nothing else. */
+/**
+ * A flow that consumes one stage and produces another, and does as little else as lint permits.
+ *
+ * The step is not decoration and the id on it is not either. Q-0055 AC-14 refuses a flow declaring
+ * no step, and AC-1 refuses a step with no id, so the shortest flow that lints clean is this one —
+ * which is what every directory-walk fixture below needs, none of them being about steps at all.
+ */
 const basic = (name: string, consumes: string, produces: string): string =>
-  yaml([`name: ${name}`, `consumes: ${consumes}`, `produces: ${produces}`, 'steps: []']);
+  yaml([`name: ${name}`, `consumes: ${consumes}`, `produces: ${produces}`, 'steps:', '  - id: s', '    role: r']);
 
 /** The shipped review flow's shape, reduced to the one edge the return-chain walk follows. */
 const reviewWith = (target: string): string => yaml([
@@ -67,7 +73,7 @@ const reviewWith = (target: string): string => yaml([
 const step = (extra: Record<string, unknown>): Record<string, unknown> => ({ id: 's', ...extra });
 const flowOf = (...steps: unknown[]): Record<string, unknown> => ({ name: 'f', consumes: 'x', produces: 'y', steps });
 
-describe('AC-2 — the sixteen messages, verbatim', () => {
+describe('AC-2 — the eighteen messages, verbatim', () => {
   test('1 — duplicate step id', () => {
     expect(onlyProblem(flowOf({ id: 'twin' }, { id: 'twin' }))).toBe('duplicate step id "twin"');
   });
@@ -156,13 +162,32 @@ describe('AC-2 — the sixteen messages, verbatim', () => {
   });
 
   test('15 — a flow with no consumes/produces', () => {
-    expect(onlyProblem({ name: 'f', steps: [] })).toBe('flow needs consumes/produces');
+    // The fixture carries a step where it carried `steps: []` until Q-0055, and the MESSAGE is
+    // unedited: AC-14 made an empty list a second problem, so a fixture without one no longer
+    // isolates this one. What AC-5 protects is the text, which is what `onlyProblem` reads.
+    expect(onlyProblem({ name: 'f', steps: [{ id: 's' }] })).toBe('flow needs consumes/produces');
   });
 
   test('16 — a deploy flow with no human-locked gate', () => {
     expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'deployed', steps: [{ gate: 'human', reason: 'ship it' }] }))
       .toBe('deploy flow must contain a human-locked gate');
     expect(lintFlow({ name: 'f', consumes: 'x', produces: 'deployed', steps: [{ gate: 'human-locked', reason: 'ship it' }] })).toBe(true);
+  });
+
+  test('17 — a step the engine cannot name, located rather than named (Q-0055)', () => {
+    expect(onlyProblem(flowOf({ role: 'r', adapter: 'claude' })))
+      .toBe('step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+    // The `parallel` form carries both numbers, which is the whole of why this rule walks the
+    // flow's own `steps` list rather than `flattenSteps`'s output.
+    expect(onlyProblem({
+      name: 'f', consumes: 'x', produces: 'y',
+      steps: [{ id: 'first', role: 'r' }, { parallel: [{ id: 'm1', role: 'r' }, { role: 'r' }] }],
+    })).toBe('step 2, parallel member 2: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+  });
+
+  test('18 — a flow that declares no step at all (Q-0055 AC-14)', () => {
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y' })).toBe('flow needs steps');
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y', steps: [] })).toBe('flow needs steps');
   });
 
   test('the header names the flow, and `name` outranks `file`', () => {
@@ -351,7 +376,9 @@ describe('AC-4 — the diff range grammar, at every site a flow can hold one', (
     //
     // What E-1 does not settle is whether the grammar *should* refuse it. It is a real rough edge —
     // `harness/{id}/integration ` is not a ref anyone means — and tightening it is a behaviour
-    // change belonging to its own ticket beside Q-0055 and Q-0056.
+    // change belonging to its own ticket beside Q-0056. It named Q-0055 too until that ticket
+    // shipped, which refuses an unusable step ID and leaves this grammar untouched; the citation is
+    // corrected rather than left pointing at a closed ticket (Q-0055 non-goal 8).
     expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration ' } })))).toBe(true);
     expect(lintFlow(flowOf(step({ input: { diff: 'harness/{id}/integration ...{base}' } })))).toBe(true);
     expect(lintFlow(flowOf(step({ input: { diff: '{base}...harness/{id}/integration\t' } })))).toBe(true);
@@ -913,7 +940,261 @@ describe('AC-11 — every shipped flow still lints clean, through the ported cod
   });
 });
 
-describe('AC-12 — FlowError, and the nine preserved defects', () => {
+// ---------------------------------------------------------------------------------------------
+// Q-0055 — a step the engine can name, and a flow that has steps.
+//
+// The rule is one sentence: **every step that is not a gate must carry a usable id, and a gate must
+// not be required to**. One predicate rather than an enumeration of the kinds that carry
+// `worktree: true` or `on_fail`, because the id reaches nine consumers and only two of them are
+// gated on those keys — so a rule keyed on them had already missed three sites before it was
+// written, `runFanOut`'s `${step.id}:{task.id}` child id among them, whose default branch then
+// carries a `:` git refuses as a refname.
+//
+// **The message is the deliverable, and a diagnostic cannot be established by reading it.** Every
+// clause below was demonstrated failing against the pre-change linter on its own before it was
+// trusted — *showing a guard has a subject proves the guard fires, not that each of its clauses
+// does* (Q-0071). What each mutation said is recorded in this run's implement report.
+// ---------------------------------------------------------------------------------------------
+
+describe('Q-0055 AC-1 — one rule, one predicate: usable id, or not a gate', () => {
+  const AGENT = { role: 'r', adapter: 'claude' };
+
+  test('every kind but the gate is refused, and the gate is not', () => {
+    // Six rows, one per kind the engine dispatches, split five refusals against one acceptance.
+    // Written out per kind rather than looped over a shared fixture, because the point of the
+    // single predicate is that no kind is special — which only a per-kind row can lose.
+    expect(lintAccepts(flowOf(AGENT)), 'a plain agent step').toBe(false);
+    expect(lintAccepts({ name: 'f', consumes: 'x', produces: 'y', steps: [{ parallel: [AGENT, { role: 'r', adapter: 'codex' }] }] }), 'a parallel member').toBe(false);
+    expect(lintAccepts(flowOf({ type: 'script', run: 'pnpm test' })), 'a script step').toBe(false);
+    expect(lintAccepts(flowOf({ type: 'integrate', branches: ['b'] })), 'an integrate step').toBe(false);
+    expect(lintAccepts(flowOf({ fan_out: { by: 'role' }, step: { role: 'r' } })), 'a fan-out parent').toBe(false);
+    expect(lintAccepts(flowOf({ gate: 'human', reason: 'approve' })), 'a gate step').toBe(true);
+  });
+
+  test('presence AND blankness, each refused as its own row, and the type still is not', () => {
+    // The blank clause has a precedent one screen up in the same function: `on_fail.counter` has
+    // been `typeof !== 'string' || !trim()` since the spike, and for the same reason — a branch
+    // named out of whitespace is a refname git will not take.
+    for (const id of ['', '   ', '\t', 0]) {
+      expect(lintAccepts(flowOf({ id, role: 'r' })), `id: ${JSON.stringify(id)}`).toBe(false);
+    }
+    expect(lintAccepts(flowOf({ id: null, role: 'r' })), 'id: null').toBe(false);
+    // And what the rule deliberately does NOT do. `id: 42` is a TYPE, which is the schema's to
+    // refuse — a `typeof` here would move three rows out of the type-divergence register instead of
+    // the one presence rows Q-0055 moves. See AC-1's non-goal 3 and Appendix A.3.
+    expect(lintAccepts(flowOf({ id: 42 })), 'id: 42 is the schema\'s refusal, not lint\'s').toBe(true);
+  });
+
+  test('a step that is not an object at all is refused, by the same predicate', () => {
+    // Neither carries an id and neither is a gate, so the rule reaches them without a clause of its
+    // own — which is the direction a default-on rule is chosen for.
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y', steps: ['a-string'] }))
+      .toBe('step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y', steps: [42] }))
+      .toBe('step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+    // `steps: null` and `steps: [null]` are untouched: both still throw a raw `TypeError` out of
+    // `flattenSteps` before any rule runs. Why: preserved defect, see AC-12 defect 4.
+    for (const steps of [null, [null]]) {
+      expect(() => lintFlow({ name: 'f', consumes: 'x', produces: 'y', steps }), JSON.stringify(steps)).toThrow(TypeError);
+    }
+  });
+
+  test('the duplicate-id filter keeps its own predicate, and a blank id reports under both', () => {
+    // The two read alike and ask different questions: this rule asks whether the engine can name
+    // something after the id, and the duplicate check asks whether two steps collide. Blank ids
+    // are where they disagree, and the disagreement is visible rather than theoretical — replacing
+    // the duplicate filter's truthiness with `usableId` would silently drop message 1 here while
+    // every other assertion in this file stayed green.
+    expect(refusal({ name: 'f', consumes: 'x', produces: 'y', steps: [{ id: '   ', role: 'r' }, { id: '   ', role: 'r' }] }).problems)
+      .toEqual([
+        'duplicate step id "   "',
+        'step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+        'step 2: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      ]);
+    // And an EMPTY id is not a duplicate of another empty one, which is the pre-existing behaviour
+    // the truthiness filter has always had and which this rule does not disturb.
+    expect(refusal({ name: 'f', consumes: 'x', produces: 'y', steps: [{ id: '', role: 'r' }, { id: '', role: 'r' }] }).problems)
+      .toEqual([
+        'step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+        'step 2: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      ]);
+  });
+});
+
+describe('Q-0055 AC-2 — the gate exemption, which is the engine\'s property and not the corpus\'s', () => {
+  test('a gate with no id lints clean, alone, and `gate: 42` is a gate for this rule', () => {
+    expect(lintFlow(flowOf({ gate: 'human', reason: 'approve' }))).toBe(true);
+    // Truthiness is `runStep`'s own test and the deploy-gate rule's, so a malformed gate stays a
+    // gate here too rather than becoming an agent step that owes an id.
+    expect(lintFlow(flowOf({ gate: 42 }))).toBe(true);
+  });
+
+  test('beside a refused step it contributes nothing, and the one problem locates the agent', () => {
+    expect(onlyProblem({
+      name: 'f', consumes: 'x', produces: 'y',
+      steps: [{ gate: 'human', reason: 'approve' }, { role: 'r' }],
+    })).toBe('step 2: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+  });
+
+  test('and every one of the twelve shipped gates is id-less, so the exemption is not hypothetical', () => {
+    // The corpus half of the same claim, derived rather than transcribed: if a shipped gate ever
+    // gained an id this would still pass, and if the rule ever reached one it would not.
+    let gates = 0;
+    for (const relative of ['harness/flows', 'packages/cli/templates/harness/flows']) {
+      for (const flow of validateFlowDirectory(path.join(repoRoot, relative))) {
+        for (const step of flattenSteps(flow.steps)) {
+          if (!(step as Record<string, unknown>).gate) continue;
+          gates += 1;
+          expect((step as Record<string, unknown>).id, `a shipped gate in ${String(flow.name)} carries an id`).toBeUndefined();
+        }
+      }
+    }
+    expect(gates, 'both corpora together ship twelve gates').toBe(12);
+  });
+});
+
+describe('Q-0055 AC-3 — the fan-out template stays exempt, and flattenSteps stays shallow', () => {
+  test('a template with no id is not a finding, and the parent\'s missing id is', () => {
+    expect(lintFlow(flowOf({ id: 'devs', fan_out: { from: 't' }, step: { role: 'r' } }))).toBe(true);
+    expect(onlyProblem(flowOf({ fan_out: { from: 't' }, step: { role: 'r' } })))
+      .toBe('step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it');
+  });
+
+  test('and the template is invisible even when the parent is refused — one problem, not two', () => {
+    // The negative that matters: the rule must not have been satisfied by making the walk recurse.
+    // A template's id is an interpolation placeholder resolved once per task, so a rule that saw it
+    // would refuse a flow the engine runs.
+    const { problems } = refusal(flowOf({ fan_out: { from: 't' }, step: { role: 'r', adapter: 'claude' } }));
+    expect(problems).toHaveLength(1);
+    expect(flattenSteps([{ id: 'devs', fan_out: { from: 't' }, step: { role: 'r' } }]))
+      .toEqual([{ id: 'devs', fan_out: { from: 't' }, step: { role: 'r' } }]);
+  });
+});
+
+describe('Q-0055 AC-4 — the diagnostic locates a step it cannot name', () => {
+  const ID_REQUIRED = /^(step \d+|step \d+, parallel member \d+): id is required\b/;
+
+  test('a top-level step and a parallel member locate distinguishably', () => {
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y', steps: [{ id: 'a' }, { id: 'b' }, { role: 'r' }] }))
+      .toMatch(/^step 3: id is required/);
+    expect(onlyProblem({
+      name: 'f', consumes: 'x', produces: 'y',
+      steps: [{ id: 'a' }, { parallel: [{ id: 'm1' }, { id: 'm2' }, { role: 'r' }] }],
+    })).toMatch(/^step 2, parallel member 3: id is required/);
+  });
+
+  test('the locator is the flow\'s own list, not flattenSteps\', which erases the group position', () => {
+    // Under a flattened walk both of these would be "step 2" and "step 3" — one number where two
+    // are needed, and the group's own position lost. This is the assertion that would fail if the
+    // rule were built on `flattenSteps`, which is why it names both shapes in one flow.
+    expect(refusal({
+      name: 'f', consumes: 'x', produces: 'y',
+      steps: [{ parallel: [{ role: 'r' }, { role: 'r' }] }, { role: 'r' }],
+    }).problems.map((problem) => problem.split(':')[0]))
+      .toEqual(['step 1, parallel member 1', 'step 1, parallel member 2', 'step 2']);
+  });
+
+  test('two id-less steps produce two DIFFERENT messages, which is what the locator is for', () => {
+    const { problems } = refusal({ name: 'f', consumes: 'x', produces: 'y', steps: [{ role: 'r' }, { role: 'r' }] });
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).not.toBe(problems[1]);
+    // Before this rule, two id-less steps carrying two defects each produced four problems that
+    // were pairwise identical, so a reader could not tell which step any of them belonged to.
+    for (const problem of problems) expect(problem).toMatch(ID_REQUIRED);
+  });
+
+  test('and it renders neither absent value: no `undefined` and no `null` anywhere in it', () => {
+    for (const flow of [
+      flowOf({ role: 'r' }),
+      { name: 'f', consumes: 'x', produces: 'y', steps: [{ parallel: [{ role: 'r' }] }] },
+      { name: 'f', consumes: 'x', produces: 'y', steps: [{ id: null, role: 'r' }] },
+      { name: 'f', consumes: 'x', produces: 'y', steps: ['a-string'] },
+    ]) {
+      const problem = onlyProblem(flow);
+      expect(problem, 'the absent id must not be rendered').not.toContain('undefined');
+      expect(problem, 'the absent id must not be rendered').not.toContain('null');
+      // It says what is missing as well as where, which is the half a bare position would lose.
+      expect(problem).toContain('id is required');
+    }
+  });
+});
+
+describe('Q-0055 AC-5/AC-6 — additive, deterministic, and the fourteen keep their prefix', () => {
+  test('the new problems join the accumulated error in flow order, and nothing stops early', () => {
+    expect(refusal({
+      name: 'many', consumes: 'x', produces: 'deployed', cross_vendor: 'required',
+      steps: [
+        { type: 'integrate' },
+        { parallel: [{ id: 'r1', role: 'rev', adapter: 'claude' }, { role: 'rev', adapter: 'claude' }] },
+        { id: 'df', input: { diff: 'bogus' } },
+      ],
+    }).problems).toEqual([
+      'step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      'step 2, parallel member 2: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      'undefined: integrate needs branches',
+      'df: input.diff must be two "..."-joined endpoints, each "{base}" or "harness/{id}/…", got "bogus"',
+      // `Array.prototype.join` renders `undefined` as the empty string, so the panel message names
+      // the id-less member as nothing at all — which is why "one rule for every kind" is what the
+      // id rule needed to be, and why AC-6 leaves this message alone rather than patching it: the
+      // line above it now says which member has no id.
+      'parallel group r1,  shares role "rev" and adapter "claude" — cross_vendor: required needs at least two adapters',
+      'deploy flow must contain a human-locked gate',
+    ]);
+  });
+
+  test('AC-6 — an id-less step still reports its other defects, and they keep the `undefined:` prefix', () => {
+    // Non-goal 4, asserted rather than described: the fourteen id-prefixed messages get NO
+    // positional fallback. Rewriting all fourteen to improve a case that can now only occur beside
+    // the id problem itself is cost with no reader, and the id problem is what explains the prefix.
+    expect(refusal(flowOf({ type: 'integrate' })).problems).toEqual([
+      'step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      'undefined: integrate needs branches',
+    ]);
+    // §0.4's fifth rendering site, which neither candidate named: `diffSites` labels with `view.id`.
+    expect(refusal(flowOf({ input: { diff: 'bogus' } })).problems).toEqual([
+      'step 1: id is required — the engine names a branch, a loop counter and a run-history occurrence after it',
+      'undefined: input.diff must be two "..."-joined endpoints, each "{base}" or "harness/{id}/…", got "bogus"',
+    ]);
+  });
+
+  test('and every flow whose steps all carry ids reports exactly what it reported before', () => {
+    // The other half of "additive": the rule must be invisible to a clean flow and to a dirty one
+    // whose steps are all named. Sixteen of the eighteen messages are asserted verbatim above; this
+    // is the claim that none of them MOVED.
+    expect(lintFlow(flowOf({ id: 'a', role: 'r', adapter: 'claude' }))).toBe(true);
+    expect(refusal(flowOf({ id: 'i', type: 'integrate' }, { id: 'v', output: { verdict: 'a|b' } })).problems)
+      .toEqual([
+        'i: integrate needs branches',
+        'v: has a verdict but no on_fail/route — verdicts must go somewhere',
+      ]);
+  });
+});
+
+describe('Q-0055 AC-14 — a flow with no steps, refused by its own rule and its own message', () => {
+  test('the absent key and the empty list get the same message, and it is not the id rule\'s', () => {
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y' })).toBe('flow needs steps');
+    expect(onlyProblem({ name: 'f', consumes: 'x', produces: 'y', steps: [] })).toBe('flow needs steps');
+    // Two rules, never reported as one: a flow that has steps and cannot name them says only the
+    // first, and a flow with none says only the second.
+    expect(onlyProblem(flowOf({ role: 'r' }))).toMatch(/^step 1: id is required/);
+  });
+
+  test('it joins the accumulated error beside the other flow-level message, in that order', () => {
+    expect(refusal({ name: 'f' }).problems).toEqual(['flow needs steps', 'flow needs consumes/produces']);
+  });
+
+  test('and `flattenSteps`\'s own preserved defect is untouched', () => {
+    // The rule reads the flow's declared list; `steps: null` and `steps: [null]` still throw a raw
+    // TypeError out of `flattenSteps` before it, so neither becomes a polite refusal.
+    // Why: preserved defect, see AC-12 defect 4.
+    for (const steps of [null, [null]]) {
+      expect(() => lintFlow({ name: 'f', consumes: 'x', produces: 'y', steps }), JSON.stringify(steps)).toThrow(TypeError);
+    }
+    expect(flattenSteps()).toEqual([]);
+  });
+});
+
+describe('AC-12 — FlowError, and the eight preserved defects', () => {
   test('FlowError extends Error and overrides nothing', () => {
     const error = new FlowError('x');
     expect(error).toBeInstanceOf(Error);
@@ -967,11 +1248,14 @@ describe('AC-12 — FlowError, and the nine preserved defects', () => {
     }
   });
 
-  test('5 — lint requires an `id` on no step kind, so an id-less step lints clean', () => {
-    // The engine then interpolates the literal `undefined` into a worktree branch name
-    // (spike/src/engine.js:211) and a loop counter (:541). Q-0055 owns the fix and lands after
-    // this ticket; the port carries the gap forward unchanged.
-    expect(lintFlow({
+  test('5 — CLOSED by Q-0055: an id-less step is refused, and the gate alone is not', () => {
+    // **Inverted rather than deleted.** This was defect 5, the gap Q-0044 carried forward: lint
+    // required an `id` on no step kind, so an id-less step linted clean and the engine interpolated
+    // the literal `undefined` into a worktree branch name and a loop counter. Deleting the pin when
+    // the defect closed would replace a check that can fail with an absence that cannot, so it now
+    // asserts the REFUSAL — five kinds refused, the gate accepted — and a regression fails here
+    // instead of passing unnoticed. Q-0037 AC-4h is the precedent.
+    const { problems } = refusal({
       name: 'f', consumes: 'x', produces: 'y',
       steps: [
         { role: 'r', adapter: 'claude' },
@@ -981,9 +1265,16 @@ describe('AC-12 — FlowError, and the nine preserved defects', () => {
         { fan_out: { from: 'solution/tasks.yaml' }, step: { role: 'r' } },
         { gate: 'human', reason: 'approve' },
       ],
-    })).toBe(true);
-    // And the message it would produce names that literal, which is the tell.
-    expect(onlyProblem(flowOf({ type: 'integrate' }))).toBe('undefined: integrate needs branches');
+    });
+    // Six top-level entries, of which the second is a two-member group and the sixth is the gate:
+    // six refusals, and the gate contributes none.
+    expect(problems.map((problem) => problem.split(':')[0])).toEqual([
+      'step 1', 'step 2, parallel member 1', 'step 2, parallel member 2', 'step 3', 'step 4', 'step 5',
+    ]);
+    // The literal the engine used to be handed is still what an id-less step's OTHER messages open
+    // with — AC-6 keeps those fourteen unchanged, and the id problem beside them is what explains
+    // the prefix rather than a positional fallback that would rewrite all fourteen.
+    expect(refusal(flowOf({ type: 'integrate' })).problems).toContain('undefined: integrate needs branches');
   });
 
   test('6 — `diff: null` is exempt from the range grammar while `diff: \'\'` is refused', () => {
@@ -1079,19 +1370,26 @@ function shippedFlows(): string[] {
 }
 
 describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no absent key is required', () => {
-  /** Flows the real `lintFlow` accepts. Each must therefore parse, unchanged. */
+  /**
+   * Flows the real `lintFlow` accepts. Each must therefore parse, unchanged.
+   *
+   * **Six of these rows gained a step at Q-0055 and two left the register entirely**, and the
+   * distinction is the point. The six were about something else — a missing `name`, the injected
+   * `file`, a key nothing reads, a stage outside the ten — and merely happened to carry `steps: []`
+   * or no `steps` key at all, which AC-14 now refuses; each keeps its own subject and gains the one
+   * step that lets it isolate it. The two that were *about* the absent key could not be repaired
+   * that way, because repairing them would delete the claim: they moved to the refusing register
+   * below rather than being deleted, so the reversal is asserted instead of merely unmade (AC-15).
+   */
   const PRESENCE_CASES: [string, Record<string, unknown>][] = [
     ['no name — the refusal header prints `flow.name ?? flow.file`',
-      { consumes: 'green', produces: 'reviewed', steps: [] }],
-    ['no steps — `flattenSteps(steps = [])` defaults the key away',
-      { name: 'x', consumes: 'green', produces: 'reviewed' }],
-    ['neither', { consumes: 'green', produces: 'reviewed' }],
+      { consumes: 'green', produces: 'reviewed', steps: [{ id: 's' }] }],
     ['the loader-injected `file`, which is in no YAML file',
-      { consumes: 'green', produces: 'reviewed', file: '/abs/harness/flows/review.yaml' }],
-    ['a key nothing reads', { consumes: 'green', produces: 'reviewed', notes: 'hand-added' }],
-    ['stages outside the ten-member list — lint.ts:245 checks presence only',
-      { name: 'x', consumes: 'custom', produces: 'custom-next', steps: [] }],
-    ['a gate step with no id — chore.yaml:58',
+      { consumes: 'green', produces: 'reviewed', file: '/abs/harness/flows/review.yaml', steps: [{ id: 's' }] }],
+    ['a key nothing reads', { consumes: 'green', produces: 'reviewed', notes: 'hand-added', steps: [{ id: 's' }] }],
+    ['stages outside the ten-member list — the flow rule checks presence only',
+      { name: 'x', consumes: 'custom', produces: 'custom-next', steps: [{ id: 's' }] }],
+    ['a gate step with no id — chore.yaml:59',
       { consumes: 'green', produces: 'reviewed', steps: [{ gate: 'human', reason: 'approve' }] }],
     ['a script step with no `run` — lint has no rule for it',
       { consumes: 'red', produces: 'green', steps: [{ id: 's', type: 'script' }] }],
@@ -1102,30 +1400,37 @@ describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no abs
   /**
    * The same flow written once per step kind, each with its step carrying NO id.
    *
-   * `lintFlow` requires an id on none of them: it gathers ids with `steps.filter((step) => step.id)`
-   * (lint.ts:171), so an id-less step is absent from the duplicate-id check and no other rule in
-   * the function looks for one. Until Q-0041 iteration 5 the schema required `id` on the agent,
-   * script, integrate and fan-out kinds — and `parallel` members inherited the requirement through
-   * `agentStepSchema` — which is four presence rules lint does not have, and the exact failure E-1
-   * names. The gate step was never the exception it looked like; it was the only kind that had been
-   * checked.
+   * **This register changed direction at Q-0055 and kept every row.** Until then it recorded the
+   * premise of the defect — that `lintFlow` required an id on no kind, gathering ids with
+   * `steps.filter((step) => step.id)` so an id-less step was simply absent from the duplicate-id
+   * check and no other rule looked for one. Five of its six rows are now REFUSALS and the sixth,
+   * the gate, is unmoved; each row carries the verdict it expects, so a linter that stopped
+   * refusing fails here rather than emptying a register that would go on reading as coverage.
    *
-   * Each row carries whatever else its kind needs to lint clean (`branches` on integrate, a `step:`
-   * template on fan-out), so the only thing under test is the missing id.
+   * The schema assertion beside each is unchanged and is what makes this the third boundary rather
+   * than a repeat of the first: **lint refuses / the schema accepts**. E-1's property is one-way —
+   * lint SUCCEEDING implies no absent key is required — so a rule lint has and the schema does not
+   * is exactly what decision *"Zod describes structure and types; the flow lint keeps the
+   * semantics"* (2026-08-25) asks for. Until Q-0041 iteration 5 the schema required `id` on the
+   * agent, script, integrate and fan-out kinds, which is that rule in the wrong file; restoring it
+   * now that lint has one would be the same mistake with a better excuse (Q-0055 AC-7).
+   *
+   * Each row carries whatever else its kind needs to reach the id rule (`branches` on integrate, a
+   * `step:` template on fan-out), so the only thing under test is the missing id.
    */
-  const ID_LESS_CASES: [string, Record<string, unknown>][] = [
+  const ID_LESS_CASES: [string, Record<string, unknown>, boolean][] = [
     ['a plain agent step',
-      { consumes: 'a', produces: 'b', steps: [{ role: 'r', adapter: 'claude' }] }],
+      { consumes: 'a', produces: 'b', steps: [{ role: 'r', adapter: 'claude' }] }, false],
     ['a `parallel` member',
-      { consumes: 'a', produces: 'b', steps: [{ parallel: [{ role: 'r', adapter: 'claude' }, { role: 'r', adapter: 'codex' }] }] }],
+      { consumes: 'a', produces: 'b', steps: [{ parallel: [{ role: 'r', adapter: 'claude' }, { role: 'r', adapter: 'codex' }] }] }, false],
     ['a script step',
-      { consumes: 'a', produces: 'b', steps: [{ type: 'script', run: 'pnpm test' }] }],
+      { consumes: 'a', produces: 'b', steps: [{ type: 'script', run: 'pnpm test' }] }, false],
     ['an integrate step',
-      { consumes: 'a', produces: 'b', steps: [{ type: 'integrate', branches: ['harness/{id}/implement'] }] }],
+      { consumes: 'a', produces: 'b', steps: [{ type: 'integrate', branches: ['harness/{id}/implement'] }] }, false],
     ['a fan-out step',
-      { consumes: 'a', produces: 'b', steps: [{ fan_out: { by: 'role' }, step: { role: 'developer-{role}' } }] }],
-    ['a gate step — chore.yaml:58, the one kind that was already right',
-      { consumes: 'a', produces: 'b', steps: [{ gate: 'human', reason: 'approve' }] }],
+      { consumes: 'a', produces: 'b', steps: [{ fan_out: { by: 'role' }, step: { role: 'developer-{role}' } }] }, false],
+    ['a gate step — chore.yaml:59, the one kind that was already right',
+      { consumes: 'a', produces: 'b', steps: [{ gate: 'human', reason: 'approve' }] }, true],
   ];
 
   /**
@@ -1134,13 +1439,19 @@ describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no abs
    * `.includes()`, which accept anything. This is E-1's boundary, in the direction E-1 chose:
    * describing what a value may be is `packages/shared`'s reason to exist, and closing the gap the
    * other way means `z.unknown()` on every field.
+   *
+   * **Q-0055 took exactly one row out of it**, and the row MOVED rather than being deleted: a bare
+   * string where a step object belongs is now refused by lint on PRESENCE — a string carries no
+   * usable `id` and is not a gate — and by the schema on TYPE. The two agree by coincidence and for
+   * unrelated reasons, which is precisely why it is no longer evidence of a divergence; it sits in
+   * the refusing register below with that sentence attached. The other five are verified untouched,
+   * `{ id: 42 }` and `{ gate: 42 }` among them, which is what refusing to type-check the id buys.
    */
   const TYPE_DIVERGENCE_CASES: [string, Record<string, unknown>][] = [
     ['a step adapter that is a number', { consumes: 'a', produces: 'b', steps: [{ id: 'a', adapter: 42 }] }],
     ['a step id that is a number', { consumes: 'a', produces: 'b', steps: [{ id: 42 }] }],
     ['a gate that is a number', { consumes: 'a', produces: 'b', steps: [{ gate: 42 }] }],
-    ['`cross_vendor` that is a number', { consumes: 'a', produces: 'b', cross_vendor: 42, steps: [] }],
-    ['a bare string where a step object belongs', { consumes: 'a', produces: 'b', steps: ['just-a-string'] }],
+    ['`cross_vendor` that is a number', { consumes: 'a', produces: 'b', cross_vendor: 42, steps: [{ id: 's' }] }],
     ['`max_turns` that is a word', { consumes: 'a', produces: 'b', steps: [{ id: 'a', max_turns: 'many' }] }],
   ];
 
@@ -1153,9 +1464,14 @@ describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no abs
     }
   });
 
-  test('presence: no step kind requires an id, because lintFlow requires one on none of them', () => {
-    for (const [what, flow] of ID_LESS_CASES) {
-      expect(lintAccepts(flow), `lintFlow accepts ${what} with no id — that is the premise`).toBe(true);
+  test('the third boundary: lint refuses an id-less step of every kind but a gate, and the schema still accepts it', () => {
+    const refused = ID_LESS_CASES.filter(([, , accepted]) => !accepted);
+    expect(refused, 'a register with nothing refused in it asserts nothing').toHaveLength(5);
+    expect(ID_LESS_CASES.filter(([, , accepted]) => accepted), 'the gate is the one exemption').toHaveLength(1);
+    for (const [what, flow, accepted] of ID_LESS_CASES) {
+      expect(lintAccepts(flow), `lintFlow must ${accepted ? 'accept' : 'refuse'} ${what} with no id`).toBe(accepted);
+      // Unchanged from before the rule landed, and that is the boundary: the schema requires no key
+      // lint refuses a flow for lacking, so a presence rule lives in exactly one file.
       const result = flowSchema.safeParse(flow);
       expect(result.error?.issues ?? [], `the schema must accept ${what} with no id`).toEqual([]);
       expect(result.data, `the schema must not alter ${what}`).toEqual(flow);
@@ -1200,8 +1516,13 @@ describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no abs
   test('no zod issue replaces a lint message: the semantic refusals stay lint\'s', () => {
     // Q-0041 AC-4 rule 1, which E-1 leaves untouched. Each of these is a flow the SCHEMA accepts and
     // LINT refuses — the opposite direction from the property, and the one that must keep working,
-    // since a schema that rejected first would take the sixteen messages out of `quorum lint`'s
+    // since a schema that rejected first would take the eighteen messages out of `quorum lint`'s
     // output.
+    //
+    // **The last three rows are Q-0055's, and two of them arrived here from `PRESENCE_CASES`.**
+    // AC-15 requires a row that asserts the opposite to be flipped rather than deleted, so the two
+    // that recorded `flattenSteps(steps = [])` defaulting the key away now record the refusal that
+    // replaced it, and the register they left is smaller by exactly the claim that moved.
     const semantic: [string, Record<string, unknown>][] = [
       ['duplicate step ids', { consumes: 'a', produces: 'b', steps: [{ id: 'x' }, { id: 'x' }] }],
       ['a goto that resolves nowhere', { consumes: 'a', produces: 'b', steps: [{ id: 'x', on_fail: { goto: 'nope', max_iterations: 1, on_exhausted: 'gate' } }] }],
@@ -1212,7 +1533,13 @@ describe('Q-0041 AC-3 as errata E-1 amends it — lint succeeding implies no abs
       ['a fan_out with no step template', { consumes: 'a', produces: 'b', steps: [{ id: 'f', fan_out: { by: 'role' } }] }],
       ['an out-of-class input.diff range', { consumes: 'a', produces: 'b', steps: [{ id: 'x', input: { diff: 'main...some/other/ref' } }] }],
       ['a deploy flow with no human-locked gate', { consumes: 'a', produces: 'deployed', steps: [{ gate: 'human' }] }],
+      ['a step with no usable id (Q-0055)', { consumes: 'a', produces: 'b', steps: [{ id: '   ', role: 'r' }] }],
+      ['no `steps` key — was a PRESENCE row until Q-0055 AC-14', { name: 'x', consumes: 'green', produces: 'reviewed' }],
+      ['neither a name nor steps — the same rule, and the second row AC-15 moved', { consumes: 'green', produces: 'reviewed' }],
     ];
+    // Named rather than counted from `semantic.length`, which would agree with itself whatever the
+    // list held. `flow.ts`'s own comment says twelve, and this is the arithmetic behind it.
+    expect(semantic).toHaveLength(12);
     for (const [why, flow] of semantic) {
       expect(lintAccepts(flow), `lint must refuse ${why}`).toBe(false);
       const result = flowSchema.safeParse(flow);
