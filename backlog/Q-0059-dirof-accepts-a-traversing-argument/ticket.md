@@ -1,15 +1,70 @@
 ---
 id: Q-0059
 title: dirOf accepts a traversing argument and reads outside the backlog root
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0059/integration
 priority: p2
 created: 2026-08-26
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-08T16:13:29.928Z
+    cost: 9.36
 ---
+> **RULED AT THE REQUIREMENTS GATE, 2026-09-08 — read this before the body below.** These are
+> `requirements/merged.md` §6's rulings, carried here per that document's **GO-3** so that no
+> implement step chooses one while writing and no review round argues one back. Each was ruled on a
+> measurement, not a preference. The body below is the 2026-08-26 account and is superseded wherever
+> it disagrees.
+>
+> **OQ-1 — the primitive is `packages/core/src/backlog/confine.ts`.** `backlog/` carries no folder
+> file-set pin where `fanout/` and `run-history/` both do, so a new module there costs no register
+> edit while a new file in `run-history/` is refused by that folder's own pin. Exporting from
+> `reader.ts` points the dependency the wrong way. **A new top-level `core` folder is the one option
+> that would owe a decision entry** — it contradicts *"`core` is organised in folders named after the
+> port's children"* (2026-08-26) — and is **not taken**. GO-1 is ratified: **no entry is owed.**
+>
+> **OQ-2 — `dirOf` verifies with the realpath and returns the JOINED path.** The run-history
+> precedent returns the resolved path (`reader.ts:200–219`); copying it here turns three landed
+> assertions red and changes `TicketRecord.dir` for every consumer — on macOS `/var/folders/…` becomes
+> `/private/var/…`, and a symlinked checkout changes in production — reaching artifact paths, `wrote …`
+> events and run history. The window it leaves needs write access to the backlog root, which is
+> already game over. **The divergence from the precedent gets one authority line**, because it is
+> exactly what a later reader otherwise "fixes".
+>
+> **OQ-3 — two refusals, not one.** A **lexical** traversal gets its own condition and its own
+> sentence: refusing on the shape of a string discloses nothing about the filesystem, and an operator
+> who typed a path deserves better than *"not found"*. A token that **exists and resolves outside the
+> root** keeps the unchanged `ticket not found`, disclosing nothing about where the link pointed —
+> the contract `resolveRunDirectory`'s `null` already holds for run history.
+>
+> **OQ-4 — the flow-lint rule is NOT in this ticket. Its successor is Q-0113**, opened at this gate
+> rather than left in a closing entry.
+>
+> **OQ-5 — `readFiles` is IN scope, and it refuses.** It is in no earlier account because nobody had
+> measured it. Excluding it ships an asymmetry that cannot be written down with a straight face: the
+> engine could not *write* outside the ticket folder but could **read the whole disk into the prompt
+> an adapter is invoked with**. It **refuses** rather than answering `[]`, because `[]` is what a
+> legitimately absent directory already answers — silence would shrink a prompt with nothing going red.
+>
+> **OQ-6 — a symlink to a sibling ticket folder is an ALIAS, and is accepted.** It resolves to a path
+> whose parent is the real root, so the rule admits it with no special case — the answer
+> `reader.test.ts:277` already pins for run history. A write through an alias writes the real
+> `ticket.md`, to the same bytes in the same folder.
+>
+> **GO-4 is ruled: `docs/GLOSSARY.md` gains `Confinement`** as its own term — *a path is inside a
+> declared root, checked by resolving it and comparing against the resolved root* — stated so it can
+> never read as a synonym for **Containment**, which is a git ancestry fact about two refs. The
+> vocabulary rule puts a term in the glossary before its second use, and this one is already in its
+> third file. AC-12's numbered-document sentence uses it and the glossary defines it, in one change.
+
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
 > cutover"* at the end of this body before acting on anything here. The defect itself is
