@@ -1,14 +1,22 @@
 ---
 id: Q-0067
 title: The per-adapter version probe, and what an unsupported CLI version does
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0067/integration
 priority: p3
 created: 2026-08-27
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-08T19:14:16.576Z
+    cost: 9.585
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
