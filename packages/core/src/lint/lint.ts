@@ -1,12 +1,18 @@
 /**
- * Flow lint: the sixteen per-flow diagnostics, the four cross-flow ones, and the whole-directory
+ * Flow lint: the eighteen per-flow diagnostics, the four cross-flow ones, and the whole-directory
  * report a command prints.
  *
  * This is the only place this product's opinions are ENFORCED rather than written down, so the
  * exposure is not a lost rule — a lost rule is loud, because a fixture stops throwing. It is a rule
  * that still fires and says something else. Every message below is load-bearing: `lintFlow`
  * accumulates into an array and throws once, so a reader gets every defect in one pass, and
- * fourteen of the sixteen open with the step id — the token a reader greps for in the YAML.
+ * fourteen of the eighteen open with the step id — the token a reader greps for in the YAML.
+ *
+ * **Four cannot, and two of those four are Q-0055's.** `flow needs consumes/produces` and the
+ * deploy-gate message are about the flow rather than a step; `flow needs steps` is the same kind;
+ * and {@link locatedSteps}'s message is about a step whose id is the missing thing, so it locates
+ * the step by position instead — naming it by an id it does not have is what produced
+ * `undefined: integrate needs branches` in the first place.
  *
  * Why: behaviour preserved from spike/src/lint.js, and `lintDirectory` lifted from
  * spike/bin/harness.js:374 (charter §2 and §7, Q-0044).
@@ -67,6 +73,54 @@ const maybe = (value: unknown): Loose | undefined => (value == null ? undefined 
  */
 export function flattenSteps(steps: unknown = []): FlowStep[] {
   return (steps as FlowStep[]).flatMap((step) => (loose(step).parallel ? (loose(step).parallel as FlowStep[]) : [step]));
+}
+
+/**
+ * Whether a step carries an id the engine can name something after.
+ *
+ * Two clauses, and the second is not decoration: an id that trims to nothing names a branch out of
+ * whitespace, which git refuses as a refname, so it is as unusable as an absent one. Its precedent
+ * is one screen down — `on_fail.counter` has been `typeof !== 'string' || !trim()` since the spike.
+ *
+ * The TYPE is deliberately not tested. `id: 42` still lints clean, because describing what a value
+ * may be is `packages/shared`'s reason to exist and a `typeof` here would be that schema's rule
+ * arriving through the linter — the failure the zod boundary (docs/DECISIONS.md, 2026-08-25) exists
+ * to prevent. See Q-0055 §3.2.
+ */
+function usableId(step: unknown): boolean {
+  const id = loose(step).id;
+  return Boolean(id) && (typeof id !== 'string' || id.trim() !== '');
+}
+
+/** One step as a reader finds it in the file: the step itself, and where in `steps:` it sits. */
+interface LocatedStep {
+  /** The step, exactly as the YAML held it — a bare string and a number both arrive here. */
+  step: unknown;
+  /** Its position, as {@link lintFlow}'s id message opens. One-based, because the file is read. */
+  at: string;
+}
+
+/**
+ * Every step the engine may name something after, each carrying where it is in the flow's own list.
+ *
+ * Deliberately NOT built on {@link flattenSteps}: flattening erases the enclosing group's position,
+ * and a `parallel` member has to be locatable by both numbers or two id-less members in one flow
+ * produce the same sentence twice. It descends into a `parallel` group and into nothing else, so a
+ * `fan_out` step's `step:` template stays as invisible here as it is there — see Q-0055 AC-3.
+ *
+ * It selects the same steps `flattenSteps` does, including for a truthy non-array `parallel`, which
+ * that function passes through as a single member. Why: preserved defect, see AC-12 defect 4 — a
+ * shape that throws a raw `TypeError` there must not be reached by a rule that would refuse it
+ * politely instead.
+ */
+function locatedSteps(steps: readonly unknown[]): LocatedStep[] {
+  return steps.flatMap((step, index): LocatedStep[] => {
+    const at = `step ${index + 1}`;
+    const members = loose(step).parallel;
+    if (!members) return [{ step, at }];
+    const group = (Array.isArray(members) ? members : [members]) as unknown[];
+    return group.map((member, position) => ({ step: member, at: `${at}, parallel member ${position + 1}` }));
+  });
 }
 
 /** Values grouped by a key, preserving first-seen key order and per-key order. */
@@ -168,8 +222,25 @@ function diffSites(steps: readonly FlowStep[]): DiffSite[] {
 export function lintFlow(flow: unknown): boolean {
   const problems: string[] = [];
   const steps = flattenSteps(loose(flow).steps);
+  const declared = (loose(flow).steps ?? []) as unknown[];
+  // Truthiness, deliberately, and not {@link usableId}: this asks whether two steps COLLIDE, which
+  // is a different question from whether the engine can name something after an id. They disagree
+  // on a blank id, and the disagreement is load-bearing — swapping in `usableId` here drops
+  // `duplicate step id "   "` from a flow that has one, which is a message lost rather than a rule
+  // tidied. See Q-0055 AC-1.
   const ids = steps.filter((step) => loose(step).id).map((step) => loose(step).id);
   ids.forEach((id, index) => { if (ids.indexOf(id) !== index) problems.push(`duplicate step id "${id}"`); });
+  // One predicate for every kind but the gate, rather than an enumeration of the kinds carrying
+  // `worktree` or `on_fail`: the id reaches nine consumers and those two keys reach two of them, so
+  // an enumerating rule had already missed three sites — `runFanOut`'s child id among them — before
+  // it was written. The exemption is `runStep`'s own test, `step.gate`'s truthiness; `askGate` reads
+  // no id and allocates no occurrence, so nothing is named after a gate.
+  // Why: a lint rule with no engine counterpart owes no decision entry — `cross_vendor`'s two and
+  // the deploy gate are the precedent. Ruled at Q-0055's requirements gate, OQ-4.
+  for (const { step, at } of locatedSteps(declared)) {
+    if (loose(step).gate || usableId(step)) continue;
+    problems.push(`${at}: id is required — the engine names a branch, a loop counter and a run-history occurrence after it`);
+  }
   for (const step of steps) {
     const view = loose(step);
     if (view.on_fail) {
@@ -246,6 +317,11 @@ export function lintFlow(flow: unknown): boolean {
       problems.push(`${view.id}: loops back to "${target}", which never receives ${written.join(', ')} — the loop cannot converge`);
     }
   }
+  // A second presence rule with its own subject, never reported as a clause of the id rule above:
+  // a flow declaring no step runs nothing, and where the key is absent the engine reads
+  // `flow.steps` directly and throws a raw `TypeError` naming neither the flow nor the key. Both
+  // spellings of nothing get this one message. See Q-0055 AC-14, written at the gate.
+  if (!declared.length) problems.push('flow needs steps');
   if (!loose(flow).consumes || !loose(flow).produces) problems.push('flow needs consumes/produces');
   const gates = steps.filter((step) => loose(step).gate);
   if (loose(flow).produces === 'deployed' && !gates.some((gate) => loose(gate).gate === 'human-locked')) problems.push('deploy flow must contain a human-locked gate');

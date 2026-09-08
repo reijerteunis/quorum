@@ -644,3 +644,46 @@ describe('Q-0108 — `CLAUDE.md` and `docs/README.md` carry the same term list',
     ).toStrictEqual(termList('docs/README.md'));
   });
 });
+
+describe('Q-0055 AC-13 — the spec states the step-id rule, and states its exceptions', () => {
+  /**
+   * §4's table, which is where a flow-engine addition is recorded rather than left in the linter.
+   *
+   * Sliced out of the document rather than searched for across the whole of it, so a sentence
+   * elsewhere on the page cannot satisfy a claim about what the table says.
+   */
+  const additions = (): string => {
+    const spec = repoFile('docs/02-sdlc-pipeline-spec.md');
+    const start = spec.indexOf('## 4. Flow engine additions');
+    if (start < 0) throw new Error('docs/02-sdlc-pipeline-spec.md has no §4 — this check has lost its subject');
+    const end = spec.indexOf('\n## ', start + 1);
+    return spec.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+  };
+
+  test('the rule is in §4 beside the cross-vendor row, not only in the code that enforces it', () => {
+    const table = additions();
+    // The neighbour is asserted first: a §4 that had lost its other rows would satisfy the clauses
+    // below over a table that no longer says anything else either.
+    expect(table, '§4 no longer carries the cross-vendor row this one sits beside')
+      .toContain('`cross_vendor: required` lint');
+    expect(table, '§4 does not state that a step needs an id').toContain('an `id` on every step that is not a gate');
+    expect(table, 'nor why — which is the half that keeps a reader from reading it as a style rule')
+      .toContain('names a worktree branch, a loop counter and a run-history occurrence after it');
+  });
+
+  test('and both exemptions are stated there, because a rule with unstated exceptions is folklore', () => {
+    const table = additions();
+    expect(table, 'the gate exemption is not stated').toContain('A **gate** is the one exception');
+    expect(table, "the fan-out template's exemption is not stated").toContain('`step:` template is exempt');
+    expect(table, 'the stepless-flow rule is not stated').toContain('refuses a flow that declares no step at all');
+  });
+
+  test('and the status line records the change, as every edit to a numbered document must', () => {
+    const text = repoFile('docs/02-sdlc-pipeline-spec.md');
+    const start = text.indexOf('*Status:');
+    expect(start, 'the spec has no status line').toBeGreaterThan(-1);
+    const status = text.slice(start, text.indexOf('\n\n', start));
+    expect(status, "the status line does not record this change").toContain('Q-0055');
+    expect(status, 'nor carry the landing date').toContain('2026-09-08');
+  });
+});
