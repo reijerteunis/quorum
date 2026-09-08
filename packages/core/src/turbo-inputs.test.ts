@@ -1554,12 +1554,13 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'backlog.root': 'the sandbox backlog root, stat\'d to show the symlink case passes every lexical clause',
     'record.dir': 'a ticket folder inside that same sandbox, checked for the runs.log log() appended to it',
     'backlog.writeFile(ticket, rel, \'body\')': 'the absolute path writeFile returned, read back inline as in the three rows above',
+    target: 'a file the test wrote OUTSIDE that sandbox backlog and inside the tree removeTempDirs deletes, read back to show that an escaping link appended nothing to it and replaced nothing in it',
     flowsDir: 'path.join(repoRoot, relative) over the two shipped flow directories, both of them walks WALKS declares above',
   },
   'packages/core/src/backlog/backlog.ts': {
     'this.root': 'the backlog root the caller constructed this Backlog with',
     dir: 'a ticket folder under this.root',
-    f: 'a file inside a ticket folder, joined from the caller\'s root',
+    file: 'one file readFiles enumerated inside a ticket folder, joined from the caller\'s root and confined leaf and all before it is opened — the base was `f` until run 2 gave both branches one reader',
   },
   'packages/core/src/backlog/confine.ts': {
     target: 'realPath\'s and deepestExisting\'s parameter, rooted by every caller at the backlog root the Backlog was constructed with or at a ticket folder inside it',

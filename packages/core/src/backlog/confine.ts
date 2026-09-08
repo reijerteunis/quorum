@@ -11,8 +11,9 @@
  * somewhere inside this root?** — decided with both sides resolved through `realpathSync` and
  * compared component by component, because `path.resolve` does no filesystem work and `statSync`
  * follows links, so a single-segment symlink inside the root passes every string test there is.
- * {@link pathInside} asks that second question of a path that does not exist yet, which is what a
- * write into a directory nobody has created is.
+ * {@link pathInside} asks that second question of a leaf — one that exists, which is what a file
+ * about to be read or appended to is, and one that does not, which is what a write into a directory
+ * nobody has created is.
  *
  * Nothing here is cached: `Backlog.create` may create the root, so a real path computed once per
  * instance is an answer that was true earlier.
@@ -94,7 +95,9 @@ export function isFolderIn(root: string, candidate: string): boolean {
  * `..`, so a remainder that climbed out is one the folder is no longer a prefix of — and an
  * *absolute* `rel` is refused here rather than neutered by the join, because a caller that supplied
  * one asked for a path of its own rather than for one inside this folder. **On the filesystem**, the
- * deepest existing ancestor is resolved, which is the clause a lexical comparison cannot make.
+ * deepest existing ancestor is resolved, which is the clause a lexical comparison cannot make —
+ * `rel` itself where `rel` already exists, so a link standing at the destination is refused rather
+ * than followed, and the first real parent where it does not.
  *
  * @returns `path.join(folder, rel)` — the joined path, never the resolved one, so what a caller
  *   writes to and reports is the path it named.

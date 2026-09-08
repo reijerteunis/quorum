@@ -8,8 +8,9 @@
  *
  * **It reads and writes inside its own root and nowhere else.** A ticket token resolves to a
  * directory directly under the backlog root, and every method taking a record works inside that
- * record's folder — both checked in `./confine.js`, which closes Q-0043's path-traversal non-goal
- * on the read side and the write side together (Q-0059).
+ * record's folder — file by file rather than folder by folder, because a link at a leaf is an
+ * escape every check on the directory above it passes. Both checked in `./confine.js`, which closes
+ * Q-0043's path-traversal non-goal on the read side and the write side together (Q-0059).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -148,9 +149,15 @@ export class Backlog {
     return { dir, folder: path.basename(dir), meta: meta as Ticket, body };
   }
 
-  /** Replace `ticket.md`, and write nothing else — no index, no cache, no derived state. */
+  /**
+   * Replace `ticket.md`, and write nothing else — no index, no cache, no derived state.
+   *
+   * The destination is verified and not merely joined: `ticket.md` is a name on disk like any
+   * other, so a link there sends the whole frontmatter outside the backlog root while every check
+   * on the folder above it passes.
+   */
   write(ticket: TicketRecord): void {
-    fs.writeFileSync(path.join(folderOf(this.root, ticket), 'ticket.md'), renderFrontmatter(ticket.meta, ticket.body));
+    fs.writeFileSync(fileInside(this.root, ticket, 'ticket.md'), renderFrontmatter(ticket.meta, ticket.body));
   }
 
   /**
@@ -247,7 +254,9 @@ export class Backlog {
    *
    * A pattern naming anything outside the ticket folder is REFUSED rather than answered with `[]`:
    * an empty list is what a legitimately absent directory answers below, so silence would shrink an
-   * agent's prompt with nothing going red.
+   * agent's prompt with nothing going red. So is an enumerated FILE that leaves it: the pattern
+   * fixes the directory and the filesystem supplies the names under it, so a link at one of those
+   * names is a path this caller never asked for and no check on the base can see.
    */
   readFiles(ticket: TicketRecord, pattern: string): TicketFile[] {
     const folder = folderOf(this.root, ticket);
@@ -256,12 +265,14 @@ export class Backlog {
     const dir = path.dirname(joined);
     const base = path.basename(pattern);
     if (!fs.existsSync(dir)) return [];
-    if (pattern.endsWith('/')) {
-      return walk(joined).map((f) => ({ rel: path.relative(folder, f), text: fs.readFileSync(f, 'utf8') }));
-    }
+    const one = (file: string): TicketFile => {
+      const rel = path.relative(folder, file);
+      if (pathInside(folder, rel) === null) throw new Error(notInsideTicket(rel));
+      return { rel, text: fs.readFileSync(file, 'utf8') };
+    };
+    if (pattern.endsWith('/')) return walk(joined).map(one);
     const re = new RegExp('^' + base.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
-    return fs.readdirSync(dir).filter((n) => re.test(n)).sort()
-      .map((n) => ({ rel: path.relative(folder, path.join(dir, n)), text: fs.readFileSync(path.join(dir, n), 'utf8') }));
+    return fs.readdirSync(dir).filter((n) => re.test(n)).sort().map((n) => one(path.join(dir, n)));
   }
 
   /**
@@ -272,16 +283,20 @@ export class Backlog {
    * directory behind it, inside the root or outside it.
    */
   writeFile(ticket: TicketRecord, rel: string, text: string): string {
-    const abs = pathInside(folderOf(this.root, ticket), rel);
-    if (abs === null) throw new Error(notInsideTicket(rel));
+    const abs = fileInside(this.root, ticket, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, text.endsWith('\n') ? text : text + '\n');
     return abs;
   }
 
-  /** Append one line to the ticket's run log. Append-only: an existing line is never rewritten. */
+  /**
+   * Append one line to the ticket's run log. Append-only: an existing line is never rewritten.
+   *
+   * `runs.log` is verified like any other destination — a link there appends this ticket's history
+   * to a file outside the backlog root, and an append is the one write that leaves what was there.
+   */
   log(ticket: TicketRecord, line: string): void {
-    fs.appendFileSync(path.join(folderOf(this.root, ticket), RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
+    fs.appendFileSync(fileInside(this.root, ticket, RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
   }
 }
 
@@ -347,6 +362,21 @@ const notATicketId = (given: string): string =>
 function folderOf(root: string, ticket: TicketRecord): string {
   if (!isFolderIn(root, ticket.dir)) throw new Error(notATicketFolder(ticket.dir));
   return ticket.dir;
+}
+
+/**
+ * One file of a ticket folder, verified in its own right before anything opens it: the folder
+ * against the root, and then the leaf against the folder.
+ *
+ * The second half is not covered by the first. A directory that is genuinely inside the boundary
+ * can hold a name that is not — `pathInside` resolves the destination where it exists and its
+ * deepest existing ancestor where it does not, so a file nobody has created yet is admitted while
+ * a link standing at that name is not.
+ */
+function fileInside(root: string, ticket: TicketRecord, rel: string): string {
+  const abs = pathInside(folderOf(root, ticket), rel);
+  if (abs === null) throw new Error(notInsideTicket(rel));
+  return abs;
 }
 
 /** A token that names a path rather than a ticket — decided on the string, so it names no file. */
