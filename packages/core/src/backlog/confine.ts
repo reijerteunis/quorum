@@ -1,10 +1,20 @@
 /**
- * Where the backlog store may read and write: inside its own root, and nowhere else.
+ * Where the backlog store may write, and where its guarded reads may reach: inside its own root.
  *
- * Every path `Backlog` touches is built from a string somebody else supplied — a ticket token
- * from argv and, from M3, from a request body; a write path or an `input.backlog` glob from a flow
- * file. This module is the whole of the boundary those strings are checked against, so that a sixth
- * caller cannot get a sixth answer.
+ * **The four guarded methods are `write`, `writeFile`, `log` and `readFiles`**, and for those this
+ * module is the whole of the boundary, so that a fifth caller cannot get a fifth answer. `read` and
+ * `list` are **deliberately outside it**: they open a `ticket.md` without leaf confinement, which is
+ * the behaviour this ticket preserved rather than changed, and `backlog.ts`'s own docblock and
+ * `04-architecture.md` state the same exception. A contract claiming more than that is a false
+ * security claim in source, which is worse than none.
+ *
+ * Every path those four touch is built from a string somebody else supplied — a ticket token from
+ * argv and, from M3, from a request body; a write path or an `input.backlog` glob from a flow file.
+ *
+ * Why: narrowed by hand after the gate, per *"A refused finding is a gate, not another round"*
+ * (2026-08-31), which puts the repair for an overridden finding on the merge rather than on the
+ * branch the gate approved. Q-0059's review raised it three times and the third was answered by an
+ * override at the exhaustion gate; this is that override's other half.
  *
  * It answers two questions and holds no others. **Is this token one name?** — decided on the string
  * alone, touching no filesystem, so a refusal discloses nothing. **Does this path resolve to

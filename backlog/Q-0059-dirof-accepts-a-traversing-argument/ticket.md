@@ -1,13 +1,14 @@
 ---
 id: Q-0059
 title: dirOf accepts a traversing argument and reads outside the backlog root
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0059/integration
 priority: p2
 created: 2026-08-26
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-09-08T16:13:29.928Z
     cost: 9.36
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-08T17:26:01.690Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-08T17:49:34.126Z
+    cost: 54.139
 ---
 > **RULED AT THE REQUIREMENTS GATE, 2026-09-08 — read this before the body below.** These are
 > `requirements/merged.md` §6's rulings, carried here per that document's **GO-3** so that no
