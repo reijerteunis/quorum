@@ -750,3 +750,68 @@ describe('Q-0067 AC-13 — the documents say what a verified version is, and wha
     }
   });
 });
+
+describe('Q-0039 AC-13 — the vocabulary says what a run lock is, and the four things it is not', () => {
+  /** A document with its line breaks collapsed, because these files are hard-wrapped. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /** The numbered document this ticket edits — the one that says what `core` enforces. */
+  const EDITED = ['docs/04-architecture.md'];
+
+  test('the glossary defines the term, its subject, its lifetime and its decision', () => {
+    // The shape Containment, Push lag, Confinement and Verified version already use.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'the glossary does not define **Run lock**:').toContain('**Run lock**:');
+    expect(glossary, 'it does not name the file').toContain('.quorum/locks/<ticket-id>.json');
+    expect(glossary, 'it does not say the subject is the ticket').toMatch(/subject is the ticket/);
+    expect(glossary, 'it does not say how the claim is made').toMatch(/single exclusive create/);
+    expect(glossary, 'it does not say when it is given back').toMatch(/`finally` covering every exit/);
+    expect(glossary, 'it does not say a second run refuses rather than waiting')
+      .toMatch(/refuses and names the holder; it never waits/);
+    expect(glossary, 'it does not say a stale one is never reclaimed').toMatch(/never reclaimed automatically/);
+    expect(glossary, 'it does not say what a dry run does').toMatch(/takes none and is refused by none/);
+    expect(glossary, 'it does not cite the decision by title')
+      .toContain('A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed');
+    expect(glossary, 'it does not cite the decision\'s date').toContain('2026-09-09');
+  });
+
+  test('and the "what it is not" half, each refusal asserted on its own', () => {
+    // A list satisfied by naming one of them would let the other three quietly go. Two of the four
+    // are near-homographs already in this glossary, and the fourth is the one that matters most: an
+    // advisory refusal read as a guarantee is a false safety claim, which is what the containment
+    // and push-lag entries refuse in their own domains.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'it does not distinguish itself from a gate').toMatch(/Not a \*\*gate\*\*/);
+    expect(glossary, 'it does not distinguish itself from confinement').toMatch(/Not \*\*Confinement\*\*/);
+    expect(glossary, 'it does not distinguish itself from containment').toMatch(/Not \*\*Containment\*\*/);
+    expect(glossary, 'it does not say the refusal is advisory').toMatch(/And \*\*advisory\*\*/);
+    expect(glossary, 'it does not say what the guarantee excludes')
+      .toMatch(/not a second checkout, not `git`, not another tool, not a network filesystem/);
+    // Shown to refuse what a weaker assertion accepts, which is the `withoutIt` idiom Q-0105 AC-13
+    // introduced: a definition naming the term and its file and stopping there passes the clause
+    // above it and none of these, and a paraphrase is exactly what this half exists to catch.
+    const paraphrase = '**Run lock**: One file, `.quorum/locks/<ticket-id>.json`, that says a run holds this ticket.';
+    expect(paraphrase.includes('**Run lock**:'), 'the weaker assertion does not pass over a paraphrase').toBe(true);
+    expect(/Not a \*\*gate\*\*/.test(paraphrase), 'this assertion does not refuse what the weaker one accepts').toBe(false);
+  });
+
+  test('the architecture document states the rule and records the change', () => {
+    // Principle 6 is where `core`'s enforced safety properties live, beside the worktree lifecycle
+    // and the backlog store's boundary. Nothing automated covers what those two prose sentences say
+    // beyond their presence: that half is verified by reading, and is stated rather than implied.
+    const architecture = flowed('docs/04-architecture.md');
+    expect(architecture, 'principle 6 does not state the rule').toContain('A ticket has one run at a time.');
+    expect(architecture, 'it does not say where in the order the lock is taken')
+      .toMatch(/before it reads the branch head, allocates a run directory or obtains a worktree/);
+    expect(architecture, 'the run-history section does not name the second thing core writes')
+      .toMatch(/second thing `core` writes under `\.quorum\/`, and it is not run history/);
+    for (const file of EDITED) {
+      const text = repoFile(file);
+      const start = text.indexOf('*Status:');
+      expect(start, `${file} has no status line`).toBeGreaterThan(-1);
+      const status = text.slice(start, text.indexOf('\n\n', start));
+      expect(status, `${file}'s status line does not record this change`).toContain('Q-0039');
+      expect(status, `${file}'s status line does not carry the landing date`).toContain('2026-09-09');
+    }
+  });
+});

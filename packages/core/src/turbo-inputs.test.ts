@@ -1175,6 +1175,10 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '../': 'a hostile readFiles pattern, asserted refused',
     '../elsewhere/': 'likewise, naming the sandbox directory these tests build outside the backlog root',
   },
+  'packages/core/src/run-history/writer.test.ts': {
+    '../../escape': 'a hostile ticket id handed to the run-lock claim and asserted refused before any file is named (Q-0039 AC-3)',
+    '..': 'the same, in its shortest form — one of the tokens `isOneName` refuses outright',
+  },
   'packages/core/src/run-history/reader.ts': {
     '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
   },
@@ -1189,6 +1193,7 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '../secret': 'the key of the run-history reader entry above',
     '../../../etc/passwd': 'the key of the git entry above',
     '../../etc/passwd': 'the key of the backlog entry above',
+    '../../escape': 'the key of the run-history writer entry above',
     '../escape.md': 'likewise',
     'dev/../../escape.md': 'likewise',
     '../elsewhere/': 'likewise',
@@ -1524,6 +1529,13 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'opts.ticket.dir': "the ticket folder inside that temp repository, built from opts.project.repoDir",
     ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — the sentinel AC-10a writes and reads back, inside the temp repository",
   },
+  'packages/core/src/engine/run-lock.test.ts': {
+    'opts.project.repoDir': 'the temp repository repo() created for this test, asked whether a run left run state under it',
+    'lockFile(opts.project.repoDir)': "path.join(that repository, '.quorum', 'locks', `${TICKET}.json`) — the lock a run takes, asked whether it is still there",
+    'opts.ticket.dir': 'the ticket folder inside that temp repository',
+    ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — read before and after a refused run, which must not touch it",
+    repoDir: 'that same temp repository, bound once where a test reads several paths under it',
+  },
   'packages/core/src/engine/diff.test.ts': {
     'opts.project.repoDir': 'the throwaway repository repoWith() built for this test; nothing under it is in the repository',
     ticketFile: "path.join(opts.ticket.dir, 'ticket.md') — the ticket P6 reads back to show a dry run mutated nothing, inside that repository",
@@ -1640,6 +1652,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     realDir: 'the realpath of a single-segment child of it, refused unless its real parent IS the real root',
   },
   'packages/core/src/run-history/writer.ts': {
+    file: 'path.join(repoDir, runLockPath(ticket.meta.id)) — the run lock inside the repository the caller named, read back to say who is holding it and to prove it is still this run\'s before it is removed (Q-0039)',
     runsRoot: 'path.join(repoDir, RUN_HISTORY_ROOT) — inside the repository the caller named',
     'ticket.dir': 'the ticket folder the backlog loaded, re-read for the persisted-stage guard',
     logPath: 'path.join(ticket.dir, RUNS_LOG_FILE) — inside that same ticket folder',
@@ -1655,6 +1668,17 @@ const READ_BASES: Record<string, Record<string, string>> = {
     repoDir: 'repo() — a git repository created under os.tmpdir',
     worktree: 'a linked worktree of one of those repositories',
     file: 'git rev-parse --git-path info/exclude, resolved against the sandbox repository',
+    // Q-0039's run lock, in the same sandbox. A handle names its own file, so seven of the eight
+    // below read what the code answered rather than a path this file rebuilt — which is what makes
+    // them assertions about the claim and not about the fixture's arithmetic.
+    'lock.path': 'the run lock a claim created, inside the temp repository project() built',
+    'first.path': 'the same, for the first of two claims on one ticket',
+    'second.path': 'the same, for the claim that follows a release',
+    'beside.path': 'the same, for a second ticket\'s lock in that repository',
+    'again.path': 'the same, for a re-claim after a release',
+    'successor.path': 'the same, for the claim that took a lock a human had cleared mid-run',
+    'lockFileOf(repoDir, ticket.meta.id)': 'path.join(that repository, \'.quorum\', \'locks\', `${id}.json`) — the lock named without a handle, for the cases where the claim refused and there is none',
+    exclude: 'path.join(that repository, \'.git\', \'info\', \'exclude\') — the file AC-4 is about, emptied by the fixture and read back',
     target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',
     'runDirOf(start)': 'the run directory a `start` would allocate, derived from the sandbox repoDir it names',
     stray: 'path.join(history.dir, \'manifest.json.tmp\') — likewise',

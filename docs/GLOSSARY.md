@@ -111,6 +111,26 @@ stream, an event is one item of it. See *What a run's event stream carries, and 
 **Run history**: The durable record of one run under `.quorum/runs/`: its manifest, per-attempt
 prompts and outputs, errors, usage, and per-vendor roll-up.
 
+**Run lock**: One file, `.quorum/locks/<ticket-id>.json`, that says a run holds this ticket. Its
+**subject is the ticket**, because that is what the three collisions are keyed by — the run number
+computed from `runs.log`, the ticket branch a run that did not finish resets, and the one worktree
+per branch. Taken inside `run()` by a single exclusive create, after the stage precondition and
+before the branch head, the start line, run history and any worktree; given back in a `finally`
+covering every exit, and only while the file still carries the token the run wrote, so a lock a
+human cleared and a successor took is left alone. It carries the run number, the flow, the pid, the
+hostname and the start time, which is what a refusal reports. **A second run refuses and names the
+holder; it never waits, and it is never reclaimed automatically** — a recorded pid cannot tell *that
+process is gone* from *that pid belongs to something else now*, so the pid is reported and nothing
+branches on it, and the recovery is a human deleting the file the message names. **`--dry` takes
+none and is refused by none**, having no run number, no branch and no worktree to serialise. Not a
+**gate**, which is a human checkpoint *inside* a run rather than a refusal to start one, and whose
+three answers it does not share. Not **Confinement**, which asks whether a path is inside a declared
+root. Not **Containment**, which is a git ancestry fact about two refs. And **advisory**: it
+serialises this product's own runs on one machine and nothing else — not a second checkout, not
+`git`, not another tool, not a network filesystem — so it is never described as making a repository
+safe. See *"A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed"*
+(2026-09-09).
+
 **Undecided**: A run's terminal status, never a gate answer — the answers a gate accepts are still
 exactly `advance`, `retry` and `abort`. A run is undecided when it stops at a gate for which **no
 answer was available**: the scripted answers were exhausted and stdin is not a terminal, stdin

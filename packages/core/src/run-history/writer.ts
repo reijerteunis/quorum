@@ -1,6 +1,14 @@
 /**
  * Everything a run writes under `.quorum/runs/<run id>/`, and nothing else in `core` writes there.
  *
+ * Since Q-0039 it also holds the **run lock**, which is a second kind of durable file rather than a
+ * second kind of run history: {@link acquireRunLock} claims a ticket before a run touches anything
+ * it would later have to undo, and {@link RunLock.release} gives it back. It lives in this file
+ * because this file is `core`'s single owner of writes under `.quorum/`, and because the exclusive
+ * create the claim is made with, and the one exclusion call the namespace is allowed, are both
+ * already here. See *"A run holds a lock on its ticket, and a stale one refuses rather than being
+ * reclaimed"* (2026-09-09).
+ *
  * The subsystem's one rule is that **a run that started is a run that ended**. Initialisation is
  * therefore exclusive and refuses by name before a single byte of a `start` line exists — a refusal
  * thrown after one is how the "run that started and then stopped existing" gap was re-opened inside
@@ -15,16 +23,19 @@
  * Why: behaviour preserved from spike/src/engine.js:325-450, :625-632 and :744-752 — see
  * `harness/port-charter.md` §2, Q-0049.
  */
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
   MANIFEST_FILE, OCCURRENCE_DIR, OUTPUT_FILE, RUNS_LOG_FILE, RUN_HISTORY_ROOT,
-  occurrenceDirName, runIdOf,
+  occurrenceDirName, runIdOf, runLockPath,
 } from '@quorum/shared';
 
 import { parseFrontmatter } from '../backlog/backlog.js';
 import type { TicketRecord } from '../backlog/backlog.js';
+import { isOneName } from '../backlog/confine.js';
 import { ensureExcluded } from '../git/git.js';
 import { FlowError } from '../lint/lint.js';
 import { rollup } from './manifest.js';
@@ -201,6 +212,172 @@ export function nextRunId(ticket: TicketRecord): number {
 }
 
 /**
+ * Puts `.quorum/` in the repository's own `info/exclude`, so nothing this module creates shows up in
+ * the user's `git status`.
+ *
+ * One function with two callers rather than one call spelled twice: the namespace may be a string
+ * literal in exactly one place in this folder, which `run-history.source.test.ts` pins, and both the
+ * lock and the run directory have to be excluded before they exist.
+ */
+const excludeRunState = (repoDir: string): void => {
+  ensureExcluded(repoDir, '.quorum/');
+};
+
+/** What a run claims a lock with: the ticket it is about, and the facts a refusal reports. */
+export interface RunLockClaim {
+  /** Absolute path of the repository the lock is written into. */
+  repoDir: string;
+  /** The ticket, as the backlog loaded it. Its `meta.id` is the lock's subject and names the file. */
+  ticket: TicketRecord;
+  /** The run number this run will use — the one the file advertises, and the one `runs.log` carries. */
+  run: number;
+  /** The flow's `name`, so a refusal tells the holder apart from the run that met it. */
+  flow: string;
+}
+
+/** One run's hold on its ticket, from the moment the file exists until it is given back. */
+export interface RunLock {
+  /** Absolute path of the lock file this run created. */
+  readonly path: string;
+  /**
+   * Gives the lock back, and only while the file still carries this run's own token.
+   *
+   * It never throws and never rewrites what the run decided: a lock somebody cleared by hand and a
+   * successor then took is left where it is, and a removal that fails costs one warning and nothing
+   * else. A run's terminal status, its history entry and its exit code are what it earned.
+   */
+  release(host: RunHistoryHost): void;
+}
+
+/**
+ * The eight fields a lock file carries, and the type each must have.
+ *
+ * A file missing any of them is damaged. It is neither *no lock* nor *my lock*, and reading it as
+ * either is what "never default silently" forbids — so the check is over every field rather than
+ * over the one the reader happens to need.
+ */
+const LOCK_FIELDS = [
+  ['schema_version', 'number'], ['ticket_id', 'string'], ['run', 'number'], ['flow', 'string'],
+  ['pid', 'number'], ['hostname', 'string'], ['started_at', 'string'], ['token', 'string'],
+] as const;
+
+/** A lock file's contents, once every field of {@link LOCK_FIELDS} has been found to be there. */
+interface RunLockRecord {
+  schema_version: number;
+  ticket_id: string;
+  run: number;
+  flow: string;
+  pid: number;
+  hostname: string;
+  started_at: string;
+  token: string;
+}
+
+/** The record a lock file carries, or the reason it could not be read as one. */
+function readLockRecord(file: string): RunLockRecord | { unreadable: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    return { unreadable: messageText(error) };
+  }
+  if (typeof parsed !== 'object' || parsed === null) return { unreadable: 'it holds no object' };
+  const held = parsed as Record<string, unknown>;
+  const absent = LOCK_FIELDS.filter(([name, type]) => typeof held[name] !== type).map(([name]) => name);
+  if (absent.length > 0) return { unreadable: `it carries no ${absent.join(', ')}` };
+  return held as unknown as RunLockRecord;
+}
+
+/**
+ * Claims this ticket for this run, or refuses and names who is holding it.
+ *
+ * **One exclusive syscall, and never a read followed by a write**, which is the race the lock exists
+ * to close — the same primitive {@link initialiseRunHistory} makes its run directory with, one layer
+ * up. The subject is the ticket, so two runs of different tickets never meet and two runs of one
+ * ticket always do.
+ *
+ * **A held lock refuses; it is never waited for and never reclaimed**, whatever the recorded pid
+ * says. The pid is reported and nothing branches on it: a pid cannot tell *that process is gone*
+ * from *that pid belongs to something else now*, and the recovery is a human deleting the file this
+ * refusal names. See *"A run holds a lock on its ticket, and a stale one refuses rather than being
+ * reclaimed"* (2026-09-09), and Q-0114 for the successor that asks whether a probe can be safe.
+ *
+ * @param claim what the run is, and what a refusal will report about it.
+ * @returns the handle whose `release` gives the lock back.
+ * @throws {FlowError} when the ticket id is not one path segment, when the lock is held, when the
+ *   file that holds it cannot be read, or when it could not be created — each naming the condition
+ *   and, where there is one, the path, and none of them naming a remedy.
+ */
+export function acquireRunLock(claim: RunLockClaim): RunLock {
+  const { repoDir, ticket, run, flow } = claim;
+  const id = ticket.meta.id;
+  // `Backlog.read` asserts rather than parses (Q-0043 AC-4), so this id is an unvalidated string on
+  // its way to naming a file — the check is `backlog/confine.ts`'s own, reused rather than respelled.
+  if (!isOneName(id)) {
+    throw new FlowError(`run lock refused: ticket id ${JSON.stringify(id)} is not one path segment, so it cannot name a lock file`);
+  }
+  const file = path.join(repoDir, runLockPath(id));
+  const shown = relative(repoDir, file);
+  // Before the first lock file exists, not after it: a repository whose exclude does not name
+  // `.quorum/` yet would otherwise carry an untracked, unignored file for as long as the run lasts,
+  // which is the set turbo hashes into every task input.
+  excludeRunState(repoDir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+
+  const token = randomUUID();
+  const record: RunLockRecord = {
+    schema_version: 1,
+    ticket_id: id,
+    run,
+    flow,
+    pid: process.pid,
+    hostname: os.hostname(),
+    started_at: new Date().toISOString(),
+    token,
+  };
+  try {
+    const fd = fs.openSync(file, 'wx');
+    try {
+      fs.writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    if (errorProperty(error, 'code') !== 'EEXIST') {
+      throw new FlowError(`run lock refused: could not create ${shown} (${messageText(error)})`);
+    }
+    const held = readLockRecord(file);
+    if ('unreadable' in held) {
+      throw new FlowError(`run lock refused: ${shown} is in the way and could not be read as a lock: ${held.unreadable}`);
+    }
+    throw new FlowError(`run lock refused: ticket ${id} is held by run #${held.run} (flow ${held.flow}, pid ${held.pid} on ${held.hostname}, started ${held.started_at}) — ${shown}`);
+  }
+
+  return {
+    path: file,
+    release(host) {
+      const held = readLockRecord(file);
+      if ('unreadable' in held) {
+        // Gone is not a failure: it is what a human clearing a lock leaves behind, and there is
+        // nothing left to give back. Anything else about the file is worth one sentence.
+        if (!fs.existsSync(file)) return;
+        host.warn(`could not release the run lock at ${shown}: ${held.unreadable}`);
+        return;
+      }
+      if (held.token !== token) {
+        host.warn(`the run lock at ${shown} is held by run #${held.run} rather than by this run, and was left in place`);
+        return;
+      }
+      try {
+        fs.unlinkSync(file);
+      } catch (error) {
+        host.warn(`could not release the run lock at ${shown}: ${messageText(error)}`);
+      }
+    },
+  };
+}
+
+/**
  * Creates the run directory, writes the first manifest, and hands back the handle.
  *
  * The order is the contract, not an implementation detail: the persisted-stage guard, then the
@@ -222,6 +399,9 @@ export function nextRunId(ticket: TicketRecord): number {
 export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): RunHistory {
   const started = new Date();
   const { repoDir, ticket } = start;
+  // Registered and not repaired: this builds a directory name from a ticket id nobody validated, as
+  // `acquireRunLock` used to and no longer does. The exposure predates Q-0039 and is not widened by
+  // it, which is why that ticket's AC-3 names it here rather than closing it in passing.
   const runId = runIdOf(ticket.meta.id, start.run);
   const runsRoot = path.join(repoDir, RUN_HISTORY_ROOT);
   const runDir = path.join(runsRoot, runId);
@@ -255,6 +435,15 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
     // before this directory is created, so a genuinely concurrent run takes the next id rather than
     // colliding; what is left is a directory outliving its log line, or a sub-second race. This
     // does not make the engine safe for concurrent runs, which is Q-0039 and still open.
+    //
+    // Q-0039 closed that: a run holds a lock on its ticket before it reaches this line, so the
+    // sub-second race the sentence above admits to is no longer reachable through `quorum run`. The
+    // wording is left as it was because the guard is still the narrower one it describes, and what
+    // it disclaims is still true of a caller that allocates a run directory without a lock.
+    // Registered and not repaired: this message ends in an imperative, which
+    // *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07) would
+    // not write today. It predates that entry, no refusal Q-0039 adds carries one, and moving it is
+    // that ticket's own successor rather than a repair made in passing.
     if (errorProperty(error, 'code') === 'EEXIST') {
       throw new FlowError(`run directory allocation refused: ${relative(repoDir, runDir)} already exists. Run ids are allocated from runs.log, so a directory without a matching log line usually means an interrupted run whose runs.log was truncated or restored from an older copy — or a second run started within the same second. Move or delete that directory to re-use the id.`);
     }
@@ -394,7 +583,7 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
     },
   };
 
-  ensureExcluded(repoDir, '.quorum/');
+  excludeRunState(repoDir);
   replaceManifest({ fatal: true });
   return history;
 }
