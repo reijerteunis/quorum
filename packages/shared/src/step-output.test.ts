@@ -72,14 +72,14 @@ describe('AC-7 — a declaration and a result cannot be confused', () => {
     // whether a quoted string is a repository path, and `…/adapters.ts:548` is not one.
     const cited: [string, number | null][] = [
       ['packages/core/src/contracts/contracts.ts', null],
-      // Q-0067 shifted both by 59 lines, `cliVersion` having landed above them in that file — 68 at
-      // first, and 59 once its review round 2 cut the transcribed rationale out of that module's
+      // Q-0067 shifted both by 58 lines, `cliVersion` having landed above them in that file — 68 at
+      // first, then 59 and 58 as its review rounds cut transcribed rationale out of that module's
       // comments. The numbers move with the code they name, which is what this pin is for: a
       // citation that stops naming a declaration is exactly what it exists to catch, and it caught
-      // this one twice.
-      ['packages/core/src/adapters/adapters.ts', 607],
+      // this one on all three occasions.
+      ['packages/core/src/adapters/adapters.ts', 606],
       ['packages/core/src/engine/prompt.ts', 92],
-      ['packages/core/src/adapters/adapters.ts', 570],
+      ['packages/core/src/adapters/adapters.ts', 569],
     ];
     for (const [file, line] of cited) {
       const citation = line === null ? file : `${file}:${String(line)}`;

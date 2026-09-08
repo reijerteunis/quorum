@@ -22,8 +22,7 @@ export const CODEX_CAPABILITIES = {
   /** What `check()` spawns to prove the binary runs. */
   versionArgs: ['--version'],
   /**
-   * The CLI version the flags and JSONL field names below were last verified against, and nothing
-   * else — not a minimum, a maximum or a range.
+   * The CLI version the flags and JSONL field names below were last verified against.
    *
    * Why: moving it claims a re-verification nobody performed; see *"An adapter records the version
    * it was verified against, and never a version it supports"* (2026-09-08). Held equal to

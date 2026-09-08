@@ -309,12 +309,11 @@ function versionTriple(text: string): [number, number, number] | null {
 /**
  * How the installed CLI version compares with the one this adapter was verified against.
  *
- * It reports and it never refuses: nothing here selects a flag, a field or a schema, and no state
- * it returns reaches an exit code. Why: see *"An adapter records the version it was verified
- * against, and never a version it supports"* (2026-09-08).
- *
  * It lives at the contract layer rather than in a vendor file, so a contributor's adapter inherits
  * the report by recording one string, as it inherits {@link authError} by writing nothing.
+ *
+ * Why: see *"An adapter records the version it was verified against, and never a version it
+ * supports"* (2026-09-08).
  *
  * @param vendor the adapter's registered label.
  * @param installed exactly what that adapter's `check()` returned, unparsed.

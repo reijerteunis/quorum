@@ -24,9 +24,8 @@
  * **Since Q-0067 it also reports provenance, which is neither of those questions.** `cliVersion`
  * compares the version `check()` already returned with the one the adapter records having been
  * verified against, and the result renders as at most one dim clause under `--probe` and as two
- * keys in `--json`. It refuses nothing, changes no exit code and adds no spawn: it says what the
- * login evidence above it was collected against. Why: see *"An adapter records the version it was
- * verified against, and never a version it supports"* (2026-09-08).
+ * keys in `--json`. Why: see *"An adapter records the version it was verified against, and never a
+ * version it supports"* (2026-09-08).
  *
  * **One preserved defect reaches this command and is not repaired here** (ground rule 3):
  *
@@ -97,15 +96,14 @@ const VERSION_CLAUSE: Record<CliVersionResult['state'], string | null> = {
 };
 
 /**
- * One vendor's verified-version clause, or nothing at all.
- *
- * It names the installed version and the recorded one and stops: no word here means supported,
- * compatible or validated, advises changing a vendor CLI, or says a run will fail. Why: see *"An
- * adapter records the version it was verified against, and never a version it supports"*
- * (2026-09-08), and `adapters.test.ts`'s AC-9 block, which holds the rendered strings to it.
+ * One vendor's verified-version clause, or nothing at all: it names the installed version and the
+ * recorded one and stops.
  *
  * The shape is `board.ts`'s `pushLagLegend`: a sentence or `null`, the caller deciding indentation
  * and colour.
+ *
+ * Why: see *"An adapter records the version it was verified against, and never a version it
+ * supports"* (2026-09-08); `adapters.test.ts`'s AC-9 block is what holds these strings to it.
  */
 const versionClause = (version: CliVersionResult): string | null => {
   const how = VERSION_CLAUSE[version.state];

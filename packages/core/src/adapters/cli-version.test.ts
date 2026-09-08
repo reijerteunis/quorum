@@ -5,6 +5,18 @@
  * that two numbers can be compared — it is that the answer stays a report. Why: see *"An adapter
  * records the version it was verified against, and never a version it supports"* (2026-09-08),
  * whose clause (c) is what AC-6 makes executable.
+ *
+ * AC-6's *no third reader* is five clauses, because a text scan alone is outrun by whichever
+ * spelling it was not written for. **A** finds a state literal in any quoting; **B** finds a file
+ * naming the vocabulary, the two `--json` keys included; **C** covers `indeterminate`, which three
+ * vocabularies spell, over the files B has already identified; **D** establishes that this corpus
+ * offers no route to a symbol that does not name it, which is what makes A to C exhaustive rather
+ * than merely diligent; and **E** that the report object never leaves the module that builds it.
+ * A and B additionally read a static concatenation as the string it spells ({@link foldLiterals}).
+ *
+ * What no clause reaches is a member access off a *runtime* value — `entry[k]` names and spells
+ * nothing. D and E are why that has no site: nothing may obtain `cliVersion` without naming it, and
+ * an entry does not exist outside `packages/cli/src/adapters.ts`. Stated rather than claimed closed.
  */
 import path from 'node:path';
 
@@ -58,6 +70,35 @@ const QUOTES = ["'", '"', '`'];
 /** Each spelling of `state` this scan treats as one and the same. */
 const quotedForms = (state: string): string[] => QUOTES.map((quote) => `${quote}${state}${quote}`);
 
+/** Two adjacent string literals joined by `+`, in any quoting and with any spacing around the `+`. */
+const FOLDABLE = /(['"`])([^'"`\n]*)\1\s*\+\s*(['"`])([^'"`\n]*)\3/g;
+
+/**
+ * The same text with every static concatenation of string literals folded into the one literal it
+ * spells, to a fixpoint — so `'ver' + 'sion' + '_state'` collapses as readily as the two-part form.
+ *
+ * `entry['version' + '_state']` names no identifier and, as written, contains no needle any scan
+ * below is looking for. That is the bypass review round 2 reported; folded, it reads
+ * `entry['version_state']` and clause B finds it by the key the report serializes.
+ *
+ * **Additive rather than substitutive**, which is what makes a folding rule safe to write by hand:
+ * {@link scannable} hands every scan the file as written AND this together, so a fold that got
+ * something wrong can only fail to find a violation the raw text already shows — never hide one.
+ * Same fail-open-is-the-safe-direction reasoning as leaving comments unblanked (see {@link QUOTES}).
+ */
+const foldLiterals = (text: string): string => {
+  let out = text;
+  for (let pass = 0; pass < 8; pass++) {
+    const next = out.replace(FOLDABLE, (_all, quote: string, left: string, _closing: string, right: string) => `${quote}${left}${right}${quote}`);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+};
+
+/** What a scan reads of one file: its text, and the same text with static concatenations folded. */
+const scannable = (text: string): string => `${text}\n\n${foldLiterals(text)}`;
+
 /**
  * The three states only this vocabulary spells, in every quoting.
  *
@@ -84,16 +125,60 @@ const VOCABULARY = [
   'cliVersion', 'CliVersionResult', 'CliVersionState', 'CLI_VERSION_STATES', 'version_state', 'verified_version',
 ];
 
-/** The files a scan finds naming any of `needles`. */
+/** The files whose text, read through `view`, holds any of `needles`. */
+const filesWhere = (
+  sources: readonly [string, string][],
+  needles: readonly string[],
+  view: (text: string) => string,
+): string[] =>
+  sources
+    .filter(([, text]) => {
+      const seen = view(text);
+      return needles.some((needle) => seen.includes(needle));
+    })
+    .map(([name]) => name)
+    .sort();
+
+/** The files a scan finds naming any of `needles`, reading a static concatenation as what it spells. */
 const namedIn = (sources: readonly [string, string][], needles: readonly string[]): string[] =>
-  sources.filter(([, text]) => needles.some((needle) => text.includes(needle))).map(([name]) => name).sort();
+  filesWhere(sources, needles, scannable);
+
+/**
+ * {@link namedIn} without the folding — the weaker predicate that shipped in iteration 2.
+ *
+ * Kept rather than deleted, because it is what lets a mutation prove which clause caught it: a
+ * bypass the folded scan finds and this one does not is a demonstration, where the same bypass
+ * found by both would say nothing about the fold (*"a guard shown red by its neighbour has not been
+ * established"*, Q-0107).
+ */
+const namedAsWritten = (sources: readonly [string, string][], needles: readonly string[]): string[] =>
+  filesWhere(sources, needles, (text) => text);
 
 /** The two producing-or-rendering sites, plus the barrel, which re-exports and reads nothing. */
 const ALLOWED_NAMERS = [...Object.keys(STATE_SITES), 'packages/core/src/index.ts'].sort();
 
+/** `import * as <name> from '<specifier>'`, in any quoting. */
+const NAMESPACE_IMPORT = /import\s+\*\s+as\s+\w+\s+from\s+['"`]([^'"`]+)['"`]/g;
+
+/**
+ * Every namespace import of a workspace or relative module, as `[file, specifier]` — clause D's
+ * subject, and the one module edge that would put a symbol in a file's hands without naming it.
+ *
+ * A third-party one is nobody's route here and is not collected. One aimed inside the workspace is:
+ * it binds every export of the target under a single identifier, after which `mod['cli' + 'Version']`
+ * reaches the derivation while spelling neither the function nor a state.
+ */
+const workspaceNamespaceImports = (sources: readonly [string, string][]): [string, string][] =>
+  sources
+    .flatMap(([name, text]) => [...text.matchAll(NAMESPACE_IMPORT)].map((match) => [name, match[1]] as [string, string]))
+    .filter(([, specifier]) => specifier.startsWith('.') || specifier.startsWith('@quorum/'));
+
 /** The subset of `sources` that names this vocabulary at all — clause C's subject. */
 const vocabularyNamers = (sources: readonly [string, string][]): [string, string][] =>
-  sources.filter(([, text]) => VOCABULARY.some((name) => text.includes(name)));
+  sources.filter(([, text]) => {
+    const seen = scannable(text);
+    return VOCABULARY.some((name) => seen.includes(name));
+  });
 
 /**
  * The genuine corpus with one file's text replaced, or one file added.
@@ -166,6 +251,19 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(namedIn(planted, VOCABULARY)).toContain('packages/cli/src/version-badge.ts');
   });
 
+  test("and clause B sees the bypass the unfolded scan could not — `entry['version' + '_state']`", () => {
+    // The exact case review round 2 named, planted over the genuine corpus. The first two
+    // assertions are what make it a demonstration rather than a coincidence: as written that line
+    // spells no needle at all, so the scan that shipped in iteration 2 reports nothing and clause A
+    // sees nothing either — the finding reproduced, immediately before it is closed.
+    const planted = withPlanted('packages/cli/src/version-badge.ts', "const stale = entry['version' + '_state'];\n");
+    expect(namedAsWritten(planted, VOCABULARY), 'the unfolded scan already saw it, so the fold is not what caught it')
+      .toStrictEqual(ALLOWED_NAMERS);
+    expect(namedIn(planted, OWN_STATE_LITERALS), 'clause A fired, so this does not isolate clause B')
+      .toStrictEqual(Object.keys(STATE_SITES).sort());
+    expect(namedIn(planted, VOCABULARY)).toContain('packages/cli/src/version-badge.ts');
+  });
+
   test('clause C — and a file that names the vocabulary spells no state but the two sites', () => {
     // The structural half of clause A's exclusion: `indeterminate` is only THIS fact's where the
     // file has this fact in hand, which is exactly the set clause B pins. Between the two, every
@@ -192,6 +290,43 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(namedIn(planted, VOCABULARY), 'clause B fired, so this does not isolate clause C')
       .toStrictEqual(ALLOWED_NAMERS);
     expect(namedIn(vocabularyNamers(planted), ALL_STATE_LITERALS)).toContain('packages/core/src/index.ts');
+  });
+
+  test('clause D — and this corpus offers no route to the vocabulary that spells none of its names', () => {
+    // The structural half, and what makes clauses A to C sound rather than merely diligent: a text
+    // scan is outrun by any route that reaches a symbol without writing its name. In production
+    // there is none. Every module edge here is a static ESM import, whose specifier and imported
+    // names are literal syntax that no computed expression can stand in for — so a file holding this
+    // vocabulary has to write one of its names down, which is exactly what clause B scans for.
+    const sources = productionSources();
+    expect(
+      workspaceNamespaceImports(sources),
+      'a namespace import of a workspace module reaches cliVersion without naming it',
+    ).toStrictEqual([]);
+    expect(
+      namedAsWritten(sources, ['import(', 'require(']),
+      'a dynamic import or a require resolves a module from an expression, which no source scan can follow',
+    ).toStrictEqual([]);
+  });
+
+  test('and clause D has a subject — a namespace import of this package is found', () => {
+    // The predicate is the expression the clause above runs, not a second description of it.
+    const planted = withPlanted('packages/cli/src/version-badge.ts', "import * as core from '@quorum/core';\n");
+    expect(workspaceNamespaceImports(planted)).toStrictEqual([['packages/cli/src/version-badge.ts', '@quorum/core']]);
+    // And it is invisible to every other clause, which is why clause D is not redundant with them.
+    expect(namedIn(planted, VOCABULARY), 'clause B fired, so this does not isolate clause D').toStrictEqual(ALLOWED_NAMERS);
+  });
+
+  test('clause E — and the --json entry never leaves the module that builds it', () => {
+    // The other half of the reviewer's bypass, and the half no scan closes: `entry['version' +
+    // '_state']` needs an `entry`, and outside this module there is nowhere to get one. The report
+    // is a local array of a module-private type, and the command module exports one thing.
+    const text = repoFile('packages/cli/src/adapters.ts');
+    const exported = text.split('\n').filter((line) => line.startsWith('export'));
+    expect(exported, 'a second export from the command module could hand the report to a third file').toHaveLength(1);
+    expect(exported[0]).toContain('export const adapters');
+    expect(text, 'the report shape is declared here').toContain('type Report = Record<string, unknown>[];');
+    expect(text.includes('export type Report'), 'the report shape became public').toBe(false);
   });
 });
 
