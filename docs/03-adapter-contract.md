@@ -14,7 +14,10 @@ adapter passes for every extra directory and which the table below already calle
 and the claude block drew `--model <alias>` unqualified where the flag is passed only when a flow
 step names a model — the same rule codex's line already carried. §"check() is not proof of login"
 corrected 2026-09-06 (Q-0100): its two commands are `quorum adapters` and `quorum adapters --probe`,
-the binary `packages/cli` installs, where they had named one that does not exist.*
+the binary `packages/cli` installs, where they had named one that does not exist. Verification status
+gained a paragraph 2026-09-08 (Q-0067) saying what that line is — a recorded past measurement, never
+a supported range — now that the same two numbers live in each adapter's `capabilities.ts` as
+`verifiedVersion` and a test holds the two copies equal.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -126,6 +129,18 @@ source of truth, so the machine's personal CLI config must not decide what a run
 is that MCP servers and sandbox preferences configured there do not apply inside a run.
 
 Both take the prompt on stdin. Override any flag via `harness.yaml → adapters.<vendor>.extraArgs`.
+
+**The line below is a record of what was measured, and never a supported range.** It says which CLI
+versions these flags and field names were checked against on 2026-08-22, and nothing about which
+versions may be used: there is no ceiling, no minimum and no policy for a version outside it. Since
+Q-0067 each adapter's `capabilities.ts` carries the same two numbers as `verifiedVersion`, held equal
+to this line by `packages/core/src/adapters/capabilities.source.test.ts`, and `quorum adapters
+--probe` reports how the installed version compares — a dim clause beside the login verdict, never a
+refusal and never an exit code. **Bumping either number is a claim that somebody re-ran the
+flag-by-flag verification below**, which is a ticket rather than an edit; the two have drifted from
+this machine twice since they were written, and that drift is the record working rather than the
+record failing. See *"An adapter records the version it was verified against, and never a version it
+supports"* (2026-09-08).
 
 Verification status (Q-0001 probe, 2026-08-22, Claude Code 2.1.220 and codex-cli 0.149.0):
 

@@ -1,6 +1,8 @@
 # Quorum docs
 
-*Status: index, 2026-09-02 — the term list gained **build task** and **emitted artifact** (Q-0098),
+*Status: index, 2026-09-08 — the term list gained **verified version** (Q-0067), the CLI version an
+adapter was last verified against, which `quorum adapters --probe` compares with the installed one
+and never refuses on. 2026-09-02 — the term list gained **build task** and **emitted artifact** (Q-0098),
 which `packages/shared/src/docs.test.ts` now checks against the glossary; `CLAUDE.md:13` carries the
 same list and is the human's to extend. 2026-08-28 — the decisions moved into `decisions/`, one file
 per entry, and `DECISIONS.md` became their index; nothing else changed. Created 2026-08-25 because `README.md`
@@ -29,7 +31,7 @@ and the plan. The other three are reference you consult rather than read.
   date, never by its file name.
 - **[GLOSSARY.md](GLOSSARY.md)** — the vocabulary. Use exactly these terms (harness, flow, gate,
   adapter, ticket, stage, containment, contract, role, backward edge, integrate, cross-vendor rule,
-  panel, chore flow, occurrence, preflight, dry run, BYOS, build task, emitted artifact, push lag). A new term goes here before it is used in a second file, and synonyms
+  panel, chore flow, occurrence, preflight, dry run, BYOS, build task, emitted artifact, push lag, verified version). A new term goes here before it is used in a second file, and synonyms
   for existing terms are not introduced.
 
 ## Conventions

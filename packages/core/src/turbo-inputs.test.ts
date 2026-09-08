@@ -715,6 +715,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/core/src/adapters/adapters.source.test.ts': {
     'coreSourceFiles → root': 'a temporary tree the test builds to prove the corpus reader covers a new adapter folder',
   },
+  'packages/core/src/adapters/cli-version.test.ts': {
+    'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — the Q-0059 AC-8 shape, and for the same reason: Q-0067 AC-1 and AC-6 claim that exactly two production files across BOTH packages name a version state, and a scan over one half would report success while the other held the violation',
+  },
   'packages/core/src/backlog/backlog.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — Q-0059 AC-8 reads the second package because the register claims something about it',
   },
