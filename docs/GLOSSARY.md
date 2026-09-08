@@ -179,3 +179,23 @@ counterpart — and not a "build output directory", which names the container ra
 contents. Since Q-0098 the binary carries a shebang and an executable bit, both proven to survive a
 cache replay, because an artifact something *executes* fails differently from a stale tick: the tick
 lies about the past, the artifact lies about the present.
+
+**Verified version**: The CLI version one **adapter** was last verified against, recorded as one
+string in that adapter's `capabilities.ts` (`verifiedVersion`) and compared on every
+`quorum adapters --probe` invocation with the version `check()` already returned — no second
+invocation, and nothing stored. The comparison answers one of exactly four states: `as-verified`
+(the two strings are equal, which renders nothing), `ahead`, `behind`, and `indeterminate` where a
+`<major>.<minor>.<patch>` could not be read from one side or the other, which is never inferred as
+one of the other three. **Containment**'s and **push lag**'s discipline applied to a third subject:
+derive on every invocation, persist nothing, select from a closed set, and never report an
+unanswerable question as an answerable one.
+**A past measurement, and never a policy.** It is **not a supported range**, not a minimum, not a
+maximum, not an allow-list, and not a compatibility claim: nothing branches on it, no state changes
+an exit code or refuses a command, and a CLI one release ahead of a number written months earlier is
+never turned away — which is *"Flows never pin a vendor model name"* (2026-08-22) holding at a second
+site. It is also **not a synonym for the `verified` a `--probe` login reports**: that word names an
+authenticated round-trip that actually happened, which is the only compatibility evidence this
+product has, and a verified version says what that evidence was collected against and nothing more.
+Reported by `--probe`, which is the check, and never by the bare listing, which is the report. See
+*"An adapter records the version it was verified against, and never a version it supports"*
+(2026-09-08).

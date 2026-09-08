@@ -1,12 +1,13 @@
 /**
- * The adapter contract: the interface a vendor CLI implements, and the four things this layer does
+ * The adapter contract: the interface a vendor CLI implements, and the five things this layer does
  * on behalf of every one of them — bounded retries, one actionable sentence when a login is dead, a
- * real authenticated round-trip, and the pair of functions that turn a vendor's final message into
- * an object the engine may route on.
+ * real authenticated round-trip, the comparison between the CLI version that is installed and the
+ * one the adapter was verified against, and the pair of functions that turn a vendor's final message
+ * into an object the engine may route on.
  *
- * This is the file a contributor's adapter inherits, which is why `withRetry`, `authError` and
- * `probeAdapter` live here rather than in a vendor file: a third adapter gets all three without
- * writing any of them ("check() proves presence; only `adapters --probe` proves login",
+ * This is the file a contributor's adapter inherits, which is why `withRetry`, `authError`,
+ * `probeAdapter` and `cliVersion` live here rather than in a vendor file: a third adapter gets all
+ * four without writing any of them ("check() proves presence; only `adapters --probe` proves login",
  * docs/DECISIONS.md 2026-08-22).
  *
  * Nothing in this module calls `check()`. Presence and login are separate questions and no path
@@ -25,9 +26,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { USAGE_MEASURES } from '@quorum/shared';
-import type { AdapterEvent, FindingSeverity, UsageMeasure } from '@quorum/shared';
+import type { AdapterEvent, CliVersionResult, FindingSeverity, UsageMeasure } from '@quorum/shared';
 
+import { CLAUDE_CAPABILITIES } from './claude-capabilities.js';
 import { claudeAdapter } from './claude.js';
+import { CODEX_CAPABILITIES } from './codex-capabilities.js';
 import { codexAdapter } from './codex.js';
 import { mockAdapter } from './mock.js';
 
@@ -273,6 +276,71 @@ export function getAdapter(name: string, config: Record<string, AdapterConfig> =
   if (!factory) throw new Error(`unknown adapter "${name}" (known: ${Object.keys(registry).join(', ')})`);
   const cfg = config[name] ?? {};
   return withRetry(factory(cfg), cfg.retry);
+}
+
+// ---------- the version each adapter was verified against ----------
+
+/**
+ * The CLI version each shipped adapter was last verified against, by the vendor label
+ * {@link getAdapter} registers.
+ *
+ * The lookup is here rather than at the caller for the reason `authError` and `probeAdapter` are: a
+ * capabilities module is not on this package's public surface, so a caller supplying the recorded
+ * string would have to be handed vendor data or would transcribe it — a second copy of a number
+ * whose whole value is that it is the one that was measured.
+ *
+ * A vendor absent from this map has no record, which is a first-class answer rather than a gap: the
+ * mock is an adapter a flow may select and nobody logs into, and a contributor's adapter records
+ * nothing until its own capabilities module does.
+ */
+const VERIFIED_VERSIONS: Record<string, string | undefined> = {
+  claude: CLAUDE_CAPABILITIES.verifiedVersion,
+  codex: CODEX_CAPABILITIES.verifiedVersion,
+};
+
+/**
+ * The first `<major>.<minor>.<patch>` in a version string, as three integers, or `null`.
+ *
+ * One rule for every vendor, because the two shipped CLIs disagree about where the number goes and
+ * agree about what it looks like: `2.1.236 (Claude Code)` leads with it and `codex-cli 0.150.1`
+ * trails it, and `codex-cli` carries no digit. A string with no triple in it answers `null`, which
+ * is what `indeterminate` is for — a prerelease such as `3.0.0-beta.1` reads as its triple and is
+ * compared like any other, which is deliberate and is recorded as such in the ticket's own risks.
+ */
+function versionTriple(text: string): [number, number, number] | null {
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(text);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+/**
+ * How the installed CLI version compares with the one this adapter was verified against.
+ *
+ * **It reports and it never refuses.** No state returned here changes an exit code, stops a run,
+ * selects a flag or picks a schema, and there is no supported range to be outside of: the recorded
+ * string is a past measurement and the comparison is provenance beside the login verdict, never a
+ * second verdict of its own. See *"An adapter records the version it was verified against, and never
+ * a version it supports"* (2026-09-08).
+ *
+ * It lives at the contract layer, not inside a vendor file, so a contributor's adapter inherits the
+ * report by recording one string — the way it already inherits `authError`'s translation by doing
+ * nothing at all.
+ *
+ * @param vendor the adapter's registered label.
+ * @param installed exactly what that adapter's `check()` returned, unparsed.
+ * @returns the state with both strings. Never throws, and answers `indeterminate` rather than
+ *   guessing wherever either side has no version in it.
+ */
+export function cliVersion(vendor: string, installed: string): CliVersionResult {
+  const verified = VERIFIED_VERSIONS[vendor];
+  if (verified === undefined) return { state: 'indeterminate', installed, verified: null };
+  const running = versionTriple(installed);
+  const recorded = versionTriple(verified);
+  if (!running || !recorded) return { state: 'indeterminate', installed, verified };
+  for (let part = 0; part < running.length; part++) {
+    if (running[part] === recorded[part]) continue;
+    return { state: running[part] > recorded[part] ? 'ahead' : 'behind', installed, verified };
+  }
+  return { state: 'as-verified', installed, verified };
 }
 
 // ---------- retrying what is worth retrying ----------

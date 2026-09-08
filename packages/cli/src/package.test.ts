@@ -369,12 +369,12 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(23);
+    expect(domain()).toHaveLength(24);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
 
-  test('the barrel exports exactly the twenty plus the four, and every one is defined', async () => {
+  test('the barrel exports exactly the domain register plus the error classes, and every one is defined', async () => {
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
     expect(Object.keys(barrel).sort()).toStrictEqual([...domain(), ...ERRORS].sort());
     for (const symbol of [...domain(), ...ERRORS]) {
@@ -450,9 +450,18 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // Q-0112 moved them again, to 23 and 28: `configuredUser` is a seventh symbol a command reaches
     // and `git/`'s third contribution, admitted by the same clause as `pushLag` — `ticket.ts` needs
     // to know who a ticket belongs to and may not derive a git fact itself.
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(23);
+    // Q-0067 moved them to 24 and 29, and this time the row that grew is `adapters.ts`: `cliVersion`
+    // is the eighth symbol a command reaches, and the first admitted by that clause for a reason
+    // that is not a git fact — the string it compares against lives in a capabilities module the
+    // barrel deliberately does not publish, so no command module could derive it.
+    expect(domain(), 'the register still holds the twenty-three it held before this ticket').not.toHaveLength(23);
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(24);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(28);
+    expect(Object.keys(barrel), 'the barrel still holds the twenty-eight it held before this ticket')
+      .not.toHaveLength(28);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(29);
+    expect(domain(), 'cliVersion is not on the register the barrel is derived from').toContain('cliVersion');
+    expect(typeof barrel.cliVersion, 'cliVersion is not a function on the barrel').toBe('function');
     expect(domain(), 'pushLag is not on the register the barrel is derived from').toContain('pushLag');
     expect(typeof barrel.pushLag, 'pushLag is not a function on the barrel').toBe('function');
     expect(domain(), 'configuredUser is not on the register the barrel is derived from').toContain('configuredUser');
@@ -463,8 +472,12 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     }
     // And the type the board renders is `@quorum/shared`'s, so nothing was added there either: a
     // command child reaching for a shape declares it from the package that owns the vocabulary.
+    // Q-0067 DID add one there — `CLI_VERSION_STATES` — and it is the same rule rather than an
+    // exception to it: a new closed set is a new subject for the vocabulary package, where a shape
+    // a command merely renders is not.
     const shared = (await import('@quorum/shared')) as Record<string, unknown>;
     expect(Object.keys(shared), 'the containment vocabulary is shared\'s').toContain('CONTAINMENT_REASONS');
+    expect(Object.keys(shared), 'the verified-version vocabulary is shared\'s too').toContain('CLI_VERSION_STATES');
   });
 
   test('and a type export adds no runtime key, which is why the counts above are the whole surface', async () => {

@@ -21,6 +21,13 @@
  * usable is ERROR. Why: see *"What an exit code may claim, and the three zeros it was asked about"*
  * (2026-09-08), which ratified the first and changed the second.
  *
+ * **Since Q-0067 it also reports provenance, which is neither of those questions.** `cliVersion`
+ * compares the version `check()` already returned with the one the adapter records having been
+ * verified against, and the result renders as at most one dim clause under `--probe` and as two
+ * keys in `--json`. It refuses nothing, changes no exit code and adds no spawn: it says what the
+ * login evidence above it was collected against. Why: see *"An adapter records the version it was
+ * verified against, and never a version it supports"* (2026-09-08).
+ *
  * **One preserved defect reaches this command and is not repaired here** (ground rule 3):
  *
  * `probeAdapter` dereferences a null `usage`, so an adapter whose login is perfect and which
@@ -30,7 +37,8 @@
  *
  * Why: behaviour preserved from `spike/bin/harness.js:406–424` (Q-0099 AC-7).
  */
-import { getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@quorum/core';
+import { cliVersion, getAdapter, loadProject, probeAdapter, ProjectNotFoundError } from '@quorum/core';
+import type { CliVersionResult } from '@quorum/shared';
 
 import type { FlagValue } from './argv.js';
 import { c } from './colour.js';
@@ -74,6 +82,41 @@ const VENDORS = ['claude', 'codex'];
  */
 type Report = Record<string, unknown>[];
 
+/**
+ * What each state is worth saying, and the one that is worth saying nothing about.
+ *
+ * A total map over the closed vocabulary rather than a chain of conditions, so a fifth state cannot
+ * be added to `@quorum/shared` without this file failing to compile — which is the only way a
+ * renderer over a closed set stays exhaustive. `as-verified` is `null` because the two numbers agree
+ * and there is nothing to report; a line every morning saying the ordinary thing is a line a reader
+ * is trained to skip.
+ */
+const VERSION_CLAUSE: Record<CliVersionResult['state'], string | null> = {
+  'as-verified': null,
+  ahead: 'the installed CLI is newer than the record',
+  behind: 'the installed CLI is older than the record',
+  indeterminate: 'the two could not be compared',
+};
+
+/**
+ * One vendor's verified-version clause, or nothing at all.
+ *
+ * **It names the installed version and the recorded one and stops.** No word here means supported,
+ * unsupported, compatible or incompatible, none of it advises changing a vendor CLI, and none of it
+ * says a run will fail — because none of that was measured. The only compatibility evidence this
+ * product has is the `login` line above it, which is a round-trip that actually happened; this says
+ * what that evidence was collected against and nothing else. Why: see *"An adapter records the
+ * version it was verified against, and never a version it supports"* (2026-09-08).
+ *
+ * The shape is `board.ts`'s `pushLagLegend`: a sentence or `null`, with the caller deciding the
+ * indentation and the colour, and silence meaning only that there was nothing to say.
+ */
+const versionClause = (version: CliVersionResult): string | null => {
+  const how = VERSION_CLAUSE[version.state];
+  if (how === null) return null;
+  return `· verified version = ${version.verified ?? 'none recorded'}, installed ${version.installed} — ${how}`;
+};
+
 /** Report which vendor CLIs are installed, and with `--probe` whether each login answers. */
 export const adapters: CommandHandler = async ({ flags }) => {
   const { config, repoDir } = projectOf(flags.project);
@@ -98,8 +141,14 @@ export const adapters: CommandHandler = async ({ flags }) => {
       continue;
     }
 
+    // No second spawn: this is the string `check()` already returned, compared with the one the
+    // adapter records having been verified against. The comparison is `core`'s — the recorded string
+    // lives in a capabilities module that is deliberately not on its public surface.
+    const seen = cliVersion(name, version);
+    const provenance = { version_state: seen.state, verified_version: seen.verified };
+
     if (!probe) {
-      report.push({ adapter: name, installed: true, version, login: 'unverified' });
+      report.push({ adapter: name, installed: true, version, ...provenance, login: 'unverified' });
       continue;
     }
     // check() only proves the binary exists. Only a real request proves the subscription answers.
@@ -111,7 +160,13 @@ export const adapters: CommandHandler = async ({ flags }) => {
     } else {
       console.log(`  ${c.red('✗')} ${c.bold('login not usable')}: ${result.error}`);
     }
-    report.push({ adapter: name, installed: true, version, login: result.ok ? 'verified' : 'failed', ...result });
+    // After the verdict rather than before it, and only here: `--probe` is the check and the bare
+    // listing is the report, so a third question belongs to the command that already answers two.
+    // Why: see *"An adapter records the version it was verified against, and never a version it
+    // supports"* (2026-09-08), clause (e).
+    const clause = versionClause(seen);
+    if (clause !== null) console.log(`  ${c.dim(clause)}`);
+    report.push({ adapter: name, installed: true, version, ...provenance, login: result.ok ? 'verified' : 'failed', ...result });
   }
   if (!probe) console.log(c.dim('· presence only — logins NOT verified; run `quorum adapters --probe` before a real run'));
   // After the human lines rather than instead of them: `--json` is a combined stream in the spike

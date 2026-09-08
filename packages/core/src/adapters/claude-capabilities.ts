@@ -3,11 +3,11 @@
  * fields of the one JSON envelope it prints. Nothing else — no function, no I/O, no branch, and no
  * selection between versions.
  *
- * It exists so that a CLI update breaks one file (`docs/04-architecture.md`, §Adapters). The half of
- * that sentence asking for a **version probe** is deliberately not here: a probe is a CLI
- * invocation with a policy attached, which is behaviour rather than layout, and behaviour needs its
- * own decision entry first (Q-0067). {@link CLAUDE_CAPABILITIES.versionArgs} is inert data — what
- * `check()` already spawns, written down rather than acted on.
+ * It exists so that a CLI update breaks one file (`docs/04-architecture.md`, §Adapters).
+ * {@link CLAUDE_CAPABILITIES.versionArgs} is what `check()` spawns and
+ * {@link CLAUDE_CAPABILITIES.verifiedVersion} is the version the two were last verified against —
+ * a recorded past measurement and never a supported range, which is what keeps this file data
+ * (Q-0067).
  *
  * The names on the left are Quorum's and the strings on the right are the vendor's. Two of them —
  * `input_tokens` and `output_tokens` — are spelled the same as two of `USAGE_MEASURES`, and the
@@ -21,11 +21,19 @@
 export const CLAUDE_CAPABILITIES = {
   /** The executable, unless `harness.yaml`'s `adapters.claude.bin` names another. */
   bin: 'claude',
-  /**
-   * What `check()` spawns to prove the binary runs. It is not a version *probe*: nothing reads the
-   * string back, compares it to a supported range, or decides anything from it (Q-0067).
-   */
+  /** What `check()` spawns to prove the binary runs. */
   versionArgs: ['--version'],
+  /**
+   * The CLI version the flags and envelope fields below were last verified against, and nothing
+   * else: not a minimum, not a maximum and not a range. Nothing branches on it and no comparison
+   * with it refuses anything.
+   *
+   * Why: it is M0's measurement and moving it claims a re-verification nobody performed — see
+   * *"An adapter records the version it was verified against, and never a version it supports"*
+   * (2026-09-08), and `docs/03-adapter-contract.md`'s verification-status line, which
+   * `capabilities.source.test.ts` holds equal to this string.
+   */
+  verifiedVersion: '2.1.220',
   /** Every flag a run invocation passes, in the order it passes them. */
   flags: {
     print: '-p',

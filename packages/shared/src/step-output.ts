@@ -9,14 +9,14 @@
 //
 //   1. zod, here — the shape of Quorum's OWN FILES: flow files, ticket frontmatter, role
 //      frontmatter, and the two shapes below. Nothing here validates a vendor's output.
-//   2. `checkAgainstSchema` (packages/core/src/adapters/adapters.ts:548) — an agent's structured
+//   2. `checkAgainstSchema` (packages/core/src/adapters/adapters.ts:616) — an agent's structured
 //      output against the schema QUORUM ITSELF GENERATED from the flow file (`schemaFor`,
 //      packages/core/src/engine/prompt.ts:92). Strict, including the coupling that a pass verdict
 //      carries no findings.
 //   3. ajv, fully strict (packages/core/src/contracts/contracts.ts) — artifacts against
 //      SOLUTIONING'S CONTRACTS. JSON Schema is the language solutioning emits and zod cannot read
 //      it, so ajv is not replaced by anything here.
-//   4. `extractJson` (packages/core/src/adapters/adapters.ts:511) — tolerance for how a VENDOR
+//   4. `extractJson` (packages/core/src/adapters/adapters.ts:579) — tolerance for how a VENDOR
 //      WRAPS its answer, and the only place that tolerance belongs.
 //
 // Register row 22 of harness/port-charter.md and "Step-output validation is Quorum's contract with

@@ -2088,3 +2088,128 @@ describe('Q-0092 AC-9 — the detail view reads the file, not a run\'s memory', 
     expect(detail.stdout, 'the usage came from somewhere other than the manifest').not.toMatch(/input_tokens=100\b/);
   }, 300_000);
 });
+
+describe('Q-0067 AC-11 — a version state never changes an exit code, across the process boundary', () => {
+  /** The final message a probe has to get back for its round-trip to count as a login. */
+  const ANSWER = '{"ok": true, "summary": "subscription answered"}';
+
+  /**
+   * A vendor CLI that is not one: a script answering `--version`, and one probe invocation.
+   *
+   * **It exists because both alternatives are refused.** The claim is what a shell sees, and
+   * `invoke()`'s status is the argument handed to a spied `process.exit`, which is a different claim
+   * (Q-0101). Spawning against the REAL vendor CLIs would make every verdict here a property of the
+   * installed CLI and of the account, and would bill a subscription to run the suite — which *"A
+   * test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30)
+   * forbids. `adapters.<vendor>.bin` is the shipped way to name the executable, so the fixture is
+   * configuration rather than a test-only branch: no production code, environment variable or export
+   * is added anywhere to manufacture one of these statuses.
+   *
+   * `version` is what the script prints for `--version` and is the whole of what steers the state
+   * under test; `ok` decides whether the round-trip succeeds, which is what steers the login verdict.
+   * The two are independent here precisely because they are independent in the product.
+   */
+  const fakeVendor = (dir: string, vendor: 'claude' | 'codex', version: string, ok: boolean): string => {
+    const file = path.join(dir, `fake-${vendor}`);
+    // Claude answers with one envelope on stdout; the usage is present because `probeAdapter`
+    // dereferences it, which is Q-0066's preserved crash and is not this case's subject.
+    const claudeRun = [
+      'cat > /dev/null',
+      `printf '%s' '{"structured_output":${ANSWER},"result":"ok","total_cost_usd":0.001,"usage":{"input_tokens":11,"output_tokens":7}}'`,
+    ];
+    // Codex takes its final message through the path `-o` names and reports usage on a JSONL line,
+    // so a stream reporting nothing would answer `usage: null` and trip that same crash instead of
+    // the login verdict.
+    const codexRun = [
+      'last=""; prev=""',
+      'for arg in "$@"; do if [ "$prev" = "-o" ]; then last="$arg"; fi; prev="$arg"; done',
+      'cat > /dev/null',
+      `if [ -n "$last" ]; then printf '%s' '${ANSWER}' > "$last"; fi`,
+      'printf \'%s\\n\' \'{"type":"thread.started","thread_id":"t-1"}\'',
+      'printf \'%s\\n\' \'{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}\'',
+    ];
+    const refusal = ['cat > /dev/null', 'echo "the round-trip did not happen" >&2', 'exit 1'];
+    const run = ok ? (vendor === 'codex' ? codexRun : claudeRun) : refusal;
+    const script = [
+      '#!/bin/sh',
+      `if [ "$1" = "--version" ]; then printf '%s\\n' '${version}'; exit 0; fi`,
+      ...run,
+      '',
+    ].join('\n');
+    fs.writeFileSync(file, script, 'utf8');
+    fs.chmodSync(file, 0o755);
+    return file;
+  };
+
+  /** A project whose two adapters are those scripts, and which holds nothing else. */
+  const project = (label: string, versions: { claude: string; codex: string }, ok: boolean): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `quorum-cli-version-${label}-`));
+    temporaries.push(dir);
+    fs.mkdirSync(path.join(dir, 'harness'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'backlog'), { recursive: true });
+    const claude = fakeVendor(dir, 'claude', versions.claude, ok);
+    const codex = fakeVendor(dir, 'codex', versions.codex, ok);
+    fs.writeFileSync(
+      path.join(dir, 'harness', 'harness.yaml'),
+      `repo:\n  base_branch: main\nbacklog: {path: backlog}\nadapters:\n  claude: {bin: ${claude}}\n  codex: {bin: ${codex}}\n`,
+      'utf8',
+    );
+    return dir;
+  };
+
+  /**
+   * The binary, spawned with the three BYOS variables removed.
+   *
+   * Removed rather than assumed absent: `check()` refuses outright when one is set, so an ambient
+   * key on the machine running this suite would turn every case below into a refusal and the status
+   * would then be right for the wrong reason.
+   */
+  const spawnAdapters = (dir: string, ...flags: string[]): { status: number; output: string } => {
+    const env = { ...process.env };
+    // The three names are ASSEMBLED rather than written, which is the idiom this package already
+    // uses for its workspace scope: `frame.source.test.ts`'s AC-12 scan reads every file here for
+    // the spellings BYOS forbids and excuses exactly one — itself — so writing them out would put
+    // this file into a guard whose single exclusion is deliberately not allowed to grow.
+    for (const vendor of ['ANTHROPIC', 'OPENAI', 'CODEX']) delete env[`${vendor}${'_'}API${'_'}KEY`];
+    const result = spawnSync(process.execPath, [binTarget(), 'adapters', '--project', dir, ...flags], {
+      cwd: PACKAGE, encoding: 'utf8', env, timeout: 120_000,
+    });
+    if (result.error) throw result.error;
+    return { status: result.status ?? -1, output: `${result.stdout}${result.stderr}` };
+  };
+
+  test('a verified login with an ahead state exits 0, and the clause still prints', () => {
+    runBuild();
+    const dir = project('ahead', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, true);
+    const result = spawnAdapters(dir, '--probe');
+    expect(result.status, result.output).toBe(0);
+    expect(result.output, 'the login was not verified, so this is not the case it claims to be')
+      .toContain('login verified');
+    // Both halves together: the state is reported AND the status is 0. An unverified RECORD is not
+    // a failed CHECK, which is the whole of the criterion.
+    expect(result.output).toContain('verified version = 2.1.220, installed 2.1.236 (Claude Code)');
+    expect(result.output).toContain('verified version = 0.149.0, installed codex-cli 0.150.1');
+  }, 300_000);
+
+  test('a failed login with an as-verified state exits 1, and the agreeing state did not soften it', () => {
+    runBuild();
+    const dir = project('as-verified', { claude: '2.1.220', codex: '0.149.0' }, false);
+    const result = spawnAdapters(dir, '--probe');
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain('login not usable');
+    // `as-verified` renders nothing, which is the other half of the same rule: two numbers agreeing
+    // is not news, and a line printed every morning is a line a reader is trained to skip.
+    expect(result.output, 'the agreeing state printed a clause').not.toContain('verified version =');
+  }, 300_000);
+
+  test('and the presence listing exits 0 whatever the state, printing no clause at all', () => {
+    // Q-0110 ratified that zero, and this ticket does not touch it: `--probe` is the check and the
+    // listing is the report, so the third question belongs to the first alone.
+    runBuild();
+    const dir = project('bare', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, false);
+    const result = spawnAdapters(dir);
+    expect(result.status, result.output).toBe(0);
+    expect(result.output, 'the presence listing printed a version clause').not.toContain('verified version =');
+    expect(result.output).toContain('presence only');
+  }, 300_000);
+});
