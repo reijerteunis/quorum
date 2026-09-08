@@ -284,14 +284,9 @@ export function getAdapter(name: string, config: Record<string, AdapterConfig> =
  * The CLI version each shipped adapter was last verified against, by the vendor label
  * {@link getAdapter} registers.
  *
- * The lookup is here rather than at the caller for the reason `authError` and `probeAdapter` are: a
- * capabilities module is not on this package's public surface, so a caller supplying the recorded
- * string would have to be handed vendor data or would transcribe it — a second copy of a number
- * whose whole value is that it is the one that was measured.
- *
- * A vendor absent from this map has no record, which is a first-class answer rather than a gap: the
- * mock is an adapter a flow may select and nobody logs into, and a contributor's adapter records
- * nothing until its own capabilities module does.
+ * The lookup is here rather than at the caller because a capabilities module is not on this
+ * package's public surface. A vendor absent from this map has no record, which {@link cliVersion}
+ * answers as `indeterminate` rather than treating as a gap.
  */
 const VERIFIED_VERSIONS: Record<string, string | undefined> = {
   claude: CLAUDE_CAPABILITIES.verifiedVersion,
@@ -301,11 +296,10 @@ const VERIFIED_VERSIONS: Record<string, string | undefined> = {
 /**
  * The first `<major>.<minor>.<patch>` in a version string, as three integers, or `null`.
  *
- * One rule for every vendor, because the two shipped CLIs disagree about where the number goes and
- * agree about what it looks like: `2.1.236 (Claude Code)` leads with it and `codex-cli 0.150.1`
- * trails it, and `codex-cli` carries no digit. A string with no triple in it answers `null`, which
- * is what `indeterminate` is for — a prerelease such as `3.0.0-beta.1` reads as its triple and is
- * compared like any other, which is deliberate and is recorded as such in the ticket's own risks.
+ * One rule for every vendor: the two shipped CLIs disagree about where the number goes and agree
+ * about what it looks like — `2.1.236 (Claude Code)` leads with it, `codex-cli 0.150.1` trails it,
+ * and `codex-cli` carries no digit. A string with no triple answers `null`. A prerelease such as
+ * `3.0.0-beta.1` reads as its triple; Why: pinned as deliberate by Q-0067 R-2.
  */
 function versionTriple(text: string): [number, number, number] | null {
   const match = /(\d+)\.(\d+)\.(\d+)/.exec(text);
@@ -315,15 +309,12 @@ function versionTriple(text: string): [number, number, number] | null {
 /**
  * How the installed CLI version compares with the one this adapter was verified against.
  *
- * **It reports and it never refuses.** No state returned here changes an exit code, stops a run,
- * selects a flag or picks a schema, and there is no supported range to be outside of: the recorded
- * string is a past measurement and the comparison is provenance beside the login verdict, never a
- * second verdict of its own. See *"An adapter records the version it was verified against, and never
- * a version it supports"* (2026-09-08).
+ * It reports and it never refuses: nothing here selects a flag, a field or a schema, and no state
+ * it returns reaches an exit code. Why: see *"An adapter records the version it was verified
+ * against, and never a version it supports"* (2026-09-08).
  *
- * It lives at the contract layer, not inside a vendor file, so a contributor's adapter inherits the
- * report by recording one string — the way it already inherits `authError`'s translation by doing
- * nothing at all.
+ * It lives at the contract layer rather than in a vendor file, so a contributor's adapter inherits
+ * the report by recording one string, as it inherits {@link authError} by writing nothing.
  *
  * @param vendor the adapter's registered label.
  * @param installed exactly what that adapter's `check()` returned, unparsed.

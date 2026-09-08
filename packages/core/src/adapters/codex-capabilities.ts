@@ -23,12 +23,11 @@ export const CODEX_CAPABILITIES = {
   versionArgs: ['--version'],
   /**
    * The CLI version the flags and JSONL field names below were last verified against, and nothing
-   * else: not a minimum, not a maximum and not a range. Nothing branches on it.
+   * else — not a minimum, a maximum or a range.
    *
-   * Why: it is M0's measurement and moving it claims a re-verification nobody performed — see
-   * *"An adapter records the version it was verified against, and never a version it supports"*
-   * (2026-09-08), and `docs/03-adapter-contract.md`'s verification-status line, which
-   * `capabilities.source.test.ts` holds equal to this string.
+   * Why: moving it claims a re-verification nobody performed; see *"An adapter records the version
+   * it was verified against, and never a version it supports"* (2026-09-08). Held equal to
+   * `docs/03-adapter-contract.md`'s verification-status line by `capabilities.source.test.ts`.
    */
   verifiedVersion: '0.149.0',
   /** Every token a run invocation passes, in the order it passes them. */

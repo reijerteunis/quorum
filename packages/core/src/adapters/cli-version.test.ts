@@ -1,11 +1,11 @@
-// Q-0067 AC-1, AC-4, AC-5 and AC-6: the vocabulary, the comparison, and the door held shut.
-//
-// The comparison is five lines and the guards around it are longer than it is, which is the point.
-// What this ticket is worth is not "two numbers can be compared" — it is that the answer stays a
-// REPORT: nothing branches on a version, no state selects a flag or a schema, and the state set is
-// spelled in exactly two production files so a third reader is a visible act rather than a drift.
-// See docs/DECISIONS.md, "An adapter records the version it was verified against, and never a
-// version it supports" (2026-09-08), whose clause (c) is what AC-6 makes executable.
+/**
+ * Q-0067 AC-1, AC-4, AC-5 and AC-6: the vocabulary, the comparison, and the door held shut.
+ *
+ * The guards are longer than the five lines they guard, because what this ticket is worth is not
+ * that two numbers can be compared — it is that the answer stays a report. Why: see *"An adapter
+ * records the version it was verified against, and never a version it supports"* (2026-09-08),
+ * whose clause (c) is what AC-6 makes executable.
+ */
 import path from 'node:path';
 
 import { CLI_VERSION_STATES } from '@quorum/shared';
@@ -44,22 +44,66 @@ const STATE_SITES: Record<string, string> = {
 };
 
 /**
- * The three states only this vocabulary spells, as quoted literals.
+ * The three JavaScript string syntaxes, so the scan is a scan for a *state* rather than for one way
+ * of writing one.
  *
- * `indeterminate` is deliberately excluded and the exclusion is the reason clause B below exists.
- * Containment and push lag both spell it, so the string is not this fact's — exactly as `missing
- * ref`, `shallow clone` and `git failed` sit in two reason sets at once, where `git.source.test.ts`
- * already records that **a shared string is not a shared question**. A scan that included it would
- * report `git.ts` and `board.ts` as third readers of a vocabulary they have never heard of.
+ * A guard that saw `'ahead'` alone would be satisfied by `"ahead"` or by a template literal, which
+ * is a bypass costing one keystroke. Comments are deliberately NOT blanked first: a lexer that got
+ * it wrong would fail OPEN, and a prose mention of a quoted state failing this guard is the safe
+ * direction — the shape `turbo-inputs.test.ts` already takes, where a quoted path in a comment is
+ * collected as one.
  */
-const OWN_STATE_LITERALS = CLI_VERSION_STATES.filter((state) => state !== 'indeterminate').map((state) => `'${state}'`);
+const QUOTES = ["'", '"', '`'];
 
-/** Every name a file has to write down to read a version state, whatever literal it then spells. */
-const VOCABULARY = ['cliVersion', 'CliVersionResult', 'CliVersionState', 'CLI_VERSION_STATES'];
+/** Each spelling of `state` this scan treats as one and the same. */
+const quotedForms = (state: string): string[] => QUOTES.map((quote) => `${quote}${state}${quote}`);
+
+/**
+ * The three states only this vocabulary spells, in every quoting.
+ *
+ * `indeterminate` is excluded HERE and covered by clause C instead, which is the structural half of
+ * the same claim. Containment and push lag both spell that string, so it is not this fact's —
+ * exactly as `missing ref`, `shallow clone` and `git failed` sit in two reason sets at once, where
+ * `git.source.test.ts` already records that **a shared string is not a shared question**. A flat
+ * scan including it would report `git.ts`, `diff.ts` and `board.ts` as readers of a vocabulary they
+ * have never heard of.
+ */
+const OWN_STATE_LITERALS = CLI_VERSION_STATES.filter((state) => state !== 'indeterminate').flatMap(quotedForms);
+
+/** All four, which is admissible only over files already known to name this vocabulary (clause C). */
+const ALL_STATE_LITERALS = CLI_VERSION_STATES.flatMap(quotedForms);
+
+/**
+ * Every name a file has to write down to obtain a version state, whatever literal it then spells.
+ *
+ * The two snake_case entries are the `--json` report's own keys, and they are the reason this list
+ * is not four names: a reader of `entry.version_state` has a state in hand while naming no exported
+ * identifier at all, so a vocabulary that stopped at the exports would call that file a stranger.
+ */
+const VOCABULARY = [
+  'cliVersion', 'CliVersionResult', 'CliVersionState', 'CLI_VERSION_STATES', 'version_state', 'verified_version',
+];
 
 /** The files a scan finds naming any of `needles`. */
 const namedIn = (sources: readonly [string, string][], needles: readonly string[]): string[] =>
   sources.filter(([, text]) => needles.some((needle) => text.includes(needle))).map(([name]) => name).sort();
+
+/** The two producing-or-rendering sites, plus the barrel, which re-exports and reads nothing. */
+const ALLOWED_NAMERS = [...Object.keys(STATE_SITES), 'packages/core/src/index.ts'].sort();
+
+/** The subset of `sources` that names this vocabulary at all — clause C's subject. */
+const vocabularyNamers = (sources: readonly [string, string][]): [string, string][] =>
+  sources.filter(([, text]) => VOCABULARY.some((name) => text.includes(name)));
+
+/**
+ * The genuine corpus with one file's text replaced, or one file added.
+ *
+ * A bypass is planted over real source rather than over a contrivance, and it REPLACES rather than
+ * appends, so a mutation aimed at an already-allowed file — which is how clause C is shown red
+ * without its neighbours firing — leaves exactly one entry under that name.
+ */
+const withPlanted = (name: string, text: string): [string, string][] =>
+  [...productionSources().filter(([key]) => key !== name), [name, text] as [string, string]];
 
 describe('AC-1 — the vocabulary is declarations only, and lives in one place', () => {
   test('the shared module exports the tuple and nothing that runs', () => {
@@ -87,7 +131,7 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(repoFile('packages/shared/src/index.ts')).toContain("export * from './cli-version.js';");
   });
 
-  test('exactly two production files across core and cli spell one of its own states', () => {
+  test('clause A — exactly two production files spell one of its own states, in any quoting', () => {
     const sources = productionSources();
     // A scan over an empty corpus reports success over nothing, and both halves must contribute.
     expect(sources.some(([name]) => name.startsWith('packages/core/src/')), 'the core half is missing').toBe(true);
@@ -95,24 +139,59 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(namedIn(sources, OWN_STATE_LITERALS)).toStrictEqual(Object.keys(STATE_SITES).sort());
   });
 
-  test('and that scan has a subject — a third file spelling one is found', () => {
+  test.each(QUOTES)('and clause A has a subject in every quoting — a third file spelling %sbehind%s is found', (quote) => {
     // Demonstrated over the genuine corpus with one entry planted, rather than over a contrivance:
-    // the predicate is the same expression the assertion above runs.
-    const planted: [string, string][] = [
-      ...productionSources(),
-      ['packages/core/src/engine/routing.ts', "const worst = state === 'behind' ? 'stop' : 'go';\n"],
-    ];
+    // the predicate is the same expression the assertion above runs. Three cases and not one,
+    // because the bypass this replaces was a scan that saw a single quote and nothing else — the
+    // double-quoted reader is a real language, not a hypothetical.
+    const planted = withPlanted('packages/core/src/engine/routing.ts', `const worst = state === ${quote}behind${quote};\n`);
     expect(namedIn(planted, OWN_STATE_LITERALS)).toContain('packages/core/src/engine/routing.ts');
     expect(namedIn(planted, OWN_STATE_LITERALS)).not.toStrictEqual(Object.keys(STATE_SITES).sort());
   });
 
-  test('clause B — and no third file names the vocabulary at all, whichever literal it would spell', () => {
-    // `indeterminate` is spelled by three vocabularies (see OWN_STATE_LITERALS), so the literal scan
-    // above cannot see a reader that spells only that one. To READ a state a file has to call the
-    // derivation or type its answer, so this clause closes that gap from the other side. The barrel
-    // is the one addition: it re-exports and reads nothing.
-    const allowed = [...Object.keys(STATE_SITES), 'packages/core/src/index.ts'].sort();
-    expect(namedIn(productionSources(), VOCABULARY)).toStrictEqual(allowed);
+  test('clause B — and no third file names the vocabulary, its serialized keys included', () => {
+    // `indeterminate` is spelled by three vocabularies (see OWN_STATE_LITERALS), so clause A cannot
+    // see a reader that spells only that one. To OBTAIN a state a file has to call the derivation,
+    // type its answer, or read the key the report serializes it under — so this clause closes the
+    // gap from the other side. The barrel is the one addition: it re-exports and reads nothing.
+    expect(namedIn(productionSources(), VOCABULARY)).toStrictEqual(ALLOWED_NAMERS);
+  });
+
+  test('and clause B has a subject — a reader of the --json key alone is found', () => {
+    // The bypass clause A cannot close by construction: a file that branches on the serialized
+    // state names no exported identifier and, if it compares against a variable, no literal either.
+    const planted = withPlanted('packages/cli/src/version-badge.ts', 'const stale = entry.version_state !== best;\n');
+    expect(namedIn(planted, OWN_STATE_LITERALS), 'clause A sees this one too, so it proves nothing about clause B')
+      .toStrictEqual(Object.keys(STATE_SITES).sort());
+    expect(namedIn(planted, VOCABULARY)).toContain('packages/cli/src/version-badge.ts');
+  });
+
+  test('clause C — and a file that names the vocabulary spells no state but the two sites', () => {
+    // The structural half of clause A's exclusion: `indeterminate` is only THIS fact's where the
+    // file has this fact in hand, which is exactly the set clause B pins. Between the two, every
+    // production file either cannot obtain a state or is one of three known ones — and a second
+    // derivation of its own is clause A's, since anything answering more than `indeterminate` has
+    // to spell one of the three.
+    //
+    // So `board.ts` is not exempted, it is unambiguous: its `indeterminate` is containment's for
+    // exactly as long as it has no way to hold one of ours. Measured by mutation — the moment that
+    // file names `version_state`, this clause reports its literal too.
+    expect(namedIn(vocabularyNamers(productionSources()), ALL_STATE_LITERALS))
+      .toStrictEqual(Object.keys(STATE_SITES).sort());
+  });
+
+  test('and clause C has a subject, with neither neighbour firing on it', () => {
+    // Aimed at the barrel, which clause B already allows and clause A cannot see: so what goes red
+    // is clause C alone. A guard shown red by its neighbour has not been established (Q-0107).
+    const planted = withPlanted(
+      'packages/core/src/index.ts',
+      "export type { CliVersionResult } from '@quorum/shared';\nconst unread = 'indeterminate';\n",
+    );
+    expect(namedIn(planted, OWN_STATE_LITERALS), 'clause A fired, so this does not isolate clause C')
+      .toStrictEqual(Object.keys(STATE_SITES).sort());
+    expect(namedIn(planted, VOCABULARY), 'clause B fired, so this does not isolate clause C')
+      .toStrictEqual(ALLOWED_NAMERS);
+    expect(namedIn(vocabularyNamers(planted), ALL_STATE_LITERALS)).toContain('packages/core/src/index.ts');
   });
 });
 
@@ -219,7 +298,10 @@ describe('AC-6 — nothing branches on a version', () => {
       const declaresIt = name.endsWith('-capabilities.ts');
       expect(text.includes('verifiedVersion'), `${name} ${declaresIt ? 'must' : 'must not'} name the record`)
         .toBe(declaresIt);
-      for (const needle of [...VOCABULARY, ...OWN_STATE_LITERALS]) {
+      // All four here, where clause A can only take three: no other vocabulary in this workspace
+      // spells `indeterminate` inside the adapters folder, so the folder itself is the structural
+      // distinction that `git.ts` and `board.ts` deny the corpus-wide scan.
+      for (const needle of [...VOCABULARY, ...ALL_STATE_LITERALS]) {
         expect(text.includes(needle), `${name} reads a version state (${needle})`).toBe(false);
       }
     }

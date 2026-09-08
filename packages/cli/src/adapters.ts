@@ -85,11 +85,9 @@ type Report = Record<string, unknown>[];
 /**
  * What each state is worth saying, and the one that is worth saying nothing about.
  *
- * A total map over the closed vocabulary rather than a chain of conditions, so a fifth state cannot
- * be added to `@quorum/shared` without this file failing to compile — which is the only way a
- * renderer over a closed set stays exhaustive. `as-verified` is `null` because the two numbers agree
- * and there is nothing to report; a line every morning saying the ordinary thing is a line a reader
- * is trained to skip.
+ * A total map over the closed vocabulary rather than a chain of conditions, so a fifth state added
+ * to `@quorum/shared` fails to compile here. `as-verified` is `null`: the two numbers agree, and
+ * there is nothing to report.
  */
 const VERSION_CLAUSE: Record<CliVersionResult['state'], string | null> = {
   'as-verified': null,
@@ -101,15 +99,13 @@ const VERSION_CLAUSE: Record<CliVersionResult['state'], string | null> = {
 /**
  * One vendor's verified-version clause, or nothing at all.
  *
- * **It names the installed version and the recorded one and stops.** No word here means supported,
- * unsupported, compatible or incompatible, none of it advises changing a vendor CLI, and none of it
- * says a run will fail — because none of that was measured. The only compatibility evidence this
- * product has is the `login` line above it, which is a round-trip that actually happened; this says
- * what that evidence was collected against and nothing else. Why: see *"An adapter records the
- * version it was verified against, and never a version it supports"* (2026-09-08).
+ * It names the installed version and the recorded one and stops: no word here means supported,
+ * compatible or validated, advises changing a vendor CLI, or says a run will fail. Why: see *"An
+ * adapter records the version it was verified against, and never a version it supports"*
+ * (2026-09-08), and `adapters.test.ts`'s AC-9 block, which holds the rendered strings to it.
  *
- * The shape is `board.ts`'s `pushLagLegend`: a sentence or `null`, with the caller deciding the
- * indentation and the colour, and silence meaning only that there was nothing to say.
+ * The shape is `board.ts`'s `pushLagLegend`: a sentence or `null`, the caller deciding indentation
+ * and colour.
  */
 const versionClause = (version: CliVersionResult): string | null => {
   const how = VERSION_CLAUSE[version.state];
@@ -141,9 +137,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
       continue;
     }
 
-    // No second spawn: this is the string `check()` already returned, compared with the one the
-    // adapter records having been verified against. The comparison is `core`'s — the recorded string
-    // lives in a capabilities module that is deliberately not on its public surface.
+    // No second spawn: the string `check()` already returned. The comparison is `core`'s, the
+    // record living in a capabilities module that is not on its public surface.
     const seen = cliVersion(name, version);
     const provenance = { version_state: seen.state, verified_version: seen.verified };
 
@@ -160,10 +155,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
     } else {
       console.log(`  ${c.red('✗')} ${c.bold('login not usable')}: ${result.error}`);
     }
-    // After the verdict rather than before it, and only here: `--probe` is the check and the bare
-    // listing is the report, so a third question belongs to the command that already answers two.
-    // Why: see *"An adapter records the version it was verified against, and never a version it
-    // supports"* (2026-09-08), clause (e).
+    // After the verdict, and under `--probe` alone. Why: see *"An adapter records the version it
+    // was verified against, and never a version it supports"* (2026-09-08), clause (e).
     const clause = versionClause(seen);
     if (clause !== null) console.log(`  ${c.dim(clause)}`);
     report.push({ adapter: name, installed: true, version, ...provenance, login: result.ok ? 'verified' : 'failed', ...result });
