@@ -27,8 +27,13 @@ function options(overrides: Partial<RunFlowOptions> = {}): RunFlowOptions {
   write(path.join(repoDir, 'harness/harness.yaml'), 'adapterOverride: mock\nrepo:\n  base_branch: main\n');
   const project = loadProject(repoDir);
   const flowFile = path.join(repoDir, 'harness/flows/requirements.yaml');
-  write(flowFile, 'name: requirements\nconsumes: draft\nproduces: requirements\nsteps: []\n');
-  const flow: Flow = loadFlow(flowFile);
+  // The FILE carries a named step and the flow this fixture hands the engine carries none, and the
+  // two halves are both deliberate. `loadFlow` lints, and since Q-0055 a flow declaring no step is
+  // refused — so the file has to have one for the loader to be exercised at all. The engine takes a
+  // flow OBJECT and lints nothing, which is the reachability AC-10 rests on, so the stepless shape
+  // every test here composes over is still reachable and every one of them behaves as it did.
+  write(flowFile, 'name: requirements\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: pm\n');
+  const flow: Flow = { ...loadFlow(flowFile), steps: [] };
   const ticketDir = path.join(repoDir, 'backlog/Q-0050-engine');
   write(path.join(ticketDir, 'ticket.md'), '---\nid: Q-0050\n---\nbody\n');
   const ticket = {

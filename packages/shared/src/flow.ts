@@ -5,7 +5,7 @@
 // WHERE THIS SCHEMA'S AUTHORITY ENDS
 // ---------------------------------------------------------------------------------------------
 //
-// `lintFlow` (spike/src/lint.js:56) accumulates sixteen problems into an array and throws once, so
+// `lintFlow` (spike/src/lint.js:56) accumulates eighteen problems into an array and throws once, so
 // a reader gets every defect in one pass — and fourteen of those messages open with the step id,
 // the exact token the reader greps for in the YAML. A zod issue would say
 // `steps[3].on_fail.max_iterations`: an index, not an id. So:
@@ -50,20 +50,13 @@
 //     counterexample.
 //
 // PRESENCE — the half that is a rule about the flow format, and therefore lint's. This schema
-// requires no key lint does not require. Three cases, of which the third is the one that was got
-// wrong and is the whole of iteration 5's change:
+// requires no key lint does not require, and the direction of that sentence is what matters: it may
+// require FEWER keys than lint, never more. Three cases:
 //
-//   - `name` and `steps` are optional, because lint accepts a flow carrying neither: lint.js:127
-//     prints `flow.name ?? flow.file`, and `flattenSteps(steps = [])` at lint.js:7 defaults `steps`
-//     away.
+//   - `name` is optional, because lint accepts a flow without one: lint.js:127 prints
+//     `flow.name ?? flow.file`.
 //   - `consumes` and `produces` stay required, because lint requires them too, at lint.js:124.
-//   - `id` is optional on EVERY step kind, because lint requires it on none of them. It gathers ids
-//     with `steps.filter((step) => step.id)` (lint.js:59), so an id-less step is simply absent from
-//     the duplicate-id check, and no other rule in the function looks for one. Verified by running
-//     the real linter, not by reading it: a plain agent step, a `parallel` member, a script step, an
-//     integrate step carrying `branches` and a fan-out step carrying its `step:` template all lint
-//     clean with no id. The gate step was never the exception it looked like — it was the only kind
-//     anyone had checked.
+//   - `steps` and `id` are optional even though lint now REQUIRES both. See below.
 //
 // A schema requiring a key lint does not require would BE zod adding a rule, which is the failure
 // AC-3 was written to prevent, and rule 2 above. docs/DECISIONS.md ("Zod describes structure and
@@ -72,12 +65,20 @@
 // values are" — and its claim that "after the third implement round the schema requires nothing lint
 // does not" is true of this file only from iteration 5 onward.
 //
-// The cost of the third case, stated rather than hidden: `id` is `string | undefined` on every step
-// type a consumer holds, and the engine does need one. It interpolates `harness/<ticket>/<step.id>`
-// for a worktree branch (engine.js:211) and keys a loop counter `<flow>.<step.id>` (engine.js:541),
-// so an id-less step reaches both as the literal `undefined`. That is a gap in lint, not a licence
-// for this schema to close it here — closing it is exactly the "zod adds a rule" failure — so it is
-// reported in dev/implement-report.md and left alone.
+// **`steps` and `id`, since Q-0055.** Lint refuses a flow that declares no step, and refuses any
+// step that is not a gate and carries no usable id — so the gap this block described for three
+// weeks is closed, in the file that owns semantics. Both keys nevertheless stay OPTIONAL here, and
+// that is the same rule read the other way: a presence rule belongs in exactly one place, and
+// putting it in two means it is checked twice and free to drift, silently, because nothing runs
+// this schema in front of lint — `loadFlow` casts and never parses. Until Q-0041 iteration 5 the
+// schema required `id` on the agent, script, integrate and fan-out kinds, which is precisely this
+// mistake; restoring it now that lint has the rule would be the same mistake with a better excuse.
+// The gate is the one kind lint exempts, and it has never declared an `id` here either.
+//
+// The cost of a `string | undefined` id on every step type a consumer holds is unchanged and is now
+// paid rather than merely stated: the engine names a worktree branch, a loop counter and a
+// run-history occurrence after it, and a caller holding a flow object it did not lint can still
+// reach all three. `packages/core/src/engine/diff.ts` says so where it renders one.
 //
 // TYPES — the half that is a description of the format, and therefore this package's reason to
 // exist. `lintFlow` type-checks almost nothing: where a value reaches it at all it reaches
@@ -98,7 +99,7 @@
 // untouched — duplicate ids, goto resolution, counter prefixes, verdict-must-route, the two
 // cross-vendor rules, loop convergence, the deploy gate and the `input.diff` range rule all stay in
 // `lintFlow`, and no zod issue may replace a lint message in `quorum lint`'s output. That direction
-// has its own test: nine flows this schema accepts and lint refuses.
+// has its own test: twelve flows this schema accepts and lint refuses, three of them Q-0055's.
 //
 // One shape that looks like part of the type divergence and is not: `steps` present but not an
 // array. `steps: null` and `steps: [null]` both throw a TypeError out of `flattenSteps`, so
@@ -186,9 +187,9 @@ const agentStepFields = {
 /**
  * The ordinary step: a role on an adapter, producing structured output.
  *
- * `id` is optional because `lintFlow` requires one on no step kind — see PRESENCE above for the
- * evidence and for what it costs. The three kinds below repeat it for the same reason, and a
- * `parallel` group's members inherit it from here.
+ * `id` is optional even though `lintFlow` requires one on every kind but the gate — see PRESENCE
+ * above for why a presence rule lives in one file rather than two. The three kinds below repeat it
+ * for the same reason, and a `parallel` group's members inherit it from here.
  */
 export const agentStepSchema = z.looseObject({
   id: z.string().optional(),
@@ -222,7 +223,7 @@ export const gateStepSchema = z.looseObject({
 
 /** A project command, run in the repository. */
 export const scriptStepSchema = z.looseObject({
-  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  /** Optional here, and required by lint on every kind but the gate — see PRESENCE above. */
   id: z.string().optional(),
   type: z.literal('script'),
   /** Optional here for rule 3 above: absence must still read as a script step. */
@@ -233,7 +234,7 @@ export const scriptStepSchema = z.looseObject({
 
 /** Merge branches onto a target branch in a worktree, then optionally run the test command. */
 export const integrateStepSchema = z.looseObject({
-  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  /** Optional here, and required by lint on every kind but the gate — see PRESENCE above. */
   id: z.string().optional(),
   type: z.literal('integrate'),
   /**
@@ -270,6 +271,11 @@ export const fanOutSchema = z.looseObject({
  * The per-task template a fan-out expands. Its `id`, `role`, `adapter` and `model` are
  * interpolation placeholders resolved once per task (spike/src/engine.js:946-952).
  *
+ * Its `id` is optional for a second reason on top of PRESENCE's: lint exempts this template from
+ * the id rule as deliberately as it exempts it from the duplicate-id, `goto` and cross-vendor ones,
+ * because `flattenSteps` does not descend into it and a placeholder resolved per task is not a step
+ * anything is named after yet (Q-0055 AC-3).
+ *
  * Structurally identical to `agentStepSchema` since iteration 5 made `id` optional there too, and
  * kept as a declaration of its own rather than aliased to it: these are two different things — one
  * is a step the engine runs, the other a template it copies per task — and an alias would make a
@@ -282,7 +288,7 @@ export const fanOutStepTemplateSchema = z.looseObject({
 });
 
 export const fanOutStepSchema = z.looseObject({
-  /** Optional: lint requires an id on no step kind — see PRESENCE above. */
+  /** Optional here, and required by lint on every kind but the gate — see PRESENCE above. */
   id: z.string().optional(),
   fan_out: fanOutSchema,
   /** Optional for rule 3; lint has the message (spike/src/lint.js:78). */
@@ -380,15 +386,17 @@ export const flowSchema = z.looseObject({
   /** `required` is the only value lint acts on — spike/src/lint.js:86. */
   cross_vendor: z.string().optional(),
   /**
-   * Optional, because lint is: `flattenSteps(steps = [])` (spike/src/lint.js:7) defaults the key
-   * away, so a flow with no `steps` returns true from lint today. The engine then reads
-   * `flow.steps` directly (spike/src/engine.js:83, :115) and throws a raw TypeError — a real
-   * defect, and one this ticket reports rather than fixes ("The port preserves behaviour",
-   * docs/DECISIONS.md 2026-08-25). Note that the fallback stays in the engine per rule 4: the key
-   * is optional here and carries no zod default, so a consumer writes `flow.steps ?? []` exactly as
-   * `flattenSteps` does. Present-but-not-an-array IS rejected, and E-1 names that shape explicitly
-   * as not part of the type divergence — `steps: null` and `steps: [null]` throw a TypeError out of
-   * `flattenSteps`, so lint does not succeed on them either.
+   * Optional here, and required by lint since Q-0055: a flow declaring no step is refused with
+   * `flow needs steps`, both spellings of nothing — the absent key and the empty list. This block
+   * said the opposite until then, on `flattenSteps(steps = [])` defaulting the key away, and the
+   * defect it went on to name is what closed it: the engine reads `flow.steps` directly and throws
+   * a raw TypeError naming neither the flow nor the key.
+   *
+   * The key stays optional for PRESENCE's reason above — a presence rule belongs in one file — and
+   * the fallback stays in the engine per rule 4, so a consumer still writes `flow.steps ?? []`
+   * exactly as `flattenSteps` does. Present-but-not-an-array IS rejected, and E-1 names that shape
+   * explicitly as not part of the type divergence: `steps: null` and `steps: [null]` throw a
+   * TypeError out of `flattenSteps`, so lint does not succeed on them either.
    */
   steps: z.array(flowStepSchema).optional(),
   /**

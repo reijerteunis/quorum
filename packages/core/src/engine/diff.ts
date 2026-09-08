@@ -462,10 +462,14 @@ export function preflightDiffs(context: PreflightContext): void {
       }
     }
     for (const s of members) {
-      // Two renderings of the same absent id, both preserved. A step with no `id` — which lint does
-      // not yet refuse; see Q-0055 — names its branch `harness/<ticket>/undefined`, as the worktree
-      // step itself does, while the producer a diagnostic then quotes reads `null`, which is what the
-      // spike's own `?? null` puts there. Collapsing them would change one message or the other.
+      // Two renderings of the same absent id, both preserved, and still reachable now that Q-0055
+      // refuses an id-less step: `lintFlow` runs in `loadFlow` and in `quorum run`'s preflight, and
+      // `runFlow` takes a flow OBJECT that nothing lints — which is how this package's own tests
+      // reach it and how M3's server will. Deleting the fallback would make the engine correct only
+      // for a caller that had linted, and safety is enforced in `core` rather than by convention
+      // (harness/rules.md). A step with no `id` names its branch `harness/<ticket>/undefined`, as
+      // the worktree step itself does, while the producer a diagnostic then quotes reads `null`,
+      // which is what the spike's own `?? null` puts there. Collapsing them changes one message.
       const stepId = String(s.id ?? null);
       const defaultBranch = ticketBranch(context.ticket.meta.id, String(s.id));
       if (s.worktree) remember(interpolate(String(s.branch ?? defaultBranch), context.vars), stepId);

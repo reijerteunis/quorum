@@ -50,8 +50,23 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
   }
 }
 
+/** What {@link flowsIn} read: the flows it could use, and the files it could not read at all. */
+interface FlowIndex {
+  /** The loaded flows, in filename order — the set a column's hint is chosen from. */
+  flows: Flow[];
+  /** The basenames of the files that failed to load or lint, in the same order. */
+  unreadable: string[];
+}
+
 /**
  * The flows in `<harnessDir>/flows`, which is where a column's hint comes from.
+ *
+ * **A file that failed to load or lint is carried out rather than dropped**, which is Q-0055's half
+ * of this function. `lintFlowDirectory` records a problem and no `flow` for such a file; taking only
+ * the flows made that file vanish from the board entirely, hint and all, with nothing said — so a
+ * stage whose only flow had a defect looked exactly like a stage no flow consumes. This function is
+ * where the two were conflated, so it is where they are separated; deciding what to say about the
+ * second list is {@link unreadableFlowsLegend}'s.
  *
  * Why: divergence 1 — the records arrive sorted where the spike's own directory read is unspecified,
  * so the first flow consuming a stage is chosen deterministically; no rendered byte moves and a
@@ -61,13 +76,16 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
  * — a `flows` that is a file, a permissions failure, a lint crash — propagates, as it does in the
  * spike, rather than being reported as "no hint" (Q-0099 AC-3).
  */
-function flowsIn(harnessDir: string): Flow[] {
+function flowsIn(harnessDir: string): FlowIndex {
   try {
-    return lintFlowDirectory(path.join(harnessDir, 'flows'))
-      .flatMap((record) => (record.flow === undefined ? [] : [record.flow]));
+    const records = lintFlowDirectory(path.join(harnessDir, 'flows'));
+    return {
+      flows: records.flatMap((record) => (record.flow === undefined ? [] : [record.flow])),
+      unreadable: records.filter((record) => record.flow === undefined).map((record) => path.basename(record.file)),
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return [];
+    return { flows: [], unreadable: [] };
   }
 }
 
@@ -130,6 +148,27 @@ const pushLagLegend = (lag: PushLagResult, base: string): string | null => {
     + ' as of the last fetch';
 };
 
+/**
+ * The flow files this board could not read, or nothing at all.
+ *
+ * **It names them and says nothing about the others**, which is the whole shape of it. A flow that
+ * fails to load or lint has no `→ quorum run` hint above, and until Q-0055 that absence was
+ * indistinguishable from a stage no flow consumes — the board's own silence standing for two
+ * different facts. This line separates them by reporting only the one it knows.
+ *
+ * Under the same rule push lag is under: **it may warn and it may never reassure.** It carries no
+ * count of problems, no verdict about the readable files, and nothing resembling "all flows valid"
+ * — `quorum lint` is the check and this is a report, so an empty list prints nothing at all and
+ * silence still means only that there was nothing to say. See *"The board reports push lag, and
+ * never a CI conclusion"* (2026-09-06), whose asymmetry this follows.
+ *
+ * It borrows none of containment's grammar either: no `<base>:` token, no per-row annotation.
+ */
+const unreadableFlowsLegend = (unreadable: readonly string[]): string | null => (unreadable.length === 0
+  ? null
+  : `· could not read = ${unreadable.join(', ')} — a flow that fails to load or lint has no`
+    + ' → quorum run hint above; quorum lint says why');
+
 /** One ticket's line: its id, its title, and the dim span carrying everything measured about it. */
 const row = (meta: Ticket, annotation: string): string => {
   const cost = (meta.history ?? []).reduce((total, entry) => total + (entry.cost ?? 0), 0);
@@ -142,7 +181,7 @@ const row = (meta: Ticket, annotation: string): string => {
 export const board: CommandHandler = ({ flags }) => {
   const { backlog, harnessDir, repoDir, config } = projectOf(flags.project);
   const tickets = backlog.list();
-  const flows = flowsIn(harnessDir);
+  const { flows, unreadable } = flowsIn(harnessDir);
   const base = config.repo?.base_branch ?? 'main';
   const where = containment(repoDir, base);
   let anyIndeterminate = false;
@@ -161,6 +200,11 @@ export const board: CommandHandler = ({ flags }) => {
       console.log(row(ticket.meta, spot == null ? '' : token(spot, base)));
     }
   }
+  // First of the legends, because it is the only one that explains something MISSING from the
+  // output above rather than qualifying something in it: a column whose hint is absent because its
+  // flow could not be read is the reader's most urgent question, and it is answered nowhere else.
+  const unread = unreadableFlowsLegend(unreadable);
+  if (unread !== null) console.log(c.dim(unread));
   // The roll-up can only see vendors that report a price, and saying so is the whole point of the
   // tokens-only decision (2026-08-22): an unlabelled total reads as the cost of the run.
   if (tickets.some((ticket) => (ticket.meta.history ?? []).length)) {

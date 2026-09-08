@@ -279,7 +279,9 @@ describe('AC-8 — the frame writes nothing, starts nothing and probes nothing',
     // stopped at its first line would be a green tick over nothing.
     fs.writeFileSync(
       path.join(dir, 'harness', 'flows', 'sample.yaml'),
-      'name: sample\nconsumes: draft\nproduces: requirements\nsteps: []\n',
+      // The step and its id are what make this flow CLEAN since Q-0055; without them `lint` would
+      // report a problem and the snapshot would be taken around a command that stopped early.
+      'name: sample\nconsumes: draft\nproduces: requirements\nsteps:\n  - id: s\n',
       'utf8',
     );
     fs.writeFileSync(path.join(dir, 'contract.schema.json'), '{"type":"object","required":["a"]}\n', 'utf8');

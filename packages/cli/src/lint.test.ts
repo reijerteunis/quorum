@@ -55,9 +55,15 @@ const flows = (files: Record<string, string>): void => {
   for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(into, `${name}.yaml`), body, 'utf8');
 };
 
-/** A minimal flow with no steps, as `q0033-surface.js`'s `basicFlow` builds one. */
+/**
+ * The smallest flow `quorum lint` reports a green tick for.
+ *
+ * It carried `steps: []` — `q0033-surface.js`'s `basicFlow` — until Q-0055, which refuses both a
+ * flow declaring no step and a step carrying no id. The step is the fixture doing what these cases
+ * need, which is to lint clean; none of them is about steps.
+ */
 const basicFlow = (name: string, consumes: string, produces: string): string =>
-  `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps: []\n`;
+  `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - id: s\n`;
 
 /**
  * A flow whose one step carries a cross-flow backward edge to `goto`.
