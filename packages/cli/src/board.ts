@@ -50,9 +50,9 @@ function projectOf(project: FlagValue | readonly FlagValue[] | undefined): Retur
   }
 }
 
-/** What {@link flowsIn} read: the flows it could use, and the files it could not read at all. */
+/** What {@link flowsIn} read: the flows it could use, and the files the linter refused. */
 interface FlowIndex {
-  /** The loaded flows, in filename order — the set a column's hint is chosen from. */
+  /** The flows whose file lints clean, in filename order — the set a column's hint is chosen from. */
   flows: Flow[];
   /** The basenames of the files that failed to load or lint, in the same order. */
   unreadable: string[];
@@ -62,11 +62,18 @@ interface FlowIndex {
  * The flows in `<harnessDir>/flows`, which is where a column's hint comes from.
  *
  * **A file that failed to load or lint is carried out rather than dropped**, which is Q-0055's half
- * of this function. `lintFlowDirectory` records a problem and no `flow` for such a file; taking only
- * the flows made that file vanish from the board entirely, hint and all, with nothing said — so a
- * stage whose only flow had a defect looked exactly like a stage no flow consumes. This function is
- * where the two were conflated, so it is where they are separated; deciding what to say about the
- * second list is {@link unreadableFlowsLegend}'s.
+ * of this function. Taking only the flows made that file vanish from the board entirely, hint and
+ * all, with nothing said — so a stage whose only flow had a defect looked exactly like a stage no
+ * flow consumes. This function is where the two were conflated, so it is where they are separated;
+ * deciding what to say about the second list is {@link unreadableFlowsLegend}'s.
+ *
+ * **The classifier is `problems`, and `flow` answers a different question.** `lintFlowDirectory`
+ * keeps the parsed flow on a record that loaded and then appends the cross-flow problems — a
+ * missing, cyclic or ambiguous target — to that same record, so `flow !== undefined` means *it
+ * parsed* rather than *it linted*. A flow with a dangling `goto: flow:…` would otherwise keep a
+ * `→ quorum run` hint for a command `run.ts`'s own directory lint refuses, and be named nowhere.
+ * Classified this way the two lists partition the records, which is what lets the legend say that a
+ * refused flow has no hint above rather than that some do not.
  *
  * Why: divergence 1 — the records arrive sorted where the spike's own directory read is unspecified,
  * so the first flow consuming a stage is chosen deterministically; no rendered byte moves and a
@@ -80,8 +87,10 @@ function flowsIn(harnessDir: string): FlowIndex {
   try {
     const records = lintFlowDirectory(path.join(harnessDir, 'flows'));
     return {
-      flows: records.flatMap((record) => (record.flow === undefined ? [] : [record.flow])),
-      unreadable: records.filter((record) => record.flow === undefined).map((record) => path.basename(record.file)),
+      // A record with no problem always carries a flow, every failure path recording one, so the
+      // second clause narrows the type rather than adding to the rule.
+      flows: records.flatMap((record) => (record.problems.length || record.flow === undefined ? [] : [record.flow])),
+      unreadable: records.filter((record) => record.problems.length).map((record) => path.basename(record.file)),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

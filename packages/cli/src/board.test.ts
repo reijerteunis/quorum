@@ -516,6 +516,15 @@ describe('Q-0055 AC-16/AC-17 — a flow the board could not read is named, and n
   const idLessFlow = (name: string, consumes: string, produces: string): string =>
     `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - role: r\n`;
 
+  /**
+   * A flow that lints clean on its own and is refused for its backward edge to a flow that is not
+   * there — the one shape where "did it parse" and "did it lint" disagree, because
+   * `lintFlowDirectory` appends the cross-flow problem to a record that kept its parsed flow.
+   */
+  const danglingFlow = (name: string, consumes: string, produces: string): string =>
+    `name: ${name}\nconsumes: ${consumes}\nproduces: ${produces}\nsteps:\n  - id: s\n`
+    + '    on_fail:\n      goto: flow:nowhere\n      max_iterations: 1\n      on_exhausted: gate\n';
+
   test('AC-16 — the good flow keeps its hint and the bad file is named beside it', async () => {
     // The two halves in one board, because either alone would pass over the defect: a board that
     // dropped both would still print the legend, and a board that printed no legend would still
@@ -556,6 +565,31 @@ describe('Q-0055 AC-16/AC-17 — a flow the board could not read is named, and n
     expect(result.exitCode, out(result)).toBe(SUCCESS);
     expect(out(result)).toContain('could not read = torn.yaml');
     expect(out(result), 'one bad file must not cost the good one its hint').toContain('→ quorum run alpha <id>');
+  });
+
+  test('AC-16 — a flow refused for a cross-flow edge loses its hint and is named with the rest', async () => {
+    // Run 2 iteration 1's review finding. `dangling` parses, passes every per-flow rule and is then
+    // refused by the cross-flow pass, which appends the problem to a record still carrying its
+    // flow — so a board classifying on `flow` gave it a hint for a command `quorum run` refuses
+    // (`run.ts` lints the whole directory first) and left it out of the legend that exists to
+    // explain exactly that.
+    const root = await projectFixture();
+    flows(root, {
+      alpha: basicFlow('alpha', 'requirements', 'reviewed'),
+      dangling: danglingFlow('dangling', 'draft', 'requirements'),
+    });
+
+    // The premise, asserted rather than assumed: this fixture must fail on the cross-flow edge and
+    // not on a per-flow rule, or the test is the id-less one again under another name.
+    const linted = await invoke(['lint', '--project', root]);
+    expect(out(linted), 'the fixture stopped being a cross-flow failure')
+      .toContain('target flow nowhere is missing or unloadable');
+
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result), 'a flow the linter refuses kept its hint').not.toContain('quorum run dangling');
+    expect(out(result), 'and it was named nowhere').toContain('could not read = dangling.yaml');
+    expect(out(result), 'the clean flow lost its hint to its neighbour').toContain('→ quorum run alpha <id>');
   });
 
   test('AC-16 — two bad files are one line naming both, in filename order', async () => {
