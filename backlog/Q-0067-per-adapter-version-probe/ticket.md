@@ -18,6 +18,27 @@ history:
     at: 2026-09-08T19:14:16.576Z
     cost: 9.585
 ---
+> **GATE OBLIGATIONS DISCHARGED 2026-09-08, before the chore run.**
+>
+> **GO-1 — the decision entry has landed**: *"An adapter records the version it was verified against,
+> and never a version it supports"* (2026-09-08). Five clauses: no range or minimum; the product
+> reports and never refuses; nothing branches on a version; the datum stands beside the login verdict
+> as provenance, never as a second verdict; and it belongs to `--probe`, the check, not to the bare
+> listing, the report. **Cite it rather than restating it** — one line naming the authority, per
+> `.claude/rules/engineering.md`.
+>
+> **GO-2 — `CLAUDE.md`'s half of the term list is already done**, on
+> `harness/Q-0067/integration` and deliberately not on `main`: that file is not in this role's
+> `paths:` and `docs.test.ts` compares the two vocabularies as **ordered** lists. The term is
+> **`verified version`** and it is **appended at the end**, after `push lag`. **AC-13's half in
+> `docs/README.md` must take the same position**, or the ordered comparison fails.
+>
+> **GO-3 — the recorded pair stays `2.1.220` / `0.149.0`.** Ruled at the gate. This machine runs
+> 2.1.236 and 0.150.1, and that difference is the point rather than a discrepancy to fix: the datum
+> records what was verified, not what is installed. Re-verifying is Non-goal 5's own ticket.
+>
+> **GO-4 — `harness/Q-0067/integration` exists**, created by GO-2's commit.
+
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
 > cutover"* at the end of this body before acting on anything here. The defect itself is
