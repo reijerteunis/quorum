@@ -51,6 +51,10 @@
         // a declared input naming a directory that cannot exist hashes nothing, so keeping it
         // would have been a declaration this task could never be invalidated by.
         "../../packages/cli/templates/harness/flows/*.yaml",
+        // Q-0059 AC-8: backlog.source.test.ts scans BOTH packages' production source for a second
+        // declaration of the confinement primitive, so this task's verdict depends on every file
+        // under packages/cli/src — a realpathSync added there must turn it red rather than replay.
+        "../../packages/cli/src/**",
         // Q-0054: src/test-discovery.test.ts expands the workspace globs and then asks, of every
         // package, whether its Vitest configuration collects each of its test files. So this task
         // reads every package's manifest and configuration, and its verdict depends on which test

@@ -5,6 +5,17 @@
  * lost feature — it is a changed BYTE. A tidier emitter, or a validation added at the read boundary
  * because it looks like rigour, reformats the frontmatter of every ticket it touches from then on
  * and nothing goes red. Why: behaviour preserved from spike/src/backlog.js (charter §2, Q-0043).
+ *
+ * **A ticket token resolves to a directory directly under the backlog root, and `write`,
+ * `writeFile`, `readFiles` and `log` work only inside a ticket folder** — file by file rather than
+ * folder by folder, because a link at a leaf is an escape every check on the directory above it
+ * passes. Both checked in `./confine.js`, which closes Q-0043's path-traversal non-goal on the write
+ * side and on the globbed read side together (Q-0059).
+ *
+ * `read` and `list` sit OUTSIDE that guarantee, deliberately: they open a ticket's own `ticket.md`
+ * with the name joined on, so a link planted there is still listed and still read, while the store
+ * refuses to write back through it. Why: preserved, see Q-0059 AC-11 — pinned by test, so a later
+ * change to it is a deliberate one.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,6 +24,8 @@ import YAML from 'yaml';
 
 import { RUNS_LOG_FILE, integrationBranch, parseTicketId } from '@quorum/shared';
 import type { Ticket } from '@quorum/shared';
+
+import { isFolderIn, isOneName, pathInside } from './confine.js';
 
 /**
  * A frontmatter block and the markdown under it.
@@ -114,13 +127,21 @@ export class Backlog {
    * Resolve a ticket id or folder name to its directory: an exact path first, then the first
    * `readdir` entry equal to the argument or beginning with it and a hyphen.
    *
+   * A token that is not one name is refused on the string alone, before anything is opened. A token
+   * that is one name and resolves outside the root — through a link, which no string test sees — is
+   * `ticket not found`, disclosing nothing about where it pointed. The answer is the JOINED path
+   * and never the resolved one: `TicketRecord.dir` is what artifact paths, `wrote …` events and run
+   * history are built from, and resolving it here would move all three on any symlinked checkout.
+   *
    * Why: that prefix match consults `readdir` ORDER, so two folders sharing an id prefix resolve
-   * non-deterministically — preserved, not endorsed (charter §2; Q-0059 carries the traversal twin).
+   * non-deterministically — preserved, not endorsed (charter §2, Q-0043; Q-0059 non-goal 1).
    */
   dirOf(idOrFolder: string): string {
-    if (fs.existsSync(path.join(this.root, idOrFolder))) return path.join(this.root, idOrFolder);
+    if (!isOneName(idOrFolder)) throw new Error(notATicketToken(idOrFolder));
+    const exact = path.join(this.root, idOrFolder);
+    if (isFolderIn(this.root, exact)) return exact;
     const hit = fs.existsSync(this.root) && fs.readdirSync(this.root).find((n) => n === idOrFolder || n.startsWith(idOrFolder + '-'));
-    if (!hit) throw new Error(`ticket not found: ${idOrFolder}`);
+    if (!hit || !isFolderIn(this.root, path.join(this.root, hit))) throw new Error(`ticket not found: ${idOrFolder}`);
     return path.join(this.root, hit);
   }
 
@@ -133,9 +154,15 @@ export class Backlog {
     return { dir, folder: path.basename(dir), meta: meta as Ticket, body };
   }
 
-  /** Replace `ticket.md`, and write nothing else — no index, no cache, no derived state. */
+  /**
+   * Replace `ticket.md`, and write nothing else — no index, no cache, no derived state.
+   *
+   * The destination is verified and not merely joined: `ticket.md` is a name on disk like any
+   * other, so a link there sends the whole frontmatter outside the backlog root while every check
+   * on the folder above it passes.
+   */
   write(ticket: TicketRecord): void {
-    fs.writeFileSync(path.join(ticket.dir, 'ticket.md'), renderFrontmatter(ticket.meta, ticket.body));
+    fs.writeFileSync(fileInside(this.root, ticket, 'ticket.md'), renderFrontmatter(ticket.meta, ticket.body));
   }
 
   /**
@@ -229,30 +256,52 @@ export class Backlog {
    * The syntax is deliberately narrow and is not widened: only `*` is a wildcard, and every other
    * regex metacharacter is escaped and matches literally. A pattern ending in `/` walks that
    * subtree and preserves the walk's own filesystem order; everything else is sorted by basename.
+   *
+   * A pattern naming anything outside the ticket folder is REFUSED rather than answered with `[]`:
+   * an empty list is what a legitimately absent directory answers below, so silence would shrink an
+   * agent's prompt with nothing going red. So is an enumerated FILE that leaves it: the pattern
+   * fixes the directory and the filesystem supplies the names under it, so a link at one of those
+   * names is a path this caller never asked for and no check on the base can see.
    */
   readFiles(ticket: TicketRecord, pattern: string): TicketFile[] {
-    const dir = path.dirname(path.join(ticket.dir, pattern));
+    const folder = folderOf(this.root, ticket);
+    const joined = pathInside(folder, pattern);
+    if (joined === null) throw new Error(notInsideTicket(pattern));
+    const dir = path.dirname(joined);
     const base = path.basename(pattern);
     if (!fs.existsSync(dir)) return [];
-    if (pattern.endsWith('/')) {
-      return walk(path.join(ticket.dir, pattern)).map((f) => ({ rel: path.relative(ticket.dir, f), text: fs.readFileSync(f, 'utf8') }));
-    }
+    const one = (file: string): TicketFile => {
+      const rel = path.relative(folder, file);
+      if (pathInside(folder, rel) === null) throw new Error(notInsideTicket(rel));
+      return { rel, text: fs.readFileSync(file, 'utf8') };
+    };
+    if (pattern.endsWith('/')) return walk(joined).map(one);
     const re = new RegExp('^' + base.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
-    return fs.readdirSync(dir).filter((n) => re.test(n)).sort()
-      .map((n) => ({ rel: path.relative(ticket.dir, path.join(dir, n)), text: fs.readFileSync(path.join(dir, n), 'utf8') }));
+    return fs.readdirSync(dir).filter((n) => re.test(n)).sort().map((n) => one(path.join(dir, n)));
   }
 
-  /** Write a file inside the ticket folder, creating parents, and return its absolute path. */
+  /**
+   * Write a file inside the ticket folder, creating parents, and return its absolute path.
+   *
+   * The destination usually does not exist yet, so what is verified is its deepest existing
+   * ancestor — and the verification happens before `mkdirSync`, so a refused write leaves no
+   * directory behind it, inside the root or outside it.
+   */
   writeFile(ticket: TicketRecord, rel: string, text: string): string {
-    const abs = path.join(ticket.dir, rel);
+    const abs = fileInside(this.root, ticket, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, text.endsWith('\n') ? text : text + '\n');
     return abs;
   }
 
-  /** Append one line to the ticket's run log. Append-only: an existing line is never rewritten. */
+  /**
+   * Append one line to the ticket's run log. Append-only: an existing line is never rewritten.
+   *
+   * `runs.log` is verified like any other destination — a link there appends this ticket's history
+   * to a file outside the backlog root, and an append is the one write that leaves what was there.
+   */
   log(ticket: TicketRecord, line: string): void {
-    fs.appendFileSync(path.join(ticket.dir, RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
+    fs.appendFileSync(fileInside(this.root, ticket, RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
   }
 }
 
@@ -305,6 +354,47 @@ const notAnOwner = (given: unknown): string =>
 /** An `--id` the grammar does not recognise, named with the shape it should have had. */
 const notATicketId = (given: string): string =>
   `not a ticket id: '${printable(given)}' — an id is ${FORM}, like Q-0081`;
+
+/**
+ * The ticket folder a record names, verified to be one of THIS backlog's before anything is read
+ * from it or written into it.
+ *
+ * `dir` is a field on a plain interface, so guarding a caller's `rel` against it while leaving it
+ * unguarded would close nothing: the boundary is the backlog root, and this is where every method
+ * taking a record meets it. What a surface then tells its user is the surface's own, per *"A `core`
+ * error names the condition; the remedy belongs to the surface"* (2026-09-07).
+ */
+function folderOf(root: string, ticket: TicketRecord): string {
+  if (!isFolderIn(root, ticket.dir)) throw new Error(notATicketFolder(ticket.dir));
+  return ticket.dir;
+}
+
+/**
+ * One file of a ticket folder, verified in its own right before anything opens it: the folder
+ * against the root, and then the leaf against the folder.
+ *
+ * The second half is not covered by the first. A directory that is genuinely inside the boundary
+ * can hold a name that is not — `pathInside` resolves the destination where it exists and its
+ * deepest existing ancestor where it does not, so a file nobody has created yet is admitted while
+ * a link standing at that name is not.
+ */
+function fileInside(root: string, ticket: TicketRecord, rel: string): string {
+  const abs = pathInside(folderOf(root, ticket), rel);
+  if (abs === null) throw new Error(notInsideTicket(rel));
+  return abs;
+}
+
+/** A token that names a path rather than a ticket — decided on the string, so it names no file. */
+const notATicketToken = (token: string): string =>
+  `not a ticket token: '${printable(token)}' — a ticket is one folder directly under the backlog root`;
+
+/** A record whose folder is not a ticket folder of the backlog it was handed to. */
+const notATicketFolder = (dir: string): string =>
+  `not a ticket folder in this backlog: '${printable(dir)}'`;
+
+/** A write path or a glob that leaves the ticket folder, lexically or through a link. */
+const notInsideTicket = (rel: string): string =>
+  `not a path inside the ticket folder: '${printable(rel)}'`;
 
 /**
  * Tickets are there and not one of their ids parses. Sorted before it is cut, so the sample is the

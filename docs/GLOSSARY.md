@@ -62,6 +62,19 @@ text may use wording equivalent to "CI passed" or "not validated". See *"The boa
 and never a CI conclusion"* (2026-09-06), which extends the 2026-08-24 containment entry rather than
 contradicting it.
 
+**Confinement**: The rule that a path is inside a declared root, checked by resolving both sides
+with `realpathSync` and comparing them component by component — a lexical test cannot see through a
+symlink, and a string prefix would put `/x/backlog-old` inside `/x/backlog`. Two roots are confined
+this way. The **backlog root**: a ticket token resolves to a directory directly under it, and
+`write`, `writeFile`, `readFiles` and `log` work inside that ticket's own folder, so a `../` in a
+token or in a flow's write path is refused rather than followed (Q-0059). The **run-history root**:
+a run id names a directory directly inside `.quorum/runs` (Q-0034, Q-0049). Enforced in `core`, so
+the CLI and M3's server inherit one rule instead of each writing a weaker one. **Not containment**,
+which is a git ancestry fact about two refs that the board renders as a token: the two words are
+near-homographs for unrelated questions, and neither is ever used for the other. Not a permission
+model, not a sandbox, and not a claim about a race — it says where a path is at the moment it is
+checked, and nothing about who may then open it.
+
 **Contract**: A machine-checkable artifact emitted by solutioning — interface, schema, stub, migration skeleton — that tests and developers code against.
 
 **Role**: An agent persona file in `harness/roles/` with default adapter, model, write-path allow-list and prompt (product-manager, principal-architect, developer-backend, code-reviewer, …). Tasks reference roles; flows reference roles.

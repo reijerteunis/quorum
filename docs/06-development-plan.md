@@ -2147,6 +2147,16 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   (`spike/src/backlog.js:34`, now `packages/core/src/backlog/backlog.ts`). Q-0043's non-goals carry the
   write-side twin but name `writeFile` only. Barely reachable today because every caller passes a
   CLI argument; M3's server takes a ticket id over HTTP, so it wants settling before the daemon.
+- Q-0113 A flow may declare a path that escapes the ticket folder. *(Opened 2026-09-08 at Q-0059's
+  requirements gate from its **OQ-4**, which ruled the lint rule out of that ticket and out of its
+  closing entry — the counter-example to the two obligations found orphaned this week living only
+  inside a closed ticket and a source comment.)* `lintFlow` accepts a traversing `writes:`, `write:`
+  or `input.backlog` entry, so a bad flow is caught at run time if at all. **Nothing is unguarded
+  while it waits**: Q-0059's engine guard refuses such a path at the boundary whatever a flow
+  declares, and what is missing is the *early* refusal, before a paid run rather than during one.
+  The instrument is the question — lint rule, engine only, or both with the lint rule deriving its
+  predicate from `packages/core/src/backlog/confine.ts` so the two cannot disagree. Depends on
+  Q-0059, which creates that primitive; starting first is how the lint rule grows its own copy.
 - Q-0060 A damaged or CRLF `ticket.md` reads as a ticket with no fields, silently. The regex at
   `backlog.js:12` is anchored on `\n` and line 13 falls open to `{ meta: {}, body: text }` — no
   error, contradicting the "never default silently" rule, under the module the product calls its
