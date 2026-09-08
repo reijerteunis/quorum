@@ -1,13 +1,14 @@
 ---
 id: Q-0055
 title: Lint requires a step id wherever the engine interpolates one
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0055/integration
 priority: p2
 created: 2026-08-25
-iterations: {}
+iterations:
+  chore.review: 1
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-09-08T04:35:21.517Z
     cost: 11.355
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-08T05:38:12.879Z
+    cost: 46.455
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
