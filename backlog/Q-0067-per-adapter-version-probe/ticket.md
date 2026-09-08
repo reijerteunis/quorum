@@ -1,13 +1,14 @@
 ---
 id: Q-0067
 title: The per-adapter version probe, and what an unsupported CLI version does
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0067/integration
 priority: p3
 created: 2026-08-27
-iterations: {}
+iterations:
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,22 @@ history:
     stage_after: requirements
     at: 2026-09-08T19:14:16.576Z
     cost: 9.585
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-08T20:37:57.137Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-08T21:39:28.296Z
+    cost: 60.047
 ---
 > **GATE OBLIGATIONS DISCHARGED 2026-09-08, before the chore run.**
 >
