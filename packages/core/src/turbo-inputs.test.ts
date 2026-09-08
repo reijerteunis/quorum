@@ -278,6 +278,12 @@ const WALKS: readonly Walk[] = [
   },
   {
     taskId: '@quorum/core#test',
+    dir: 'packages/cli/src',
+    collects: (below) => below.endsWith('.ts') && !below.endsWith('.test.ts'),
+    why: 'coreSourceFiles over that directory — backlog.source.test.ts, Q-0059 AC-8, which asks whether a SECOND package declares the confinement primitive and can only answer by reading it',
+  },
+  {
+    taskId: '@quorum/core#test',
     dir: 'packages',
     collects: (below) => !below.split('/').includes('node_modules')
       && (/^[^/]+\/(?:package\.json|vitest\.config\.js)$/.test(below) || below.endsWith('.test.ts')),
@@ -696,6 +702,8 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/backlog/backlog.test.ts': {
     'repoRoot → file': 'path.relative, which builds a name for a failure message and opens nothing',
+    // Q-0059 AC-10, the same shape as lint.test.ts's row above and over the same two directories.
+    'repoRoot → relative': 'the loop iterates a literal array of the two flow directories, in the same test',
   },
   'packages/core/src/corpus.test.ts': {
     'coreSourceFiles → missing': 'a path under a temporary directory the test created, asserted to throw',
@@ -706,6 +714,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/adapters/adapters.source.test.ts': {
     'coreSourceFiles → root': 'a temporary tree the test builds to prove the corpus reader covers a new adapter folder',
+  },
+  'packages/core/src/backlog/backlog.source.test.ts': {
+    'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — Q-0059 AC-8 reads the second package because the register claims something about it',
   },
   'packages/core/src/git-identity.test.ts': {
     'repoRoot → dir': 'CORPUS, a literal array of the two directories this guard walks, in the same file',
@@ -1149,6 +1160,18 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   'packages/core/src/git/git.ts': {
     '..': 'git revision-range syntax: the two-dot operator in `<upstream>..<base>` and `<base>..<branch>`, which names a range of commits and opens no path',
   },
+  'packages/core/src/backlog/confine.ts': {
+    '..': 'one of the three tokens the backlog\'s confinement guard refuses outright; it names no file, it is compared against one',
+  },
+  'packages/core/src/backlog/backlog.test.ts': {
+    '..': 'the same token, handed to dirOf and asserted refused',
+    '../secret': 'a hostile ticket token, asserted refused; nothing under it is ever built',
+    '../../etc/passwd': 'a hostile write path, asserted refused, with the sandbox snapshotted around it',
+    '../escape.md': 'likewise',
+    'dev/../../escape.md': 'likewise, written to climb out through a subdirectory rather than from the folder root',
+    '../': 'a hostile readFiles pattern, asserted refused',
+    '../elsewhere/': 'likewise, naming the sandbox directory these tests build outside the backlog root',
+  },
   'packages/core/src/run-history/reader.ts': {
     '..': 'one of the three tokens the confinement guard refuses outright; it names no file, it is compared against one',
   },
@@ -1162,6 +1185,10 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '../git/git.js': 'the key of the fanout entry above',
     '../secret': 'the key of the run-history reader entry above',
     '../../../etc/passwd': 'the key of the git entry above',
+    '../../etc/passwd': 'the key of the backlog entry above',
+    '../escape.md': 'likewise',
+    'dev/../../escape.md': 'likewise',
+    '../elsewhere/': 'likewise',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
     '/../../docs': 'the expected value of the template-chunk fixture below',
     '../a/b': 'likewise, for the fixture showing a real assertion site is still reported',
@@ -1523,11 +1550,20 @@ const READ_BASES: Record<string, Record<string, string>> = {
     abs: 'the absolute path backlog.writeFile returned, inside that sandbox',
     'backlog.writeFile(ticket, \'dev/two.md\', \'has one\\n\')': 'the same, read back inline',
     'backlog.writeFile(ticket, \'dev/three.md\', \'trailing\\n\\n\')': 'likewise',
+    // Q-0059's confinement fixtures, all four inside a sandbox backlog these tests build.
+    'backlog.root': 'the sandbox backlog root, stat\'d to show the symlink case passes every lexical clause',
+    'record.dir': 'a ticket folder inside that same sandbox, checked for the runs.log log() appended to it',
+    'backlog.writeFile(ticket, rel, \'body\')': 'the absolute path writeFile returned, read back inline as in the three rows above',
+    flowsDir: 'path.join(repoRoot, relative) over the two shipped flow directories, both of them walks WALKS declares above',
   },
   'packages/core/src/backlog/backlog.ts': {
     'this.root': 'the backlog root the caller constructed this Backlog with',
     dir: 'a ticket folder under this.root',
     f: 'a file inside a ticket folder, joined from the caller\'s root',
+  },
+  'packages/core/src/backlog/confine.ts': {
+    target: 'realPath\'s and deepestExisting\'s parameter, rooted by every caller at the backlog root the Backlog was constructed with or at a ticket folder inside it',
+    realCandidate: 'the realpath of a single-segment child of that root, refused unless its real parent IS the real root',
   },
   'packages/core/src/backlog/project.test.ts': {
     'loaded.backlog.root': 'the backlog path loadProject resolved from a sandbox project the test wrote',
