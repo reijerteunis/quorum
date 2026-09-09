@@ -1668,9 +1668,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
     repoDir: 'repo() — a git repository created under os.tmpdir',
     worktree: 'a linked worktree of one of those repositories',
     file: 'git rev-parse --git-path info/exclude, resolved against the sandbox repository',
-    // Q-0039's run lock, in the same sandbox. A handle names its own file, so seven of the eight
+    // Q-0039's run lock, in the same sandbox. A handle names its own file, so seven of the nine
     // below read what the code answered rather than a path this file rebuilt — which is what makes
-    // them assertions about the claim and not about the fixture's arithmetic.
+    // them assertions about the claim and not about the fixture's arithmetic. The other two are the
+    // cases where the claim refused and there is no handle to ask: the lock it did not create, and
+    // the root it could not create it in.
     'lock.path': 'the run lock a claim created, inside the temp repository project() built',
     'first.path': 'the same, for the first of two claims on one ticket',
     'second.path': 'the same, for the claim that follows a release',
@@ -1679,6 +1681,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'successor.path': 'the same, for the claim that took a lock a human had cleared mid-run',
     'after.path': 'the same, for the claim that proves a ticket is still claimable once a half-made lock has been taken back',
     'lockFileOf(repoDir, ticket.meta.id)': 'path.join(that repository, \'.quorum\', \'locks\', `${id}.json`) — the lock named without a handle, for the cases where the claim refused and there is none',
+    root: 'path.join(that repository, \'.quorum\', \'locks\') — the lock root, made a file by the fixture so the claim refuses on it, and read back to assert the refusal rewrote nothing',
     exclude: 'path.join(that repository, \'.git\', \'info\', \'exclude\') — the file AC-4 is about, emptied by the fixture and read back',
     target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',
     'runDirOf(start)': 'the run directory a `start` would allocate, derived from the sandbox repoDir it names',

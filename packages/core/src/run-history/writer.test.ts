@@ -819,6 +819,33 @@ describe('Q-0039 AC-2/AC-7/AC-10 — the claim is exclusive, its subject is the 
     }
   });
 
+  test('a lock root that cannot be created refuses like every other condition, and not with a stack', () => {
+    // The class is what this asserts, not the sentence. `packages/cli/src/run.ts` renders a
+    // `FlowError` as one red line and exit 1 and rethrows everything else to `dieOnUnexpected`,
+    // which prints a Node stack — so a raw `ENOTDIR` from the root's own `mkdirSync` would be the
+    // one way this function can fail that its caller cannot show a maintainer.
+    const { repoDir, ticket } = project();
+    const root = path.join(repoDir, '.quorum', 'locks');
+
+    // A file where the directory has to go, which is the shape a maintainer actually meets: `mkdir
+    // -p` refuses it rather than joining it, and nothing above this function checks.
+    write(root, 'not a directory');
+
+    let thrown: unknown;
+    try { acquireRunLock(claimIn(repoDir, ticket)); } catch (error) { thrown = error; }
+
+    expect(thrown, 'an unusable lock root did not refuse').toBeInstanceOf(FlowError);
+    const message = (thrown as Error).message;
+    expect(message, 'the refusal does not name the condition').toContain('could not create');
+    expect(message, 'the refusal does not name the root that could not be created')
+      .toContain(path.join('.quorum', 'locks'));
+    expect(message, 'a core message may not carry a command').not.toContain('`');
+    // …and it names the root rather than the lock file, because the file was never attempted.
+    expect(message, 'the refusal names a file the claim never tried to create')
+      .not.toContain('Q-0049.json');
+    expect(fs.readFileSync(root, 'utf8'), 'the refusal rewrote what was in the way').toBe('not a directory');
+  });
+
   test('a create that succeeds and then fails takes back the file it made, and names the first failure', () => {
     // The distinction the row above rests on: a damaged file the claim FOUND is somebody else's and
     // is left alone, while one the claim MADE and could not finish is nobody's. Left behind it is a

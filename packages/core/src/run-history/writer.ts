@@ -313,8 +313,10 @@ function readLockRecord(file: string): RunLockRecord | { unreadable: string } {
  * @param claim what the run is, and what a refusal will report about it.
  * @returns the handle whose `release` gives the lock back.
  * @throws {FlowError} when the ticket id is not one path segment, when the lock is held, when the
- *   file that holds it cannot be read, or when it could not be created — each naming the condition
- *   and, where there is one, the path, and none of them naming a remedy.
+ *   file that holds it cannot be read, or when that file or the root it sits in could not be
+ *   created — each naming the condition and, where there is one, the path, and none of them naming
+ *   a remedy. There is no other class: a refusal the surface cannot render as one sentence reaches
+ *   the caller as a stack trace instead.
  */
 export function acquireRunLock(claim: RunLockClaim): RunLock {
   const { repoDir, ticket, run, flow } = claim;
@@ -330,7 +332,16 @@ export function acquireRunLock(claim: RunLockClaim): RunLock {
   // `.quorum/` yet would otherwise carry an untracked, unignored file for as long as the run lasts,
   // which is the set turbo hashes into every task input.
   excludeRunState(repoDir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const root = path.dirname(file);
+  try {
+    fs.mkdirSync(root, { recursive: true });
+  } catch (error) {
+    // Every way this function refuses is a `FlowError`, because that is the only class the surface
+    // renders as one sentence — anything else reaches `dieOnUnexpected` and prints a Node stack for
+    // a condition the caller can act on. An unusable lock root is a refusal like any other: the root
+    // is what could not be created here, and the lock file was never attempted.
+    throw new FlowError(`run lock refused: could not create ${relative(repoDir, root)} (${messageText(error)})`);
+  }
 
   const token = randomUUID();
   const record: RunLockRecord = {
