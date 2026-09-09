@@ -72,11 +72,18 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     for (const value of Object.values(manifestModule)) expect(typeof value).toBe('function');
   });
 
-  test('writer.ts holds the two functions and the four types its signatures name', () => {
+  test('writer.ts holds the three functions and the six types its signatures name', () => {
+    // Two and four until Q-0039, which added the run lock to this file rather than to a fourth one:
+    // the folder identity above is what makes that a visible act, and this is the register that
+    // records it. `acquireRunLock` is here because this file is the single owner of writes under
+    // `.quorum/` and already holds both primitives the claim needs — the exclusive create and the
+    // one exclusion call the namespace is allowed. A run lock is not run history and says so in its
+    // own docblock; if this folder is ever split, the two guards below move with it.
     expect(exportsOf(sourceOf(WRITER_SOURCE)).sort()).toStrictEqual([
-      'OccurrenceFields', 'RunHistory', 'RunHistoryHost', 'RunStart', 'initialiseRunHistory', 'nextRunId',
+      'OccurrenceFields', 'RunHistory', 'RunHistoryHost', 'RunLock', 'RunLockClaim', 'RunStart',
+      'acquireRunLock', 'initialiseRunHistory', 'nextRunId',
     ]);
-    expect(Object.keys(writerModule).sort()).toStrictEqual(['initialiseRunHistory', 'nextRunId']);
+    expect(Object.keys(writerModule).sort()).toStrictEqual(['acquireRunLock', 'initialiseRunHistory', 'nextRunId']);
   });
 
   test('reader.ts holds the nine names it is assigned, and the three shapes it answers with', () => {
@@ -119,15 +126,25 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     // line, which is not a dependency. The two lists below are the sibling and are strictly
     // stronger, naming what is permitted rather than one thing that is not; `importsOf` gained the
     // `require(` shape in the same change, which is what the retired scan saw and this did not.
-    /** Specifiers a file may name exactly. */
-    const EXACT = ['node:fs', 'node:path', '@quorum/shared', './manifest.js'];
+    /**
+     * Specifiers a file may name exactly.
+     *
+     * `node:crypto` and `node:os` are Q-0039's, and each is one call: the lock's ownership token,
+     * which is what makes a release safe to perform on a file a human may have replaced, and the
+     * hostname a refusal reports. Both are declarations about the machine this run is on, which is
+     * the one thing a lock file must carry that nothing else in this folder needed.
+     */
+    const EXACT = ['node:crypto', 'node:fs', 'node:os', 'node:path', '@quorum/shared', './manifest.js'];
     /**
      * And the siblings, matched by their tail rather than written as `../x/x.js` — a literal that
      * climbs out of its own package is a shape `turbo-inputs.test.ts` holds a register entry for,
      * and this list buys the same assertion without one. A specifier that resolves nowhere is
      * `tsc --noEmit`'s to refuse, not this test's.
      */
-    const SIBLINGS = ['/adapters/adapters.js', '/backlog/backlog.js', '/git/git.js', '/lint/lint.js'];
+    // `/backlog/confine.js` is Q-0039's: the lock's file name is built from a ticket id `Backlog.read`
+    // asserts rather than parses, and `isOneName` is the shipped predicate for that question. Reused
+    // rather than respelled, which is why the list grows instead of the folder gaining a copy.
+    const SIBLINGS = ['/adapters/adapters.js', '/backlog/backlog.js', '/backlog/confine.js', '/git/git.js', '/lint/lint.js'];
     const admits = (specifier: string): boolean =>
       EXACT.includes(specifier) || SIBLINGS.some((sibling) => specifier.endsWith(sibling));
     for (const [name, text] of moduleSources()) {
@@ -200,10 +217,13 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
       });
     }
     // The walk itself is the fragile part: an interface it failed to enter would assert nothing and
-    // still report green. Fifty-six across eleven interfaces — RunError 2, OccurrenceUsage 1,
+    // still report green. Sixty-two across thirteen interfaces — RunError 2, OccurrenceUsage 1,
     // VendorRollup 3, Occurrence 15 and RunManifest 13 in manifest.ts; RunStart 5, RunHistoryHost 1,
-    // OccurrenceFields 5 and RunHistory 6 in writer.ts; RunEntry 3 and RunWarning 2 in reader.ts.
-    expect(fields.length).toBe(56);
+    // OccurrenceFields 5, RunHistory 6, RunLockClaim 4 and RunLock 2 in writer.ts; RunEntry 3 and
+    // RunWarning 2 in reader.ts. Q-0039 added the last two interfaces and six of the fields; the
+    // record a lock file carries is module-private and is therefore not among them, which is why
+    // eight declared fields add six here.
+    expect(fields.length).toBe(62);
   });
 
   test('the barrel re-exports exactly the six readers a command needs (Q-0092 AC-4)', () => {

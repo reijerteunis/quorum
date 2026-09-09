@@ -14,13 +14,13 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
-import { initialiseRunHistory, nextRunId } from './writer.js';
+import { acquireRunLock, initialiseRunHistory, nextRunId } from './writer.js';
 import type { RunHistory, RunStart } from './writer.js';
 import type { Occurrence, RunManifest, RunStatus } from './manifest.js';
 import { checkRunManifestSemantics, readData, validate, validateArtifact } from '../contracts/contracts.js';
 import { FlowError } from '../lint/lint.js';
 import type { TicketRecord } from '../backlog/backlog.js';
-import { repoRoot } from '../../test/corpus.js';
+import { repoFile, repoRoot } from '../../test/corpus.js';
 import { commitAll, git, removeTempDirs, repo, walk, write } from '../../test/repo.js';
 import { withEnv } from '../../test/env.js';
 
@@ -678,5 +678,315 @@ describe('AC-12 — the writer\'s output passes the frozen schema and the indepe
       expect(checkRunManifestSemantics(manifest), name).toStrictEqual([]);
     }
     expect(cases[2][1].ended_at, 'the killed run is incomplete, and stays so').toBeNull();
+  });
+});
+
+// Q-0039 — the run lock, asserted through the module's own API for the same reason every case above
+// is: the engine's half is ordering and release, which `engine/run-lock.test.ts` drives through a
+// real run, and the claim's own properties are reachable from here.
+describe('Q-0039 AC-2/AC-7/AC-10 — the claim is exclusive, its subject is the ticket, and a refusal states a condition', () => {
+  /** What a run claims with, over a repository this test made. */
+  const claimIn = (repoDir: string, ticket: TicketRecord, run = 1, flow = 'chore') =>
+    ({ repoDir, ticket, run, flow });
+
+  /** The lock file a ticket's run holds, as an absolute path. */
+  const lockFileOf = (repoDir: string, id: string): string =>
+    path.join(repoDir, '.quorum', 'locks', `${id}.json`);
+
+  test('a second claim on one ticket refuses, and the file exists between the two and not after', () => {
+    const { repoDir, ticket } = project();
+    const file = lockFileOf(repoDir, ticket.meta.id);
+    expect(fs.existsSync(file), 'nothing holds the ticket before the first claim').toBe(false);
+
+    const held = acquireRunLock(claimIn(repoDir, ticket, 1));
+    expect(held.path).toBe(file);
+    expect(fs.existsSync(file), 'the claim is the file').toBe(true);
+
+    // The second run is a different run of the same ticket, which is the collision: a different
+    // flow and a different number do not make it a different subject.
+    expect(() => acquireRunLock(claimIn(repoDir, ticket, 2, 'review'))).toThrow(FlowError);
+    expect(() => acquireRunLock(claimIn(repoDir, ticket, 2, 'review')))
+      .toThrow('run lock refused: ticket Q-0049 is held by run #1 (flow chore, pid');
+
+    const host = collector();
+    held.release(host);
+    expect(host.said).toStrictEqual([]);
+    expect(fs.existsSync(file), 'and the release is the file going away').toBe(false);
+    // …after which the ticket is claimable again, by the run that was refused.
+    const second = acquireRunLock(claimIn(repoDir, ticket, 2, 'review'));
+    expect(fs.existsSync(second.path)).toBe(true);
+    second.release(collector());
+  });
+
+  test('two different tickets never block one another, whatever flow each is running', () => {
+    const { repoDir, ticket } = project();
+    const other: TicketRecord = { ...ticket, meta: { ...ticket.meta, id: 'Q-0114' } };
+
+    const first = acquireRunLock(claimIn(repoDir, ticket, 1, 'chore'));
+    const beside = acquireRunLock(claimIn(repoDir, other, 1, 'chore'));
+
+    expect(first.path).not.toBe(beside.path);
+    expect([fs.existsSync(first.path), fs.existsSync(beside.path)]).toStrictEqual([true, true]);
+    first.release(collector());
+    expect(fs.existsSync(beside.path), 'releasing one does not release the other').toBe(true);
+    beside.release(collector());
+  });
+
+  test('the file advertises the run number the run will use, and the seven other declared fields', () => {
+    // The invariant M-2 replaced the wrong rationale with: whichever side of the claim the id is
+    // read on, the number the file advertises is the number `runs.log` will carry.
+    const { repoDir, ticket } = project();
+    const lock = acquireRunLock(claimIn(repoDir, ticket, 7, 'review'));
+    const held = JSON.parse(fs.readFileSync(lock.path, 'utf8')) as Record<string, unknown>;
+
+    expect(Object.keys(held).sort()).toStrictEqual([
+      'flow', 'hostname', 'pid', 'run', 'schema_version', 'started_at', 'ticket_id', 'token',
+    ]);
+    expect(held.run).toBe(7);
+    expect(held.ticket_id).toBe('Q-0049');
+    expect(held.flow).toBe('review');
+    expect(held.schema_version).toBe(1);
+    expect(held.pid).toBe(process.pid);
+    expect(typeof held.hostname).toBe('string');
+    expect(String(held.started_at)).toMatch(/^\d{4}-\d\d-\d\dT/);
+    // The token is what makes a release safe on a file somebody else may have replaced, so it must
+    // differ per claim rather than merely be present.
+    lock.release(collector());
+    const again = acquireRunLock(claimIn(repoDir, ticket, 8));
+    const second = JSON.parse(fs.readFileSync(again.path, 'utf8')) as Record<string, unknown>;
+    expect(typeof held.token).toBe('string');
+    expect(second.token).not.toBe(held.token);
+    again.release(collector());
+  });
+
+  test('the claim is one exclusive create — a read-then-write is the race it exists to close', () => {
+    // The behavioural half is the refusal above. This is the source half, and it is shown to refuse
+    // what a weaker spelling accepts rather than asserted over the file alone: `'w'` truncates a
+    // lock somebody else is holding, and a recursive `mkdirSync` joins a directory instead of
+    // refusing it, and both would pass an assertion that only looked for an `openSync`.
+    const text = repoFile('packages/core/src/run-history/writer.ts');
+    const CLAIM = "fs.openSync(file, 'wx')";
+    const exclusive = (source: string): boolean => source.includes(CLAIM);
+    expect(exclusive(text), 'the lock is not created exclusively').toBe(true);
+    expect(exclusive(text.replace(CLAIM, "fs.openSync(file, 'w')")),
+      'this assertion does not refuse a truncating create').toBe(false);
+    expect(exclusive(text.replace(CLAIM, 'fs.mkdirSync(file, { recursive: true })')),
+      'nor a create that joins what is already there').toBe(false);
+  });
+
+  test('AC-7 — the refusal states the condition and offers no remedy', () => {
+    // *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07). Here
+    // the surface offers none either: waiting, inspecting the holder and deleting the file after a
+    // crash are three different human decisions, and the message names the path because a path is a
+    // fact. A backtick is the shape an imperative takes in this product's own sentences.
+    const { repoDir, ticket } = project();
+    const lock = acquireRunLock(claimIn(repoDir, ticket, 1));
+    const refusal = (() => {
+      try { acquireRunLock(claimIn(repoDir, ticket, 2)); return ''; } catch (error) { return (error as Error).message; }
+    })();
+
+    expect(refusal).toContain('.quorum/locks/Q-0049.json');
+    expect(refusal, 'a core message may not carry a command').not.toContain('`');
+    for (const advice of ['delete', 'remove', 'try again', 'you can', 'please', 'wait']) {
+      expect(refusal.toLowerCase(), `the refusal advises: ${advice}`).not.toContain(advice);
+    }
+    // And every fact a maintainer needs to find the holder is in it.
+    for (const fact of ['Q-0049', 'run #1', 'chore', String(process.pid), 'started']) {
+      expect(refusal, `the refusal does not name ${fact}`).toContain(fact);
+    }
+    lock.release(collector());
+  });
+
+  test('AC-10 — a damaged lock refuses by its own message, and is neither removed nor overwritten', () => {
+    // It never reads as *no lock* and never as *my lock*: both are the silent default
+    // `harness/rules.md` forbids, and both would let two runs share a ticket.
+    const { repoDir, ticket } = project();
+    const file = lockFileOf(repoDir, ticket.meta.id);
+    const damaged: [string, string][] = [
+      ['{', 'unparseable'],
+      ['{}', 'complete but empty'],
+      ['[]', 'not an object'],
+      ['null', 'the JSON null'],
+      [JSON.stringify({ schema_version: 1, ticket_id: 'Q-0049', run: 1 }), 'a partial record'],
+    ];
+    for (const [bytes, what] of damaged) {
+      write(file, bytes);
+      let message = '';
+      try { acquireRunLock(claimIn(repoDir, ticket, 2)); } catch (error) { message = (error as Error).message; }
+      expect(message, `${what} did not refuse`).toContain('could not be read as a lock');
+      expect(message, `${what} did not name the path`).toContain('.quorum/locks/Q-0049.json');
+      expect(fs.readFileSync(file, 'utf8'), `${what} was rewritten`).toBe(bytes);
+    }
+  });
+
+  test('a lock root that cannot be created refuses like every other condition, and not with a stack', () => {
+    // The class is what this asserts, not the sentence. `packages/cli/src/run.ts` renders a
+    // `FlowError` as one red line and exit 1 and rethrows everything else to `dieOnUnexpected`,
+    // which prints a Node stack — so a raw `ENOTDIR` from the root's own `mkdirSync` would be the
+    // one way this function can fail that its caller cannot show a maintainer.
+    const { repoDir, ticket } = project();
+    const root = path.join(repoDir, '.quorum', 'locks');
+
+    // A file where the directory has to go, which is the shape a maintainer actually meets: `mkdir
+    // -p` refuses it rather than joining it, and nothing above this function checks.
+    write(root, 'not a directory');
+
+    let thrown: unknown;
+    try { acquireRunLock(claimIn(repoDir, ticket)); } catch (error) { thrown = error; }
+
+    expect(thrown, 'an unusable lock root did not refuse').toBeInstanceOf(FlowError);
+    const message = (thrown as Error).message;
+    expect(message, 'the refusal does not name the condition').toContain('could not create');
+    expect(message, 'the refusal does not name the root that could not be created')
+      .toContain(path.join('.quorum', 'locks'));
+    expect(message, 'a core message may not carry a command').not.toContain('`');
+    // …and it names the root rather than the lock file, because the file was never attempted.
+    expect(message, 'the refusal names a file the claim never tried to create')
+      .not.toContain('Q-0049.json');
+    expect(fs.readFileSync(root, 'utf8'), 'the refusal rewrote what was in the way').toBe('not a directory');
+  });
+
+  test('a create that succeeds and then fails takes back the file it made, and names the first failure', () => {
+    // The distinction the row above rests on: a damaged file the claim FOUND is somebody else's and
+    // is left alone, while one the claim MADE and could not finish is nobody's. Left behind it is a
+    // lock no run holds — the refusal above meets it for ever after, reads it as damaged rather than
+    // as absent, and the ticket is unrunnable until a human deletes it. So the two rows are a write
+    // that fails and a close that fails, which are different syscalls and different survivors.
+    const { repoDir, ticket } = project();
+    const file = lockFileOf(repoDir, ticket.meta.id);
+    const rows: [string, () => { mockRestore: () => void }][] = [
+      ['the write', () => vi.spyOn(fs, 'writeFileSync').mockImplementation(() => { throw new Error('no space left on device'); })],
+      ['the close', () => vi.spyOn(fs, 'closeSync').mockImplementation(() => { throw new Error('no space left on device'); })],
+    ];
+
+    for (const [what, breaking] of rows) {
+      const spy = breaking();
+      let message = '';
+      try {
+        acquireRunLock(claimIn(repoDir, ticket, 1));
+      } catch (error) {
+        message = (error as Error).message;
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(message, `${what} did not refuse`).toContain(`could not create ${path.join('.quorum', 'locks', 'Q-0049.json')}`);
+      expect(message, `${what} did not name the failure it met`).toContain('no space left on device');
+      expect(fs.existsSync(file), `${what} left a lock behind that no run holds`).toBe(false);
+      // …and the proof that the take-back is the point rather than the tidiness: the ticket is
+      // claimable, where a leftover file would have refused every later run as damaged.
+      const after = acquireRunLock(claimIn(repoDir, ticket, 1));
+      expect(fs.existsSync(after.path), `${what} left the ticket unclaimable`).toBe(true);
+      after.release(collector());
+    }
+  });
+});
+
+describe('Q-0039 AC-3/AC-4/AC-5 — what the claim checks first, what it excludes, and what it gives back', () => {
+  const claimIn = (repoDir: string, ticket: TicketRecord, run = 1, flow = 'chore') =>
+    ({ repoDir, ticket, run, flow });
+
+  const lockFileOf = (repoDir: string, id: string): string =>
+    path.join(repoDir, '.quorum', 'locks', `${id}.json`);
+
+  test('AC-3 — an id that is not one path segment refuses, and nothing is created anywhere', () => {
+    // `Backlog.read` asserts rather than parses (Q-0043 AC-4), so this value is unvalidated on its
+    // way to naming a file — which is Q-0059's class arriving at a new site.
+    const { repoDir, ticket } = project();
+    const before = walk(repoDir);
+    for (const id of ['../../escape', 'Q-0039/nested', '..', '', '/etc/passwd']) {
+      const hostile: TicketRecord = { ...ticket, meta: { ...ticket.meta, id } };
+      let message = '';
+      try { acquireRunLock(claimIn(repoDir, hostile)); } catch (error) { message = (error as Error).message; }
+      expect(message, `${JSON.stringify(id)} was not refused`).toContain('is not one path segment');
+      expect(message, 'the refusal does not name the id it refused').toContain(JSON.stringify(id));
+    }
+    expect(walk(repoDir), 'a refused id created something').toStrictEqual(before);
+  });
+
+  test('AC-4 — `.quorum/` is excluded before the first lock file exists, and in that order', () => {
+    // The ordering is invisible in THIS repository, whose own exclude and .gitignore already cover
+    // the namespace, so the fixture is a repository that excludes nothing (R-4).
+    const { repoDir, ticket } = project();
+    const exclude = path.join(repoDir, '.git', 'info', 'exclude');
+    write(exclude, '');
+    commitAll(repoDir, 'a repository that excludes nothing');
+
+    const lock = acquireRunLock(claimIn(repoDir, ticket));
+
+    expect(fs.readFileSync(exclude, 'utf8'), 'the namespace is not excluded').toContain('.quorum/');
+    expect(git(repoDir, 'status', '--porcelain'), 'the lock is in the user\'s git status').not.toContain('.quorum');
+    expect(fs.existsSync(lock.path)).toBe(true);
+    lock.release(collector());
+  });
+
+  test('AC-4 — and the order is the claim, not the outcome: excluded, then created', () => {
+    // The assertion above passes under either order, because the exclusion is present by the time it
+    // reads. What is wrong about the other order is the window in between, in which the file is
+    // untracked and unignored — the set turbo hashes into every task input, which is
+    // *"Membership is a git question, not a filesystem one"* (2026-08-28). So the order itself is
+    // what is asserted, over the two calls that make it.
+    const { repoDir, ticket } = project();
+    const exclude = path.join(repoDir, '.git', 'info', 'exclude');
+    write(exclude, '');
+    // Spies that record and call through, rather than stubs: what is being measured is the real
+    // claim's own order, and Vitest's `invocationCallOrder` is a global sequence across spies, which
+    // is what lets two different functions be compared at all.
+    const append = vi.spyOn(fs, 'appendFileSync');
+    const open = vi.spyOn(fs, 'openSync');
+
+    try {
+      acquireRunLock(claimIn(repoDir, ticket)).release(collector());
+
+      const excluded = append.mock.calls.findIndex(([target]) => String(target).endsWith(path.join('info', 'exclude')));
+      const created = open.mock.calls.findIndex(([, flags]) => String(flags) === 'wx');
+      expect(excluded, 'nothing appended to info/exclude — this assertion has no subject').toBeGreaterThan(-1);
+      expect(created, 'nothing created the lock exclusively — nor this one').toBeGreaterThan(-1);
+      expect(append.mock.invocationCallOrder[excluded], 'the exclusion did not precede the first lock file')
+        .toBeLessThan(open.mock.invocationCallOrder[created]!);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test('AC-5 — a lock a human cleared and a successor took is left where it is', () => {
+    // Reachable under the refuse-only design and not only under a reclaiming one: somebody clears a
+    // lock by hand mid-run, a second run takes it, and the first run's `finally` then arrives.
+    const { repoDir, ticket } = project();
+    const first = acquireRunLock(claimIn(repoDir, ticket, 1));
+    fs.rmSync(first.path);
+    const successor = acquireRunLock(claimIn(repoDir, ticket, 2));
+    const bytes = fs.readFileSync(successor.path, 'utf8');
+
+    const host = collector();
+    first.release(host);
+
+    expect(fs.readFileSync(successor.path, 'utf8'), 'the first run deleted the second run\'s lock').toBe(bytes);
+    expect(host.said.join('\n')).toContain('is held by run #2 rather than by this run');
+    successor.release(collector());
+    expect(fs.existsSync(successor.path)).toBe(false);
+  });
+
+  test('AC-5 — a lock already gone is silence, and a removal that fails is one warning', () => {
+    const { repoDir, ticket } = project();
+    const gone = acquireRunLock(claimIn(repoDir, ticket, 1));
+    fs.rmSync(gone.path);
+    const quiet = collector();
+    gone.release(quiet);
+    expect(quiet.said, 'nothing left to give back is not a failure').toStrictEqual([]);
+
+    const held = acquireRunLock(claimIn(repoDir, ticket, 2));
+    const unlink = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => { throw new Error('the disk went away'); });
+    const noisy = collector();
+    try {
+      expect(() => held.release(noisy), 'release must not throw into a run that has already ended').not.toThrow();
+    } finally {
+      unlink.mockRestore();
+    }
+    expect(noisy.said).toHaveLength(1);
+    expect(noisy.said[0]).toContain('could not release the run lock at');
+    expect(noisy.said[0]).toContain('the disk went away');
+    expect(fs.existsSync(lockFileOf(repoDir, ticket.meta.id)), 'the file is still there, and is said to be').toBe(true);
+    fs.rmSync(held.path);
   });
 });

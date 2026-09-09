@@ -16,7 +16,7 @@ import type { Backlog } from '../backlog/backlog.js';
 import { branchHead, resetBranchTo } from '../fanout/fanout.js';
 import { removeWorktree } from '../git/git.js';
 import type { ErrorCategory, Occurrence } from '../run-history/manifest.js';
-import { initialiseRunHistory, nextRunId } from '../run-history/writer.js';
+import { acquireRunLock, initialiseRunHistory, nextRunId } from '../run-history/writer.js';
 import type { RunHistory } from '../run-history/writer.js';
 import { createEventChannel } from './channel.js';
 import type { EventSink } from './channel.js';
@@ -194,190 +194,216 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
   const backlogView = dry ? readOnlyBacklog(backlog) : backlog;
 
   const runId = nextRunId(ticket);
-  // Why: preserved defect, see Q-0050 AC-10. (counters alias the frontmatter object)
-  const counters = ticket.meta.iterations ?? {};
-  // `run` is this run's id — the number runs.log carries as `run=N` and `.quorum/runs/<id>-N/` is
-  // named after. It lets a flow name a ticket-scoped path after the run that wrote it, which `iter`
-  // cannot: `iter` restarts at 1 on every run. See Q-0057.
-  const vars: Record<string, unknown> = {
-    id: ticket.meta.id, iter: 1, run: runId, base: base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
-  };
-  const stats: RunStats = { cost: 0, tokens: 0, unpriced: 0 };
-
-  let history: RunHistory | undefined;
-  const active = new Set<Occurrence>();
-  // Run-scoped, so a gate id is unique across every step and every re-entry through a backward
-  // edge — not per-context, which is what B-2 found. See RoutingContext.nextGateId.
-  let gateSequence = 0;
-  // The step the loop is inside, or null between steps. Read by the emitter rather than captured,
-  // so that the context a step receives is the run's own object — see withStepId.
-  let stepId: string | null = null;
-  const stepEmit: EmitEvent = withStepId(emit, () => stepId);
-
-  // Assigned once, below; `persistence.recordOccurrenceEvent` and `finishRun` close over this
-  // binding and only read it once the step loop is running, well after the assignment.
-  let context: EngineContext;
-
-  const persistence: RunPersistence = {
-    writeTicket: (t) => backlogView.write(t),
-    appendLog: (t, line) => backlogView.log(t, line),
-    // Delegates rather than repeating the mutation: `lifecycle.ts` owns the history entry, the
-    // ticket write and the log line for an occurrence event, and owning it in both places wrote
-    // each of them twice whenever the exported helper was called with a real context.
-    recordOccurrenceEvent: (_ticket, stage, event, cost) => recordEvent(context, stage, event, cost),
-    allocateOccurrence: (step, kind, fields) => {
-      if (!history) return null;
-      const occurrence = history.allocate(step, kind, fields);
-      active.add(occurrence);
-      return occurrence;
-    },
-    persistArtifact: (occurrence, name, text) => { history?.persist(occurrence, name, text); },
-    terminalOccurrence: (occurrence, status, fields) => {
-      history?.terminal(occurrence, status, fields);
-      active.delete(occurrence);
-    },
-    finaliseManifest: (status, stageAfter) => { history?.finalise(status, stageAfter); },
-    finaliseActiveOccurrences: (status, cause) => {
-      if (!history) return;
-      for (const occurrence of active) {
-        history.terminal(occurrence, status, { error: { category: categoryOf(occurrence, status), message: cause } });
-      }
-      active.clear();
-    },
-  };
-
-  // Why: preserved defect, see Q-0050 AC-12. — branchHead cannot tell "no such branch" from "git
-  // failed", and this read cannot distinguish them either; see the lifecycle-routing contract's
-  // preserved-diagnostics table.
-  const branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
-
   /**
-   * The step loop's one cancellation point.
+   * This run's hold on its ticket, taken before anything it would later have to undo.
    *
-   * Without it the only observer is a suspended `askGate`, so a run cancelled between steps — or
-   * one handed an already-aborted signal — walks to the end and reaches the `completed` finish,
-   * moving the ticket's stage. It throws rather than returning so that the terminal record, the
-   * rollback and the rethrow are the ones the catch already performs.
+   * After the stage precondition, which is a pure read of the in-memory ticket, so a run refused on
+   * its stage touches the repository not at all — and before the branch head below, the `runs.log`
+   * start line, run history and any worktree, because each of those must be a fact about a run that
+   * is already the only one. The run number is read above rather than under the lock: `nextRunId`
+   * reserves nothing, and a contender that is refused never uses the number it read.
+   *
+   * A dry run takes none, and is refused by none. It replaces every writer, skips run history and
+   * returns no worktree, so it has nothing to serialise — and a maintainer must be able to walk a
+   * flow while a run holds the ticket. See *"A run holds a lock on its ticket, and a stale one
+   * refuses rather than being reclaimed"* (2026-09-09).
+   *
+   * `flow.name` is set on every flow that reaches a run, for the reason the history call below
+   * gives at length.
    */
-  function throwIfInterrupted(): void {
-    if (signal.aborted) throw new FlowError(`run #${runId} (${flow.name}) interrupted`);
-  }
-
-  async function finishRun(stage: string, status: RunStatus, note: string | null, fields?: RegressionFields): Promise<RunOutcome> {
-    return finish(context, stage, status, note, fields);
-  }
-
-  context = {
-    ticket, flow, repoDir, harnessDir, config, backlog: backlogView,
-    runId, counters, vars, stats, dry, auto, signal, answerGate,
-    // The two maps the diff preflight fills and the steps that read them share, and whether `--base`
-    // was typed at all — which `vars.base` above cannot answer, because it is set either way.
-    diffInputs: new Map(), deferredDiffs: new Map(), baseOverride: base ?? null,
-    // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
-    // back exactly what it made. Nothing enumerates the worktree root or the ref namespace.
-    worktrees: new Map(),
-    emit: stepEmit,
-    persistence,
-    nextGateId: () => `${runId}:${(gateSequence += 1)}`,
-    loadNamedFlow: (name, dir) => loadFlowByName(name, dir),
-    finishRun,
-    branchHeadAtStart,
-    readBranchHead: branchHead,
-    resetBranch: resetBranchTo,
-    removeWorktree,
-    readWorktreeChanges: worktreeChanges,
-  };
-
+  const lock = dry ? null : acquireRunLock({ repoDir, ticket, run: runId, flow: flow.name! });
   try {
-    emit({ type: 'info', message: `run #${runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}` });
-    context.persistence.appendLog(ticket, `run=${runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
-    if (!dry) {
-      history = initialiseRunHistory(
-        // `flow.name` and `flow.file` are optional on the schema and present on every flow that
-        // reaches a run: `loadFlow` sets `file` and `lintFlow` rejects a flow without a `name`.
-        // Neither is defaulted here — a fabricated path would name a file the flow was never at.
-        { repoDir, ticket, run: runId, flow: flow.name!, flowFile: flow.file! },
-        { warn: (message) => emit({ type: 'warn', message }) },
-      );
+    // Why: preserved defect, see Q-0050 AC-10. (counters alias the frontmatter object)
+    const counters = ticket.meta.iterations ?? {};
+    // `run` is this run's id — the number runs.log carries as `run=N` and `.quorum/runs/<id>-N/` is
+    // named after. It lets a flow name a ticket-scoped path after the run that wrote it, which `iter`
+    // cannot: `iter` restarts at 1 on every run. See Q-0057.
+    const vars: Record<string, unknown> = {
+      id: ticket.meta.id, iter: 1, run: runId, base: base ?? config.repo?.base_branch ?? DEFAULT_BASE_BRANCH, round: reviewRound(ticket.dir),
+    };
+    const stats: RunStats = { cost: 0, tokens: 0, unpriced: 0 };
+
+    let history: RunHistory | undefined;
+    const active = new Set<Occurrence>();
+    // Run-scoped, so a gate id is unique across every step and every re-entry through a backward
+    // edge — not per-context, which is what B-2 found. See RoutingContext.nextGateId.
+    let gateSequence = 0;
+    // The step the loop is inside, or null between steps. Read by the emitter rather than captured,
+    // so that the context a step receives is the run's own object — see withStepId.
+    let stepId: string | null = null;
+    const stepEmit: EmitEvent = withStepId(emit, () => stepId);
+
+    // Assigned once, below; `persistence.recordOccurrenceEvent` and `finishRun` close over this
+    // binding and only read it once the step loop is running, well after the assignment.
+    let context: EngineContext;
+
+    const persistence: RunPersistence = {
+      writeTicket: (t) => backlogView.write(t),
+      appendLog: (t, line) => backlogView.log(t, line),
+      // Delegates rather than repeating the mutation: `lifecycle.ts` owns the history entry, the
+      // ticket write and the log line for an occurrence event, and owning it in both places wrote
+      // each of them twice whenever the exported helper was called with a real context.
+      recordOccurrenceEvent: (_ticket, stage, event, cost) => recordEvent(context, stage, event, cost),
+      allocateOccurrence: (step, kind, fields) => {
+        if (!history) return null;
+        const occurrence = history.allocate(step, kind, fields);
+        active.add(occurrence);
+        return occurrence;
+      },
+      persistArtifact: (occurrence, name, text) => { history?.persist(occurrence, name, text); },
+      terminalOccurrence: (occurrence, status, fields) => {
+        history?.terminal(occurrence, status, fields);
+        active.delete(occurrence);
+      },
+      finaliseManifest: (status, stageAfter) => { history?.finalise(status, stageAfter); },
+      finaliseActiveOccurrences: (status, cause) => {
+        if (!history) return;
+        for (const occurrence of active) {
+          history.terminal(occurrence, status, { error: { category: categoryOf(occurrence, status), message: cause } });
+        }
+        active.clear();
+      },
+    };
+
+    // Why: preserved defect, see Q-0050 AC-12. — branchHead cannot tell "no such branch" from "git
+    // failed", and this read cannot distinguish them either; see the lifecycle-routing contract's
+    // preserved-diagnostics table.
+    const branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
+
+    /**
+     * The step loop's one cancellation point.
+     *
+     * Without it the only observer is a suspended `askGate`, so a run cancelled between steps — or
+     * one handed an already-aborted signal — walks to the end and reaches the `completed` finish,
+     * moving the ticket's stage. It throws rather than returning so that the terminal record, the
+     * rollback and the rethrow are the ones the catch already performs.
+     */
+    function throwIfInterrupted(): void {
+      if (signal.aborted) throw new FlowError(`run #${runId} (${flow.name}) interrupted`);
     }
 
-    // Inside the run try and before the step loop, so a failed preflight receives the same terminal
-    // record as any other error: active occurrences are finalised, the run is recorded failed,
-    // rollback applies and the original error is rethrown. It adds no second run path, and it is the
-    // earlier of this function's two reads of `flow.steps`.
-    preflightDiffs(context);
+    async function finishRun(stage: string, status: RunStatus, note: string | null, fields?: RegressionFields): Promise<RunOutcome> {
+      return finish(context, stage, status, note, fields);
+    }
 
-    // Why: preserved behaviour — `flow.steps` is read directly, uncoalesced, so a flow with no
-    // `steps` key throws a raw TypeError here rather than running zero steps; see flow.ts's own
-    // note on this and "The port preserves behaviour" (docs/DECISIONS.md, 2026-08-25).
-    const steps = flow.steps as unknown as ReadonlyArray<Record<string, unknown>>;
-    let i = 0;
-    while (i < steps.length) {
-      throwIfInterrupted();
-      const step = steps[i];
-      // Why: preserved defect, see Q-0050 AC-12d — an out-of-range index (an unknown goto target)
-      // dereferences `undefined` here and throws a raw TypeError, not a FlowError.
-      // `undefined` for a container, not the literal string "undefined". A `parallel:` group carries
-      // no id — correctly, it is not a step — and both flows this ticket runs under are one.
-      stepId = step.id === undefined || step.id === null ? null : String(step.id);
-      let result: StepResult;
-      try {
-        result = await runStep(step, context);
-      } finally {
-        stepId = null;
+    context = {
+      ticket, flow, repoDir, harnessDir, config, backlog: backlogView,
+      runId, counters, vars, stats, dry, auto, signal, answerGate,
+      // The two maps the diff preflight fills and the steps that read them share, and whether `--base`
+      // was typed at all — which `vars.base` above cannot answer, because it is set either way.
+      diffInputs: new Map(), deferredDiffs: new Map(), baseOverride: base ?? null,
+      // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
+      // back exactly what it made. Nothing enumerates the worktree root or the ref namespace.
+      worktrees: new Map(),
+      emit: stepEmit,
+      persistence,
+      nextGateId: () => `${runId}:${(gateSequence += 1)}`,
+      loadNamedFlow: (name, dir) => loadFlowByName(name, dir),
+      finishRun,
+      branchHeadAtStart,
+      readBranchHead: branchHead,
+      resetBranch: resetBranchTo,
+      removeWorktree,
+      readWorktreeChanges: worktreeChanges,
+    };
+
+    try {
+      emit({ type: 'info', message: `run #${runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}` });
+      context.persistence.appendLog(ticket, `run=${runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
+      if (!dry) {
+        history = initialiseRunHistory(
+          // `flow.name` and `flow.file` are optional on the schema and present on every flow that
+          // reaches a run: `loadFlow` sets `file` and `lintFlow` rejects a flow without a `name`.
+          // Neither is defaulted here — a fabricated path would name a file the flow was never at.
+          { repoDir, ticket, run: runId, flow: flow.name!, flowFile: flow.file! },
+          { warn: (message) => emit({ type: 'warn', message }) },
+        );
       }
 
-      if (result && 'goto' in result) {
-        const target = result.goto;
-        if (target.startsWith('flow:')) {
-          const targetFlow: Flow = context.loadNamedFlow(target.slice('flow:'.length), harnessDir);
-          const stageBefore = ticket.meta.stage;
-          emit({ type: 'warn', message: `backward edge → ${target}: ticket regresses to stage "${targetFlow.consumes}"` });
-          await finishRun(targetFlow.consumes, 'regressed', null, {
-            targetFlow: targetFlow.name ?? target.slice('flow:'.length),
-            stageBefore, stageAfter: targetFlow.consumes,
-            counter: result.counter, count: context.counters[result.counter],
-            limit: result.limit, remaining: Math.max(0, (result.limit ?? 0) - (context.counters[result.counter] ?? 0)),
-          });
+      // Inside the run try and before the step loop, so a failed preflight receives the same terminal
+      // record as any other error: active occurrences are finalised, the run is recorded failed,
+      // rollback applies and the original error is rethrown. It adds no second run path, and it is the
+      // earlier of this function's two reads of `flow.steps`.
+      preflightDiffs(context);
+
+      // Why: preserved behaviour — `flow.steps` is read directly, uncoalesced, so a flow with no
+      // `steps` key throws a raw TypeError here rather than running zero steps; see flow.ts's own
+      // note on this and "The port preserves behaviour" (docs/DECISIONS.md, 2026-08-25).
+      const steps = flow.steps as unknown as ReadonlyArray<Record<string, unknown>>;
+      let i = 0;
+      while (i < steps.length) {
+        throwIfInterrupted();
+        const step = steps[i];
+        // Why: preserved defect, see Q-0050 AC-12d — an out-of-range index (an unknown goto target)
+        // dereferences `undefined` here and throws a raw TypeError, not a FlowError.
+        // `undefined` for a container, not the literal string "undefined". A `parallel:` group carries
+        // no id — correctly, it is not a step — and both flows this ticket runs under are one.
+        stepId = step.id === undefined || step.id === null ? null : String(step.id);
+        let result: StepResult;
+        try {
+          result = await runStep(step, context);
+        } finally {
+          stepId = null;
+        }
+
+        if (result && 'goto' in result) {
+          const target = result.goto;
+          if (target.startsWith('flow:')) {
+            const targetFlow: Flow = context.loadNamedFlow(target.slice('flow:'.length), harnessDir);
+            const stageBefore = ticket.meta.stage;
+            emit({ type: 'warn', message: `backward edge → ${target}: ticket regresses to stage "${targetFlow.consumes}"` });
+            await finishRun(targetFlow.consumes, 'regressed', null, {
+              targetFlow: targetFlow.name ?? target.slice('flow:'.length),
+              stageBefore, stageAfter: targetFlow.consumes,
+              counter: result.counter, count: context.counters[result.counter],
+              limit: result.limit, remaining: Math.max(0, (result.limit ?? 0) - (context.counters[result.counter] ?? 0)),
+            });
+            return;
+          }
+          i = steps.findIndex((s) => s.id === target
+            || (Array.isArray(s.parallel) && (s.parallel as ReadonlyArray<Record<string, unknown>>).some((p) => p.id === target)));
+          context.vars.iter = Number(context.vars.iter) + 1;
+          continue;
+        }
+        if (result && 'abort' in result) {
+          await finishRun(ticket.meta.stage, 'aborted', null);
           return;
         }
-        i = steps.findIndex((s) => s.id === target
-          || (Array.isArray(s.parallel) && (s.parallel as ReadonlyArray<Record<string, unknown>>).some((p) => p.id === target)));
-        context.vars.iter = Number(context.vars.iter) + 1;
-        continue;
+        i += 1;
       }
-      if (result && 'abort' in result) {
-        await finishRun(ticket.meta.stage, 'aborted', null);
+      throwIfInterrupted();
+    } catch (error) {
+      // Abort keeps precedence over the missing answer: the abort is a decision, the absent answer is
+      // not, so a cancellation arriving while a gate is open is `interrupted` and never `undecided`.
+      // Nobody was there is not the work is bad — the run ends `undecided`, the branch keeps whatever
+      // `integrate` proved, the worktrees stay open for whoever arrives, and nothing propagates,
+      // because nothing failed. A gate allocates no occurrence, so there is none to close as failed
+      // either; the suite asserts that rather than this branch working around it. See Q-0040.
+      if (!signal.aborted && error instanceof GateUnansweredError) {
+        reportUndecided(context, error);
+        await finishRun(ticket.meta.stage, 'undecided', failureMessage(error));
         return;
       }
-      i += 1;
+      const status: 'failed' | 'interrupted' = signal.aborted ? 'interrupted' : 'failed';
+      const note = status === 'interrupted' ? interruptionNote(signal, error) : failureMessage(error);
+      // Before the terminal record and in that order — spike/src/engine.js:161-168, and the
+      // lifecycle-routing contract's "first finalise active occurrences, then persist".
+      await persistence.finaliseActiveOccurrences(status, status === 'interrupted' ? note : occurrenceMessage(error));
+      await finishRun(ticket.meta.stage, status, note);
+      throw error;
     }
-    throwIfInterrupted();
-  } catch (error) {
-    // Abort keeps precedence over the missing answer: the abort is a decision, the absent answer is
-    // not, so a cancellation arriving while a gate is open is `interrupted` and never `undecided`.
-    // Nobody was there is not the work is bad — the run ends `undecided`, the branch keeps whatever
-    // `integrate` proved, the worktrees stay open for whoever arrives, and nothing propagates,
-    // because nothing failed. A gate allocates no occurrence, so there is none to close as failed
-    // either; the suite asserts that rather than this branch working around it. See Q-0040.
-    if (!signal.aborted && error instanceof GateUnansweredError) {
-      reportUndecided(context, error);
-      await finishRun(ticket.meta.stage, 'undecided', failureMessage(error));
-      return;
-    }
-    const status: 'failed' | 'interrupted' = signal.aborted ? 'interrupted' : 'failed';
-    const note = status === 'interrupted' ? interruptionNote(signal, error) : failureMessage(error);
-    // Before the terminal record and in that order — spike/src/engine.js:161-168, and the
-    // lifecycle-routing contract's "first finalise active occurrences, then persist".
-    await persistence.finaliseActiveOccurrences(status, status === 'interrupted' ? note : occurrenceMessage(error));
-    await finishRun(ticket.meta.stage, status, note);
-    throw error;
-  }
 
-  // Outside the try, as spike/src/engine.js:174 is. Inside it, anything `finish` or the manifest
-  // replace can throw on the success path re-enters the catch and finishes the run a second time —
-  // a second history entry, a second terminal log line and a second terminal event.
-  await finishRun(flow.produces, 'completed', null);
+    // Outside the try, as spike/src/engine.js:174 is. Inside it, anything `finish` or the manifest
+    // replace can throw on the success path re-enters the catch and finishes the run a second time —
+    // a second history entry, a second terminal log line and a second terminal event.
+    await finishRun(flow.produces, 'completed', null);
+  } finally {
+    // Every way out of this function, which is what a `finally` buys and a line at each exit does
+    // not: the five returning statuses, the rethrow above, and anything thrown between the claim and
+    // the run try. It carries no `catch` of its own, so the completed finish above is still outside
+    // one and is not re-entered.
+    lock?.release({ warn: (message) => emit({ type: 'warn', message }) });
+  }
 }
 
 /**

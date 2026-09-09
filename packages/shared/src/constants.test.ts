@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  DEFAULT_BASE_BRANCH, FINDING_PATTERN, FINDING_SEVERITIES, MANIFEST_FILE, OCCURRENCE_DIR,
-  OUTPUT_FILE, PROMPT_FILE, REPO_WORKTREE_ROOT, RUNS_LOG_FILE, RUN_HISTORY_ROOT,
-  TICKET_ARTIFACT_DIR, USAGE_MEASURES, integrationBranch, occurrenceDirName, runIdOf, ticketBranch,
-  ticketBranchPrefix, worktreeDirName,
+  DEFAULT_BASE_BRANCH, FINDING_PATTERN, FINDING_SEVERITIES, LOCK_ROOT, MANIFEST_FILE,
+  OCCURRENCE_DIR, OUTPUT_FILE, PROMPT_FILE, REPO_WORKTREE_ROOT, RUNS_LOG_FILE, RUN_HISTORY_ROOT,
+  TICKET_ARTIFACT_DIR, USAGE_MEASURES, integrationBranch, occurrenceDirName, runIdOf, runLockPath,
+  ticketBranch, ticketBranchPrefix, worktreeDirName,
 } from './constants.js';
 
 // Every constant claims to replace a literal the spike spelled by hand, and until Q-0107 every test
@@ -45,6 +45,26 @@ describe('AC-10 — the constants are the one spelling every consumer reads', ()
     expect(PROMPT_FILE).toBe('prompt.txt');
     expect(OUTPUT_FILE).toBe('output.txt');
     expect(OCCURRENCE_DIR).toBe('steps');
+  });
+
+  test('Q-0039 — the lock root is a sibling of the runs root, and a lock is named by its ticket', () => {
+    // A sibling and not a child: `readRunsDir` lists what is under the runs root, so a lock inside
+    // it would be an entry `quorum runs` had to learn to skip. Both are under `.quorum/`, which is
+    // the namespace one exclusion covers and one `rm` reaches.
+    expect(LOCK_ROOT).toBe('.quorum/locks');
+    expect(LOCK_ROOT.startsWith('.quorum/')).toBe(true);
+    expect(RUN_HISTORY_ROOT.startsWith(`${LOCK_ROOT}/`), 'the runs root is not inside the lock root').toBe(false);
+    expect(LOCK_ROOT.startsWith(`${RUN_HISTORY_ROOT}/`), 'nor the lock root inside the runs root').toBe(false);
+
+    // The subject is the TICKET: two runs of one ticket name one file whatever flow each runs, and
+    // two tickets never name the same one. The run number is deliberately absent from the name —
+    // a lock keyed by run would let run 2 start while run 1 held the ticket, which is the whole
+    // defect. `runIdOf` beside it is what that would have looked like.
+    expect(runLockPath('Q-0039')).toBe('.quorum/locks/Q-0039.json');
+    expect(runLockPath('Q-0039')).toBe(runLockPath('Q-0039'));
+    expect(runLockPath('PROJ-0042')).not.toBe(runLockPath('Q-0039'));
+    expect(runLockPath('Q-0039')).not.toContain(runIdOf('Q-0039', 2));
+    expect(runLockPath('Q-0039').startsWith(`${LOCK_ROOT}/`)).toBe(true);
   });
 
   test('the run id and the occurrence directory keep their shapes', () => {
