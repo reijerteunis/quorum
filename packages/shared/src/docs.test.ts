@@ -775,6 +775,26 @@ describe('Q-0039 AC-13 — the vocabulary says what a run lock is, and the four 
     expect(glossary, 'it does not cite the decision\'s date').toContain('2026-09-09');
   });
 
+  test('and the release guarantee is bounded to what two syscalls deliver', () => {
+    // The unqualified form — release happens only under this run's token, therefore a successor's
+    // lock is safe — is what Q-0039 erratum E-1 narrowed and what `RunLock.release`'s own JSDoc now
+    // bounds. A vocabulary entry promising more than the code delivers is the failure this
+    // repository records most often, so the bound is pinned here rather than trusted to survive.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'it does not say the check and the removal are two operations')
+      .toMatch(/check and the removal are two syscalls, and the guarantee is bounded by that/);
+    expect(glossary, 'it does not say which replacement survives and which is not protected')
+      .toMatch(/already on disk when release begins survives, and one written between the check and the removal does not/);
+    // Shown to refuse what the wording it replaces accepts, which is the `withoutIt` idiom above:
+    // the sentence as it read before E-1 still satisfies the lifetime clause of the previous test
+    // and neither clause of this one.
+    const superseded =
+      'given back in a `finally` covering every exit, and only while the file still carries the '
+      + 'token the run wrote, so a lock a human cleared and a successor took is left alone.';
+    expect(superseded.includes('`finally` covering every exit'), 'the superseded wording is not the lifetime sentence').toBe(true);
+    expect(/removal are two syscalls/.test(superseded), 'this assertion does not refuse what the superseded wording accepts').toBe(false);
+  });
+
   test('and the "what it is not" half, each refusal asserted on its own', () => {
     // A list satisfied by naming one of them would let the other three quietly go. Two of the four
     // are near-homographs already in this glossary, and the fourth is the one that matters most: an

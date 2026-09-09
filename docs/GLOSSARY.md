@@ -117,9 +117,14 @@ computed from `runs.log`, the ticket branch a run that did not finish resets, an
 per branch. Taken inside `run()` by a single exclusive create, after the stage precondition and
 before the branch head, the start line, run history and any worktree; given back in a `finally`
 covering every exit, and only while the file still carries the token the run wrote, so a lock a
-human cleared and a successor took is left alone. It carries the run number, the flow, the pid, the
-hostname and the start time, which is what a refusal reports. **A second run refuses and names the
-holder; it never waits, and it is never reclaimed automatically** — a recorded pid cannot tell *that
+human cleared and a successor took is left where it is. **That check and the removal are two
+syscalls, and the guarantee is bounded by that**: a replacement already on disk when release begins
+survives, and one written between the check and the removal does not — no compare-and-delete for a
+file at a fixed path can be uninterleaved, so the remainder is a stated bound rather than a race
+this wording covers over, and closing it means a different representation, which is Q-0114's
+(Q-0039 erratum E-1). It carries the run number, the flow, the pid, the hostname and the start
+time, which is what a refusal reports. **A second run refuses and names the holder; it never waits,
+and it is never reclaimed automatically** — a recorded pid cannot tell *that
 process is gone* from *that pid belongs to something else now*, so the pid is reported and nothing
 branches on it, and the recovery is a human deleting the file the message names. **`--dry` takes
 none and is refused by none**, having no run number, no branch and no worktree to serialise. Not a
