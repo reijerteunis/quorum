@@ -245,6 +245,14 @@ export interface RunLock {
    * It never throws and never rewrites what the run decided: a lock somebody cleared by hand and a
    * successor then took is left where it is, and a removal that fails costs one warning and nothing
    * else. A run's terminal status, its history entry and its exit code are what it earned.
+   *
+   * **The ownership check and the removal are two syscalls, and the guarantee is bounded by that.**
+   * A replacement that is already on disk when release begins is seen and left alone, which is the
+   * case a human clearing a lock mid-run produces. A replacement written between the check and the
+   * removal is not, and no compare-and-delete that cannot be interleaved exists for a file at a
+   * fixed path — closing the remainder means a different representation, which is the shape
+   * *"A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed"*
+   * (2026-09-09) settles as one file created by one exclusive syscall.
    */
   release(host: RunHistoryHost): void;
 }
@@ -335,13 +343,9 @@ export function acquireRunLock(claim: RunLockClaim): RunLock {
     started_at: new Date().toISOString(),
     token,
   };
+  let fd: number;
   try {
-    const fd = fs.openSync(file, 'wx');
-    try {
-      fs.writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`);
-    } finally {
-      fs.closeSync(fd);
-    }
+    fd = fs.openSync(file, 'wx');
   } catch (error) {
     if (errorProperty(error, 'code') !== 'EEXIST') {
       throw new FlowError(`run lock refused: could not create ${shown} (${messageText(error)})`);
@@ -351,6 +355,34 @@ export function acquireRunLock(claim: RunLockClaim): RunLock {
       throw new FlowError(`run lock refused: ${shown} is in the way and could not be read as a lock: ${held.unreadable}`);
     }
     throw new FlowError(`run lock refused: ticket ${id} is held by run #${held.run} (flow ${held.flow}, pid ${held.pid} on ${held.hostname}, started ${held.started_at}) — ${shown}`);
+  }
+
+  // The exclusive create succeeded, so this invocation and nothing else owns the pathname — and a
+  // failure writing or closing has to take back the file it made. Left behind, that file is a lock
+  // no run holds: the refusal above meets it on every later attempt, reads it as damaged rather than
+  // as absent, and the ticket stays unrunnable until somebody deletes it by hand. The take-back is
+  // best effort and the refusal names the original failure, because that is the condition a caller
+  // acts on; a cleanup that also failed is not a second thing to report.
+  let failure: { thrown: unknown } | null = null;
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(record, null, 2)}\n`);
+  } catch (thrown) {
+    failure = { thrown };
+  }
+  try {
+    fs.closeSync(fd);
+  } catch (thrown) {
+    // A close that fails after a write that failed is the consequence; the write is the cause.
+    failure ??= { thrown };
+  }
+  if (failure !== null) {
+    try {
+      fs.unlinkSync(file);
+    } catch {
+      // Nothing further to try, and nothing further to say: the refusal below already names the
+      // condition, and the file it could not take back is at the path that refusal carries.
+    }
+    throw new FlowError(`run lock refused: could not create ${shown} (${messageText(failure.thrown)})`);
   }
 
   return {

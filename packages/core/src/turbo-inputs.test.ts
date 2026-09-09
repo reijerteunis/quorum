@@ -1677,6 +1677,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'beside.path': 'the same, for a second ticket\'s lock in that repository',
     'again.path': 'the same, for a re-claim after a release',
     'successor.path': 'the same, for the claim that took a lock a human had cleared mid-run',
+    'after.path': 'the same, for the claim that proves a ticket is still claimable once a half-made lock has been taken back',
     'lockFileOf(repoDir, ticket.meta.id)': 'path.join(that repository, \'.quorum\', \'locks\', `${id}.json`) — the lock named without a handle, for the cases where the claim refused and there is none',
     exclude: 'path.join(that repository, \'.git\', \'info\', \'exclude\') — the file AC-4 is about, emptied by the fixture and read back',
     target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',

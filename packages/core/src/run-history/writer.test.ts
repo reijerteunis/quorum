@@ -818,6 +818,41 @@ describe('Q-0039 AC-2/AC-7/AC-10 — the claim is exclusive, its subject is the 
       expect(fs.readFileSync(file, 'utf8'), `${what} was rewritten`).toBe(bytes);
     }
   });
+
+  test('a create that succeeds and then fails takes back the file it made, and names the first failure', () => {
+    // The distinction the row above rests on: a damaged file the claim FOUND is somebody else's and
+    // is left alone, while one the claim MADE and could not finish is nobody's. Left behind it is a
+    // lock no run holds — the refusal above meets it for ever after, reads it as damaged rather than
+    // as absent, and the ticket is unrunnable until a human deletes it. So the two rows are a write
+    // that fails and a close that fails, which are different syscalls and different survivors.
+    const { repoDir, ticket } = project();
+    const file = lockFileOf(repoDir, ticket.meta.id);
+    const rows: [string, () => { mockRestore: () => void }][] = [
+      ['the write', () => vi.spyOn(fs, 'writeFileSync').mockImplementation(() => { throw new Error('no space left on device'); })],
+      ['the close', () => vi.spyOn(fs, 'closeSync').mockImplementation(() => { throw new Error('no space left on device'); })],
+    ];
+
+    for (const [what, breaking] of rows) {
+      const spy = breaking();
+      let message = '';
+      try {
+        acquireRunLock(claimIn(repoDir, ticket, 1));
+      } catch (error) {
+        message = (error as Error).message;
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(message, `${what} did not refuse`).toContain(`could not create ${path.join('.quorum', 'locks', 'Q-0049.json')}`);
+      expect(message, `${what} did not name the failure it met`).toContain('no space left on device');
+      expect(fs.existsSync(file), `${what} left a lock behind that no run holds`).toBe(false);
+      // …and the proof that the take-back is the point rather than the tidiness: the ticket is
+      // claimable, where a leftover file would have refused every later run as damaged.
+      const after = acquireRunLock(claimIn(repoDir, ticket, 1));
+      expect(fs.existsSync(after.path), `${what} left the ticket unclaimable`).toBe(true);
+      after.release(collector());
+    }
+  });
 });
 
 describe('Q-0039 AC-3/AC-4/AC-5 — what the claim checks first, what it excludes, and what it gives back', () => {
