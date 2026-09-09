@@ -60,3 +60,34 @@ ownership token it depends on is Q-0039's AC-5.
 recovery is one `rm` against a message that names the path. It rises if that message turns out to be
 what people actually hit, which is the `EEXIST`-shaped failure Q-0039's own body warns about — a
 recovery path becoming the ordinary path.
+
+## Added 2026-09-09 at Q-0039's implement gate — the lock's representation
+
+**This ticket also owns the representation trade**, routed here by Q-0039's erratum E-1 rather than
+opened as a fourth ticket: it is one surface and one gate, which is the Q-0066/Q-0068 precedent.
+
+Q-0039's `release()` is three operations — read the record, compare the token, unlink — so a
+replacement created **between the comparison and the unlink** is deleted by the run that no longer
+owns it. E-1 narrows AC-5 to what those syscalls deliver and registers the residue here. The window
+needs a human removing a legitimately held lock *and* a successor acquiring, both inside the gap
+between two adjacent syscalls, so it is bounded rather than open.
+
+**The alternative, measured at that gate against the two designs rather than taken from a report.**
+A directory whose sentinel file is named by the token makes the common shape impossible by
+construction: a releasing run unlinks a sentinel named by **its own** token and can never remove a
+successor's, and its `rmdir` fails `ENOTEMPTY` against a successor's sentinel. It leaves a narrower
+window where the successor has created the directory and not yet written its sentinel. So it is
+**better and not race-free** — which is why it is a trade to be ruled with a requirement rather than
+a fix applied inside a review loop.
+
+**What deciding it costs.** It supersedes one clause of *"A run holds a lock on its ticket, and a
+stale one refuses rather than being reclaimed"* (2026-09-09) — *"It is one file under `.quorum/`,
+created by one exclusive syscall"*. `mkdir` satisfies "one exclusive syscall", so the supersession is
+narrow, and the entry's inspectability argument weakens only slightly (`rm` becomes `rm -r`). It was
+available on the day the entry landed and was declined then because it buys a narrower race rather
+than correctness, and because a representation should not be chosen under the pressure of an open
+gate.
+
+**Order against the liveness half.** Either may go first; they are independent. If both are built,
+the representation lands first — a probe that can reclaim is more dangerous over a representation
+whose release can delete a successor's record than over one whose release cannot.
