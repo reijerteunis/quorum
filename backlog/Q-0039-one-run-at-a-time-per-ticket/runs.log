@@ -5,3 +5,23 @@
 2026-09-08T22:27:20.289Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=4.679423 ms=666070
 2026-09-08T23:18:09.979Z run=1 gate=human answer=advance
 2026-09-08T23:18:09.988Z run=1 completed stage=draft→requirements cost=14.775 tokens=10240152
+2026-09-08T23:21:13.045Z run=2 flow=chore start stage=requirements
+2026-09-08T23:59:47.939Z run=2 step=implement vendor=claude model=- verdict=proceed cost=40.754272 ms=2314555
+2026-09-09T00:00:57.333Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=69349
+2026-09-09T00:15:28.093Z run=2 step=implement vendor=claude model=- verdict=blocked cost=8.310156500000002 ms=870629
+2026-09-09T00:15:28.103Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-09T00:25:19.432Z run=2 gate=human-locked answer=advance
+2026-09-09T00:26:41.094Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=81627
+2026-09-09T00:36:21.026Z run=2 step=implement vendor=claude model=- verdict=proceed cost=6.238427999999998 ms=579821
+2026-09-09T00:38:13.651Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=112578
+2026-09-09T00:38:13.663Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-09T07:37:27.802Z run=2 gate=human-locked answer=retry
+2026-09-09T07:37:27.803Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-09T07:51:54.063Z run=2 step=implement vendor=claude model=- FAILED cost=9.4443325 error="claude failed (exit 1, error_max_structured_output_retries): error_max_structured_output_retries"
+2026-09-09T07:51:54.080Z run=2 failed stage=requirements→requirements cost=64.747 tokens=96355741 error="claude failed (exit 1, error_max_structured_output_retries): error_max_structured_output_retries"
+2026-09-09T08:20:00.000Z note run=2 died at implement round 4 on a vendor error, not on a defect: the adapter exhausted its structured-output retries AFTER the step had written its files. Finished by hand rather than re-run, because a fresh run starts run=3 and chore.yaml's implement reads review/chore/run-{run}/, so a run-3 implementer would meet an empty review directory with rounds 1-3's findings invisible to it (Q-0107's precedent).
+2026-09-09T08:20:00.001Z note round 4 recovered from the worktree Q-0062's rule kept, verified forced (7/7, 0 cached) and shown red before green by mutation: reverting the translation gives "expected Error: EEXIST ... to be an instance of FlowError".
+2026-09-09T08:20:00.002Z note round 4 reviewed cross-vendor by hand (claude wrote, codex reviewed) on Q-0096's and Q-0107's precedent, so no manifest records it. One finding, accepted and fixed: a four-line comment transcribing AC-7's rationale and describing how run.ts renders errors, against .claude/rules/engineering.md's one-line-naming-the-authority rule. Second pass over the fixed state returned no defects.
+2026-09-09T08:20:00.003Z note integrate performed by hand in a bare worktree (neither .harness/worktrees nor .quorum/runs): install exit 0, pnpm turbo run test --force 7/7 tasks 0 cached. Re-verified forced on main after the merge, plus pnpm lint, quorum lint 6/6 and the git-identity sweep exit 0.
+2026-09-09T08:20:00.004Z note demonstrated through the built binary: a held lock refuses with exit 1 naming run, flow, pid, hostname, start time and path and no remedy; --dry runs past it, taking no lock and refused by none (AC-8).
+2026-09-09T08:20:00.005Z note stage set to reviewed by hand: no engine run advanced it, run 2 having failed. Q-0096 and Q-0107 are the precedent.

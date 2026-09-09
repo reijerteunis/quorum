@@ -1,7 +1,7 @@
 ---
 id: Q-0039
 title: One run at a time per ticket
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0039/integration
@@ -9,6 +9,8 @@ priority: p2
 created: 2026-08-31
 iterations:
   requirements.head-of-product: 1
+  chore.review: 2
+  chore.implement: 1
 history:
   - stage: requirements
     run: 1
@@ -18,6 +20,30 @@ history:
     stage_after: requirements
     at: 2026-09-08T23:18:09.986Z
     cost: 14.775
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-09T00:15:28.100Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-09T00:38:13.662Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-09T07:51:54.070Z
+    cost: 64.747
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
