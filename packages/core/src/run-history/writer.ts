@@ -315,8 +315,7 @@ function readLockRecord(file: string): RunLockRecord | { unreadable: string } {
  * @throws {FlowError} when the ticket id is not one path segment, when the lock is held, when the
  *   file that holds it cannot be read, or when that file or the root it sits in could not be
  *   created — each naming the condition and, where there is one, the path, and none of them naming
- *   a remedy. There is no other class: a refusal the surface cannot render as one sentence reaches
- *   the caller as a stack trace instead.
+ *   a remedy. There is no other class.
  */
 export function acquireRunLock(claim: RunLockClaim): RunLock {
   const { repoDir, ticket, run, flow } = claim;
@@ -336,10 +335,8 @@ export function acquireRunLock(claim: RunLockClaim): RunLock {
   try {
     fs.mkdirSync(root, { recursive: true });
   } catch (error) {
-    // Every way this function refuses is a `FlowError`, because that is the only class the surface
-    // renders as one sentence — anything else reaches `dieOnUnexpected` and prints a Node stack for
-    // a condition the caller can act on. An unusable lock root is a refusal like any other: the root
-    // is what could not be created here, and the lock file was never attempted.
+    // The root is what could not be created; the lock file was never attempted.
+    // Why: AC-7 — every refusal from this function is a `FlowError`.
     throw new FlowError(`run lock refused: could not create ${relative(repoDir, root)} (${messageText(error)})`);
   }
 
