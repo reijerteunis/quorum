@@ -200,6 +200,14 @@ interface Chain {
     readonly worktreeList: string;
   };
   /**
+   * The lock file's bytes after the run that met it (Q-0039 AC-11).
+   *
+   * Read inside the fixture rather than in the test, because the chain removes the lock immediately
+   * afterwards: a run that is refused by a lock must leave the holder's own record untouched, and
+   * the moment that is true or false is before the next invocation.
+   */
+  readonly lockAfterRefusal: string;
+  /**
    * `git status --porcelain -z` at the three moments AC-6's working-tree claim is about.
    *
    * **Three readings and not one, because "end to end" has three ends worth naming.** The
@@ -397,6 +405,22 @@ beforeAll(() => {
   // recorded rather than thrown: its non-zero status is what AC-4 claims.
   invoke('wrong-stage', ['run', 'solutioning', TICKET, '--adapter', 'mock', '--auto']);
 
+  // Q-0039 AC-11 — a run that meets a lock, across a real process boundary, which is the only place
+  // a cross-process guarantee can be shown. The FIRST holder is a file this fixture wrote and the
+  // second is a real process: a genuine two-process race would be a suite that is red under load,
+  // which is Q-0102's parked subject and which AC-11 refuses by name. The lock is written after the
+  // wrong-stage refusal above so that the two refusals are told apart by their own messages, and
+  // removed immediately afterwards so the chain below is unaffected.
+  const lock = path.join(repo, '.quorum', 'locks', `${TICKET}.json`);
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  fs.writeFileSync(lock, `${JSON.stringify({
+    schema_version: 1, ticket_id: TICKET, run: 9, flow: 'requirements', pid: 424242,
+    hostname: 'another.machine.invalid', started_at: '2026-09-09T08:00:00.000Z', token: 'held-by-the-fixture',
+  }, null, 2)}\n`);
+  invoke('run-locked', ['run', 'requirements', TICKET, '--adapter', 'mock', '--auto']);
+  const lockAfterRefusal = fs.readFileSync(lock, 'utf8');
+  fs.rmSync(lock);
+
   mustPass('requirements', ['run', 'requirements', TICKET, '--adapter', 'mock', '--auto']);
   stage();
 
@@ -455,7 +479,7 @@ beforeAll(() => {
   const finalPorcelain = git(repo, 'status', '--porcelain', '-z');
 
   chain = {
-    root, bin, repo, artifacts, folder, ran, stages, afterSolutioning,
+    root, bin, repo, artifacts, folder, ran, stages, afterSolutioning, lockAfterRefusal,
     porcelain: {
       afterSolutioning: solutioningPorcelain, atGreen: greenPorcelain, afterLastCommand: finalPorcelain,
     },
@@ -561,6 +585,33 @@ describe('AC-4 — one ticket walks the chain, and each stage is read back from 
     expect(refusal?.status, 'a flow ran against the wrong stage').not.toBe(0);
     expect(output(refusal ?? EMPTY))
       .toContain(`ticket ${TICKET} is at stage "draft", flow "solutioning" consumes "requirements"`);
+  });
+
+  test('Q-0039 AC-11 — a run that meets a held lock refuses across a real process boundary', () => {
+    // The guarantee is cross-process, so an in-process pair of `runFlow` calls cannot establish it:
+    // the file the fixture wrote is what one operating-system process left behind, and the binary
+    // below is another one meeting it. `packages/core/src/engine/run-lock.test.ts` owns everything
+    // that is a property of `run()` — this owns the one thing that is a property of two processes.
+    const refused = chain.ran['run-locked'];
+    expect(refused?.status, 'a run started while its ticket was locked').toBe(1);
+    const said = output(refused ?? EMPTY);
+    for (const fact of [`ticket ${TICKET} is held by run #9`, 'flow requirements', 'pid 424242',
+      'another.machine.invalid', '2026-09-09T08:00:00.000Z', `.quorum/locks/${TICKET}.json`]) {
+      expect(said, `the refusal does not name ${fact}`).toContain(fact);
+    }
+    // It is this refusal and not the wrong-stage one two lines above it in the chain: both exit 1,
+    // and a test satisfied by either would pass with the lock never consulted.
+    expect(said, 'the run was refused for the wrong reason').not.toContain('consumes');
+    // And the holder's own record is exactly as the fixture wrote it: a refused run reads a lock and
+    // never repairs, rewrites or clears one.
+    expect(JSON.parse(chain.lockAfterRefusal)).toStrictEqual({
+      schema_version: 1, ticket_id: TICKET, run: 9, flow: 'requirements', pid: 424242,
+      hostname: 'another.machine.invalid', started_at: '2026-09-09T08:00:00.000Z',
+      token: 'held-by-the-fixture',
+    });
+    // The chain proves the other half by continuing: `requirements` is a `mustPass` immediately
+    // after the lock is removed, so a lock that outlived its holder would stop this file.
+    expect(chain.stages.slice(0, 2)).toStrictEqual(['draft', 'requirements']);
   });
 
   test('the requirements run writes both candidates run-scoped, and the merged document beside them', () => {
@@ -860,14 +911,15 @@ describe('AC-9 — the verdict is a property of the commit', () => {
   test('and no invocation inherited one: each carried only what its own call declared', () => {
     const set = Object.fromEntries([...refusedBy('claude'), ...refusedBy('codex')]
       .map((name) => [name, SET_BY_THE_FIXTURE]));
-    // The fifteen labels written out rather than mapped from `chain.ran`, so a sixteenth invocation
+    // The sixteen labels written out rather than mapped from `chain.ran`, so a seventeenth invocation
     // has to be classified here instead of arriving with an empty expectation of its own. It was
-    // twelve until Q-0100 AC-9 added the three usage refusals, and this register is what made adding
-    // them a classified act rather than a silent one.
+    // twelve until Q-0100 AC-9 added the three usage refusals and sixteen since Q-0039 added the run
+    // a held lock refuses, and this register is what made adding each of them a classified act rather
+    // than a silent one.
     expect(Object.fromEntries(Object.entries(chain.ran).map(([label, i]) => [label, i.steering])))
       .toStrictEqual({
-        init: {}, lint: {}, ticket: {}, 'wrong-stage': {}, requirements: {}, solutioning: {},
-        'qa-red': {}, development: { MOCK_DEV_FLAKY: '1' }, board: {}, adapters: set,
+        init: {}, lint: {}, ticket: {}, 'wrong-stage': {}, 'run-locked': {}, requirements: {},
+        solutioning: {}, 'qa-red': {}, development: { MOCK_DEV_FLAKY: '1' }, board: {}, adapters: set,
         'validate-ok': {}, 'validate-bad': {},
         'run-usage': {}, 'ticket-usage': {}, 'validate-usage': {},
       });
@@ -892,9 +944,11 @@ describe('AC-9 — the verdict is a property of the commit', () => {
     const runs = Object.values(chain.ran).filter((invocation) => invocation.argv[0] === 'run');
     // An identity rather than a floor: a count would pass whether or not the five flows this chain
     // walks were still the ones being run. Q-0100 AC-9's bare `run` joins the list as `<no flow>`
-    // rather than being filtered out of it, so it is still an invocation this register accounts for.
+    // rather than being filtered out of it, so it is still an invocation this register accounts for,
+    // and Q-0039's locked run is the second `requirements` — refused before any adapter is reached
+    // and still required to have selected the mock, because what refuses it is a file and not a flag.
     expect(runs.map((invocation) => invocation.argv[1] ?? '<no flow>'))
-      .toStrictEqual(['solutioning', 'requirements', 'solutioning', 'qa-red', 'development', '<no flow>']);
+      .toStrictEqual(['solutioning', 'requirements', 'requirements', 'solutioning', 'qa-red', 'development', '<no flow>']);
     // Exactly one is excused, and which one is asserted rather than described: a bare `run` dies in
     // argument validation before any project is opened, so it reaches no adapter and selecting one
     // is not a claim that can be made about it. An exclusion nobody pins is one that widens.

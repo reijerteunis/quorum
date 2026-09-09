@@ -45,6 +45,27 @@ export function worktreeDirName(branch: string): string {
 /** Spike: `path.join(ctx.repoDir, '.quorum', 'runs', runId)` — spike/src/engine.js:328. */
 export const RUN_HISTORY_ROOT = '.quorum/runs';
 
+/**
+ * Run locks, the second kind of durable file this product writes under `.quorum/` — a sibling of
+ * {@link RUN_HISTORY_ROOT} rather than a directory inside it, so nothing a lock writes is visible to
+ * a reader listing runs.
+ *
+ * The literal lives here for the same reason every other one does, and for one more: the run-history
+ * folder in `core` is allowed to spell the `.quorum` namespace exactly once, in its exclusion
+ * pattern, so a second literal there would turn a landed guard red.
+ */
+export const LOCK_ROOT = '.quorum/locks';
+
+/**
+ * The lock file one ticket's run holds, relative to the repository root.
+ *
+ * The subject is the ticket: two runs of different tickets never name the same file, and two runs of
+ * one ticket always do, whatever flow each is running.
+ */
+export function runLockPath(ticketId: string): string {
+  return `${LOCK_ROOT}/${ticketId}.json`;
+}
+
 /** Spike: `path.join(ctx.history.dir, 'manifest.json')` — spike/src/engine.js:436. */
 export const MANIFEST_FILE = 'manifest.json';
 
