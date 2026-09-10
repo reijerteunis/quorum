@@ -244,7 +244,15 @@ describe('AC-8 — the notice, by the clauses the frozen contract is about', () 
     expect(line).toContain('no run-manifest semantic checks ran');
     expect(line).toContain('run-manifest-v1 is the only contract defined');
     // (5) and never that anything passed: a skip is not a pass.
-    expect(line).not.toMatch(/pass(ed|es)?\b/i);
+    //
+    // Over the line WITHOUT the artifact's path, which is clause (1)'s subject and not this one's.
+    // `mkdtempSync` picks six random characters, so the path carried "paSs" on CI run 34322…
+    // (`quorum-cli-validate-EYpaSs`) and this clause failed on a notice that was correct — a test
+    // whose verdict was a property of a random string rather than of the commit, which is
+    // *"A test's verdict is a property of the commit, not of the checkout or the account"*
+    // (2026-08-30) at a site that entry did not anticipate, because it is not even stable per
+    // machine. The removal idiom is clause (2)'s, three lines above.
+    expect(line.replace(artifact, '')).not.toMatch(/pass(ed|es)?\b/i);
     // (6) and it does not claim the annotation is absent, which is false for `unknown-v1`. This is
     //     the clause that discriminates the three shapes from one another.
     expect(line).not.toContain('no x-quorum-contract annotation');
