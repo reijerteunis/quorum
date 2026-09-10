@@ -41,20 +41,47 @@ function created(): Set<string> {
 const named = (): Set<string> => new Set(repoFile(PLAN).match(ID) ?? []);
 
 /**
+ * A ticket bullet in the plan, at any nesting depth.
+ *
+ * The anchor was `^- ` until 2026-09-10, which excluded every INDENTED bullet — and the plan nests
+ * a cut's children under their parent, so Q-0009's fourteen port children, Q-0010's eleven CLI
+ * children and Q-0102 were outside two of this file's three directions. Censused before the rule
+ * moved: 64 bullets matched at column zero, 101 with nesting allowed, and **all 37 newly visible
+ * ids have a folder in `backlog/`** — the relaxation admits no prose and no false positive. It was
+ * found by the check below firing on Q-0102's absence at M2's close, which is the
+ * `q0050.source.test.ts` shape Q-0051 found: a guard that fails OPEN for a shape nobody considered.
+ *
+ * Prose is still excluded, which was the original anchor's purpose: an id mentioned inside another
+ * ticket's paragraph is not a bullet, because a bullet needs its `- ` after nothing but whitespace.
+ */
+const BULLET = /^[ \t]*- (?:~~)?(Q-[0-9]{4})\b/gm;
+
+/** Every milestone heading, in document order, with its `Mn` label. */
+const MILESTONE = /^## (M\d) [^\n]*$/gm;
+
+/**
  * The ids that head a bullet in the current milestone's ticket list.
  *
  * A bullet is `- Q-nnnn` or `- ~~Q-nnnn` (withdrawn). An id mentioned *inside* another ticket's
  * prose is not a bullet and is not held to this rule, which is why the anchor is the line start.
  */
+/** The `Mn` label of the first milestone heading the plan does not mark closed. */
+function currentMilestone(): string {
+  const headings = [...repoFile(PLAN).matchAll(MILESTONE)];
+  return headings.find((heading) => !/✅ closed/.test(heading[0]))?.[1] ?? 'no open milestone';
+}
+
 function currentMilestoneBullets(): string[] {
   const text = repoFile(PLAN);
-  const start = text.indexOf('\n## M2 ');
-  const end = text.indexOf('\n## M3 ');
-  if (start < 0 || end < 0 || end <= start) {
-    throw new Error(`${PLAN} no longer has an "## M2 " section followed by "## M3 " — this test cannot locate the current milestone and refuses to pass over a corpus it cannot read`);
+  const headings = [...text.matchAll(MILESTONE)];
+  const index = headings.findIndex((heading) => !/✅ closed/.test(heading[0]));
+  if (index < 0) {
+    throw new Error(`${PLAN} marks every "## Mn" heading ✅ closed — this test cannot locate the current milestone and refuses to pass over a corpus it cannot read`);
   }
-  const bullets = [...text.slice(start, end).matchAll(/^- (?:~~)?(Q-[0-9]{4})\b/gm)].map((m) => m[1]);
-  if (!bullets.length) throw new Error(`${PLAN}'s M2 section lists no ticket bullets — this test proves nothing without them`);
+  const from = headings[index]!.index! + headings[index]![0].length;
+  const to = index + 1 < headings.length ? headings[index + 1]!.index! : text.length;
+  const bullets = [...text.slice(from, to).matchAll(BULLET)].map((m) => m[1]);
+  if (!bullets.length) throw new Error(`${PLAN}'s ${headings[index]![1]!} section lists no ticket bullets — this test proves nothing without them`);
   return [...new Set(bullets)];
 }
 
@@ -67,6 +94,13 @@ function currentMilestoneBullets(): string[] {
  */
 const UNCREATED: Record<string, string> = {
   'Q-0012': 'qa-final.yaml and deploy.yaml. Blocked by Q-0056, which must first settle what `route` is.',
+  'Q-0013': "M3's planned ticket, not yet opened: server package with REST + WS.",
+  'Q-0014': "M3's planned ticket, not yet opened: web app shell, theme, routing, WS client.",
+  'Q-0015': "M3's planned ticket, not yet opened: mission control screen.",
+  'Q-0016': "M3's planned ticket, not yet opened: gate screen with diffs.",
+  'Q-0017': "M3's planned ticket, not yet opened: backlog board and ticket page.",
+  'Q-0018': "M3's planned ticket, not yet opened: run history and trace drill-down.",
+  'Q-0019': "M3's planned ticket, not yet opened: resume interrupted runs.",
 };
 
 
@@ -81,13 +115,13 @@ const UNCREATED: Record<string, string> = {
  */
 function closedMilestoneBullets(): string[] {
   const text = repoFile(PLAN);
-  const headings = [...text.matchAll(/^## (M\d) [^\n]*$/gm)];
+  const headings = [...text.matchAll(MILESTONE)];
   const ids: string[] = [];
   headings.forEach((heading, index) => {
     if (!/✅ closed/.test(heading[0])) return;
     const from = heading.index! + heading[0].length;
     const to = index + 1 < headings.length ? headings[index + 1]!.index! : text.length;
-    for (const [, id] of text.slice(from, to).matchAll(/^- (?:~~)?(Q-[0-9]{4})\b/gm)) ids.push(id!);
+    for (const [, id] of text.slice(from, to).matchAll(BULLET)) ids.push(id!);
   });
   return [...new Set(ids)];
 }
@@ -129,7 +163,7 @@ describe('the development plan and backlog/ agree about which tickets exist', ()
     const unexplained = currentMilestoneBullets()
       .filter((id) => !created().has(id) && !(id in UNCREATED))
       .sort();
-    expect(unexplained, `${PLAN}'s M2 list has a bullet for ${unexplained.join(', ')} with no folder in backlog/ and no entry in UNCREATED. Create the ticket, or register it here with the reason it does not exist.`).toStrictEqual([]);
+    expect(unexplained, `${PLAN}'s ${currentMilestone()} list has a bullet for ${unexplained.join(', ')} with no folder in backlog/ and no entry in UNCREATED. Create the ticket, or register it here with the reason it does not exist.`).toStrictEqual([]);
   });
 
   test('the register names only uncreated bullets, so it cannot excuse a ticket that exists', () => {
@@ -138,14 +172,19 @@ describe('the development plan and backlog/ agree about which tickets exist', ()
     const stale = Object.keys(UNCREATED).filter((id) => created().has(id)).sort();
     expect(stale, `UNCREATED excuses ${stale.join(', ')}, which now has a folder in backlog/. Remove the entry.`).toStrictEqual([]);
     const notBullets = Object.keys(UNCREATED).filter((id) => !currentMilestoneBullets().includes(id)).sort();
-    expect(notBullets, `UNCREATED names ${notBullets.join(', ')}, which is not an M2 bullet, so the entry excuses nothing.`).toStrictEqual([]);
+    expect(notBullets, `UNCREATED names ${notBullets.join(', ')}, which is not a ${currentMilestone()} bullet, so the entry excuses nothing.`).toStrictEqual([]);
   });
 
   test('both directions have a subject, so neither can pass over an empty corpus', () => {
     expect(created().size).toBeGreaterThan(50);
-    expect(currentMilestoneBullets().length).toBeGreaterThan(20);
+    // The floor is deliberately small and must stay that way. It read `> 20` until 2026-09-10 and
+    // went red the moment M2 closed and M3 became current with nineteen bullets — a floor tuned to
+    // one milestone's size is a check whose verdict depends on which milestone is current, which is
+    // the class `git-identity.test.ts` exists to forbid. Its only job is that the reader found more
+    // than a stray line; `currentMilestoneBullets` already throws on an empty parse.
+    expect(currentMilestoneBullets().length).toBeGreaterThan(3);
     // The register is load-bearing: without it the second test would be red today.
     const registered = Object.keys(UNCREATED).filter((id) => currentMilestoneBullets().includes(id) && !created().has(id));
-    expect(registered.length, 'UNCREATED excuses nothing, so the M2-bullet test would pass with or without it').toBeGreaterThan(0);
+    expect(registered.length, 'UNCREATED excuses nothing, so the current-milestone bullet test would pass with or without it').toBeGreaterThan(0);
   });
 });

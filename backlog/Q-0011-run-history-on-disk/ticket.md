@@ -1,7 +1,7 @@
 ---
 id: Q-0011
 title: Run history on disk with per-vendor roll-up
-stage: red
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0011/integration

@@ -1,6 +1,6 @@
 # Quorum — Development Plan
 
-*Status: v1 plan, 2026-09-09 — **Q-0039 shipped**, so two `quorum run` invocations against one ticket can no longer proceed in parallel — the ticket M1's and Q-0034's closing entries both said lands before M3's daemon, and M3 is next. **It is Q-0083's first real refusal and the mechanism worked**: implement round 2 returned `blocked` on a finding whose two remedies were both foreclosed by the decision entry written that morning, measured the alternative rather than dismissing it, and stopped — where Q-0091 and Q-0101 priced the same situation without that channel at $14.28 and $31.16 of prose. Its erratum then narrowed a criterion and **the next review found the erratum itself incomplete**, the glossary still carrying the guarantee it had just removed from two other sites: the operator's own fix-the-instance-not-the-class failure, caught by the panel. Round 4 died on a vendor error after writing its files and was finished by hand. **Q-0114 was opened at the requirements gate**, and the lock's representation trade routed to it rather than to a fourth ticket. Earlier the same day — **Q-0039 reached `requirements`**, the ticket M1's and Q-0034's closing entries both say lands before M3's daemon makes concurrent runs ordinary, and its decision entry landed at the gate: *"A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed"* (2026-09-09). Its OQ-2 refuses a pid liveness probe on four grounds, one of which is a connection nobody had made — **a pid probe is Q-0074's open defect class**, *probe fails → read as absence*, so shipping one would add an instance while the ticket to remove them is unstarted. **Q-0114 was opened at that same gate** from an appendix written out in full, against the three obligations found orphaned this week. 2026-09-08 — **Q-0067 shipped**, and it reports the drift it was opened on: the adapter contract's table pins Claude Code 2.1.220 and codex-cli 0.149.0, the machine runs 2.1.236 and 0.150.1, and `quorum adapters --probe` now says so after each login verdict. All three of its reviews returned `revise`; **two were right and were closed**, and the third is refused by erratum E-1 on a rule this cut has now paid for five times — **a criterion's *Test:* clause bounds the instrument, and a reviewer may not raise the job it gives it**. It is the first instance where the escalation is monotonic. Round 2's finding is also worth its own line: the implementer transcribed the governing decision into production JSDoc at five sites, which is the rule `.claude/rules/engineering.md` states and the same violation a cross-vendor review caught in this operator's own hand-written Q-0111 the day before. **Q-0059 shipped through the flows**, and its review found three path escapes the requirement had not — one per round, ending in a blocker where a dangling symlink made `write` create its own target outside the ticket folder. The ticket body predicted exactly that class and the implementer walked into it anyway; the cross-vendor panel is what caught it. **Q-0055 shipped through the flows**, the first flow-run of this session and the first live exercise of Q-0083: `implement` declared `verdict=proceed` and it routed. $57.81 across two runs. Its requirements run corrected the ticket body — including the correction made to it hours earlier — finding two id sites named nowhere, one of which builds a branch name git refuses. **Q-0083 shipped**, so the chore flow can now report a refusal: `implement` declares `proceed|blocked` and a bound of **zero** gates the first failure rather than the last, reusing the existing gate and its three answers. Its body was wrong that `retry` is meaningless there, and Q-0101 is what measured it. **Q-0112 shipped with decision entry 084**: `core` reads no environment for an identity, the default is the admission `unknown`, and a non-string owner is refused at the write boundary. Its five review rounds are the session's clearest record of one failure — fixing the instance a reviewer names rather than the class it belongs to, three times over. **Q-0110 shipped, and two of its three alleged defects were ruled correct**: an exit code reports a run's disposition rather than its verdict, so `regressed` keeps its zero, and bare `quorum adapters` is a report where `--probe` is the check. Only the unknown-command zero changed. **Q-0111 shipped**, implemented by hand the day after the entry that is its requirement: `core` states the condition, `packages/cli` composes the remedy once, and the sentence a stranger sees is byte-identical. Two of its three moved guards went red on themselves before they shipped, one of them matching nothing at all including its own subject. 2026-09-07 — **two decision entries landed and Q-0082 closed on one of them**. *"A deferral is not a skip"* answers neither of the two readings that ticket offered: the skipped-subject rule is not amended because it does not reach, and no code changes — decided on a measurement neither the ticket nor its two predecessor accounts had, that **every chore run this repository has ever performed deferred a range silently**, some sixty of them, because `chore.yaml` diffs against a branch its own earlier step creates. *"A `core` error names the condition; the remedy belongs to the surface"* rules Q-0111 and disproves that ticket's own cost argument: all six catch sites are byte-identical `die(error.message)`, so the remedy lands at one site rather than six. **Q-0108 shipped by hand**, the first ticket closed here for the reason that the gate costs more than the work: one clause plus two registrations. Its ruling is that a suite may **read** `CLAUDE.md`, Q-0103 E-2 having made it the human's to **write** and the two being different acts — recorded in the check's own authority comment, with no decision entry owed. **It refuted its own prediction**: the new read did not earn a `turbo-inputs.test.ts` registration, because `pathLiterals` skips any literal with no `/` and so never considers a root-level file at all — twelve of them, invisible to the scanner, covered only by a hand-audited register that fails open for a thirteenth. Reported, not fixed. **Three obligations recorded in prose are now tickets: Q-0110, Q-0111 and Q-0112.** The third is the `owner` default, which `ticket.ts:20` had routed to an unnamed successor since Q-0093 and which **fired twice while the first two were being opened**. Writing it up measured something none of its nine earlier sightings had: `--owner` with no value writes the boolean `true`, and `ticketSchema` declares `owner: z.string()` and refuses it — so `quorum ticket new` can write a ticket the product's own schema rejects, and `quorum board` renders it without noticing. **The two orphaned obligations are tickets: Q-0110 and Q-0111.** Q-0090's GA-4 said *"open the successor"* and nobody did; Q-0100 wrote its question into a `project.ts` JSDoc and into no ticket. They are **two** rather than one, measured rather than merged on the pattern the two same-day merges set: different packages, different decisions, and different forcing functions — a shell script that cannot tell *did the thing* from *did not understand you*, against M3's server surfacing a shell imperative to a browser. **Q-0110 is one wider than GA-4 named**, because a third zero was routed to it later by a source comment, so the obligation grew in the code after the instruction that created it. Creating them reproduced a live preserved defect on the spot: `quorum ticket new` stamped `owner: ruudvanengelenhoven` on both from `process.env.USER` (`backlog.ts:190`), **instances ten and eleven**, corrected by hand as the fourth such correction and still not reaching the code. **Q-0066 was absorbed into Q-0068**, which is retitled and raised to `p2`, and **Q-0109 into Q-0074**. The two merges rest on different evidence and the difference is the point: Q-0074/Q-0109 were literally one function declared twice, while Q-0066/Q-0068 are two unlike defects on **one surface** — `packages/cli/src/adapters.ts`'s own module header names both tickets in one docblock, the combined file set is eleven files that are the same eleven, one gate rules both questions and neither owes a decision entry. **A third defect on that same command has no ticket**: `quorum adapters` exits 0 with both CLIs absent, whose successor is named as *"Q-0090's GA-4"* — an instruction to open a ticket that lives only inside Q-0090's own merged requirement, never acted on, with Q-0090 closed since 2026-09-02. **That is the second orphaned obligation found this week**, after Q-0100's imperative living only in a `project.ts` JSDoc, and together they are a seventh direction of this page's drift: *an obligation recorded inside a closed ticket rather than as a ticket*. Q-0105 is the counter-example that shows it is avoidable, having opened Q-0108 and Q-0109 at its own close. **Q-0109 was absorbed into Q-0074** and is `abandoned` after one day, on a measurement neither ticket had: `safe()` is declared byte-for-byte **twice**, in `fanout/fanout.ts:206–208` and `git/git.ts:19–21`, with 23 call sites between them, and both tickets were asking what a caller does with its `null`. Q-0074 keeps the id because a landed decision entry cites it by name. Its first task is now a census of those 23 rather than a widening, and its split seam is written into the body in advance instead of left for a gate to find. **The fifteen pre-cutover ticket bodies were corrected** in the same session: all of them named the deleted `spike/` and nine imposed a *both trees together* rule with no second tree, so each gained an *After the cutover* section saying what is void and where its subject now is — additive only, no verdict moved. Re-measuring found more than paths: Q-0060's second defect survives the port through a `parsedTasks` that looks like a parse and is a cast, Q-0076's prompt-to-output ratio has halved from 3.4x to 1.97x so its headline no longer aims the fix, and Q-0067 is unblocked with its version drift widened twice in eleven days. **The open list was triaged against the tree and two bullets here were wrong about what is open**: Q-0063 was closed 2026-08-26 and ported by Q-0047 while its bullet still described the defect in the present tense and called CI red for it, and Q-0100 shipped 2026-09-06 while its bullet still read `draft`. Both are corrected below with what shipped. Nothing checks a bullet's stated stage against the ticket's own frontmatter — `plan-backlog.test.ts` asks whether a ticket **exists** on both sides and, under a closed milestone, whether it is still `draft`, and M2 is open — which is a **sixth direction** of the drift this page records five of. The other eighteen open tickets were each checked against the code and every one still has its subject; what has rotted is their **landing constraints**, since all fifteen opened before the cutover name `spike/` and nine impose a *both trees together* landing rule that no longer has a second tree. Q-0100 also closed owing a decision entry recorded only in a `project.ts` JSDoc and in no ticket, which is the Q-0108/Q-0109 shape arriving through a source comment. **Q-0105 is closed**, at `reviewed` and contained, with its two deliberate deferrals opened as **Q-0108** and **Q-0109** rather than left in its entry to expire — which is what an obligation recorded only in a closed ticket's entry does, and this page records five directions of that drift already. **Q-0105 is `reviewed` and contained**, and its GO-3 earned its existence: every local signal was green in both environment rows and CI was red on all three jobs, on a test whose verdict turned out to be a property of the machine — inside the sweep built to forbid exactly that. So the ticket opened because nothing noticed `main` was unvalidated was itself unclosable on a local verification, which is the argument for the obligation made by events rather than by reasoning. 2026-09-06 — **Q-0105 reached `requirements`**, and it caught its own subject while it ran: the body had been corrected hours earlier to say `main` was level with `origin/main`, and the run measured it **2 commits ahead** — that same session's own commits, unnoticed within hours of the zero being recorded. Its iteration 2 is also the third instance of *"a retry on an unchanged tree cannot rule its own blocker"* and the first where the second pass found something anyway, by re-examining whether two of iteration 1's three blockers were blockers at all. **Q-0102 was parked at `p2`**, the first ticket here retired by measuring its own premise dead rather than by shipping anything: 0 failures in 36 local sweeps and 0 in 28 CI sweep cells across fourteen consecutive green runs, against an opening claim that *"every push is red or lucky"* which was an inference made while `main` stood 89 commits ahead of `origin/main` — Q-0105's subject, and now the second thing that gap hid. Its GO-1 is what parked it: at that rate no fix can be shown red before green, and no step in the requirements flow can produce a failure rate, so a run would have been the sixteenth appearance of a loop handed work no agent in it can perform — **recognised before the money was spent, for the first time**. The sighting stands, the reopening threshold is written into the ticket, and the `p1` half that survives is that a flaky oracle trains the reader to re-run until green. **Q-0103 ran the cutover**, so M2's done-when reads one required suite rather than two and Q-0009's *"what is not done"* is discharged: `spike/` is deleted with its CI job, the three port-freeze jobs, `harness/port-charter.md` and `packages/core/src/spike-parity.test.ts`, and Q-0010's second inherited obligation — the binary half of that suite — is recorded as landed in Q-0095 and Q-0101. The transfer share this page moved four times went with the register that re-derived it, having measured how much work was left rather than a property of the workspace. Three of M2's tickets are open behind it: Q-0102, Q-0104's successor Q-0105, and the citation sweep the cutover deliberately did not do. 2026-09-05 — **Q-0101 shipped and Q-0103 was allocated at its close**, so M2's last substantive item is the cutover itself. Q-0101's entry is written to what happened: a requirements run that refuted its own inherited body in four places, three errata all written at gates, and five implement rounds of which the last three went on blockers no step on the route could clear. Its post-merge verification went red and the revert was **refused on measurement** — twelve interleaved iterations per arm in fresh built clones returned 0 and 0 at both commits — with the instance recorded in Q-0102 as the second measured appearance of that ticket's subject. Q-0102 was also corrected to `p1` in its frontmatter, which had said `p2` while this page and the ticket's own section header both argued p1; nothing checks the two against each other, which is a fourth direction of the drift this page already records three instances of. 2026-09-02 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. Q-0051's entry was rewritten on 2026-08-30 to what shipped — the port's eleventh child, and the first whose requirement was run twice because Q-0038 landed on its subject between the two, the aborted document archived rather than resumed. Q-0057's entry was rewritten the same day to what shipped, taken in the gap between port children because the chore flow it fixes is what every remaining child runs. The working agreement on ticket ids was corrected on 2026-08-30 by Q-0080, which fixed an allocator that read every `Q-` id as unparseable and answered `T-0001` on every call: the prefix is the adopter's and is derived from the backlog, so stating this repository's convention as the product's was the same mistake one layer up. Q-0079's entry gained its three cross-vendor review rounds the same evening, run by hand before its stage could honestly read `reviewed` and returning `revise` every time. Q-0079 and Q-0080 were opened and closed the same day, 2026-08-30 — the first from the third instance in three days of a test whose verdict depended on the machine rather than the commit, implemented by hand rather than ticketed further; the second split from its body and run through the flows, because it changes product behaviour on the cold-clone path. Q-0052's entry was written on 2026-08-31 when it shipped as the port's twelfth child, and five tickets were folded into this list in the same edit: Q-0074 and Q-0077, which had been open and shipped respectively while appearing nowhere in it — Q-0074 not at all, Q-0077 only inside Q-0050's prose — and Q-0081, Q-0082 and Q-0083, opened from Q-0052's own run. The gap is worth naming rather than quietly closing: a ticket can exist in `backlog/` for three days without this page knowing, because nothing checks the two against each other, which is the same class as the defects Q-0072 and Q-0073 closed one layer down. **M2's smoke-test done-when was split on 2026-08-31 by Q-0054**, the port's last child: the library half is Q-0054's and is done, the mock end-to-end through the binary is Q-0010's, and the "30-check" figure — a 2026-08-21 count repeated here as a present-tense requirement while the file held 151 assertions at the time — is corrected in this page and in `04-architecture.md` while the append-only entry it came from is left alone. Q-0054's own entry was rewritten in the same edit to what shipped. Q-0009's port closed on 2026-08-31 with all fourteen children contained, and Q-0053's entry and the parent's were written the same evening, together with charter §9's cost checkpoint — performed at the close rather than after the first three children, which is recorded as a process failure rather than presented as compliance. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. **Q-0058 shipped on 2026-08-31** as the first ticket run through the flows after the port closed, and
+*Status: v1 plan, 2026-09-10 — **M2 is closed**, all five done-when criteria verified against the tree rather than against this page. $2,803.12 billed and 3.63 billion tokens across 197 runs and 85 tickets — 55 through the flows, 15 by hand — and 48 decision entries, 039 to 086. **The measurement nobody went looking for: the seven-stage SDLC was exercised by four tickets**, three of them M1's, while everything else went `requirements` → `chore` and two of the seven flows have never existed. That is not a failure — M2's work was machinery and the chore flow was made for machinery — but it means the flows M3's feature work will use are the least exercised thing here. **The twelve open tickets moved to M3** rather than sitting under a closed milestone, triaged in place. Closing it also found a blind spot in the check that validates this page: its bullet anchor required column zero, so **37 nested ticket bullets** — the whole of Q-0009's port and Q-0010's CLI cut — were outside two of its three directions, and its current-milestone literal was hard-coded to M2. Both fixed and demonstrated. 2026-09-09 — **Q-0039 shipped**, so two `quorum run` invocations against one ticket can no longer proceed in parallel — the ticket M1's and Q-0034's closing entries both said lands before M3's daemon, and M3 is next. **It is Q-0083's first real refusal and the mechanism worked**: implement round 2 returned `blocked` on a finding whose two remedies were both foreclosed by the decision entry written that morning, measured the alternative rather than dismissing it, and stopped — where Q-0091 and Q-0101 priced the same situation without that channel at $14.28 and $31.16 of prose. Its erratum then narrowed a criterion and **the next review found the erratum itself incomplete**, the glossary still carrying the guarantee it had just removed from two other sites: the operator's own fix-the-instance-not-the-class failure, caught by the panel. Round 4 died on a vendor error after writing its files and was finished by hand. **Q-0114 was opened at the requirements gate**, and the lock's representation trade routed to it rather than to a fourth ticket. Earlier the same day — **Q-0039 reached `requirements`**, the ticket M1's and Q-0034's closing entries both say lands before M3's daemon makes concurrent runs ordinary, and its decision entry landed at the gate: *"A run holds a lock on its ticket, and a stale one refuses rather than being reclaimed"* (2026-09-09). Its OQ-2 refuses a pid liveness probe on four grounds, one of which is a connection nobody had made — **a pid probe is Q-0074's open defect class**, *probe fails → read as absence*, so shipping one would add an instance while the ticket to remove them is unstarted. **Q-0114 was opened at that same gate** from an appendix written out in full, against the three obligations found orphaned this week. 2026-09-08 — **Q-0067 shipped**, and it reports the drift it was opened on: the adapter contract's table pins Claude Code 2.1.220 and codex-cli 0.149.0, the machine runs 2.1.236 and 0.150.1, and `quorum adapters --probe` now says so after each login verdict. All three of its reviews returned `revise`; **two were right and were closed**, and the third is refused by erratum E-1 on a rule this cut has now paid for five times — **a criterion's *Test:* clause bounds the instrument, and a reviewer may not raise the job it gives it**. It is the first instance where the escalation is monotonic. Round 2's finding is also worth its own line: the implementer transcribed the governing decision into production JSDoc at five sites, which is the rule `.claude/rules/engineering.md` states and the same violation a cross-vendor review caught in this operator's own hand-written Q-0111 the day before. **Q-0059 shipped through the flows**, and its review found three path escapes the requirement had not — one per round, ending in a blocker where a dangling symlink made `write` create its own target outside the ticket folder. The ticket body predicted exactly that class and the implementer walked into it anyway; the cross-vendor panel is what caught it. **Q-0055 shipped through the flows**, the first flow-run of this session and the first live exercise of Q-0083: `implement` declared `verdict=proceed` and it routed. $57.81 across two runs. Its requirements run corrected the ticket body — including the correction made to it hours earlier — finding two id sites named nowhere, one of which builds a branch name git refuses. **Q-0083 shipped**, so the chore flow can now report a refusal: `implement` declares `proceed|blocked` and a bound of **zero** gates the first failure rather than the last, reusing the existing gate and its three answers. Its body was wrong that `retry` is meaningless there, and Q-0101 is what measured it. **Q-0112 shipped with decision entry 084**: `core` reads no environment for an identity, the default is the admission `unknown`, and a non-string owner is refused at the write boundary. Its five review rounds are the session's clearest record of one failure — fixing the instance a reviewer names rather than the class it belongs to, three times over. **Q-0110 shipped, and two of its three alleged defects were ruled correct**: an exit code reports a run's disposition rather than its verdict, so `regressed` keeps its zero, and bare `quorum adapters` is a report where `--probe` is the check. Only the unknown-command zero changed. **Q-0111 shipped**, implemented by hand the day after the entry that is its requirement: `core` states the condition, `packages/cli` composes the remedy once, and the sentence a stranger sees is byte-identical. Two of its three moved guards went red on themselves before they shipped, one of them matching nothing at all including its own subject. 2026-09-07 — **two decision entries landed and Q-0082 closed on one of them**. *"A deferral is not a skip"* answers neither of the two readings that ticket offered: the skipped-subject rule is not amended because it does not reach, and no code changes — decided on a measurement neither the ticket nor its two predecessor accounts had, that **every chore run this repository has ever performed deferred a range silently**, some sixty of them, because `chore.yaml` diffs against a branch its own earlier step creates. *"A `core` error names the condition; the remedy belongs to the surface"* rules Q-0111 and disproves that ticket's own cost argument: all six catch sites are byte-identical `die(error.message)`, so the remedy lands at one site rather than six. **Q-0108 shipped by hand**, the first ticket closed here for the reason that the gate costs more than the work: one clause plus two registrations. Its ruling is that a suite may **read** `CLAUDE.md`, Q-0103 E-2 having made it the human's to **write** and the two being different acts — recorded in the check's own authority comment, with no decision entry owed. **It refuted its own prediction**: the new read did not earn a `turbo-inputs.test.ts` registration, because `pathLiterals` skips any literal with no `/` and so never considers a root-level file at all — twelve of them, invisible to the scanner, covered only by a hand-audited register that fails open for a thirteenth. Reported, not fixed. **Three obligations recorded in prose are now tickets: Q-0110, Q-0111 and Q-0112.** The third is the `owner` default, which `ticket.ts:20` had routed to an unnamed successor since Q-0093 and which **fired twice while the first two were being opened**. Writing it up measured something none of its nine earlier sightings had: `--owner` with no value writes the boolean `true`, and `ticketSchema` declares `owner: z.string()` and refuses it — so `quorum ticket new` can write a ticket the product's own schema rejects, and `quorum board` renders it without noticing. **The two orphaned obligations are tickets: Q-0110 and Q-0111.** Q-0090's GA-4 said *"open the successor"* and nobody did; Q-0100 wrote its question into a `project.ts` JSDoc and into no ticket. They are **two** rather than one, measured rather than merged on the pattern the two same-day merges set: different packages, different decisions, and different forcing functions — a shell script that cannot tell *did the thing* from *did not understand you*, against M3's server surfacing a shell imperative to a browser. **Q-0110 is one wider than GA-4 named**, because a third zero was routed to it later by a source comment, so the obligation grew in the code after the instruction that created it. Creating them reproduced a live preserved defect on the spot: `quorum ticket new` stamped `owner: ruudvanengelenhoven` on both from `process.env.USER` (`backlog.ts:190`), **instances ten and eleven**, corrected by hand as the fourth such correction and still not reaching the code. **Q-0066 was absorbed into Q-0068**, which is retitled and raised to `p2`, and **Q-0109 into Q-0074**. The two merges rest on different evidence and the difference is the point: Q-0074/Q-0109 were literally one function declared twice, while Q-0066/Q-0068 are two unlike defects on **one surface** — `packages/cli/src/adapters.ts`'s own module header names both tickets in one docblock, the combined file set is eleven files that are the same eleven, one gate rules both questions and neither owes a decision entry. **A third defect on that same command has no ticket**: `quorum adapters` exits 0 with both CLIs absent, whose successor is named as *"Q-0090's GA-4"* — an instruction to open a ticket that lives only inside Q-0090's own merged requirement, never acted on, with Q-0090 closed since 2026-09-02. **That is the second orphaned obligation found this week**, after Q-0100's imperative living only in a `project.ts` JSDoc, and together they are a seventh direction of this page's drift: *an obligation recorded inside a closed ticket rather than as a ticket*. Q-0105 is the counter-example that shows it is avoidable, having opened Q-0108 and Q-0109 at its own close. **Q-0109 was absorbed into Q-0074** and is `abandoned` after one day, on a measurement neither ticket had: `safe()` is declared byte-for-byte **twice**, in `fanout/fanout.ts:206–208` and `git/git.ts:19–21`, with 23 call sites between them, and both tickets were asking what a caller does with its `null`. Q-0074 keeps the id because a landed decision entry cites it by name. Its first task is now a census of those 23 rather than a widening, and its split seam is written into the body in advance instead of left for a gate to find. **The fifteen pre-cutover ticket bodies were corrected** in the same session: all of them named the deleted `spike/` and nine imposed a *both trees together* rule with no second tree, so each gained an *After the cutover* section saying what is void and where its subject now is — additive only, no verdict moved. Re-measuring found more than paths: Q-0060's second defect survives the port through a `parsedTasks` that looks like a parse and is a cast, Q-0076's prompt-to-output ratio has halved from 3.4x to 1.97x so its headline no longer aims the fix, and Q-0067 is unblocked with its version drift widened twice in eleven days. **The open list was triaged against the tree and two bullets here were wrong about what is open**: Q-0063 was closed 2026-08-26 and ported by Q-0047 while its bullet still described the defect in the present tense and called CI red for it, and Q-0100 shipped 2026-09-06 while its bullet still read `draft`. Both are corrected below with what shipped. Nothing checks a bullet's stated stage against the ticket's own frontmatter — `plan-backlog.test.ts` asks whether a ticket **exists** on both sides and, under a closed milestone, whether it is still `draft`, and M2 is open — which is a **sixth direction** of the drift this page records five of. The other eighteen open tickets were each checked against the code and every one still has its subject; what has rotted is their **landing constraints**, since all fifteen opened before the cutover name `spike/` and nine impose a *both trees together* landing rule that no longer has a second tree. Q-0100 also closed owing a decision entry recorded only in a `project.ts` JSDoc and in no ticket, which is the Q-0108/Q-0109 shape arriving through a source comment. **Q-0105 is closed**, at `reviewed` and contained, with its two deliberate deferrals opened as **Q-0108** and **Q-0109** rather than left in its entry to expire — which is what an obligation recorded only in a closed ticket's entry does, and this page records five directions of that drift already. **Q-0105 is `reviewed` and contained**, and its GO-3 earned its existence: every local signal was green in both environment rows and CI was red on all three jobs, on a test whose verdict turned out to be a property of the machine — inside the sweep built to forbid exactly that. So the ticket opened because nothing noticed `main` was unvalidated was itself unclosable on a local verification, which is the argument for the obligation made by events rather than by reasoning. 2026-09-06 — **Q-0105 reached `requirements`**, and it caught its own subject while it ran: the body had been corrected hours earlier to say `main` was level with `origin/main`, and the run measured it **2 commits ahead** — that same session's own commits, unnoticed within hours of the zero being recorded. Its iteration 2 is also the third instance of *"a retry on an unchanged tree cannot rule its own blocker"* and the first where the second pass found something anyway, by re-examining whether two of iteration 1's three blockers were blockers at all. **Q-0102 was parked at `p2`**, the first ticket here retired by measuring its own premise dead rather than by shipping anything: 0 failures in 36 local sweeps and 0 in 28 CI sweep cells across fourteen consecutive green runs, against an opening claim that *"every push is red or lucky"* which was an inference made while `main` stood 89 commits ahead of `origin/main` — Q-0105's subject, and now the second thing that gap hid. Its GO-1 is what parked it: at that rate no fix can be shown red before green, and no step in the requirements flow can produce a failure rate, so a run would have been the sixteenth appearance of a loop handed work no agent in it can perform — **recognised before the money was spent, for the first time**. The sighting stands, the reopening threshold is written into the ticket, and the `p1` half that survives is that a flaky oracle trains the reader to re-run until green. **Q-0103 ran the cutover**, so M2's done-when reads one required suite rather than two and Q-0009's *"what is not done"* is discharged: `spike/` is deleted with its CI job, the three port-freeze jobs, `harness/port-charter.md` and `packages/core/src/spike-parity.test.ts`, and Q-0010's second inherited obligation — the binary half of that suite — is recorded as landed in Q-0095 and Q-0101. The transfer share this page moved four times went with the register that re-derived it, having measured how much work was left rather than a property of the workspace. Three of M2's tickets are open behind it: Q-0102, Q-0104's successor Q-0105, and the citation sweep the cutover deliberately did not do. 2026-09-05 — **Q-0101 shipped and Q-0103 was allocated at its close**, so M2's last substantive item is the cutover itself. Q-0101's entry is written to what happened: a requirements run that refuted its own inherited body in four places, three errata all written at gates, and five implement rounds of which the last three went on blockers no step on the route could clear. Its post-merge verification went red and the revert was **refused on measurement** — twelve interleaved iterations per arm in fresh built clones returned 0 and 0 at both commits — with the instance recorded in Q-0102 as the second measured appearance of that ticket's subject. Q-0102 was also corrected to `p1` in its frontmatter, which had said `p2` while this page and the ticket's own section header both argued p1; nothing checks the two against each other, which is a fourth direction of the drift this page already records three instances of. 2026-09-02 — M1 closed; M2's ticket list extended 2026-08-24 with the Q-0034–Q-0037 reconciliation work, again overnight with Q-0038–Q-0040, opened from Q-0035's chore review and from the items the M1 and Q-0034 entries defer to M2, and again on 2026-08-25 with Q-0041–Q-0054, the per-module cut of Q-0009's port, and with Q-0055–Q-0057, opened from Q-0041's chore run and its erratum, and again on 2026-08-26 with Q-0058–Q-0061, the four new defects Q-0043's implement step reported and did not fix, and with Q-0062–Q-0064, opened from Ruud's review of the harness the same day — the worktrees nothing prunes, the unhandled `EPIPE` that has been failing CI since 2026-08-24, and `core/src`'s folder layout — and with Q-0065, raised as an open question by Q-0064's own requirements run, and with Q-0066, the live probe defect Q-0046's chore run preserved and pinned rather than fixed in passing, and again on 2026-08-27 with Q-0067 and Q-0068, both opened at Q-0047's requirements gate — the deferred version probe, and the product name in the BYOS refusal, and later the same day with Q-0069, the deprecated zod API and the gate gap that let it accumulate (Q-0065's body, which had been appended to Q-0066's entry in the previous edit, was returned to it in the same change), whose own line was rewritten to what shipped later that day when it was implemented, and corrected again once its AC-11(b) was closed by human commit and the surface question behind it was ruled. Q-0070 was added the same day, split from Q-0065 at its requirements gate, and Q-0071 with it once Q-0065 shipped and its implement step reported CI carrying the same hazard; Q-0071's own entry was rewritten later that day to what its implement branch did — because an entry describing CI as it stood before that branch contradicted `04-architecture.md` §Testing while the change was in flight — and rewritten once more when it shipped. Q-0072 was opened the same evening from the successor Q-0071's requirements run had drafted in full, and its entry was rewritten to what shipped on 2026-08-28, when Q-0073 was also opened — from the defect Q-0072's own merge left on `main` and every gate reported green over. Q-0070's entry was rewritten on 2026-08-28 when its requirements run landed and both of its blocking questions were settled at the gate, so the line no longer says a decision entry is owed. Q-0073's own entry was rewritten to what shipped later that day, when its chore run also produced a second decision — the nit rule — from a defect that stopped the run rather than from its subject. Q-0070's entry was rewritten again once it was implemented by hand, and Q-0075 and Q-0076 were opened from the two successor bodies its requirement had written out in full — the run-history cap, and the passing command's discarded stderr. Q-0049's entry was rewritten to what shipped the same evening — the first port child to close its revise loop on an erratum rather than at an exhaustion gate — and Q-0037's, Q-0051's and Q-0052's bodies were amended by hand in the same session with the obligations that run declined. Q-0051's entry was rewritten on 2026-08-30 to what shipped — the port's eleventh child, and the first whose requirement was run twice because Q-0038 landed on its subject between the two, the aborted document archived rather than resumed. Q-0057's entry was rewritten the same day to what shipped, taken in the gap between port children because the chore flow it fixes is what every remaining child runs. The working agreement on ticket ids was corrected on 2026-08-30 by Q-0080, which fixed an allocator that read every `Q-` id as unparseable and answered `T-0001` on every call: the prefix is the adopter's and is derived from the backlog, so stating this repository's convention as the product's was the same mistake one layer up. Q-0079's entry gained its three cross-vendor review rounds the same evening, run by hand before its stage could honestly read `reviewed` and returning `revise` every time. Q-0079 and Q-0080 were opened and closed the same day, 2026-08-30 — the first from the third instance in three days of a test whose verdict depended on the machine rather than the commit, implemented by hand rather than ticketed further; the second split from its body and run through the flows, because it changes product behaviour on the cold-clone path. Q-0052's entry was written on 2026-08-31 when it shipped as the port's twelfth child, and five tickets were folded into this list in the same edit: Q-0074 and Q-0077, which had been open and shipped respectively while appearing nowhere in it — Q-0074 not at all, Q-0077 only inside Q-0050's prose — and Q-0081, Q-0082 and Q-0083, opened from Q-0052's own run. The gap is worth naming rather than quietly closing: a ticket can exist in `backlog/` for three days without this page knowing, because nothing checks the two against each other, which is the same class as the defects Q-0072 and Q-0073 closed one layer down. **M2's smoke-test done-when was split on 2026-08-31 by Q-0054**, the port's last child: the library half is Q-0054's and is done, the mock end-to-end through the binary is Q-0010's, and the "30-check" figure — a 2026-08-21 count repeated here as a present-tense requirement while the file held 151 assertions at the time — is corrected in this page and in `04-architecture.md` while the append-only entry it came from is left alone. Q-0054's own entry was rewritten in the same edit to what shipped. Q-0009's port closed on 2026-08-31 with all fourteen children contained, and Q-0053's entry and the parent's were written the same evening, together with charter §9's cost checkpoint — performed at the close rather than after the first three children, which is recorded as a process failure rather than presented as compliance. M2's done-when corrected 2026-08-25 (Q-0009): the zod schemas live in `packages/shared` and `core` imports them, which is what 04-architecture.md always said. **Q-0058 shipped on 2026-08-31** as the first ticket run through the flows after the port closed, and
 its entry was rewritten in the same edit. **Q-0084** was opened from the defect its implement step
 found in Q-0079's sweep and correctly declined to fix, and withdrawn the same day once the sweep's
 own header was found to answer the question it had been opened on; the fix landed by hand instead,
@@ -168,7 +168,7 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
 
 ---
 
-## M2 — `packages/core` in TypeScript, Quorum develops Quorum (≈ 2 weeks)
+## M2 — `packages/core` in TypeScript, Quorum develops Quorum (≈ 2 weeks) — ✅ closed 2026-09-10
 
 **Goal:** the spike becomes the product core; from here every feature is a ticket run through the flows.
 
@@ -1125,45 +1125,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
     a different test. The first A/B compared a working tree against a clone and blamed the commit —
     which is Q-0102's own subject reproduced by the investigation into it.
     **Q-0103 was allocated at this ticket's close**, per GO-4, rather than remembered.
-  - Q-0102 The git-identity sweep is red under load, and CI runs it. *(Opened 2026-09-04 at
-    Q-0095's merge; **parked at `p2` on 2026-09-06**, `draft`, having been `p1` since 2026-09-05.)*
-    **The ticket opened on a red that no longer exists, and the parking is a measurement rather than
-    a judgement about whether the sighting was real.** Its premise — *"`pnpm sweep:git-identity`
-    exits 1 on `main`, and `ci.yml` runs it as two required jobs, so every push is red or lucky"* —
-    was an inference from one local sighting at a time when `main` stood 89 commits ahead of
-    `origin/main` and CI had not run for four days, which is Q-0105's subject. Measured at tip
-    `a86c3fa`: **0 failures in 36 local sweeps and 0 in 28 CI sweep cells**, across the fourteen
-    consecutive green runs from the `fail.test.ts` fix onward — 16 of those cells before Q-0103's
-    cutover and 12 after, so the greens are neither explained nor granted by the cutover.
-    **The original sighting stands and is not withdrawn**: first-hand, twice consecutively, in phase
-    `workspace suite`, with the survivors clustering on `worktree-lifecycle.test.ts` and
-    `undecided.test.ts` — files that pass 29/29 in isolation, already build a repository per case
-    under `os.tmpdir()`, and cannot delete each other's fixtures under Vitest's per-file isolation.
-    Four causes are measured and excluded across two instances: the commit, the checkout shape, CPU
-    saturation, and a concurrent second suite.
-    **What parked it is GO-1 rather than doubt.** *Establish a failure rate at a fixed commit before
-    repairing* binds, and at 0-in-36 and 0-in-28 no fix can be shown red before green — so every
-    shape in the ticket would ship as a change nothing could prove was a repair, which is *"A check
-    is not established by reading it"* (2026-08-29) arriving as a whole ticket. **A requirements run
-    could not have rescued it**: no step in that flow can produce a failure rate, so launching would
-    have been the sixteenth appearance of a loop handed work no agent in it can perform. That is the
-    first time this pattern has been recognised *before* the money was spent rather than after.
-    **The `p1` argument is superseded on one half and survives on the other.** *"Every push is red or
-    lucky"* is refuted. *A flaky oracle trains the reader to re-run until green* is not, does not
-    depend on a rate, and is what keeps this open at `p2` instead of closed — Q-0079 built the sweep
-    as the oracle for *"A test's verdict is a property of the commit, not of the checkout or the
-    account"* (2026-08-30), with the tripwire explicitly not covering the checkout-shaped instances.
-    **The load the leading hypothesis rests on halved underneath the ticket**, which nobody planned
-    for: Q-0107 AC-16 and Q-0103 took the second suite out of the sweep, measured locally at 57.7 s
-    against the ticket's own 105–132 s. The named lead is intact and re-verified rather than
-    transcribed — no `testTimeout` anywhere in the tree, so Vitest's 5-second default governs, while
-    `worktree-lifecycle.test.ts` makes 18 synchronous `git` spawns and `undecided.test.ts` 4 — and it
-    is recorded as a lead, not adopted as a cause. GO-2 outlives the parking: no fix may make the
-    sweep green by weakening what it runs. **Three things reopen it at p1**, written into the ticket
-    so the threshold is not re-derived: a CI sweep cell failing on the `@quorum/core` cluster rather
-    than on an unrelated broken test, a local sweep failing at a tip whose unswept suite passes, or a
-    third measured instance of the class — which would make *load is a third term beside the checkout
-    and the account* a pattern rather than two sightings.
   - Q-0103 The cutover: delete the spike, retire its CI job and its charter. *(`reviewed` and
     `main:contained` 2026-09-06.)* **$58.84** — $11.21 requirements, $47.64 chore across three
     implement rounds ($32.63 / $10.02 / $4.99), ending at an exhaustion gate answered `advance`.
@@ -1632,7 +1593,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   registrations, remove what is contained), written out in full in that ticket's merged requirement;
   until it exists, a run cleans up only after itself and nothing removes what earlier runs left.
 - ~~Q-0011 Run history on disk~~ — pulled forward into M1 and closed there.
-- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
 - Q-0034 Reconcile the unmerged green branches (Q-0006, Q-0011) — land both, re-derive the empty-diff cause.
 - Q-0035 The empty-range diagnostic reports evidence, not a story. *(`reviewed` and
   `main:contained` 2026-08-25.)*
@@ -2015,22 +1975,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   Verified in both environment rows: the hand `integrate` ran install exit 0 and the suite 7/7 forced
   0 cached in a worktree with neither `.harness/worktrees` nor `.quorum/runs`, then forced again on
   `main` after the merge, with `pnpm lint`, `quorum lint` 6/6 and the git-identity sweep exit 0.
-- Q-0114 A stale run lock is detected rather than left for a human. *(Opened 2026-09-09 at Q-0039's
-  requirements gate as its GO-2, `draft`, p3.)* Q-0039 ships a lock that refuses and is never
-  reclaimed, so after a SIGKILL or power loss **every subsequent run of that ticket refuses until
-  somebody deletes a file**. This asks whether the product can tell the difference safely, and it
-  **owes a decision entry first** — naming Q-0074 and stating the probe's closed set of answers
-  including the one that means *could not tell*, which is the shape containment, push lag and
-  verified version all have. If built: the probe answers `gone`, `alive` or `indeterminate` and
-  never a boolean, `indeterminate` refuses exactly as today so only the provable case moves, and a
-  lock whose recorded hostname is not this machine is never reclaimed whatever the pid says.
-  **It must not introduce a two-process race into the suite** — Q-0102 is parked on that shape and
-  Q-0039's AC-11 refuses it; the race-to-reclaim property is provable in-process against the claim
-  primitive, because Q-0039's ownership token is what makes recovery safe rather than the probe.
-  Strictly after Q-0039: recovery has no subject until a lock exists. **Its body is Appendix A of
-  Q-0039's merged requirement, transcribed in full** — written as a ticket at the gate because three
-  obligations found this week (Q-0110's, Q-0111's, Q-0112's) had lived only inside a closed ticket's
-  prose or a source comment, one of them since 2026-09-02.
 - Q-0040 A gate can say "undecided". *(Folder created 2026-08-31, `draft`.)* A non-interactive run
   that reaches an unanswerable gate currently fails, and `finish()` then rolls back work the run had
   already proven green — it has cost Q-0036 and Q-0035 their merges on consecutive nights. Traced
@@ -2076,10 +2020,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   after Q-0044 so the fix is written once in the ported lint. Its body also carries a neighbour that
   still needs its own ticket — a later run's review overwrites an earlier run's, because
   `chore.yaml:34`'s `{iter}` is run-scoped.
-- Q-0056 What `route` is, and the qa-final sketch that cannot lint. Blocks Q-0012: the sketch at
-  `02-sdlc-pipeline-spec.md:345–376` fails the real `lintFlow` on both of its verdict steps, and
-  `route` has three incompatible descriptions (a step property in lint, a step kind in the spec,
-  unimplemented in the engine) with no shipped flow using it.
 - Q-0057 A chore run's reviews overwrite the previous run's, and the survivors mix. *(`reviewed`
   and `main:contained` 2026-08-30.)* `review/chore-iter-{iter}.md` is now
   `review/chore/run-{run}/chore-iter-{iter}.md` in both shipped `chore.yaml` copies, write path and
@@ -2250,21 +2190,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   (`spike/src/backlog.js:34`, now `packages/core/src/backlog/backlog.ts`). Q-0043's non-goals carry the
   write-side twin but name `writeFile` only. Barely reachable today because every caller passes a
   CLI argument; M3's server takes a ticket id over HTTP, so it wants settling before the daemon.
-- Q-0113 A flow may declare a path that escapes the ticket folder. *(Opened 2026-09-08 at Q-0059's
-  requirements gate from its **OQ-4**, which ruled the lint rule out of that ticket and out of its
-  closing entry — the counter-example to the two obligations found orphaned this week living only
-  inside a closed ticket and a source comment.)* `lintFlow` accepts a traversing `writes:`, `write:`
-  or `input.backlog` entry, so a bad flow is caught at run time if at all. **Nothing is unguarded
-  while it waits**: Q-0059's engine guard refuses such a path at the boundary whatever a flow
-  declares, and what is missing is the *early* refusal, before a paid run rather than during one.
-  The instrument is the question — lint rule, engine only, or both with the lint rule deriving its
-  predicate from `packages/core/src/backlog/confine.ts` so the two cannot disagree. Depends on
-  Q-0059, which creates that primitive; starting first is how the lint rule grows its own copy.
-- Q-0060 A damaged or CRLF `ticket.md` reads as a ticket with no fields, silently. The regex at
-  `backlog.js:12` is anchored on `\n` and line 13 falls open to `{ meta: {}, body: text }` — no
-  error, contradicting the "never default silently" rule, under the module the product calls its
-  database. Constrained by `parseFrontmatter` also being the role-file reader
-  (`engine.js:727–732`), and the obvious fix is refused by Q-0043's AC-4.
 - ~~Q-0061 The containment "writes nothing" test snapshots `.git`~~ — **absorbed into Q-0064**
   2026-08-26. Same surface: Q-0064 already moves `git.test.ts` and rewrites `packages/core/test/`,
   where `walk` lives beside `coreSourceFiles`. Its body stays as the evidence.
@@ -2488,27 +2413,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   Verified in both environment rows: `integrate` ran install exit 0 and the suite exit 0 in its
   worktree, then forced on `main` after the merge — 7/7 tasks 0 cached, `pnpm lint` clean, `quorum
   lint` 6/6, and the git-identity sweep exit 0, which is itself the both-rows run.
-- Q-0068 A healthy login reads unusable, and the refusal misnames the product. *(Retitled 2026-09-07
-  when it absorbed **Q-0066**, and raised **p3 → p2** with it: a word is a p3, a healthy login
-  reported unusable is not.)* It now carries both defects `quorum adapters` reports wrongly, over one
-  eleven-file surface, and its two questions — *what does `tokens` mean when nothing was measured*
-  and *what does the sentence say instead* — are answerable by one person at one gate, neither owing
-  a decision entry. **Its two strings are also the last place in shipped source that calls the
-  product "Harness"**, verified 2026-09-07, and Q-0100 landed the sibling class on 2026-09-06 while
-  setting this one aside by name — so the rename it belongs beside has already shipped. **A third
-  defect on the same command has no ticket at all**: `cli/src/adapters.ts:20–23` records that
-  `quorum adapters` exits 0 with both CLIs absent, preserved under Q-0099 AC-8(c) with its successor
-  named as *"Q-0090's GA-4"* — and GA-4, which says *"open the successor"*, exists only inside
-  Q-0090's own merged requirement. **No such ticket was ever created**, and Q-0090 closed
-  2026-09-02. That is the second obligation found this week living only inside a closed ticket,
-  after Q-0100's, and it is named here rather than folded in. *(Original scope follows.)*
-  `claude.js:12`, `codex.js:21`, their ported
-  twins, and the two pinned fixtures at `smoke.js:464` and `adapters.test.ts:314` say *"Harness runs
-  on subscription OAuth only"*, which `.claude/rules/product-boundaries.md` forbids. Reported by
-  Q-0046 and again by Q-0047, both of which correctly preserved it: a fix in `core` alone leaves the
-  spike disagreeing until the cutover, which is the divergence the freeze exists to expose. Lands in
-  both trees together, like Q-0066. The decision is what the sentence says instead — it is on the
-  cold-clone path, so worth more than a `sed`. Opened at Q-0047's requirements gate (Q-4).
 
 - Q-0069 A deprecated zod API is in use, and nothing in the repository can detect one. *(Implemented
   2026-08-27.)* `packages/shared`'s 21 `.passthrough()` calls — an API zod 4.4.3 marks `@deprecated`
@@ -2728,35 +2632,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   git 2.55, `ls-files --cached` reports two entries over one file on disk, so the audit was right.
   See *"Membership is a git question, not a filesystem one"* (2026-08-28).
 
-- Q-0074 A failed git probe is read as a proven negative. *(Retitled 2026-09-07, when it absorbed
-  **Q-0109**; it was "The engine cannot tell git failed from an absent branch", which named half of
-  what it now covers.)* **The merge is a measurement rather than a tidy-up.** `safe()` —
-  `try { return fn(); } catch { return null; }` — is declared **exactly twice in the workspace, byte
-  for byte**: `fanout/fanout.ts:206–208`, this ticket's subject, and `git/git.ts:19–21`, which was
-  Q-0109's. Same name, same signature, same body, no third copy anywhere in `packages/*/src`.
-  Neither ticket knew, and both were asking the same question of it — **what does a caller do with
-  "could not answer"**. So the real subject is one primitive with **23 call sites**, of which the two
-  bodies between them named five: `repositoryAt` (`git.ts:71`) and the four in `fanout.ts` this
-  ticket has always carried. The first task is a **census**, not a widening — `git.ts:157`'s
-  `branch -D` and `fanout.ts:317`'s `merge --abort` are best-effort cleanups where a failure really
-  is nothing to say — and the answer's shape is already written twice in the file Q-0109 was opened
-  against, because Q-0105 needed this discrimination for push lag and deliberately did **not** reach
-  for `safe()`: `workTreeProbe` is `'inside' | 'outside' | 'failed'` and `resolvesToCommit` is
-  `boolean | null`, each reading git's exit status instead of discarding it. **The `git/` half is the
-  one that could get lost**: this ticket's four cases are each pinned by a `Why: preserved defect`
-  test and named in `composite.ts:17`, while Q-0109's two have no pin and no pointer, and
-  `repositoryAt`'s own JSDoc claims the discrimination that `safe()` throws away — a sentence that is
-  part of the repair. The id survives because *"What a run's event stream carries"* (2026-08-28)
-  cites **Q-0074** by name and a landed entry is never edited. **The split seam is written into the
-  body in advance** rather than left for a gate to discover, which is what Q-0091 and Q-0096 each
-  paid for: if it splits, it splits by module, and the decision entry goes with whichever half runs
-  first. Opened 2026-08-28 from Q-0050's
-  OQ-4, whose successor body that merged requirement wrote out in full so the obligation could not
-  expire. Created **by hand at id Q-0074** rather than through `harness ticket new`, which would
-  then have allocated Q-0077: the id is already cited by name in *"What a run's event stream
-  carries"* (2026-08-28), in Q-0050's `requirements/merged.md` OQ-4 and in that ticket's
-  `solution/errata.md`. Absent from this plan's list until 2026-08-31, which is the gap the entry
-  itself now closes.
 - Q-0077 `harness run --base <ref>`, so a contained ticket can still be reviewed. *(`reviewed`;
   the board reads `main:indeterminate(no branch)`, a hand-run ticket naming a branch nothing
   created.)* Opened and shipped mid-Q-0050, where rounds 4 and 5 could not use the review flow at
@@ -2766,44 +2641,8 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   `{base}...integration`"* item, arriving as a blocker rather than a nicety. It moves the **diff
   anchor** only and never the branch a rework step or `integrate` merges from — see `--base` in
   `docs/GLOSSARY.md`. Round 6 of Q-0050 is its first real use.
-- Q-0075 A passing command's stderr is discarded, so a green suite loses its warnings. Opened
-  2026-08-28 from Q-0070's OQ-6. `runCommand` returns stdout only on the success path and stdout
-  then stderr on the failure path; `CommandResult`'s own JSDoc documents the asymmetry and
-  **nothing tested it** until Q-0070's AC-2 did, because `printf hello` writes no stderr. Q-0070
-  preserved it deliberately — changing it inside a capture fix would have been scope creep wearing a
-  bug fix's clothes — and made it visible, written down and tested instead. The question is not
-  whether stderr is useful but **whether `out` is the artifact a human reads or the one a machine
-  parses**, since changing it gives every *green* `integrate` run's integration notes all of
-  turbo's and vitest's stderr, which is most of their output; `testReport` already answers that
-  differently for each consumer. Lands in both trees together, and would deliberately change the
-  AC-2 assertions that now pin the current behaviour rather than discover them.
 
-- Q-0078 A deferred diff site can be served an earlier site's cached materialisation. Opened
-  2026-08-30 from Q-0038's round-4 review and its erratum E-3(b). `ctx.diffInputs` is keyed by the
-  interpolated range alone, so a site that materialises `X...Y` before a later group creates `Y`
-  leaves bytes that the correctly-deferred second site then receives from the cache, because
-  `buildPrompt` prefers `ctx.diffInputs?.get(range)` unconditionally. Pre-existing — `buildPrompt`
-  is byte-identical across Q-0038 and neither preflight ever removed a cached entry on deferral —
-  and unreachable in every shipped flow in both trees, which is why it is p3 and why keeping it out
-  of Q-0038 was right. It needs a requirement rather than a line: the obvious fix, invalidating on
-  deferral, makes two sites materialise the same range at different moments, which Q-0038's AC-10
-  (*"every panel member receives identical bytes"*) forbids, so the choice among keying by site,
-  invalidating, and forbidding the shape in `harness lint` is the work. One tree until Q-0051 ports
-  the diff subsystem; unlike Q-0038 it does not block the port.
 
-- Q-0076 Nothing in run history has a cap, and prompts are the largest thing in it. Opened
-  2026-08-28 from Q-0070's OQ-5, whose body the merged requirement wrote out in full rather than
-  promising it. Not a defect Q-0070 introduced but a bound it removed: `persistArtifact`
-  (`engine.js:429`) writes the string whole and always did, and the 1 MiB `maxBuffer` was the only
-  thing capping `output.txt` — incidentally, never by design. Measured at that gate, and the numbers
-  redirect the ticket: the largest `output.txt` is **71,318 B**, while the largest run-history file
-  of any kind is a **242,181 B review `prompt.txt`** that nothing bounds either, 3.4× larger; total
-  `.quorum/runs` is 16 MB. So the question is whether run history is **archival** — everything stays
-  whole and the cap belongs on the disk rather than on any one string — or **diagnostic**, in which
-  case the treatment belongs on prompts first and `output.txt` second. `testReport`
-  (`engine.js:505–516`) already keeps 12,000 bytes of head and tail with an omission marker and is
-  the shape to copy if a cap is wanted. Do not re-derive the evidence from Q-0070's headroom
-  numbers, which measure a different thing.
 - Q-0079 A test may not depend on the machine's git configuration. *(Implemented by hand
   2026-08-30, `main:contained`; the ticket stays at `requirements` because no engine run advanced
   it.)* Opened from the third instance of one class in three days, each found only **after**
@@ -2947,18 +2786,6 @@ no red phase — should be settled before M3's daemon makes concurrent runs ordi
   over all of it. The proof that matters is not a test: `harness ticket new` now answers `Q-0081`
   in this repository, run and the probe deleted.
 
-- Q-0081 A role naming no adapter lends its model to any vendor. Opened 2026-08-31 by Q-0052's
-  errata E-1. `resolveModel`'s guard suppresses a role default on adapter **inequality** and never
-  on **absence**, so a role carrying `model:` without `adapter:` passes that model to whichever
-  adapter resolved — the Q-0001 failure reached by a route the clause was not written to close.
-  Register row 2's third clause, Q-0052's AC-4(a) and Q-0052's ticket body all state the strict
-  form and the code has never matched any of them; the frozen coverage cannot tell them apart,
-  because `smoke.js:621–627` names an adapter in all three of its rows. The ticket owes a decision
-  about **which of the two moves** — the code adopts the strict form, or the prose is corrected on
-  the reading that a role naming no adapter is *unscoped* rather than *wrong-vendor*, which is what
-  a default is for. Shape 1 was already written once, by Q-0052's round 3, and the body says not to
-  adopt it for that reason: the round that wrote it was never asked the question. Latent — all 21
-  role files across both trees carry an adapter wherever they carry a model. Both trees together.
 - Q-0082 The preflight reports what it deferred, or the rule is amended. *(`reviewed` 2026-09-07,
   closed by hand — the whole deliverable was a decision entry, the Q-0085 shape, and **no code
   changed**.)* **The answer is neither of the two the ticket offered.** See *"A deferral is not a
@@ -3052,6 +2879,57 @@ code is contained in `main`, and what a stage means after a backward edge is und
 Q-0040 are listed above rather than left here because both entries say they should land before M3
 makes concurrent and unattended runs ordinary.
 
+
+*Closed 2026-09-10 — see the DECISIONS entry. All five done-when criteria met, verified against the
+tree rather than against this page: the scaffold stands, `packages/core` holds the eight ported
+subsystems and imports `zod` zero times, one suite runs on Vitest across three CI jobs where seven
+stood, `packages/cli` dispatches all eight commands with `quorum` runnable by both claimed paths,
+and `spike/` is gone — `pnpm exec quorum board` and `quorum run` are what develop this repository.*
+
+***$2,803.12 billed and 3.63 billion tokens across 197 runs, over 85 tickets*** *— 55 through the
+flows, 15 by hand, 11 open, 4 abandoned — and* ***48 decision entries***, *039 to 086.*
+
+***The measurement nobody went looking for: the seven-stage SDLC was exercised by four tickets.***
+*`solutioning`, `qa-red` and `development` ran for Q-0006, Q-0011, Q-0033 and Q-0050 and for nothing
+else; `review` for three of those; and three of the four are* ***M1's***. *Everything else went
+`requirements` → `chore`, 62 and 55 runs against 39 for the whole of the rest, while `qa-final` and
+`deploy` have never existed at all (Q-0012). That is not a failure — the chore flow was made for
+machinery in M1 and M2's work* ***was*** *machinery — but it is a sequencing fact:* ***the flows M3's
+feature work will use have four tickets of evidence between them, all from August, and the route it
+will not use has fifty-five.***
+
+***What the panel is worth, re-derived over the whole corpus:*** *145 review verdicts,* ***108
+`revise` to 37 `approve`, 74%*** *— against the 71% this page cited from a sample of 59 partway
+through, which did not move. Gate answers: 139 `advance`, 29 `retry`, 11 `abort`.*
+
+***Fifteen tickets were finished by hand and each reason generalises***, *which is the honest form of
+the dogfooding claim: the deliverable* ***is*** *a decision entry (Q-0082, Q-0085); the change is to
+the flow or engine the run loads at start, so the run cannot benefit from its own fix (Q-0083,
+Q-0086 to Q-0089); the gate costs more than the work (Q-0108, Q-0110 to Q-0112); or something was
+broken now (Q-0063, Q-0104). Q-0077 is its own kind — the flow could not review a merged ticket, so
+its fix had to be made outside it. Roughly one ticket in five changes what the repository* ***is***
+*rather than what it* ***does***.
+
+***Q-0006, Q-0011 and Q-0033 were swept at the close.*** *They read `green`, `red` and `green`
+because a backward edge moved them and no later run moved them forward, while their code has been in
+`main` since M1. Each is now `reviewed` with a `runs.log` note saying so — a board that misreports
+three tickets is wrong about the one question a board exists to answer, which is M0's finding
+arriving a second time.*
+
+**The eleven open tickets, triaged against M3 rather than carried silently.** Three touch surfaces
+the daemon turns on and want settling before it: **Q-0060** — a damaged or CRLF `ticket.md` reads as
+a ticket with no fields, under the module the product calls its database, which M3's server will
+read over HTTP; **Q-0074** — a failed git probe read as a proven negative, whose `safe()` has 23 call
+sites and whose answers a server surfaces; and **Q-0076** — nothing in run history has a cap, and
+prompts are the largest thing in it, which M3 serves. **Q-0113** is the early refusal for a
+traversing flow path, bounded today by Q-0059's runtime guard, and **Q-0114** is Q-0039's successor.
+**Q-0056 → Q-0012 is the pair that finishes the product**, and the four-tickets-of-evidence finding
+above is the argument for moving them up rather than leaving them where they have sat: `route` has
+three incompatible descriptions and the `qa-final` sketch cannot lint, so two of the seven flows do
+not exist. **Q-0068** (p2) is on the cold-clone path and is cheap. **Q-0075**, **Q-0078** and
+**Q-0081** are p3 and latent, each registered with the reason it is not urgent. **Q-0102** stays
+parked at p2 with its three written reopening thresholds.
+
 ---
 
 ## M3 — Daemon + mission control (≈ 3 weeks)
@@ -3072,6 +2950,202 @@ makes concurrent and unattended runs ordinary.
 - Q-0017 Backlog board + ticket page (folder rendered as tabs).
 - Q-0018 Run history + trace drill-down.
 - Q-0019 Resume interrupted runs.
+
+
+**Carried from M2, triaged rather than inherited.** These twelve were opened during M2 and are not
+its done-when; they are listed here because a closed milestone must not own open work, which is what
+`plan-backlog.test.ts`'s third direction says when it fires. The order is the argument.
+
+**The pair that finishes the product, and the four-tickets-of-evidence finding is why it moves up.**
+`solutioning`, `qa-red` and `development` ran for four tickets in the whole of M2 and `qa-final` and
+`deploy` have never existed at all — so the flows M3's feature work will use are the least exercised
+thing in the repository.
+
+- Q-0056 What `route` is, and the qa-final sketch that cannot lint. Blocks Q-0012: the sketch at
+  `02-sdlc-pipeline-spec.md:345–376` fails the real `lintFlow` on both of its verdict steps, and
+  `route` has three incompatible descriptions (a step property in lint, a step kind in the spec,
+  unimplemented in the engine) with no shipped flow using it.
+- Q-0012 `qa-final.yaml` and `deploy.yaml` (human-locked gate) — completes the seven SDLC flows (eight shipped files, counting `chore`).
+
+**Three the daemon turns on**, each a surface a server reads that a CLI never did.
+
+- Q-0060 A damaged or CRLF `ticket.md` reads as a ticket with no fields, silently. The regex at
+  `backlog.js:12` is anchored on `\n` and line 13 falls open to `{ meta: {}, body: text }` — no
+  error, contradicting the "never default silently" rule, under the module the product calls its
+  database. Constrained by `parseFrontmatter` also being the role-file reader
+  (`engine.js:727–732`), and the obvious fix is refused by Q-0043's AC-4.
+- Q-0074 A failed git probe is read as a proven negative. *(Retitled 2026-09-07, when it absorbed
+  **Q-0109**; it was "The engine cannot tell git failed from an absent branch", which named half of
+  what it now covers.)* **The merge is a measurement rather than a tidy-up.** `safe()` —
+  `try { return fn(); } catch { return null; }` — is declared **exactly twice in the workspace, byte
+  for byte**: `fanout/fanout.ts:206–208`, this ticket's subject, and `git/git.ts:19–21`, which was
+  Q-0109's. Same name, same signature, same body, no third copy anywhere in `packages/*/src`.
+  Neither ticket knew, and both were asking the same question of it — **what does a caller do with
+  "could not answer"**. So the real subject is one primitive with **23 call sites**, of which the two
+  bodies between them named five: `repositoryAt` (`git.ts:71`) and the four in `fanout.ts` this
+  ticket has always carried. The first task is a **census**, not a widening — `git.ts:157`'s
+  `branch -D` and `fanout.ts:317`'s `merge --abort` are best-effort cleanups where a failure really
+  is nothing to say — and the answer's shape is already written twice in the file Q-0109 was opened
+  against, because Q-0105 needed this discrimination for push lag and deliberately did **not** reach
+  for `safe()`: `workTreeProbe` is `'inside' | 'outside' | 'failed'` and `resolvesToCommit` is
+  `boolean | null`, each reading git's exit status instead of discarding it. **The `git/` half is the
+  one that could get lost**: this ticket's four cases are each pinned by a `Why: preserved defect`
+  test and named in `composite.ts:17`, while Q-0109's two have no pin and no pointer, and
+  `repositoryAt`'s own JSDoc claims the discrimination that `safe()` throws away — a sentence that is
+  part of the repair. The id survives because *"What a run's event stream carries"* (2026-08-28)
+  cites **Q-0074** by name and a landed entry is never edited. **The split seam is written into the
+  body in advance** rather than left for a gate to discover, which is what Q-0091 and Q-0096 each
+  paid for: if it splits, it splits by module, and the decision entry goes with whichever half runs
+  first. Opened 2026-08-28 from Q-0050's
+  OQ-4, whose successor body that merged requirement wrote out in full so the obligation could not
+  expire. Created **by hand at id Q-0074** rather than through `harness ticket new`, which would
+  then have allocated Q-0077: the id is already cited by name in *"What a run's event stream
+  carries"* (2026-08-28), in Q-0050's `requirements/merged.md` OQ-4 and in that ticket's
+  `solution/errata.md`. Absent from this plan's list until 2026-08-31, which is the gap the entry
+  itself now closes.
+- Q-0076 Nothing in run history has a cap, and prompts are the largest thing in it. Opened
+  2026-08-28 from Q-0070's OQ-5, whose body the merged requirement wrote out in full rather than
+  promising it. Not a defect Q-0070 introduced but a bound it removed: `persistArtifact`
+  (`engine.js:429`) writes the string whole and always did, and the 1 MiB `maxBuffer` was the only
+  thing capping `output.txt` — incidentally, never by design. Measured at that gate, and the numbers
+  redirect the ticket: the largest `output.txt` is **71,318 B**, while the largest run-history file
+  of any kind is a **242,181 B review `prompt.txt`** that nothing bounds either, 3.4× larger; total
+  `.quorum/runs` is 16 MB. So the question is whether run history is **archival** — everything stays
+  whole and the cap belongs on the disk rather than on any one string — or **diagnostic**, in which
+  case the treatment belongs on prompts first and `output.txt` second. `testReport`
+  (`engine.js:505–516`) already keeps 12,000 bytes of head and tail with an omission marker and is
+  the shape to copy if a cap is wanted. Do not re-derive the evidence from Q-0070's headroom
+  numbers, which measure a different thing.
+
+**Two that follow work that just landed.**
+
+- Q-0113 A flow may declare a path that escapes the ticket folder. *(Opened 2026-09-08 at Q-0059's
+  requirements gate from its **OQ-4**, which ruled the lint rule out of that ticket and out of its
+  closing entry — the counter-example to the two obligations found orphaned this week living only
+  inside a closed ticket and a source comment.)* `lintFlow` accepts a traversing `writes:`, `write:`
+  or `input.backlog` entry, so a bad flow is caught at run time if at all. **Nothing is unguarded
+  while it waits**: Q-0059's engine guard refuses such a path at the boundary whatever a flow
+  declares, and what is missing is the *early* refusal, before a paid run rather than during one.
+  The instrument is the question — lint rule, engine only, or both with the lint rule deriving its
+  predicate from `packages/core/src/backlog/confine.ts` so the two cannot disagree. Depends on
+  Q-0059, which creates that primitive; starting first is how the lint rule grows its own copy.
+- Q-0114 A stale run lock is detected rather than left for a human. *(Opened 2026-09-09 at Q-0039's
+  requirements gate as its GO-2, `draft`, p3.)* Q-0039 ships a lock that refuses and is never
+  reclaimed, so after a SIGKILL or power loss **every subsequent run of that ticket refuses until
+  somebody deletes a file**. This asks whether the product can tell the difference safely, and it
+  **owes a decision entry first** — naming Q-0074 and stating the probe's closed set of answers
+  including the one that means *could not tell*, which is the shape containment, push lag and
+  verified version all have. If built: the probe answers `gone`, `alive` or `indeterminate` and
+  never a boolean, `indeterminate` refuses exactly as today so only the provable case moves, and a
+  lock whose recorded hostname is not this machine is never reclaimed whatever the pid says.
+  **It must not introduce a two-process race into the suite** — Q-0102 is parked on that shape and
+  Q-0039's AC-11 refuses it; the race-to-reclaim property is provable in-process against the claim
+  primitive, because Q-0039's ownership token is what makes recovery safe rather than the probe.
+  Strictly after Q-0039: recovery has no subject until a lock exists. **Its body is Appendix A of
+  Q-0039's merged requirement, transcribed in full** — written as a ticket at the gate because three
+  obligations found this week (Q-0110's, Q-0111's, Q-0112's) had lived only inside a closed ticket's
+  prose or a source comment, one of them since 2026-09-02.
+
+**Four registered, latent and not urgent** — each carries the reason it waits.
+
+- Q-0068 A healthy login reads unusable, and the refusal misnames the product. *(Retitled 2026-09-07
+  when it absorbed **Q-0066**, and raised **p3 → p2** with it: a word is a p3, a healthy login
+  reported unusable is not.)* It now carries both defects `quorum adapters` reports wrongly, over one
+  eleven-file surface, and its two questions — *what does `tokens` mean when nothing was measured*
+  and *what does the sentence say instead* — are answerable by one person at one gate, neither owing
+  a decision entry. **Its two strings are also the last place in shipped source that calls the
+  product "Harness"**, verified 2026-09-07, and Q-0100 landed the sibling class on 2026-09-06 while
+  setting this one aside by name — so the rename it belongs beside has already shipped. **A third
+  defect on the same command has no ticket at all**: `cli/src/adapters.ts:20–23` records that
+  `quorum adapters` exits 0 with both CLIs absent, preserved under Q-0099 AC-8(c) with its successor
+  named as *"Q-0090's GA-4"* — and GA-4, which says *"open the successor"*, exists only inside
+  Q-0090's own merged requirement. **No such ticket was ever created**, and Q-0090 closed
+  2026-09-02. That is the second obligation found this week living only inside a closed ticket,
+  after Q-0100's, and it is named here rather than folded in. *(Original scope follows.)*
+  `claude.js:12`, `codex.js:21`, their ported
+  twins, and the two pinned fixtures at `smoke.js:464` and `adapters.test.ts:314` say *"Harness runs
+  on subscription OAuth only"*, which `.claude/rules/product-boundaries.md` forbids. Reported by
+  Q-0046 and again by Q-0047, both of which correctly preserved it: a fix in `core` alone leaves the
+  spike disagreeing until the cutover, which is the divergence the freeze exists to expose. Lands in
+  both trees together, like Q-0066. The decision is what the sentence says instead — it is on the
+  cold-clone path, so worth more than a `sed`. Opened at Q-0047's requirements gate (Q-4).
+- Q-0075 A passing command's stderr is discarded, so a green suite loses its warnings. Opened
+  2026-08-28 from Q-0070's OQ-6. `runCommand` returns stdout only on the success path and stdout
+  then stderr on the failure path; `CommandResult`'s own JSDoc documents the asymmetry and
+  **nothing tested it** until Q-0070's AC-2 did, because `printf hello` writes no stderr. Q-0070
+  preserved it deliberately — changing it inside a capture fix would have been scope creep wearing a
+  bug fix's clothes — and made it visible, written down and tested instead. The question is not
+  whether stderr is useful but **whether `out` is the artifact a human reads or the one a machine
+  parses**, since changing it gives every *green* `integrate` run's integration notes all of
+  turbo's and vitest's stderr, which is most of their output; `testReport` already answers that
+  differently for each consumer. Lands in both trees together, and would deliberately change the
+  AC-2 assertions that now pin the current behaviour rather than discover them.
+- Q-0078 A deferred diff site can be served an earlier site's cached materialisation. Opened
+  2026-08-30 from Q-0038's round-4 review and its erratum E-3(b). `ctx.diffInputs` is keyed by the
+  interpolated range alone, so a site that materialises `X...Y` before a later group creates `Y`
+  leaves bytes that the correctly-deferred second site then receives from the cache, because
+  `buildPrompt` prefers `ctx.diffInputs?.get(range)` unconditionally. Pre-existing — `buildPrompt`
+  is byte-identical across Q-0038 and neither preflight ever removed a cached entry on deferral —
+  and unreachable in every shipped flow in both trees, which is why it is p3 and why keeping it out
+  of Q-0038 was right. It needs a requirement rather than a line: the obvious fix, invalidating on
+  deferral, makes two sites materialise the same range at different moments, which Q-0038's AC-10
+  (*"every panel member receives identical bytes"*) forbids, so the choice among keying by site,
+  invalidating, and forbidding the shape in `harness lint` is the work. One tree until Q-0051 ports
+  the diff subsystem; unlike Q-0038 it does not block the port.
+- Q-0081 A role naming no adapter lends its model to any vendor. Opened 2026-08-31 by Q-0052's
+  errata E-1. `resolveModel`'s guard suppresses a role default on adapter **inequality** and never
+  on **absence**, so a role carrying `model:` without `adapter:` passes that model to whichever
+  adapter resolved — the Q-0001 failure reached by a route the clause was not written to close.
+  Register row 2's third clause, Q-0052's AC-4(a) and Q-0052's ticket body all state the strict
+  form and the code has never matched any of them; the frozen coverage cannot tell them apart,
+  because `smoke.js:621–627` names an adapter in all three of its rows. The ticket owes a decision
+  about **which of the two moves** — the code adopts the strict form, or the prose is corrected on
+  the reading that a role naming no adapter is *unscoped* rather than *wrong-vendor*, which is what
+  a default is for. Shape 1 was already written once, by Q-0052's round 3, and the body says not to
+  adopt it for that reason: the round that wrote it was never asked the question. Latent — all 21
+  role files across both trees carry an adapter wherever they carry a model. Both trees together.
+
+**One parked**, with its three written reopening thresholds.
+
+- Q-0102 The git-identity sweep is red under load, and CI runs it. *(Opened 2026-09-04 at
+  Q-0095's merge; **parked at `p2` on 2026-09-06**, `draft`, having been `p1` since 2026-09-05.)*
+  **The ticket opened on a red that no longer exists, and the parking is a measurement rather than
+  a judgement about whether the sighting was real.** Its premise — *"`pnpm sweep:git-identity`
+  exits 1 on `main`, and `ci.yml` runs it as two required jobs, so every push is red or lucky"* —
+  was an inference from one local sighting at a time when `main` stood 89 commits ahead of
+  `origin/main` and CI had not run for four days, which is Q-0105's subject. Measured at tip
+  `a86c3fa`: **0 failures in 36 local sweeps and 0 in 28 CI sweep cells**, across the fourteen
+  consecutive green runs from the `fail.test.ts` fix onward — 16 of those cells before Q-0103's
+  cutover and 12 after, so the greens are neither explained nor granted by the cutover.
+  **The original sighting stands and is not withdrawn**: first-hand, twice consecutively, in phase
+  `workspace suite`, with the survivors clustering on `worktree-lifecycle.test.ts` and
+  `undecided.test.ts` — files that pass 29/29 in isolation, already build a repository per case
+  under `os.tmpdir()`, and cannot delete each other's fixtures under Vitest's per-file isolation.
+  Four causes are measured and excluded across two instances: the commit, the checkout shape, CPU
+  saturation, and a concurrent second suite.
+  **What parked it is GO-1 rather than doubt.** *Establish a failure rate at a fixed commit before
+  repairing* binds, and at 0-in-36 and 0-in-28 no fix can be shown red before green — so every
+  shape in the ticket would ship as a change nothing could prove was a repair, which is *"A check
+  is not established by reading it"* (2026-08-29) arriving as a whole ticket. **A requirements run
+  could not have rescued it**: no step in that flow can produce a failure rate, so launching would
+  have been the sixteenth appearance of a loop handed work no agent in it can perform. That is the
+  first time this pattern has been recognised *before* the money was spent rather than after.
+  **The `p1` argument is superseded on one half and survives on the other.** *"Every push is red or
+  lucky"* is refuted. *A flaky oracle trains the reader to re-run until green* is not, does not
+  depend on a rate, and is what keeps this open at `p2` instead of closed — Q-0079 built the sweep
+  as the oracle for *"A test's verdict is a property of the commit, not of the checkout or the
+  account"* (2026-08-30), with the tripwire explicitly not covering the checkout-shaped instances.
+  **The load the leading hypothesis rests on halved underneath the ticket**, which nobody planned
+  for: Q-0107 AC-16 and Q-0103 took the second suite out of the sweep, measured locally at 57.7 s
+  against the ticket's own 105–132 s. The named lead is intact and re-verified rather than
+  transcribed — no `testTimeout` anywhere in the tree, so Vitest's 5-second default governs, while
+  `worktree-lifecycle.test.ts` makes 18 synchronous `git` spawns and `undecided.test.ts` 4 — and it
+  is recorded as a lead, not adopted as a cause. GO-2 outlives the parking: no fix may make the
+  sweep green by weakening what it runs. **Three things reopen it at p1**, written into the ticket
+  so the threshold is not re-derived: a CI sweep cell failing on the `@quorum/core` cluster rather
+  than on an unrelated broken test, a local sweep failing at a tip whose unswept suite passes, or a
+  third measured instance of the class — which would make *load is a third term beside the checkout
+  and the account* a pattern rather than two sightings.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 id: Q-0006
 title: Review flow — engine, counters and the backward edge
-stage: green
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0006/integration

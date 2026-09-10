@@ -87,3 +87,4 @@
 2026-08-23T23:44:34.133Z run=13 failed stage=red→red cost=0 tokens=606959 error="gate (human) \"Integrated branch is green; approve to hand over to review\" needs an answer and stdin closed without one — pass --gate-answer advance|abort (repeatable, consumed in order), or run intera"
 2026-08-23T23:45:50.678Z run=12 gate=human answer=advance
 2026-08-23T23:45:50.681Z run=12 completed stage=red→green cost=0 tokens=1158253
+2026-09-10T09:00:00.000Z note stage set to reviewed by hand at M2's close. It read "green" because a backward edge moved it and no later run moved it forward — M1's closing entry records all four of its criteria met, and this ticket's code is in main. Recorded rather than corrected silently: what was stale is the stage, not the work.
