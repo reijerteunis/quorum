@@ -726,9 +726,8 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — Q-0059 AC-8 reads the second package because the register claims something about it',
   },
   'packages/core/src/caught-failures.source.test.ts': {
-    'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal three-element array at the top of that file, and clause B collects each of the three — the Q-0059 AC-8 shape over a third tree, because Q-0115 AC-3 claims something about every package',
-    'repoRoot → root': 'the same three literals, joined for the same loop; the base is repoRoot and the leaf is a member of that array',
-    'coreSourceFiles → path.join(repoRoot, \'packages/core/src\')': 'the literal is inside the argument, and it is this package\'s own source, which $TURBO_DEFAULT$ hashes',
+    'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal TWO-element array at the top of that file — packages/core/src and packages/cli/src — and clause B collects both. The Q-0059 AC-8 shape over a second tree, because Q-0115 AC-3 claims something about the roots it walks; shared is deliberately out, for the reason recorded above that array',
+    'repoRoot → root': 'the same two literals, joined for the same loop; the base is repoRoot and the leaf is a member of that array',
     'repoFile → ENTRY': 'the constant is the decision entry\'s own path, a literal at the top of that file which clause B collects and the manifest names',
   },
   'packages/core/src/git-identity.test.ts': {
