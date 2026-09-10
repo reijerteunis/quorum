@@ -74,12 +74,13 @@ describe('AC-7 — a declaration and a result cannot be confused', () => {
       ['packages/core/src/contracts/contracts.ts', null],
       // Q-0067 shifted both by 58 lines, `cliVersion` having landed above them in that file — 68 at
       // first, then 59 and 58 as its review rounds cut transcribed rationale out of that module's
-      // comments. The numbers move with the code they name, which is what this pin is for: a
-      // citation that stops naming a declaration is exactly what it exists to catch, and it caught
-      // this one on all three occasions.
-      ['packages/core/src/adapters/adapters.ts', 606],
+      // comments. Q-0068 shifted both by a further 6, `ProbeResult.tokens` having gained a JSDoc
+      // block and `probeAdapter` having lost its preserved-defect note. The numbers move with the
+      // code they name, which is what this pin is for: a citation that stops naming a declaration is
+      // exactly what it exists to catch, and it caught this one on all four occasions.
+      ['packages/core/src/adapters/adapters.ts', 612],
       ['packages/core/src/engine/prompt.ts', 92],
-      ['packages/core/src/adapters/adapters.ts', 569],
+      ['packages/core/src/adapters/adapters.ts', 575],
     ];
     for (const [file, line] of cited) {
       const citation = line === null ? file : `${file}:${String(line)}`;

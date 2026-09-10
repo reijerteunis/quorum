@@ -772,11 +772,12 @@ describe('AC-7 — the four commands that ride the chain rather than being its s
     const lines = (chain.ran.adapters?.stdout ?? '').split('\n');
     for (const [vendor, guarded] of [['claude', claude], ['codex', codex]] as const) {
       const line = lines.find((candidate) => candidate.includes(`${vendor}:`)) ?? '';
-      expect(line, `${vendor} was not refused`).toBe(`✗ ${vendor}: ${guarded.join('/')} is set — unset it; Harness runs on subscription OAuth only`);
+      expect(line, `${vendor} was not refused`).toBe(`✗ ${vendor}: ${guarded.join('/')} is set — unset it; Quorum uses the CLI's subscription login only`);
     }
     // The refusal came before the probe, which is what makes this deterministic: with the variables
-    // set, neither vendor is reported present whatever this machine has installed. Q-0068's wording
-    // above is preserved and not repaired here (ground rule 3).
+    // set, neither vendor is reported present whatever this machine has installed. The whole
+    // terminal line is asserted rather than the sentence alone, so Q-0068's wording is held to
+    // reading correctly behind the `✗ <vendor>: ` prefix a stranger actually sees.
     expect(lines.filter((line) => line.startsWith('✓')), 'a vendor CLI was probed anyway').toStrictEqual([]);
   });
 

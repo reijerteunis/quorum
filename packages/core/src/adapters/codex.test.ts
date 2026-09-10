@@ -84,7 +84,9 @@ const copyFrom = (flag: string, target: string): string => [
 ].join('\n');
 
 describe('AC-3 — the BYOS refusal, its order, and its asymmetry', () => {
-  const REFUSAL = 'CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Harness runs on subscription OAuth only';
+  // Q-0068 AC-1, the second vendor: one tail shared with claude's, so the two refusals differ only
+  // in which variables they name.
+  const REFUSAL = "CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Quorum uses the CLI's subscription login only";
 
   test('it refuses on either of its own vendor\'s two variables', async () => {
     for (const variable of ['CODEX_API_KEY', 'OPENAI_API_KEY']) {

@@ -92,7 +92,7 @@ export function claudeAdapter(cfg: AdapterConfig = {}): Adapter {
       // silently outrank the subscription login, and that is true whether or not the CLI is
       // installed — so a missing binary must not be able to mask it (register row 1). This adapter
       // refuses on its own vendor's variable and on no other.
-      if (process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only');
+      if (process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is set — unset it; Quorum uses the CLI's subscription login only");
       const probe = await exec(bin, [...CLAUDE_CAPABILITIES.versionArgs], { cwd: process.cwd() });
       if (probe.code !== 0) throw new Error(`claude CLI not runnable: ${probe.stderr || probe.stdout}`);
       return probe.stdout.trim();

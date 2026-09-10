@@ -17,8 +17,30 @@ import { describe, expect, test } from 'vitest';
 
 import { authError, getAdapter, transientError, withRetry } from './adapters.js';
 import type { Adapter, AdapterError, AdapterResult, AdapterRunOptions, AdapterSchema } from './adapters.js';
+import { claudeAdapter } from './claude.js';
 import { mockAdapter } from './mock.js';
 import { withEnv } from '../../test/env.js';
+
+/**
+ * The BYOS refusal exactly as `claude.ts` throws it, obtained from the adapter instead of retyped.
+ *
+ * AC-5's table below claims that this sentence is classified as neither an auth failure nor a
+ * transient one, and that claim is about the **shipped** text: a transcribed copy goes on passing
+ * after the sentence moves, which is what happened — the literal that stood in the table was
+ * Q-0047's wording and outlived it by a ticket. Taking it from `check()` is the strongest form of
+ * "read from `claude.ts` at test time", and it costs nothing: the guard refuses BEFORE it spawns
+ * anything, so no CLI is reached, no `bin` has to exist, and nothing is billed.
+ *
+ * Awaited at module scope because `test.each` builds its table when the file is collected.
+ */
+const shippedRefusal = await withEnv({ ANTHROPIC_API_KEY: 'sk-not-a-real-key' }, async (): Promise<string> => {
+  try {
+    await claudeAdapter().check();
+  } catch (error) {
+    return (error as Error).message;
+  }
+  throw new Error('claude check() did not refuse with ANTHROPIC_API_KEY set — the row below has lost its subject');
+});
 
 const PLAIN_SCHEMA: AdapterSchema = {
   type: 'object',
@@ -307,11 +329,17 @@ describe('AC-5 — the classification is what it is today, false positives inclu
     expect(transientError(message)).toBe(description);
   });
 
-  // spike/test/smoke.js:460-466. The first fixture is the message spike/src/adapters/claude.js:12
-  // throws today, quoted verbatim so the classification is asserted over the real text; it calls the
-  // product "Harness", which is the wording finding AC-12 reports and Q-0047 owns.
+  // The first fixture is {@link shippedRefusal}: the sentence `claude.ts` throws, obtained by
+  // invoking `claudeAdapter().check()` with the key set rather than retyped, so the row cannot go
+  // on passing over a text that has moved. It did exactly that — the literal that stood here was
+  // the wording Q-0047 owned, and Q-0068 replaced it in `claude.ts` while this table stayed green.
+  //
+  // The classification is not automatic and this row is the check that it holds: `AUTH_PATTERNS`
+  // carries `/invalid api key/i`, `/not logged in/i` and `/please run\s+\/?login/i`, any of which a
+  // refusal about API keys and logins could plausibly have matched, and `transientError`
+  // short-circuits on `authError` before it tries `TRANSIENT` at all.
   test.each([
-    'ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only',
+    shippedRefusal,
     'codex: model "gpt-5" is not available on a ChatGPT subscription',
     'claude failed (exit 1, error_max_turns): reached the turn limit',
     'Invalid schema for response_format: additionalProperties is required',

@@ -835,3 +835,111 @@ describe('Q-0039 AC-13 — the vocabulary says what a run lock is, and the four 
     }
   });
 });
+
+describe('Q-0068 AC-6 / AC-14 — the documents quote the refusal the product prints, and say what a silent probe reports', () => {
+  /** A document with its line breaks collapsed, because these files are hard-wrapped. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  /**
+   * The BYOS refusal one adapter throws, read out of its source.
+   *
+   * Anchored on the guard's own line rather than on the first `new Error("…")` in the file, so a
+   * refusal that moved or acquired a sibling fails here instead of being answered by a neighbouring
+   * throw. Read as **text**: the dependency direction is `core → shared` and never the reverse
+   * (04-architecture.md), which is the same read `events.test.ts` already makes of these two files.
+   */
+  const refusalIn = (vendor: string, guard: string): string => {
+    const file = `packages/core/src/adapters/${vendor}.ts`;
+    const found = new RegExp(`if \\(${guard}\\) throw new Error\\("(.+)"\\);`).exec(repoFile(file));
+    if (!found) throw new Error(`${file} holds no BYOS refusal under \`${guard}\` — this check has lost its subject`);
+    return found[1];
+  };
+
+  /**
+   * One field's declared type, read out of `ProbeResult`'s verified branch.
+   *
+   * AC-14 pins the documented shape against `ProbeResult` rather than against a retyped literal, and
+   * prose assertions cannot do that however many of them there are: three phrases inside
+   * `docs/03-adapter-contract.md` only agree with each other, so narrowing `tokens` back to `number`
+   * leaves the document promising a `null` the type refuses and every one of them green. Read as
+   * **text**, for the reason {@link refusalIn} gives, out of a file this package's `test` task
+   * already declares as an input from Q-0058.
+   *
+   * Scoped to the `ok: true` branch, because that is the answer this section of the document
+   * describes; the union's other branch carries neither field, so a search across the whole
+   * declaration would report an absence as a drift.
+   */
+  const probeResultField = (field: string): string => {
+    const source = repoFile('packages/core/src/adapters/adapters.ts');
+    const start = source.indexOf('export type ProbeResult =');
+    const end = source.indexOf('ok: false;', start);
+    if (start < 0 || end < 0) throw new Error('packages/core/src/adapters/adapters.ts declares no two-branch ProbeResult — this check has lost its subject');
+    const found = new RegExp(`^\\s*${field}: (.+);$`, 'm').exec(source.slice(start, end));
+    if (!found) throw new Error(`ProbeResult's verified branch declares no \`${field}\` — this check has lost its subject`);
+    return found[1];
+  };
+
+  test('USAGE.md quotes the shipped sentence in full, product named rather than elided', () => {
+    // The document carried `…runs on subscription OAuth only` — an ellipsis standing exactly where
+    // the product's name goes, because the sentence it was quoting called the product a harness and
+    // `product-boundaries.md` forbids writing that down. A workaround, not a convention: USAGE.md's
+    // other three ellipses truncate a board row and two argument lists. With the sentence repaired
+    // there is nothing left to elide, and the quotation is held to the source so the two cannot
+    // drift apart again — editing either side alone turns this red.
+    const refusal = refusalIn('claude', 'process\\.env\\.ANTHROPIC_API_KEY');
+    expect(refusal, 'the refusal still calls the product a harness').not.toMatch(/harness/i);
+    expect(repoFile('docs/USAGE.md'), 'USAGE.md does not quote the refusal as the terminal renders it')
+      .toContain(`✗ claude: ${refusal}`);
+    // The `✗ <vendor>: ` prefix is the renderer's, in `packages/cli/src/adapters.ts`, and quoting
+    // the sentence without it would document something no terminal prints.
+    expect(refusal.startsWith('✗'), 'the prefix belongs to the CLI and must not be inside core\'s sentence').toBe(false);
+  });
+
+  test('and the second vendor\'s refusal shares one tail with the first', () => {
+    // Two sentences differing only in which variables they name, which is what makes the shared
+    // half a term rather than two paraphrases of one.
+    const claude = refusalIn('claude', 'process\\.env\\.ANTHROPIC_API_KEY');
+    const codex = refusalIn('codex', 'process\\.env\\.CODEX_API_KEY \\|\\| process\\.env\\.OPENAI_API_KEY');
+    const tail = ' is set — unset it; Quorum uses the CLI\'s subscription login only';
+    expect(claude).toBe(`ANTHROPIC_API_KEY${tail}`);
+    expect(codex).toBe(`CODEX_API_KEY/OPENAI_API_KEY${tail}`);
+    // "subscription login" is the term `docs/03-adapter-contract.md` owns, which is why the sentence
+    // uses it rather than coining a second spelling beside it
+    // (`.claude/rules/docs-and-decisions.md`: never introduce a synonym for an existing term).
+    expect(flowed('docs/03-adapter-contract.md'), 'the contract no longer owns the term this sentence borrows')
+      .toContain('subscription login');
+  });
+
+  test('the adapter contract says what a probe reports when the vendor measured nothing', () => {
+    // AC-14. `probeAdapter` answers `cost_usd: null` and `tokens: null` where no attempt reported a
+    // measure, which is not a measured zero and is not a failed login — the two readings this
+    // document has to refuse, because a contributor writing a third adapter reads it before they
+    // invent a measurement to make a valid adapter pass.
+    const contract = flowed('docs/03-adapter-contract.md');
+    expect(contract, 'it does not say a successful probe may report no usage at all')
+      .toMatch(/tokens.{0,80}null.{0,200}no usage/);
+    expect(contract, 'it does not distinguish absence from a measured zero')
+      .toMatch(/never rounded to zero/);
+    expect(contract, 'it does not refuse reading missing usage as a failed login')
+      .toMatch(/not a failed login/);
+    // And the document is held to the type it describes, which the three clauses above cannot do:
+    // they are self-consistent within one file. Both fields, because the paragraph states one rule
+    // for the pair — a reader who trusted this document while `tokens` was `number` would be told a
+    // valid adapter may report nothing by a product whose own type says it may not.
+    for (const field of ['cost_usd', 'tokens']) {
+      expect(probeResultField(field), `the contract says a silent probe reports \`${field}: null\`, which ProbeResult does not permit`)
+        .toBe('number | null');
+    }
+  });
+
+  test('and the status line of every numbered document this change edits records Q-0068', () => {
+    for (const file of ['docs/03-adapter-contract.md']) {
+      const text = repoFile(file);
+      const start = text.indexOf('*Status:');
+      expect(start, `${file} has no status line`).toBeGreaterThan(-1);
+      const status = text.slice(start, text.indexOf('\n\n', start));
+      expect(status, `${file}'s status line does not record this change`).toContain('Q-0068');
+      expect(status, `${file}'s status line does not carry the landing date`).toContain('2026-09-10');
+    }
+  });
+});

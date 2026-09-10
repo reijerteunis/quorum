@@ -86,7 +86,7 @@ export function codexAdapter(cfg: AdapterConfig = {}): Adapter {
       // The BYOS guard comes first, and the order is the criterion: a missing CLI must not be able
       // to mask a key that is set (register row 1). This adapter refuses on its own vendor's two
       // variables and on no others.
-      if (process.env.CODEX_API_KEY || process.env.OPENAI_API_KEY) throw new Error('CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Harness runs on subscription OAuth only');
+      if (process.env.CODEX_API_KEY || process.env.OPENAI_API_KEY) throw new Error("CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Quorum uses the CLI's subscription login only");
       const probe = await exec(bin, [...CODEX_CAPABILITIES.versionArgs], { cwd: process.cwd() });
       if (probe.code !== 0) throw new Error(`codex CLI not runnable: ${probe.stderr || probe.stdout}`);
       return probe.stdout.trim();
