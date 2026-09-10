@@ -2089,98 +2089,126 @@ describe('Q-0092 AC-9 — the detail view reads the file, not a run\'s memory', 
   }, 300_000);
 });
 
+/* ---------------------------------------------------------------------------------------------
+ * `quorum adapters --probe` across a real process boundary.
+ *
+ * The fixture below was Q-0067's and lived inside that ticket's describe block until Q-0068 needed
+ * the same three things — a vendor script, a project naming it, and a spawn with the BYOS variables
+ * removed — to prove a different exit code. It is hoisted rather than copied: this file's own header
+ * refuses a second mechanism for driving the build, and a second fake vendor would be the same
+ * mistake one layer along. What each block varies is stated at its own tests; nothing here decides
+ * anything about a version or a login on its own.
+ * ------------------------------------------------------------------------------------------- */
+
+/** The final message a probe has to get back for its round-trip to count as a login. */
+const ANSWER = '{"ok": true, "summary": "subscription answered"}';
+
+/**
+ * What a fake vendor's probe invocation does: answer with measures, answer with none, or fail.
+ *
+ * `measured` and `silent` are both successful logins and the product must report them alike; the
+ * two differ only in whether the vendor said what the call cost.
+ */
+type VendorAnswer = 'measured' | 'silent' | 'refusal';
+
+/**
+ * A vendor CLI that is not one: a script answering `--version`, and one probe invocation.
+ *
+ * **It exists because both alternatives are refused.** The claim is what a shell sees, and
+ * `invoke()`'s status is the argument handed to a spied `process.exit`, which is a different claim
+ * (Q-0101). Spawning against the REAL vendor CLIs would make every verdict here a property of the
+ * installed CLI and of the account, and would bill a subscription to run the suite — which *"A
+ * test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30)
+ * forbids. `adapters.<vendor>.bin` is the shipped way to name the executable, so the fixture is
+ * configuration rather than a test-only branch: no production code, environment variable or export
+ * is added anywhere to manufacture one of these statuses.
+ *
+ * `version` is what the script prints for `--version` and is the whole of what steers the state
+ * under test; `answers` decides what the round-trip gives back, which is what steers the login
+ * verdict. The two are independent here precisely because they are independent in the product.
+ *
+ * **`silent` is Q-0068 AC-10's case and is a real vendor shape rather than a contrivance.** Codex
+ * reports no price at all, so a round-trip that succeeds and measures nothing is ordinary — and
+ * until Q-0068 it reached `probeAdapter`'s unguarded `res.usage!` and came back as a failed login,
+ * which Q-0110 had by then made a non-zero exit.
+ */
+const fakeVendor = (dir: string, vendor: 'claude' | 'codex', version: string, answers: VendorAnswer): string => {
+  const file = path.join(dir, `fake-${vendor}`);
+  // Claude answers with one envelope on stdout. `silent` is that envelope with `total_cost_usd`
+  // and `usage` absent, which is what a vendor reporting no measure actually sends.
+  const claudeMeasured = ',"total_cost_usd":0.001,"usage":{"input_tokens":11,"output_tokens":7}';
+  const claudeRun = (measured: boolean): string[] => [
+    'cat > /dev/null',
+    `printf '%s' '{"structured_output":${ANSWER},"result":"ok"${measured ? claudeMeasured : ''}}'`,
+  ];
+  // Codex takes its final message through the path `-o` names and reports usage on a JSONL line.
+  // Its `silent` arm still completes the turn and still names a thread; what it omits is the
+  // measure, which is the one thing this case varies.
+  const codexRun = (measured: boolean): string[] => [
+    'last=""; prev=""',
+    'for arg in "$@"; do if [ "$prev" = "-o" ]; then last="$arg"; fi; prev="$arg"; done',
+    'cat > /dev/null',
+    `if [ -n "$last" ]; then printf '%s' '${ANSWER}' > "$last"; fi`,
+    'printf \'%s\\n\' \'{"type":"thread.started","thread_id":"t-1"}\'',
+    measured
+      ? 'printf \'%s\\n\' \'{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}\''
+      : 'printf \'%s\\n\' \'{"type":"turn.completed"}\'',
+  ];
+  const refusal = ['cat > /dev/null', 'echo "the round-trip did not happen" >&2', 'exit 1'];
+  const answering = vendor === 'codex' ? codexRun : claudeRun;
+  const run = answers === 'refusal' ? refusal : answering(answers === 'measured');
+  const script = [
+    '#!/bin/sh',
+    `if [ "$1" = "--version" ]; then printf '%s\\n' '${version}'; exit 0; fi`,
+    ...run,
+    '',
+  ].join('\n');
+  fs.writeFileSync(file, script, 'utf8');
+  fs.chmodSync(file, 0o755);
+  return file;
+};
+
+/** A project whose two adapters are those scripts, and which holds nothing else. */
+const probeProject = (label: string, versions: { claude: string; codex: string }, answers: VendorAnswer): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `quorum-cli-probe-${label}-`));
+  temporaries.push(dir);
+  fs.mkdirSync(path.join(dir, 'harness'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'backlog'), { recursive: true });
+  const claude = fakeVendor(dir, 'claude', versions.claude, answers);
+  const codex = fakeVendor(dir, 'codex', versions.codex, answers);
+  fs.writeFileSync(
+    path.join(dir, 'harness', 'harness.yaml'),
+    `repo:\n  base_branch: main\nbacklog: {path: backlog}\nadapters:\n  claude: {bin: ${claude}}\n  codex: {bin: ${codex}}\n`,
+    'utf8',
+  );
+  return dir;
+};
+
+/**
+ * The binary, spawned with the three BYOS variables removed.
+ *
+ * Removed rather than assumed absent: `check()` refuses outright when one is set, so an ambient
+ * key on the machine running this suite would turn every case below into a refusal and the status
+ * would then be right for the wrong reason.
+ */
+const spawnAdapters = (dir: string, ...flags: string[]): { status: number; output: string } => {
+  const env = { ...process.env };
+  // The three names are ASSEMBLED rather than written, which is the idiom this package already
+  // uses for its workspace scope: `frame.source.test.ts`'s AC-12 scan reads every file here for
+  // the spellings BYOS forbids and excuses exactly one — itself — so writing them out would put
+  // this file into a guard whose single exclusion is deliberately not allowed to grow.
+  for (const vendor of ['ANTHROPIC', 'OPENAI', 'CODEX']) delete env[`${vendor}${'_'}API${'_'}KEY`];
+  const result = spawnSync(process.execPath, [binTarget(), 'adapters', '--project', dir, ...flags], {
+    cwd: PACKAGE, encoding: 'utf8', env, timeout: 120_000,
+  });
+  if (result.error) throw result.error;
+  return { status: result.status ?? -1, output: `${result.stdout}${result.stderr}` };
+};
+
 describe('Q-0067 AC-11 — a version state never changes an exit code, across the process boundary', () => {
-  /** The final message a probe has to get back for its round-trip to count as a login. */
-  const ANSWER = '{"ok": true, "summary": "subscription answered"}';
-
-  /**
-   * A vendor CLI that is not one: a script answering `--version`, and one probe invocation.
-   *
-   * **It exists because both alternatives are refused.** The claim is what a shell sees, and
-   * `invoke()`'s status is the argument handed to a spied `process.exit`, which is a different claim
-   * (Q-0101). Spawning against the REAL vendor CLIs would make every verdict here a property of the
-   * installed CLI and of the account, and would bill a subscription to run the suite — which *"A
-   * test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30)
-   * forbids. `adapters.<vendor>.bin` is the shipped way to name the executable, so the fixture is
-   * configuration rather than a test-only branch: no production code, environment variable or export
-   * is added anywhere to manufacture one of these statuses.
-   *
-   * `version` is what the script prints for `--version` and is the whole of what steers the state
-   * under test; `ok` decides whether the round-trip succeeds, which is what steers the login verdict.
-   * The two are independent here precisely because they are independent in the product.
-   */
-  const fakeVendor = (dir: string, vendor: 'claude' | 'codex', version: string, ok: boolean): string => {
-    const file = path.join(dir, `fake-${vendor}`);
-    // Claude answers with one envelope on stdout; the usage is present because `probeAdapter`
-    // dereferences it, which is Q-0066's preserved crash and is not this case's subject.
-    const claudeRun = [
-      'cat > /dev/null',
-      `printf '%s' '{"structured_output":${ANSWER},"result":"ok","total_cost_usd":0.001,"usage":{"input_tokens":11,"output_tokens":7}}'`,
-    ];
-    // Codex takes its final message through the path `-o` names and reports usage on a JSONL line,
-    // so a stream reporting nothing would answer `usage: null` and trip that same crash instead of
-    // the login verdict.
-    const codexRun = [
-      'last=""; prev=""',
-      'for arg in "$@"; do if [ "$prev" = "-o" ]; then last="$arg"; fi; prev="$arg"; done',
-      'cat > /dev/null',
-      `if [ -n "$last" ]; then printf '%s' '${ANSWER}' > "$last"; fi`,
-      'printf \'%s\\n\' \'{"type":"thread.started","thread_id":"t-1"}\'',
-      'printf \'%s\\n\' \'{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}\'',
-    ];
-    const refusal = ['cat > /dev/null', 'echo "the round-trip did not happen" >&2', 'exit 1'];
-    const run = ok ? (vendor === 'codex' ? codexRun : claudeRun) : refusal;
-    const script = [
-      '#!/bin/sh',
-      `if [ "$1" = "--version" ]; then printf '%s\\n' '${version}'; exit 0; fi`,
-      ...run,
-      '',
-    ].join('\n');
-    fs.writeFileSync(file, script, 'utf8');
-    fs.chmodSync(file, 0o755);
-    return file;
-  };
-
-  /** A project whose two adapters are those scripts, and which holds nothing else. */
-  const project = (label: string, versions: { claude: string; codex: string }, ok: boolean): string => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `quorum-cli-version-${label}-`));
-    temporaries.push(dir);
-    fs.mkdirSync(path.join(dir, 'harness'), { recursive: true });
-    fs.mkdirSync(path.join(dir, 'backlog'), { recursive: true });
-    const claude = fakeVendor(dir, 'claude', versions.claude, ok);
-    const codex = fakeVendor(dir, 'codex', versions.codex, ok);
-    fs.writeFileSync(
-      path.join(dir, 'harness', 'harness.yaml'),
-      `repo:\n  base_branch: main\nbacklog: {path: backlog}\nadapters:\n  claude: {bin: ${claude}}\n  codex: {bin: ${codex}}\n`,
-      'utf8',
-    );
-    return dir;
-  };
-
-  /**
-   * The binary, spawned with the three BYOS variables removed.
-   *
-   * Removed rather than assumed absent: `check()` refuses outright when one is set, so an ambient
-   * key on the machine running this suite would turn every case below into a refusal and the status
-   * would then be right for the wrong reason.
-   */
-  const spawnAdapters = (dir: string, ...flags: string[]): { status: number; output: string } => {
-    const env = { ...process.env };
-    // The three names are ASSEMBLED rather than written, which is the idiom this package already
-    // uses for its workspace scope: `frame.source.test.ts`'s AC-12 scan reads every file here for
-    // the spellings BYOS forbids and excuses exactly one — itself — so writing them out would put
-    // this file into a guard whose single exclusion is deliberately not allowed to grow.
-    for (const vendor of ['ANTHROPIC', 'OPENAI', 'CODEX']) delete env[`${vendor}${'_'}API${'_'}KEY`];
-    const result = spawnSync(process.execPath, [binTarget(), 'adapters', '--project', dir, ...flags], {
-      cwd: PACKAGE, encoding: 'utf8', env, timeout: 120_000,
-    });
-    if (result.error) throw result.error;
-    return { status: result.status ?? -1, output: `${result.stdout}${result.stderr}` };
-  };
-
   test('a verified login with an ahead state exits 0, and the clause still prints', () => {
     runBuild();
-    const dir = project('ahead', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, true);
+    const dir = probeProject('ahead', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, 'measured');
     const result = spawnAdapters(dir, '--probe');
     expect(result.status, result.output).toBe(0);
     expect(result.output, 'the login was not verified, so this is not the case it claims to be')
@@ -2193,7 +2221,7 @@ describe('Q-0067 AC-11 — a version state never changes an exit code, across th
 
   test('a failed login with an as-verified state exits 1, and the agreeing state did not soften it', () => {
     runBuild();
-    const dir = project('as-verified', { claude: '2.1.220', codex: '0.149.0' }, false);
+    const dir = probeProject('as-verified', { claude: '2.1.220', codex: '0.149.0' }, 'refusal');
     const result = spawnAdapters(dir, '--probe');
     expect(result.status, result.output).toBe(1);
     expect(result.output).toContain('login not usable');
@@ -2206,10 +2234,89 @@ describe('Q-0067 AC-11 — a version state never changes an exit code, across th
     // Q-0110 ratified that zero, and this ticket does not touch it: `--probe` is the check and the
     // listing is the report, so the third question belongs to the first alone.
     runBuild();
-    const dir = project('bare', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, false);
+    const dir = probeProject('bare', { claude: '2.1.236 (Claude Code)', codex: 'codex-cli 0.150.1' }, 'refusal');
     const result = spawnAdapters(dir);
     expect(result.status, result.output).toBe(0);
     expect(result.output, 'the presence listing printed a version clause').not.toContain('verified version =');
     expect(result.output).toContain('presence only');
+  }, 300_000);
+});
+
+describe('Q-0068 AC-10 — a login that answers and measures nothing does not fail the check', () => {
+  /**
+   * The verified lines of one `--probe` run, ANSI stripped.
+   *
+   * Whole lines rather than a `not.toContain('0 tokens')`, because that substring is inside a
+   * measured `4200 tokens` and a negative check over the whole output would then be answered by a
+   * neighbouring line. What forbids a clause is the line ending where it ends.
+   */
+  const verifiedLines = (output: string): string[] => output
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .filter((line) => line.includes('login verified'));
+
+  test('--probe reports both logins verified and exits 0', () => {
+    // The criterion the escalation created, and the one an adopter's pipeline reads. Until Q-0068
+    // this exited 1: `probeAdapter` dereferenced a null `usage`, the crash became `ok: false`, and
+    // Q-0110 had made an unusable login ERROR — so `quorum adapters --probe`, the command the
+    // README and `docs/USAGE.md` both name as the thing to run before a real run, reddened a
+    // pipeline on a working installation.
+    //
+    // Through the spawned binary rather than `invoke()`, whose `exitCode` is the argument handed to
+    // a spied `process.exit` and therefore not a status any operating system reported (Q-0101).
+    runBuild();
+    const dir = probeProject('silent', { claude: '2.1.220', codex: '0.149.0' }, 'silent');
+    const result = spawnAdapters(dir, '--probe');
+    expect(result.status, result.output).toBe(0);
+    expect(result.output, 'a login that answered was reported unusable').not.toContain('login not usable');
+    // AC-9's human line: the two clauses are omitted rather than rendered as a measurement nobody
+    // made. `$0.0000` would claim the call was free and `0 tokens` would claim it was counted.
+    const lines = verifiedLines(result.output);
+    expect(lines, 'neither vendor was verified, so this proves nothing about a silent one')
+      .toHaveLength(2);
+    for (const line of lines) {
+      expect(line, 'a measure nobody reported was rendered').toMatch(/^ {2}✓ login verified — round-trip \d+ms$/);
+    }
+  }, 300_000);
+
+  test('and the same fixture measuring its answer still reports both numbers, so the omission is the absence', () => {
+    // The discriminator. Without it the assertions above would be satisfied by a build that had
+    // stopped printing the two clauses at all, which is a different defect wearing this fix's
+    // clothes. One argument to `probeProject` separates the two runs.
+    runBuild();
+    const dir = probeProject('measured', { claude: '2.1.220', codex: '0.149.0' }, 'measured');
+    const result = spawnAdapters(dir, '--probe');
+    expect(result.status, result.output).toBe(0);
+    const lines = verifiedLines(result.output);
+    expect(lines, 'neither vendor was verified, so the comparison has no second arm').toHaveLength(2);
+    // Claude's fixture reports both measures and codex's reports tokens only, which is the real
+    // asymmetry: codex has no price field at all. Both clauses are present where the vendor spoke.
+    expect(lines[0], 'a reported price and count were not rendered')
+      .toMatch(/^ {2}✓ login verified — round-trip \d+ms, \$0\.0010, 18 tokens$/);
+    expect(lines[1], 'a reported count was not rendered')
+      .toMatch(/^ {2}✓ login verified — round-trip \d+ms, 15 tokens$/);
+  }, 300_000);
+
+  test('--json carries the distinction the human line does not', () => {
+    // Where a consumer reads it. The human line has one shape for "not reported" and for "zero";
+    // the machine-readable report answers `null`, which is what `AdapterUsage` already means by it.
+    runBuild();
+    const dir = probeProject('silent-json', { claude: '2.1.220', codex: '0.149.0' }, 'silent');
+    const result = spawnAdapters(dir, '--probe', '--json');
+    expect(result.status, result.output).toBe(0);
+    // `--json` is a combined stream — the human lines, then the report — so the object is taken
+    // from its own first key rather than from the first brace in the output.
+    const at = result.output.indexOf('{\n  "probed"');
+    expect(at, 'the report was not printed, so nothing below is about it').toBeGreaterThan(-1);
+    const report = JSON.parse(result.output.slice(at)) as {
+      adapters: { adapter: string; login: string; ok: boolean; cost_usd: number | null; tokens: number | null }[];
+    };
+    expect(report.adapters.map((entry) => entry.adapter)).toStrictEqual(['claude', 'codex']);
+    for (const entry of report.adapters) {
+      expect(entry.login, `${entry.adapter} was not verified`).toBe('verified');
+      expect(entry.ok).toBe(true);
+      expect(entry.cost_usd, `${entry.adapter} invented a price`).toBeNull();
+      expect(entry.tokens, `${entry.adapter} invented a token count`).toBeNull();
+    }
   }, 300_000);
 });

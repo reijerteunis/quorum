@@ -17,7 +17,12 @@ corrected 2026-09-06 (Q-0100): its two commands are `quorum adapters` and `quoru
 the binary `packages/cli` installs, where they had named one that does not exist. Verification status
 gained a paragraph 2026-09-08 (Q-0067) saying what that line is — a recorded past measurement, never
 a supported range — now that the same two numbers live in each adapter's `capabilities.ts` as
-`verifiedVersion` and a test holds the two copies equal.*
+`verifiedVersion` and a test holds the two copies equal. §Interface's `probeAdapter` sketch and
+§"check() is not proof of login" corrected 2026-09-10 (Q-0068): a probe that answers while the
+vendor reports no usage is a **verified** login reporting `cost_usd: null` and `tokens: null`, which
+is neither a measured zero nor a failed login — the document had described neither the nullable
+token count nor the case, while the product crashed on it and reported the crash as the login's
+fault.*
 
 An adapter lets one vendor's headless CLI participate in a flow step. It is the only
 place vendor-specific knowledge lives. Everything above it (engine, flows, backlog)
@@ -30,7 +35,9 @@ adapter.vendor            // 'claude' | 'codex' | ...
 await adapter.check()     // cheap: throws if an API key is set, or if the CLI is missing.
                           // Does NOT prove the login works — no request is made.
 await probeAdapter(a)     // the real thing: smallest possible authenticated request, returns
-                          // { ok, ms, cost_usd, tokens } or { ok: false, error }
+                          // { ok, ms, cost_usd, tokens, session } or { ok: false, error }.
+                          // cost_usd and tokens are null where the vendor reported no usage at
+                          // all — never rounded to zero, and never a failed login.
 await adapter.run({
   prompt,                 // string — complete prompt (role + ticket + inputs + task + output contract)
   schema,                 // JSON Schema object the final answer must match
@@ -103,6 +110,16 @@ Auth failures are translated into one actionable line ("codex login expired or m
 `codex logout && codex login`") instead of the vendor's stack trace. The translation lives in
 `authError()` at the contract layer as well as inside each built-in adapter, so a contributor's
 adapter inherits it without doing anything.
+
+**A probe that answers and measures nothing is a verified login.** An adapter may return
+schema-valid structured output while reporting no usage at all — codex reports no price under any
+circumstances, and the retry wrapper deliberately answers `usage: null` rather than an all-zero
+object when no attempt reported a measure, because a zero would invent a billing row for a call
+nobody measured. `probeAdapter` therefore reports `cost_usd: null` and `tokens: null` for that
+round-trip, which is **not a measured zero and not a failed login**: `null` means the vendor did not
+report that measure, and it is never rounded to zero. `quorum adapters --probe` prints the verified
+line with the two clauses omitted and exits 0. Do not manufacture a measurement to make a valid
+adapter pass; reporting nothing is a shape this contract expects.
 
 ## Exact invocations used by this spike
 

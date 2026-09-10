@@ -1,5 +1,6 @@
-// Q-0046 AC-8, AC-9 and AC-11 defect 1: the schema Quorum sends a vendor, and the one round-trip
-// that proves a login.
+// Q-0046 AC-8 and AC-9: the schema Quorum sends a vendor, and the one round-trip that proves a
+// login. Its AC-11 defect 1 block is now Q-0068's AC-7/AC-8 block at the foot of this file —
+// inverted rather than removed, so the same two fixtures that pinned the crash now pin the repair.
 //
 // NO TEST HERE MAKES A PAID REQUEST. Every subject is the mock or a local stub; nothing spawns a
 // CLI, reads an API key or reaches a vendor. That is not a convenience — `probeAdapter` is the only
@@ -142,22 +143,60 @@ describe('AC-9 — probeAdapter is the only proof of a login, and it is the same
   });
 });
 
-describe('AC-11 defect 1 — the probe blames the login for its own crash', () => {
-  test('an adapter whose login is perfect, and which reports no usage, reads as unusable', async () => {
-    // `withRetry` answers `usage: null` when no attempt reported a measure (AC-4), and the three
-    // reads in `probeAdapter` are unguarded. The two behaviours are each correct and compose into
-    // this. Preserved on purpose: the spike still does it, and a quiet fix here would leave both
-    // suites green over a product that disagrees with itself. Proposed as its own ticket.
+describe('Q-0068 AC-7, AC-8 — a login that answers and reports nothing is verified, not unusable', () => {
+  // Q-0046's AC-11 defect 1 block, INVERTED rather than deleted (Q-0037's precedent): the same two
+  // fixtures, now asserting the repaired behaviour, so a returning `res.usage!` fails a check
+  // instead of passing an absent one.
+  //
+  // What made the defect: `withRetry` answers `usage: null` when no attempt reported a measure
+  // (AC-4) and the three reads in `probeAdapter` were unguarded, so a `TypeError` reached the
+  // function's own `catch` and became `ok: false`. Both behaviours were correct on their own; the
+  // composition blamed a healthy login for the product's crash, and Q-0110 later made that a
+  // non-zero exit rather than only a wrong sentence.
+
+  test('an adapter whose login is perfect, and which reports no usage, is verified', async () => {
     const quiet = withRetry(stub(async () => answer({ usage: null })), { baseDelayMs: 0 });
     const result = await probeAdapter(quiet);
 
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toBe("Cannot read properties of null (reading 'cost_usd')");
+    expect(result.ok, result.ok === false ? result.error : '').toBe(true);
+    // AC-8(a): the absence travels into the two measures rather than into the verdict, and it is
+    // `null` at both rather than a zero that would claim the call was measured and found free.
+    expect(result.ok === true && result.cost_usd).toBeNull();
+    expect(result.ok === true && result.tokens).toBeNull();
   });
 
-  test('and the sandbox is still cleaned up when it crashes that way', async () => {
+  test('AC-8(b) — a measured zero is still 0, and an unreported half still counts as zero', async () => {
+    // The clause that separates the two representations, which the assertion above cannot: `null`
+    // must mean "nobody measured this call" and `0` must go on meaning "measured, and it was zero".
+    // The second half pins the arithmetic `probeAdapter` already had — an individually unreported
+    // measure counts as zero once SOME measure was reported — which this change does not touch.
+    const measured = { vendor: 'test', input_tokens: 0, output_tokens: 0, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 0 };
+    const zero = await probeAdapter(stub(async () => answer({ usage: measured })));
+    expect(zero.ok === true && zero.tokens).toBe(0);
+    expect(zero.ok === true && zero.cost_usd).toBe(0);
+
+    const half = await probeAdapter(stub(async () => answer({ usage: { ...measured, input_tokens: 7, output_tokens: null } })));
+    expect(half.ok === true && half.tokens).toBe(7);
+  });
+
+  test('and the sandbox is still removed on the path that used to crash', async () => {
+    // Kept and re-aimed at the success path (AC-12): a repair that leaked a directory would
+    // otherwise be invisible, the `finally` being the only thing that removes it.
     const adapter = stub(async () => answer({ usage: null }));
-    await probeAdapter(withRetry(adapter, { baseDelayMs: 0 }));
+    const result = await probeAdapter(withRetry(adapter, { baseDelayMs: 0 }));
+    expect(result.ok).toBe(true);
     expect(fs.existsSync(adapter.seen[0].cwd)).toBe(false);
+  });
+
+  test('AC-11 — the failures that ARE failures still answer ok: false', async () => {
+    // The other direction, so the repair is shown to be narrow rather than a widening of `ok`.
+    // Structured output that does not conform, and an adapter that throws, are unchanged.
+    const invalid = await probeAdapter(stub(async () => answer({ output: { ok: true } })));
+    expect(invalid.ok).toBe(false);
+    expect(invalid.ok === false && invalid.error).toContain('structured output invalid');
+
+    const dead = await probeAdapter(stub(async () => { throw new Error('401 Unauthorized'); }));
+    expect(dead.ok).toBe(false);
+    expect(dead.ok === false && dead.error).toBe('test login expired or missing — run: test login');
   });
 });

@@ -23,6 +23,11 @@
         "../../docs/02-sdlc-pipeline-spec.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",
+        // Q-0068 AC-6: docs.test.ts holds USAGE.md's quotation of the BYOS refusal against the
+        // literal packages/core/src/adapters/claude.ts throws, so a cached pass must not stand over
+        // a document that has drifted from the sentence it quotes. The adapter side of that
+        // comparison is already declared below.
+        "../../docs/USAGE.md",
         "../../docs/06-development-plan.md",
         "../../docs/DECISIONS.md",
         "../../docs/decisions/*.md",
