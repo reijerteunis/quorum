@@ -195,14 +195,22 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     expect(all).not.toMatch(/(?:reset|delete|remove)TaskBranch/i);
   });
 
-  test('AC-12a/b: both owned branch-head conflations carry authority', () => {
-    const engine = source('engine.ts');
-    const lifecycle = source('lifecycle.ts');
-    // Identities, not a floor. The `toBeGreaterThanOrEqual(2)` that stood here could not fail
-    // unless the register below failed first — the exact shape that register's own comment
-    // condemns, twenty-six lines above it.
-    expect(engine).toMatch(/Why: preserved defect, see Q-0050 AC-12\./);
-    expect(lifecycle).toMatch(/Why: preserved defect, see Q-0050 AC-12\./);
+  test('AC-12a/b: both owned branch-head conflations are CLOSED, and neither pin survives', () => {
+    // This asserted the two authority lines were present until Q-0074, which is the ticket they
+    // routed to — so the check that outlives the defect is the one that fails if either comes back.
+    // Both reads are three-answer now: `engine.ts`'s at run start and `lifecycle.ts`'s at rollback,
+    // separately, because widening one and leaving the other is exactly the shape this pair had.
+    const needle = /Why: preserved defect, see Q-0050 AC-12\./;
+    // Shown to have a subject before it is believed (Q-0111): the pattern is exercised against the
+    // line as it stood, so a needle that could never fire fails HERE rather than reporting absence.
+    expect(needle.test('    // Why: preserved defect, see Q-0050 AC-12.'),
+      'the needle no longer matches the line it was written against').toBe(true);
+    for (const name of ['engine.ts', 'lifecycle.ts']) {
+      expect(source(name), `${name} still pins a branch-head conflation`).not.toMatch(needle);
+    }
+    // And the other direction, which a prohibition alone cannot give: the behaviour that replaced
+    // them is there, and it is the one decision 088 ruled — not reset, warn, and record.
+    expect(source('lifecycle.ts'), 'the rollback does not say what it did instead').toContain('rollback-unverified');
   });
 
   test('AC-13d: every preserved defect is a registered site, and none transcribes a document', () => {
@@ -218,15 +226,20 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // later — which is why the anchor is now `Why:` itself, the one token every authority line must
     // carry, and an unclassifiable line FAILS rather than being skipped.
     const REGISTERED: Record<string, readonly string[]> = {
+      // Q-0074 removes four, and each of the four was a citation of THIS ticket's own defect class.
+      // `composite.ts` loses the two module-header lines — the branch-existence filters that could
+      // not tell an absent branch from a failed probe, and the merge-failure fallback that reported
+      // `git reported no reason` while git had said it on stdout. `engine.ts` and `lifecycle.ts`
+      // lose one each: the two ends of the rollback's branch-head read.
       'composite.ts': [
-        'behaviour-from-spike', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
+        'behaviour-from-spike',
         'preserved behaviour/Q-0053', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
         'preserved defect/Q-0053', 'preserved defect/Q-0053', 'preserved defect/Q-0053',
         'preserved defect/Q-0053',
       ],
       'diff.ts': ['behaviour-from-spike', 'deliberate addition', 'behaviour-from-spike', 'preserved behaviour/Q-0038', 'preserved defect/Q-0078'],
-      'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved defect/AC-12', 'preserved behaviour', 'preserved defect/AC-12d'],
-      'lifecycle.ts': ['preserved defect/AC-10', 'preserved defect/AC-12', 'deliberate addition'],
+      'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved behaviour', 'preserved defect/AC-12d'],
+      'lifecycle.ts': ['preserved defect/AC-10', 'deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
       'routing.ts': ['preserved defect/AC-12', 'preserved behavior'],
@@ -268,9 +281,15 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // distinct result-line regexes AC-10 forbids unifying.
     // The one marker this ticket wrote that this count CANNOT see is `git/git.ts`'s errata E-1
     // divergence, because this register is scoped to `engine/`; `q0053.source.test.ts` pins it.
+    // Q-0074 removes FOUR and adds none, so fourteen, of which FOUR are Q-0050's own: AC-10c,
+    // AC-10f, AC-12c and AC-12d. AC-12a and AC-12b are gone with the conflation they pinned — the
+    // rollback's two branch-head reads, one at each end — and `composite.ts`'s two module-header
+    // lines with the branch filter and the merge-failure fallback they described. Re-derived from
+    // the register above rather than subtracted from eighteen, for the reason the paragraph opens
+    // with: a sentence that is itself a sum goes differently stale when it is decremented.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(18)
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(14)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {

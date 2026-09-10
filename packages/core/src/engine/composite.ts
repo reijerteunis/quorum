@@ -13,17 +13,15 @@
  *
  * Why: behaviour preserved from spike/src/engine.js — harness/port-charter.md §2, Q-0053.
  *
- * Why: preserved defect, see Q-0053 AC-14(3) — the five branch-existence reads in this file cannot
- * tell an absent branch from a git that failed, and filter identically either way. Q-0074 owns it.
- *
- * Why: preserved defect, see Q-0053 AC-14(4) — a merge that failed with nothing to say is reported
- * as `git reported no reason` rather than as an error this file could act on.
+ * Every branch read here is three-answered, and an unanswerable one never subtracts: see
+ * *"A probe that could not answer is not a negative"* (2026-09-10), which closed the two preserved
+ * defects this header used to pin.
  */
 import { OUTPUT_FILE } from '@quorum/shared';
 
 import { runCommand } from '../fanout/command.js';
 import {
-  branchExists, branchHead, loadTasks, mergeInto, scopeToFailing, taskPromptSection, taskVars,
+  branchHead, branchProbe, loadTasks, mergeInto, scopeToFailing, taskPromptSection, taskVars,
   ticketWorktree, waves,
 } from '../fanout/fanout.js';
 import type { Task } from '../fanout/fanout.js';
@@ -93,8 +91,21 @@ export function syncBaseIntoTicketBranch(
   const into = interpolate(String(template?.base ?? context.ticket.meta.branch), context.vars);
   const base = interpolate(context.config.repo?.base_branch ?? 'main', context.vars);
   if (!base || base === into) return { skipped: 'base is the ticket branch' };
-  if (!branchExists(context.repoDir, into)) return { skipped: `${into} does not exist yet` };
-  if (!branchExists(context.repoDir, base)) return { skipped: `${base} does not exist` };
+  for (const branch of [into, base]) {
+    const endpoint = branchProbe(context.repoDir, branch);
+    if (endpoint === 'absent') return { skipped: `${branch} does not exist${branch === into ? ' yet' : ''}` };
+    // Still a skip, and no longer a silent one. Merging anyway is what the two sites in
+    // `runIntegrate` below do, and it is refused here because the next act is
+    // `obtainTicketWorktree` — a worktree cut from `HEAD` for a branch nobody established was
+    // missing, which is response 1's "otherwise unverifiable" rather than response 2's.
+    if (endpoint === 'failed') {
+      context.emit({
+        type: 'warn',
+        message: `${stepId}: could not tell whether ${branch} exists — git failed, so ${into} was not synced to ${base} before the fan-out`,
+      });
+      return { skipped: `whether ${branch} exists could not be established` };
+    }
+  }
   const merged = mergeInto(obtainTicketWorktree(context, into), base);
   if (merged.ok) {
     context.emit({ type: 'info', message: `${stepId}: ${into} synced to ${base} before fan-out` });
@@ -194,7 +205,7 @@ export async function runFanOut(step: Readonly<Record<string, unknown>>, context
         // Why: preserved defect, see Q-0053 AC-14(2) — a wave merge that failed warns and the run
         // continues, so the next wave can build on a tree missing its predecessor's work.
         if (!merged.ok) {
-          context.emit({ type: 'warn', message: `${stepId}: wave merge conflict on ${task.id}: ${merged.conflicts.join(',')}` });
+          context.emit({ type: 'warn', message: `${stepId}: wave merge conflict on ${task.id}: ${mergeFailure(merged)}` });
         }
       }
     }
@@ -243,15 +254,32 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
   if (declared) branches = declared;
   else if (pattern.includes('*')) branches = [...new Set((context.fanned ?? []).map((entry) => entry.branch))];
   else branches = [pattern];
-  branches = branches.filter((branch) => branchExists(context.repoDir, branch));
+  // An unanswerable probe never shortens this list. A branch git ANSWERED is not there is dropped,
+  // as it always was; one it could not answer for is kept, and the merge below is then the
+  // authority — it either lands or reports a conflict this step counts. Dropping it instead removed
+  // a task's work from the run with no `✗` line and no conflict, so the suite ran against a tree
+  // missing that task's code and `tests=ok` was awarded for the absence.
+  const unprobed: string[] = [];
+  branches = branches.filter((branch) => {
+    const probe = branchProbe(context.repoDir, branch);
+    if (probe === 'failed') unprobed.push(branch);
+    return probe !== 'absent';
+  });
+  for (const branch of unprobed) {
+    report(context, false, `${stepId}: could not tell whether ${branch} exists — git failed; it is merged anyway rather than dropped`);
+  }
 
   const base = interpolate(context.config.repo?.base_branch ?? 'main', context.vars);
   const notes = [`# Integration — run ${context.runId}, iteration ${String(context.vars.iter)}`, '', `Target: \`${into}\``, ''];
+  for (const branch of unprobed) notes.push(`- ? \`${branch}\` — could not tell whether it exists; merged anyway rather than dropped`);
   // Evidence about this run, recorded once so no scenario ever has to assert it: a fact true only
   // during the red phase is not an acceptance test, and QA smuggled branch cleanliness into one
   // because there was nowhere else to put it.
   const head = branchHead(context.repoDir, into);
-  notes.push(`Evidence: \`${into}\` at ${head ? head.slice(0, 7) : '(new)'}, base \`${base}\`.`);
+  // `(new)` is a claim — that this branch had no head — and it was written for a probe that failed
+  // as readily as for one that answered. The notes are the durable artifact a reviewer reads.
+  const at = head.state === 'resolved' ? head.sha.slice(0, 7) : head.state === 'no-such-ref' ? '(new)' : '(unknown — git failed)';
+  notes.push(`Evidence: \`${into}\` at ${at}, base \`${base}\`.`);
   // Why: preserved defect, see Q-0053 AC-14(5) — the evidence loop reads the DECLARED list, so a
   // branch the filter above dropped as absent is asked about anyway.
   for (const branch of declared ?? []) {
@@ -263,7 +291,15 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
   const conflicts: string[] = [];
   // The base first. A ticket open for more than a day otherwise integrates against the base it was
   // cut from, and work landed on the base meanwhile looks like the ticket reverting it. See Q-0004.
-  if (base && base !== into && branchExists(context.repoDir, base)) {
+  // The same rule as the merge list above: `absent` skips, and a probe that could not answer does
+  // not. Skipping on a failure is the Q-0004 defect the comment above describes, reached by a route
+  // that leaves no trace — so the sync is attempted and its own result is what gets reported.
+  const baseProbe = base && base !== into ? branchProbe(context.repoDir, base) : 'absent';
+  if (baseProbe === 'failed') {
+    report(context, false, `${stepId}: could not tell whether base ${base} exists — git failed; syncing it anyway rather than skipping`);
+    notes.push(`- ? base \`${base}\` — could not tell whether it exists; synced anyway rather than skipped`);
+  }
+  if (baseProbe !== 'absent') {
     const merged = mergeInto(dir, base);
     notes.push(`- ${merged.ok ? '✓' : '✗'} base \`${base}\`${merged.ok ? '' : ' — ' + mergeFailure(merged)}`);
     report(context, merged.ok, `${stepId}: ${merged.ok ? 'synced base' : 'could not sync base'} ${base}${merged.ok ? '' : ' — ' + mergeFailure(merged)}`);
@@ -271,7 +307,7 @@ export async function runIntegrate(step: Readonly<Record<string, unknown>>, cont
       for (const target of writesOf(step)) {
         context.backlog.writeFile(ticket, interpolate(String(target), context.vars), notes.join('\n'));
       }
-      context.persistence.appendLog(ticket, `run=${context.runId} step=${stepId} base-conflict base=${base} files=${merged.conflicts.join(',') || '?'}`);
+      context.persistence.appendLog(ticket, `run=${context.runId} step=${stepId} base-conflict base=${base} files=${merged.conflicts?.join(',') || '?'}`);
       // Why: preserved defect, see Q-0053 AC-8 — this exit closes neither the occurrence allocated
       // above nor its `output.txt`, so the finalised manifest keeps an integrate step at `running`
       // with no artifact beside it. Reported at the gate rather than repaired here.

@@ -35,8 +35,16 @@ function errorProperty(error: unknown, key: 'status' | 'stderr' | 'message' | 'c
 /**
  * The child's exit status, or `null` when the throw carried none. {@link ancestry} turns on this
  * being exactly `1`, so anything that is not a number is not a `1`.
+ *
+ * Exported for `fanout/fanout.ts` alone, which needs git's exit code to tell *no such ref* from *the
+ * probe failed* and has none of this machinery — its own `errorProperty` reads `stderr` and
+ * `message` only. Q-0074 OQ-6 ruled the three options by measurement: a third copy beside that
+ * module's own runner is the duplication this repository is already carrying once too often, a home
+ * in `@quorum/shared` would put behaviour in the package that holds declarations, and this adds
+ * neither a copy nor a new home. It is not on `@quorum/core`'s barrel: a symbol reaches that because
+ * a command needs it, and no command reads an exit status.
  */
-const exitStatus = (error: unknown): number | null => {
+export const exitStatus = (error: unknown): number | null => {
   const status = errorProperty(error, 'status');
   return typeof status === 'number' ? status : null;
 };
@@ -146,8 +154,15 @@ const firstLine = (text: unknown): string | null => {
   return line ? line.slice(0, 200) : null;
 };
 
-/** git's own first line of stderr, falling back to the error's message, normalised and truncated. */
-const failureDetail = (error: unknown): string | null =>
+/**
+ * git's own first line of stderr, falling back to the error's message, normalised and truncated.
+ *
+ * Exported beside {@link exitStatus} and for the same caller and the same reason: a `detail` a
+ * failed probe carries is never load-bearing — no state is derived from its text, which is
+ * translated — but a durable record that names the branch and not what git said sends its reader
+ * back to the terminal the run no longer has.
+ */
+export const failureDetail = (error: unknown): string | null =>
   firstLine(errorProperty(error, 'stderr')) ?? firstLine(errorProperty(error, 'message'));
 
 /**

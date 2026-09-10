@@ -14,7 +14,7 @@ import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { MANIFEST_FILE, RUN_HISTORY_ROOT, runIdOf, worktreeDirName } from '@quorum/shared';
 import type { Event } from '@quorum/shared';
 
-import { git, removeTempDirs, write } from '../../test/repo.js';
+import { git, installGitShim, removeTempDirs, write } from '../../test/repo.js';
 import { TICKET_ID, runFixture, stubAdapter } from '../../test/run-fixture.js';
 import type { RunFixture } from '../../test/run-fixture.js';
 import { runFlow } from './engine.js';
@@ -311,6 +311,41 @@ describe('AC-13 — the run says which gate went unanswered and what it kept', (
     const lines = runsLog(fixture);
     expect(lines.findIndex((line) => line.includes('undecided-gate')))
       .toBeLessThan(lines.findIndex((line) => line.startsWith('run=1 undecided stage=')));
+  });
+
+  test('Q-0074 AC-7 — a head that could not be READ says so, and never that the branch is absent', async () => {
+    // The third rendering, which this pair of records did not have: `head ? … : "does not exist"`
+    // wrote an absence git had not reported, into the two things a maintainer reads AFTER an
+    // undecided run — by definition the one nobody was watching. `kept-at=none` said it a second
+    // time, in the durable half.
+    //
+    // The shim names the BARE-branch form `branchHead` uses, which `branchProbe` and
+    // `ensureWorktree` do not — they pass `refs/heads/<branch>` — so what fails is the head read
+    // and not the repository. `undecided` does not restore a branch, so no rollback path is
+    // reached and this is the only consumer the condition touches here.
+    const fixture = runFixture();
+    provingFlow(fixture);
+    writing();
+
+    const shim = installGitShim(`case " $* " in *" --quiet harness/"*) exit 3 ;; esac`);
+    let events: Event[];
+    try { ({ events } = await fixture.settle()); } finally { shim.restore(); }
+
+    const disposition = warns(events).find((message) => message.includes('went unanswered')) ?? '';
+    const record = runsLog(fixture).find((line) => line.includes('undecided-gate')) ?? '';
+    expect(disposition, 'the run still reports the unanswered gate').not.toBe('');
+    for (const text of [disposition, record]) {
+      expect(text, 'an absence git did not report').not.toContain('does not exist');
+      expect(text, 'the sentinel that says the branch was never there').not.toContain('kept-at=none');
+    }
+    // Each half in its own vocabulary: the warning is prose and the record is fields, and the
+    // check is that BOTH gained a third value rather than that both gained the same words.
+    expect(disposition, 'the prose half').toContain('could not be read');
+    expect(record, 'the durable half').toContain('kept-at=unknown');
+    // Unchanged by this ticket, and asserted beside it so the third rendering cannot be mistaken
+    // for a fourth disposition: nothing was rolled back either way (Q-0040 AC-5).
+    expect(record).toContain('rollback=none');
+    expect(runsLog(fixture).join('\n')).not.toContain('rolled-back');
   });
 
   test('both records name the gate\'s own reason, which is what tells two gates of one flow apart', async () => {

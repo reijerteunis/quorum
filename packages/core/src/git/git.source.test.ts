@@ -37,11 +37,28 @@ describe('AC-1 — the module exports twelve functions, and core reads ancestry 
     // a second one (Q-0093 AC-9(b)). `pushLag` is the eleventh, for that same reason: it is a
     // second git-derived fact and a probe spelled inside `packages/cli/src/board.ts` would be a
     // second runner (Q-0105 AC-1).
+    // `exitStatus` and `failureDetail` are the thirteenth and fourteenth, and they are here for the
+    // opposite reason to the eleven above: not because a caller outside `core` needs them, but
+    // because `fanout/fanout.ts` cannot tell git's *no such ref* from a probe that failed without
+    // reading an exit status, and it has none of this machinery. Q-0074 OQ-6 ruled the three
+    // options and this is the only one that adds neither a third copy nor a new home. Neither is on
+    // `@quorum/core`'s barrel: a symbol reaches that because a COMMAND needs it.
     expect(Object.keys(gitModule).sort()).toEqual([
       'ancestry', 'configuredUser', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
-      'ensureWorktree', 'mergeBase', 'pushLag', 'removeWorktree', 'shallowState', 'shortSha',
+      'ensureWorktree', 'exitStatus', 'failureDetail', 'mergeBase', 'pushLag', 'removeWorktree',
+      'shallowState', 'shortSha',
     ]);
     for (const value of Object.values(gitModule)) expect(typeof value).toBe('function');
+  });
+
+  test('and THAT pin moved rather than widening — the twelve it held before Q-0074 are refused', () => {
+    // The same demonstration as the Q-0105 one below, one ticket along. A snapshot of the past, so
+    // it gains nothing from later additions and only the current fixture above moves.
+    expect(Object.keys(gitModule).sort(), 'the module still exports the twelve it had before Q-0074')
+      .not.toEqual([
+        'ancestry', 'configuredUser', 'containment', 'currentBranch', 'emptyRangeEvidence', 'ensureExcluded',
+        'ensureWorktree', 'mergeBase', 'pushLag', 'removeWorktree', 'shallowState', 'shortSha',
+      ]);
   });
 
   test('and that pin moved rather than being widened — the ten it held before Q-0105 are refused', () => {

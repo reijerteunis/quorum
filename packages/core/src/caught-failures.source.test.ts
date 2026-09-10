@@ -192,10 +192,13 @@ interface Classified {
  * widened from `safe()` to a caught failure — so a criterion resting on a count is one a correct
  * addition turns red. This is a register of identities (Q-0073), and its arithmetic is nobody's.
  *
- * `fanout/fanout.ts` is classified and **not repaired**: that half is Q-0074's, which keeps the id
- * because a landed entry cites it by name against those functions. Its collapsing sites carry no
- * source citation for the same reason — writing one here would be that ticket's AC-1 done badly, one
- * ticket early. The citation rule below is therefore scoped to `git/git.ts`, which is this ticket's.
+ * `fanout/fanout.ts` was classified and **not repaired** when this landed: that half was Q-0074's,
+ * which keeps the id because a landed entry cites it by name against those functions. **Q-0074 has
+ * since moved all seven of its collapsing rows**, which is what this register was left as — a
+ * forcing function rather than a description, since a repair that did not move its own row's
+ * `disposition` and `becomes` left this guard red. Its authority lines live in that module and are
+ * pinned by `fanout/fanout.source.test.ts`; the citation rule below stays scoped to `git/git.ts`,
+ * which is where this ticket's own retained collapses are.
  */
 const REGISTER: Record<string, Classified> = {
   // -------------------------------------------------------------------------------------------
@@ -313,52 +316,57 @@ const REGISTER: Record<string, Classified> = {
   },
 
   // -------------------------------------------------------------------------------------------
-  // packages/core/src/fanout/fanout.ts — Q-0074's half: classified here, repaired there
+  // packages/core/src/fanout/fanout.ts — Q-0074's half, repaired there
   // -------------------------------------------------------------------------------------------
   //
-  // Every disposition below records what the code does TODAY. None is repaired and none carries a
-  // source citation: "What a run's event stream carries" (2026-08-28) cites Q-0074 by name against
-  // these functions and `engine/composite.ts:17` says "Q-0074 owns it", so writing an authority line
-  // here would be that ticket's own AC-1 performed badly, one ticket early (Q-0115 NG-6).
-  "fanout/fanout.ts branchExists: return Boolean(safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${b}`], repo)));": {
-    disposition: 'collapses',
-    becomes: 'Boolean(safe(',
-    reason: 'Its own JSDoc says so: `false` when git itself failed as well as when the branch is absent — "the conflation `ancestry()` in this same package was rewritten to forbid" (Q-0048 AC-6).',
+  // These rows were `collapses` and unrepaired when this file landed, because that half was the
+  // successor's: "What a run's event stream carries" (2026-08-28) cites Q-0074 by name against these
+  // functions and `engine/composite.ts` said "Q-0074 owns it". Q-0074 moved them, which is the
+  // register working as the forcing function it was left as rather than as a description — every
+  // repair had to move its own row's `disposition` and `becomes` or this guard stayed red.
+  //
+  // The three that keep `safe()` keep it because the exit code answers nothing there and something
+  // ELSE does: a status read, or a probe for a merge in progress. That is decision 088's own rule
+  // rather than an exception to it — the primitive is not the defect.
+  "fanout/fanout.ts backlogChanges: catch (error) {": {
+    disposition: 'distinguish',
+    becomes: 'throw new IntegrationError(',
+    reason: 'Q-0074 AC-9, and decision 088\'s third unnamed site: the `?? \'\'` this replaces read a failed status probe as a clean `backlog/`, so no revert ran, `onDiscard` never fired, and `git add -A` committed the agent\'s edit to a ticket\'s frontmatter. Response 1 — the next act is a commit, which is not undoable by the caller.',
   },
-  "fanout/fanout.ts branchHead: return safe(() => git(['rev-parse', branch], repo));": {
-    disposition: 'collapses',
-    becomes: "return safe(() => git(['rev-parse', branch], repo));",
-    reason: 'Decision 088\'s worked example of the WRONG case: `finish()` reads this to decide whether to roll the ticket branch back, so *the branch is absent* and *git could not be asked* lead to different actions and collapsing them lets a failed run silently keep work it should have discarded.',
+  "fanout/fanout.ts branchHead: catch (error) {": {
+    disposition: 'distinguish',
+    becomes: "? { state: 'no-such-ref', sha: null, detail: null }",
+    reason: 'Decision 088\'s worked example of the WRONG case, repaired: `finish()` reads this to decide whether to roll the ticket branch back, so *the branch is absent* and *git could not be asked* lead to different actions — and collapsing them let a failed run silently keep whatever integrate merged.',
   },
-  "fanout/fanout.ts commitAll: const dirty = (safe(() => git(['status', '--porcelain', '--', 'backlog'], dir)) ?? '')": {
-    disposition: 'collapses',
-    becomes: "?? '')",
-    reason: 'Named by decision 088: a failed status probe reads as a clean `backlog/`, so no revert runs, `onDiscard` never fires, and an agent\'s edit to a ticket\'s frontmatter reaches the merge.',
+  "fanout/fanout.ts branchProbe: catch (error) { return exitStatus(error) === 1 ? 'absent' : 'failed'; }": {
+    disposition: 'distinguish',
+    becomes: "exitStatus(error) === 1 ? 'absent' : 'failed'",
+    reason: 'Q-0074 AC-4. `--verify --quiet` exits 1 for a ref that is not there and that exit alone is `absent`; the renaming from `branchExists` is what made each of its six consumers a compile error, since neither `if (!x)` nor a filter predicate is a type error under any three-answer shape.',
   },
   "fanout/fanout.ts commitAll: safe(() => git(['checkout', '--', 'backlog'], dir)); // revert tracked edits": {
-    disposition: 'collapses',
-    becomes: "safe(() => git(['checkout', '--', 'backlog'], dir));",
-    reason: 'The function\'s own JSDoc says it: "Both halves of the revert are tolerant of failure, so a revert that FAILED still reports through `onDiscard` as though it had discarded" (Q-0048 AC-12).',
+    disposition: 'best-effort',
+    becomes: "const left = backlogChanges(dir, 'after reverting it');",
+    reason: 'Q-0074 AC-10. Its exit code is not read because it answers nothing — `checkout -- backlog` legitimately fails where the only edit is a file the agent ADDED, which the clean beside it removes — so the status read below is what establishes the revert, and `onDiscard` fires only once it has.',
   },
   "fanout/fanout.ts commitAll: safe(() => git(['clean', '-qfd', '--', 'backlog'], dir)); // drop files the agent added": {
-    disposition: 'collapses',
-    becomes: "safe(() => git(['clean', '-qfd', '--', 'backlog'], dir));",
-    reason: 'The second half of that same revert, under the same sentence.',
+    disposition: 'best-effort',
+    becomes: "const left = backlogChanges(dir, 'after reverting it');",
+    reason: 'The second half of that same revert, judged by the same outcome — and symmetrically, `clean` has nothing to do where the only edit is a tracked one the checkout reverted.',
   },
-  "fanout/fanout.ts mergeInto: const conflicts = (safe(() => git(['diff', '--name-only', '--diff-filter=U'], dir)) ?? '').split('\\n').filter(Boolean);": {
-    disposition: 'collapses',
-    becomes: "?? '').split",
-    reason: 'A failed probe reads as no conflicting paths, so a `MergeResult` reporting `ok: false` names none of them and the caller is told a conflict has no files.',
+  "fanout/fanout.ts mergeInto: const listed = safe(() => git(['diff', '--name-only', '--diff-filter=U'], dir));": {
+    disposition: 'distinguish',
+    becomes: 'listed === null ? null : listed.split',
+    reason: 'Q-0074 AC-12. The `?? \'\'` this replaces read a failed probe as no conflicting paths, so a `MergeResult` saying `ok: false` named none of them and the caller was told a conflict has no files; `null` is now an unread list and `mergeFailure` says so rather than saying there were none.',
   },
   "fanout/fanout.ts mergeInto: safe(() => git(['merge', '--abort'], dir));": {
-    disposition: 'collapses',
-    becomes: "safe(() => git(['merge', '--abort'], dir));",
-    reason: 'Named by decision 088: a failed abort is discarded, leaving a merge in progress against a JSDoc that promises to "leave the worktree clean either way".',
+    disposition: 'best-effort',
+    becomes: "const merging = branchHead(dir, 'MERGE_HEAD');",
+    reason: 'Q-0074 AC-12, and the one place reading an exit code would have been the SAME defect in the other direction: an abort fails when there was no merge to abort, so its status would report a dirty worktree over a clean one. The probe below answers instead, and `worktreeClean` carries it.',
   },
   'fanout/fanout.ts mergeInto: } catch (e) {': {
     disposition: 'distinguish',
-    becomes: 'return { ok: false, conflicts,',
-    reason: 'The merge failing is a RESULT rather than a throw, and the caller decides on it — the one caught failure in this module that already carries its own state.',
+    becomes: 'ok: false,',
+    reason: 'The merge failing is a RESULT rather than a throw, and the caller decides on it — the one caught failure in this module that already carried its own state before Q-0074 touched it.',
   },
   "fanout/fanout.ts resetBranchTo: if (fs.existsSync(dir)) { git(['reset', '--hard', sha], dir); safe(() => git(['clean', '-qfd'], dir)); }": {
     disposition: 'best-effort',
@@ -624,8 +632,11 @@ const sentencesOf = (markdown: string): string[] => markdown
 const plainly = (text: string): string => text.replace(/[*_`>]/g, '').replace(/\s+/g, ' ').trim();
 
 describe('Q-0115 AC-1 — no source file transcribes the entry it cites', () => {
+  // `fanout/` joined the two at Q-0074, which is where that half's citations landed: a scan that
+  // forbids transcription in the modules a ruling has already reached, and not in the one it is
+  // reaching next, is a scan that arrives after the copy it exists to stop.
   const scanned = (): [string, string][] => coreSourceFiles()
-    .filter(([name]) => name.startsWith('git/') || name.startsWith('engine/'));
+    .filter(([name]) => ['git/', 'engine/', 'fanout/'].some((folder) => name.startsWith(folder)));
 
   test('the scan has a corpus and a subject, before it is believed', () => {
     // Q-0111's lesson, and the reason this clause is written before the one below it: that guard's
@@ -645,7 +656,7 @@ describe('Q-0115 AC-1 — no source file transcribes the entry it cites', () => 
       'the matcher fires on a CITATION, which is what the rule asks for instead').toBe(false);
   });
 
-  test('and no line under git/ or engine/ carries one', () => {
+  test('and no line under git/, engine/ or fanout/ carries one', () => {
     // `harness/rules.md`: cite, do not transcribe — one line naming the authority, never a copy of
     // the argument. Scanned line by line rather than whole-file, because an authority comment that
     // runs to three lines puts its continuation outside a scan anchored on the marker (Q-0050).

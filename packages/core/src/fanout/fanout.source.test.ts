@@ -47,9 +47,22 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
 
   test('fanout.ts exports the twelve names the port assigns it, and no thirteenth', () => {
     expect(Object.keys(fanoutModule).sort()).toStrictEqual([
-      'IntegrationError', 'branchExists', 'branchHead', 'commitAll', 'loadTasks', 'mergeInto',
+      'IntegrationError', 'branchHead', 'branchProbe', 'commitAll', 'loadTasks', 'mergeInto',
       'resetBranchTo', 'scopeToFailing', 'taskPromptSection', 'taskVars', 'ticketWorktree', 'waves',
     ]);
+  });
+
+  test('and that pin MOVED rather than widening — the set it held before Q-0074 is refused', () => {
+    // Still twelve: `branchExists` became `branchProbe`, which is the rename that turns each of its
+    // six call sites into a compile error rather than a truthiness test that silently reads a
+    // three-answer probe as a boolean. Shown red against the value it replaces rather than edited to
+    // fit, which is the demonstration `git.source.test.ts` already writes for itself — a `toContain`
+    // here would have accepted either list and recorded nothing.
+    expect(Object.keys(fanoutModule).sort(), 'the module still exports the twelve it had before Q-0074')
+      .not.toStrictEqual([
+        'IntegrationError', 'branchExists', 'branchHead', 'commitAll', 'loadTasks', 'mergeInto',
+        'resetBranchTo', 'scopeToFailing', 'taskPromptSection', 'taskVars', 'ticketWorktree', 'waves',
+      ]);
   });
 
   test('command.ts exports runCommand and nothing else', () => {
@@ -115,9 +128,11 @@ describe('AC-1 — two files, the exact surface, no dependency, and nothing prin
       });
     }
     // The walk itself is the fragile part: an interface it failed to enter would assert nothing and
-    // still report green. Fifteen fields across six interfaces — TaskNode 2, Task 4, TicketFolder 1
-    // and MergeResult 3 in fanout.ts; RunCommandOptions 1 and CommandResult 4 in command.ts.
-    expect(fields.length).toBe(15);
+    // still report green. Sixteen fields across six interfaces — TaskNode 2, Task 4, TicketFolder 1
+    // and MergeResult 4 in fanout.ts; RunCommandOptions 1 and CommandResult 4 in command.ts.
+    // MergeResult gained `worktreeClean` at Q-0074: an abort is best-effort, so what the worktree
+    // was left holding is a fourth thing a merge reports rather than a promise its JSDoc made.
+    expect(fields.length).toBe(16);
   });
 
   test('it imports node builtins, yaml, shared and its own siblings — and nothing else', () => {
@@ -239,7 +254,12 @@ describe('AC-13 — no schema, no worktree lifecycle, and one write', () => {
         expect(text.includes(forbidden), `${name} must not contain ${forbidden}`).toBe(false);
       }
     }
-    expect(sourceOf(FANOUT_SOURCE)).toContain("import { ensureWorktree } from '../git/git.js';");
+    // The one specifier this module takes from `core/git`, and every name it takes through it.
+    // `exitStatus` and `failureDetail` joined `ensureWorktree` at Q-0074: reading git's exit code is
+    // what makes a third answer possible, `git.ts` already had both module-private, and a copy
+    // beside this module's own runner is the duplication the `safe()` register exists to bound
+    // (Q-0074 OQ-6). The anchor is the whole import, so a widening is a visible act here.
+    expect(sourceOf(FANOUT_SOURCE)).toContain("import { ensureWorktree, exitStatus, failureDetail } from '../git/git.js';");
   });
 
   test('the folder writes in exactly two places: loadTasks\'s artifact, and a capture it removes', () => {
@@ -261,11 +281,72 @@ describe('AC-13 — no schema, no worktree lifecycle, and one write', () => {
     ]);
   });
 
-  test('each preserved defect names its authority on one line', () => {
+  test('each preserved defect names its authority, as an identity and not a floor', () => {
     // harness/rules.md: one line naming the authority where behaviour is deliberately strange, and a
     // pointer rather than a transcription of the argument.
-    const citations = moduleSources()
-      .flatMap(([, text]) => [...text.matchAll(/Why: preserved defect, see Q-0048 AC-\d+/g)].map((m) => m[0]));
-    expect(citations.length, 'AC-6, AC-9 defect 2, AC-12 defects 1, 3 and 4 each carry one').toBeGreaterThanOrEqual(5);
+    //
+    // A `toBeGreaterThanOrEqual(5)` stood here, which is the shape Q-0073 named: a floor cannot see
+    // a citation swapped out, and — the reason it moved now — it cannot see one REMOVED either,
+    // because Q-0074 closed three of these and the floor would have gone on passing at five if the
+    // count had happened to be met by the survivors. Identities, in source order.
+    expect(moduleSources().flatMap(([name, text]) =>
+      [...text.matchAll(/Why: preserved defect, see (Q-\d+ AC-\d+(?: defect \d+)?)/g)].map(([, cited]) => `${name}: ${cited!}`)))
+      .toStrictEqual([
+        `${FANOUT_SOURCE}: Q-0048 AC-12`, // parsedTasks — an empty tasks.yaml still throws a raw TypeError
+        `${FANOUT_SOURCE}: Q-0048 AC-12`, // taskVars — a hostile task id is handed back unescaped
+        `${FANOUT_SOURCE}: Q-0048 AC-12`, // resetBranchTo — the route is chosen from fs.existsSync alone
+      ]);
+  });
+
+  test('and the three Q-0074 closed are gone, named by the token they were cited under', () => {
+    // AC-1's third half. A reader told to find these lines by their TICKET finds nothing: they cite
+    // `Q-0048`, and `Q-0074` appeared exactly once in the whole of `packages/core/src` before this
+    // change — a search that failed to look, read as proven absence, which is this ticket's own
+    // subject sitting inside its own instrument.
+    const text = sourceOf(FANOUT_SOURCE);
+    for (const [token, subject] of [
+      ['Why: preserved defect, see Q-0048 AC-6', 'branchExists and branchHead conflating a failed git with an absent branch'],
+      ['Why: preserved defect, see Q-0048 AC-12 defect 4', 'commitAll reporting a revert that failed as a discard'],
+    ] as const) {
+      // Shown to have a subject before it is believed (Q-0111, whose first needle matched nothing at
+      // all including itself): the needle is exercised against the line as it stood, so a scan that
+      // could never fire fails HERE rather than passing over a module that had kept it.
+      expect(`  * ${token}. This returns \`false\` when git itself failed`.includes(token),
+        `the needle for ${subject} matches nothing`).toBe(true);
+      expect(text.includes(token), `fanout.ts still carries the pin for ${subject}`).toBe(false);
+    }
+    // The third is not a token but a sentence, because `mergeInto`'s and `commitAll`'s pins shared
+    // the `Q-0048 AC-12` citation the three survivors above still carry.
+    for (const claim of [
+      'reports through `onDiscard` as though it had discarded',
+      'leave the worktree clean either way',
+    ]) {
+      expect(`a JSDoc promising to ${claim} today`.includes(claim), `the needle for "${claim}" matches nothing`).toBe(true);
+      expect(text.includes(claim), `fanout.ts still claims: ${claim}`).toBe(false);
+    }
+  });
+
+  test('and every site that KEEPS safe() says why, which the ones that stopped needing it do not', () => {
+    // AC-1's second half, scoped to this module because `git/git.ts`'s half is Q-0115's and its own
+    // register carries it.
+    //
+    // Chunked on the JSDoc that OPENS each declaration rather than on the declaration line, which
+    // is the correction this clause needed on its first run: splitting at `export function` puts a
+    // symbol's doc comment in the chunk BEFORE it, so `resetBranchTo` — whose authority line is in
+    // its JSDoc — was reported as citing none while `mergeInto` inherited it. A chunker that
+    // mis-attributes is worse than none, because it reads as coverage in both directions.
+    const text = sourceOf(FANOUT_SOURCE);
+    const chunks = text.split(/\n(?=\/\*\*\n)/).filter((chunk) => /\bsafe\(\(\) =>/.test(chunk));
+    // Three, named rather than counted: the two halves of `commitAll`'s revert live in one chunk,
+    // `mergeInto`'s conflict probe and abort in another, and `resetBranchTo`'s clean in a third. A
+    // fourth retained site fails here until it is named, and a chunker that lost one fails too.
+    // Anchored at a line start, because a JSDoc that says "this function cannot promise…" answers
+    // an unanchored match with the word after `function` — measured on this file's first run.
+    expect(chunks.map((chunk) => /^(?:export )?(?:function|const) (\w+)/m.exec(chunk)?.[1]))
+      .toStrictEqual(['resetBranchTo', 'commitAll', 'mergeInto']);
+    for (const chunk of chunks) {
+      expect(chunk, `a retained safe() with no authority line: ${String(chunk.split('\n').find((l) => l.includes('function')))}`)
+        .toMatch(/Why: /);
+    }
   });
 });
