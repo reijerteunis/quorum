@@ -23,7 +23,7 @@ import { DEFAULT_BASE_BRANCH, integrationBranch, ticketBranch, ticketBranchPrefi
 import type { Flow, ProjectConfig } from '@quorum/shared';
 
 import type { TicketRecord } from '../backlog/backlog.js';
-import { emptyRangeEvidence, shortSha } from '../git/git.js';
+import { emptyRangeEvidence, shortSha, type ShortShaResult } from '../git/git.js';
 import { interpolate } from './loaders.js';
 import { FlowError, type RunPersistence } from './types.js';
 
@@ -201,6 +201,20 @@ function classifyEndpoints(
   });
 }
 
+/**
+ * What a failure may say about the endpoint BESIDE the one that failed, which is three things.
+ *
+ * `does not resolve either` is reserved for git's own answer that the ref is not there. A probe that
+ * could not answer gets its own clause: saying the second endpoint does not resolve, on the evidence
+ * that nobody could tell, is the same category error the failure it sits inside was opened for.
+ */
+const otherEndpointClause = (other: EndpointSide, otherRef: string, probe: ShortShaResult): string => {
+  if (probe.sha != null) return `the ${other} endpoint ${otherRef} resolves to ${probe.sha}`;
+  return probe.state === 'failed'
+    ? `git could not check the ${other} endpoint ${otherRef} either`
+    : `the ${other} endpoint ${otherRef} does not resolve either`;
+};
+
 // What the preflight may say about the endpoint that is NOT due, when the other one fails. It is not
 // supposed to resolve — its producer has not run — so reporting it as one that does not resolve
 // either would be the same category error the diagnosis half exists to remove. Reached only for an
@@ -225,18 +239,50 @@ interface MissingEndpoint {
 }
 
 /**
+ * The evidence tail both endpoint failures word around their own identifying phrase, so which of
+ * the two a reader meets does not change what the evidence looks like.
+ */
+const endpointTail = (
+  side: EndpointSide, range: string, written: string, clauses: ReadonlyArray<string | null>,
+): string => `${[`it is the ${side} endpoint of ${named(range, written)}`, ...clauses]
+  .filter((clause): clause is string => Boolean(clause)).join('; ')}. Neither the diff nor the containment check was run.`;
+
+/**
+ * The failure for an endpoint the probe could not READ, which is a different claim from an endpoint
+ * that is not there.
+ *
+ * It names the condition and stops: no `missing ref`, no `does not resolve`, and nothing else
+ * asserting an absence nobody proved. Until Q-0115 this case took {@link missingEndpointFailure}'s
+ * route, so a git that failed at run start stopped the run telling a maintainer that
+ * `repo.base_branch`, the `--base` they typed, or an earlier step had named a ref that was not
+ * there — and sent them to `harness/harness.yaml` to fix a value that was already correct.
+ *
+ * No remedy, per *"A `core` error names the condition; the remedy belongs to the surface"*
+ * (2026-09-07); and no attribution to the flag or the config, because which knob supplied a ref is
+ * an answer to a question this failure has not established anyone should be asking. git's own line
+ * travels as a clause and decides nothing: it is translated.
+ */
+function unreadableEndpointFailure(step: DiffStep, detail: MissingEndpoint & { gitDetail: string | null }): FlowError {
+  const { side, ref, range, written, clauses, gitDetail } = detail;
+  const evidence = endpointTail(side, range, written, [...clauses, gitDetail ? `git said: ${gitDetail}` : null]);
+  return new FlowError(`${String(step.id)}: git could not check the ${side} endpoint "${ref}" — ${evidence}`);
+}
+
+/**
  * The failure for an endpoint that does not resolve, raised by the preflight and by
  * {@link materialiseDiff} alike — so which layer noticed does not change what a maintainer reads.
  *
  * The three identifying phrases are chosen by the failing endpoint's own identity and are matched by
  * substring in existing fixtures; `clauses` are the evidence added around them, and are the only
  * part the two callers word differently.
+ *
+ * Reached only where git ANSWERED that the ref is not there. A probe that could not answer takes
+ * {@link unreadableEndpointFailure} instead, every phrase below being an assertion of absence.
  */
 function missingEndpointFailure(step: DiffStep, context: DiffContext, detail: MissingEndpoint): FlowError {
   const { side, ref, range, written, clauses, base } = detail;
   const integration = integrationBranch(context.ticket.meta.id);
-  const tail = `${[`it is the ${side} endpoint of ${named(range, written)}`, ...clauses]
-    .filter((clause): clause is string => Boolean(clause)).join('; ')}. Neither the diff nor the containment check was run.`;
+  const tail = endpointTail(side, range, written, clauses);
   if (ref === base) {
     // Why: preserved behaviour, see Q-0038 — keyed on whether the run was GIVEN --base, never on
     // whether its value differs from repo.base_branch: an override may legitimately name the
@@ -280,21 +326,22 @@ export function materialiseDiff(step: DiffStep, context: DiffContext): string {
   // this range. Naming that step is the difference between telling the reader a branch is missing and
   // telling them the producing step committed nothing.
   const deferred = context.deferredDiffs.get(range) ?? null;
-  // One spawn per endpoint answers both "does it resolve?" and "to what?" — and the SHA is what makes
-  // the failure re-checkable tomorrow, after the branch tips have moved.
-  const sha = { left: shortSha(context.repoDir, left), right: shortSha(context.repoDir, right) };
+  // One spawn per endpoint answers "does it resolve?", "to what?" and "did the probe answer at all?"
+  // — and the SHA is what makes the failure re-checkable tomorrow, after the branch tips have moved.
+  const probe = { left: shortSha(context.repoDir, left), right: shortSha(context.repoDir, right) };
   for (const side of ['left', 'right'] as const) {
     const ref = side === 'left' ? left : right;
-    if (sha[side] != null) continue;
+    const endpoint = probe[side];
+    if (endpoint.sha != null) continue;
     const other: EndpointSide = side === 'left' ? 'right' : 'left';
     const otherRef = other === 'left' ? left : right;
-    const otherSha = sha[other];
-    throw missingEndpointFailure(step, context, {
+    const detail: MissingEndpoint = {
       side, ref, range, written, base,
       clauses: [
-        otherSha != null
-          ? `the ${other} endpoint ${otherRef} resolves to ${otherSha}`
-          : `the ${other} endpoint ${otherRef} does not resolve either`,
+        // Three answers about the endpoint beside it, because there are three: git named it, git
+        // said it is not there, or git did not say. The third may not borrow the second's wording —
+        // that is this failure's own subject, one endpoint along. Q-0115.
+        otherEndpointClause(other, otherRef, probe[other]),
         // Which step owed which ref, whichever endpoint went bad. The failing endpoint's own producer
         // is named as the step that was expected to create it; a producer of the OTHER endpoint
         // explains why the range was deferred and is never phrased as owing the ref that failed,
@@ -304,8 +351,11 @@ export function materialiseDiff(step: DiffStep, context: DiffContext): string {
           ? `step "${producer.step}" was expected to create ${producer.ref}`
           : `the range was deferred waiting for step "${producer.step}" to create ${producer.ref}`),
       ],
-    });
+    };
+    if (endpoint.state === 'failed') throw unreadableEndpointFailure(step, { ...detail, gitDetail: endpoint.detail });
+    throw missingEndpointFailure(step, context, detail);
   }
+  const sha = { left: probe.left.sha, right: probe.right.sha };
   const stat = execFileSync('git', ['diff', '--stat', range], { cwd: context.repoDir, encoding: 'utf8' });
   if (!stat.trim()) throw new FlowError(emptyRangeFailure({ step, written, range, left, right, sha, deferred, context }));
   const full = execFileSync('git', ['diff', range], { cwd: context.repoDir });
@@ -454,11 +504,19 @@ export function preflightDiffs(context: PreflightContext): void {
       // Every endpoint that is due is proven now, where it costs nothing — one endpoint being owed by
       // a later step says nothing about the other. See Q-0038.
       for (const endpoint of endpoints) {
-        if (endpoint.class !== 'pre-existing' || shortSha(context.repoDir, endpoint.ref) != null) continue;
-        throw missingEndpointFailure(site, context, {
+        if (endpoint.class !== 'pre-existing') continue;
+        const resolved = shortSha(context.repoDir, endpoint.ref);
+        if (resolved.sha != null) continue;
+        // The run still stops — this caller's next action is to materialise a diff and review
+        // against it, which is unverifiable without the endpoint, and that is the first of decision
+        // 088's three admissible responses. What changed is the claim, not the control flow: a
+        // probe that could not answer no longer stops the run naming a ref as missing. Q-0115.
+        const detail: MissingEndpoint = {
           side: endpoint.side, ref: endpoint.ref, range, written, base: String(context.vars.base),
           clauses: [notDueClause(endpoints.find((other) => other !== endpoint), site)],
-        });
+        };
+        if (resolved.state === 'failed') throw unreadableEndpointFailure(site, { ...detail, gitDetail: resolved.detail });
+        throw missingEndpointFailure(site, context, detail);
       }
     }
     for (const s of members) {
