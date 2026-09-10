@@ -1,12 +1,21 @@
 # Quorum docs
 
-*Status: index, 2026-09-08 — the term list gained **verified version** (Q-0067), the CLI version an
+*Status: index, 2026-09-10 — **[USAGE.md](USAGE.md) was added** as the user guide, and the
+repository gained a `LICENSE` (Apache-2.0), a `README.md` that takes a stranger from clone to
+first gate, and a `CONTRIBUTING.md`. None of them is a numbered document: the numbered series is
+for people building Quorum, and those four are for people using it or joining it. Every install
+and command path they claim was walked end to end from a packed install outside this repository
+before it was written down. 2026-09-08 — the term list gained **verified version** (Q-0067), the CLI version an
 adapter was last verified against, which `quorum adapters --probe` compares with the installed one
 and never refuses on. 2026-09-02 — the term list gained **build task** and **emitted artifact** (Q-0098),
 which `packages/shared/src/docs.test.ts` now checks against the glossary; `CLAUDE.md:13` carries the
 same list and is the human's to extend. 2026-08-28 — the decisions moved into `decisions/`, one file
 per entry, and `DECISIONS.md` became their index; nothing else changed. Created 2026-08-25 because `README.md`
 and `CLAUDE.md` had pointed here for some time and nothing was at the address.*
+
+> **Using Quorum rather than building it?** Start at the [README](../README.md), then
+> **[USAGE.md](USAGE.md)** — the user guide. The numbered documents below are design
+> documentation for people working on Quorum itself, and are not a manual.
 
 Read **01, 02, 04, 06** first — in that order. They are the product, the pipeline, the code map
 and the plan. The other three are reference you consult rather than read.
