@@ -1,14 +1,22 @@
 ---
 id: Q-0115
 title: A git probe that failed is never rendered as an answer
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0115/integration
 priority: p2
 created: 2026-09-10
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-10T20:31:38.075Z
+    cost: 9.362
 ---
 Five collapsing safe() sites in packages/core/src/git/git.ts, including the one that makes quorum board answer 'no branch' for every ticket in the backlog when a single for-each-ref fails. Q-0074's git/ half, split at its requirements gate.
 
@@ -77,3 +85,34 @@ hashes, which has no analogue in *is this `.git` readable*. Measure before choos
 AC-3 rather than landing them. **It must not reopen** Q-0109's third case (a project root below a
 repository git refuses), and it must not parse translated git prose or reimplement git's upward
 discovery walk. Roughly eight to ten criteria.
+
+## Ruled at the requirements gate, 2026-09-10
+
+**GO-2 — this ticket takes AC-2 and AC-3.** The body's *"inherits"* was written before the register
+existed; §0.1 measured that **nothing exists in the tree to inherit**, Q-0074 not having run its
+chore, and Q-0074's own GO-2 says the register travels with the half that runs. This is that half.
+Twelve criteria, inside the ceiling. AC-12 stays here too.
+
+**Decision 088 owes no erratum, and the reason is worth stating because the finding is real.** Its
+census enumerates `safe()` call sites and that key is **blind to six hand-written `catch` blocks in
+`git.ts`, one of which collapses** — `containment`'s work-tree probe at `:339`, `catch { return
+null; }`, which makes `board.ts:204`'s `where?.stateOf(…)` undefined so **every row renders with no
+containment token at all**, indistinguishably from a directory that is not a repository. That is a
+second board-wide collapse in the same function, more severe than two of the four the entry singles
+out, and structurally invisible to the census that produced it.
+
+Nothing 088 *states* is false: it says twenty-four call sites of one primitive, thirteen of which
+collapse, and both numbers are exactly right for the predicate it names. What was too narrow is the
+predicate, not the ruling — and the ruling is the part an entry is for. So the repair is where a
+reader will actually meet it: **AC-2's register is keyed on *a git invocation whose failure is
+caught*, never on a call to `safe()`**, and GO-6 puts the blind spot in the closing entry.
+
+**It is the fail-open shape this repository has now shipped six times** (Q-0051, Q-0067, Q-0073,
+Q-0107, Q-0108, and here) — a guard keyed on a name rather than on the behaviour it is about. The
+next author will reach for the primitive's name too, which is why GO-6 names the site rather than
+the class.
+
+**Already fixed on the sibling fact of the same board invocation.** `pushLag`'s round-1 review caught
+exactly this and `git.test.ts:794–797` records it in the code's own words: *"a probe that could not
+answer used to be returned as `null` and rendered as silence, which for a fact whose success output
+is silence is a clean bill of health nobody earned."* `containment` still answers `null` for both.
