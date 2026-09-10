@@ -855,6 +855,30 @@ describe('Q-0068 AC-6 / AC-14 — the documents quote the refusal the product pr
     return found[1];
   };
 
+  /**
+   * One field's declared type, read out of `ProbeResult`'s verified branch.
+   *
+   * AC-14 pins the documented shape against `ProbeResult` rather than against a retyped literal, and
+   * prose assertions cannot do that however many of them there are: three phrases inside
+   * `docs/03-adapter-contract.md` only agree with each other, so narrowing `tokens` back to `number`
+   * leaves the document promising a `null` the type refuses and every one of them green. Read as
+   * **text**, for the reason {@link refusalIn} gives, out of a file this package's `test` task
+   * already declares as an input from Q-0058.
+   *
+   * Scoped to the `ok: true` branch, because that is the answer this section of the document
+   * describes; the union's other branch carries neither field, so a search across the whole
+   * declaration would report an absence as a drift.
+   */
+  const probeResultField = (field: string): string => {
+    const source = repoFile('packages/core/src/adapters/adapters.ts');
+    const start = source.indexOf('export type ProbeResult =');
+    const end = source.indexOf('ok: false;', start);
+    if (start < 0 || end < 0) throw new Error('packages/core/src/adapters/adapters.ts declares no two-branch ProbeResult — this check has lost its subject');
+    const found = new RegExp(`^\\s*${field}: (.+);$`, 'm').exec(source.slice(start, end));
+    if (!found) throw new Error(`ProbeResult's verified branch declares no \`${field}\` — this check has lost its subject`);
+    return found[1];
+  };
+
   test('USAGE.md quotes the shipped sentence in full, product named rather than elided', () => {
     // The document carried `…runs on subscription OAuth only` — an ellipsis standing exactly where
     // the product's name goes, because the sentence it was quoting called the product a harness and
@@ -898,6 +922,14 @@ describe('Q-0068 AC-6 / AC-14 — the documents quote the refusal the product pr
       .toMatch(/never rounded to zero/);
     expect(contract, 'it does not refuse reading missing usage as a failed login')
       .toMatch(/not a failed login/);
+    // And the document is held to the type it describes, which the three clauses above cannot do:
+    // they are self-consistent within one file. Both fields, because the paragraph states one rule
+    // for the pair — a reader who trusted this document while `tokens` was `number` would be told a
+    // valid adapter may report nothing by a product whose own type says it may not.
+    for (const field of ['cost_usd', 'tokens']) {
+      expect(probeResultField(field), `the contract says a silent probe reports \`${field}: null\`, which ProbeResult does not permit`)
+        .toBe('number | null');
+    }
   });
 
   test('and the status line of every numbered document this change edits records Q-0068', () => {
