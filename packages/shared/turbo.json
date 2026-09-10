@@ -43,6 +43,10 @@
         // table against every role's `paths:` frontmatter. `spike/test/smoke.js` was the only thing
         // doing that and Q-0103 deletes it, so the read — and the hash — move here.
         "../../harness/architecture.md",
+        // Q-0115 AC-12: docs.test.ts holds the canonical rules file to a register of its own rules,
+        // so that the one sentence decision 088 routes there stays one and nothing else moved with
+        // it. A cached pass must not stand over an edited rule.
+        "../../harness/rules.md",
         "../../harness/flows/*.yaml",
         "../../harness/roles/*.md",
         "../../backlog/*/ticket.md",

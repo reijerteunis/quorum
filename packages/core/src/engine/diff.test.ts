@@ -409,6 +409,120 @@ describe('Q-0051 AC-5 — an unresolvable endpoint fails with the evidence that 
 });
 
 // ---------------------------------------------------------------------------------------------
+// Q-0115 AC-9 — no diagnostic names a missing ref it did not prove absent
+// ---------------------------------------------------------------------------------------------
+//
+// Both `shortSha` consumers read its `null` as *the ref is not there*, so a git that failed stopped
+// the run blaming `repo.base_branch`, the `--base` the maintainer typed, or an earlier step for a
+// ref that may be perfectly present. The run STILL stops — this caller's next action is to
+// materialise a diff and review against it, which is unverifiable without the endpoint, and that is
+// the first of decision 088's three admissible responses. What changed is the claim.
+//
+// The two consumers are broken SEPARATELY, because one fix closes either and leaves the other.
+
+describe('Q-0115 AC-9 — a probe that could not answer stops the run without asserting absence', () => {
+  /** Everything a failure may not say once it has stopped claiming an absence nobody proved. */
+  const assertNoAbsenceClaim = (message: string): void => {
+    expect(message, 'it asserts the ref is not there').not.toMatch(/missing ref/);
+    expect(message, 'it asserts the ref does not resolve').not.toMatch(/does not resolve/);
+    expect(message, 'it blames the configured base for a probe that failed')
+      .not.toMatch(/harness\/harness\.yaml/);
+    expect(message, 'it blames the --base flag for a probe that failed').not.toMatch(/--base names/);
+    // NG-8: "A `core` error names the condition; the remedy belongs to the surface" (2026-09-07).
+    expect(message, 'a core error composed a remedy').not.toMatch(/Remedy:/);
+    expect(message, 'the message claims a historical event').not.toMatch(FORBIDDEN);
+  };
+
+  /** The whole argv of the abbreviation probe for one ref, which is what the shim matches. */
+  const shortProbe = (ref: string): string => `rev-parse --verify --quiet --short ${ref}`;
+
+  test('materialiseDiff names the condition, and neither endpoint is called missing', () => {
+    const root = repoWith();
+    const context = contextFor(root, { base: 'main', id: TICKET });
+    // Both probes broken: the left endpoint is the one reported, and the right — about which
+    // nothing is known either — may not borrow the wording reserved for git's own answer.
+    const { result } = counting(() => failure(STEP, context),
+      `case "$*" in *"--verify --quiet --short"*) exit 3 ;; esac`);
+
+    expect(result).toBeInstanceOf(FlowError);
+    const message = String(result?.message);
+    expect(message, 'the failing step is not named').toContain('review-claude');
+    expect(message, 'the condition is not named').toContain('git could not check the left endpoint "main"');
+    expect(message, 'the range is not quoted').toContain(`\`main...${BRANCH}\``);
+    expect(message, 'the endpoint beside it is described as absent on evidence nobody has')
+      .toContain(`git could not check the right endpoint ${BRANCH} either`);
+    assertNoAbsenceClaim(message);
+  });
+
+  test('and where the other endpoint DID resolve, it is still named with its sha', () => {
+    // The discriminating half: the clause has three answers, not two, and the two that already
+    // existed must survive the third. Only the right endpoint's probe is broken here.
+    const root = repoWith();
+    const context = contextFor(root, { base: 'main', id: TICKET });
+    const { result } = counting(() => failure(STEP, context),
+      `case "$*" in "${shortProbe(BRANCH)}") exit 3 ;; esac`);
+
+    const message = String(result?.message);
+    expect(message).toContain(`git could not check the right endpoint "${BRANCH}"`);
+    expect(message, 'the endpoint that answered is no longer quoted with its sha')
+      .toContain(`the left endpoint main resolves to ${git(root, 'rev-parse', '--short', 'main')}`);
+    assertNoAbsenceClaim(message);
+  });
+
+  test('the run-level preflight is closed too, and it is a separate site', () => {
+    // `diff.ts:457` and `diff.ts:285` reach the same wording by different routes, so one fix closes
+    // either and leaves the other. **The range has to be a DEFERRED one to reach this site at all**:
+    // a range whose endpoints are all pre-existing is materialised through `materialiseDiff`, which
+    // is the site above. Written the obvious way — one review step over `{base}...integration` —
+    // this test goes red when the OTHER consumer is broken and never executes this one, which
+    // reverting that consumer is what showed.
+    const root = repoWith();
+    const context: PreflightContext = {
+      ...contextFor(root, { base: 'main', id: TICKET }),
+      flow: { name: 'probe', consumes: 'a', produces: 'b', steps: [] } as unknown as Flow,
+      diffInputs: new Map<string, string>(),
+      deferredDiffs: new Map<string, DeferredDiff>(),
+    };
+    // `harness/T-9/implement` is created by the step before it, so the range is deferred and only
+    // its pre-existing endpoint is proven now — which is this site, and Q-0038's rule.
+    context.flow.steps = [
+      implementStep(),
+      reviewStep('harness/{id}/integration...harness/{id}/implement'),
+    ] as unknown as Flow['steps'];
+
+    const { result } = counting(() => {
+      try { preflightDiffs(context); } catch (error) { return error as Error; }
+      return null;
+    }, `case "$*" in *"--verify --quiet --short"*) exit 3 ;; esac`);
+
+    expect(result, 'the preflight let a run past an endpoint it could not check').toBeInstanceOf(FlowError);
+    const message = String(result?.message);
+    expect(message).toContain(`git could not check the left endpoint "harness/${TICKET}/integration"`);
+    expect(message, 'the endpoint that is not due yet is reported as one that failed to resolve')
+      .toContain('is not created until step "implement" runs');
+    assertNoAbsenceClaim(message);
+    // Anti-vacuity: unbroken, the same context DEFERS this range and returns, so the failure above
+    // is the probe's and not a context that fails whatever happens.
+    expect(() => { preflightDiffs(context); }, 'the range fails even unbroken, so this proves nothing')
+      .not.toThrow();
+  });
+
+  test('a ref git says is not there keeps its own sentence, unchanged and different', () => {
+    // The other direction, so the repair cannot be a blanket rewording that turns the absence
+    // message into dead code. Same step, same range, no shim: `harness/T-9/absent` is genuinely not
+    // there and git exits 1 saying so.
+    const root = repoWith({ branch: false });
+    const absent = failure(
+      { id: 'review', input: { diff: `main...harness/{id}/absent` } },
+      contextFor(root, { base: 'main', id: TICKET }),
+    );
+    expect(String(absent?.message)).toContain(`input.diff names missing ref "harness/${TICKET}/absent"`);
+    expect(String(absent?.message), 'the absence message became the unreadable one')
+      .not.toContain('git could not check');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 // AC-6 / AC-7 — the empty-range diagnostic and its remedies
 // ---------------------------------------------------------------------------------------------
 

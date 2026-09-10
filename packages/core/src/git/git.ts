@@ -21,10 +21,12 @@ const safe = <T>(fn: () => T): T | null => {
 };
 
 /**
- * One property off whatever `execFileSync` threw — `undefined` when it is absent or of another
- * type, so no caller mistakes a missing property for a convenient default.
+ * One property off whatever a call threw — `execFileSync`, or the one `fs` call {@link repositoryAt}
+ * makes — as `undefined` when it is absent or of another type, so no caller mistakes a missing
+ * property for a convenient default. `code` is the errno name, which is the only thing that tells a
+ * filesystem entry that is not there from one this process could not look at.
  */
-function errorProperty(error: unknown, key: 'status' | 'stderr' | 'message'): unknown {
+function errorProperty(error: unknown, key: 'status' | 'stderr' | 'message' | 'code'): unknown {
   return typeof error === 'object' && error !== null && key in error
     ? (error as Record<string, unknown>)[key]
     : undefined;
@@ -56,44 +58,77 @@ type WorkTreeProbe =
   /** The probe could not answer, which is never reported as either of the other two. */
   | 'failed';
 
+/** What the repository probe established at a path, which is three answers rather than a boolean. */
+type RepositoryProbe =
+  /** Something is at `<repoDir>/.git`: a gitdir git resolved, or an entry git could not parse. */
+  | 'present'
+  /** Nothing is at `<repoDir>/.git` at all — absence, proven rather than inferred from a failure. */
+  | 'absent'
+  /** Neither git nor the filesystem could answer, which is never reported as either of the other two. */
+  | 'failed';
+
 /**
- * Does a repository sit at `repoDir` — one git found and then refused to open?
+ * Is there a repository at `repoDir` — including one git found and then refused to open?
  *
- * `--resolve-git-dir` asks whether a *path* is a gitdir, or a gitfile naming one, and it is the
- * only probe measured here that answers while the repository is unopenable: on git 2.55 it exits 0
- * for a repository whose format version is 99, for one carrying an unknown extension and for one
- * whose ownership git refuses, and 128 where there is no gitdir at that path. It runs neither the
- * ownership check nor the format check, which is precisely why it can discriminate between them and
- * absence — and it is git's own answer rather than a guess read off git's prose, which is
- * translated and so may never decide a state.
+ * `--resolve-git-dir` asks whether a *path* is a gitdir, or a gitfile naming one, and it is the only
+ * probe measured here that answers while the repository is unopenable: on git 2.55 it exits 0 for a
+ * repository whose format version is 99, for one carrying an unknown extension and for one whose
+ * ownership git refuses. It runs neither the ownership check nor the format check, which is why an
+ * exit of 0 is `present` however unopenable the repository turns out to be.
+ *
+ * **What git cannot do on its own is prove absence**, which is the half this sentence used to claim
+ * for it. Measured on git 2.55 at this ticket's gate: `--resolve-git-dir` spends {@link GIT_FATAL} on
+ * an absent `.git` *and* on a `.git` it cannot parse, and the two differ only in a prose line, which
+ * is translated and so may never decide a state. So where git fails, `<repoDir>/.git` is inspected
+ * once: an entry that is there means git met something it could not read, and only `ENOENT` is
+ * absence. `lstat` rather than `existsSync`, which follows the link and answers `false` for a
+ * **dangling** symlink — the one shape that most looks like absence and is not. An inspection that
+ * fails for any other reason answers `failed`, never absence.
+ *
+ * The permission for that inspection, and its bound, are *"A probe that could not answer is not a
+ * negative"* (2026-09-10): it may separate absent from present-but-unparseable and nothing else. It
+ * decides no ref's existence, no path's membership and no repository's boundary.
  */
-function repositoryAt(repoDir: string): boolean {
-  return safe(() => git(['rev-parse', '--resolve-git-dir', path.join(repoDir, '.git')], repoDir)) != null;
+function repositoryAt(repoDir: string): RepositoryProbe {
+  const gitDir = path.join(repoDir, '.git');
+  if (safe(() => git(['rev-parse', '--resolve-git-dir', gitDir], repoDir)) != null) return 'present';
+  try { fs.lstatSync(gitDir); return 'present'; }
+  catch (error) { return errorProperty(error, 'code') === 'ENOENT' ? 'absent' : 'failed'; }
+}
+
+/**
+ * What a git failure establishes about there being a work tree at `repoDir`: `outside` only where
+ * absence is proven, and `failed` for everything else.
+ *
+ * Anything that is not {@link GIT_FATAL} — no git on the path, a killed process, a shim — is the
+ * probe failing. A fatal is git giving up for one of two very different reasons, so it is asked a
+ * second question: where a repository is really there, git refused to open one, and that is a failed
+ * probe *inside* the subject rather than a proof there is nothing here.
+ *
+ * Shared by {@link workTreeProbe} and {@link containment} because they ask the same question of the
+ * same failure and must not answer it two ways. `containment` cannot simply call `workTreeProbe`:
+ * its own probe reads the shallow state in the same spawn, and a second invocation would raise a
+ * cost its JSDoc states and a landed guard pins exactly.
+ *
+ * The residual limit, stated rather than hidden: a repository git refuses is caught where it sits at
+ * `repoDir`, which is where a project's own `.git` is. A project root *below* the refused
+ * repository's root still reads as absence, because closing that needs either git's translated prose
+ * or a reimplementation of git's upward discovery walk — and the second would make a fixture's
+ * verdict depend on whether the directory it was built in happens to sit under a repository, which
+ * is the one thing a verdict may not turn on (2026-08-30).
+ */
+function workTreeFailure(error: unknown, repoDir: string): Exclude<WorkTreeProbe, 'inside'> {
+  if (exitStatus(error) !== GIT_FATAL) return 'failed';
+  return repositoryAt(repoDir) === 'absent' ? 'outside' : 'failed';
 }
 
 /**
  * Is `repoDir` inside a work tree? Three answers, because a probe that could not answer is a
  * different thing from either of git's own and is never collapsed into one of them.
- *
- * The distinction is what {@link pushLag} needs and {@link containment} does not. Anything that is
- * not {@link GIT_FATAL} — no git on the path, a killed process, a shim — is the probe failing. A
- * fatal is git giving up for one of two very different reasons, so it is asked a second question:
- * where a repository is really there, git refused to open one and that is a failed probe *inside*
- * the subject, which for a fact whose success output is silence must not be rendered as nothing.
- *
- * The residual limit, stated rather than hidden and narrower than it was: a repository git refuses
- * is caught where it sits at `repoDir`, which is where a project's own `.git` is. A project root
- * *below* the refused repository's root still reads as absence, because closing that needs either
- * git's translated prose or a reimplementation of git's upward discovery walk — and the second would
- * make a fixture's verdict depend on whether the directory it was built in happens to sit under a
- * repository, which is the one thing a verdict may not turn on (2026-08-30).
  */
 function workTreeProbe(repoDir: string): WorkTreeProbe {
   try { return git(['rev-parse', '--is-inside-work-tree'], repoDir) === 'true' ? 'inside' : 'outside'; }
-  catch (error) {
-    if (exitStatus(error) !== GIT_FATAL) return 'failed';
-    return repositoryAt(repoDir) ? 'failed' : 'outside';
-  }
+  catch (error) { return workTreeFailure(error, repoDir); }
 }
 
 /**
@@ -136,10 +171,14 @@ export function ensureWorktree(repoDir: string, branch: string, base?: string | 
   if (fs.existsSync(dir)) return dir;
   fs.mkdirSync(root, { recursive: true });
   ensureExcluded(repoDir, EXCLUDE_PATTERN);
+  // Why: registered collapse, see Q-0115 NG-4 — a failed probe reads as an absent branch and the
+  // `-b` below then throws on one that exists, so no false claim survives the call.
   const branchExists = safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], repoDir));
   if (branchExists) {
     git(['worktree', 'add', dir, branch], repoDir);
   } else {
+    // Why: registered collapse, see Q-0115 NG-3 — a failed base probe silently cuts the worktree
+    // from `HEAD`. Named as a non-goal with its reasons by Q-0038's closing entry, which owns it.
     const baseExists = base ? safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${base}`], repoDir)) : null;
     git(['worktree', 'add', '-b', branch, dir, base && baseExists ? base : 'HEAD'], repoDir);
   }
@@ -267,12 +306,37 @@ export function shallowState(repoDir: string): ShallowState {
 }
 
 /**
- * git's own abbreviation of `ref`, so a message can be re-checked after the refs have moved — which
- * is the only time anyone wants to. `null` when the ref does not resolve, which is also how the
- * engine tests an endpoint's existence. The length is git's business; nothing may assume it.
+ * What the abbreviation probe established, which is three answers because the engine acts
+ * differently on two of them and used to be told only one.
  */
-export function shortSha(repoDir: string, ref: string): string | null {
-  return safe(() => git(['rev-parse', '--verify', '--quiet', '--short', ref], repoDir));
+export type ShortShaResult =
+  /** git answered with an abbreviation of `ref`. */
+  | { state: 'resolved'; sha: string; detail: null }
+  /** git answered, with its own documented exit of 1: there is no such ref here. */
+  | { state: 'no-such-ref'; sha: null; detail: null }
+  /** The probe could not answer, which is never reported as either of the other two. */
+  | { state: 'failed'; sha: null; detail: string | null };
+
+/**
+ * git's own abbreviation of `ref`, so a message can be re-checked after the refs have moved — which
+ * is the only time anyone wants to. The length is git's business; nothing may assume it.
+ *
+ * This is also how the engine tests an endpoint's existence, which is why the two failures are held
+ * apart rather than both answering `null`: `--verify --quiet` is documented to exit **1** for a ref
+ * that is not there, and that exit — and only that exit — is `no-such-ref`. Everything else is the
+ * probe failing, and a caller that read it as an absent ref stopped the run blaming
+ * `repo.base_branch`, `--base` or an earlier step for a ref that may be perfectly present.
+ *
+ * `detail` is git's own first stderr line and is never load-bearing: no state is derived from its
+ * text, which is translated. See *"A probe that could not answer is not a negative"* (2026-09-10).
+ */
+export function shortSha(repoDir: string, ref: string): ShortShaResult {
+  try { return { state: 'resolved', sha: git(['rev-parse', '--verify', '--quiet', '--short', ref], repoDir), detail: null }; }
+  catch (error) {
+    return exitStatus(error) === 1
+      ? { state: 'no-such-ref', sha: null, detail: null }
+      : { state: 'failed', sha: null, detail: failureDetail(error) };
+  }
 }
 
 /** Everything git can still prove about a three-dot range that showed nothing. */
@@ -302,9 +366,16 @@ export function emptyRangeEvidence(repoDir: string, left: string, right: string)
 
 /**
  * {@link ancestry}'s reason set as the board can see it. `shallow state unknown` needs
- * `shallow: null`, which {@link containment} cannot pass — a probe that could not answer made it
- * return `null` before any branch was examined — so mapping the fourth reason here, rather than
- * widening the board's set, is what keeps the rendered vocabulary closed.
+ * `shallow: null`, which {@link containment} cannot pass — it reads the shallow state out of the
+ * same spawn as the work-tree probe, so by the time a branch is examined that probe has succeeded
+ * and the value is a boolean — so mapping the fourth reason here, rather than widening the board's
+ * set, is what keeps the rendered vocabulary closed.
+ *
+ * The clause that stood here said the same thing from the collapse Q-0115 removed: *a probe that
+ * could not answer made it return `null` before any branch was examined*, which is no longer why —
+ * an unanswerable probe now reaches {@link UNANSWERABLE} rather than `null`. The conclusion is
+ * unchanged and its reason is not, which is the sort of sentence this ticket exists to stop leaving
+ * behind.
  */
 const boardReason = (reason: AncestryReason): ContainmentReason =>
   reason === 'shallow clone' ? 'shallow clone' : 'git failed';
@@ -321,10 +392,27 @@ export interface Containment {
 }
 
 /**
+ * Every branch this invocation is asked about, answered `git failed`.
+ *
+ * What {@link containment} returns where its own repository probe could not answer. `null` is the
+ * caller's licence to render exactly what it always did, so it may not stand for *the probe failed*
+ * as well — that made every row on the board lose its token in silence, indistinguishably from a
+ * directory that is not a repository. A value that is not a string is still `null`: nothing was
+ * named, so there is still no question to ask, and that clause is about the argument rather than
+ * about git.
+ */
+const UNANSWERABLE: Containment = {
+  stateOf: (branch: unknown): ContainmentResult | null =>
+    (typeof branch === 'string' ? { state: 'indeterminate', reason: 'git failed' } : null),
+};
+
+/**
  * Where a ticket's code actually is, derived from git at the moment of asking and never stored — a
  * persisted copy of a git fact drifts the first time someone merges by hand, and a wrong field is
- * believed. `null` when `repoDir` is not a git work tree, or git is unavailable: the caller renders
- * as it always did, because containment is information, never a failure.
+ * believed. `null` when git ANSWERED that `repoDir` is not a work tree, and only then: the caller
+ * renders as it always did, because containment is information, never a failure. A probe that could
+ * not answer, and a repository git found and refused to open, each reach {@link UNANSWERABLE} — the
+ * rule {@link pushLag} already applies to the sibling fact of this same board invocation.
  *
  * The per-invocation probes run once here and each {@link Containment.stateOf} costs at most two
  * more spawns, so this function's own contribution to a board of n tickets is at most 2n + 3. Since
@@ -336,22 +424,30 @@ export interface Containment {
 export function containment(repoDir: string, base: string): Containment | null {
   let probe: string;
   try { probe = git(['rev-parse', '--is-inside-work-tree', '--is-shallow-repository'], repoDir); }
-  catch { return null; }
+  catch (error) { return workTreeFailure(error, repoDir) === 'outside' ? null : UNANSWERABLE; }
   const [inWorkTree, shallow] = probe.split('\n').map((line) => line.trim() === 'true');
   if (!inWorkTree) return null;
-  const baseResolves = safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${base}^{commit}`], repoDir)) != null;
+  // Three answers rather than a boolean, through the probe that already had them: an exit of 1 is
+  // git saying the base is not there, and anything else is git not saying anything.
+  const baseResolves = resolvesToCommit(repoDir, `refs/heads/${base}`);
   // lstrip=2 drops exactly "refs/heads/". Not %(refname:short), which shortens ambiguously: a tag
   // sharing a branch's name makes it emit "heads/<name>" and the lookup below would miss it.
-  const branches = new Set((safe(() => git(['for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads'], repoDir)) ?? '')
-    .split('\n').filter(Boolean));
+  const listed = safe(() => git(['for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads'], repoDir));
+  const branches = listed === null ? null : new Set(listed.split('\n').filter(Boolean));
   return {
     stateOf(branch: unknown): ContainmentResult | null {
       if (typeof branch !== 'string') return null;
+      // A branch list that could not be read is not an empty one. The `?? ''` that stood here made
+      // one failed for-each-ref answer `no branch` for EVERY ticket in the backlog — a state the
+      // glossary defines as "git was never asked", claimed of a question git was asked and failed.
+      // Q-0115, and "A probe that could not answer is not a negative" (2026-09-10).
+      if (branches === null) return { state: 'indeterminate', reason: 'git failed' };
       // Named a branch that is not here. A git fact, reported rather than swallowed: returning
       // null made it indistinguishable from "no question was asked", which is how a reviewed
       // ticket whose work never reached a branch rendered identically to one nobody had looked
       // at. What to DO with it is the board's decision, not this function's. Q-0070.
       if (!branches.has(branch)) return { state: 'indeterminate', reason: 'no branch' };
+      if (baseResolves === null) return { state: 'indeterminate', reason: 'git failed' };
       if (!baseResolves) return { state: 'indeterminate', reason: 'missing ref' };
       const check = ancestry(repoDir, `refs/heads/${branch}`, `refs/heads/${base}`, { shallow });
       if (check.state === 'contained') return { state: 'contained' };

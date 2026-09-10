@@ -24,6 +24,11 @@
         // Q-0050 AC-13d: q0050.source.test.ts scans authority lines against the decisions
         // index and this ticket's body for a transcribed sentence.
         "../../docs/DECISIONS.md",
+        // Q-0115 AC-1: caught-failures.source.test.ts scans git/ and engine/ against the BODY of
+        // the entry this change traces to, where the guard above scans the index. The exact entry
+        // rather than the folder glob: this task reads one file, and a landed entry is never
+        // edited, so declaring the folder would hash 87 files that cannot move to cover one.
+        "../../docs/decisions/088-a-probe-that-could-not-answer-is-not-a-negative.md",
         "../../docs/03-adapter-contract.md",
         "../../docs/04-architecture.md",
         "../../contracts/Q-0006/review-artifacts.schema.json",

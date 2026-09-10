@@ -139,7 +139,11 @@ describe('AC-3 — shallowState is three-valued and says when it could not ask',
 });
 
 describe('AC-4 — containment derives the board\'s answer and never guesses an ahead count', () => {
-  test('a directory that is not a repository yields null — the probe could not answer', () => {
+  test('a directory that is not a repository yields null — the probe ANSWERED, and proved absence', () => {
+    // The title said "the probe could not answer" until Q-0115, four lines above its neighbour
+    // saying "the probe answered" about the same `null` — two landed pins asserting one value for
+    // contradictory reasons. The assertion is unchanged and correct; what moved is the sentence,
+    // because `null` is now reachable ONLY from git's own answer that there is no work tree here.
     expect(containment(notARepo(), 'main')).toBeNull();
   });
 
@@ -397,15 +401,45 @@ describe('AC-7 — emptyRangeEvidence asks the question in the right direction',
   });
 });
 
-describe('AC-8 — shortSha returns git\'s own abbreviation, or null', () => {
+describe('AC-8 / Q-0115 AC-9 — shortSha returns git\'s own abbreviation, or which of two failures', () => {
   test('it equals what git itself reports, at whatever length git chose', () => {
     const dir = repo();
-    expect(shortSha(dir, 'main')).toBe(git(dir, 'rev-parse', '--short', 'main'));
+    expect(shortSha(dir, 'main')).toStrictEqual({
+      state: 'resolved', sha: git(dir, 'rev-parse', '--short', 'main'), detail: null,
+    });
   });
 
-  test('a ref that does not resolve is null, and so is a directory git cannot read', () => {
-    expect(shortSha(repo(), 'no/such/ref')).toBeNull();
-    expect(shortSha(notARepo(), 'main')).toBeNull();
+  test('a ref git says is not there, and a probe that could not answer, are NOT the same answer', () => {
+    // Until Q-0115 this test asserted that they were: both of these were `null`, on two adjacent
+    // lines, under the title "a ref that does not resolve is null, and so is a directory git cannot
+    // read" — the two answers asserted EQUAL, with no authority line and no ticket id anywhere near
+    // them. Both consumers in `engine/diff.ts` read that null as "the ref is not there", so a git
+    // that failed at run start stopped the run telling a maintainer that `repo.base_branch`, the
+    // `--base` they typed, or an earlier step had named a missing ref.
+    //
+    // Asserted UNEQUAL rather than each merely asserted: a fixture that only checks the new value
+    // cannot tell a fix from a rename.
+    const absent = shortSha(repo(), 'no/such/ref');
+    const unreadable = shortSha(notARepo(), 'main');
+    expect(absent).toStrictEqual({ state: 'no-such-ref', sha: null, detail: null });
+    expect(unreadable.state).toBe('failed');
+    expect(unreadable.sha).toBeNull();
+    expect(unreadable.detail, 'a failed probe carries git\'s own first line').toBeTruthy();
+    expect(String(unreadable.detail)).not.toContain('\n');
+    expect(absent, 'the two failures answer the same thing again').not.toStrictEqual(unreadable);
+  });
+
+  test('the discrimination is git\'s exit code and not its prose', () => {
+    // `--verify --quiet` is documented to exit 1 for a ref that is not there, and measured on git
+    // 2.55 it does so with EMPTY stderr — so there is no prose to read even if reading it were
+    // allowed, which `git.ts`'s own runner rules it is not. An exit that is not 1, over a ref that
+    // is perfectly present, is therefore `failed`: the fixture asks about `main`, which exists.
+    const dir = repo();
+    expect(git(dir, 'rev-parse', '--verify', '--quiet', '--short', 'main'),
+      'the fixture asks about a ref that is not there, so it discriminates nothing').toBeTruthy();
+    const { result } = counting(() => shortSha(dir, 'main'),
+      'case "$*" in *"--verify --quiet --short"*) exit 3 ;; esac');
+    expect(result.state, 'an exit that is not 1 was read as a ref that is not there').toBe('failed');
   });
 });
 
@@ -909,6 +943,187 @@ describe('Q-0105 AC-4 and AC-5 — it reads, it never reaches the network, and i
     expect(calls, 'the longest path costs what the JSDoc says it costs').toBe(7);
     expect(counting(() => pushLag(repo(), 'main')).calls,
       'the cheap answers must not cost more than the expensive one').toBeLessThanOrEqual(7);
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// Q-0115 — a git probe that failed is never rendered as an answer
+// -------------------------------------------------------------------------------------------
+//
+// Every fixture below stages its own failure, with the shim or with a `.git` it wrote itself, so no
+// verdict here is a property of the checkout, of the account, or of a filesystem permission the
+// platform may not support — *"A test's verdict is a property of the commit, not of the checkout or
+// the account"* (2026-08-30). Nothing here needs a capability, so nothing here reports a skip.
+//
+// Each shim fixture is built BEFORE the shim is installed, for the reason `:790` above already
+// records: inside `counting` the fixture's own git runs under the mutation, which is a broken
+// fixture wearing a failed assertion's clothes.
+
+describe('Q-0115 AC-4 — a branch list that could not be read is not an empty one', () => {
+  test('one failed for-each-ref answers `git failed` for a branch that IS on disk', () => {
+    const dir = withTicketBranch();
+    // The premise, measured rather than assumed: the branch is there, so `no branch` would be a
+    // claim about a ref this fixture can show git holds. Without it the assertion below is
+    // satisfied by a repository that simply has no branches.
+    expect(git(dir, 'for-each-ref', '--format=%(refname:lstrip=2)', `refs/heads/${TICKET_BRANCH}`),
+      'the fixture has no ticket branch, so `no branch` would be the honest answer').toBe(TICKET_BRANCH);
+
+    const { result } = counting(() => containment(dir, 'main')?.stateOf(TICKET_BRANCH),
+      'case "$1" in for-each-ref) exit 3 ;; esac');
+
+    expect(result).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    // Asserted UNEQUAL as well: both answers are `indeterminate`, so a fixture checking only the new
+    // value could not tell a fix from a renamed reason. The `?? ''` that stood here made ONE failed
+    // for-each-ref answer this for every ticket in the backlog — a state docs/GLOSSARY.md defines as
+    // "git was never asked", claimed of a question git was asked and failed.
+    expect(result, 'a probe that could not answer is being read as a branch that is not there')
+      .not.toStrictEqual({ state: 'indeterminate', reason: 'no branch' });
+  });
+
+  test('and a branch that is genuinely absent still answers `no branch`', () => {
+    // The other direction, so the repair cannot be a blanket `git failed` that turns Q-0070's
+    // answer into dead code.
+    expect(containment(withTicketBranch(), 'main')?.stateOf('never/created'))
+      .toStrictEqual({ state: 'indeterminate', reason: 'no branch' });
+  });
+});
+
+describe('Q-0115 AC-5 — a base probe that failed is not a base that is missing', () => {
+  // OQ-6, measured before it was asserted and then pinned by the second test below: `stateOf` tests
+  // the branch list FIRST and the base SECOND, so this clause is reachable only where `for-each-ref`
+  // still succeeds. Breaking `rev-parse` wholesale stops at the work-tree probe and gives the clause
+  // no subject at all, which is why the WHOLE argv is matched — the `FAILING_PROBES` shape below.
+  const BASE_PROBE = 'rev-parse --verify --quiet refs/heads/main^{commit}';
+
+  test('a base probe that fails is `git failed`, never `missing ref`', () => {
+    const dir = withTicketBranch();
+    const { result } = counting(() => containment(dir, 'main')?.stateOf(TICKET_BRANCH),
+      `case "$*" in "${BASE_PROBE}") exit 3 ;; esac`);
+    expect(result).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    expect(result, 'a probe that could not answer is being read as a base that is not there')
+      .not.toStrictEqual({ state: 'indeterminate', reason: 'missing ref' });
+  });
+
+  test('and that clause is independently reached — the branch list ran and answered', () => {
+    // Without this the test above proves nothing about the BASE clause: an AC-4 failure produces the
+    // same `git failed` one line earlier, so the two are indistinguishable from the outside. Same
+    // fixture, same shim, a branch that is NOT listed — the `no branch` answer can only come from a
+    // `for-each-ref` that ran, returned, and did not contain it.
+    const dir = withTicketBranch();
+    const { result } = counting(() => containment(dir, 'main')?.stateOf('never/created'),
+      `case "$*" in "${BASE_PROBE}") exit 3 ;; esac`);
+    expect(result, 'for-each-ref did not answer, so the base clause above was never the one that fired')
+      .toStrictEqual({ state: 'indeterminate', reason: 'no branch' });
+  });
+
+  test('a base git says is not there still answers `missing ref`', () => {
+    expect(containment(withTicketBranch(), 'trunk')?.stateOf(TICKET_BRANCH))
+      .toStrictEqual({ state: 'indeterminate', reason: 'missing ref' });
+  });
+});
+
+describe('Q-0115 AC-6 — containment tells "there is no work tree" from "the probe could not answer"', () => {
+  test('a repository git refuses to OPEN answers for every branch, rather than returning null', () => {
+    // The defect `pushLag`'s own round-1 review caught and fixed on the sibling fact of this same
+    // board invocation, left standing here: `catch { return null; }` made `board.ts`'s `where?.`
+    // undefined, so EVERY row rendered with no containment token at all — silently, and
+    // indistinguishably from a directory that is not a repository.
+    const refused = repo();
+    git(refused, 'branch', TICKET_BRANCH);
+    git(refused, 'config', 'core.repositoryformatversion', '99');
+    // The premise: this fixture opens fine until the line above, so what follows is about the
+    // refusal rather than about the directory.
+    expect(() => git(refused, 'rev-parse', '--is-inside-work-tree'),
+      'the fixture opens fine, so it is not a refused repository').toThrow();
+
+    const derived = containment(refused, 'main');
+    expect(derived, 'a repository git refused was reported as no repository at all').not.toBeNull();
+    expect(derived?.stateOf(TICKET_BRANCH)).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    expect(derived?.stateOf('never/created'), 'every branch it is asked about, not only a known one')
+      .toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    expect(derived?.stateOf(42), 'a value that is not a string still names nothing').toBeNull();
+  });
+
+  test('a git that cannot run at all answers too', () => {
+    const dir = withTicketBranch();
+    const { result } = counting(() => containment(dir, 'main')?.stateOf(TICKET_BRANCH),
+      'case "$1" in rev-parse) exit 3 ;; esac');
+    expect(result).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+  });
+
+  test('and both answers null is reachable from are unchanged', () => {
+    // `null` is the caller's licence to render exactly what it always did, so the repair may not
+    // narrow it to nothing: git ANSWERING that there is no work tree is what it is for, in the two
+    // shapes that answer it.
+    expect(containment(notARepo(), 'main'), 'a directory that is not a repository').toBeNull();
+    const bare = tempDir('q0115-bare-');
+    git(bare, 'init', '-q', '--bare');
+    expect(containment(bare, 'main'), 'a bare repository').toBeNull();
+  });
+
+  test('the happy path still costs exactly three spawns — the second probe is reached only after git gave up', () => {
+    // `:315` pins this EXACTLY rather than as a ceiling, and it is the constraint that chose the
+    // shape of the fix: `containment` cannot simply call `workTreeProbe`, whose own spawn would be a
+    // fourth on every board. Re-asserted here, beside the repair, rather than left in a distant
+    // describe where a reader of this change would not meet it.
+    //
+    // Built before the shim, like every other fixture in this file: written the other way round it
+    // counts `git init` and `git commit` too and reads 5, which is this file's own rule breaking on
+    // the check written to restate it.
+    const dir = repo();
+    expect(counting(() => containment(dir, 'main')).calls).toBe(3);
+  });
+});
+
+describe('Q-0115 AC-7 — an absent .git and one that could not be read are told apart', () => {
+  /** A project directory whose `.git` is whatever `build` puts there — including nothing. */
+  const withGitEntry = (build: (gitPath: string) => void): string => {
+    const dir = tempDir('q0115-gitdir-');
+    build(path.join(dir, '.git'));
+    return dir;
+  };
+
+  // `pushLag` is the surface this reaches: it renders SILENCE where `workTreeProbe` answers
+  // `outside`, which for a fact whose success output is silence is the clean bill of health nobody
+  // earned. Every shape below exits 128 from git — measured at this ticket's gate, all four — so the
+  // discrimination is entirely the filesystem inspection and each of these has a subject.
+
+  test('a .git that is a file of garbage is `git failed`, where absence alone stays silent', () => {
+    const unreadable = withGitEntry((gitPath) => { fs.writeFileSync(gitPath, 'this is not a gitfile\n'); });
+    expect(pushLag(unreadable, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+    expect(pushLag(notARepo(), 'main'), 'absence stopped being silent, which AC-10 forbids').toBeNull();
+  });
+
+  test('a .git directory git will not read as one is `git failed` too', () => {
+    const empty = withGitEntry((gitPath) => { fs.mkdirSync(gitPath); });
+    expect(pushLag(empty, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+  });
+
+  test('a .git that is a DANGLING symlink is not absence — the shape existsSync gets wrong', () => {
+    // OQ-5, measured before this fixture was written rather than after: `fs.existsSync` FOLLOWS the
+    // link and answers `false` for a dangling one, so an inspection spelled that way would have
+    // reintroduced the collapse at the site that most looks like it has been fixed. That is the
+    // shape that made Q-0059's `write` create a target outside its ticket folder, found by a
+    // reviewer rather than by its author. `lstat` sees the link itself.
+    const dangling = withGitEntry((gitPath) => {
+      fs.symlinkSync(path.join(tempDir('q0115-nowhere-'), 'not-here'), gitPath);
+    });
+    // Both premises, because the discriminating property is that these two disagree.
+    expect(fs.lstatSync(path.join(dangling, '.git')).isSymbolicLink(),
+      'the fixture is not a symlink at all').toBe(true);
+    expect(fs.existsSync(path.join(dangling, '.git')),
+      'the fixture is not dangling, so it discriminates nothing').toBe(false);
+    expect(pushLag(dangling, 'main')).toStrictEqual({ state: 'indeterminate', reason: 'git failed' });
+  });
+
+  test('the inspection decides nothing else — NG-7\'s bound, asserted rather than described', () => {
+    // It separates absent from present-but-unparseable and answers no other question: no ref's
+    // existence, no path's membership, no repository's boundary. So the only thing it may change is
+    // which of `outside` and `failed` a git fatal becomes, and a directory with no `.git` at all is
+    // still outside — on both surfaces, through the one helper they share.
+    const plain = notARepo();
+    expect(pushLag(plain, 'main'), 'a directory with no .git at all').toBeNull();
+    expect(containment(plain, 'main'), 'and containment agrees, through the same helper').toBeNull();
   });
 });
 

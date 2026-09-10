@@ -173,6 +173,7 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'docs/GLOSSARY.md': 'docs.test.ts — the Event term',
     'harness/harness.yaml': 'project.test.ts — the config corpus, and the Q-0065 --force guard',
     'harness/architecture.md': 'role.test.ts — Q-0107 AC-18, the role table\'s third column against every role\'s paths: frontmatter, which spike/test/smoke.js was the only thing checking',
+    'harness/rules.md': 'docs.test.ts — Q-0115 AC-12, the canonical rules file held to a register of its own rules, so the one sentence decision 088 routes there stays one sentence and no existing rule moved with it',
     'packages/cli/templates/harness/flows/chore.yaml': 'flow.test.ts — Q-0083, the shipped chore flow against the adopter\'s copy: the verdict, its zero bound and the input that makes the edge converge',
     'packages/cli/templates/harness/roles/developer-generalist.md': 'flow.test.ts — Q-0083, the role that answers that verdict, and the negative half of its definition',
     'packages/cli/templates/harness/harness.yaml': 'project.test.ts — Q-0107 AC-9, the shipped template config, re-aimed off spike/templates/harness/harness.yaml onto the byte-identical copy an adopter\'s quorum init actually copies',
@@ -202,6 +203,7 @@ const MANIFEST: Record<string, Record<string, string>> = {
     // was already hashed for every task as a globalDependency, which the cross-vendor review caught
     // and `covered` now honours. The read is not new; what is new is that the scanner can see it.
     'package.json': 'test-command.test.ts — repoFile(\'package.json\').scripts, which is the oracle for Q-0065\'s --force guard: without this the check that the test command defeats its own cache was itself replayable over a changed test command',
+    'docs/decisions/088-a-probe-that-could-not-answer-is-not-a-negative.md': 'caught-failures.source.test.ts — Q-0115 AC-1, which scans git/ and engine/ for a transcribed sentence of that entry\'s BODY, where q0050.source.test.ts scans the same files against the INDEX. The entry itself rather than the folder: a landed entry is never edited, so one file is the whole of what this task reads',
   },
 };
 
@@ -651,6 +653,7 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoFile → file': 'the loop iterates a literal array of the three documents, in the same test',
     'read → file': 'the map is built from decisionFiles(), the audited walk of docs/decisions',
     'repoFile → `harness/flows/${flow}.yaml`': 'the loop iterates SHIPPED, a literal map of five flow names declared in the same test, and clause B collects the harness/flows prefix from it',
+    'repoFile → RULES': 'the constant is \'harness/rules.md\', a literal at the top of that describe, which clause B collects and the manifest names — Q-0115 AC-12',
   },
   'packages/shared/src/plan-backlog.test.ts': {
     'repoFile → PLAN': 'the constant is \'docs/06-development-plan.md\', a literal at the top of that file, which clause B collects',
@@ -721,6 +724,12 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/backlog/backlog.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — Q-0059 AC-8 reads the second package because the register claims something about it',
+  },
+  'packages/core/src/caught-failures.source.test.ts': {
+    'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal three-element array at the top of that file, and clause B collects each of the three — the Q-0059 AC-8 shape over a third tree, because Q-0115 AC-3 claims something about every package',
+    'repoRoot → root': 'the same three literals, joined for the same loop; the base is repoRoot and the leaf is a member of that array',
+    'coreSourceFiles → path.join(repoRoot, \'packages/core/src\')': 'the literal is inside the argument, and it is this package\'s own source, which $TURBO_DEFAULT$ hashes',
+    'repoFile → ENTRY': 'the constant is the decision entry\'s own path, a literal at the top of that file which clause B collects and the manifest names',
   },
   'packages/core/src/git-identity.test.ts': {
     'repoRoot → dir': 'CORPUS, a literal array of the two directories this guard walks, in the same file',
@@ -1637,10 +1646,16 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'excludeFile(empty)': 'likewise',
     'excludeFile(worktree)': 'likewise, from inside a worktree',
     'process.cwd()': 'asserting a hostile git argument created no file beside the runner — an existence check on a name, and the one base here that COULD reach the repository, which is why it is written down rather than left to the C2 entry for the same file',
+    // Q-0115 AC-7. Added HERE rather than in a second entry for this file: an object literal takes
+    // the last key, so a duplicate silently discards whichever half was written first — which is
+    // exactly what happened on the way to writing this line, and what Q-0083 recorded in
+    // INDIRECT_ROUTES above after it happened there.
+    dangling: "tempDir('q0115-gitdir-') — a directory of this test's own whose .git it made a dangling symlink, read by lstat AND existsSync to show the two disagree, which is why the production inspection uses the first",
   },
   'packages/core/src/git/git.ts': {
     dir: 'the worktree path built from the repoDir the caller named',
     f: 'the exclude file git resolved, relative to that same repoDir',
+    gitDir: "path.join(repoDir, '.git') — under the CALLER'S project rather than this repository, and the module's one filesystem read of a path it did not derive from git: Q-0115 AC-7's narrow inspection, which separates an absent .git from one git could not parse and decides nothing else",
   },
   'packages/core/src/lint/lint.ts': {
     directory: 'lintFlowDirectory\'s parameter — the flows directory the caller named',

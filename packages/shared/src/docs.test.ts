@@ -943,3 +943,83 @@ describe('Q-0068 AC-6 / AC-14 — the documents quote the refusal the product pr
     }
   });
 });
+
+describe('Q-0115 AC-12 — the habit decision 088 ruled on is written down once, and only once', () => {
+  /**
+   * The rule about MEASURING, which is the half a decision entry deliberately does not carry.
+   *
+   * Decision 088 says so in as many words: the three failures that prompted it were not all `catch`
+   * blocks — two were an author grepping for one token, finding nothing, and reading absence into it
+   * — and it routes that half to `harness/rules.md`, adding that if it earns more than a sentence it
+   * earns its own entry. So it is one sentence, and the second clause below is what keeps it one.
+   *
+   * `.claude/rules/engineering.md` is the DERIVED copy and is deliberately not compared here: it is
+   * outside an implement step's write paths and its sync is the human's, per *"`.claude/rules/` is a
+   * derived copy, not a surface a requirement may name"* (2026-08-27). Nothing in `packages/`
+   * compares the two, which is a real gap and this ticket's gate obligation rather than its code.
+   */
+  const RULES = 'harness/rules.md';
+
+  /** Every top-level rule by its opening — the identity an edit to an existing one would move. */
+  const rulesIn = (): string[] => repoFile(RULES).split('\n')
+    .filter((line) => line.startsWith('- ')).map((line) => line.slice(0, 58));
+
+  test('the sentence is there, cites the entry by title and date, and names no file name or number', () => {
+    // Unwrapped first, as every sentence-level check in this file is: `harness/rules.md` is
+    // soft-wrapped, so the title spans two lines and a raw `toContain` finds neither half — the
+    // failure Q-0050's own transcription scan recorded, and the one this clause hit while it was
+    // being written.
+    const text = repoFile(RULES).replace(/\s+/g, ' ');
+    expect(text, 'the habit rule is not stated')
+      .toContain('A search, grep or probe that failed to look is not a measurement that found nothing');
+    expect(text, 'the entry is not cited by title').toContain('A probe that could not answer is not a negative');
+    expect(text, 'nor by date, which is the other half of how an entry is cited').toContain('(2026-09-10)');
+    expect(text, 'an entry is never cited by its file name').not.toContain('088-a-probe');
+    expect(text, 'nor by its number').not.toMatch(/decisions? entry 088|decision 088/);
+  });
+
+  test('and it is ONE rule, added to a list nothing else moved in', () => {
+    // "One sentence and no more" is the criterion, so a register is what makes it checkable in both
+    // directions: a second bullet on this subject fails here, and so does an edit to any of the
+    // twenty-six rules that were already written. Ordered, because a rule that moved between
+    // sections is the same drift as one reworded.
+    //
+    // The bound, stated rather than left to be found: an identity is a rule's OPENING, so a rewrite
+    // of a rule's later sentences is invisible to this. That is the trade `git.source.test.ts`'s
+    // export register already makes — enough to catch a rule replaced, removed or reordered, and
+    // not a byte pin on a living document.
+    expect(rulesIn()).toStrictEqual([
+      '- TypeScript strict. No `any`. No `@ts-ignore` without a o',
+      '- Every behaviour change ships with a test. The mock-adapt',
+      '- **Your worktree has no dependencies until you install th',
+      "- **A test's verdict is a property of the commit, not of t",
+      '- **A search, grep or probe that failed to look is not a m',
+      '- **No deprecated API.** A symbol a dependency marks `@dep',
+      '- Prefer small, boring, proven libraries. A new dependency',
+      '- Conventional commits with the ticket id in the subject: ',
+      '- **JSDoc, not line comments.** A module, exported symbol,',
+      '- **Code that needs explaining is written wrong.** Fix the',
+      '- **The one thing code cannot carry is why it is deliberat',
+      '- **Never restate `docs/DECISIONS.md` or a ticket body in ',
+      '- Files are the database. Anything persistent is a file in',
+      '- One trace and event format lives in `packages/shared`. A',
+      '- Vendor-specific knowledge lives in the adapter and nowhe',
+      '- Safety is enforced in `core`, never in the UI and never ',
+      '- Errors are explicit. Invalid structured output is saved ',
+      '- **Never add an API-key path**, including in tests, fixtu',
+      "- **Never write to the user's working tree from a flow.** ",
+      '- Quorum is product-agnostic. No reference to any specific',
+      '- Flows are YAML files in the project. The UI edits files ',
+      '- Human-gated by default; `auto` is opt-in per gate; `huma',
+      '- Keep the cold-clone test in mind: a feature that lengthe',
+      '- The decisions are append-only. Each is one file in `docs',
+      "- **An entry's date is the date it takes its place in the ",
+      '- `docs/GLOSSARY.md` is the vocabulary. Add a term there b',
+      '- When code and docs disagree, the docs are wrong until a ',
+    ]);
+    // And the register moved rather than being widened: the list without this ticket's rule is
+    // refused, which is the demonstration `git.source.test.ts:47` writes for its own.
+    expect(rulesIn(), 'the new rule is not in the register, so the list above was edited to fit')
+      .not.toStrictEqual(rulesIn().filter((rule) => !rule.includes('A search, grep or probe')));
+  });
+});

@@ -455,6 +455,81 @@ describe('AC-5 — containment is rendered in the glossary\'s vocabulary and not
   });
 });
 
+describe('Q-0115 AC-10 — a board whose git could not answer says so on every row', () => {
+  /**
+   * A project git will find and refuse to open, which is how a git that cannot answer is staged
+   * here deterministically.
+   *
+   * AC-10's *Test:* clause names the `for-each-ref` shim, and this stages the same condition another
+   * way: `installGitShim` lives in `packages/core/test/repo.ts`, which this package cannot reach —
+   * it is not on `@quorum/core`'s barrel and test support is not published — and copying it would be
+   * a second declaration of a test primitive, which is the shape Q-0115 AC-3 registers one file
+   * along. What is under test here is the BOARD's rendering of `containment`'s answer, and both
+   * routes produce the identical `ContainmentResult` for every ticket: the `for-each-ref` route is
+   * proven at `packages/core/src/git/git.test.ts`'s AC-4, in the package where the shim lives.
+   *
+   * Deterministic, needs no capability and no PATH: `git.test.ts:695` and the `pushLag` suite stage
+   * a refused repository the same way.
+   */
+  const refuseGit = (root: string): void => {
+    git(root, 'config', 'core.repositoryformatversion', '99');
+    expect(() => git(root, 'rev-parse', '--is-inside-work-tree'),
+      'the fixture opens fine, so git is answering and this proves nothing').toThrow();
+  };
+
+  test('every row carries `indeterminate(git failed)`, including the stages that expect no branch', async () => {
+    const root = await projectFixture();
+    const first = await makeTicket(root, 'Done work');
+    const second = await invoke(['ticket', 'new', 'Fresh work', '--owner', 'qa', '--project', root]);
+    expect(second.exitCode, plain(second.stderr)).toBe(SUCCESS);
+    // Mixed stages on purpose: `draft` is a stage the board suppresses `no branch` at, so a rule
+    // that suppressed `git failed` too would show here and nowhere else.
+    setStage(first, 'reviewed');
+
+    const before = await board(root);
+    expect(out(before), 'the fixture is already unanswerable, so the change below is invisible')
+      .toMatch(/T-0001[^\n]*main:indeterminate\(no branch\)/);
+
+    refuseGit(root);
+    const result = await board(root);
+
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    for (const id of ['T-0001', 'T-0002']) {
+      expect(out(result), `${id} lost its token where git could not answer`)
+        .toMatch(new RegExp(`${id}[^\\n]*main:indeterminate\\(git failed\\)`));
+    }
+    // The two claims a failed probe may not be rendered as. `no branch` is what the glossary defines
+    // as "git was never asked"; nothing at all is what `catch { return null; }` produced, which for
+    // a row that normally carries a token is a board quietly saying less than it knows.
+    expect(out(result), 'a probe that could not answer is rendered as a branch that is not there')
+      .not.toMatch(/indeterminate\(no branch\)/);
+    expect(out(result), 'raw git stderr reached the user').not.toMatch(/fatal:/);
+  });
+
+  test('the existing legend is armed, once, and no new line appears', async () => {
+    const root = await projectFixture();
+    await makeTicket(root);
+    const before = out(await board(root));
+    refuseGit(root);
+    const after = out(await board(root));
+
+    const legends = after.split('\n').filter((line) => line.startsWith('· '));
+    expect(legends.filter((line) => line.includes('indeterminate =')),
+      'the indeterminate legend printed more than once, or not at all').toHaveLength(1);
+    expect(after, 'the legend must name the reason the board actually rendered')
+      .toMatch(/a failed git command/);
+    // No suppression rule was invented and no line was added: every legend prefix the refused board
+    // prints is one the answering board already had a rule for. `push lag` moves from silence to its
+    // own existing `(git failed)` sentence, which is that fact's rule and not a new one.
+    for (const legend of legends) {
+      const prefix = legend.slice(0, 20);
+      expect(before.includes(prefix) || /indeterminate =|push lag =/.test(legend),
+        `a legend line appeared that no rule accounts for: ${legend}`).toBe(true);
+    }
+    expect(after, 'push lag reassured over a probe that failed').not.toMatch(/has been pushed,/);
+  });
+});
+
 describe('AC-6 — the two legends, each printed only when a row earned it', () => {
   test('C4 — one indeterminate legend line, however many rows were indeterminate', async () => {
     const root = await projectFixture();

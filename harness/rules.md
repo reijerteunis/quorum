@@ -24,6 +24,9 @@ When they disagree, this file wins and the other is the drift.
   run; it may never be the oracle. `packages/core/src/git-identity.test.ts` enforces one corner of
   this — commit-creating git calls in tests — and **is not coverage for the rest of it**: it sees
   literals only, so a subcommand in a variable is invisible to it.
+- **A search, grep or probe that failed to look is not a measurement that found nothing**, so
+  absence is reported only on evidence of absence — see *"A probe that could not answer is not a
+  negative"* (2026-09-10).
 - **No deprecated API.** A symbol a dependency marks `@deprecated` is not used in new code, and
   one found in code you are already changing is reported rather than migrated in passing — the
   migration is its own change, because it is workspace-wide and the replacement is a decision.
