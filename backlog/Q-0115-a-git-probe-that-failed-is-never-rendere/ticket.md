@@ -1,7 +1,7 @@
 ---
 id: Q-0115
 title: A git probe that failed is never rendered as an answer
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0115/integration
@@ -17,6 +17,14 @@ history:
     stage_after: requirements
     at: 2026-09-10T20:31:38.075Z
     cost: 9.362
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-10T21:31:57.466Z
+    cost: 49.748
 ---
 Five collapsing safe() sites in packages/core/src/git/git.ts, including the one that makes quorum board answer 'no branch' for every ticket in the backlog when a single for-each-ref fails. Q-0074's git/ half, split at its requirements gate.
 

@@ -5,7 +5,7 @@ stage: draft
 owner: ruud
 repos: []
 branch: harness/Q-0102/integration
-priority: p2
+priority: p1
 created: 2026-09-04
 iterations: {}
 history: []
@@ -365,3 +365,47 @@ to notice, because `main` is level with `origin/main` and Q-0105 exists to keep 
 
 **Non-goal while parked:** do not make the sweep green by weakening it, and do not adopt the
 timeout lead as a cause. GO-2 outlives the parking.
+
+## Reopened at p1, 2026-09-11 — the reproduction this ticket was parked for want of
+
+**Parked 2026-09-06 at 0 failures in 36 local sweeps and 0 in 28 CI sweep cells**, on GO-1's rule
+that a failure rate must be established at a fixed commit before anything is repaired. That rate now
+exists, measured during Q-0115's chore run and re-measured by hand rather than relayed.
+
+**The measurement.** At `harness/Q-0115/implement`: **1 failure in 6 `pnpm sweep:git-identity` runs
+and 1 in 2 unswept `pnpm turbo run test --force` runs**, both on the same test —
+`packages/core/src/adapters/codex.test.ts` → *AC-4 … `--ignore-user-config` is unconditional, on
+every combination* — with the same symptom, `Error: Test timed out in 5000ms`. Three later runs at
+the same tip passed, so it is intermittent at roughly one in four to one in eight.
+
+**Which threshold is met, and which is refuted.** Q-0115's implement step reported this as meeting
+threshold 2 — *"a local sweep failing at a tip whose unswept suite passes"*. **That is refuted**: the
+unswept suite fails on the identical test, so this is not sweep-specific and the sweep is not the
+subject. **Threshold 3 is met** — *a third measured instance of the class* — which is what makes
+*load is a third term beside the checkout and the account* a pattern rather than two sightings.
+
+**The named lead is confirmed and the cluster has widened.** `grep -rn testTimeout` over the tree
+returns nothing, so Vitest's **5000 ms default** governs, exactly as this ticket's body predicted.
+What that body did not predict is the file: the original cluster was `worktree-lifecycle.test.ts`
+and `undecided.test.ts`, which make 18 and 4 synchronous `git` spawns; `codex.test.ts` AC-4 spawns
+**no git at all** — it loops four option combinations, each `await`ing a helper that builds argv over
+a temp directory. So the shared property is **`await`ed filesystem work under a seven-package
+parallel run**, not git.
+
+**It passes alone.** 4/4 in isolation on `main` at 38/38, and `main`'s full forced suite passed 3/3
+in the same session. So the verdict is a property of the machine's load at the moment of the run and
+of nothing in the commit — which is *"A test's verdict is a property of the commit, not of the
+checkout or the account"* (2026-08-30), and the reason this is p1 rather than a nuisance.
+
+**GO-2 still binds and is now the hard part.** *No fix may make the sweep green by weakening what it
+runs.* Raising `testTimeout` does not weaken **what** runs, but it does change an oracle's patience,
+and a timeout raised until nothing trips it is an oracle that has been talked out of firing. The
+work is to decide what a 5-second budget was ever asserting, and whether the answer is a longer
+budget, a `pool`/concurrency bound that stops the suites contending, or a per-file timeout on the
+files that do `await`ed I/O. **Establish the rate at a fixed commit before repairing** — that rule
+did not stop applying, and this entry is what satisfies it.
+
+**Two things this reopening does not claim.** It is not the same file as either original sighting,
+and it is not evidence that the original `@quorum/core` cluster is the same defect — only that the
+class has a third instance and a reproducible one. And CI is green: the last four runs passed all
+three jobs, so this costs a re-run locally and nothing on the instrument that matters, today.
