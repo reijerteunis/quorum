@@ -1,14 +1,22 @@
 ---
 id: Q-0068
 title: A healthy login reads unusable, and the refusal misnames the product
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0068/integration
 priority: p2
 created: 2026-08-27
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-10T17:00:58.902Z
+    cost: 8.9
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
@@ -236,3 +244,47 @@ calls the product "Harness"; four pins go red on purpose; and the three landing-
 a deleted tree are `cli/src/adapters.ts:34`, `cli/src/adapters.test.ts:335` and
 `core/src/adapters/claude.test.ts:380`. The other three "both trees" comments in `packages/` belong
 to Q-0070 and to ground rule 3 and are **not** this ticket's.
+
+## Ruled at the requirements gate, 2026-09-10
+
+**GO-2 — OQ-1 is settled. The sentence is, in bytes:**
+
+```
+ANTHROPIC_API_KEY is set — unset it; Quorum uses the CLI's subscription login only
+CODEX_API_KEY/OPENAI_API_KEY is set — unset it; Quorum uses the CLI's subscription login only
+```
+
+Adopted as §4 ruled it, on a rule rather than on taste: **"subscription login" is the term this
+codebase already owns** — `adapters.ts` uses it in three comments and `docs/03-adapter-contract.md`
+throughout — so the runner-up would have coined *"your CLI subscription"* beside it, which
+`.claude/rules/docs-and-decisions.md` forbids. It keeps the `unset it` remedy first, drops the
+**OAuth** jargon the ticket itself flags, and is the shorter of the two behind the `✗ <vendor>: `
+prefix.
+
+Runner-up, recorded rather than discarded: `Quorum runs on your CLI subscription, never on an API
+key`, which explains *why* the key is refused — the adopter's actual confusion — and is the better
+sentence on that one axis alone.
+
+**Note the apostrophe.** `CLI's` inside a single-quoted `throw new Error('…')` needs escaping or a
+different quote form. §4 says a mistake here **stops the suite** rather than skipping the subject,
+because `binary-name.test.ts` refuses syntax it cannot classify.
+
+**GO-1 — OQ-2 is answered: no decision entry is owed** for `tokens: number | null`.
+
+The document's reasons hold — it applies at a second field the rule `ProbeResult` already states for
+`cost_usd`, it contradicts no landed entry, and *"Codex cost is reported as tokens, never priced
+locally"* (2026-08-22) points the same way. **The deciding reason is one the document does not
+give:** nothing can depend on today's behaviour, because today's behaviour is a **`TypeError`**. The
+no-usage path does not return a `tokens` a `--json` consumer could be parsing — it throws, and the
+caller renders an unusable login. So `number | null` gives a value to a case that currently has
+none, rather than changing one that a consumer could have built against.
+
+That is the distinction against **Q-0112**, where this judgement was got wrong and an entry *was*
+owed: there, `unknown` was a new sentinel with product meaning invented for a case that already had
+a working value. Here the case does not work at all.
+
+The doc-versus-code conflicts this creates — `ProbeResult`'s own JSDoc and
+`docs/03-adapter-contract.md` — are AC-8 and AC-14, and `.claude/rules/docs-and-decisions.md` answers
+that with *"fix the docs in the same PR"* rather than with an entry.
+
+**GO-3 — checked: no new glossary term**, so Q-0067's branch-sequencing problem does not arise.
