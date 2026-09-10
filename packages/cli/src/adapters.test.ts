@@ -338,10 +338,13 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
     // Q-0110 later turned into a non-zero exit.
     //
     // `core` now answers that case `ok: true` with both measures `null`, so what is claimed here is
-    // that the CLI is still the faithful renderer it was: it reports a verified login, omits the two
-    // clauses it has no number for, and exits 0. Restoring `res.usage!` in `core` turns this red as
-    // well as `probe.test.ts`, which is what proves this file follows `core` rather than
-    // compensating for it.
+    // that the CLI renders that shape faithfully: a verified login, the two clauses it has no number
+    // for omitted, and exit 0.
+    //
+    // It claims nothing about `core` and cannot — `probeAdapter` is stubbed in this file (see its
+    // header), so restoring `res.usage!` leaves this green. That the CLI follows `core` rather than
+    // compensating for it is `build.test.ts`'s `Q-0068 AC-10` block, which spawns the built binary
+    // against a fake vendor and does go red under that mutation.
     stub(
       { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
       {

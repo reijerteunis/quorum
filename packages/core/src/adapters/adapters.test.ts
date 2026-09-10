@@ -329,10 +329,10 @@ describe('AC-5 — the classification is what it is today, false positives inclu
     expect(transientError(message)).toBe(description);
   });
 
-  // spike/test/smoke.js:460-466. The first fixture is {@link shippedRefusal}: the sentence
-  // `claude.ts` throws, taken from the adapter rather than retyped, so the row cannot go on passing
-  // over a text that has moved. It did exactly that — the literal that stood here was the wording
-  // Q-0047 owned, and Q-0068 replaced it in `claude.ts` while this table stayed green.
+  // The first fixture is {@link shippedRefusal}: the sentence `claude.ts` throws, obtained by
+  // invoking `claudeAdapter().check()` with the key set rather than retyped, so the row cannot go
+  // on passing over a text that has moved. It did exactly that — the literal that stood here was
+  // the wording Q-0047 owned, and Q-0068 replaced it in `claude.ts` while this table stayed green.
   //
   // The classification is not automatic and this row is the check that it holds: `AUTH_PATTERNS`
   // carries `/invalid api key/i`, `/not logged in/i` and `/please run\s+\/?login/i`, any of which a
