@@ -1,13 +1,14 @@
 ---
 id: Q-0068
 title: A healthy login reads unusable, and the refusal misnames the product
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0068/integration
 priority: p2
 created: 2026-08-27
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,14 @@ history:
     stage_after: requirements
     at: 2026-09-10T17:00:58.902Z
     cost: 8.9
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-10T18:10:12.445Z
+    cost: 53.538
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the

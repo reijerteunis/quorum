@@ -1,0 +1,3 @@
+major: packages/cli/src/adapters.test.ts:343 The comment claims that restoring `res.usage!` in `core` turns this mocked CLI test red, but the implement report confirms the test replaces `probeAdapter` and stays green under that mutation. Remove the false claim and point to the built-binary tests in `build.test.ts`, which actually prove the cross-package behavior.
+
+major: packages/core/src/adapters/adapters.test.ts:332 The rewritten classification comment still begins with a citation to deleted `spike/test/smoke.js:460-466`, despite AC-4 explicitly requiring this stale deleted-tree reference to be corrected. Remove the obsolete citation and describe the current `claudeAdapter().check()` source of the fixture.
