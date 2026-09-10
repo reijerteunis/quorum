@@ -215,3 +215,51 @@ pins in the other. It is one ticket because one ruling governs both, not because
 change.
 
 **Q-0082 cites this ticket in place of Q-0109** as of the same day, so no pointer is left dangling.
+
+## Re-measured 2026-09-10, before the run — and the census rotted in one day
+
+**The count is 24, not 23, and the twenty-fourth is the point.** `git.ts` holds **16** `safe()` call
+sites and `fanout.ts` **8**. The new one is `git.ts:213`,
+`safe(() => git(['config', 'user.name'], dir))?.trim()` inside `configuredUser` — **added by Q-0112
+on 2026-09-08, the day after the merge triage counted them.** A census written into a body is a
+measurement that starts rotting immediately, which is the argument for §*"the first task is a census"*
+being a **task of the run** rather than a number to inherit. Re-derive it; do not trust this table
+either.
+
+`safe()` is still declared **exactly twice, byte for byte** — `fanout.ts:206` and `git.ts:19` — and
+the four `fanout.test.ts` pins are still at **249, 332, 352, 406**, unmoved.
+
+**`configuredUser` is a good first census row, because it is probably correct.** A git that cannot
+be run and a git with no `user.name` configured both honestly mean *nobody said*, and the caller
+already renders that as the sentinel `unknown` under *"A ticket's owner is supplied, never guessed"*
+(2026-09-08). If the census cannot articulate why that site keeps `safe()` while `branchHead` may
+not, the census has not done its job.
+
+**The rollback carries TWO truthiness guards, not one, and the body names only the first.**
+`packages/core/src/engine/lifecycle.ts`:
+
+```
+136:    if (restoresBranch(status) && context.branchHeadAtStart) {
+137:      // Why: preserved defect, see Q-0050 AC-12.
+138:      const current = context.readBranchHead(context.repoDir, ticket.meta.branch);
+139:      if (current && current !== context.branchHeadAtStart) {
+```
+
+`:136` guards the head read at run start and `:139` guards the head read at rollback time. **Both
+operands come from `safe()`-wrapped reads**, so a git that fails at *either* end makes a failed run
+silently keep whatever `integrate` merged — the contamination the body describes, reachable by two
+routes rather than one. A fix that widens only `branchHead`'s return type closes `:136` and leaves
+`:139` reading a `string | null` it still tests for truthiness.
+
+**One line number moved:** the start-of-run read is `engine.ts:271` (was 252), shifted by Q-0039's
+run lock. `repositoryAt`'s contradicting JSDoc is `git.ts:66` — *"which is precisely why it can
+discriminate between them and absence"* — against the `safe(...) != null` at `:71` that discards
+exactly that discrimination.
+
+**The class is not latent in practice, and there is fresh evidence.** *"A failed probe read as a
+proven negative"* was committed twice by the operator in the three days before this run: once in
+Q-0068's merge triage, which grepped for `Q-0066`, found nothing, and concluded no authority line
+existed while one had sat above the code since 2026-08-26 under a different citation; and once in
+Q-0039's erratum E-1, which narrowed a guarantee at two of its three sites. Neither is a `safe()`
+call. **That is the argument that the ruling this ticket owes is about a habit of reasoning and not
+only about a `catch` block**, and it is worth one sentence in the entry.
