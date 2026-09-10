@@ -59,7 +59,10 @@ const thrown = async (fn: () => Promise<unknown>): Promise<AdapterError> => {
 };
 
 describe('AC-3 — the BYOS refusal, its order, and its asymmetry', () => {
-  const REFUSAL = 'ANTHROPIC_API_KEY is set — unset it; Harness runs on subscription OAuth only';
+  // Q-0068 AC-1: the bytes are the criterion, so this constant is the sentence and not a paraphrase
+  // of it. "subscription login" is the term `docs/03-adapter-contract.md` and this module's own
+  // comments already own; the wording that stood here called the product a harness.
+  const REFUSAL = "ANTHROPIC_API_KEY is set — unset it; Quorum uses the CLI's subscription login only";
 
   test('it refuses on its own vendor\'s variable', async () => {
     const error = await withEnv({ ...NO_KEYS, ANTHROPIC_API_KEY: 'sk-not-a-real-key' }, () =>
@@ -377,8 +380,9 @@ describe('AC-6 and AC-7 — a vendor field is transcribed, never corrected', () 
     // stub. `extractJson` is typed `string | null` and reached with whatever `result` held, so
     // `text.matchAll` throws a TypeError and the vendor's answer is replaced by a Node stack trace
     // — the shape Q-0063 removed from `exec()`. Iteration 1's narrowing hid it by substituting
-    // stdout, which is how the divergence got in. Fixing it belongs in both trees at once, like
-    // Q-0066 and Q-0068; reported in dev/implement-report.md, not fixed here.
+    // stdout, which is how the divergence got in. Still preserved and still unticketed; the analogy
+    // that stood here named two tickets which have since closed, and closed without landing in two
+    // trees because there is no second tree.
     await expect(runWith(envelope({ result: 42, structured_output: undefined })))
       .rejects.toThrow(TypeError);
   });

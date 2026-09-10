@@ -221,8 +221,7 @@ export interface AdapterConfig {
 /**
  * What {@link probeAdapter} answers: a round-trip that happened, or one that did not and why.
  *
- * `ok: false` is the ONLY thing a caller may render as an unusable login, which is exactly what
- * AC-11 defect 1 makes untrue today — see the note on {@link probeAdapter}.
+ * `ok: false` is the ONLY thing a caller may render as an unusable login.
  */
 export type ProbeResult =
   | {
@@ -232,8 +231,16 @@ export type ProbeResult =
     ms: number;
     /** `null` where the vendor reports no price; never rounded to zero. */
     cost_usd: number | null;
-    /** Input plus output tokens, counting an unreported measure as zero. */
-    tokens: number;
+    /**
+     * Input plus output tokens, counting an individually unreported measure as zero — and `null`
+     * where the vendor reported no usage at all, which is not a measured zero.
+     *
+     * The same rule as `cost_usd` one line above, at the second field of the same object, and the
+     * one `AdapterUsage` already states: *"`null` means the vendor did not report that measure,
+     * which is not zero"*. Answering `0` here would make two fields of one result disagree about one
+     * question, and would tell a reader a call was measured and found free.
+     */
+    tokens: number | null;
     session: string | null;
   }
   | {
@@ -525,15 +532,13 @@ const PROBE_PROMPT = 'Reply with exactly this JSON and nothing else: {"ok": true
  * `check()` is not called here, or anywhere else in this module: presence and login are separate
  * questions (requirements/errata.md E-1).
  *
+ * A vendor that answers and reports no measure is a **verified** login: `withRetry` gives `usage` as
+ * `null` whenever no attempt reported one (Q-0034), which says nothing about whether the
+ * subscription answered. The absence travels into `cost_usd` and `tokens` rather than into `ok`.
+ *
  * @param adapter the adapter to probe — wrapped or raw.
  * @param options `cwd` to probe somewhere specific, `model` to name one.
  * @returns the round-trip, or the reason there was none. Never throws.
- *
- * Why: preserved defect, see Q-0046 AC-11 defect 1 — `usage` is `null` whenever no attempt reported
- * a measure, and the three reads below are unguarded, so an adapter whose login is perfect and which
- * reports nothing answers `ok: false` with a `TypeError` in `error`, which a caller renders as an
- * unusable login. The spike has this; a quiet fix here would leave both suites green over a product
- * that disagrees with itself.
  */
 export async function probeAdapter(adapter: Adapter, { cwd, model }: { cwd?: string; model?: string } = {}): Promise<ProbeResult> {
   const t0 = Date.now();
@@ -543,7 +548,8 @@ export async function probeAdapter(adapter: Adapter, { cwd, model }: { cwd?: str
     const res = await adapter.run({ prompt: PROBE_PROMPT, schema: PROBE_SCHEMA, model, cwd: sandbox, extraDirs: [], allowWrite: false });
     const problems = checkAgainstSchema(res.output, PROBE_SCHEMA);
     if (problems.length) return { ok: false, vendor: adapter.vendor, ms: Date.now() - t0, error: `structured output invalid (${problems.join('; ')})`, raw: (res.raw ?? '').slice(0, 400) };
-    return { ok: true, vendor: adapter.vendor, ms: Date.now() - t0, cost_usd: res.usage!.cost_usd ?? null, tokens: (res.usage!.input_tokens ?? 0) + (res.usage!.output_tokens ?? 0), session: res.session };
+    const usage = res.usage;
+    return { ok: true, vendor: adapter.vendor, ms: Date.now() - t0, cost_usd: usage?.cost_usd ?? null, tokens: usage ? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) : null, session: res.session };
   } catch (e) {
     // Normalised here as well as inside each built-in adapter: a contributor's adapter should not
     // have to remember to translate its vendor's auth noise.

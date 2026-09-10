@@ -43,10 +43,32 @@
  * there is no fifth case to find after the fourth. Every function that enters one pushes it and
  * pops it on the way out; what is still on the stack at the end is what was never left.
  *
- * Its subject is this package's production modules **plus one file in `core`**: `project.ts`, whose
- * `ProjectNotFoundError` is the only sentence in `packages/core` that a user reads and that carries
- * the word (Q-0100 OQ-2). Widening to all of `core` would add every engine literal for no measured
- * subject. If a second `core` sentence appears, {@link CORE_SUBJECTS} is where it is added.
+ * **Q-0068 narrowed the first refusal without weakening it.** A `/` after a character that cannot
+ * end an expression is not ambiguous at all — division needs a left operand — so {@link readSlash}
+ * now reads that literal and steps over it, and {@link readRegex} refuses one that never closes.
+ * Everything the new clause does not prove unambiguous still takes the conservative path. It is not
+ * grammar arriving after all: it is one character of lookback against a closed set, and the reason
+ * it had to be supplied is that the guard could not otherwise scan the file holding two of the
+ * sentences it exists to find.
+ *
+ * Its subject is this package's production modules **plus the files in `core` that print**, which is
+ * {@link CORE_SUBJECTS}. Widening to all of `core` would add every engine literal for no measured
+ * subject, and that judgement is unchanged; what changed is which files the judgement selects.
+ *
+ * **The register said `project.ts` was the only one, and that was false when it was written**
+ * (Q-0068). `claude.ts` and `codex.ts` each throw a BYOS refusal that a user reads — rendered
+ * verbatim by `adapters.ts`, which says so twice in its own comments — so the two sentences this
+ * guard exists to find were outside its subject on the day it shipped. That is the
+ * `q0050.source.test.ts` shape (Q-0051) and the root-level `MANIFEST` shape (Q-0108): a register
+ * written as an escape hatch, failing open, inside the guard built to close exactly this class. The
+ * three entries are measured rather than asserted — `grep -i harness` over the two adapters returns
+ * five lines, of which two are the refusals, two are `harness.yaml` in JSDoc, which {@link literals}
+ * never reads, and one is `'harness-codex-'`, which {@link printable} refuses for carrying no
+ * whitespace. **No exemption register was needed to admit them**, which is what made the widening
+ * cheap and is why it was measured before it was proposed.
+ *
+ * If a fourth `core` sentence appears, {@link CORE_SUBJECTS} is still where it is added — and the
+ * lesson this ticket paid for is that "the only one" is a claim to re-measure rather than inherit.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -71,11 +93,19 @@ const GUARD = path.relative(SRC, fileURLToPath(import.meta.url));
 /**
  * The files outside this package whose printed sentences are in scope, repository-relative.
  *
- * One entry, and it is a register rather than a derivation because its membership is a *judgement*
- * — which `core` sentences a user reads — where {@link production}'s is a fact about the tree.
- * Every entry is required to exist below, so a moved file fails here instead of being skipped.
+ * A register rather than a derivation because its membership is a *judgement* — which `core`
+ * sentences a user reads — where {@link production}'s is a fact about the tree. Every entry is
+ * required to exist below, so a moved file fails here instead of being skipped.
+ *
+ * Three entries: `project.ts`'s `ProjectNotFoundError` (Q-0100 OQ-2), and the two adapters' BYOS
+ * refusals (Q-0068), which reach the terminal through `adapters.ts` unaltered. The header records
+ * why the second and third were missing rather than merely adding them.
  */
-const CORE_SUBJECTS = ['packages/core/src/backlog/project.ts'] as const;
+const CORE_SUBJECTS = [
+  'packages/core/src/backlog/project.ts',
+  'packages/core/src/adapters/claude.ts',
+  'packages/core/src/adapters/codex.ts',
+] as const;
 
 /**
  * The folder `harness`, written as a path — the one spelling of the word a printed string may keep.
@@ -234,18 +264,69 @@ const refuse = (s: Scan, at: number, why: string): never => {
 };
 
 /**
- * Classifies the `/` at `text[at]` — which is neither `//` nor an opening `/*` — or refuses it.
+ * The characters after which a `/` **cannot** be division, because no expression has ended there.
  *
- * It is division, or it opens a regular-expression literal, and telling those apart needs the
- * token before it: grammar this scanner does not have and does not acquire. What it can decide is
- * the only question that matters here — **whether reading it the wrong way could change the quote
- * parity of everything below it.** A regex literal closes on its own line, so its whole body is
- * between this `/` and the next one before the newline:
+ * Not a heuristic and not grammar: division needs a left operand, and none of these can be the last
+ * character of one. So a `/` following one of them opens a regular-expression literal, with no
+ * ambiguity left for {@link readSlash} to refuse. The deliberately excluded cases are the ones where
+ * an expression *may* have ended and the answer would then be a guess — an identifier character
+ * (`return /re/` ends in one and is a regex; `total / 2` ends in one and is division), `)`, `]`, `}`
+ * and the three quote characters. Those keep the conservative treatment below.
  *
+ * Kept to the operators and punctuators the subject actually holds rather than to every sound
+ * member, because each entry is a claim this file has to be right about and an unexercised one is a
+ * claim nothing checks.
+ */
+const BEFORE_REGEX = /[(,=:[!&|?{;]/;
+
+/** The last character before `at` that is not whitespace, or the empty string at start of input. */
+const previousSignificant = (text: string, at: number): string => {
+  for (let i = at - 1; i >= 0; i -= 1) if (!/\s/.test(text[i])) return text[i];
+  return '';
+};
+
+/**
+ * Reads the regular-expression literal opening at `text[at]` and returns its closing `/`, or refuses.
+ *
+ * Called only where {@link BEFORE_REGEX} has already established that this cannot be division, so a
+ * body that does not close before the newline is not "then it was division after all" — it is syntax
+ * this scanner cannot read, and it refuses rather than continuing. A `/` inside a character class
+ * does not terminate the literal, which is why the class is tracked: reading `/[/]/` as ending at the
+ * second character would put the scan back into code position in the middle of a literal.
+ */
+const readRegex = (s: Scan, at: number): number => {
+  let inClass = false;
+  for (let i = at + 1; i < s.text.length; i += 1) {
+    const ch = s.text[i];
+    if (ch === '\\') { i += 1; continue; }
+    if (ch === '\n') break;
+    if (ch === '[') { inClass = true; continue; }
+    if (ch === ']') { inClass = false; continue; }
+    if (ch === '/' && !inClass) return i;
+  }
+  return refuse(s, at, 'this `/` opens a regular-expression literal — nothing before it can end an'
+    + ' expression, so it cannot be division — and the literal does not close before the end of the'
+    + ' line, so everything after it was read as its body and inspected by nobody');
+};
+
+/**
+ * Classifies the `/` at `text[at]` — which is neither `//` nor an opening `/*` — or refuses it, and
+ * returns the index the scan continues from.
+ *
+ * It is division, or it opens a regular-expression literal. Four cases, of which the first is the
+ * only one that needs to know anything about what came before:
+ *
+ * - **nothing before it can end an expression** ({@link BEFORE_REGEX}) — then it is not division,
+ *   because division needs a left operand. The literal is read and stepped over, so its body is
+ *   never seen as code and the quote parity question does not arise. **This is the clause Q-0068
+ *   added, and it is what let the two adapter files into {@link CORE_SUBJECTS}**:
+ *   `claude.ts:49` holds `(/[\s"']/` and `.replace(/'/g, …)`, two regex literals whose bodies carry
+ *   quotes, and both sit immediately after a `(`. Under the three clauses below the file was
+ *   *refused* — loudly, which is the design working, and which meant the guard could not take as
+ *   its subject the very sentences it exists to find.
  * - **no `/` before the end of the line** — it cannot be a regex literal, so it is division, and
- *   there is nothing to misread. This is the whole of the live tree: `runs.ts:136` and
- *   `trace.ts:66`, both `… / 1000` inside a template interpolation, are the only two `/` characters
- *   in code position anywhere in the subject once {@link SHEBANG} has taken `quorum.ts:1`'s three.
+ *   there is nothing to misread. `runs.ts:136` and `trace.ts:66`, both `… / 1000` inside a template
+ *   interpolation, are this case in the live tree.
  * - **a closing `/` whose body carries no quote** — read as a regex or as code, the same literals
  *   are collected either way, so the ambiguity is not one this guard can be hurt by.
  * - **a closing `/` whose body carries a quote** — **refused.** Read as code, that quote becomes a
@@ -253,27 +334,33 @@ const refuse = (s: Scan, at: number, why: string): never => {
  *   nobody while this file reports a clean tree. Review round 3's finding, and the third shape of
  *   the parity defect that clauses (4) and (6) close in the two other delimiters.
  *
- * The middle case is deliberately permissive and the last deliberately conservative: `a / b + 'x/y'`
+ * The third case is deliberately permissive and the fourth deliberately conservative: `a / b + 'x/y'`
  * is division and is refused, because this scanner cannot prove that it is. Refusing a legible line
  * costs a message naming it; admitting an illegible one costs a false green.
  *
- * There is a fourth case and it is not decided here: **the line has no ending**, the input running
- * out before either a terminator or a newline. The {@link REGEX} state is then never left, and
- * {@link literals} reports it with the other three at end of input rather than this function
- * refusing twice for one reason.
+ * There is a fifth case and it is not decided here: **the line has no ending** after a `/` the first
+ * clause did not claim, the input running out before either a terminator or a newline. The
+ * {@link REGEX} state is then never left, and {@link literals} reports it with the other three at end
+ * of input rather than this function refusing twice for one reason.
  */
-const readSlash = (s: Scan, at: number): void => {
+const readSlash = (s: Scan, at: number): number => {
   s.open.push({ state: REGEX, at });
+  if (BEFORE_REGEX.test(previousSignificant(s.text, at))) {
+    const close = readRegex(s, at);
+    s.open.pop();
+    return close;
+  }
   for (let i = at + 1; i < s.text.length; i += 1) {
     const ch = s.text[i];
-    if (ch === '\n') { s.open.pop(); return; }
+    if (ch === '\n') { s.open.pop(); return at; }
     if (ch === '\\') { i += 1; continue; }
     if (ch !== '/') continue;
-    if (!QUOTE.test(s.text.slice(at + 1, i))) { s.open.pop(); return; }
+    if (!QUOTE.test(s.text.slice(at + 1, i))) { s.open.pop(); return at; }
     refuse(s, at, 'this `/` opens a regular-expression literal whose body carries a quote,'
       + ' or divides an expression that does; either reading changes the quote parity below it and'
       + ' this scanner cannot tell them apart');
   }
+  return at;
 };
 
 /**
@@ -366,7 +453,7 @@ const scan = (s: Scan, from: number, inside: boolean): number => {
       continue;
     }
     if (ch === '/') {
-      readSlash(s, i);
+      i = readSlash(s, i);
       continue;
     }
     if (inside && ch === '}') return i;
@@ -463,6 +550,20 @@ describe('AC-4 — no printed string calls the product or the binary a harness',
       .toContain('no harness/harness.yaml found');
     expect(found.get('fail.ts') ?? '', 'the surface no longer composes the remedy this scan must see')
       .toContain('run \\`quorum init\\` in your repo');
+    // Q-0068 AC-5(c). The two adapters joined the register above, and an entry the scan collected
+    // nothing from would leave the clause in the test above vacuous over exactly the two sentences
+    // that were missing from this guard's subject on the day it shipped.
+    //
+    // Anchored on each adapter's OTHER printed sentence rather than on its BYOS refusal, and that
+    // is deliberate: an anchor that is also the string under repair goes red with it, so the two
+    // clauses would stop being independent and reaching the file would no longer be provable if the
+    // refusal were deleted outright. These two are printed sentences in the same files that this
+    // ticket does not touch.
+    for (const vendor of ['claude', 'codex'] as const) {
+      const file = `packages/core/src/adapters/${vendor}.ts`;
+      expect(literals(found.get(file) ?? '', file), `the scan reaches no sentence in ${file}`)
+        .toContain(`${vendor} CLI not runnable: \${probe.stderr || probe.stdout}`);
+    }
   });
 
   test('the subject is every production module and the named core files, and one exclusion', () => {
@@ -628,13 +729,16 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // that an unclassifiable construct is loud. Demonstrated, per *"A check is not established by
     // reading it"* (2026-08-29), against the construct this scanner does **not** claim to handle.
 
-    // Review round 3's fixture: a regex whose body carries a quote, above a sentence naming the old
-    // binary. Read as code, the `'` opens a literal that swallows to the next quote, so the usage
-    // line lands in no entry at all — measured, the naive scan yields `['"]/g;\nconst usage = ',
-    // ';\n']` — and the guard reports a clean tree over a module that prints it. Refused instead.
-    const hidden = 'const RE = /[\'"]/g;\nconst usage = \'usage: harness run <flow>\';\n';
+    // Review round 3's fixture, with its `/` moved behind an identifier by Q-0068 — see clause (10),
+    // where the original spelling is now LEXED rather than refused. A regex whose body carries a
+    // quote, above a sentence naming the old binary. Read as code, the `'` opens a literal that
+    // swallows to the next quote, so the usage line lands in no entry at all and the guard reports a
+    // clean tree over a module that prints it. Refused instead, because after an identifier
+    // character an expression may genuinely have ended and this scanner cannot tell which reading is
+    // right — `total / 2` and `return /re/` both end in one.
+    const hidden = 'const RE = a /[\'"]/g;\nconst usage = \'usage: harness run <flow>\';\n';
     expect(() => literals(hidden, FIXTURE), 'a regex the scanner cannot lex was stepped over')
-      .toThrow(/a-module\.ts:1 \(offset 11\)/);
+      .toThrow(/a-module\.ts:1 \(offset 13\)/);
     expect(() => literals(hidden, FIXTURE)).toThrow(/regular-expression literal/);
     expect(() => offending(hidden, FIXTURE), 'the refusal does not reach the guard\'s own path')
       .toThrow();
@@ -642,7 +746,7 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
     // And the same shape one character apart, to show the refusal has a subject rather than a
     // signature: with a quote-free body the `/` is classified, the scan continues, and the sentence
     // below it is collected. So what is refused above is a sentence this guard would otherwise see.
-    const lexable = 'const RE = /[a-z]/g;\nconst usage = \'usage: harness run <flow>\';\n';
+    const lexable = 'const RE = a /[a-z]/g;\nconst usage = \'usage: harness run <flow>\';\n';
     expect(offending(lexable, FIXTURE)).toStrictEqual(['usage: harness run <flow>']);
 
     // Division is not refused, which is what keeps the guard runnable rather than merely safe.
@@ -680,14 +784,19 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
       .toThrow(/a-module\.ts:1 \(offset 10\): the file ended inside a template literal.*never left/s);
     expect(() => literals('/*\nconst usage = \'usage: harness run\';\n', FIXTURE), 'round 4\'s finding')
       .toThrow(/a-module\.ts:1 \(offset 0\): the file ended inside a block comment.*never left/s);
-    expect(() => literals('const RE = /[\'"]', FIXTURE), 'a line with no ending after a `/`')
-      .toThrow(/a-module\.ts:1 \(offset 11\): the file ended inside a possible regular-expression/);
+    expect(() => literals('const RE = a /[\'"]', FIXTURE), 'a line with no ending after a `/`')
+      .toThrow(/a-module\.ts:1 \(offset 13\): the file ended inside a possible regular-expression/);
+    // Its Q-0068 twin: where nothing before the `/` can end an expression the first clause of
+    // {@link readSlash} claims it, so the same unterminated input is refused by {@link readRegex}
+    // instead — a different sentence for a different reason, and neither of them a quiet stop.
+    expect(() => literals('const RE = /[\'"]', FIXTURE), 'an unterminated literal the first clause claimed')
+      .toThrow(/a-module\.ts:1 \(offset 11\): this `\/` opens a regular-expression literal.*does not close/s);
 
     // Where states are nested, the **outermost** one is named: a template whose interpolation holds
     // an unterminated string leaves both open, and the template at offset 10 is the construct that
     // never closed — the string at 14 is a consequence of the file already having been misread.
     // Reporting the innermost instead names offset 14 here and, in the regex fixture above, names
-    // the string the misread `/` let open at offset 13 rather than the `/` itself.
+    // the string the misread `/` let open rather than the `/` itself.
     expect(() => literals('const a = `x${\'y`;\n', FIXTURE), 'the outermost state, not the innermost')
       .toThrow(/a-module\.ts:1 \(offset 10\): the file ended inside a template literal/);
 
@@ -704,5 +813,52 @@ describe('AC-5 — the filter discriminates in the three directions it has to, a
 
     // The refusal reaches the guard's own path and is not swallowed on the way.
     expect(() => offending('/*\nconst usage = \'usage: harness run\';\n', FIXTURE)).toThrow();
+  });
+
+  test('(10) a `/` nothing before it can end an expression opens a regex, and its body is stepped over', () => {
+    // Q-0068. The three clauses above refused `packages/core/src/adapters/claude.ts` outright, at
+    // `(/[\s"']/` — a regex whose body carries two quotes. That refusal was correct under what
+    // {@link readSlash} then knew and it was loud, which is the design working; what it cost was
+    // that the guard could not take as its subject the two BYOS refusals in that file, the very
+    // sentences it exists to find. So the ONE fact that decides it is supplied, and it is a fact
+    // rather than a guess: division needs a left operand, and `(` cannot be the end of one.
+    //
+    // The fail-closed property is untouched. Only the cases {@link BEFORE_REGEX} proves are
+    // unambiguous move; everything else still takes the conservative path, which clause (8)'s
+    // `a /['"]/g` fixture is.
+
+    // The live shape, both halves of `claude.ts:49` in one line. Read as code the first `"` would
+    // open a literal, invert the parity of every delimiter below it, and hide the sentence beneath.
+    const live = 'const q = (/[\\s"\']/.test(v) ? \'x\' : v);\nconst usage = \'usage: harness run <flow>\';\n';
+    expect(literals(live, FIXTURE), 'the regex body was read as code')
+      .toStrictEqual(['x', 'usage: harness run <flow>']);
+    expect(offending(live, FIXTURE)).toStrictEqual(['usage: harness run <flow>']);
+
+    // Each admitted character on its own, so a member of the set that stopped working is a named
+    // failure rather than one absorbed by its neighbours.
+    for (const before of ['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', ';']) {
+      const source = `const a = x${before}/['"]/g;\nconst usage = 'usage: harness run';\n`;
+      expect(offending(source, FIXTURE), `a \`/\` after \`${before}\` was not read as a regex`)
+        .toStrictEqual(['usage: harness run']);
+    }
+
+    // And the discrimination, which is what stops this being a blanket permission: after a character
+    // that CAN end an expression the scanner is back to not knowing, and refuses exactly as before.
+    // `)` is the sharpest of them — `if (x) /re/.test(y)` is a regex and `(a + b) / c` is division.
+    for (const before of [')', ']', 'a', '1', '\'x\'']) {
+      const source = `const a = x${before}/['"]/g;\nconst usage = 'usage: harness run';\n`;
+      expect(() => offending(source, FIXTURE), `a \`/\` after \`${before}\` was claimed rather than refused`)
+        .toThrow(/regular-expression literal/);
+    }
+
+    // A `/` inside a character class does not close the literal. Without the class tracking the scan
+    // would resume in the middle of one, which is the parity defect again by another door.
+    expect(offending('const a = (/[/"]/.test(v));\nconst usage = \'usage: harness run\';\n', FIXTURE))
+      .toStrictEqual(['usage: harness run']);
+
+    // Whitespace between the two is skipped, because `previousSignificant` is about the token and
+    // not about the column.
+    expect(offending('const a = (\n  /[\'"]/g\n);\nconst usage = \'usage: harness run\';\n', FIXTURE))
+      .toStrictEqual(['usage: harness run']);
   });
 });

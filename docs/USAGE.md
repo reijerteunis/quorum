@@ -56,7 +56,7 @@ last verified against. Nothing branches on it and no run is ever refused because
 If `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `CODEX_API_KEY` is set, the adapter refuses:
 
 ```
-✗ claude: ANTHROPIC_API_KEY is set — unset it; …runs on subscription OAuth only
+✗ claude: ANTHROPIC_API_KEY is set — unset it; Quorum uses the CLI's subscription login only
 ```
 
 This is deliberate and there is no flag to override it. Quorum runs on the login of a CLI you

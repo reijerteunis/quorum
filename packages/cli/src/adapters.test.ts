@@ -46,7 +46,7 @@ type Check = { version: string } | { refusal: string };
  * command child does not widen that surface to type its own fixture (AC-10, ground rule 4).
  */
 type Probe =
-  | { ok: true; vendor: string; ms: number; cost_usd: number | null; tokens: number; session: string | null }
+  | { ok: true; vendor: string; ms: number; cost_usd: number | null; tokens: number | null; session: string | null }
   | { ok: false; vendor: string; ms: number; error: string; raw?: string };
 
 let root = '';
@@ -299,8 +299,9 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
   test('whatever an adapter throws reaches the terminal unaltered, so the refusal stays core\'s', async () => {
     // AC-8(a) and (b) in one property. The message is a sentence this test invented, so nothing here
     // has to know — or spell — what `check()` actually refuses with; what is claimed is that the CLI
-    // is a pass-through. The shipped refusal still names the product "Harness", which is Q-0068's
-    // and reaches the terminal through exactly this path.
+    // is a pass-through. The shipped refusal reaches the terminal through exactly this path, which
+    // is why `packages/cli/src/binary-name.test.ts` scans the two adapter files as its own subjects
+    // and why `packages/cli/src/end-to-end.test.ts` asserts the whole rendered line.
     const sentence = 'refused for a reason only the adapter knows, with punctuation: — and `quotes`';
     stub({ claude: { refusal: sentence }, codex: { refusal: sentence } });
     const result = await run();
@@ -329,28 +330,56 @@ describe('AC-8 — BYOS, and the defects reported rather than fixed', () => {
   });
 
   test('AC-8(d) — Q-0066\'s crash renders as an unusable login rather than being caught in passing', async () => {
-    // `probeAdapter` dereferences a null `usage`, so an adapter whose login is perfect and which
-    // reports no measure answers `ok: false` carrying a `TypeError`'s own message — and the CLI
-    // renders that as a login failure, which is what makes the defect visible from the outside.
-    // Why: preserved defect, see Q-0066, which lands in both trees together; a fix here would leave
-    // the spike disagreeing with `core` until the cutover.
+    // INVERTED by Q-0068 AC-11 and deliberately keeping its name, so the register of what this
+    // command reports stays complete rather than losing a row. What it pinned: `probeAdapter`
+    // dereferenced a null `usage`, so an adapter whose login was perfect and which reported no
+    // measure answered `ok: false` carrying a `TypeError`'s own message, and this command rendered
+    // it as a login failure — which is what made the defect visible from the outside, and what
+    // Q-0110 later turned into a non-zero exit.
+    //
+    // `core` now answers that case `ok: true` with both measures `null`, so what is claimed here is
+    // that the CLI is still the faithful renderer it was: it reports a verified login, omits the two
+    // clauses it has no number for, and exits 0. Restoring `res.usage!` in `core` turns this red as
+    // well as `probe.test.ts`, which is what proves this file follows `core` rather than
+    // compensating for it.
     stub(
       { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
       {
-        claude: {
-          ok: false,
-          vendor: 'claude',
-          ms: 700,
-          error: "Cannot read properties of null (reading 'cost_usd')",
-        },
+        claude: { ok: true, vendor: 'claude', ms: 700, cost_usd: null, tokens: null, session: null },
         codex: verified('codex'),
       },
     );
     const result = await run('--probe');
-    // Q-0110 made an unusable login ERROR; the defect this pins is the SENTENCE, which is unchanged.
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    // The whole line rather than a `not.toContain`, which is what actually forbids the two clauses:
+    // codex's verified line below carries `4200 tokens`, so a substring check for `0 tokens` reads
+    // that neighbour and would fail for a reason nothing here is about.
+    expect(out(result).split('\n')[1]).toBe('  ✓ login verified — round-trip 700ms');
+    expect(out(result), 'a login that answered was reported unusable').not.toContain('login not usable');
+    // AC-9's `--json` half: the key set does not move and the two absences are `null` there, which
+    // is where a consumer reads the distinction the human line does not carry.
+    const entry = json(await run('--probe', '--json')).adapters[0];
+    expect(Object.keys(entry)).toStrictEqual([
+      'adapter', 'installed', 'version', 'version_state', 'verified_version',
+      'login', 'ok', 'vendor', 'ms', 'cost_usd', 'tokens', 'session',
+    ]);
+    expect(entry).toMatchObject({ login: 'verified', ok: true, cost_usd: null, tokens: null });
+  });
+
+  test('AC-11 — the failures that ARE failures still make --probe exit 1', async () => {
+    // The other direction, so AC-8(d)'s inversion is shown to be narrow rather than a widening of
+    // what counts as verified. An unusable login is still ERROR, and the sentence is still `core`'s.
+    stub(
+      { claude: { version: '2.1.231' }, codex: { version: '0.149.1' } },
+      {
+        claude: { ok: false, vendor: 'claude', ms: 700, error: 'claude login expired or missing — run: claude  (then /login)' },
+        codex: verified('codex'),
+      },
+    );
+    const result = await run('--probe');
     expect(result.exitCode, out(result)).toBe(ERROR);
     expect(out(result).split('\n')[1])
-      .toBe("  ✗ login not usable: Cannot read properties of null (reading 'cost_usd')");
+      .toBe('  ✗ login not usable: claude login expired or missing — run: claude  (then /login)');
   });
 });
 

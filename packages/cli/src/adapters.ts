@@ -11,9 +11,8 @@
  * only `adapters --probe` proves login"* (2026-08-22).
  *
  * **Nothing here decides what a refusal says.** The BYOS refusal is each vendor adapter's own, in
- * `@quorum/core`, and this module renders `e.message` unaltered; the sentence it still carries calls
- * the *product* a harness, which is Q-0068's and is preserved verbatim (Q-0099 AC-8(a)). The notice
- * below names the *binary*, and that class was ruled by Q-0100: it is `quorum`.
+ * `@quorum/core`, and this module renders `e.message` unaltered. The notice below names the
+ * *binary*, and that class was ruled by Q-0100: it is `quorum`.
  *
  * **This command answers two questions and reports a status for one of them.** Without `--probe` it
  * is a report and exits 0 whatever it finds, including a machine with no vendor CLI at all — its
@@ -26,13 +25,6 @@
  * verified against, and the result renders as at most one dim clause under `--probe` and as two
  * keys in `--json`. Why: see *"An adapter records the version it was verified against, and never a
  * version it supports"* (2026-09-08).
- *
- * **One preserved defect reaches this command and is not repaired here** (ground rule 3):
- *
- * `probeAdapter` dereferences a null `usage`, so an adapter whose login is perfect and which
- *    reports no measure answers `✗ login not usable: Cannot read properties of null`. Why: preserved
- *    defect, see Q-0066, which lands in both trees together — a fix here would leave the spike
- *    disagreeing with `core` until the cutover.
  *
  * Why: behaviour preserved from `spike/bin/harness.js:406–424` (Q-0099 AC-7).
  */
@@ -128,8 +120,8 @@ export const adapters: CommandHandler = async ({ flags }) => {
     } catch (error) {
       // The loop continues: one absent CLI is not a reason to stop reporting the other, which is
       // the whole of what an adopter is running this to find out. The message is the adapter's own,
-      // rendered unaltered — including the BYOS refusal, which is Q-0068's sentence and not this
-      // module's to rewrite on the way through.
+      // rendered unaltered — including the BYOS refusal, which belongs to the vendor adapter and is
+      // not this module's to rewrite on the way through.
       console.log(`${c.red('✗')} ${name}: ${(error as Error).message}`);
       report.push({ adapter: name, installed: false, error: (error as Error).message });
       continue;
@@ -147,6 +139,10 @@ export const adapters: CommandHandler = async ({ flags }) => {
     // check() only proves the binary exists. Only a real request proves the subscription answers.
     const result = await probeAdapter(adapter, { cwd: repoDir });
     if (result.ok) {
+      // The two clauses ask different questions and the difference is preserved rather than tidied:
+      // cost discriminates a measured `0` from an absent one and prints `$0.0000`, tokens is
+      // truthiness and has always omitted a measured zero. `tokens` gained `null` in Q-0068 and this
+      // line already renders it the same as a zero; `--json` and the type carry the distinction.
       const cost = result.cost_usd != null ? `, $${result.cost_usd.toFixed(4)}` : '';
       const tokens = result.tokens ? `, ${String(result.tokens)} tokens` : '';
       console.log(`  ${c.green('✓')}${c.dim(` login verified — round-trip ${String(result.ms)}ms${cost}${tokens}`)}`);
