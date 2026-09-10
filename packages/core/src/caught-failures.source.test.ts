@@ -101,8 +101,30 @@ function sitesIn(file: string, source: string): Site[] {
     return found[1];
   };
   const probesGit = (fn: string): boolean => INVOKES_GIT.test(bodyOf(source, fn));
+  /**
+   * The `safe(` call starting at `index`, joined until its parentheses balance.
+   *
+   * The predicate read one physical line until 2026-09-11, so `safe(() =>\n  git([…]))` — the same
+   * call under a formatter that wrapped it — was invisible, and a caught git failure could be added
+   * with no register entry while this census stayed green. Reported by the cross-vendor review of
+   * this ticket's own change: the fail-open shape, in the register written to close it.
+   */
+  const statementAt = (index: number): string => {
+    let depth = 0;
+    let text = '';
+    for (let at = index; at < lines.length && at < index + 12; at += 1) {
+      const line = lines[at] ?? '';
+      text += ` ${line}`;
+      for (const ch of line) {
+        if (ch === '(') depth += 1;
+        else if (ch === ')') depth -= 1;
+      }
+      if (at > index || depth <= 0) { if (depth <= 0) break; }
+    }
+    return text;
+  };
   return lines.flatMap((line, index): Site[] => {
-    const isSafe = line.includes('safe(') && INVOKES_GIT.test(line);
+    const isSafe = line.includes('safe(') && INVOKES_GIT.test(statementAt(index));
     const isCatch = /(?:^|\})\s*catch\b/.test(line);
     if (!isSafe && !isCatch) return [];
     const fn = enclosing(index);
@@ -531,7 +553,7 @@ describe('Q-0115 AC-3 — the primitive is declared exactly twice, and the near-
     .filter(([, text]) => declarations(withoutBlockComments(text).split('\n')).some(([, name]) => name === 'safe'))
     .map(([name]) => `${root}/${name}`);
 
-  test('exactly those two files across every package\'s production source', () => {
+  test('exactly those two files across the two production roots this census walks', () => {
     const scanned = PACKAGE_SOURCE_ROOTS.flatMap((root) => coreSourceFiles(path.join(repoRoot, root)));
     // A scan over an empty corpus reports success over nothing, and every root must contribute.
     for (const root of PACKAGE_SOURCE_ROOTS) {
@@ -558,14 +580,19 @@ describe('Q-0115 AC-3 — the primitive is declared exactly twice, and the near-
       .map(([, name]) => name), 'the predicate does not fire on a real declaration either').toContain('safe');
   });
 
-  test('a third declaration anywhere under packages/*/src fails, by name', () => {
-    const third = [...coreSourceFiles(path.join(repoRoot, 'packages/core/src')),
-      ['third/copy.ts', 'const safe = <T>(fn: () => T): T | null => {\n  try { return fn(); } catch { return null; }\n};\n'] as [string, string]];
-    const found = third
-      .filter(([, text]) => declarations(withoutBlockComments(text).split('\n')).some(([, name]) => name === 'safe'))
-      .map(([name]) => `packages/core/src/${name}`);
-    expect(found, 'a third declaration was not reported').toContain('packages/core/src/third/copy.ts');
-    expect(found.sort()).not.toStrictEqual(Object.keys(SAFE_DECLARATIONS).sort());
+  test('a third declaration under either walked root fails, by name', () => {
+    // Injected into EVERY walked root rather than into `core` alone: a mutation proving detection
+    // in one root says nothing about the other, which is the shape this file exists to refuse.
+    for (const root of PACKAGE_SOURCE_ROOTS) {
+      const third = [...coreSourceFiles(path.join(repoRoot, root)),
+        ['third/copy.ts', 'const safe = <T>(fn: () => T): T | null => {\n  try { return fn(); } catch { return null; }\n};\n'] as [string, string]];
+      const found = third
+        .filter(([, text]) => declarations(withoutBlockComments(text).split('\n')).some(([, name]) => name === 'safe'))
+        .map(([name]) => `${root}/${name}`);
+      expect(found, `a third declaration in ${root} was not reported`).toContain(`${root}/third/copy.ts`);
+      expect(found.sort(), `${root} still matched the two-declaration register`)
+        .not.toStrictEqual(Object.keys(SAFE_DECLARATIONS).sort());
+    }
   });
 });
 
