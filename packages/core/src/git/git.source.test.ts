@@ -100,6 +100,61 @@ describe('AC-1 — the module exports twelve functions, and core reads ancestry 
   });
 });
 
+describe('Q-0115 AC-8 — the comment says what the function delivers, not what git could have', () => {
+  /**
+   * The sentence this ticket exists to stop leaving behind.
+   *
+   * `repositoryAt`'s JSDoc claimed `--resolve-git-dir` *"can discriminate between them and
+   * absence"*, which is true of the git invocation and false of what the function did with its
+   * failure — `safe()` threw the discrimination away and the caller got a boolean. **A comment
+   * claiming a discrimination the code discards is how this survived a cross-vendor review**, so the
+   * comment is part of the repair rather than a tidy-up beside it.
+   *
+   * Measured on git 2.55 at this ticket's gate, which is what makes the old sentence false rather
+   * than merely misleading: `--resolve-git-dir` spends 128 on an absent `.git` AND on one it cannot
+   * parse, differing only in a prose line. So no reading of git alone discriminates them.
+   *
+   * **This guard is not evidence that the discrimination works.** It is a check on a sentence; the
+   * behaviour is `git.test.ts`'s Q-0115 AC-7, which stages all four `.git` shapes and reads what
+   * `pushLag` renders. A source scan that stood in for that would be the shape *"A check is not
+   * established by reading it"* (2026-08-29) forbids.
+   */
+  const CORRECTED = 'What git cannot do on its own is prove absence';
+
+  test('the claim git alone discriminates is gone, and the guard is shown to refuse it', () => {
+    const text = gitSource();
+    // Shown to have a subject before it is believed (Q-0111, whose first needle matched nothing at
+    // all including its own subject): the needle is exercised against the sentence as it stood, so a
+    // scan that could never fire fails HERE rather than passing over a module that had kept it.
+    const asItStood = 'which is precisely why it can discriminate between them and absence';
+    expect(asItStood.includes('discriminate between them and absence'),
+      'the needle no longer matches the sentence it was written against').toBe(true);
+    expect(text.includes(asItStood), 'git.ts still claims git alone discriminates absence').toBe(false);
+  });
+
+  test('and it states what the function delivers instead, including where the answer comes from', () => {
+    const flowed = gitSource().replace(/\s+/g, ' ');
+    expect(flowed, 'the corrected claim is not stated').toContain(CORRECTED);
+    // The three things the sentence has to carry to be true: that git's exit is the same either
+    // way, that the filesystem is what separates them, and that `lstat` rather than `existsSync` is
+    // what makes a dangling symlink not read as absence.
+    expect(flowed, 'the measurement behind the correction is not stated')
+      .toContain('the two differ only in a prose line');
+    expect(flowed, 'the inspection is not named').toContain('lstat');
+    expect(flowed, 'the shape that made existsSync wrong is not named').toContain('dangling');
+  });
+
+  test('the residual limit is re-stated against what now holds, and still says what it cannot reach', () => {
+    // NG-5: a project root BELOW a repository git refuses stays unclosable, and the reasoning moves
+    // with the code rather than being left behind in the function it used to sit in.
+    const flowed = gitSource().replace(/\s+/g, ' ');
+    expect(flowed, 'the residual limit is gone rather than re-stated')
+      .toContain('still reads as absence');
+    expect(flowed, 'and the reason it stays unclosable is no longer given')
+      .toContain('reimplementation of git\'s upward discovery walk');
+  });
+});
+
 describe('AC-5 — every git call goes through execFileSync with an argv array, never a shell', () => {
   test('no shell and no string command line', () => {
     const text = gitSource();
