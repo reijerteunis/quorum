@@ -1,14 +1,31 @@
 ---
 id: Q-0074
 title: A failed git probe is read as a proven negative
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0074/integration
 priority: p2
 created: 2026-08-28
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: failed
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-10T19:12:42.011Z
+    cost: 11.528
+  - stage: requirements
+    run: 2
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-10T19:46:43.689Z
+    cost: 12.289
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
@@ -263,3 +280,43 @@ existed while one had sat above the code since 2026-08-26 under a different cita
 Q-0039's erratum E-1, which narrowed a guarantee at two of its three sites. Neither is a `safe()`
 call. **That is the argument that the ruling this ticket owes is about a habit of reasoning and not
 only about a `catch` block**, and it is worth one sentence in the entry.
+
+## Ruled at the requirements gate, 2026-09-10
+
+**The ticket split in three, and Q-0074 keeps the `fanout/` half.** Not by preference: *"What a
+run's event stream carries"* (2026-08-28) cites **Q-0074** by name against `branchExists`,
+`branchHead`, `commitAll` and `mergeInto`, and `composite.ts:17` says *"Q-0074 owns it"*. A landed
+entry is never edited, so the id stays with the half it names. `requirements/merged.md` §4's
+fourteen criteria are this ticket's.
+
+**The `git/` half runs FIRST, as Q-0115.** *Which half runs first* is a separate question from
+*which id owns which half*, and the gate ruled it on two measurements: `git.ts:345` is the only site
+in the census that reaches an adopter's screen — one failed `for-each-ref` and `quorum board`
+answers `no branch` for **every ticket in the backlog** — and the half is nearly mechanical, because
+`CONTAINMENT_REASONS` already holds `'git failed'`, `pushLag` already discriminates at all four of
+its own sites, and `errorProperty`, `exitStatus`, `GIT_FATAL` and `WorkTreeProbe` are already
+module-private. **AC-2's census register and AC-3 travel with Q-0115**, per §6.1; this ticket
+inherits them back when it runs.
+
+**GO-1 is discharged: `docs/decisions/088-a-probe-that-could-not-answer-is-not-a-negative.md`**
+landed at this gate, before any code. It rules all six clauses OQ-1 lists, including **OQ-4** —
+a narrow filesystem inspection *may* separate an absent `.git` from an unreadable or malformed one,
+and *"Membership is a git question, not a filesystem one"* (2026-08-28) does **not** govern, on
+Q-0090 E-1's precedent; the bound is stated in the entry. **OQ-2 is ratified as the requirement
+stated it**: a rollback that cannot read a head does not reset, warns, and records. **OQ-8 got its
+one sentence and no more.**
+
+**GO-3 is discharged: Q-0115 and Q-0116 exist**, with §6.1 and §6.2 transcribed into their bodies in
+full rather than referenced.
+
+**What the census found that no earlier account had.** Twenty-four sites, thirteen collapsing, and
+four of them named by no ticket, comment or test before this run: `git.ts:143` (a failed base probe
+cuts the worktree from `HEAD`), `git.ts:345` (the board-wide `no branch`), `fanout.ts:280` (a failed
+status probe reads `backlog/` as clean, so no revert runs and `onDiscard` never fires) and
+`fanout.ts:317` (a failed `merge --abort` leaves a merge in progress, against a JSDoc promising
+*"leave the worktree clean either way"*). **The rollback has two routes, not one** —
+`lifecycle.ts:136` and `:139`, both reading `safe()`-wrapped values.
+
+**And the trap was set inside this ticket's own instrument:** the four pins recording its defects
+cite **`Q-0048`**, not `Q-0074`, and a search for `Q-0074` returns one line in the whole package.
+GO-5 requires the closing entry say so.

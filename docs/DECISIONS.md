@@ -167,3 +167,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-10
 
 - [M2 closed: the product develops itself, through two of its seven flows](decisions/087-m2-closed-the-product-develops-itself.md)
+- [A probe that could not answer is not a negative](decisions/088-a-probe-that-could-not-answer-is-not-a-negative.md)

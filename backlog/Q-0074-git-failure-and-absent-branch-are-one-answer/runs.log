@@ -1,0 +1,12 @@
+2026-09-10T18:46:18.100Z run=1 flow=requirements start stage=draft
+2026-09-10T18:48:01.337Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=103220
+2026-09-10T18:53:09.288Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=4.078304500000001 ms=411174
+2026-09-10T19:12:42.005Z run=1 step=head-of-product vendor=claude model=opus FAILED cost=7.44999 error="claude failed (exit 1, error_max_structured_output_retries): error_max_structured_output_retries"
+2026-09-10T19:12:42.014Z run=1 failed stage=draft→draft cost=11.528 tokens=6261343 error="claude failed (exit 1, error_max_structured_output_retries): error_max_structured_output_retries"
+2026-09-10T19:13:40.302Z run=2 flow=requirements start stage=draft
+2026-09-10T19:15:02.709Z run=2 step=pm-codex vendor=codex model=- verdict=- cost=? ms=82388
+2026-09-10T19:22:51.566Z run=2 step=pm-claude vendor=claude model=opus verdict=- cost=4.9452875 ms=551245
+2026-09-10T19:28:54.316Z run=2 step=head-of-product vendor=claude model=opus verdict=needs-input cost=3.2509629999999996 ms=362720
+2026-09-10T19:36:51.357Z run=2 step=head-of-product vendor=claude model=opus verdict=ready cost=4.093036 ms=477026
+2026-09-10T19:46:43.683Z run=2 gate=human answer=advance
+2026-09-10T19:46:43.694Z run=2 completed stage=draft→requirements cost=12.289 tokens=6779341
