@@ -188,3 +188,51 @@ appears only inside Q-0090's own `requirements/merged.md`, and **no such ticket 
 closed on 2026-09-02. That is the second obligation found this week living only inside a closed
 ticket, after Q-0100's, and it is explicitly **out of scope here** — named so it stops being
 invisible, not folded in.
+
+## Re-measured 2026-09-10, before the run — four corrections, one of which raises the stakes
+
+Q-0067 and Q-0110 both landed on these files on 2026-09-08, after the merge triage above was
+written. Re-measured against the tree today.
+
+**1. The defect ESCALATED, and this is the important one.** Q-0110 made `--probe` a check rather
+than a report: `packages/cli/src/adapters.ts:169` now reads
+`if (probe && report.some((entry) => entry.login !== 'verified')) failSoftly();`, so an unusable
+login **exits 1**. Q-0066's crash renders as `login not usable`, so a login that is perfect and
+merely reports no measure no longer just prints a wrong sentence — **it fails the command**, and an
+adopter's CI step that runs `quorum adapters --probe` goes red on a working installation. The merge
+triage priced this as "a guard and a sentence" when the guard only mis-reported. It now breaks a
+build.
+
+**2. Correction 1 of *"Two corrections to Q-0066's body"* above is itself wrong, and the way it is
+wrong is this repository's own subject.** It claims `core` shows *"three bare `res.usage!` non-null
+assertions with nothing saying they are deliberate"*. Measured: `probeAdapter`'s docblock
+(`packages/core/src/adapters/adapters.ts:531–536`) carries five lines of authority describing the
+defect exactly — *"`usage` is `null` whenever no attempt reported a measure, and the three reads
+below are unguarded, so an adapter whose login is perfect and which reports nothing answers
+`ok: false` with a `TypeError`"*. It landed **2026-08-26** in commit `a4e880b` with Q-0046's port,
+so it was present when that correction was written. The correction was reached by grepping for
+`Q-0066`, finding nothing, and reading absence into it — while the authority line was there under a
+different citation, `Q-0046 AC-11 defect 1`. **That is Q-0074's class committed in the triage: a
+failed probe read as a proven negative.** No authority line is owed; `engineering.md` is satisfied.
+What may still be worth doing is citing this ticket beside Q-0046 so a future reader lands here, and
+that is a nicety rather than a repair.
+
+**3. The "third defect" paragraph is VOID — Q-0110 ruled it on 2026-09-08.** `quorum adapters`
+exiting 0 with both CLIs absent was **ratified as correct**, not repaired: the bare listing is a
+*report* whose own last line disclaims being the gate, while `--probe` is the *check*. So the
+orphaned "Q-0090's GA-4" obligation named there is discharged, and `packages/cli/src/adapters.ts:30`
+now reads *"**One** preserved defect reaches this command"* where the triage quotes it as two.
+Nothing here is out of scope any more because nothing here is open.
+
+**4. Every line number in the tables above has moved**, Q-0067 having added `cliVersion` to both
+files. Current: the probe defect is `adapters.ts:546` (was 488); the mock end-to-end pin is
+`cli/src/end-to-end.test.ts:775` (was 723); the CLI pin is `cli/src/adapters.test.ts:331–335` (was
+315–320); the module header's two notes are `cli/src/adapters.ts:15` and `:30–35` (was 13–16 and
+24–27). The six BYOS string sites are otherwise exactly as listed — `claude.ts:95` and `codex.ts:89`
+are unchanged.
+
+**Still true and re-verified:** the two production strings are the only place in shipped source that
+calls the product "Harness"; four pins go red on purpose; and the three landing-rule comments naming
+a deleted tree are `cli/src/adapters.ts:34`, `cli/src/adapters.test.ts:335` and
+`core/src/adapters/claude.test.ts:380`. The other three "both trees" comments in `packages/` belong
+to Q-0070 and to ground rule 3 and are **not** this ticket's.
