@@ -1,7 +1,7 @@
 ---
 id: Q-0013
 title: The server package runs flows, streams their events and answers their gates
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0013/integration
@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-11
 iterations:
   requirements.head-of-product: 1
+  chore.review: 1
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-09-11T10:41:52.300Z
     cost: 14.694
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-11T12:12:24.275Z
+    cost: 53.244
 ---
 M3's first ticket. packages/server is a one-line stub; it becomes the process that starts a run, streams its events to a browser over WebSocket, and carries a gate answer back into the run that is waiting for it.
 
