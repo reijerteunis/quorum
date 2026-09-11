@@ -26,6 +26,14 @@ history:
     stage_after: requirements
     at: 2026-09-10T19:46:43.689Z
     cost: 12.289
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: failed
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-10T23:48:26.384Z
+    cost: 61.734
 ---
 > **Corrected 2026-09-07, after the cutover.** `spike/` was deleted by Q-0103 on 2026-09-06, so
 > every path, line number and landing rule below that names it is **void** — read *"After the
