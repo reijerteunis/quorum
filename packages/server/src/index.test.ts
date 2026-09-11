@@ -41,7 +41,6 @@ const SURFACE: Record<string, string> = {
   MAX_BUFFERED_BYTES: 'the bytes a subscriber may leave unsent before its socket is dropped, per subscriber',
   mountRead: 'Q-0119\'s read-only routes: project, tickets, flows and run history, and nothing that writes',
   overBuffered: 'whether a subscriber has left too much unsent to keep — the bound as a testable unit',
-  RUN_HISTORY_ROOT: 'where a project keeps run history, which core writes and this only reads',
   serve: 'the process: a Node server over the app, bound to loopback',
   START_REFUSAL_STATUS: 'the status each start refusal answers with — a lock refusal is not a bad request',
   startRefusalCode: 'the code a start refusal carries, read from the host\'s own condition',

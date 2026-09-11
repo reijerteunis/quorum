@@ -41,5 +41,5 @@ export {
 export type { StartRefusalCode, WireMessage, WireRefusal, WireRun } from './wire.js';
 
 /** Q-0119's read-only surface: project, tickets, flows and run history, mounted on an app. */
-export { mountRead, RUN_HISTORY_ROOT } from './read.js';
+export { mountRead } from './read.js';
 export type { WireTicket } from './read.js';

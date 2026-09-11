@@ -9,7 +9,8 @@ import { afterAll, describe, expect, test } from 'vitest';
 
 import { createRunHost } from './host.js';
 import { createApp } from './http.js';
-import { mountRead, RUN_HISTORY_ROOT } from './read.js';
+import { mountRead } from './read.js';
+import { RUN_HISTORY_ROOT } from '@quorum/shared';
 import { fixture, removeTempDirs, TICKET_ID, write } from '../test/fixture.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -159,5 +160,28 @@ describe('Q-0119 — run history is reported, never repaired', () => {
     expect(Object.keys(body.tokensByVendor).sort(), 'the vendors were merged').toStrictEqual(['claude', 'codex']);
     expect(body.tokensByVendor.claude).toBe(30);
     expect(body.tokensByVendor.codex).toBe(12);
+  });
+});
+
+describe('Q-0119 — a manifest is a cast and not a check, and this surface survives one', () => {
+  test('a rollup that is not an array reports no vendors rather than throwing a stack', async () => {
+    // `readRun`'s own JSDoc calls the parsed document "a cast, never a check", so a hand-edited
+    // manifest can carry anything of the right JSON type. Before the guard, `.map()` on it threw
+    // where nothing caught and one damaged file became a 500 with a Node stack — which is the
+    // failure a reader can do least with.
+    const { project, app } = served();
+    const manifest = manifestOf(`${TICKET_ID}-1`, 'completed', '2026-09-11T00:00:10.000Z');
+    manifest.rollup = 'not an array';
+    manifest.steps = 42;
+    writeRun(project.repoDir, `${TICKET_ID}-1`, manifest);
+
+    const response = await app.request(`/history/${TICKET_ID}-1`);
+    expect(response.status, 'a damaged rollup took the whole request with it').toBe(200);
+    const body = await response.json() as { tokensByVendor: Record<string, unknown>; steps: unknown[]; manifest: { rollup: unknown } };
+    expect(body.tokensByVendor, 'an unusable rollup invented vendors').toStrictEqual({});
+    expect(body.steps, 'an unusable step list invented steps').toStrictEqual([]);
+    // …and the manifest travels whole beside it, so a reader still sees what is actually on disk
+    // rather than a tidied version of it.
+    expect(body.manifest.rollup, 'the surface rewrote what it read').toBe('not an array');
   });
 });

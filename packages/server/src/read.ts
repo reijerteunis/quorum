@@ -27,10 +27,11 @@ import {
 } from '@quorum/core';
 import { Hono } from 'hono';
 
+import { RUN_HISTORY_ROOT } from '@quorum/shared';
+
 import { badRequest } from './wire.js';
 
-/** Where a project keeps its run history, which `core` writes and this only reads. */
-export const RUN_HISTORY_ROOT = path.join('.quorum', 'runs');
+
 
 /** One ticket, as this surface reports it. */
 export interface WireTicket {
@@ -144,12 +145,19 @@ export function mountRead(app: Hono, project: Project): Hono {
       // (2026-08-22). The manifest's own roll-up is one row per vendor and `vendorTokenTotal`
       // reduces ONE row, so summing across rows here would compose exactly the figure that entry
       // refuses — a priced vendor and a token-only one in one number.
+      // `readRun`'s own JSDoc calls the parsed document *"a cast, never a check"*, so a hand-edited
+      // manifest can carry a `rollup` that is not an array — and `.map()` on it throws where nothing
+      // catches, turning one damaged file into a 500 with a stack. Guarded rather than trusted: an
+      // unusable roll-up reports no vendors, and the manifest travels whole beside it so a reader
+      // still sees what is actually on disk.
       tokensByVendor: Object.fromEntries(
-        read.manifest.rollup.map((row) => [row.vendor, vendorTokenTotal(row)]),
+        (Array.isArray(read.manifest.rollup) ? read.manifest.rollup : [])
+          .map((row) => [row.vendor, vendorTokenTotal(row)]),
       ),
       // The sequence number each occurrence's directory carries, which is what orders them for a
       // reader: `occurrenceSeq` reads a directory NAME, not an occurrence.
-      steps: read.manifest.steps.map((step) => ({ ...step, seq: occurrenceSeq(step.occurrence_dir) })),
+      steps: (Array.isArray(read.manifest.steps) ? read.manifest.steps : [])
+        .map((step) => ({ ...step, seq: occurrenceSeq(step.occurrence_dir) })),
     });
   });
 
