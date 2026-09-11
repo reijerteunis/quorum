@@ -5,7 +5,7 @@ stage: draft
 owner: ruud
 repos: []
 branch: harness/Q-0117/integration
-priority: p2
+priority: p1
 created: 2026-09-10
 iterations: {}
 history: []
@@ -67,3 +67,29 @@ contract rather than editing it.
 
 **Not in scope:** whether `proceed` should route anywhere other than `review`, which is Q-0083's and
 is settled; and the exhaustion-gate vocabulary, which stays exactly `advance`, `retry`, `abort`.
+
+## Second instance, the same day — raised p2 → p1
+
+**Q-0074's chore run died the same way, hours after this ticket was opened from Q-0115's.** Six
+findings, four of them nits, and **two honest reports of unmet HUMAN obligations**:
+
+- the Q-0102 timeout flake, correctly measured and correctly **not** attributed to that change;
+- *"GO-4 is not discharged and cannot be from here"* — literally true, since GO-4 requires
+  verification on `main` after a merge and CI green on the merged commit, neither of which a
+  worktree can do.
+
+**$61.73**, against Q-0115's $49.75: **$111.48 in one day**, for two runs whose work was complete on
+disk and correct. Raised to p1 on that, rather than on the argument — the cost is measured and the
+recurrence interval is hours.
+
+**The second instance sharpens what the fix must cover.** Q-0115's finding was about a gate
+obligation being *unmet*; Q-0074's second one is about an obligation being **structurally
+undischargeable from where the step stands**. A step cannot verify `main` after a merge that has not
+happened. So the vocabulary needs to distinguish *I found this and it is not mine to fix* from *I
+could not do this because nobody at this position can* — and the second is not a finding about the
+change at all, which is the argument for `observations` being a separate field rather than a third
+verdict or a fourth severity.
+
+**And it is self-reinforcing while Q-0102 is open.** Every run whose implement step is honest about
+the intermittent suite hits this refusal, so the two tickets compound: a flake that an honest agent
+must report, and a contract that refuses the report.

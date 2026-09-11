@@ -1,7 +1,7 @@
 ---
 id: Q-0074
 title: A failed git probe is read as a proven negative
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0074/integration
