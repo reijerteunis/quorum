@@ -61,7 +61,14 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
 
-  packages/server: {}
+  packages/server:
+    dependencies:
+      '@quorum/core':
+        specifier: workspace:*
+        version: link:../core
+      '@quorum/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared:
     dependencies:

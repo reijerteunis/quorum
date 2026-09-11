@@ -7,5 +7,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@quorum/core": "workspace:*",
+    "@quorum/shared": "workspace:*"
   }
 }
