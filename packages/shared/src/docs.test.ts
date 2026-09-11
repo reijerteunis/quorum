@@ -1067,6 +1067,10 @@ describe('Q-0013 GO-3 — the architecture document describes the run host that 
       .toMatch(/no default answer and no timeout/);
     expect(server, 'it does not say what `:id` in the routes names')
       .toMatch(/minted id is what `:id` names in the routes below/);
+    expect(server, 'it does not say shutdown closes the host to new starts')
+      .toMatch(/closes the host to new starts/);
+    expect(server, 'it does not say why a start in flight is not yet a running run')
+      .toMatch(/a start in flight is not yet a running run/);
   });
 
   test('and the route clause the code refuses is corrected rather than left promising it', () => {

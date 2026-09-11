@@ -15,9 +15,11 @@ export { assertRetention, createBroadcast } from './broadcast.js';
 export type { Broadcast, Subscription } from './broadcast.js';
 export { createGateRegistry } from './gates.js';
 export type { GateRefusal, GateRegistry } from './gates.js';
-export { createRunHost, DEFAULT_STOP_REASON } from './host.js';
+export { openProject, refusalFor } from './failures.js';
+export type { ProjectOutcome } from './failures.js';
+export { createRunHost, DEFAULT_STOP_REASON, HOST_CLOSED_CONDITION } from './host.js';
 export type {
   AnswerRefusal, RunHost, RunHostOptions, RunState, RunView, StartOutcome, StartRequest, StopRefusal,
 } from './host.js';
-export { NO_PROJECT_REMEDY, openProject, refusalFor } from './refusal.js';
-export type { ProjectOutcome, Refusal } from './refusal.js';
+export { NO_PROJECT_REMEDY } from './refusal.js';
+export type { Refusal } from './refusal.js';

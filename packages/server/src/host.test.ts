@@ -18,9 +18,10 @@ import type { Event, GateQuestionEvent } from '@quorum/shared';
 import {
   GATED_FLOW, ONE_STEP_FLOW, TICKET_ID, WORKTREE_FLOW, fixture, removeTempDirs, tempDir, write,
 } from '../test/fixture.js';
-import { createRunHost } from './host.js';
+import { openProject, refusalFor } from './failures.js';
+import { createRunHost, HOST_CLOSED_CONDITION } from './host.js';
 import type { RunHost } from './host.js';
-import { NO_PROJECT_REMEDY, openProject, refusalFor } from './refusal.js';
+import { NO_PROJECT_REMEDY } from './refusal.js';
 
 afterAll(removeTempDirs);
 afterEach(() => { vi.unstubAllEnvs(); });
@@ -484,6 +485,50 @@ describe('AC-12 — shutdown releases every live run through the abandonment pat
     expect(host.view(handle)?.terminal?.status).toBe('completed');
   });
 
+  test('a start already in flight is released by the shutdown that raced it', async () => {
+    // The hole a snapshot of `state === 'running'` leaves. A start is REFUSED until its first pull
+    // returns — which is where the lock is taken, the branch head read and the banner emitted — so
+    // a shutdown entered while one is in flight sees nothing live, resolves, and leaves a run that
+    // becomes live a moment later holding the ticket with nobody left to release it.
+    //
+    // Deterministic rather than timed: `start` is called and NOT awaited, so no turn has elapsed
+    // when `shutdown` is entered and the first pull certainly has not returned.
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 50 });
+
+    const starting = host.start({ flow: 'probe', ticket: TICKET_ID });
+    const closing = host.shutdown();
+    const outcome = await starting;
+    await closing;
+
+    expect(outcome.started, 'the race did not produce a started run, so this proves nothing').toBe(true);
+    // Read straight after the await, as AC-12's other case is: the run the race produced was
+    // released by the same shutdown rather than by a later one.
+    const [manifest] = project.manifests();
+    expect(manifest?.status, 'a run that started during shutdown outlived it').toBe('interrupted');
+    expect(manifest?.ended_at).not.toBeNull();
+    expect(host.view(handleOf(outcome))?.state).toBe('ended');
+  });
+
+  test('and a start attempted after shutdown is refused, having started nothing', async () => {
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 50 });
+
+    await host.shutdown();
+    const outcome = await host.start({ flow: 'probe', ticket: TICKET_ID });
+
+    expect(outcome.started).toBe(false);
+    if (outcome.started) throw new Error('unreachable');
+    // This surface's own condition rather than core's: core was never asked, the refusal happening
+    // above `loadFlowByName` and `Backlog.read`.
+    expect(outcome.refusal.condition).toBe(HOST_CLOSED_CONDITION);
+    expect(outcome.refusal.remedy).toBeNull();
+    expect(outcome.run.runId, 'a refused start claimed a run number').toBeNull();
+    expect(outcome.run.state).toBe('refused');
+    expect(host.subscribe(handleOf(outcome)), 'a refused start has a stream to watch').toBeNull();
+    expect(project.manifests(), 'a start after shutdown wrote run history').toStrictEqual([]);
+    expect(project.runsLog(), 'a start after shutdown reached the ticket').toBe('');
+  });
 });
 
 describe('AC-13 — safety is inherited rather than re-implemented', () => {

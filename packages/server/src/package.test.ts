@@ -214,7 +214,7 @@ describe('AC-3 — run identity has one authority, and it is not an event\'s pro
    */
   const MESSAGE_READS: Record<string, string> = {
     'host.ts': 'the error a failed stream closed with, in `consume`\'s catch — an Error, never an Event',
-    'refusal.ts': 'the condition `core` named, in `conditionOf` — an Error, never an Event',
+    'failures.ts': 'the condition `core` named, in `conditionOf` — an Error, never an Event',
   };
 
   test('no `.message` is read off anything but an Error, and the register names where', () => {
@@ -283,12 +283,58 @@ describe('AC-5 — the remedy exists at one site, and is not a shell imperative'
     }
   });
 
-  test('the module that owns the remedy names no core symbol in composing it', () => {
-    // It takes the condition as a string, which is what `packages/cli/src/fail.ts`'s `dieNoProject`
-    // does and for the same reason.
-    const refusal = read(SRC, 'refusal.ts');
-    expect(refusal).toContain('condition: string');
-    expect(refusal).toContain('NO_PROJECT_REMEDY');
+  test('the module that owns the remedy names no core symbol at all', () => {
+    // The clause this file used to make here was `toContain('condition: string')`, which the
+    // `Refusal` interface's own FIELD satisfies — so it passed over a module that imported
+    // `ProjectNotFoundError` and classified with `instanceof`, which is the violation it claimed to
+    // forbid. *"A check is not established by reading it"* (2026-08-29), caught by review.
+    //
+    // What AC-5 requires is structural and is checked structurally: the remedy module reaches for
+    // nothing of `core`'s, so it cannot classify, and classifying is what `failures.ts` is for —
+    // `packages/cli`'s six `instanceof ProjectNotFoundError` call sites against one `dieNoProject`.
+    const remedy = read(SRC, 'refusal.ts');
+    expect(remedy, 'the remedy module imports from @quorum/core').not.toContain('@quorum/core');
+    expect(remedy, 'the remedy module names a core error class').not.toContain('ProjectNotFoundError');
+    // A third clause forbidding the word `instanceof` was written here and removed: it fired on the
+    // module's own docblock, which explains where the `instanceof` went. A scan that cannot tell
+    // prose from code refuses the record of a decision for repeating the word it decided about —
+    // the reasoning AC-2's barrel clause above already gives — and it buys nothing, because a module
+    // that names neither the package nor the error class has nothing to classify against.
+  });
+
+  test('and every remedy it composes takes the condition as a string', () => {
+    // Over the SIGNATURES rather than the file's text, which is the difference between this clause
+    // and the one it replaced: a parameter is what `dieNoProject` bounds, and an interface field
+    // spelled the same way is not one.
+    const remedy = read(SRC, 'refusal.ts');
+    const signatures = [...remedy.matchAll(/export function (\w+)\(([^)]*)\)/g)];
+    expect(signatures.length, 'the signature scan found no exported function at all').toBeGreaterThan(1);
+    for (const signature of signatures) {
+      expect(signature[2]?.trim(), `refusal.ts's ${String(signature[1])} does not take the condition as a string`)
+        .toBe('condition: string');
+    }
+  });
+
+  test('and the classification lives outside it, at one site', () => {
+    const classifiers = production()
+      .filter(([, text]) => text.includes('instanceof ProjectNotFoundError'))
+      .map(([file]) => file);
+    expect(classifiers).toStrictEqual(['failures.ts']);
+  });
+
+  test('and those clauses discriminate — they fire on the module they were written against', () => {
+    // Demonstrated on the shape the review found, because the shape is gone from the tree: a remedy
+    // module that imports the error class and takes the error rather than the condition.
+    const hostile = [
+      "import { ProjectNotFoundError } from '@quorum/core';",
+      'export function refusalFor(error: unknown): Refusal {',
+      '  return { condition: String(error), remedy: error instanceof ProjectNotFoundError ? R : null };',
+      '}',
+    ].join('\n');
+    expect(hostile).toContain('@quorum/core');
+    expect(hostile).toContain('ProjectNotFoundError');
+    const signatures = [...hostile.matchAll(/export function (\w+)\(([^)]*)\)/g)];
+    expect(signatures[0]?.[2]?.trim()).not.toBe('condition: string');
   });
 });
 

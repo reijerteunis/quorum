@@ -31,6 +31,13 @@
  * discover otherwise later — a mistake every test that starts one run would pass. So the first pull
  * is awaited here, and it is what makes the second start meet the lock.
  *
+ * **Shutting down closes the host to new starts, and the two facts are one mechanism.** A start is
+ * not *running* until its first pull returns, so a snapshot of the live runs taken while one is in
+ * flight omits a run that is about to hold a lock, a worktree and a branch — and nothing would ever
+ * release it. So {@link RunHost.shutdown} closes the host, waits for the starts already in flight to
+ * settle, and only then takes the snapshot: closing is what makes that snapshot final, and waiting
+ * is what makes it complete.
+ *
  * **What a consumer of this does NOT get on shutdown**, stated rather than left to be found: the
  * abandonment path settles a pull already in flight with `done` *before* finalisation emits, so the
  * interrupted run's terminal event reaches the manifest and not the fan-out. That is `channel.ts`'s
@@ -43,9 +50,10 @@ import type { Event, GateQuestionEvent, RunTerminalEvent } from '@quorum/shared'
 
 import { assertRetention, createBroadcast } from './broadcast.js';
 import type { Broadcast, Subscription } from './broadcast.js';
+import { refusalFor } from './failures.js';
 import { createGateRegistry } from './gates.js';
 import type { GateRefusal } from './gates.js';
-import { refusalFor } from './refusal.js';
+import { refusalOf } from './refusal.js';
 import type { Refusal } from './refusal.js';
 
 /**
@@ -57,6 +65,15 @@ let minted = 0;
 
 /** What a run the host stopped records as its note when the caller named no reason of its own. */
 export const DEFAULT_STOP_REASON = 'stopped by the run host';
+
+/**
+ * The condition a start meets once {@link RunHost.shutdown} has begun.
+ *
+ * This surface's own sentence rather than `core`'s, because `core` was never asked: the start is
+ * refused here, before a flow is loaded or a ticket is read. True from the moment shutdown begins
+ * and true forever after it, which is why one sentence covers both.
+ */
+export const HOST_CLOSED_CONDITION = 'the run host is closed and starts no further run';
 
 /** How a run the host started stands: it never began, it is under way, or it is over. */
 export type RunState = 'refused' | 'running' | 'ended';
@@ -136,7 +153,12 @@ export interface RunHostOptions {
 export interface RunHost {
   /** The project this host runs against. */
   readonly project: Project;
-  /** Start one run, answering only once it is under way or refused. */
+  /**
+   * Start one run, answering only once it is under way or refused.
+   *
+   * Once {@link RunHost.shutdown} has been called this refuses every request with
+   * {@link HOST_CLOSED_CONDITION}, because a run started after that is one nothing would release.
+   */
   start(request: StartRequest): Promise<StartOutcome>;
   /** What the host knows about one run, or `null` under a handle it never minted. */
   view(handle: string): RunView | null;
@@ -150,10 +172,15 @@ export interface RunHost {
   /** Cancel one run through the `AbortSignal` it was started with. */
   stop(handle: string, reason?: string): StopRefusal | null;
   /**
-   * Release every live run through the stream's abandonment path.
+   * Close the host to new starts and release every live run through the stream's abandonment path.
    *
    * Resolves only once each of them has finished persisting: iterator `return()` awaits the run's
    * interrupted-run persistence, so counters, occurrences and the terminal record are on disk.
+   *
+   * **Every live run includes one whose start has not answered yet.** Closing happens first and the
+   * starts in flight are waited for before the snapshot, so a run that becomes live during shutdown
+   * is released by it rather than surviving it holding a lock. Called twice, the second call joins
+   * the first.
    */
   shutdown(): Promise<void>;
 }
@@ -186,6 +213,17 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
   assertRetention(retain);
   const records = new Map<string, RunRecord>();
   const gates = createGateRegistry();
+  /**
+   * The starts this host has begun and not yet finished, so shutdown can wait for them.
+   *
+   * A start is `refused` until its first pull returns, so this — and not the record's state — is
+   * what says a run may still be about to exist.
+   */
+  const beginning = new Set<Promise<StartOutcome>>();
+  /** Closed to new starts from the moment shutdown begins, which is what makes its snapshot final. */
+  let closed = false;
+  /** The one shutdown, so a second call joins the first rather than releasing a run twice. */
+  let released: Promise<void> | null = null;
 
   const viewOf = (record: RunRecord): RunView => ({
     handle: record.handle,
@@ -199,12 +237,30 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     gates: gates.pending(record.handle),
   });
 
-  const refuse = (record: RunRecord, error: unknown): StartOutcome => {
-    record.state = 'refused';
-    record.refusal = refusalFor(error);
-    gates.release(record.handle);
-    return { started: false, run: viewOf(record), refusal: record.refusal };
+  /** One run's bookkeeping under a fresh handle, registered before anything can fail. */
+  const mint = (flow: string): RunRecord => {
+    minted += 1;
+    const record: RunRecord = {
+      handle: `run-${minted}`,
+      flow,
+      ticket: null, runId: null, state: 'refused',
+      terminal: null, failure: null, refusal: null,
+      broadcast: null, controller: null, iterator: null, drained: null,
+    };
+    records.set(record.handle, record);
+    return record;
   };
+
+  /** A start that did not happen, recorded on its own record and answered to its caller. */
+  const refused = (record: RunRecord, refusal: Refusal): StartOutcome => {
+    record.state = 'refused';
+    record.refusal = refusal;
+    gates.release(record.handle);
+    return { started: false, run: viewOf(record), refusal };
+  };
+
+  const refuse = (record: RunRecord, error: unknown): StartOutcome =>
+    refused(record, refusalFor(error));
 
   /**
    * One consumed event, published and — where it is the terminal one — correlated.
@@ -246,61 +302,74 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     }
   };
 
+  /**
+   * One start, from minting its handle to the pull that proves the run is under way.
+   *
+   * Separate from {@link RunHost.start} so that the promise it returns is the thing
+   * {@link beginning} holds: a start is registered as in flight by the method, and this is what the
+   * method is waiting on while it is.
+   */
+  const begin = async (request: StartRequest): Promise<StartOutcome> => {
+    const record = mint(request.flow);
+
+    let stream: AsyncIterable<Event>;
+    try {
+      const flow = loadFlowByName(request.flow, project.harnessDir);
+      // `Backlog.read` resolves the token inside the backlog root and refuses one that escapes it
+      // (Q-0059). No second check is made here: confinement is `core`'s, and a weaker copy at a
+      // second surface is exactly what enforcing it in `core` exists to prevent.
+      record.ticket = project.backlog.read(request.ticket);
+      const controller = new AbortController();
+      record.controller = controller;
+      stream = runFlow({
+        flow,
+        ticket: record.ticket,
+        project,
+        backlog: project.backlog,
+        dry: request.dry ?? false,
+        // Never widened by this host: a `human-locked` gate and an engine-presented exhaustion
+        // gate stay unbypassable exactly as they are for the CLI.
+        auto: request.auto ?? false,
+        answerGate: gates.channelFor(record.handle),
+        signal: controller.signal,
+        ...(request.base === undefined ? {} : { base: request.base }),
+      });
+    } catch (error) {
+      return refuse(record, error);
+    }
+
+    const iterator = stream[Symbol.asyncIterator]();
+    record.iterator = iterator;
+    let first: IteratorResult<Event>;
+    try {
+      first = await iterator.next();
+    } catch (error) {
+      return refuse(record, error);
+    }
+
+    record.state = 'running';
+    record.broadcast = createBroadcast(retain);
+    // Started synchronously, so the event that proved the run was under way is published — and
+    // retained — before this method answers its caller.
+    record.drained = consume(record, iterator, first);
+    return { started: true, run: viewOf(record) };
+  };
+
   return {
     project,
 
     async start(request) {
-      minted += 1;
-      const record: RunRecord = {
-        handle: `run-${minted}`,
-        flow: request.flow,
-        ticket: null, runId: null, state: 'refused',
-        terminal: null, failure: null, refusal: null,
-        broadcast: null, controller: null, iterator: null, drained: null,
-      };
-      records.set(record.handle, record);
-
-      let stream: AsyncIterable<Event>;
+      // Refused before a flow is loaded or a ticket is read, because a run started now is one
+      // nothing would release: the snapshot shutdown takes has already been taken, or is about to
+      // be taken over a set this run would not have joined.
+      if (closed) return refused(mint(request.flow), refusalOf(HOST_CLOSED_CONDITION));
+      const outcome = begin(request);
+      beginning.add(outcome);
       try {
-        const flow = loadFlowByName(request.flow, project.harnessDir);
-        // `Backlog.read` resolves the token inside the backlog root and refuses one that escapes it
-        // (Q-0059). No second check is made here: confinement is `core`'s, and a weaker copy at a
-        // second surface is exactly what enforcing it in `core` exists to prevent.
-        record.ticket = project.backlog.read(request.ticket);
-        const controller = new AbortController();
-        record.controller = controller;
-        stream = runFlow({
-          flow,
-          ticket: record.ticket,
-          project,
-          backlog: project.backlog,
-          dry: request.dry ?? false,
-          // Never widened by this host: a `human-locked` gate and an engine-presented exhaustion
-          // gate stay unbypassable exactly as they are for the CLI.
-          auto: request.auto ?? false,
-          answerGate: gates.channelFor(record.handle),
-          signal: controller.signal,
-          ...(request.base === undefined ? {} : { base: request.base }),
-        });
-      } catch (error) {
-        return refuse(record, error);
+        return await outcome;
+      } finally {
+        beginning.delete(outcome);
       }
-
-      const iterator = stream[Symbol.asyncIterator]();
-      record.iterator = iterator;
-      let first: IteratorResult<Event>;
-      try {
-        first = await iterator.next();
-      } catch (error) {
-        return refuse(record, error);
-      }
-
-      record.state = 'running';
-      record.broadcast = createBroadcast(retain);
-      // Started synchronously, so the event that proved the run was under way is published — and
-      // retained — before this method answers its caller.
-      record.drained = consume(record, iterator, first);
-      return { started: true, run: viewOf(record) };
     },
 
     view(handle) {
@@ -330,15 +399,28 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
       return null;
     },
 
-    async shutdown() {
-      const live = [...records.values()].filter((record) => record.state === 'running');
-      await Promise.all(live.map(async (record) => {
-        // `return()` awaits the run's interrupted-run persistence; `drained` is this host's own
-        // loop having closed the fan-out and released the gates. Both, because they finish
-        // independently: the loop is released by the detached pull before finalisation begins.
-        await record.iterator?.return?.();
-        await record.drained;
-      }));
+    shutdown() {
+      // Set before anything awaits, so a start issued after this call is refused whether or not the
+      // release below has begun. The memo is what makes a second call join the first rather than
+      // take a second snapshot and release a run twice.
+      closed = true;
+      released ??= (async () => {
+        // The starts already in flight, first. A start is `refused` until its first pull returns —
+        // which is where the lock is taken, the branch head read and the first event emitted — so a
+        // snapshot taken now would omit a run that is about to hold all three, and nothing else
+        // would ever release it. `allSettled` because a start that threw has nothing to release and
+        // must not stop the runs that do.
+        await Promise.allSettled([...beginning]);
+        const live = [...records.values()].filter((record) => record.state === 'running');
+        await Promise.all(live.map(async (record) => {
+          // `return()` awaits the run's interrupted-run persistence; `drained` is this host's own
+          // loop having closed the fan-out and released the gates. Both, because they finish
+          // independently: the loop is released by the detached pull before finalisation begins.
+          await record.iterator?.return?.();
+          await record.drained;
+        }));
+      })();
+      return released;
     },
   };
 }

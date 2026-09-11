@@ -21,6 +21,7 @@ const SURFACE: Record<string, string> = {
   createGateRegistry: 'the pending-gate registry a host hands `runFlow` as its `answerGate`',
   createRunHost: 'the registry a transport speaks to — start, watch, answer, stop, shut down',
   DEFAULT_STOP_REASON: 'the non-empty string a stopped run records when the caller named none',
+  HOST_CLOSED_CONDITION: 'the condition a start meets once shutdown has begun — this surface\'s own, never `core`\'s',
   NO_PROJECT_REMEDY: 'the one remedy this surface composes, for a project that is not there',
   openProject: 'the one site where a `core` failure to open a project becomes a refusal',
   refusalFor: 'the one site that decides whether this surface has a remedy to add',
@@ -39,5 +40,6 @@ describe('the public surface', () => {
     }
     expect(server.DEFAULT_STOP_REASON.trim(), 'the default stop reason is blank').not.toBe('');
     expect(server.NO_PROJECT_REMEDY.trim(), 'the remedy is blank').not.toBe('');
+    expect(server.HOST_CLOSED_CONDITION.trim(), 'the closed-host condition is blank').not.toBe('');
   });
 });

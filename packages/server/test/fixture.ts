@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { openProject } from '../src/refusal.js';
+import { openProject } from '../src/failures.js';
 import type { Project } from '@quorum/core';
 
 const created: string[] = [];
