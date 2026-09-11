@@ -1,7 +1,7 @@
 ---
 id: Q-0118
 title: The daemon speaks HTTP and WebSocket
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0118/integration
