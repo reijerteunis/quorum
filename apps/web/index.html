@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quorum</title>
+    <!--
+      The stylesheet is linked rather than imported from `main.tsx` so no TypeScript source has to
+      declare a module for a CSS file. It is the one place the palette is defined; nothing is
+      fetched from a network, so there is no font link here and there is not meant to be one.
+    -->
+    <link rel="stylesheet" href="/src/theme.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
