@@ -1108,3 +1108,54 @@ describe('Q-0013 GO-3 — the architecture document describes the run host that 
     expect(section(), 'the slice ran past the end of the section').not.toContain('Same commands as the spike');
   });
 });
+
+describe('Q-0014 AC-11 — the architecture document describes the shell that shipped', () => {
+  /**
+   * §`apps/web`, sliced out rather than searched for across the whole document.
+   *
+   * The reason is the one the `packages/server` block above gives, and it is sharper here: this
+   * page's package map and its status line both name `apps/web`, so a whole-document search would
+   * be satisfied by a sentence written in August about an app that did not exist.
+   *
+   * **The two anchors are here rather than in an `apps/web` test**, which is measured rather than
+   * stylistic: this package's `test` task already declares `docs/04-architecture.md` as an input,
+   * where an `apps/web` test reading a repository file would earn that package its first
+   * `turbo.json` and a `turbo-inputs.test.ts` registration for one assertion. Nothing here asserts
+   * the prose beyond those anchors — a document held against its own paraphrase is a check with no
+   * subject.
+   *
+   * The slice ends at the next `##` rather than the next `###`, because `apps/web` is the last
+   * `###` on the page and a `###` search would run to the end of the document.
+   */
+  const section = (): string => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('### `apps/web`');
+    if (start < 0) throw new Error('docs/04-architecture.md has no apps/web section — this check has lost its subject');
+    const end = text.indexOf('\n## ', start + 1);
+    return text.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+  };
+
+  test('the section names the register the shell ships, by the term it ships under', () => {
+    // One anchor, and it is the load-bearing one: the rail, the router and every placeholder are
+    // built FROM that table, so a document describing the shell without it is describing a
+    // different design. Named by the term the code uses, so the two cannot drift into separate
+    // vocabularies — which is `docs-and-decisions.md`'s no-synonyms rule at the smallest scale.
+    expect(section(), 'the section does not name the route register').toMatch(/route register/i);
+  });
+
+  test('and the status line records the change', () => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('*Status:');
+    expect(start, 'docs/04-architecture.md has no status line').toBeGreaterThan(-1);
+    const status = text.slice(start, text.indexOf('\n\n', start));
+    expect(status, 'the status line does not record this change').toContain('Q-0014');
+    expect(status, 'the status line does not carry the landing date').toContain('2026-09-11');
+  });
+
+  test('the slice has a subject, and stops where the section does', () => {
+    // Anti-vacuity, in the shape the block above uses: a slice running past the section would carry
+    // §Adapters and satisfy a clause without this section saying anything at all.
+    expect(section().length, 'the section is implausibly short').toBeGreaterThan(1000);
+    expect(section(), 'the slice ran past the end of the section').not.toContain('is the first community milestone');
+  });
+});

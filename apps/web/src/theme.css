@@ -1,0 +1,58 @@
+/*
+ * The ground-control palette — the one place a colour is written down in this app.
+ *
+ * Tailwind v4's `@theme` is both halves of GO-2's recommendation at once: it emits these as CSS
+ * custom properties on `:root`, so raw CSS a later trace column needs can reach them, and it
+ * registers the utility namespace, so a component says `bg-surface` and never a colour. No
+ * component names a colour, and `src/source.test.ts` is what fails if one starts to.
+ *
+ * Eleven semantic tokens. Six are this requirement's extension of the design brief — background,
+ * surface, border, primary text, muted text and accent — and five are the statuses
+ * `docs/05-design-prompt.md:17` names: running, waiting-on-human, passed, failed, idle.
+ *
+ * THE ACCENT IS TEAL, AND IT IS DERIVED RATHER THAN CHOSEN. The brief offers "electric teal or
+ * amber — pick one" and then, in the same paragraph, assigns `waiting-on-human = amber` and
+ * `running = accent pulse`. With amber as the accent those two states are one animation apart,
+ * which is a palette that reports "a human must act" and "the machine is working" in one colour.
+ * So the choice is forced by the brief's own status table, and `src/source.test.ts` holds the
+ * accent and the waiting-on-human token to different values.
+ *
+ * NOTHING IS FETCHED FROM A NETWORK, which is a DELIBERATE DIVERGENCE from that brief's
+ * "no external assets except Google Fonts" and its "Inter or IBM Plex Sans … JetBrains Mono".
+ * That document describes a single-file clickable mockup for visual validation, and Quorum is
+ * local-first: a shell that fetches a font on every page load makes the product require the
+ * internet and leaks a request off the machine. The stacks below are the local system faces, and
+ * a font request anywhere under `apps/web` turns `src/source.test.ts` red.
+ */
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #13161b;
+  --color-border: #242a33;
+  --color-text: #e4e8ee;
+  --color-muted: #8c96a6;
+  --color-accent: #2dd4bf;
+
+  --color-running: #2dd4bf;
+  --color-waiting-on-human: #f0a52a;
+  --color-passed: #3fb950;
+  --color-failed: #f2554b;
+  --color-idle: #6b7480;
+
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
