@@ -2943,7 +2943,29 @@ parked at p2 with its three written reopening thresholds.
 - Resumable runs after daemon restart.
 
 **Tickets**
-- Q-0013 Server package with REST + WS; event schema in `shared`.
+- Q-0013 The server package runs flows, streams their events and answers their gates. *(Opened
+  2026-09-11 at the id this page has named for it since M3 was written, `draft`, p1 — **M3's first
+  ticket**, unblocked by Q-0116.)* `packages/server` is a one-line stub today, with **no dependencies
+  at all**, not even `@quorum/core`.
+  **Measured before it was written, and one thing is missing:** the barrel already carries what
+  running a flow needs — `runFlow`, `loadProject`, `loadFlowByName`, `Backlog`, `readRun` — which is
+  the half Q-0092 and Q-0096 each had to add for their own consumer. But **`AnswerGate` is not on
+  it** (`engine/types.ts:75`), so a server supplying `answerGate` cannot name its own callback's
+  type. That is Q-0092's *"true of existence and false of reachability"*, found before the run rather
+  than at its gate.
+  **Four landed entries already rule it and are not re-litigated**: *"What a run's event stream
+  carries"* (2026-08-28) and its erratum make `runFlow` a lazy **single-consumer** stream with no
+  global ordering promise across parallel members; *"A run holds a lock on its ticket"* (2026-09-09)
+  means two runs on one ticket already refuse; *"A `core` error names the condition"* (2026-09-07)
+  was ruled **for this surface**; and *"A dry run changes nothing the caller passed it"*
+  (2026-09-11) landed the day before.
+  **Its own questions are the interesting ones**: a single-consumer stream against many watchers, so
+  the fan-out is the server's and what a mid-run joiner sees is a product decision; how a gate answer
+  travels from an HTTP request into a promise a run is awaiting; what the process binds to and what
+  that means with no auth; whether it starts runs or only observes them; and **scope** — three verbs
+  plus a transport plus an export gap is plausibly past the fifteen criteria that forced splits at
+  Q-0091 and Q-0096, both at cost, with the transport as the seam if it splits.
+  **Not in scope:** resumable runs (Q-0019), any screen (Q-0014 onward), and `quorum open`.
 - Q-0014 Web app shell, theme, routing, WS client.
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
