@@ -3037,7 +3037,32 @@ parked at p2 with its three written reopening thresholds.
   returning the listing **with** its warnings rather than an error; and an incomplete manifest
   **reported and never repaired** — asserted *by bytes*, because "did not repair" is the claim a
   status check cannot make.
-- Q-0014 Web app shell, theme, routing, WS client.
+- Q-0014 The web app has a shell, a theme, routes and a live connection. *(Opened 2026-09-11 at the
+  id this page has named for it since M3 was written, `draft`, p1 — M3's first UI ticket.)*
+  `apps/web` is a six-file stub with **no dependencies**, a one-line `index.ts` and a
+  `vite.config.ts` that is `defineConfig({})`.
+  **The stack is already chosen, so no decision entry is owed for it**: `04-architecture.md:22` and
+  `:182` have said React + Vite, Tailwind and the dark ground-control theme since 2026-08-22, which
+  is the standing Hono had when Q-0118 ruled that executing a landed document is not changing the
+  architecture. The wire contract is Q-0118's and is not this ticket's to invent.
+  **The one real decision is that a build task makes this a fourth emitter.**
+  `test-discovery.test.ts` asserts the emitting set is exactly the three distribution packages, and
+  its own comment says *"a fourth package that starts emitting … is a visible act"* — membership
+  being decided the way pnpm decides it, so `apps/web` is already a member. Moving that register is
+  not enough: `docs/GLOSSARY.md`'s **Emitted artifact** says the three emitting packages *"are also
+  the local distribution set"*, and a web bundle is neither published nor installed nor carrying
+  declarations — it is **served**. So the ticket owes a ruling on whether its output is an emitted
+  artifact at all or a third kind beside the artifact and the binary, and one glossary sentence moves
+  with whichever answer it takes. *"The emit serves the binary"* (2026-09-02) is the entry to read
+  first, because a bundle inherits its cache-replays-an-artifact hazard.
+  **Four things are open for its gate**: whether the build task lands here at all or waits for
+  whoever first needs the daemon to serve a bundle; what a route renders before its screen exists;
+  what the WS client shows when the daemon is simply not running, since silence would be the
+  reassurance this repository has refused three times elsewhere; and whether the palette is a
+  Tailwind extension, CSS variables, or both.
+  **Not in scope:** the screens (Q-0015 to Q-0018), M4's editors and step chat, `quorum open`, and
+  **"override with reason"** — corrected in two documents by Q-0013 and Q-0118, so a control
+  reintroducing it would reinstate what `gateAnswerEnvelopeSchema` refuses.
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
 - Q-0017 Backlog board + ticket page (folder rendered as tabs).

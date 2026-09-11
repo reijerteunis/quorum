@@ -94,7 +94,6 @@ function currentMilestoneBullets(): string[] {
  */
 const UNCREATED: Record<string, string> = {
   'Q-0012': 'qa-final.yaml and deploy.yaml. Blocked by Q-0056, which must first settle what `route` is.',
-  'Q-0014': "M3's planned ticket, not yet opened: web app shell, theme, routing, WS client.",
   'Q-0015': "M3's planned ticket, not yet opened: mission control screen.",
   'Q-0016': "M3's planned ticket, not yet opened: gate screen with diffs.",
   'Q-0017': "M3's planned ticket, not yet opened: backlog board and ticket page.",
