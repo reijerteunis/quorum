@@ -1,14 +1,23 @@
 ---
 id: Q-0014
-title: The web app has a shell, a theme, routes and a live connection
-stage: draft
+title: The web app has a shell, a theme and routes
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0014/integration
 priority: p1
 created: 2026-09-11
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-11T14:46:00.729Z
+    cost: 18.173
 ---
 M3's first UI ticket. apps/web is a six-file stub with no dependencies; it becomes the shell every screen sits in — left rail, top bar, dark ground-control theme, client-side routes, and a WebSocket client over Q-0118's wire contract. The screens themselves are Q-0015 onward.
 
@@ -76,3 +85,37 @@ page, Q-0018 run history). Step chat and the editors, which are M4. `quorum open
 **And "override with reason"** — two documents promised it and were corrected by Q-0013 and Q-0118;
 the gate answer vocabulary is exactly `advance`, `retry`, `abort`, and a route or a control that
 reintroduces it would be reinstating what `gateAnswerEnvelopeSchema` refuses.
+
+## Ruled at the requirements gate, 2026-09-11
+
+**Cut at nineteen criteria**, the number Q-0013 was refused at. This ticket is **the shell**
+(AC-1 to AC-11); **Q-0120** is the live connection (AC-12 to AC-19), numbered continuously so a
+criterion keeps its name. The seam passes the test Q-0013's gate applied when it *refused* a seam:
+it is additive rather than a redesign — the shell ships the routes that hold a run and the top-bar
+region that holds connection status, and the child fills both.
+
+**GO-1 discharged**: Q-0120 allocated and this ticket retitled, the title having promised *"and a
+live connection"* the criteria no longer deliver.
+
+**GO-3 discharged, and it is a hole in Q-0118's own work**: there is no `GET /runs`. Nine routes are
+registered and `POST /runs` is the only one that ever tells a client a handle, so a browser that
+refreshes has lost every live run — which makes `DEFAULT_RETENTION`'s late-joiner buffer, built
+precisely for *"a browser reopened after a refresh"*, **unreachable**. **Q-0121**.
+
+**A third successor the appendices carried and this body had not**: **Q-0122**, the daemon serving
+the built web app — which is where the build task and **the glossary ruling this ticket deferred**
+now live. Whether a served bundle is an **emitted artifact** or a third kind beside the artifact and
+the binary is answered there, with the `apps/web` build task, rather than inside a shell.
+
+**Q-0120 takes the full pipeline.** Its half has behaviour a red test can fail on where the shell has
+none, and M2's closing measurement is that `solutioning`, `qa-red` and `development` have four
+tickets of evidence between them, all from August. The argument was deferred at Q-0013's gate and
+again at Q-0118's; it is taken here.
+
+**One correction to the merged requirement, recorded because it is a claim about this body.** §1.10
+says `plan-backlog.test.ts` *"never held a `Q-0014` row"* and that the register *"was already correct
+when the folder was created"*, calling this body's sentence void and counting it as the sixth
+consecutive wrong inherited measurement. **Measured: commit `b08be68` removed that row**, in the same
+change that created this folder, exactly as the body said. The run read the tree *after* that commit
+and inferred history from it — right that nothing is left to do, wrong about why, and the sixth-in-a-
+row tally does not include this one. The operational conclusion stands: there is no criterion here.
