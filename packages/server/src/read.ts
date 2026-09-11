@@ -23,7 +23,7 @@ import path from 'node:path';
 
 import {
   containment, isIncomplete, lintFlowDirectory, occurrenceSeq, pushLag,
-  readRun, readRunsDir, sortRuns, vendorTokenTotal, type Project,
+  readRun, readRunsDir, sortRuns, vendorTokenTotal, type Project, type VendorRollup,
 } from '@quorum/core';
 import { Hono } from 'hono';
 
@@ -32,6 +32,19 @@ import { RUN_HISTORY_ROOT } from '@quorum/shared';
 import { badRequest } from './wire.js';
 
 
+
+/**
+ * The rows of a manifest's roll-up that are usable, which is not the same as the ones it carries.
+ *
+ * `readRun` parses and does not validate — its own JSDoc says *"a cast, never a check"* — so this
+ * reads what is there rather than what the type promises. A row is usable when it is an object
+ * whose `vendor` is a string, that being the one field read by name.
+ */
+function rollupRows(rollup: unknown): VendorRollup[] {
+  if (!Array.isArray(rollup)) return [];
+  return rollup.filter((row): row is VendorRollup =>
+    typeof row === 'object' && row !== null && typeof (row as { vendor?: unknown }).vendor === 'string');
+}
 
 /** One ticket, as this surface reports it. */
 export interface WireTicket {
@@ -151,12 +164,16 @@ export function mountRead(app: Hono, project: Project): Hono {
       // unusable roll-up reports no vendors, and the manifest travels whole beside it so a reader
       // still sees what is actually on disk.
       tokensByVendor: Object.fromEntries(
-        (Array.isArray(read.manifest.rollup) ? read.manifest.rollup : [])
-          .map((row) => [row.vendor, vendorTokenTotal(row)]),
+        // The ELEMENTS too, not just the array. Round 2 of the review: `Array.isArray` alone lets
+        // `[1, 2, 3]` through, and a number has no `vendor` — so the guard moved the throw from the
+        // `.map` to inside it rather than removing it. A row is usable only if it is an object
+        // whose `vendor` is a string, which is the one field this reads by name.
+        rollupRows(read.manifest.rollup).map((row) => [row.vendor, vendorTokenTotal(row)]),
       ),
       // The sequence number each occurrence's directory carries, which is what orders them for a
       // reader: `occurrenceSeq` reads a directory NAME, not an occurrence.
       steps: (Array.isArray(read.manifest.steps) ? read.manifest.steps : [])
+        .filter((step): step is typeof step => typeof step === 'object' && step !== null)
         .map((step) => ({ ...step, seq: occurrenceSeq(step.occurrence_dir) })),
     });
   });

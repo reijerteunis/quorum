@@ -184,4 +184,23 @@ describe('Q-0119 — a manifest is a cast and not a check, and this surface surv
     // rather than a tidied version of it.
     expect(body.manifest.rollup, 'the surface rewrote what it read').toBe('not an array');
   });
+
+  test('an ARRAY of things that are not rows is refused element by element', async () => {
+    // Review round 2: `Array.isArray` alone moved the throw from the `.map` to inside it. A number
+    // has no `vendor`, so the guard has to read the elements rather than the container.
+    const { project, app } = served();
+    const manifest = manifestOf(`${TICKET_ID}-2`, 'completed', '2026-09-11T00:00:10.000Z');
+    manifest.rollup = [1, 2, null, 'three', { vendor: 7 }, { vendor: 'claude', input_tokens: 4, output_tokens: 6 }];
+    manifest.steps = [1, null, 'two'];
+    writeRun(project.repoDir, `${TICKET_ID}-2`, manifest);
+
+    const response = await app.request(`/history/${TICKET_ID}-2`);
+    expect(response.status, 'an array of non-rows took the request with it').toBe(200);
+    const body = await response.json() as { tokensByVendor: Record<string, unknown>; steps: unknown[] };
+    // The one usable row survives and the five unusable ones are dropped, which is the
+    // discrimination: refusing all of them would be as wrong as accepting all of them.
+    expect(Object.keys(body.tokensByVendor)).toStrictEqual(['claude']);
+    expect(body.tokensByVendor.claude).toBe(10);
+    expect(body.steps).toStrictEqual([]);
+  });
 });
