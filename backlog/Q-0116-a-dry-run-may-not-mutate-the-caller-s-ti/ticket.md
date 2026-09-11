@@ -1,7 +1,7 @@
 ---
 id: Q-0116
 title: A dry run may not mutate the caller's ticket
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0116/integration

@@ -238,8 +238,11 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
         'preserved defect/Q-0053',
       ],
       'diff.ts': ['behaviour-from-spike', 'deliberate addition', 'behaviour-from-spike', 'preserved behaviour/Q-0038', 'preserved defect/Q-0078'],
-      'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'preserved defect/AC-10', 'preserved behaviour', 'preserved defect/AC-12d'],
-      'lifecycle.ts': ['preserved defect/AC-10', 'deliberate addition'],
+      'engine.ts': ['behaviour-from-spike', 'preserved design/Q-0034', 'deliberate addition', 'preserved defect/AC-10', 'preserved behaviour', 'preserved defect/AC-12d'],
+      // Q-0116 retired `preserved defect, see Q-0050 AC-10` here: a dry walk no longer mutates the
+      // caller's ticket, so the site it registered is not a preserved defect any more. The addition
+      // that replaced it is in `engine.ts`, which is where the clone is taken.
+      'lifecycle.ts': ['deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
       'routing.ts': ['preserved defect/AC-12', 'preserved behavior'],
@@ -289,7 +292,11 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // with: a sentence that is itself a sum goes differently stale when it is decremented.
     // Not implied by the map above: this counts across files and is the number E-20 ruled on, so it
     // fails if a defect marker is moved between files rather than added or removed.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(14)
+    // 14 until Q-0116, which RETIRED one rather than moving it: `lifecycle.ts`'s
+    // `preserved defect, see Q-0050 AC-10` registered a dry walk mutating the caller's ticket, and a
+    // dry walk no longer does. A decrement here is the one edit this clause is designed to make
+    // expensive, so it is stated with what was removed and why rather than quietly adjusted.
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(13)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {

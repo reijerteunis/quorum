@@ -158,7 +158,10 @@ export async function finish(
   const { ticket, persistence } = context;
   const before = ticket.meta.stage;
 
-  // Why: preserved defect, see Q-0050 AC-10. (the in-memory ticket advances even under dry)
+  // Mutates the run's ticket, which under `dry` is `engine.ts`'s clone of the caller's rather than
+  // the caller's own — so a walk that persisted nothing changes nothing either. On a real run this
+  // travels with `persistence.writeTicket`, so the object and the backlog agree. Q-0116 retired the
+  // `preserved defect, see Q-0050 AC-10` line that stood here.
   ticket.meta.iterations = context.counters;
   // `stage` is a plain string on the contracted signature, which is the spike's own shape:
   // callers pass `flow.produces` or a target flow's `consumes`, both unvalidated strings.

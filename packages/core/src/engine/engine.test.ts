@@ -326,8 +326,18 @@ describe('Q-0050 AC-2/AC-3/AC-10/AC-11a — composed run stream', () => {
     // Carrying a value, so "same object" is not satisfied by one that was emptied — the other half
     // of round 4's N4, which was fixed at one of its two sites.
     expect(opts.ticket.meta.iterations).toStrictEqual({ 'requirements.dry': 2 });
-    expect(JSON.stringify(opts.ticket)).not.toBe(before);
-    expect(opts.ticket.meta.stage).toBe('requirements');
+    // Q-0116 inverted the two clauses below. They asserted that a dry walk CHANGED the caller's
+    // ticket — a stage, a history entry and a counter set that existed nowhere, since every writer
+    // above is a no-op. `runFlow` now works on a clone under `dry`, so a walk that persisted
+    // nothing changes nothing. On a real run the mutation stays, because there it travels with
+    // `persistence.writeTicket` and the object agrees with the backlog; the defect was the
+    // asymmetry, not the mutation. See Q-0116.
+    expect(JSON.stringify(opts.ticket), 'a dry walk changed the caller\'s ticket').toBe(before);
+    expect(opts.ticket.meta.stage, 'a dry walk advanced the stage in memory').toBe('draft');
+    // …and deeply, because a serialised comparison cannot see an alias: `meta.iterations` is the
+    // same object `RunContext.counters` aliases, so a counter incremented during the walk would
+    // show here even though the JSON above is byte-identical.
+    expect(opts.ticket.meta.history ?? [], 'a dry walk appended a history entry').toStrictEqual([]);
   });
 
 });

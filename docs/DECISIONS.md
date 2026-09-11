@@ -172,3 +172,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-11
 
 - [A finding is a claim about the change; anything else is an observation](decisions/089-a-finding-is-a-claim-about-the-change.md)
+- [A dry run changes nothing the caller passed it](decisions/090-a-dry-run-changes-nothing-the-caller-passed-it.md)

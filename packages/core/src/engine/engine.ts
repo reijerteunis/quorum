@@ -192,7 +192,31 @@ function toError(error: unknown): Error {
 
 /** Runs one flow to its terminal state, emitting every event through `emit`. */
 async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent): Promise<void> {
-  const { ticket, flow, project, backlog, dry = false, auto = false, answerGate, base } = options;
+  const { ticket: caller, flow, project, backlog, dry = false, auto = false, answerGate, base } = options;
+  /**
+   * The ticket the run mutates: the caller's on a real run, a copy of it under `dry`.
+   *
+   * `finish` and `recordEvent` advance `meta.stage`, replace `meta.iterations` — which `RunContext`
+   * documents as an alias rather than a copy — and append to `meta.history`, all of it **outside**
+   * the `if (!context.dry)` guard.
+   *
+   * **The defect is the asymmetry, not the mutation.** On a real run the mutation travels with a
+   * write: `persistence.writeTicket` puts the same values on disk, so a caller holding the object
+   * sees what the backlog says. Under `dry` every writer is a no-op, so the object would carry a
+   * stage, a history entry and a counter set that exist nowhere — a walk that wrote nothing and
+   * changed everything.
+   *
+   * Invisible to every caller this product has had: `packages/cli` reads a ticket, hands it over and
+   * never looks at it again. M3's server is the first that will hold one across runs and answer a
+   * `GET` from it, which is why this is settled before that server exists rather than after it is
+   * built against the defect.
+   *
+   * `TicketRecord` is plain data — two strings, the frontmatter and the body — so the clone is total.
+   *
+   * Why: deliberate addition, not preservation — Q-0116, which retires the `preserved defect, see
+   * Q-0050 AC-10` line that registered this in `lifecycle.ts`.
+   */
+  const ticket = dry ? structuredClone(caller) : caller;
 
   if (ticket.meta.stage !== flow.consumes) {
     throw new FlowError(`ticket ${ticket.meta.id} is at stage "${ticket.meta.stage}", flow "${flow.name}" consumes "${flow.consumes}"`);

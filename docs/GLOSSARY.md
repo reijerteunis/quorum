@@ -171,7 +171,11 @@ has an empty review range and cannot be reviewed at all, which is why a merged t
 hand-run review before Q-0077. Not a way to change what a run writes.
 
 **Dry run** (`--dry`): `quorum run … --dry` walks a flow without invoking an adapter or writing
-anything, reporting what each step would do. It is the same run machinery, not a separate code
+anything, reporting what each step would do — and **changing nothing the caller passed it**: the run
+works on its own copy of the ticket, so a walk that persisted nothing advances no stage, appends no
+history entry and moves no counter in the caller's object either. See *"A dry run changes nothing the
+caller passed it"* (2026-09-11), which is the code catching up with this sentence rather than
+changing it. It is the same run machinery, not a separate code
 path, which is why its preflight must be as honest as a real run's. Not called a "preview" —
 DECISIONS entries before 2026-08-25 use that word for it.
 
