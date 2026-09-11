@@ -18,7 +18,7 @@ import { checkAgainstSchema, getAdapter } from '../adapters/adapters.js';
 import type { AdapterError, RetriedAdapterResult } from '../adapters/adapters.js';
 import type { Frontmatter } from '../backlog/backlog.js';
 import { runCommand } from '../fanout/command.js';
-import { branchExists, commitAll, mergeInto } from '../fanout/fanout.js';
+import { branchProbe, commitAll, mergeInto } from '../fanout/fanout.js';
 import type { MergeResult } from '../fanout/fanout.js';
 import { ensureWorktree } from '../git/git.js';
 import { countUsage, errorOf, normaliseUsage } from '../run-history/manifest.js';
@@ -91,13 +91,27 @@ function bill(context: RunContext, usage: RetriedAdapterResult['usage'] | Adapte
  * A merge can fail without conflicting — a missing ref, a dirty tree, a git that simply refuses —
  * and reporting only the conflicts printed a sentence with nothing after its colon.
  *
+ * Two things it may not say, and both used to be reachable. *"git reported no reason"* while git
+ * had given one on the stream nobody read — a content conflict writes `CONFLICT (content): …` to
+ * **stdout**, which {@link mergeInto} now takes. And **nothing at all** about a conflict list that
+ * could not be read: an empty list and an unread one are one word apart to a reader and are not the
+ * same claim, so the second says so.
+ *
  * @param merge what {@link mergeInto} answered.
- * @returns the conflicting paths, else git's own first non-empty line, else that there was neither.
+ * @returns the conflicting paths or why there are none to name, then git's own first non-empty
+ *   line, then anything left in the worktree that the caller's next merge will trip over.
  */
 export function mergeFailure(merge: Partial<MergeResult> | null | undefined): string {
-  if (merge?.conflicts?.length) return `conflicts: ${merge.conflicts.join(', ')}`;
   const line = String(merge?.error ?? '').split('\n').map((l) => l.trim()).filter(Boolean)[0];
-  return line ? `git: ${line}` : 'git reported no reason';
+  const parts: string[] = [];
+  if (merge?.conflicts?.length) parts.push(`conflicts: ${merge.conflicts.join(', ')}`);
+  else if (line) parts.push(`git: ${line}`);
+  else if (merge?.conflicts === null) parts.push('git could not be asked which paths conflict');
+  else parts.push('git reported no reason');
+  if (merge?.conflicts === null && line) parts.push('the conflicting paths could not be read');
+  if (merge?.worktreeClean === false) parts.push('and a merge is still in progress in the worktree');
+  else if (merge?.worktreeClean === null) parts.push('and whether the merge was aborted could not be established');
+  return parts.join('; ');
 }
 
 /**
@@ -199,17 +213,30 @@ export async function runAgentStep(
   if (step.worktree && !context.dry) {
     branch = interpolate(String(step.branch ?? ticketBranch(ticket.meta.id, stepId)), vars);
     const stepBase = interpolate(String(step.base ?? ticket.meta.branch), vars);
-    const existed = branchExists(context.repoDir, branch);
+    const existedProbe = branchProbe(context.repoDir, branch);
+    // A probe that could not answer is not "the branch is new". Reading it as new skips the sync
+    // below, which is what leaves an agent working against yesterday's tree (Q-0004) — so it counts
+    // as existing, and the sync's own result is what gets reported.
+    const existed = existedProbe !== 'absent';
     cwd = ensureWorktree(context.repoDir, branch, stepBase);
     // Registered whether it was cut now or found already there: a run that reused a worktree is the
     // run that finishes with it, and `finish` gives back only what this map names. See Q-0062.
     context.worktrees?.set(branch, cwd);
     context.emit({ type: 'info', message: `${stepId}: worktree ${cwd} (${branch})` });
+    if (existedProbe === 'failed') {
+      context.emit({ type: 'warn', message: `${stepId}: could not tell whether ${branch} already existed — git failed; treated as existing, so its base is synced` });
+    }
     // A branch created on an earlier round is stale: its base has moved on since. Syncing only on a
     // fan-out retry left the agent working against yesterday's tree, appearing to revert whatever
     // landed in between. See Q-0004.
     if (existed || extra.syncBase) {
-      if (!branchExists(context.repoDir, stepBase)) {
+      const baseProbe = branchProbe(context.repoDir, stepBase);
+      if (baseProbe === 'failed') {
+        // Never the sentence below, which states an absence git did not report. The merge is
+        // attempted instead of skipped, and its own failure is what the `warn` after it carries.
+        context.emit({ type: 'warn', message: `${stepId}: could not tell whether base ${stepBase} exists — git failed; syncing anyway rather than skipping` });
+      }
+      if (baseProbe === 'absent') {
         // Normal on a ticket's first pass — the integration branch is created by the first integrate
         // step. Not a failure, and an `info` rather than a warning with nothing after its colon.
         context.emit({ type: 'info', message: `${stepId}: base ${stepBase} does not exist yet — nothing to sync` });

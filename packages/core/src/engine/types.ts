@@ -12,6 +12,7 @@ import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
 import { FlowError } from '../lint/lint.js';
+import type { BranchHeadResult } from '../fanout/fanout.js';
 import type { Occurrence, OccurrenceKind, RunStatus as OccurrenceStatus } from '../run-history/manifest.js';
 import type { OccurrenceFields } from '../run-history/writer.js';
 import type { DeferredDiff } from './diff.js';
@@ -116,8 +117,14 @@ export type EmitEvent = (event: Event) => void;
 /** Awaited by the channel before it releases an abandoning `for await` consumer. */
 export type FinaliseAbandonment = () => Promise<void>;
 
-/** Reads a branch's current commit. `null` covers both an absent branch and a failed read. */
-export type BranchHeadReader = (repoDir: string, branch: string) => string | null;
+/**
+ * Reads a branch's current commit, as three answers: resolved, no such ref, or the probe failed.
+ *
+ * It answered `string | null` until Q-0074, which is what let the rollback below skip itself on a
+ * git that could not be asked — a `null` meaning *the branch is not there* and a `null` meaning
+ * *nobody knows* reaching one truthiness guard.
+ */
+export type BranchHeadReader = (repoDir: string, branch: string) => BranchHeadResult;
 
 /** Resets a branch to a prior revision, as the rollback path on a non-dry failed run does. */
 export type BranchResetter = (repoDir: string, branch: string, revision: string) => void;
@@ -349,8 +356,11 @@ export interface RoutingContext extends RunContext {
 
 /** The context `lifecycle.ts` reads and writes: {@link RunContext} plus the branch-head/reset seam its rollback rule needs. */
 export interface LifecycleContext extends RunContext {
-  /** The ticket branch's head when the run started, or `null` when it could not be read. */
-  branchHeadAtStart: string | null;
+  /**
+   * What the ticket branch's head was when the run started — including that the probe could not
+   * say, which is the answer the rollback below has to act differently on.
+   */
+  branchHeadAtStart: BranchHeadResult;
   readBranchHead: BranchHeadReader;
   resetBranch: BranchResetter;
   /** Removes one worktree this run obtained. Injected, so this module reaches for no git of its own. */

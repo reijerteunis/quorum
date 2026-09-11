@@ -104,6 +104,49 @@ function returnObtainedWorktrees(context: LifecycleContext): void {
   context.persistence.appendLog(context.ticket, `run=${context.runId} removed-worktrees=${removed} kept=${kept}`);
 }
 
+/**
+ * Put the ticket branch back where the run found it — or say why that could not be established.
+ *
+ * Two head reads, at each end of the run, and **each of them has three answers rather than two**.
+ * The pair of truthiness guards that stood here read `string | null` from both, so a git that could
+ * not be asked at either end skipped the reset in silence and a failed run kept whatever
+ * `integrate` had merged. That is the contamination this whole path exists to prevent, arriving
+ * through the path itself.
+ *
+ * Where a head is unreadable the run **does not reset, warns, and records** — which is not a
+ * preference: there is no revision to reset *to* when the start head was never read, and no way to
+ * tell a moved branch from an unmoved one when the current head was not. Response 1 of *"A probe
+ * that could not answer is not a negative"* (2026-09-10), which ruled it.
+ *
+ * **Silence keeps exactly the meaning it had**: nothing needed rolling back. A branch git *answered*
+ * was not there, at either end, is that case and stays quiet — a run whose branch never came into
+ * being has nothing to put back, and a warning there would be the reassurance-shaped noise the
+ * board's own rule forbids one fact along.
+ */
+function restoreBranch(context: LifecycleContext, branch: string): void {
+  const { persistence } = context;
+  const unverified = (which: 'at run start' | 'at rollback', detail: string | null): void => {
+    context.emit({
+      type: 'warn',
+      message: `${branch}: not rolled back — its head could not be read ${which}`
+        + `${detail === null ? '' : ` (${detail})`}, so this run may have left \`integrate\`'s merge on it`,
+    });
+    persistence.appendLog(context.ticket, `run=${context.runId} rollback-unverified branch=${branch} head=${which === 'at run start' ? 'start' : 'current'}`);
+  };
+  const start = context.branchHeadAtStart;
+  if (start.state === 'failed') return unverified('at run start', start.detail);
+  if (start.state === 'no-such-ref') return;
+  const current = context.readBranchHead(context.repoDir, branch);
+  if (current.state === 'failed') return unverified('at rollback', current.detail);
+  if (current.state === 'no-such-ref' || current.sha === start.sha) return;
+  context.resetBranch(context.repoDir, branch, start.sha);
+  context.emit({
+    type: 'warn',
+    message: `${branch}: rolled back to ${start.sha.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`,
+  });
+  persistence.appendLog(context.ticket, `run=${context.runId} rolled-back branch=${branch} from=${current.sha.slice(0, 7)} to=${start.sha.slice(0, 7)}`);
+}
+
 /** Persist one terminal state, applying its stage rule and restoring the branch when required. */
 export async function finish(
   context: LifecycleContext,
@@ -133,17 +176,8 @@ export async function finish(
     if (returnsWorktrees(status)) {
       returnObtainedWorktrees(context);
     }
-    if (restoresBranch(status) && context.branchHeadAtStart) {
-      // Why: preserved defect, see Q-0050 AC-12.
-      const current = context.readBranchHead(context.repoDir, ticket.meta.branch);
-      if (current && current !== context.branchHeadAtStart) {
-        context.resetBranch(context.repoDir, ticket.meta.branch, context.branchHeadAtStart);
-        context.emit({
-          type: 'warn',
-          message: `${ticket.meta.branch}: rolled back to ${context.branchHeadAtStart.slice(0, 7)} — a run that did not complete leaves the ticket branch as it found it`,
-        });
-        persistence.appendLog(ticket, `run=${context.runId} rolled-back branch=${ticket.meta.branch} from=${current.slice(0, 7)} to=${context.branchHeadAtStart.slice(0, 7)}`);
-      }
+    if (restoresBranch(status)) {
+      restoreBranch(context, ticket.meta.branch);
     }
   }
 

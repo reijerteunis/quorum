@@ -140,13 +140,21 @@ function reportUndecided(context: EngineContext, error: GateUnansweredError): vo
   const { ticket } = context;
   const head = branchHead(context.repoDir, ticket.meta.branch);
   const kept = context.worktrees?.size ?? 0;
-  const where = head ? `${ticket.meta.branch} stays at ${head.slice(0, 7)}` : `${ticket.meta.branch} does not exist`;
+  // Three renderings, because the read has three answers and two of them used to share a sentence:
+  // a durable record is read without the run beside it, so `does not exist` written of a branch git
+  // was asked about and could not answer is a claim this line has no evidence for.
+  const where = head.state === 'resolved'
+    ? `${ticket.meta.branch} stays at ${head.sha.slice(0, 7)}`
+    : head.state === 'no-such-ref'
+      ? `${ticket.meta.branch} does not exist`
+      : `${ticket.meta.branch} could not be read${head.detail === null ? '' : ` (${head.detail})`}`;
+  const keptAt = head.state === 'resolved' ? head.sha.slice(0, 7) : head.state === 'no-such-ref' ? 'none' : 'unknown';
   context.emit({ type: 'warn', message: error.message });
   context.emit({
     type: 'warn',
     message: `gate (${error.gate.kind}) "${error.gate.reason}" went unanswered — ${UNANSWERED_CAUSE[error.gate.condition]}; nothing was rolled back: ${where}, ${kept} worktree${kept === 1 ? '' : 's'} kept`,
   });
-  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} rollback=none branch=${ticket.meta.branch} kept-at=${head ? head.slice(0, 7) : 'none'} kept-worktrees=${kept}`);
+  context.persistence.appendLog(ticket, `run=${context.runId} undecided-gate kind=${error.gate.kind} reason=${JSON.stringify(error.gate.reason)} condition=${error.gate.condition} rollback=none branch=${ticket.meta.branch} kept-at=${keptAt} kept-worktrees=${kept}`);
 }
 
 /**
@@ -265,9 +273,6 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
       },
     };
 
-    // Why: preserved defect, see Q-0050 AC-12. — branchHead cannot tell "no such branch" from "git
-    // failed", and this read cannot distinguish them either; see the lifecycle-routing contract's
-    // preserved-diagnostics table.
     const branchHeadAtStart = branchHead(repoDir, ticket.meta.branch);
 
     /**

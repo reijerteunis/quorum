@@ -13,7 +13,7 @@ import { REPO_WORKTREE_ROOT } from '@quorum/shared';
 
 import { runCommand } from './command.js';
 import {
-  IntegrationError, branchExists, branchHead, commitAll, loadTasks, mergeInto, resetBranchTo,
+  IntegrationError, branchHead, branchProbe, commitAll, loadTasks, mergeInto, resetBranchTo,
   scopeToFailing, taskPromptSection, taskVars, ticketWorktree, waves,
 } from './fanout.js';
 import type { Task, TaskNode, TicketFolder } from './fanout.js';
@@ -33,6 +33,19 @@ afterAll(removeTempDirs);
 const caught = (fn: () => unknown): unknown => {
   try { fn(); } catch (e) { return e; }
   throw new Error('expected a throw, and nothing was thrown');
+};
+
+/**
+ * The sha a branch resolves to, for the cases below whose subject is the sha and not the probe.
+ *
+ * Fails loudly on either of the other two answers rather than substituting `''`, which is what the
+ * `?? ''` at three of these sites used to do — a fixture that quietly resets a branch to nothing is
+ * the shape of defect this ticket is about, in the suite asserting the fix.
+ */
+const headSha = (repoDir: string, branch: string): string => {
+  const head = branchHead(repoDir, branch);
+  if (head.state !== 'resolved') throw new Error(`fixture: ${branch} is ${head.state}, so there is no sha to assert on`);
+  return head.sha;
 };
 
 /** A ticket folder holding exactly the files given, keyed by path below the folder. */
@@ -231,38 +244,49 @@ describe('AC-6 — the branch helpers keep their git invocations, and their conf
     return dir;
   };
 
-  test('branchExists is a boolean over a local ref', () => {
+  test('branchProbe answers present over a local ref, and absent over one git says is not there', () => {
     const dir = withBranch();
-    expect(branchExists(dir, 'harness/T-1/integration')).toBe(true);
-    expect(branchExists(dir, 'harness/T-1/nope')).toBe(false);
+    expect(branchProbe(dir, 'harness/T-1/integration')).toBe('present');
+    expect(branchProbe(dir, 'harness/T-1/nope')).toBe('absent');
   });
 
-  test('branchHead resolves a branch and a revision expression, and is null for neither', () => {
+  test('branchHead resolves a branch and a revision expression, and reports no-such-ref for neither', () => {
     const dir = withBranch();
     const head = branchHead(dir, 'harness/T-1/integration');
-    expect(head).toBe(git(dir, 'rev-parse', 'harness/T-1/integration'));
-    expect(head).toMatch(/^[0-9a-f]{40}$/);
-    expect(branchHead(dir, 'HEAD~1')).toBe(git(dir, 'rev-parse', 'HEAD~1'));
-    expect(branchHead(dir, 'harness/T-1/nope')).toBeNull();
+    expect(head).toStrictEqual({ state: 'resolved', sha: git(dir, 'rev-parse', 'harness/T-1/integration'), detail: null });
+    expect(head.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(branchHead(dir, 'HEAD~1').sha).toBe(git(dir, 'rev-parse', 'HEAD~1'));
+    expect(branchHead(dir, 'harness/T-1/nope')).toStrictEqual({ state: 'no-such-ref', sha: null, detail: null });
   });
 
-  test('a git that FAILS returns the same negative as an absent branch — preserved, not endorsed', () => {
-    // Why: preserved defect, see Q-0048 AC-6. `ancestry()` in this same package forbids exactly this
-    // inference; the day someone changes these two, this test says so.
+  test('a git that FAILS is a third answer, and never the negative an absent branch gets', () => {
+    // Q-0074 AC-4. This test asserted the opposite until then — `false` and `null` under the shim,
+    // the same two values an absent branch produced — under an authority line citing Q-0048 AC-6,
+    // which is the pin the repair removes with it. `ancestry()` in this same package has forbidden
+    // the inference since Q-0035; these two now forbid it too.
     const dir = withBranch();
     const shim = installGitShim('case " $* " in *rev-parse*) exit 3 ;; esac');
+    let probe: ReturnType<typeof branchProbe>;
+    let head: ReturnType<typeof branchHead>;
     try {
-      expect(branchExists(dir, 'harness/T-1/integration')).toBe(false);
-      expect(branchHead(dir, 'harness/T-1/integration')).toBeNull();
+      probe = branchProbe(dir, 'harness/T-1/integration');
+      head = branchHead(dir, 'harness/T-1/integration');
     } finally {
       shim.restore();
     }
+    expect(probe, 'a failed probe is not the answer an absent branch gets').toBe('failed');
+    expect(probe).not.toBe(branchProbe(dir, 'harness/T-1/nope'));
+    expect(head.state, 'and neither is a failed head read').toBe('failed');
+    expect(head.sha).toBeNull();
+    expect(head).not.toStrictEqual(branchHead(dir, 'harness/T-1/nope'));
+    // git's own reason travels with it, because the records that render this are read afterwards.
+    expect(head.detail, 'the failure carries what git said').toEqual(expect.any(String));
   });
 
   test('neither helper checks out, creates, resets or moves anything', () => {
     const dir = withBranch();
     const before = walk(dir);
-    branchExists(dir, 'harness/T-1/integration');
+    branchProbe(dir, 'harness/T-1/integration');
     branchHead(dir, 'harness/T-1/integration');
     expect(git(dir, 'status', '--porcelain')).toBe('');
     expect(git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
@@ -329,43 +353,84 @@ describe('AC-7 — commitAll reverts backlog/ before it stages, reports it, and 
     expect(called).toBe(0);
   });
 
-  test('a revert that FAILED still reports as though it had discarded — preserved, not endorsed', () => {
-    // Why: preserved defect, see Q-0048 AC-12 defect 4. Both halves of the revert are wrapped so
-    // that failure is tolerated, and `onDiscard` fires on the dirty list rather than on the outcome.
+  test('a revert that FAILED reports no discard, and commits nothing over the edit it left', () => {
+    // Q-0074 AC-10. This asserted the opposite until then — `expect(files, 'and the edit is
+    // committed anyway')` — under an authority line citing Q-0048 AC-12 defect 4, which the repair
+    // removes with it. The revert is judged by its outcome now, so a `checkout` that could not run
+    // and left the edit in place stops the commit instead of reporting a discard that never was.
     const wt = worktreeWithTicket();
     write(path.join(wt, TICKET, 'ticket.md'), BEFORE.replace('stage: solutioned', 'stage: deployed'));
+    write(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
     const dropped: string[] = [];
     const shim = installGitShim('case " $* " in *" checkout "*) exit 3 ;; esac');
-    let files: string[] | null;
+    let thrown: unknown;
     try {
-      files = commitAll(wt, 'revert could not run', (d) => dropped.push(...d));
+      thrown = caught(() => commitAll(wt, 'revert could not run', (d) => dropped.push(...d)));
     } finally {
       shim.restore();
     }
-    // The reported name is missing its first character; see the next test for why. What this pins
-    // is that a discard was reported at all, over an edit that is still there.
-    expect(dropped, 'the discard is reported').toHaveLength(1);
+    expect(thrown, 'the caller is told').toBeInstanceOf(IntegrationError);
+    expect(String((thrown as Error).message)).toContain(`${TICKET}/ticket.md`);
+    expect(dropped, 'and nothing claimed a discard that did not happen').toStrictEqual([]);
     expect(fs.readFileSync(path.join(wt, TICKET, 'ticket.md'), 'utf8')).toContain('stage: deployed');
-    expect(files, 'and the edit is committed anyway').toStrictEqual([`${TICKET}/ticket.md`]);
+    expect(git(wt, 'log', '-1', '--pretty=%s'), 'nothing was committed').toBe('setup');
   });
 
-  test('the FIRST reported name loses its first character when the file is only modified', () => {
-    // Why: preserved defect, see Q-0048 AC-12 — found while porting, reported, not fixed. `git()`
-    // trims the whole of `status --porcelain`, so a leading ` M ` becomes `M ` on line one alone,
-    // and the `.slice(3)` that strips the status columns eats a character of the path. Only the
-    // first line, and only when the file is unstaged; `?? ` and every later line are unaffected.
-    // The list is a report to a human, never a path anything opens, which is why it has survived.
+  test('a status probe that FAILED refuses rather than reading backlog/ as clean', () => {
+    // Q-0074 AC-9, and decision 088's own fourth unnamed site: the `?? ''` that stood here made a
+    // failed probe an empty dirty list, so no revert ran, `onDiscard` never fired, and the `git add
+    // -A` two lines down committed the agent's edit to a ticket's frontmatter.
+    const wt = worktreeWithTicket();
+    write(path.join(wt, TICKET, 'ticket.md'), BEFORE.replace('stage: solutioned', 'stage: deployed'));
+    const dropped: string[] = [];
+    // The subcommand as a whole word, and a message that does not contain it. A `*status*` pattern
+    // reads `$*`, which holds the commit MESSAGE too — so it killed the commit as well as the probe
+    // and the mutation below then went red for a reason that was not the one being demonstrated.
+    const shim = installGitShim('case " $* " in *" status "*) exit 3 ;; esac');
+    let thrown: unknown;
+    try {
+      thrown = caught(() => commitAll(wt, 'the probe could not run', (d) => dropped.push(...d)));
+    } finally {
+      shim.restore();
+    }
+    expect(thrown).toBeInstanceOf(IntegrationError);
+    expect(String((thrown as Error).message), 'named with git\'s own reason').toMatch(/cannot read what backlog\/ is holding .* — .+/);
+    expect(dropped).toStrictEqual([]);
+    expect(git(wt, 'log', '-1', '--pretty=%s'), 'nothing was committed').toBe('setup');
+  });
+
+  test('and the refusal is unreachable where backlog/ is legitimately clean', () => {
+    // R-6: the two are one character apart in the `?? ''` this replaces, so the guard has to be
+    // shown NOT to fire on the ordinary case as well as to fire on the failing one.
+    const wt = worktreeWithTicket();
+    write(path.join(wt, 'src', 'legit.ts'), 'export const ok = true;\n');
+    const dropped: string[] = [];
+    expect(commitAll(wt, 'clean backlog', (d) => dropped.push(...d))).toStrictEqual(['src/legit.ts']);
+    expect(dropped).toStrictEqual([]);
+  });
+
+  test('the FIRST reported name keeps its first character when the file is only modified', () => {
+    // Q-0074 AC-11. This asserted `['acklog/T-0001/ticket.md', …]` until then, under an authority
+    // line citing Q-0048 AC-12: `git()` trims the whole of `status --porcelain`, so a leading ` M `
+    // arrives as `M ` on line one alone and the fixed `.slice(3)` ate a character of the path. The
+    // status field is dropped as a token now, which is right for both shapes — and the runner's own
+    // `.trim()` is untouched, because it feeds every git call this module makes (NG-3).
     const wt = worktreeWithTicket();
     write(path.join(wt, TICKET, 'ticket.md'), BEFORE.replace('stage: solutioned', 'stage: deployed'));
     write(path.join(wt, TICKET, 'sneaked.md'), 'written by an agent\n');
     const dropped: string[] = [];
     commitAll(wt, 'work', (d) => dropped.push(...d));
 
-    expect(dropped).toStrictEqual(['acklog/T-0001/ticket.md', 'backlog/T-0001/sneaked.md']);
+    expect(dropped).toStrictEqual([`${TICKET}/ticket.md`, `${TICKET}/sneaked.md`]);
+    // The mechanism, not just the outcome: line one is the one the trim reaches, and the second
+    // entry was always right — so a fix that only widened the slice would pass the first clause
+    // and fail this one.
+    expect(dropped[0], 'the first line is the one the trim reaches').toBe(`${TICKET}/ticket.md`);
+    expect(dropped.every((p) => p.startsWith('backlog/'))).toBe(true);
   });
 });
 
-describe('AC-8 — mergeInto reports conflicts and always leaves the worktree clean', () => {
+describe('AC-8 — mergeInto reports conflicts, git\'s reason, and what the worktree was left holding', () => {
   const TASK_A = 'harness/T-2/task-a';
   const TASK_B = 'harness/T-2/task-b';
   const INTEGRATION = 'harness/T-2/integration';
@@ -399,15 +464,18 @@ describe('AC-8 — mergeInto reports conflicts and always leaves the worktree cl
     expect(result.conflicts).toStrictEqual(['f.txt']);
     expect(git(integration, 'status', '--porcelain')).toBe('');
     expect(fs.existsSync(path.join(integration, '.git'))).toBe(true);
-    // No merge in progress: MERGE_HEAD is gone, so the next step starts from a clean branch.
-    expect(branchHead(integration, 'MERGE_HEAD')).toBeNull();
+    // No merge in progress: MERGE_HEAD is gone, so the next step starts from a clean branch — and
+    // the result says so, rather than the caller having to re-derive it.
+    expect(branchHead(integration, 'MERGE_HEAD').state).toBe('no-such-ref');
+    expect(result.worktreeClean).toBe(true);
   });
 
-  test('a content conflict reports an EMPTY error, because git wrote its reason to stdout', () => {
-    // Why: preserved defect, see Q-0048 AC-12 — found while porting, reported, not fixed. The
-    // fallback is `e.stderr ?? e.message`, and `??` does not fall back on an empty string: git puts
-    // "CONFLICT (content): …" on stdout, so stderr is '' and the message is dropped. `conflicts`
-    // carries the information a caller acts on, which is why this has never been felt.
+  test('a content conflict reports the reason git gave, on whichever stream it gave it', () => {
+    // Q-0074 AC-12. This asserted `expect(result.error).toBe('')` until then, under an authority
+    // line citing Q-0048 AC-12: the fallback was `e.stderr ?? e.message`, and `??` does not fall
+    // back on an empty string, so git putting "CONFLICT (content): …" on STDOUT left the error ''.
+    // `conflicts` carries what a caller acts on, which is why this had never been felt — and why
+    // `mergeFailure` could answer "git reported no reason" only where it also had no paths.
     const { integration } = diverged();
     mergeInto(integration, TASK_A);
     const result = mergeInto(integration, TASK_B);
@@ -415,9 +483,47 @@ describe('AC-8 — mergeInto reports conflicts and always leaves the worktree cl
     const raw = caught(() => git(integration, '-c', 'user.email=harness@local', '-c', 'user.name=harness', 'merge', '--no-ff', '--no-edit', TASK_B)) as { stderr?: string; stdout?: string };
     git(integration, 'merge', '--abort');
 
+    // The premise the old pin rested on, kept: git really does say nothing on stderr here, so a
+    // reader cannot mistake this for a case where either stream would have done.
     expect(raw.stderr).toBe('');
     expect(String(raw.stdout), 'git did say why — on the other stream').toContain('CONFLICT');
-    expect(result.error).toBe('');
+    expect(result.error, 'and that is what the result now carries').toContain('CONFLICT');
+    expect(result.error).toContain('f.txt');
+  });
+
+  test('a conflict probe that FAILED reports an unread list, and never an empty one', () => {
+    // The two are one value apart — `[]` and `null` — and only one of them is a claim about the
+    // merge. `mergeFailure` is what a human reads, so it is asserted beside the field.
+    const { integration } = diverged();
+    mergeInto(integration, TASK_A);
+    const shim = installGitShim('case " $* " in *--diff-filter=U*) exit 3 ;; esac');
+    let result: ReturnType<typeof mergeInto>;
+    try { result = mergeInto(integration, TASK_B); } finally { shim.restore(); }
+
+    expect(result.ok).toBe(false);
+    expect(result.conflicts, 'an unread list is null, not empty').toBeNull();
+    // The abort itself was not shimmed, so the worktree came back clean and the result says so —
+    // which is the discrimination the next test is about, holding on this one's failure too.
+    expect(result.worktreeClean).toBe(true);
+    // The sentence a human reads is `mergeFailure`'s, and is asserted in `engine/steps.test.ts`
+    // beside the other two things it may not say.
+  });
+
+  test('an abort that did not leave the worktree clean is reported, not promised away', () => {
+    // The JSDoc promised "leave the worktree clean either way" over a best-effort abort, which is
+    // decision 088's fourth unnamed site. What is asserted is the PROBE rather than the abort's own
+    // exit code: an abort legitimately fails when there was no merge to abort, so reading its
+    // status would report a dirty worktree over a clean one — this defect in the other direction.
+    const { integration } = diverged();
+    mergeInto(integration, TASK_A);
+    const shim = installGitShim('case " $* " in *" --abort "*) exit 3 ;; esac');
+    let result: ReturnType<typeof mergeInto>;
+    try { result = mergeInto(integration, TASK_B); } finally { shim.restore(); }
+
+    expect(result.worktreeClean, 'a merge really is still in progress').toBe(false);
+    expect(branchHead(integration, 'MERGE_HEAD').state).toBe('resolved');
+    git(integration, 'merge', '--abort');
+    expect(git(integration, 'status', '--porcelain')).toBe('');
   });
 
   test('a failure git DOES report on stderr keeps the tail of it, bounded at 500 characters', () => {
@@ -451,21 +557,21 @@ describe('AC-9 — worktrees and the sibling branch layout', () => {
     expect(wt).toBe(spikeWorktreeDir(dir, 'harness/T-3/integration'));
     expect(fs.existsSync(path.join(wt, '.git'))).toBe(true);
     // The null base is deliberate: the branch is created from HEAD on first use.
-    expect(branchHead(dir, 'harness/T-3/integration')).toBe(git(dir, 'rev-parse', 'main'));
+    expect(headSha(dir, 'harness/T-3/integration')).toBe(git(dir, 'rev-parse', 'main'));
     expect(ticketWorktree(dir, 'harness/T-3/integration')).toBe(wt);
   });
 
   test('resetBranchTo hard-resets inside the worktree when one is there, and cleans it', () => {
     const dir = repo();
     const wt = ticketWorktree(dir, 'harness/T-3/integration');
-    const start = branchHead(dir, 'harness/T-3/integration');
+    const start = headSha(dir, 'harness/T-3/integration');
     write(path.join(wt, 'committed.txt'), 'x\n');
     commitFixture(wt, 'a commit to roll back');
     write(path.join(wt, 'uncommitted.txt'), 'y\n');
 
-    resetBranchTo(dir, 'harness/T-3/integration', start ?? '');
+    resetBranchTo(dir, 'harness/T-3/integration', start);
 
-    expect(branchHead(dir, 'harness/T-3/integration')).toBe(start);
+    expect(headSha(dir, 'harness/T-3/integration')).toBe(start);
     expect(fs.existsSync(path.join(wt, 'committed.txt'))).toBe(false);
     expect(fs.existsSync(path.join(wt, 'uncommitted.txt'))).toBe(false);
     expect(git(wt, 'status', '--porcelain')).toBe('');
@@ -480,7 +586,7 @@ describe('AC-9 — worktrees and the sibling branch layout', () => {
 
     resetBranchTo(dir, 'harness/T-3/contracts', start);
 
-    expect(branchHead(dir, 'harness/T-3/contracts')).toBe(start);
+    expect(headSha(dir, 'harness/T-3/contracts')).toBe(start);
     expect(fs.existsSync(spikeWorktreeDir(dir, 'harness/T-3/contracts'))).toBe(false);
   });
 
@@ -492,11 +598,11 @@ describe('AC-9 — worktrees and the sibling branch layout', () => {
     for (const branch of siblings) {
       const wt = ticketWorktree(dir, branch);
       expect(wt).toBe(spikeWorktreeDir(dir, branch));
-      expect(branchExists(dir, branch)).toBe(true);
+      expect(branchProbe(dir, branch)).toBe('present');
       write(path.join(wt, `${branch.split('/').pop() ?? ''}.txt`), 'x\n');
       commitFixture(wt, `work on ${branch}`);
     }
-    expect(branchExists(dir, 'harness/T-4')).toBe(false);
+    expect(branchProbe(dir, 'harness/T-4')).toBe('absent');
 
     const integration = spikeWorktreeDir(dir, 'harness/T-4/integration');
     for (const branch of siblings.slice(1)) expect(mergeInto(integration, branch).ok).toBe(true);
@@ -553,9 +659,9 @@ describe('AC-11 — nothing in this module writes to the user\'s working tree', 
     commitAll(task, 'task work');
 
     const integration = ticketWorktree(dir, 'harness/T-5/integration');
-    const start = branchHead(dir, 'harness/T-5/integration');
+    const start = headSha(dir, 'harness/T-5/integration');
     expect(mergeInto(integration, 'harness/T-5/task-a').ok).toBe(true);
-    resetBranchTo(dir, 'harness/T-5/integration', start ?? '');
+    resetBranchTo(dir, 'harness/T-5/integration', start);
     expect(runCommand('printf hello', integration).code).toBe(0);
 
     expect(git(dir, 'status', '--porcelain'), 'the worktree root never shows in git status').toBe('');
@@ -586,7 +692,7 @@ describe('AC-12 — the inherited hazards are preserved and pinned, not fixed', 
     const dir = repo();
     const branch = 'harness/T-6/integration';
     const wt = ticketWorktree(dir, branch);
-    const start = branchHead(dir, branch) ?? '';
+    const start = headSha(dir, branch);
     fs.rmSync(wt, { recursive: true, force: true });
 
     expect(fs.existsSync(wt)).toBe(false);
