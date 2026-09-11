@@ -1,4 +1,4 @@
-import type { Event, WireMessage } from '@quorum/shared';
+import { eventSchema, wireMessageSchema, type Event, type WireMessage } from '@quorum/shared';
 
 /** Every reason an incoming WebSocket message can be refused. */
 export type FrameRefusal =

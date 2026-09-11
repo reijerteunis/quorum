@@ -110,13 +110,3 @@ export function wireRunOf(outcome: StartOutcome): WireRun {
   const { handle, flow, runId, state } = outcome.run;
   return { handle, flow, runId, state };
 }
-
-/**
- * One WebSocket message.
- *
- * **One event per message, and the envelope carries no second vocabulary.** `event` is
- * `@quorum/shared`'s `Event` unaltered, so a client parses it with `eventSchema` and nothing here
- * has to be kept in step with the union. `missed` is the only thing this transport adds, and it is
- * not an event: a late subscriber is told how many it did not see rather than handed a silently
- * truncated stream, which is the answer Q-0013 OQ-1 left to this child.
- */
