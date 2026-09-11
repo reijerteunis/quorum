@@ -28,7 +28,8 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { App } from './app.js';
-import { CONNECTION_PENDING, NOT_LOADED, RUN_FLOW_LABEL, TOP_BAR_REGIONS } from './shell.js';
+import type { SocketTransport } from './run-connection.js';
+import { NOT_LOADED, RUN_FLOW_LABEL, TOP_BAR_REGIONS } from './shell.js';
 import { isRedirect, RAIL, ROUTES, type ScreenRoute } from './routes.js';
 import { DOES_NOT_EXIST, NOT_FOUND_HEADING, Placeholder } from './views.js';
 
@@ -221,17 +222,46 @@ describe('AC-9 — the top bar reserves its regions and asserts nothing it has n
     expect((button?.textContent ?? '').trim()).toContain(RUN_FLOW_LABEL);
   });
 
-  test('the connection region says there is none yet, and names the ticket that opens one', async () => {
-    const container = await render(createElement(App, { initialPath: RAIL[0].path }));
-    const text = textOf(container.querySelector('header') as HTMLElement);
-    expect(text, 'the connection region is silent about there being no connection').toContain(CONNECTION_PENDING);
-    expect(CONNECTION_PENDING, 'the connection region names no successor').toMatch(new RegExp(`${'Q'}-\\d{4}`));
-  });
-
   test('and the shell shows no project name, cost or vendor state it has not been given', async () => {
     const container = await render(createElement(App, { initialPath: RAIL[0].path }));
     const text = textOf(container);
     expect(text, 'a currency figure appears with nothing behind it').not.toMatch(/\$\d/);
     expect(text, 'a branch name appears with nothing behind it').not.toMatch(/\bmain\b/);
+  });
+});
+
+describe('Q-0120 AC-20 — the run route mounts and renders its live connection', () => {
+  class FakeSocket implements SocketTransport {
+    onopen: (() => void) | null = null;
+    onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
+    close(): void {}
+  }
+
+  test('non-run routes open no socket, while the run route opens exactly one', async () => {
+    const reached: URL[] = [];
+    const factory = (url: URL): SocketTransport => { reached.push(url); return new FakeSocket(); };
+    await render(createElement(App, { initialPath: '/projects', socketFactory: factory, pageUrl: new URL(`https:${'/' + '/'}page.test`) }));
+    expect(reached).toStrictEqual([]);
+    await render(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: new URL(`https:${'/' + '/'}page.test`) }));
+    expect(reached).toHaveLength(1);
+  });
+
+  test('the panel shows state, missed notice, event count, and latest event identity only', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => {
+      socket.onopen?.();
+      for (let index = 0; index < 3; index += 1) socket.onmessage?.({ data: JSON.stringify({ type: 'event', event: { type: 'step', stepId: 'implement', message: `${index}` } }) });
+      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 2 }) });
+    });
+    const text = textOf(container.querySelector('header') as HTMLElement);
+    for (const expected of ['live', '2', '3', 'step', 'implement']) expect(text).toContain(expected);
+    expect(text).not.toMatch(/cost|diff|trace/i);
   });
 });

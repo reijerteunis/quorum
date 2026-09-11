@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
+import { wireMessageSchema } from '@quorum/shared';
 
 /** This package's root: `apps/web/test/` → one level up. Nothing here climbs out of the package. */
 const PACKAGE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,6 +43,7 @@ const manifest = (): Manifest => JSON.parse(readPackageFile('package.json')) as 
  * a reason fails, and a reason left behind by a dependency that has gone fails too.
  */
 const JUSTIFICATIONS: Record<string, string> = {
+  '@quorum/shared': 'the browser executes the shared wire and event schemas so incoming daemon frames are parsed rather than cast.',
   react: 'the UI framework docs/04-architecture.md:182 names; nothing here is a second choice of framework.',
   'react-dom': "React's renderer for a browser document — the half that actually mounts, and what AC-2's smoke test drives.",
   '@vitejs/plugin-react': 'teaches this package\'s Vite build to compile JSX; without it no .tsx file is transformed at all.',
@@ -94,7 +96,7 @@ describe('AC-1 — the manifest declares what it needs, each with a reason', () 
   test('the two that ship to a browser are dependencies, and the build-time ones are not', () => {
     // The division is the claim: what a bundle contains against what only builds or tests it.
     const own = manifest();
-    expect(Object.keys(own.dependencies ?? {}).sort()).toStrictEqual(['react', 'react-dom']);
+    expect(Object.keys(own.dependencies ?? {}).sort()).toStrictEqual(['@quorum/shared', 'react', 'react-dom']);
     expect(Object.keys(own.devDependencies ?? {})).not.toContain('react');
   });
 
@@ -115,6 +117,23 @@ describe('AC-1 — the manifest declares what it needs, each with a reason', () 
     // An empty answer above must be an absence rather than a needle that matches nothing.
     const leak = `const client = { ${CREDENTIAL_LITERALS[3]}: process.env.${CREDENTIAL_LITERALS[0]} };`;
     expect(CREDENTIAL_LITERALS.filter((literal) => leak.includes(literal))).toHaveLength(2);
+  });
+});
+
+describe('Q-0120 AC-22 — browser source resolution', () => {
+  test('the shared runtime value resolves through the workspace source condition', () => {
+    expect(typeof wireMessageSchema.safeParse).toBe('function');
+    expect(import.meta.resolve('@quorum/shared')).toContain('/packages/shared/src/index.ts');
+  });
+  test('Vite adds quorum-source to, rather than replacing, its client defaults', () => {
+    const config = readPackageFile('vite.config.ts');
+    expect(config).toContain('defaultClientConditions');
+    expect(config).toContain('quorum-source');
+    expect(config).toMatch(/conditions\s*:\s*\[\s*\.\.\.defaultClientConditions/);
+  });
+
+  test('the app remains non-emitting', () => {
+    expect(manifest().scripts?.build).toBeUndefined();
   });
 });
 

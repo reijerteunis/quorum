@@ -17,17 +17,20 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
+import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
 import { HOME_PATH, isRedirect, RAIL, ROUTES, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
 
-/** The components — the files whose route-path literals clause 3 refuses. */
-const componentFiles = (): [string, string][] =>
-  fs.readdirSync(SOURCE)
-    .filter((name) => name.endsWith('.tsx'))
-    .sort()
-    .map((name) => [name, fs.readFileSync(path.join(SOURCE, name), 'utf8')]);
+/** Every source file, recursively: routes can be named outside React components. */
+const componentFiles = (): [string, string][] => {
+  const walk = (at: string, below = ''): [string, string][] => fs.readdirSync(at, { withFileTypes: true }).flatMap((entry) => {
+    const name = below ? `${below}/${entry.name}` : entry.name;
+    return entry.isDirectory() ? walk(path.join(at, entry.name), name) : [[name, fs.readFileSync(path.join(at, entry.name), 'utf8')]];
+  });
+  return walk(SOURCE).sort(([a], [b]) => a.localeCompare(b));
+};
 
 /**
  * Every quoted literal in `text` that begins with a slash.
@@ -52,6 +55,15 @@ const registered = (): Set<string> => {
 };
 
 const SCREEN_ROUTES: ScreenRoute[] = ROUTES.filter((route): route is ScreenRoute => !isRedirect(route));
+
+const EXCEPTIONS = new Set([
+  'router.ts:/backlog/',
+  'router.ts:/har',
+  'router.ts:/runs/<handle>',
+  'shell.test.ts:/runs/run%20one',
+  'shell.test.ts:/nowhere/at/all',
+  'shell.test.ts:/backlog/%E0%A4%A',
+]);
 
 describe('AC-6 — the rail is the seven entries the design brief names, in its order', () => {
   test('the seven ids, as an identity', () => {
@@ -165,10 +177,16 @@ describe('AC-6 — no component names a route the tables do not hold', () => {
   });
 
   test('every route-path literal a component carries is one the register holds', () => {
-    const held = registered();
-    const unregistered = componentFiles().flatMap(([name, text]) =>
-      pathLiterals(text).filter((literal) => !held.has(literal)).map((literal) => `${name}: ${literal}`));
+    const held = new Set([...registered(), ...Object.values(DAEMON_ENDPOINTS)]);
+    const seenExceptions = new Set<string>();
+    const unregistered = componentFiles().flatMap(([name, text]) => pathLiterals(text).flatMap((literal) => {
+      if (held.has(literal)) return [];
+      const identity = `${name}:${literal}`;
+      if (EXCEPTIONS.has(identity)) { seenExceptions.add(identity); return []; }
+      return [`${name}: ${literal}`];
+    }));
     expect(unregistered, 'a component names a path the register does not').toStrictEqual([]);
+    expect([...seenExceptions].sort(), 'a route-literal exception has lost its subject').toStrictEqual([...EXCEPTIONS].sort());
   });
 
   test('and the clause has a subject — the same scan reports one that is not registered', () => {

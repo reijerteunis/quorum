@@ -136,7 +136,8 @@ describe('AC-2 — declarations only, safe to bundle for a browser', () => {
     for (const named of ['flowSchema', 'ticketSchema', 'roleSchema', 'stageSchema', 'STAGES',
       'stepOutputDeclarationSchema', 'agentStepResultSchema', 'eventSchema', 'adapterEventSchema',
       'REPO_WORKTREE_ROOT', 'TICKET_ARTIFACT_DIR', 'RUN_HISTORY_ROOT', 'DEFAULT_BASE_BRANCH',
-      'USAGE_MEASURES', 'FINDING_SEVERITIES', 'FINDING_PATTERN', 'integrationBranch']) {
+      'USAGE_MEASURES', 'FINDING_SEVERITIES', 'FINDING_PATTERN', 'integrationBranch',
+      'wireMessageSchema']) {
       expect(shared, `index.ts must export ${named}`).toHaveProperty(named);
     }
   });
