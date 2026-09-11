@@ -4,7 +4,7 @@
  * Tailwind v4's `@theme` is both halves of GO-2's recommendation at once: it emits these as CSS
  * custom properties on `:root`, so raw CSS a later trace column needs can reach them, and it
  * registers the utility namespace, so a component says `bg-surface` and never a colour. No
- * component names a colour, and `src/source.test.ts` is what fails if one starts to.
+ * component names a colour, and `test/source.test.ts` is what fails if one starts to.
  *
  * Eleven semantic tokens. Six are this requirement's extension of the design brief — background,
  * surface, border, primary text, muted text and accent — and five are the statuses
@@ -14,7 +14,7 @@
  * amber — pick one" and then, in the same paragraph, assigns `waiting-on-human = amber` and
  * `running = accent pulse`. With amber as the accent those two states are one animation apart,
  * which is a palette that reports "a human must act" and "the machine is working" in one colour.
- * So the choice is forced by the brief's own status table, and `src/source.test.ts` holds the
+ * So the choice is forced by the brief's own status table, and `test/source.test.ts` holds the
  * accent and the waiting-on-human token to different values.
  *
  * NOTHING IS FETCHED FROM A NETWORK, which is a DELIBERATE DIVERGENCE from that brief's
@@ -22,7 +22,7 @@
  * That document describes a single-file clickable mockup for visual validation, and Quorum is
  * local-first: a shell that fetches a font on every page load makes the product require the
  * internet and leaks a request off the machine. The stacks below are the local system faces, and
- * a font request anywhere under `apps/web` turns `src/source.test.ts` red.
+ * a font request anywhere under `apps/web` turns `test/source.test.ts` red.
  */
 @import 'tailwindcss';
 

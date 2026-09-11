@@ -18,6 +18,10 @@
  * every task in every package — so this read is covered without `apps/web` earning its first
  * `turbo.json`, which is the arrangement Q-0108 landed when `covered` began honouring turbo's own
  * `globalCacheInputs.files`.
+ *
+ * It sits in `test/` rather than in `src/` because it reads the filesystem, and AC-5's subject is
+ * every file under `src`. See `test/source.test.ts`'s header for the whole of that reasoning and
+ * the `packages/shared/test/corpus.ts` precedent it follows.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { describe, expect, test } from 'vitest';
 
-/** The repository root: `apps/web/src/` → three levels up. */
+/** The repository root: `apps/web/test/` → three levels up. */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const CONFIG = 'eslint.config.js';

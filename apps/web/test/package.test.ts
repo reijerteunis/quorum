@@ -1,5 +1,10 @@
 /**
- * Q-0014 AC-1, AC-3 — what this package depends on, why each one is here, and what compiles it.
+ * Q-0014 AC-1, AC-2, AC-3 — what this package depends on, why each one is here, what compiles it,
+ * and that every test in it is named where the workspace's discovery guard can see it.
+ *
+ * It sits in `test/` rather than in `src/` because it reads the filesystem, and AC-5's subject is
+ * every file under `src`. See `test/source.test.ts`'s header for the whole of that reasoning and
+ * the `packages/shared/test/corpus.ts` precedent it follows.
  *
  * ON AC-1's INSTRUMENT, stated rather than quietly substituted. The criterion's *Test:* clause asks
  * that every declared dependency "appears in the implement report's justification list". No test
@@ -16,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
 
-/** This package's root: `apps/web/src/` → one level up. Nothing here climbs out of the package. */
+/** This package's root: `apps/web/test/` → one level up. Nothing here climbs out of the package. */
 const PACKAGE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** As much of a manifest as these assertions read. */
@@ -110,6 +115,46 @@ describe('AC-1 — the manifest declares what it needs, each with a reason', () 
     // An empty answer above must be an absence rather than a needle that matches nothing.
     const leak = `const client = { ${CREDENTIAL_LITERALS[3]}: process.env.${CREDENTIAL_LITERALS[0]} };`;
     expect(CREDENTIAL_LITERALS.filter((literal) => leak.includes(literal))).toHaveLength(2);
+  });
+});
+
+describe('AC-2 — every test file is named where the discovery guard can see it', () => {
+  /**
+   * What Vitest's own include would run, transcribed as a pattern from
+   * `configDefaults.include`'s `**\/*.{test,spec}.?(c|m)[jt]s?(x)`.
+   *
+   * It is deliberately WIDER than the suffix the clause below demands, and the gap between the two
+   * is the whole subject: a `.test.tsx` here would be executed by Vitest, be invisible to
+   * `testFilesIn` in `packages/core/src/test-discovery.test.ts` — which matches `.test.ts` only —
+   * and be hashed by no turbo input, `packages/core/turbo.json` declaring `../../apps/*\/**\/*.test.ts`
+   * and nothing wider. Running, unseen and uncached, is three ways of being outside the guards.
+   * R-3 registers the alternative, which is widening `testFilesIn`; that is `packages/core`'s
+   * surface, so this ticket is bounded by the naming rule instead and this is where it is enforced.
+   */
+  const COLLECTED_BY_VITEST = /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/;
+
+  const testFiles = (): string[] => packageFiles().map(([name]) => name).filter((name) => COLLECTED_BY_VITEST.test(name));
+
+  test('every test file this package holds ends .test.ts', () => {
+    const found = testFiles();
+    expect(found.length, 'the walk found no test file — this clause proves nothing').toBeGreaterThan(3);
+    // Both directories, named: the walk must reach the browser source tree AND the one beside it,
+    // or "every test file" is a claim about whichever half it happened to open.
+    expect(found, 'the walk does not reach src').toContain('src/shell.test.ts');
+    expect(found, 'the walk does not reach test').toContain('test/source.test.ts');
+    expect(found.filter((name) => !name.endsWith('.test.ts')),
+      'a test file is named so that testFilesIn and the apps turbo glob cannot see it').toStrictEqual([]);
+  });
+
+  test('and the collector is wider than the suffix, so the clause above is not a tautology', () => {
+    // Without this, `COLLECTED_BY_VITEST` could be `/\.test\.ts$/` and the clause above would be
+    // "every file ending .test.ts ends .test.ts" — green forever, including over the `.test.tsx`
+    // it exists to refuse.
+    const wouldRun = ['x.test.tsx', 'x.spec.ts', 'x.test.js', 'x.test.mts', 'x.test.ts'];
+    for (const name of wouldRun) expect(COLLECTED_BY_VITEST.test(name), `${name} is not collected`).toBe(true);
+    expect(wouldRun.filter((name) => name.endsWith('.test.ts')), 'the suffix excuses more than one shape')
+      .toStrictEqual(['x.test.ts']);
+    expect(COLLECTED_BY_VITEST.test('router.ts'), 'the collector matches a file Vitest would not run').toBe(false);
   });
 });
 

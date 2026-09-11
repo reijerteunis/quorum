@@ -5,6 +5,10 @@
  * member swapped out for another — *"A cache hit names what the task reads, not what its package
  * contains"* (2026-08-28) — and the thing that would go wrong here is exactly a substitution: a
  * rail entry pointed at a neighbour's path, or a route quietly renamed.
+ *
+ * It sits in `test/` rather than in `src/` because the component scan below reads the filesystem,
+ * and AC-5's subject is every file under `src`. See `test/source.test.ts`'s header for the whole of
+ * that reasoning and the `packages/shared/test/corpus.ts` precedent it follows.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,11 +16,11 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
 
-import { activeRailPath, resolve, resolveFinal } from './router.js';
-import { HOME_PATH, isRedirect, RAIL, ROUTES, type ScreenRoute } from './routes.js';
+import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
+import { HOME_PATH, isRedirect, RAIL, ROUTES, type ScreenRoute } from '../src/routes.js';
 
-/** This package's source directory. Nothing here climbs out of the package. */
-const SOURCE = path.dirname(fileURLToPath(import.meta.url));
+/** This package's source directory: `apps/web/test/` → the tree beside it. */
+const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
 
 /** The components — the files whose route-path literals clause 3 refuses. */
 const componentFiles = (): [string, string][] =>

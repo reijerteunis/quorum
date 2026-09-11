@@ -2,10 +2,21 @@
  * Q-0014 AC-5, AC-9, AC-10 — what this app's source may reach for, may name, and may colour.
  *
  * Three scans over one corpus, each in the shape `packages/shared/src/index.test.ts` already uses
- * for the same question one package down. Every needle that would otherwise match this file is
- * ASSEMBLED at run time, for the reason that file gives: the scans cover every file under `src`,
- * this one included, so a written-out needle would report the check itself and the check would be
- * weakened rather than the code fixed.
+ * for the same question one package down.
+ *
+ * THIS FILE LIVES OUTSIDE `src/`, AND THAT IS THE POINT OF IT. AC-5's subject is *every file under
+ * `apps/web/src`*, and a scan that reads the filesystem cannot be one of them. The first draft
+ * squared that circle by narrowing its own corpus to "shipping files" so it could sit beside its
+ * subject — which is weaker than the criterion, and left four Node-importing files inside the tree
+ * that becomes a browser bundle. `packages/shared/test/corpus.ts` had already settled the shape for
+ * the same question: *"it lives OUTSIDE `src/` deliberately … the one module here that touches the
+ * filesystem sits beside it rather than in it"*. This is that arrangement in the package whose
+ * `src/` is literally what a browser gets.
+ *
+ * WHICH SCANS COVER THIS FILE, now that it is not under `src`: the network scan at the bottom walks
+ * the whole package and does, so its needles MUST stay assembled. The three `src` scans do not.
+ * Every needle here is assembled anyway — one rule rather than four judgements, and so that moving
+ * a corpus can never quietly turn a needle into its own subject again.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,9 +24,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
 
-/** This package's source directory, and the package root above it. */
-const SOURCE = path.dirname(fileURLToPath(import.meta.url));
-const PACKAGE = path.resolve(SOURCE, '..');
+/** This file's own directory: `apps/web/test/`. */
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/** The package root, and below it the browser source tree these scans are about. */
+const PACKAGE = path.resolve(HERE, '..');
+const SOURCE = path.join(PACKAGE, 'src');
 
 /** Directories that are not this package's source, whatever they contain. */
 const NOT_OURS = new Set(['node_modules', 'dist', '.turbo', '.vite']);
@@ -32,12 +46,14 @@ function filesBelow(absolute: string): [string, string][] {
   return walk(absolute, '').sort(([a], [b]) => a.localeCompare(b));
 }
 
-/** Every file under `src`, tests included. */
+/**
+ * Every file under `src` — every one, which is the corpus all three criteria name.
+ *
+ * Not "every file that ships", and not "every TypeScript file": AC-5 says *no file under
+ * `apps/web/src`*, and a filtered corpus is a scan answering a narrower question than the one it
+ * reports on.
+ */
 const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
-
-/** Every file under `src` that SHIPS — what a bundle would carry, so tests are not among them. */
-const shippingFiles = (): [string, string][] =>
-  sourceFiles().filter(([name]) => (name.endsWith('.ts') || name.endsWith('.tsx')) && !name.endsWith('.test.ts'));
 
 /**
  * Every module specifier `text` imports or re-exports.
@@ -49,27 +65,39 @@ const shippingFiles = (): [string, string][] =>
 const importSpecifiers = (text: string): string[] =>
   [...text.matchAll(/\b(?:from|import)\s+['"]([^'"\n]+)['"]/g)].map((match) => match[1]);
 
-describe('AC-5 — no shipping file reaches for something a browser does not have', () => {
+describe('AC-5 — no file under src reaches for something a browser does not have', () => {
   /** The same list `packages/shared/src/index.test.ts` uses, for the same question. */
   const BUILTINS = [
     'assert', 'buffer', 'child_process', 'crypto', 'events', 'fs', 'http', 'https', 'module', 'net',
     'os', 'path', 'process', 'readline', 'stream', 'url', 'util', 'worker_threads', 'zlib',
   ];
 
-  /** Assembled, because this file imports two of the very things it forbids the app from importing. */
+  /**
+   * Assembled, under this file's one rule — see the header.
+   *
+   * This scan's corpus no longer reaches this file, so nothing forces it here today. It is what the
+   * network scan below needs, that one walking the whole package; keeping every needle assembled is
+   * cheaper than deciding per scan, and it is what stops a corpus that moves again from quietly
+   * turning a needle into its own subject.
+   */
   const NODE_PREFIX = `${'node'}:`;
   const CORE_PACKAGE = `@${'quorum'}/core`;
 
-  test('the walk finds shipping files at all', () => {
-    // The positive control. Every failure mode of a walk hides files rather than inventing them, so
-    // a clause that had lost its subject would report success over an empty list.
-    expect(shippingFiles().length, 'the walk finds no shipping source — this scan proves nothing')
-      .toBeGreaterThan(5);
-    expect(shippingFiles().map(([name]) => name)).toContain('app.tsx');
+  test('the corpus is every file under src, and not a filtered subset of it', () => {
+    // The positive control, and the clause that discriminates against the narrowing this scan
+    // carried until run-2 iteration 2's review. Every failure mode of a walk hides files rather
+    // than inventing them, so a corpus that had lost part of its subject would report success.
+    const names = sourceFiles().map(([name]) => name);
+    expect(names.length, 'the walk finds no source — this scan proves nothing').toBeGreaterThan(5);
+    // The two that discriminate: a corpus filtered to "what ships" drops the first, and one
+    // filtered to TypeScript drops the second. Both are files AC-5's wording reaches.
+    expect(names, 'a test file under src is outside the corpus').toContain('shell.test.ts');
+    expect(names, 'a non-TypeScript file under src is outside the corpus').toContain('theme.css');
+    expect(names).toContain('app.tsx');
   });
 
   test('no Node builtin, under either spelling', () => {
-    for (const [name, text] of shippingFiles()) {
+    for (const [name, text] of sourceFiles()) {
       for (const specifier of importSpecifiers(text)) {
         expect(specifier.startsWith(NODE_PREFIX), `${name} imports ${specifier}`).toBe(false);
         expect(BUILTINS.includes(specifier), `${name} imports ${specifier}`).toBe(false);
@@ -81,7 +109,7 @@ describe('AC-5 — no shipping file reaches for something a browser does not hav
     // `@quorum/core` opens files, spawns processes and runs git. A browser bundle that reached it
     // would not merely be large; it would be a second implementation of the boundary
     // `04-architecture.md` draws, on the wrong side of a network.
-    for (const [name, text] of shippingFiles()) {
+    for (const [name, text] of sourceFiles()) {
       for (const specifier of importSpecifiers(text)) {
         expect(specifier === CORE_PACKAGE || specifier.startsWith(`${CORE_PACKAGE}/`), `${name} imports ${specifier}`)
           .toBe(false);

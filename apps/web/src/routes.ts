@@ -4,7 +4,7 @@
  * Everything else is built FROM these: `router.ts` matches against {@link ROUTES}, `shell.tsx`
  * draws {@link RAIL}, and `views.tsx` takes a placeholder's whole content from the row it was
  * matched to. A component that wrote a path of its own would be a second register free to drift,
- * so `src/routes.test.ts` scans the components and refuses any route-path literal these tables do
+ * so `test/routes.test.ts` scans the components and refuses any route-path literal these tables do
  * not hold.
  *
  * THE M4 PATHS ARE DECLARED NOW, ahead of the tickets that fill them, for the same reason: four

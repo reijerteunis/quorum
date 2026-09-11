@@ -15,7 +15,13 @@
  * `turbo.json` declares the `apps` test glob with that same suffix and nothing wider, and Vitest's
  * include would run a `.test.tsx` regardless — so one named that way would execute while being
  * invisible to the discovery guard AND hashed by no turbo input. It is bounded by this naming rule
- * and registered as R-3 rather than closed here, `testFilesIn` being `packages/core`'s surface.
+ * and registered as R-3 rather than closed here, `testFilesIn` being `packages/core`'s surface;
+ * `test/package.test.ts` is where that rule is asserted rather than only stated.
+ *
+ * THIS IS ONE OF TWO TEST FILES LEFT UNDER `src/`, and it is here because it reaches for nothing a
+ * browser does not have: a document, React, and the app's own modules. The four that read the
+ * filesystem live in `test/`, because AC-5's subject is every file under `src` — see
+ * `test/source.test.ts`'s header.
  */
 import { createElement, act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
