@@ -116,6 +116,15 @@ export interface RunView {
   readonly refusal: Refusal | null;
   /** The questions this run is waiting on an answer for, in the order they were asked. */
   readonly gates: readonly GateQuestionEvent[];
+  /**
+   * How many subscribers this run's fan-out is currently serving.
+   *
+   * Added by Q-0118 because the transport's claim that a disconnected client releases its
+   * subscription was **unobservable**, so the test asserting it could not fail — the review found
+   * it asserting only that the run still existed, which is true either way. A count is also what a
+   * UI wants, so this is observability rather than a test hook.
+   */
+  readonly watchers: number;
 }
 
 /** What starting a run produced: a run under way, or a refusal naming the condition `core` gave. */
@@ -235,6 +244,7 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     failure: record.failure,
     refusal: record.refusal,
     gates: gates.pending(record.handle),
+    watchers: record.broadcast?.size ?? 0,
   });
 
   /** One run's bookkeeping under a fresh handle, registered before anything can fail. */

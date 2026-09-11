@@ -9,8 +9,10 @@
 import { serve as serveNode } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 
+import type { Project } from '@quorum/core';
+
 import { createApp } from './http.js';
-import type { RunHost } from './host.js';
+import { createRunHost, type RunHost } from './host.js';
 import { eventMessage, missedMessage } from './http.js';
 
 /**
@@ -23,6 +25,31 @@ import { eventMessage, missedMessage } from './http.js';
  * only use is to make the product unsafe is not a feature. Q-0013 OQ-2.
  */
 export const BIND_HOSTNAME = '127.0.0.1';
+
+/**
+ * How many events a run retains for a subscriber that arrives after it started.
+ *
+ * **This child chooses it, because this child is what creates a late joiner** (Q-0013 OQ-1): a
+ * browser opened after a run began, or reopened after a refresh. Q-0013 left the number to whoever
+ * built the thing that produces one.
+ *
+ * 500 is a bound rather than a guess about typical traces: an unbounded buffer is a leak
+ * proportional to trace verbosity, and a buffer small enough to be routinely exceeded makes the
+ * `missed` message the common case rather than the exception. What matters more than the number is
+ * that exceeding it is **said** — a late subscriber is told the count it missed and never handed a
+ * silently truncated stream.
+ */
+export const DEFAULT_RETENTION = 500;
+
+/**
+ * The largest number of bytes a subscriber may leave unsent before its socket is closed.
+ *
+ * A browser that stops reading does not stop the run: the host's fan-out keeps producing and this
+ * socket's buffer grows without limit, so one paused tab becomes the daemon's memory. The bound is
+ * per subscriber, measurable (`bufferedAmount`), and its outcome is explicit — 1013 *"try again
+ * later"*, which is the protocol's own way of saying *you, not the run*.
+ */
+export const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 
 /** A listening server, and the way to stop it. */
 export interface Listening {
@@ -73,14 +100,25 @@ export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening
           return;
         }
         release = () => { subscription.close(); };
-        const missed = missedMessage(subscription.missed);
-        if (missed) ws.send(missed);
         // Detached deliberately — `onOpen` may not block — but never unhandled. A `send` on a
         // socket the client closed under us throws, and an unhandled rejection in a daemon is a
         // process-level crash for one disconnected browser.
+        //
+        // The `missed` send is INSIDE this try, not above it: a peer that disconnected between the
+        // upgrade and the first write made it throw where nothing was catching, and the release in
+        // `finally` never ran. Review round 2.
         void (async () => {
           try {
-            for await (const event of subscription.events) ws.send(eventMessage(event));
+            const missed = missedMessage(subscription.missed);
+            if (missed) ws.send(missed);
+            for await (const event of subscription.events) {
+              ws.send(eventMessage(event));
+              const buffered = (ws.raw as { bufferedAmount?: number } | undefined)?.bufferedAmount ?? 0;
+              if (buffered > MAX_BUFFERED_BYTES) {
+                ws.close(1013, `this subscriber is ${String(buffered)} bytes behind and is being dropped`);
+                return;
+              }
+            }
             // The stream ended, so the run did. Normal closure, and the terminal event has already
             // been sent — a client learns the outcome from the event, never from the close code.
             ws.close(1000, 'the run ended');
@@ -117,5 +155,30 @@ export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening
     close: () => new Promise<void>((resolve, reject) => {
       server.close((error) => { if (error) reject(error); else resolve(); });
     }),
+  };
+}
+
+/**
+ * The daemon: a project in, a listening server out.
+ *
+ * The one place that chooses a retention capacity, which is what makes {@link DEFAULT_RETENTION} a
+ * decision rather than an unused constant. `serve` still takes a host, because a caller that wants
+ * to drive one directly — every test in this package — should not have to go through a socket.
+ *
+ * @param options the project to run against, the retention capacity, and the port to ask for.
+ * @returns the listening server, and the host it is serving.
+ */
+export async function createDaemon(
+  { project, port = 0, retain = DEFAULT_RETENTION }: { project: Project; port?: number; retain?: number },
+): Promise<Listening & { readonly host: RunHost }> {
+  const host = createRunHost({ project, retain });
+  const server = await serve({ host, port });
+  return {
+    port: server.port,
+    host,
+    // Both, in this order: the host releases every live run through the abandonment path, and only
+    // then does the socket stop answering. Closing the socket first would leave a run finalising
+    // with nowhere to report, which is the shape Q-0013's shutdown exists to avoid.
+    close: async () => { await host.shutdown(); await server.close(); },
   };
 }

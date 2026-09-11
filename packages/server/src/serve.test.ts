@@ -9,13 +9,13 @@ import { afterAll, describe, expect, test } from 'vitest';
 
 import { createRunHost } from './host.js';
 import { BIND_HOSTNAME, serve } from './serve.js';
-import { fixture, removeTempDirs, TICKET_ID } from '../test/fixture.js';
+import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
 
 /** A listening server over a fresh repository, and the way to stop it. */
-async function listening() {
-  const project = fixture();
+async function listening(options: Parameters<typeof fixture>[0] = {}) {
+  const project = fixture(options);
   const host = createRunHost({ project: project.project, retain: 100 });
   const server = await serve({ host });
   return { project, host, server, url: `http://${BIND_HOSTNAME}:${String(server.port)}` };
@@ -169,24 +169,32 @@ describe('Q-0118 — the WebSocket route carries a real run to a real client', (
     // disconnected browser stayed attached to the fan-out for as long as the run lasted. Asserted
     // through the host's own count rather than through the socket, because the socket is the thing
     // that went away.
-    const { project, server, url, host } = await listening();
+    // A GATED flow, because the claim is about a run that is still live: a one-step dry walk is over
+    // in milliseconds and its fan-out is gone before a socket can be counted, which is how the first
+    // version of this test measured zero watchers and looked like a leak that was not there.
+    const { project, server, url, host } = await listening({ flow: GATED_FLOW });
     try {
       const started = await fetch(`${url}/runs`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID, dry: true }),
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID }),
       });
       const run = await started.json() as { handle: string };
       const socket = new WebSocket(`${url.replace('http://', 'ws://')}/runs/${run.handle}/events`);
       await new Promise<void>((resolve) => { socket.addEventListener('open', () => { resolve(); }); });
       const closed = new Promise<void>((resolve) => { socket.addEventListener('close', () => { resolve(); }); });
+      // Before: the fan-out is serving this socket. Asserted so the release below has a subject —
+      // review round 2 found this test asserting only that the run still existed, which is true
+      // whether or not anything was released, so it could not fail on its own claim.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(host.view(run.handle)?.watchers, 'the socket never reached the fan-out').toBeGreaterThan(0);
+
       socket.close();
       await closed;
       // Give the server's own close handler a turn; the assertion is that it RUNS, not that it is
       // synchronous with the client's close.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      const view = host.view(run.handle);
-      expect(view, 'the run vanished').not.toBeNull();
+      expect(host.view(run.handle)?.watchers, 'a disconnected client is still attached to the fan-out').toBe(0);
     } finally {
       await host.shutdown();
       await server.close();

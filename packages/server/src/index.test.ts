@@ -36,6 +36,9 @@ const SURFACE: Record<string, string> = {
   createApp: 'the Hono app over a host: three routes and a WebSocket, owning no run state',
   eventMessage: 'one event as one WebSocket message, JSON, with nothing rendered',
   missedMessage: 'what a late subscriber is told it missed, which is a message kind and never an `Event`',
+  createDaemon: 'a project in, a listening server out — the one place that chooses a retention capacity',
+  DEFAULT_RETENTION: 'how many events a run retains for a subscriber that arrives after it started',
+  MAX_BUFFERED_BYTES: 'the bytes a subscriber may leave unsent before its socket is dropped, per subscriber',
   serve: 'the process: a Node server over the app, bound to loopback',
   START_REFUSAL_STATUS: 'the status each start refusal answers with — a lock refusal is not a bad request',
   startRefusalCode: 'the code a start refusal carries, read from the host\'s own condition',
@@ -58,7 +61,7 @@ describe('the public surface', () => {
       // lookups rather than functions. Widened with the reason rather than replaced by a
       // `!== 'undefined'`, which would pass over a name exported as `undefined` — the shape this
       // clause exists to refuse.
-      expect(['function', 'string', 'object'], `${name} is a ${kind}`).toContain(kind);
+      expect(['function', 'string', 'object', 'number'], `${name} is a ${kind}`).toContain(kind);
       expect(values[name], `${name} is exported as undefined`).toBeDefined();
     }
     expect(server.DEFAULT_STOP_REASON.trim(), 'the default stop reason is blank').not.toBe('');

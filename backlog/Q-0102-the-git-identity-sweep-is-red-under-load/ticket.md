@@ -455,3 +455,25 @@ otherwise inherit the accidental default again, which is precisely how this arri
 3. **The feedback loop is now named.** Every source-walking guard this repository adds — and it adds
    them constantly — raises the load that consumes this headroom. A budget bought 5× today; the
    question that stays open is what stops it being consumed again in six months.
+
+## Third file in the cluster, sighted 2026-09-11 during Q-0118
+
+**`packages/core/src/adapters/exec.test.ts`** — *"a CLI that exits before reading its prompt fails
+its step … the truncated prompt is recorded rather than swallowed"* (Q-0063's EPIPE guard) failed
+once under full-workspace load and then passed **3 of 3 in isolation and 3 of 3 more in the full
+suite** at the same commit. Recorded as a sighting rather than a measurement: **the failure message
+was not captured**, so whether it was a timeout or something else is unknown and is deliberately not
+guessed at.
+
+**What it changes about this ticket.** The cluster is now four files —
+`worktree-lifecycle.test.ts` and `undecided.test.ts` (the original two, 18 and 4 synchronous `git`
+spawns), `adapters/codex.test.ts` (four sequential subprocess spawns, the one the 20 s budget was
+measured against) and this one. That is the *"third measured instance"* threshold met a second time
+over, and it widens what the files have in common: **all four do `await`ed work that leaves the
+process — git, a spawn, a pipe — under a seven-package parallel run.**
+
+**It also means the 20 s budget did not close the class**, only the one instance it was measured
+against. If this sighting was a timeout it happened at 20 s rather than 5, which would be a
+different and worse story; if it was not, the diagnosis in this ticket is incomplete. **Capturing
+the message is the next measurement**, and GO-1 still binds: establish the rate at a fixed commit
+before repairing.

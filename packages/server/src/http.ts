@@ -88,7 +88,10 @@ export function startRefusalCode(condition: string): StartRefusalCode {
   if (condition.includes('run lock refused')) return 'lock-held';
   if (condition.includes('closed and starts no further run')) return 'host-closed';
   if (condition.includes('consumes')) return 'not-runnable';
-  if (condition.includes('no flow named') || condition.includes('no such flow')) return 'no-such-flow';
+  // Measured rather than guessed: `loadFlowByName` does not compose a sentence, it lets Node's own
+  // ENOENT through — `no such file or directory, open '<harness>/flows/<name>.yaml'`. Matching on a
+  // phrase nobody writes made this branch unreachable, which review round 2 found.
+  if (/flows[/\\][^/\\]+\.ya?ml/.test(condition)) return 'no-such-flow';
   if (condition.includes('ticket')) return 'no-such-ticket';
   return 'refused';
 }

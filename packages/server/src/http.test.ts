@@ -107,8 +107,15 @@ describe('Q-0118 — a start refusal is distinguishable from a bad request and f
     expect(startRefusalCode('run lock refused: ticket T-0001 is held by run #7')).toBe('lock-held');
     expect(startRefusalCode('the run host is closed and starts no further run')).toBe('host-closed');
     expect(startRefusalCode('ticket T-0001 is at stage "draft", flow "chore" consumes "requirements"')).toBe('not-runnable');
-    expect(startRefusalCode('no flow named probe')).toBe('no-such-flow');
+    // The condition the loader ACTUALLY produces, measured rather than invented: `loadFlowByName`
+    // composes no sentence and lets Node's ENOENT through. The phrase this row used to carry — "no
+    // flow named probe" — is written nowhere, so the branch it covered was unreachable.
+    expect(startRefusalCode("ENOENT: no such file or directory, open '/r/harness/flows/probe.yaml'")).toBe('no-such-flow');
     expect(startRefusalCode('no ticket T-0404')).toBe('no-such-ticket');
+    // And a condition this transport does not model is `refused`, never the most common guess: a
+    // fall-through that answered `no-such-ticket` would report an undiagnosed failure as a fact.
+    expect(startRefusalCode('the disk caught fire')).toBe('refused');
+    expect(START_REFUSAL_STATUS.refused, 'an unmodelled refusal is neither the client\'s fault nor a crash').toBe(422);
   });
 });
 
