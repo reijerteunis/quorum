@@ -39,6 +39,7 @@ const SURFACE: Record<string, string> = {
   createDaemon: 'a project in, a listening server out — the one place that chooses a retention capacity',
   DEFAULT_RETENTION: 'how many events a run retains for a subscriber that arrives after it started',
   MAX_BUFFERED_BYTES: 'the bytes a subscriber may leave unsent before its socket is dropped, per subscriber',
+  overBuffered: 'whether a subscriber has left too much unsent to keep — the bound as a testable unit',
   serve: 'the process: a Node server over the app, bound to loopback',
   START_REFUSAL_STATUS: 'the status each start refusal answers with — a lock refusal is not a bad request',
   startRefusalCode: 'the code a start refusal carries, read from the host\'s own condition',

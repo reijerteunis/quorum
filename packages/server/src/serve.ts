@@ -51,6 +51,18 @@ export const DEFAULT_RETENTION = 500;
  */
 export const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Whether a subscriber that has left `buffered` bytes unsent should be dropped.
+ *
+ * A function rather than an inline comparison so the bound has a subject a test can reach: the
+ * inline form could only be exercised by manufacturing a slow socket, which review round 3
+ * correctly reported as untested. The handler is then one call, and reverting the ceiling turns
+ * this red rather than turning nothing red.
+ */
+export function overBuffered(buffered: number): boolean {
+  return buffered > MAX_BUFFERED_BYTES;
+}
+
 /** A listening server, and the way to stop it. */
 export interface Listening {
   readonly port: number;
@@ -114,7 +126,7 @@ export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening
             for await (const event of subscription.events) {
               ws.send(eventMessage(event));
               const buffered = (ws.raw as { bufferedAmount?: number } | undefined)?.bufferedAmount ?? 0;
-              if (buffered > MAX_BUFFERED_BYTES) {
+              if (overBuffered(buffered)) {
                 ws.close(1013, `this subscriber is ${String(buffered)} bytes behind and is being dropped`);
                 return;
               }

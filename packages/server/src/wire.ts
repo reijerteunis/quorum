@@ -56,10 +56,16 @@ export const START_REFUSAL_STATUS = {
   'no-such-ticket': 404,
   'no-such-flow': 404,
   'not-runnable': 409,
-  // The condition this transport does not model. **422** rather than 400 or 500: the request was
-  // well formed and the server is healthy, and what refused it is something neither the client nor
-  // this classifier can name — so it is neither the client's fault nor a crash to report.
-  refused: 422,
+  // The condition this transport does not model. **500**, and the reasoning changed under review.
+  //
+  // It was 422 on the ground that "the request was well formed and the server is healthy" — and the
+  // second half of that is a claim nobody checked. What reaches this row is a start failure whose
+  // condition matched no pattern, which is by definition one the server did not anticipate; it may
+  // be a broken flow file, an unreadable harness or a defect here. Telling a client its request was
+  // *unprocessable* asserts the fault is theirs. 500 asserts only that something went wrong on this
+  // side, which is the one thing that is certainly true, and the condition travels with it so a
+  // human reads what actually happened. Review round 3.
+  refused: 500,
 } as const;
 
 export type StartRefusalCode = keyof typeof START_REFUSAL_STATUS;

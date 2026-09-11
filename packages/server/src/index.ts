@@ -33,7 +33,7 @@ export type { Refusal } from './refusal.js';
  */
 export { createApp, startRequestOf, startRefusalCode, eventMessage, missedMessage } from './http.js';
 export type { AppOptions } from './http.js';
-export { serve, createDaemon, BIND_HOSTNAME, DEFAULT_RETENTION, MAX_BUFFERED_BYTES } from './serve.js';
+export { serve, createDaemon, overBuffered, BIND_HOSTNAME, DEFAULT_RETENTION, MAX_BUFFERED_BYTES } from './serve.js';
 export type { Listening, ServeOptions } from './serve.js';
 export {
   ANSWER_REFUSAL_STATUS, badRequest, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS, wireRefusalOf, wireRunOf,

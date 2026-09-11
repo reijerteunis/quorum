@@ -88,10 +88,14 @@ export function startRefusalCode(condition: string): StartRefusalCode {
   if (condition.includes('run lock refused')) return 'lock-held';
   if (condition.includes('closed and starts no further run')) return 'host-closed';
   if (condition.includes('consumes')) return 'not-runnable';
-  // Measured rather than guessed: `loadFlowByName` does not compose a sentence, it lets Node's own
-  // ENOENT through — `no such file or directory, open '<harness>/flows/<name>.yaml'`. Matching on a
-  // phrase nobody writes made this branch unreachable, which review round 2 found.
-  if (/flows[/\\][^/\\]+\.ya?ml/.test(condition)) return 'no-such-flow';
+  // Measured rather than guessed: `loadFlowByName` composes no sentence and lets Node's own ENOENT
+  // through — `ENOENT: no such file or directory, open '<harness>/flows/<name>.yaml'`.
+  //
+  // **Both halves are required**, which review round 3 found: a path alone matches an EACCES on a
+  // flow file, or a YAML parse error naming one, and answering `no-such-flow` to either would tell
+  // a client the flow is missing when it is there and broken. A condition that names a flow file
+  // for any other reason falls through to `refused`, which is the honest answer.
+  if (/ENOENT/.test(condition) && /flows[/\\][^/\\]+\.ya?ml/.test(condition)) return 'no-such-flow';
   if (condition.includes('ticket')) return 'no-such-ticket';
   return 'refused';
 }

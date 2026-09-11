@@ -115,7 +115,13 @@ describe('Q-0118 — a start refusal is distinguishable from a bad request and f
     // And a condition this transport does not model is `refused`, never the most common guess: a
     // fall-through that answered `no-such-ticket` would report an undiagnosed failure as a fact.
     expect(startRefusalCode('the disk caught fire')).toBe('refused');
-    expect(START_REFUSAL_STATUS.refused, 'an unmodelled refusal is neither the client\'s fault nor a crash').toBe(422);
+    // 500 rather than 422, changed under review round 3: 422 said "the request was unprocessable",
+    // which asserts the fault is the client's about a failure nobody diagnosed. 500 asserts only
+    // that something went wrong on this side, which is the one thing certainly true — and the
+    // condition travels with it, so a human reads what actually happened.
+    expect(START_REFUSAL_STATUS.refused, 'an unmodelled refusal blamed the client').toBe(500);
+    // And a flow file that exists but cannot be read is NOT reported as a missing flow.
+    expect(startRefusalCode("EACCES: permission denied, open '/r/harness/flows/probe.yaml'")).toBe('refused');
   });
 });
 

@@ -8,7 +8,7 @@
 import { afterAll, describe, expect, test } from 'vitest';
 
 import { createRunHost } from './host.js';
-import { BIND_HOSTNAME, serve } from './serve.js';
+import { BIND_HOSTNAME, createDaemon, DEFAULT_RETENTION, MAX_BUFFERED_BYTES, overBuffered, serve } from './serve.js';
 import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
@@ -199,5 +199,54 @@ describe('Q-0118 — the WebSocket route carries a real run to a real client', (
       await host.shutdown();
       await server.close();
     }
+  });
+});
+
+describe('Q-0118 — the two defaults this child decides, each with a subject', () => {
+  test('the backpressure bound drops a subscriber that is behind, and keeps one that is not', () => {
+    // Review round 3: the ceiling was an inline comparison no test could reach without
+    // manufacturing a slow socket, so reverting it turned nothing red. As a function it has a
+    // subject — and the boundary is asserted on both sides, because a `>=` where a `>` belongs is
+    // the off-by-one this shape invites.
+    expect(overBuffered(0), 'a subscriber that is up to date was dropped').toBe(false);
+    expect(overBuffered(MAX_BUFFERED_BYTES), 'a subscriber exactly at the bound was dropped').toBe(false);
+    expect(overBuffered(MAX_BUFFERED_BYTES + 1), 'a subscriber past the bound was kept').toBe(true);
+    // The bound is a real size rather than a placeholder: a ceiling of zero drops every subscriber
+    // on its first event, and one of Infinity is the leak it exists to prevent.
+    expect(MAX_BUFFERED_BYTES).toBeGreaterThan(64 * 1024);
+    expect(Number.isFinite(MAX_BUFFERED_BYTES)).toBe(true);
+  });
+
+  test('createDaemon retains events, so a subscriber that arrives after the run is told what it missed', async () => {
+    // Review round 3: `createDaemon` and `DEFAULT_RETENTION` had no behavioural test, so reverting
+    // the default to zero left the suite green while every late joiner silently lost the run. This
+    // asserts the retention through the daemon rather than the constant, which is what makes it a
+    // decision rather than a number in a file.
+    const project = fixture();
+    const daemon = await createDaemon({ project: project.project });
+    try {
+      const url = `http://${BIND_HOSTNAME}:${String(daemon.port)}`;
+      const started = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID, dry: true }),
+      });
+      const run = await started.json() as { handle: string };
+      // Subscribe AFTER the run: with no retention this socket receives nothing at all, which is
+      // exactly what the default exists to prevent.
+      const { messages } = await collect(url, run.handle);
+      expect(messages.length, 'a subscriber arriving after the run received nothing').toBeGreaterThan(0);
+      expect(DEFAULT_RETENTION, 'a retention of zero retains nothing').toBeGreaterThan(0);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  test('createDaemon closes the host before the socket, and the port stops answering', async () => {
+    const project = fixture();
+    const daemon = await createDaemon({ project: project.project });
+    const url = `http://${BIND_HOSTNAME}:${String(daemon.port)}`;
+    await daemon.close();
+    await expect(fetch(`${url}/runs`, { method: 'POST', body: '{}' })).rejects.toThrow();
   });
 });
