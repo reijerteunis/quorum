@@ -16,7 +16,13 @@ export default tseslint.config(
     ignores: ['**/node_modules/**', '**/dist/**', '**/.turbo/**', '**/coverage/**'],
   },
   {
-    files: ['packages/**/*.ts', 'apps/**/*.ts'],
+    // `apps/**/*.tsx` is here because a flat-config `**/*.ts` pattern does NOT match `.tsx`, so
+    // until Q-0014 these three rules reached no line of the app — the largest body of new source in
+    // M3 — while `lint` reported green over it. That is Q-0069's finding on a new corpus: `tsc
+    // --noEmit` covers `.tsx` once `jsx` is configured, so `typecheck` was never the gap and `lint`
+    // silently was. This widens a corpus and changes no policy: no rule is added, removed or
+    // downgraded, and nothing is added to `ignores`.
+    files: ['packages/**/*.ts', 'apps/**/*.ts', 'apps/**/*.tsx'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
