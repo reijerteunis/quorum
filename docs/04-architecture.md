@@ -62,7 +62,36 @@ Since Q-0096 the package publishes that API through a conditional `exports` map,
 
 ### `packages/server`
 
-**Since Q-0013 this package is a library, and the process is still proposed.** What exists is the
+**Since Q-0118 this package is the daemon.** `serve()` opens a socket on `127.0.0.1` and nothing
+else — not configurable, because there is no authentication of any kind and the process starts agent
+runs and writes to a git repository, so a non-loopback bind puts that on a network. This document
+said *"localhost-only by default"* from 2026-08-22; the *by default* is gone, a flag whose only use
+is to make the product unsafe not being a feature.
+
+**Three routes and one socket, over the host below.** `POST /runs` starts, `POST /runs/:id/gate`
+answers, `POST /runs/:id/stop` stops, and `GET /runs/:id/events` upgrades to a WebSocket carrying one
+event per message as JSON. `:id` is the host's handle. **The transport owns no run state**: every
+route turns a request into one host call and one status, and the statuses are a table rather than a
+decision per route — a lock refusal is **409** and a missing ticket **404**, because a client that
+cannot tell them apart cannot tell *try again shortly* from *you asked for something that is not
+there*.
+
+**A body is validated before the host is reached, and a refused request starts nothing.** Unknown
+fields are refused rather than ignored, and the offender is quoted. A refusal carries three fields
+with three different authorities: a `code` a client switches on, the `condition` in `core`'s own
+words — *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07) — and
+a `remedy`, which is this surface's and is usually `null`.
+
+**Nothing on the wire is rendered.** A late subscriber is told how many events it missed, in a
+message kind that is not an `Event`, so a client parsing with `eventSchema` never meets a value it
+cannot classify. That is the WebSocket end of the escape-byte rule stated below.
+
+**It declares three external dependencies** — `hono`, `@hono/node-server` and `@hono/node-ws` — with
+no decision entry, because this document chose Hono on 2026-08-22 and executing a landed document is
+not changing the architecture. The Node adapter is pinned to `1.x` by the WebSocket package's peer
+range, which is load-bearing rather than incidental.
+
+**The run host, which Q-0013 built and this serves.** What exists is the
 **run host**: an in-process registry that starts a run against `core`'s lazy stream, consumes that
 stream exactly once and fans it out to however many watchers are attached, holds the pending gates
 and settles an answer that arrived somewhere else, stops one run through the `AbortSignal` it was

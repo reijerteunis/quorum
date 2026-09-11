@@ -25,6 +25,24 @@ const SURFACE: Record<string, string> = {
   NO_PROJECT_REMEDY: 'the one remedy this surface composes, for a project that is not there',
   openProject: 'the one site where a `core` failure to open a project becomes a refusal',
   refusalFor: 'the one site that decides whether this surface has a remedy to add',
+
+  // Q-0118's transport. The routing is deliberately NOT here: `createApp` is the whole of what a
+  // caller composes, and a consumer reaching a route handler directly would be coding against an
+  // arrangement rather than a contract. What Q-0014 codes against is the three wire shapes and the
+  // status tables, which is why those are exported and the Hono app's internals are not.
+  ANSWER_REFUSAL_STATUS: 'the status each gate-answer refusal answers with, as a table rather than a scattering',
+  badRequest: 'a refusal this transport raised before the host was reached at all',
+  BIND_HOSTNAME: 'the only address the server binds, and not configurable — Q-0013 OQ-2',
+  createApp: 'the Hono app over a host: three routes and a WebSocket, owning no run state',
+  eventMessage: 'one event as one WebSocket message, JSON, with nothing rendered',
+  missedMessage: 'what a late subscriber is told it missed, which is a message kind and never an `Event`',
+  serve: 'the process: a Node server over the app, bound to loopback',
+  START_REFUSAL_STATUS: 'the status each start refusal answers with — a lock refusal is not a bad request',
+  startRefusalCode: 'the code a start refusal carries, read from the host\'s own condition',
+  startRequestOf: 'the one place a request body becomes a `StartRequest`, or the refusal saying why not',
+  STOP_REFUSAL_STATUS: 'the status each stop refusal answers with',
+  wireRefusalOf: 'a host refusal carried over the wire under a code a client can switch on',
+  wireRunOf: 'a started run, narrowed to what crosses the wire',
 };
 
 describe('the public surface', () => {
@@ -36,7 +54,12 @@ describe('the public surface', () => {
     const values = server as unknown as Record<string, unknown>;
     for (const name of Object.keys(SURFACE)) {
       const kind = typeof values[name];
-      expect(['function', 'string'], `${name} is a ${kind}`).toContain(kind);
+      // `object` joined the three on 2026-09-11 with Q-0118's status tables, which are frozen
+      // lookups rather than functions. Widened with the reason rather than replaced by a
+      // `!== 'undefined'`, which would pass over a name exported as `undefined` — the shape this
+      // clause exists to refuse.
+      expect(['function', 'string', 'object'], `${name} is a ${kind}`).toContain(kind);
+      expect(values[name], `${name} is exported as undefined`).toBeDefined();
     }
     expect(server.DEFAULT_STOP_REASON.trim(), 'the default stop reason is blank').not.toBe('');
     expect(server.NO_PROJECT_REMEDY.trim(), 'the remedy is blank').not.toBe('');

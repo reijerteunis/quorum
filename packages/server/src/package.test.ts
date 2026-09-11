@@ -78,21 +78,52 @@ const packageFiles = (): [string, string][] => fs
   .readdirSync(PACKAGE, { withFileTypes: true, recursive: true })
   .filter((entry) => entry.isFile())
   .map((entry) => path.join(entry.parentPath, entry.name))
-  .filter((file) => !path.relative(PACKAGE, file).split(path.sep).includes('node_modules'))
+  // `node_modules` because it is somebody else's code; `.turbo` because it is not code at all —
+  // it holds the CAPTURED OUTPUT of previous task runs, gitignored and present only on a machine
+  // that has run them. Every clause below then had a verdict that depended on whether the suite had
+  // run before: AC-14's search for `testTimeout` found the word inside a log of a run that had
+  // FAILED mentioning it. *"A test's verdict is a property of the commit, not of the checkout"*
+  // (2026-08-30), found by the cross-vendor review of Q-0118 rather than by a red CI, because a
+  // fresh clone has no `.turbo` and passes.
+  .filter((file) => {
+    const segments = path.relative(PACKAGE, file).split(path.sep);
+    return !segments.includes('node_modules') && !segments.includes('.turbo');
+  })
   .map((file) => [path.relative(PACKAGE, file), fs.readFileSync(file, 'utf8')] as [string, string])
   .filter(([name]) => name !== path.join('src', GUARD));
 
 describe('AC-1 — the manifest declares what it depends on and nothing more', () => {
   const own = manifest(PACKAGE);
 
-  test('the two workspace dependencies, and no external one', () => {
-    // No Hono, no node adapter, no WebSocket library: the transport is Q-0118's, and the dependency
-    // decision deliberately does not ride on the half that carries the risk.
+  test('the two workspace dependencies, and the three the transport needs', () => {
+    // Q-0013 asserted NO external dependency here, because the dependency decision deliberately did
+    // not ride on the half that carried the risk. Q-0118 is the half that spends it, and the three
+    // arrive with no decision entry: `docs/04-architecture.md` chose Hono on 2026-08-22 and
+    // executing a landed document is not changing the architecture (Q-0013 OQ-3).
+    //
+    // Each one's justification, which `.claude/rules/engineering.md` asks for in a line:
+    //   hono              — the HTTP framework that document names.
+    //   @hono/node-server — its Node adapter; Hono targets a Web-standard runtime and Node is not one.
+    //   @hono/node-ws     — the WebSocket half of that adapter, pinned to it by a peer range.
+    //
+    // Pinned exactly, and the pin is load-bearing: `@hono/node-ws@1.3.1` declares a peer on
+    // `@hono/node-server@^1`, so installing the 2.x that `npm view` reports as latest leaves an
+    // unmet peer. Measured on the way in rather than discovered by a user.
     expect(own.dependencies).toStrictEqual({
+      '@hono/node-server': '^1.19.11',
+      '@hono/node-ws': '^1.3.1',
       '@quorum/core': 'workspace:*',
       '@quorum/shared': 'workspace:*',
+      hono: '^4.13.7',
     });
     expect(own.devDependencies).toBe(undefined);
+  });
+
+  test('the node adapter satisfies the WebSocket package\'s peer range, which is why it is pinned to 1.x', () => {
+    // The claim above, executable. A later bump of `@hono/node-server` to 2.x reinstates the unmet
+    // peer this pin exists to avoid, and would do it silently: pnpm warns and installs anyway.
+    const declared = (own.dependencies ?? {})['@hono/node-server'] ?? '';
+    expect(declared.startsWith('^1.'), `@hono/node-server is ${declared}, which @hono/node-ws@1 does not accept`).toBe(true);
   });
 
   test('both are real — the lockfile carries the package and its two links', () => {

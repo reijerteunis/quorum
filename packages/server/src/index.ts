@@ -23,3 +23,19 @@ export type {
 } from './host.js';
 export { NO_PROJECT_REMEDY } from './refusal.js';
 export type { Refusal } from './refusal.js';
+
+/**
+ * The transport, added by Q-0118: the Hono app over a host, and the process that serves it.
+ *
+ * Exported beside the host rather than instead of it — `createApp` is what a test drives without a
+ * socket, and `serve` is what opens one. Q-0014 codes against {@link WireRefusal}, {@link WireRun}
+ * and {@link WireMessage}, which is why the wire shapes are on this surface and the routing is not.
+ */
+export { createApp, startRequestOf, startRefusalCode, eventMessage, missedMessage } from './http.js';
+export type { AppOptions } from './http.js';
+export { serve, BIND_HOSTNAME } from './serve.js';
+export type { Listening, ServeOptions } from './serve.js';
+export {
+  ANSWER_REFUSAL_STATUS, badRequest, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS, wireRefusalOf, wireRunOf,
+} from './wire.js';
+export type { StartRefusalCode, WireMessage, WireRefusal, WireRun } from './wire.js';

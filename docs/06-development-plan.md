@@ -2938,7 +2938,7 @@ parked at p2 with its three written reopening thresholds.
 
 **Done when**
 - `packages/server`: start/stop runs, stream events over WebSocket, answer gates.
-- `apps/web`: projects home, backlog board, mission control (parallel trace columns, per-vendor cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions, override with reason), run history.
+- `apps/web`: projects home, backlog board, mission control (parallel trace columns, per-vendor cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions — **not** "override with reason", which `gateAnswerEnvelopeSchema` refuses and which Q-0013's gate recorded as this page's half of GO-2, corrected 2026-09-11 by Q-0118), run history.
 - `quorum open` starts daemon + browser; CLI and UI can both answer the same gate.
 - Resumable runs after daemon restart.
 
