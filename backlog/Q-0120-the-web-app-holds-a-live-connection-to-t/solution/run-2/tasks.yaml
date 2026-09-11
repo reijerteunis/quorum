@@ -1,0 +1,138 @@
+tasks:
+  - id: backend-wire-schema
+    role: backend
+    title: Implement the shared wire schema and server re-export
+    description: >-
+      Own packages/shared/src/wire.ts, packages/shared/src/index.ts, and
+      packages/server/src/wire.ts. Implement the discriminated runtime envelope schema,
+      preserve the shared barrel export, import and re-export WireMessage from the server,
+      and repair the orphaned server JSDoc. Do not touch apps/web/**, package manifests,
+      pnpm-lock.yaml, documentation, or any *.test.ts file.
+    contracts:
+      - packages/shared/src/wire.ts
+      - packages/server/src/wire.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: frontend-daemon-endpoints
+    role: frontend
+    title: Implement same-origin run-event URL construction
+    description: >-
+      Own apps/web/src/daemon-endpoints.ts only. Implement runEventsPath and
+      runEventsUrl from the complete DAEMON_ENDPOINTS register, percent-encoding the
+      handle as one segment and deriving the WebSocket scheme from the page URL. Do not
+      touch vite.config.ts, other source modules, packages/**, pnpm-lock.yaml,
+      documentation, or any *.test.ts file.
+    contracts:
+      - apps/web/src/daemon-endpoints.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: frontend-connection-state
+    role: frontend
+    title: Implement the connection reducer and state presentation
+    description: >-
+      Own apps/web/src/connection-state.ts only. Implement every reducer transition,
+      close-code precedence, terminal tracking, distinct user-facing strings and retry
+      eligibility for the contracted closed state set. Do not touch socket lifecycle,
+      React components, packages/**, documentation, or any *.test.ts file.
+    contracts:
+      - apps/web/src/connection-state.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: frontend-dev-proxy
+    role: frontend
+    title: Configure the daemon proxy and browser source resolution
+    description: >-
+      Own apps/web/vite.config.ts and apps/web/package.json only. Import
+      DAEMON_ENDPOINTS, preserve the @quorum/shared workspace dependency, proxy all five
+      prefixes with WebSocket upgrades to an object-form configured host and port
+      defaulting to 127.0.0.1:7717, document that the port is a dev-server convention,
+      and add quorum-source while spreading Vite's client defaults. Do not add URL-string
+      targets, CORS, build scripts, other source changes, packages/**, pnpm-lock.yaml, or
+      any *.test.ts file.
+    contracts:
+      - apps/web/src/daemon-endpoints.ts
+      - apps/web/package.json
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: backend-lockfile-test-input
+    role: backend
+    title: Declare the shared suite's lockfile input
+    description: >-
+      Own packages/shared/turbo.json only. Add ../../pnpm-lock.yaml to the shared test
+      task inputs so qa-red's importer assertion is cache-correct. Do not touch the
+      lockfile itself, packages/core/**, application files, documentation, or any
+      *.test.ts file.
+    contracts:
+      - contracts/Q-0120/live-connection.contract.md
+      - pnpm-lock.yaml
+    depends_on: []
+
+  - id: frontend-frame-parser
+    role: frontend
+    title: Implement staged, non-throwing frame parsing
+    description: >-
+      Own apps/web/src/frame-parser.ts only. Implement the staged parser using the shared
+      runtime envelope schema and eventSchema while preserving all six refusal identities
+      and never throwing. Do not duplicate WireMessage, change shared schemas, touch socket
+      lifecycle or React modules, or modify any *.test.ts file.
+    contracts:
+      - apps/web/src/frame-parser.ts
+      - packages/shared/src/wire.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on:
+      - backend-wire-schema
+
+  - id: frontend-run-connection
+    role: frontend
+    title: Implement one-socket lifecycle and explicit retry
+    description: >-
+      Own apps/web/src/run-connection.ts only. Implement connection replacement, stale
+      callback invalidation, parsing, reducer dispatch, event and missed-count snapshots,
+      replacement semantics for repeated missed frames, explicit retry, subscriptions and
+      idempotent disposal. Preserve events and missedCount across retry and never persist
+      browser state. Do not touch endpoint, parser or reducer implementations, React
+      components, packages/**, or any *.test.ts file.
+    contracts:
+      - apps/web/src/run-connection.ts
+      - apps/web/src/frame-parser.ts
+      - apps/web/src/connection-state.ts
+      - apps/web/src/daemon-endpoints.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: frontend-react-connection
+    role: frontend
+    title: Mount and render the run connection
+    description: >-
+      Own apps/web/src/app.tsx and apps/web/src/shell.tsx only. Create one controller for
+      a run route, replace it on handle changes, dispose it when leaving or unmounting,
+      default pageUrl to the browser location, and render the contracted state, Retry,
+      missed notice, event count and latest event identity beside the unchanged run
+      placeholder. Delete CONNECTION_PENDING while preserving separate JSDoc for AppProps
+      and App. Do not change route registration, pure connection modules, packages/**,
+      documentation, or any *.test.ts file.
+    contracts:
+      - apps/web/src/app.tsx
+      - apps/web/src/shell.tsx
+      - apps/web/src/run-connection.ts
+      - contracts/Q-0120/live-connection.contract.md
+    depends_on: []
+
+  - id: backend-connection-docs
+    role: backend
+    title: Document the shipped connection architecture and vocabulary
+    description: >-
+      Own docs/04-architecture.md, docs/GLOSSARY.md, and harness/architecture.md only.
+      Replace the obsolete no-connection text, document shared ownership and server
+      re-export of the frame union, add the dated status entry, define Connection state
+      as distinct from run state, and mark frontend as active without changing role-table
+      grants. Do not touch CLAUDE.md, docs/README.md, flows, templates, application or
+      package source, or any *.test.ts file.
+    contracts:
+      - contracts/Q-0120/live-connection.contract.md
+      - packages/shared/src/wire.ts
+    depends_on: []
