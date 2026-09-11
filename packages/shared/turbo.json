@@ -9,6 +9,7 @@
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
+        "../../pnpm-lock.yaml",
         // Q-0097 AC-24: docs.test.ts compares 04-architecture.md's description of the emit against
         // the shipped build task rather than against a literal, so a cached pass must not stand over
         // a `turbo.json` whose `outputs` has moved away from what the document says.

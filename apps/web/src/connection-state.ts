@@ -29,17 +29,96 @@ export interface ConnectionMachine {
   readonly terminalSeen: boolean;
 }
 
+/** The `requestedUrl` a state carries, if any — what `no-daemon` names and `open` inherits. */
+function requestedUrlOf(state: ConnectionState): string | undefined {
+  switch (state.kind) {
+    case 'connecting':
+    case 'live':
+    case 'no-daemon':
+      return state.requestedUrl;
+    default:
+      return undefined;
+  }
+}
+
 /** Apply one connection action using the contract's close-code precedence. */
-export function reduceConnection(_machine: ConnectionMachine, _action: ConnectionAction): ConnectionMachine {
-  throw new Error('not implemented');
+export function reduceConnection(machine: ConnectionMachine, action: ConnectionAction): ConnectionMachine {
+  switch (action.type) {
+    case 'connect':
+      return {
+        state: { kind: 'connecting', requestedUrl: action.requestedUrl },
+        opened: false,
+        terminalSeen: false,
+      };
+
+    case 'open':
+      return {
+        ...machine,
+        state: { kind: 'live', requestedUrl: requestedUrlOf(machine.state) ?? '' },
+        opened: true,
+      };
+
+    case 'event':
+      return action.event.type === 'terminal' ? { ...machine, terminalSeen: true } : machine;
+
+    case 'protocol-error':
+      return { ...machine, state: { kind: 'protocol-error', refusal: action.refusal } };
+
+    case 'error-before-open':
+      return { ...machine, state: { kind: 'no-daemon', requestedUrl: requestedUrlOf(machine.state) ?? '' } };
+
+    case 'close':
+      // Precedence: 1008 and 1013 are named regardless of what came before; a terminal event
+      // already accepted turns any later close into `ended` rather than `interrupted`, which is
+      // the whole reason `terminalSeen` is tracked rather than inspecting the close code alone.
+      if (action.code === 1008) return { ...machine, state: { kind: 'no-such-run' } };
+      if (action.code === 1013) return { ...machine, state: { kind: 'dropped' } };
+      if (machine.terminalSeen) return { ...machine, state: { kind: 'ended' } };
+      if (machine.opened) return { ...machine, state: { kind: 'interrupted', code: action.code, reason: action.reason } };
+      return { ...machine, state: { kind: 'no-daemon', requestedUrl: requestedUrlOf(machine.state) ?? '' } };
+
+    case 'leave':
+      return { state: { kind: 'idle' }, opened: false, terminalSeen: false };
+  }
 }
 
 /** Plain-language text for every connection state. */
-export function connectionStateText(_state: ConnectionState): string {
-  throw new Error('not implemented');
+export function connectionStateText(state: ConnectionState): string {
+  switch (state.kind) {
+    case 'idle':
+      return 'Not connected.';
+    case 'connecting':
+      return `Connecting to ${state.requestedUrl}…`;
+    case 'live':
+      return `Connected to ${state.requestedUrl}.`;
+    case 'no-daemon':
+      return `Could not reach the daemon at ${state.requestedUrl}. Is it running?`;
+    case 'no-such-run':
+      return 'The daemon has no run with this handle.';
+    case 'ended':
+      return 'The run has finished.';
+    case 'interrupted':
+      return `Connection interrupted (code ${state.code}${state.reason ? `: ${state.reason}` : ''}).`;
+    case 'dropped':
+      return "Fell behind the daemon's replay buffer and was disconnected.";
+    case 'protocol-error':
+      return `Protocol error: ${state.refusal}.`;
+  }
 }
 
-/** Whether the state offers an explicit retry action. */
-export function canRetry(_state: ConnectionState): boolean {
-  throw new Error('not implemented');
+/** Whether the state offers an explicit retry action — the failure states, and only those. */
+export function canRetry(state: ConnectionState): boolean {
+  switch (state.kind) {
+    case 'no-daemon':
+    case 'no-such-run':
+    case 'interrupted':
+    case 'dropped':
+    case 'protocol-error':
+      return true;
+    case 'idle':
+    case 'connecting':
+    case 'live':
+    case 'ended':
+      return false;
+  }
 }
