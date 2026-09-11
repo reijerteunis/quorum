@@ -48,7 +48,8 @@ backlog/
     solution/
       solution.md        # POINTER: read by qa-red, development and review
       tasks.yaml         # POINTER: development's fan_out reads it by literal name
-      contracts/         # interfaces, OpenAPI/JSON schemas, type stubs, migration skeletons
+      contracts/         # prose contracts, OpenAPI/JSON schemas, fixtures, migration skeletons
+                         # (a TYPED STUB goes at its final path in the owning package — 2026-09-11)
       run-2/
         draft-iter-1.md  # written by Codex, one per traversal of the review loop
         review-iter-1.md # Claude's review of it
@@ -276,8 +277,10 @@ steps:
     instructions: >
       Produce the solution document for this requirement. It MUST contain: (1) chosen
       approach and rejected alternatives, (2) a "Contracts" section listing every
-      interface, schema, stub or migration skeleton you created as files under
-      contracts/ in the repository worktree, (3) a "Tasks" section as a YAML block with
+      interface, schema, stub or migration skeleton you created in the repository
+      worktree — a TYPED STUB at its final path inside the package that will own it, and
+      everything that is not code under contracts/<ID>/ (see harness/architecture.md,
+      "Contract conventions"), (3) a "Tasks" section as a YAML block with
       id, role (frontend|backend|data), title, contracts, depends_on — every task
       references at least one contract. If a solution/review.md input is present, this
       is a revision round: address every finding explicitly.
@@ -349,7 +352,8 @@ steps:
     base: "harness/{id}/integration"
     input: { backlog: ["qa/run-{run}/scenarios-iter-*.md", solution/tasks.yaml, solution/errata.md, "qa/run-{run}/scenario-review-iter-*.md", "qa/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
     instructions: >
-      Implement automated tests for every scenario against the contracts under contracts/.
+      Implement automated tests for every scenario against the contracts the solution
+      emitted — the typed stubs at their final paths, and the documents under contracts/<ID>/.
       Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
       symbols. Do not implement production code. Summarise which files you created.
 
@@ -457,11 +461,11 @@ steps:
       findings as blocker, major, or nit. Approve exactly when no blocker or major
       survives; nits alone approve, and a nit you have is reported rather than dropped. On
       approve every finding must be a nit; on changes-requested there must be at least one
+      finding. Judge the reviews, not the code diff.
       Anything TRUE and worth recording that is NOT a claim about this change — the environment,
       an obligation that is somebody else's, a defect in code you were not sent to touch — is
       prefixed `observation: ` and carries no file:line. It contradicts no verdict, so a real one is
       never dropped and never filed as a nit. See the 2026-09-11 decision entry.
-      finding. Judge the reviews, not the code diff.
     on_fail:
       goto: flow:development
       counter: review

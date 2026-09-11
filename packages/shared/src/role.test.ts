@@ -83,7 +83,16 @@ describe('AC-6 — the role schema matches all eleven role files, including the 
  */
 function tableDisagreements(architecture: string, roleText: (role: string) => string | null): string[] {
   const problems: string[] = [];
-  const rows = [...architecture.matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
+  // Scoped to the role section rather than to the whole file, because the file legitimately holds
+  // other tables — Q-0120's gate filled the five sections that were template prose, and the contract
+  // conventions table's `| kind | format |` and `| fixture | JSON |` rows were read as roles, sending
+  // the check looking for `developer-kind.md`. A row shape is not a subject. The slice is asserted
+  // non-empty so a renamed heading fails here rather than silently matching nothing.
+  const start = architecture.indexOf('\n## Roles for task fan-out');
+  if (start < 0) return ['harness/architecture.md has no "## Roles for task fan-out" section — this check has lost its subject'];
+  const rest = architecture.indexOf('\n## ', start + 1);
+  const section = architecture.slice(start, rest < 0 ? architecture.length : rest);
+  const rows = [...section.matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
     .filter(([, role]) => role !== 'role');
   if (rows.length < 2) return [`the role table has ${rows.length} rows — this check proves nothing without them`];
 
@@ -130,7 +139,9 @@ describe('Q-0107 AC-18 — the role table and the role files are one contract, a
   test('the shipped table and the shipped roles agree, in every row', () => {
     expect(tableDisagreements(architecture(), shippedRole)).toStrictEqual([]);
     // And it examined something: a table nobody could parse would return no disagreements above.
-    expect([...architecture().matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
+    const section = architecture().slice(architecture().indexOf('\n## Roles for task fan-out'));
+    expect([...section.slice(0, section.indexOf('\n## ', 1) + 1 || undefined)
+      .matchAll(/^\| (\w+) \| (\w+) \| ([^|]+)\|/gm)]
       .filter(([, role]) => role !== 'role').length, 'the live table').toBeGreaterThanOrEqual(5);
   });
 
@@ -162,8 +173,17 @@ describe('Q-0107 AC-18 — the role table and the role files are one contract, a
     // guard fires and not that each of its clauses does.
     expect(tableDisagreements(architecture(), (role) => (role === 'data' ? null : shippedRole(role))))
       .toStrictEqual(['data: the table names a row with no harness/roles/developer-data.md']);
-    expect(tableDisagreements('| role | vendor | dirs | contracts |\n', shippedRole))
+    expect(tableDisagreements('\n## Roles for task fan-out\n| role | vendor | dirs | contracts |\n', shippedRole))
       .toStrictEqual(['the role table has 0 rows — this check proves nothing without them']);
+    // The slice itself, which is new with Q-0120's gate: a renamed heading must fail here rather
+    // than match nothing and report a table that agrees with everything.
+    expect(tableDisagreements(architecture().replace('\n## Roles for task fan-out', '\n## Roles'), shippedRole))
+      .toStrictEqual(['harness/architecture.md has no "## Roles for task fan-out" section — this check has lost its subject']);
+    // And the scoping is load-bearing rather than decorative: the contract conventions table in the
+    // same file must not be read as roles. Unscoped, `| kind | format |` and `| fixture | JSON |`
+    // sent this function looking for harness/roles/developer-kind.md.
+    expect(tableDisagreements(architecture(), shippedRole)
+      .filter((problem) => problem.startsWith('kind') || problem.startsWith('fixture'))).toStrictEqual([]);
     expect(tableDisagreements(architecture().replace(/^\| (\w+) \| codex \|/gm, '| $1 | claude |'), shippedRole)
       .filter((problem) => problem.startsWith('the role table spans')))
       .toStrictEqual(['the role table spans one vendor (claude)']);

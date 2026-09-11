@@ -1,0 +1,9 @@
+2026-09-11T18:03:40.592Z run=1 flow=requirements start stage=draft
+2026-09-11T18:06:12.232Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=151623
+2026-09-11T18:20:49.919Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=12.164143499999998 ms=1029312
+2026-09-11T18:33:05.285Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=6.4216655 ms=735354
+2026-09-11T18:45:18.016Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=5.48673 ms=732717
+2026-09-11T18:45:18.032Z run=1 exhausted stage=draft→draft cost=0
+2026-09-11T18:47:05.052Z run=1 gate=human-locked answer=advance
+2026-09-11T18:47:28.422Z run=1 gate=human answer=advance
+2026-09-11T18:47:28.429Z run=1 completed stage=draft→requirements cost=24.073 tokens=21560805

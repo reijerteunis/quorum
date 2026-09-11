@@ -1,14 +1,31 @@
 ---
 id: Q-0120
 title: The web app holds a live connection to the daemon
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0120/integration
 priority: p1
 created: 2026-09-11
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-11T18:45:18.028Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-11T18:47:28.428Z
+    cost: 24.073
 ---
 Successor A of Q-0014, transcribed in full from that ticket's merged requirement Appendix A. The frame parser, the connection states, missed and refusal rendering, socket lifecycle, manual retry, and where the three wire shapes live — because packages/server cannot be imported by name today.
 
@@ -142,3 +159,62 @@ and `caches`, shown to have a subject by reporting a violation over a fixture th
 region it fills. Before or with Q-0015, whose mission control is the first screen that needs it.
 
 ---
+
+## Discharged at the requirements gate, 2026-09-11
+
+The loop exhausted at limit 1 with a complete document and **two blockers that are work no step in
+`requirements` may perform**, which is the Q-0070 / Q-0079 / Q-0090 / Q-0096 / Q-0105 precedent:
+answered `advance`, then discharged by hand. Both GO-1 and GO-2 say *"do not launch `solutioning`
+with this open"*, and neither did.
+
+**GO-1 — `packages/server/` is granted to `backend`.** Answer (ii), the recommended one, in the
+three places `role.test.ts` holds against each other: `harness/roles/developer-backend.md`'s
+frontmatter, its allowed-path sentence, and `harness/architecture.md`'s table row. Written by the
+human because a role editing its own grant inside a run that fans out by role is circular. **Both
+directions mutation-checked** — dropping the table row gives *"frontmatter is […] and the table is
+[…]"*, dropping it from the sentence gives *"the prose does not name its allowed path
+packages/server"*.
+
+**And the first attempt weakened the guard, which is recorded rather than quietly fixed.** The
+paragraph explaining the grant spelled `packages/server` a second time, and `role.test.ts`'s prose
+clause asks only that the body name each granted path *somewhere* — so with the name present twice,
+removing it from the allowed-path sentence left all eight tests green. Measured, not reasoned about.
+The paragraph now says *the server package* and the clause discriminates again.
+
+**The lockfile half is deliberately not answered here.** It is generated rather than authored, so
+the cheapest form is the human running `pnpm install` once the manifest line exists — which is the
+**solutioning** gate, since the manifest is a contract.
+
+**GO-2 — `harness/architecture.md`'s five unfilled sections are written**, and the contract
+conventions half became a ruling rather than a description. See *"A typed stub lives at its final
+path; `contracts/` holds what is not code"* (2026-09-11). The measurement that forced it: a `.ts`
+file under `contracts/` has no package context, so one that imports a workspace package does not
+typecheck — probed directly, `TS2307: Cannot find module '@quorum/shared'`, raised **inside**
+`contracts/Q-0050/run-flow-api.contract.ts`, whose line 2 imports it. So a red test cannot compile
+against a stub kept there, which is the one thing *"Solutioning emits contracts; red phase tests
+against contracts"* (2026-08-21) requires of the red phase. Nineteen contract files exist and
+thirteen are prose; the single `.contract.ts` is imported by nothing, which is that gap visible in
+the tree rather than argued. `solutioning.yaml`, `qa-red.yaml`, both template mirrors and
+`02-sdlc-pipeline-spec.md` — §5.2, §5.3 and the folder comment at `:51` — are corrected to match.
+
+**Filling that file broke `role.test.ts`, and the break is the finding.** It located the role table
+with a regex matching *any* three-column row in the file, so the new contract conventions table's
+`| kind | format |` and `| fixture | JSON |` were read as roles and it went looking for
+`harness/roles/developer-kind.md`. **A row shape is not a subject.** The function is now scoped to
+the `## Roles for task fan-out` section, a renamed heading fails with *"this check has lost its
+subject"* rather than matching nothing, and two new clauses pin both properties.
+
+**GO-3 — OQ-8 answered: the proxy's default target is `127.0.0.1:7717`.** Measured first, and the
+measurement changes what the answer means: `serve({ host, port = 0 })` asks the OS for an ephemeral
+port and reports back what it got, so **this repository has never named a port at all**. 7717 is
+therefore chosen rather than matched — above 1024, clear of Vite's own 5173 and of 3000/8000/8080 —
+and nothing may depend on the value: one literal in `apps/web/vite.config.ts` with the reason beside
+it, no test reading it, and `quorum open` is what will later have to agree with it.
+
+**GO-4 to GO-7 are not this gate's.** GO-4 (the browser's behaviour with the daemon down) and GO-6
+(a tree with no `packages/shared/dist`) are measurements against a running system and belong to the
+implement rounds or the final gate; GO-5 is Q-0014's GO-4 method applied at the merge; GO-7 is the
+both-rows verification every ticket owes.
+
+**Verified before `solutioning` was launched:** 21/21 turbo tasks forced, 0 cached; `quorum lint`
+6/6; the git-identity sweep exit 0.

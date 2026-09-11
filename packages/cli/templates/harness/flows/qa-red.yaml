@@ -22,7 +22,8 @@ steps:
     base: "harness/{id}/integration"
     input: { backlog: ["qa/run-{run}/scenarios-iter-*.md", solution/tasks.yaml, solution/errata.md, "qa/run-{run}/scenario-review-iter-*.md", "qa/run-{run}/red-report-iter-*.md"], harness: [architecture.md], repo: true }
     instructions: >
-      Implement automated tests for every scenario against the contracts under contracts/.
+      Implement automated tests for every scenario against the contracts the solution
+      emitted — the typed stubs at their final paths, and the documents under contracts/<ID>/.
       Tests must compile/typecheck against the stubs and FAIL on assertions, not on missing
       symbols. Do not implement production code. Summarise which files you created.
 

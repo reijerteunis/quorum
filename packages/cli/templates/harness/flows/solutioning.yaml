@@ -13,8 +13,10 @@ steps:
     instructions: >
       Produce the solution document for this requirement. It MUST contain: (1) chosen
       approach and rejected alternatives, (2) a "Contracts" section listing every
-      interface, schema, stub or migration skeleton you created as files under
-      contracts/ in the repository worktree, (3) a "Tasks" section as a YAML block with
+      interface, schema, stub or migration skeleton you created in the repository
+      worktree — a TYPED STUB at its final path inside the package that will own it, and
+      everything that is not code under contracts/<ID>/ (see harness/architecture.md,
+      "Contract conventions"), (3) a "Tasks" section as a YAML block with
       id, role (frontend|backend|data), title, contracts, depends_on — every task
       references at least one contract. If a solution/review.md input is present, this
       is a revision round: address every finding explicitly.
