@@ -1,7 +1,7 @@
 ---
 id: Q-0014
 title: The web app has a shell, a theme and routes
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0014/integration
@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-11
 iterations:
   requirements.head-of-product: 1
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-09-11T14:46:00.729Z
     cost: 18.173
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-11T17:18:50.297Z
+    cost: 56.654
 ---
 M3's first UI ticket. apps/web is a six-file stub with no dependencies; it becomes the shell every screen sits in — left rail, top bar, dark ground-control theme, client-side routes, and a WebSocket client over Q-0118's wire contract. The screens themselves are Q-0015 onward.
 

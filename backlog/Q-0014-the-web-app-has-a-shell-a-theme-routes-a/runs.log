@@ -5,3 +5,15 @@
 2026-09-11T14:43:42.281Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=5.789424499999999 ms=786878
 2026-09-11T14:46:00.723Z run=1 gate=human answer=advance
 2026-09-11T14:46:00.731Z run=1 completed stage=draft→requirements cost=18.173 tokens=10939354
+2026-09-11T14:52:31.326Z run=2 flow=chore start stage=requirements
+2026-09-11T15:23:11.592Z run=2 step=implement vendor=claude model=- verdict=proceed cost=28.921385000000008 ms=1839874
+2026-09-11T15:23:55.975Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=44343
+2026-09-11T15:39:45.649Z run=2 step=implement vendor=claude model=- verdict=proceed cost=13.711211499999997 ms=949557
+2026-09-11T15:40:24.137Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=38445
+2026-09-11T15:59:30.768Z run=2 step=implement vendor=claude model=- verdict=proceed cost=14.021444 ms=1146485
+2026-09-11T16:00:29.224Z run=2 step=review vendor=codex model=- verdict=approve cost=? ms=58411
+2026-09-11T16:01:36.899Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-11T17:18:50.292Z run=2 gate=human answer=advance
+2026-09-11T17:18:52.638Z run=2 removed-worktrees=2 kept=0
+2026-09-11T17:18:52.640Z run=2 completed stage=requirements→reviewed cost=56.654 tokens=84908743
+2026-09-11T17:30:00.000Z note GO-4 completed at the gate. The implement report took the disk half and refused the wall-time half rather than presenting an incremental install as a cold one, which was right. Taken here on manifests-only copies of ce84a37 and the merge commit, each installed with --frozen-lockfile --ignore-scripts into its OWN empty --store-dir, so both rows are genuinely cold: before 145 packages / 172 lockfile resolutions / node_modules 128 MB / store 127 MB / 5.1 s; after 203 (+58) / 251 (+79) / 179 MB (+40%) / 177 MB (+50 MB) / 10.4 s. The cold-store install DOUBLES, x2.04, and that is the number R-1 asked for. Ten seconds is not a threat to M6's 30-minute budget, so R-1 is answered rather than carried. Stated rather than implied: the metadata cache was warm and the link fast, so a genuine first-ever install on a slow connection scales with the extra 50 MB of download and not with the 5.3 s. The implementer's own figures (143 -> 200 packages, 128 -> 192 MB) differ because that pair was the real workspace with sources present and scripts enabled; direction and magnitude agree and neither is transcribed from the other.
