@@ -32,11 +32,17 @@ import { commandTimeout, mergeFailure, runAgentStep } from './steps.js';
 import { environmentFailure, testReport } from './suite-output.js';
 import { FlowError, type FannedTask, type RoutingContext, type StepResult } from './types.js';
 
-/** What {@link syncBaseIntoTicketBranch} did, as four outcomes a caller can tell apart. */
+/**
+ * What {@link syncBaseIntoTicketBranch} did.
+ *
+ * Two returned outcomes and a throw, and the division is the contract: **a skip is never a
+ * failure**. A probe that could not answer IS one, so it throws rather than joining this union —
+ * see *"A probe that could not answer is not a negative"* (2026-09-10).
+ */
 export type BaseSyncResult =
   /** The merge landed, and an `info` said so. */
   | { ok: true }
-  /** Nothing was attempted, and this is why — none of the three reasons is a failure. */
+  /** Nothing was attempted, and this is why — none of the reasons is a failure. */
   | { skipped: string };
 
 /** `harness.yaml`'s `commands` block under a prefix, which is how a string `run_tests` reads it. */
@@ -76,9 +82,9 @@ function roleDefaults(meta: unknown): { adapter?: string; model?: string } {
  *
  * @param step the fan-out step; its `step.base` template names the branch to catch up.
  * @param context the run.
- * @returns `{ ok: true }` after a merge, or the reason nothing was attempted. A ticket on its first
+ * @returns `{ ok: true }` after a merge, or the reason nothing was attempted — never a failure. A ticket on its first
  *   pass is skipped rather than failed: only `integrate` creates the integration branch.
- * @throws {FlowError} on a genuine conflict, naming the work a human has to do. Re-running the
+ * @throws {FlowError} on a genuine conflict, and when a branch probe could not answer — the run cannot tell whether the branch is there and the next act cuts a worktree from `HEAD` if it is not. Naming the work a human has to do. Re-running the
  *   developers cannot fix it — their worktrees branch from the ticket branch, where nothing is
  *   wrong — so the run stops instead of spending its iteration budget rediscovering that.
  */
@@ -94,16 +100,14 @@ export function syncBaseIntoTicketBranch(
   for (const branch of [into, base]) {
     const endpoint = branchProbe(context.repoDir, branch);
     if (endpoint === 'absent') return { skipped: `${branch} does not exist${branch === into ? ' yet' : ''}` };
-    // Still a skip, and no longer a silent one. Merging anyway is what the two sites in
-    // `runIntegrate` below do, and it is refused here because the next act is
-    // `obtainTicketWorktree` — a worktree cut from `HEAD` for a branch nobody established was
-    // missing, which is response 1's "otherwise unverifiable" rather than response 2's.
+    // It STOPS rather than skipping, and the distinction is the whole ticket. The next act is
+    // `obtainTicketWorktree`, which cuts a worktree from `HEAD` for a branch nobody established was
+    // missing, so every task then builds on the wrong base and no agent in the loop can see it.
+    // That is decision 088's response 1 — stop and name the work — where a `skipped` would be
+    // response 2 performed badly: {@link BaseSyncResult}'s own contract is that no skip reason is a
+    // failure, and its single caller acts on none of them.
     if (endpoint === 'failed') {
-      context.emit({
-        type: 'warn',
-        message: `${stepId}: could not tell whether ${branch} exists — git failed, so ${into} was not synced to ${base} before the fan-out`,
-      });
-      return { skipped: `whether ${branch} exists could not be established` };
+      throw new FlowError(`${stepId}: could not tell whether ${branch} exists — git failed, so ${into} cannot be synced to ${base} before the fan-out`);
     }
   }
   const merged = mergeInto(obtainTicketWorktree(context, into), base);

@@ -104,9 +104,9 @@ interface Classified {
  */
 const REGISTER: Record<string, Classified> = {
   "engine/composite.ts: const endpoint = branchProbe(context.repoDir, branch);": {
-    response: 'carry',
-    becomes: 'was not synced to ${base} before the fan-out',
-    reason: 'The pre-fan-out base sync still skips, and no longer in silence: merging anyway would put `obtainTicketWorktree` next, which cuts a worktree from HEAD for a branch nobody established was missing — response 1\'s "otherwise unverifiable" rather than response 2\'s.',
+    response: 'stop',
+    becomes: 'cannot be synced to ${base} before the fan-out',
+    reason: 'The pre-fan-out base sync STOPS. Round 1 returned `{ skipped }` here and the cross-vendor review found the caller discards it, so the documented refusal never happened and every task fanned out against an unsynced branch — while `BaseSyncResult`\'s own contract says no skip reason is a failure. Response 1, and a throw is the only shape that delivers it: the next act is `obtainTicketWorktree`, which cuts a worktree from HEAD for a branch nobody established was missing.',
   },
   "engine/composite.ts: const probe = branchProbe(context.repoDir, branch);": {
     response: 'carry',
@@ -162,14 +162,20 @@ describe('Q-0074 AC-5 — every consumer of a three-answer probe answers for its
     expect(found).toStrictEqual(Object.keys(REGISTER).sort());
   });
 
-  test('the vocabulary is decision 088\'s three, and `stop` is unused here on purpose', () => {
-    // Stated rather than left as dead vocabulary. Response 1 is real and lands in this change — it
-    // is `fanout/fanout.ts`'s `commitAll`, which refuses rather than committing over a `backlog/` it
-    // could not read — but `commitAll` reads no branch probe, so it is not this register's. A
-    // consumer here that ever needs to stop has a name for it; none does today, and if that changes
-    // the row says `stop` instead of this comment going stale.
+  test('the vocabulary is decision 088\'s three, and exactly one consumer stops', () => {
+    // This assertion read `.not.toContain('stop')` until the cross-vendor review of round 1, whose
+    // own comment said: *"if that changes the row says `stop` instead of this comment going stale."*
+    // It changed, and this is that sentence honoured. The review found the pre-fan-out base sync
+    // returning `{ skipped }` for a probe that FAILED while its single caller discards the result —
+    // so the documented refusal never happened and every task fanned out against an unsynced
+    // branch. It throws now, which is response 1, and the count is pinned rather than the absence.
     expect([...RESPONSES]).toStrictEqual(['stop', 'carry', 'forward']);
-    expect(Object.values(REGISTER).map((entry) => entry.response)).not.toContain('stop');
+    const stopping = Object.entries(REGISTER).filter(([, entry]) => entry.response === 'stop');
+    expect(stopping.map(([site]) => site), 'the stopping consumer is not the base sync')
+      .toStrictEqual(['engine/composite.ts: const endpoint = branchProbe(context.repoDir, branch);']);
+    // …and response 1 is real outside this register too, which is what kept the vocabulary honest
+    // while no consumer used it: `commitAll` refuses rather than committing over a `backlog/` it
+    // could not read, and reads no branch probe, so it is not a row here.
     expect(coreSourceFiles().find(([name]) => name === 'fanout/fanout.ts')![1],
       'response 1 is claimed for `commitAll` and is not there').toContain('nothing was committed');
   });
