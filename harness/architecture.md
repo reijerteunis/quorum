@@ -105,10 +105,10 @@ Both may write `packages/core/` and `packages/shared/`: which of them owns a giv
 statement each solution's `tasks.yaml` makes explicitly, and the two directories appearing in two
 rows is a grant, never a shared claim.
 
-`frontend` and `data` remain inert. `apps/web` exists since Q-0008, but `packages/ui`,
-`packages/i18n` and `packages/database` do not exist and are not planned before M3 — the rows are
-kept so the write contract still describes the roles that exist, and the non-existence is stated
-here so nobody solutions a task against a directory that is not there.
+`frontend` is active for `apps/web`; `data` remains inert. `packages/ui`, `packages/i18n` and
+`packages/database` do not exist and are not planned before M3 — the rows are kept so the write
+contract still describes the roles that exist, and the non-existence is stated here so nobody
+solutions a task against a directory that is not there.
 
 **The third column is read by a machine, so it holds paths and nothing else.**
 `packages/shared/src/role.test.ts` parses each cell as a comma-separated path list and asserts it
