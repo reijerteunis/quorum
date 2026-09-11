@@ -409,3 +409,49 @@ did not stop applying, and this entry is what satisfies it.
 and it is not evidence that the original `@quorum/core` cluster is the same defect — only that the
 class has a third instance and a reproducible one. And CI is green: the last four runs passed all
 three jobs, so this costs a re-run locally and nothing on the instrument that matters, today.
+
+## First fix landed 2026-09-11 — a chosen budget replaces an inherited one
+
+**Not a repair of the cluster, and it is not claimed as one.** It removes the *accidental* half of
+the oracle and leaves everything the ticket is really about still open.
+
+**What was measured, and one reading of it was wrong.** On a passing full-workspace run the slowest
+test in the corpus — `packages/core/src/adapters/codex.test.ts` AC-4 — takes **3685 ms**, more than
+twice the next slowest. It earns that: it loops four option combinations and each one writes a CLI
+stub and **spawns it**, so it is four sequential subprocesses. (An earlier account in Q-0115's run
+called it a test that *"builds argv, spawns nothing"*; that is false, and it is why the cost looked
+mysterious.) Against Vitest's 5000 ms default that is **26% headroom**.
+
+**The failure is load-dependent, which was established the hard way.** On Q-0074's branch at the
+unchanged 5000 ms: **5 consecutive failures in one window and a clean pass in another**, against 2
+failures in 17 runs before that branch's two source-walking registers landed. It was recorded here
+as *"deterministic"* on the first window alone and that was wrong — corrected rather than quietly
+dropped, because reading a streak as a property is the same error as reading a failed probe as a
+proven negative, which is what Q-0074 is about.
+
+**The fix: `testTimeout: 20_000` in `vitest.shared.js`, chosen rather than inherited.** No file in
+this workspace had ever declared one, so a number nobody selected was asserting nothing deliberate
+about any test here. 20 s is ~5× the measured worst case — headroom for a loaded runner, and not a
+value that could never fire.
+
+**GO-2 is respected and the argument is stated rather than assumed.** *No fix may make the sweep
+green by weakening what it runs.* Every test, file and assertion is unchanged; a hang still fails.
+What moved is a budget, and replacing an accidental oracle with a chosen one is not a weakening —
+the previous value was never an assertion anybody made.
+
+**A single workspace value rather than a per-file override**, because the next expensive test would
+otherwise inherit the accidental default again, which is precisely how this arrived.
+
+## What stays open, and why this ticket is not closed
+
+1. **The original cluster is untouched.** `worktree-lifecycle.test.ts` and `undecided.test.ts` make
+   18 and 4 synchronous `git` spawns and were the first two sightings. Whether a longer budget
+   removes their failures, or merely hides them for a while, is unmeasured — and GO-1 binds: a rate
+   must be established at a fixed commit before anything is called repaired.
+2. **The cause is contention, not patience.** Seven package suites run in parallel and the fix
+   gives the slowest one more time rather than stopping them competing. Bounding turbo's
+   concurrency, or Vitest's pool, is the other half and was deliberately not taken here: it slows
+   every local run and every CI job, and contention is not itself a defect.
+3. **The feedback loop is now named.** Every source-walking guard this repository adds — and it adds
+   them constantly — raises the load that consumes this headroom. A budget bought 5× today; the
+   question that stays open is what stops it being consumed again in six months.
