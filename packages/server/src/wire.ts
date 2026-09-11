@@ -11,7 +11,9 @@
  */
 import type { AnswerRefusal, StartOutcome, StopRefusal } from './host.js';
 import type { Refusal } from './refusal.js';
-export type { WireMessage } from '@quorum/shared';
+import type { WireMessage } from '@quorum/shared';
+
+export type { WireMessage };
 
 /**
  * What a refused request answers with: a machine-readable code, the condition in `core`'s own
