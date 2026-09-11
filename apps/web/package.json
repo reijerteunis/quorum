@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@quorum/shared": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from 'react';
 
+import type { RunConnectionSnapshot } from './run-connection.js';
 import { activeRailPath } from './router.js';
 import { RAIL } from './routes.js';
 
@@ -40,6 +41,22 @@ export const CONNECTION_PENDING = 'no live connection yet — Q-0120 opens one';
 
 /** The primary control's label, disabled here and enabled by whichever ticket can start a run. */
 export const RUN_FLOW_LABEL = 'Run flow';
+
+/** Live connection evidence supplied by the route-level controller. */
+export interface ShellConnectionProps {
+  readonly snapshot: RunConnectionSnapshot;
+  readonly text: string;
+  readonly retryable: boolean;
+  readonly onRetry: () => void;
+}
+
+/** Inputs shared by the application adapter and the global shell. */
+export interface ShellProps {
+  readonly path: string;
+  readonly onNavigate: (to: string) => void;
+  readonly children: ReactNode;
+  readonly connection?: ShellConnectionProps;
+}
 
 /** The left rail. Every entry is an anchor, so it is reachable and activatable from a keyboard. */
 function Rail({ path, onNavigate }: { path: string; onNavigate: (to: string) => void }): ReactNode {
@@ -92,11 +109,7 @@ export function Shell({
   path,
   onNavigate,
   children,
-}: {
-  path: string;
-  onNavigate: (to: string) => void;
-  children: ReactNode;
-}): ReactNode {
+}: ShellProps): ReactNode {
   return (
     <div className="flex h-full bg-bg text-text">
       <Rail path={path} onNavigate={onNavigate} />

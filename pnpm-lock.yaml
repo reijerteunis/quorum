@@ -35,6 +35,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@quorum/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       react:
         specifier: ^19.3.0
         version: 19.3.0

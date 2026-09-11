@@ -9,11 +9,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { resolveFinal } from './router.js';
+import type { SocketFactory } from './run-connection.js';
 import { Shell } from './shell.js';
 import { NotFound, Placeholder } from './views.js';
 
 /** Where the app starts when nothing tells it otherwise — the browser's own location. */
 const currentPath = (): string => (typeof window === 'undefined' ? '/' : window.location.pathname);
+
+/** Injectable application inputs used by the browser and the transport-driven tests. */
+export interface AppProps {
+  readonly initialPath?: string;
+  readonly socketFactory?: SocketFactory;
+  readonly pageUrl?: URL;
+}
 
 /**
  * The shell, at one path, with the view that path resolves to inside it.
@@ -21,7 +29,7 @@ const currentPath = (): string => (typeof window === 'undefined' ? '/' : window.
  * `initialPath` exists so the resolution can be driven directly; left out, the app reads the
  * browser's location and keeps in step with the back and forward buttons.
  */
-export function App({ initialPath }: { initialPath?: string }): ReactNode {
+export function App({ initialPath }: AppProps): ReactNode {
   const [path, setPath] = useState(initialPath ?? currentPath());
 
   const navigate = useCallback((to: string) => {
