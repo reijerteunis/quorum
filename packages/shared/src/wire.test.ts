@@ -20,7 +20,7 @@ describe('AC-12/14 — browser-safe wire envelope', () => {
     const lock = fs.readFileSync(path.join(ROOT, 'pnpm-lock.yaml'), 'utf8');
     const importer = lock.slice(lock.indexOf('  apps/web:'), lock.indexOf('\n  packages/', lock.indexOf('  apps/web:')));
     const scope = `@${'quorum'}/shared`;
-    expect(importer).toContain(`${scope}:`);
+    expect(importer).toContain(`'${scope}':`);
     expect(importer).toContain('workspace:*');
   });
 });

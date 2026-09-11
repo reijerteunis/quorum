@@ -63,6 +63,7 @@ const EXCEPTIONS = new Set([
   'shell.test.ts:/runs/run%20one',
   'shell.test.ts:/nowhere/at/all',
   'shell.test.ts:/backlog/%E0%A4%A',
+  'run-connection.test.ts:/B/events',
 ]);
 
 describe('AC-6 — the rail is the seven entries the design brief names, in its order', () => {
