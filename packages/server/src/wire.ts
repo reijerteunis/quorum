@@ -11,6 +11,7 @@
  */
 import type { AnswerRefusal, StartOutcome, StopRefusal } from './host.js';
 import type { Refusal } from './refusal.js';
+export type { WireMessage } from '@quorum/shared';
 
 /**
  * What a refused request answers with: a machine-readable code, the condition in `core`'s own
@@ -119,6 +120,3 @@ export function wireRunOf(outcome: StartOutcome): WireRun {
  * not an event: a late subscriber is told how many it did not see rather than handed a silently
  * truncated stream, which is the answer Q-0013 OQ-1 left to this child.
  */
-export type WireMessage =
-  | { readonly type: 'event'; readonly event: unknown }
-  | { readonly type: 'missed'; readonly count: number };
