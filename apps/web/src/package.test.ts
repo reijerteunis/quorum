@@ -42,7 +42,7 @@ const JUSTIFICATIONS: Record<string, string> = {
   '@vitejs/plugin-react': 'teaches this package\'s Vite build to compile JSX; without it no .tsx file is transformed at all.',
   tailwindcss: 'the styling system docs/04-architecture.md:182 names, and where the palette is declared as theme tokens.',
   '@tailwindcss/vite': "Tailwind v4's Vite integration; v4 is a Vite plugin rather than a PostCSS step, so this is how it runs at all.",
-  jsdom: "the document AC-2 mounts into, selected by one test file's own environment docblock rather than by configuration.",
+  jsdom: "the document AC-2 mounts into, selected by one test file's own environment docblock rather than by configuration. Held at 29 rather than 30 because jsdom 30 declares `node: ^22.22.2 || ^24.15.0 || >=26.0.0`, which this workspace's own `engines.node` floor of 22.13.0 does not satisfy; 29's `^20.19.0 || ^22.13.0 || >=24.0.0` matches that floor exactly.",
   '@types/react': "React ships no types of its own, so this is what makes `tsc --noEmit` cover the app's components.",
   '@types/react-dom': 'the same, for the renderer half.',
 };
