@@ -5,7 +5,7 @@ stage: draft
 owner: ruud
 repos: []
 branch: harness/Q-0119/integration
-priority: p2
+priority: p3
 created: 2026-09-11
 iterations: {}
 history: []
