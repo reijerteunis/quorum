@@ -54,6 +54,17 @@
  * `@quorum/shared`'s vocabulary and is declared there — re-exported here, and nowhere redeclared,
  * so a caller of the function can name what it answers from the package it called.
  *
+ * **Q-0013 added three, and all three are types**, which is why the value list above does not move.
+ * `AnswerGate` is the one that was undeniable: a surface supplying `answerGate` could not name its
+ * own callback's type, because the only route to it was `Parameters<typeof runFlow>[0]`. `Project`
+ * and `TicketRecord` join it on the same rule — a run host holds both in a registry field for the
+ * lifetime of the process, where the CLI's `ReturnType<typeof loadProject>` workaround reaches a
+ * local variable and no further. Two names were **withheld with their reasons**, which is the rule
+ * working rather than a gap: `RunStatus`, because `RunTerminalEvent` already carries a typed
+ * `status` from `@quorum/shared` and no consumer needs `core`'s internal union beside it; and
+ * `RunFlowOptions`, because a caller composing one is checked structurally against `runFlow`'s own
+ * parameter and never has to name it — `packages/server` stores its own request shape instead.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
@@ -62,13 +73,16 @@ export { cliVersion, getAdapter, probeAdapter } from './adapters/adapters.js';
 export type { CliVersionResult } from '@quorum/shared';
 export { overrideAdapters } from './adapters/override.js';
 export { Backlog } from './backlog/backlog.js';
+export type { TicketRecord } from './backlog/backlog.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
+export type { Project } from './backlog/project.js';
 export { initProject, ProjectExistsError } from './backlog/scaffold.js';
 export { readData, validateArtifact } from './contracts/contracts.js';
 export type { ArtifactValidationResult } from './contracts/contracts.js';
 export { runFlow } from './engine/engine.js';
 export { loadFlow, loadFlowByName } from './engine/loaders.js';
 export { GateUnansweredError } from './engine/types.js';
+export type { AnswerGate } from './engine/types.js';
 export { IntegrationError } from './fanout/fanout.js';
 export { configuredUser, containment, pushLag } from './git/git.js';
 export { FlowError, lintDirectory, lintFlowDirectory } from './lint/lint.js';

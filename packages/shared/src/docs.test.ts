@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import { decisionFiles, flowFiles, read, repoFile } from '../test/corpus.js';
+import { gateAnswerSchema } from './events.js';
 
 // AC-4, AC-8 and AC-11 all require the documents to end up agreeing with what shipped. These check
 // that they do, so a later edit that reintroduces one of the contradictions fails here rather than
@@ -1021,5 +1022,89 @@ describe('Q-0115 AC-12 — the habit decision 088 ruled on is written down once,
     // refused, which is the demonstration `git.source.test.ts:47` writes for its own.
     expect(rulesIn(), 'the new rule is not in the register, so the list above was edited to fit')
       .not.toStrictEqual(rulesIn().filter((rule) => !rule.includes('A search, grep or probe')));
+  });
+});
+
+describe('Q-0013 GO-3 — the architecture document describes the run host that shipped', () => {
+  /**
+   * §`packages/server`, sliced out rather than searched for across the whole document.
+   *
+   * A sentence elsewhere on the page must not satisfy a claim about what this section says — a live
+   * hazard here, principle 2 stating the stream's own rules two hundred lines above it.
+   */
+  const section = (): string => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('### `packages/server`');
+    if (start < 0) throw new Error('docs/04-architecture.md has no packages/server section — this check has lost its subject');
+    const end = text.indexOf('\n### ', start + 1);
+    return text.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+  };
+
+  test('it says what exists, in the terms a later child would otherwise re-decide', () => {
+    // One assertion per CLAIM rather than per noun. A word list is satisfied by a document stating
+    // the opposite — the lesson decision 065 exists for, where two statements of 062 were false
+    // while every word in them was the right word.
+    const server = section();
+    expect(server, 'it does not say the package is a library rather than a process')
+      .toMatch(/opens no socket, installs no process signal handler and never exits the process/);
+    expect(server, 'it does not name the transport and the read-only surface as separate children')
+      .toMatch(/Q-0118[\s\S]{0,400}Q-0119|Q-0119[\s\S]{0,400}Q-0118/);
+    expect(server, "it does not say the run id is the host's and core's is correlated onto it")
+      .toMatch(/named by an id the host mints, and `core`'s run number is correlated onto it/);
+    expect(server, 'it does not say a refused start reports no run number')
+      .toMatch(/reports no run number at all rather than a plausible wrong one/);
+    expect(server, "it does not say why waiting for core's number could not have worked")
+      .toMatch(/that allocator reserves nothing/);
+    expect(server, 'it does not say a start waits for the run to be under way')
+      .toMatch(/evaluated on the first pull/);
+    expect(server, "it does not say the fan-out is the host's because the stream is single-consumer")
+      .toMatch(/fan-out belongs to the host because the stream is single-consumer/);
+    expect(server, 'it does not say a truncation notice travels beside the stream')
+      .toMatch(/beside the stream rather than inside it/);
+    expect(server, 'it does not say the host supplies an answer channel for every run it starts')
+      .toMatch(/supplies\s+`answerGate` for every run it starts/);
+    expect(server, 'it does not say there is no default answer and no timeout')
+      .toMatch(/no default answer and no timeout/);
+    expect(server, 'it does not say what `:id` in the routes names')
+      .toMatch(/minted id is what `:id` names in the routes below/);
+    expect(server, 'it does not say shutdown closes the host to new starts')
+      .toMatch(/closes the host to new starts/);
+    expect(server, 'it does not say why a start in flight is not yet a running run')
+      .toMatch(/a start in flight is not yet a running run/);
+  });
+
+  test('and the route clause the code refuses is corrected rather than left promising it', () => {
+    // `gateAnswerEnvelopeSchema` is `.strict()` over three and `askGate` raises on anything else, so
+    // the document is what moves — a decision entry outranks a numbered document. The vocabulary is
+    // read out of this package's own schema rather than from a literal here, so an envelope that is
+    // ever widened makes this the place the two are reconciled rather than a pin that silently rots.
+    const server = section();
+    expect(server, 'the section still promises an override the envelope refuses')
+      .not.toMatch(/gate` \(advance\/retry\/override with reason\)/);
+    expect(server, 'it does not record who owns widening the envelope').toMatch(/Q-0016/);
+    expect(server, 'it does not cite the entry that closed the answer set')
+      .toContain("What a run's event stream carries, and how a gate answer travels back");
+    for (const answer of gateAnswerSchema.options) {
+      expect(server, `the section does not name the answer ${answer}`).toContain(answer);
+    }
+    expect(gateAnswerSchema.options, 'the answer set is no longer the closed three this clause rests on')
+      .toStrictEqual(['advance', 'retry', 'abort']);
+  });
+
+  test('and the status line records the change', () => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('*Status:');
+    expect(start, 'docs/04-architecture.md has no status line').toBeGreaterThan(-1);
+    const status = text.slice(start, text.indexOf('\n\n', start));
+    expect(status, 'the status line does not record this change').toContain('Q-0013');
+    expect(status, 'the status line does not carry the landing date').toContain('2026-09-11');
+  });
+
+  test('the slice has a subject, and stops where the section does', () => {
+    // Anti-vacuity: a slice running to the end of the document would carry `packages/cli`'s and
+    // principle 2's sentences and satisfy several clauses above without this section saying
+    // anything. Shown by naming what belongs to the next section and must not be in this one.
+    expect(section().length, 'the section is implausibly short').toBeGreaterThan(1000);
+    expect(section(), 'the slice ran past the end of the section').not.toContain('Same commands as the spike');
   });
 });
