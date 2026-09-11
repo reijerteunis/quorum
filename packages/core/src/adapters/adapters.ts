@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { USAGE_MEASURES } from '@quorum/shared';
+import { OBSERVATION_TAG, USAGE_MEASURES } from '@quorum/shared';
 import type { AdapterEvent, CliVersionResult, FindingSeverity, UsageMeasure } from '@quorum/shared';
 
 import { CLAUDE_CAPABILITIES } from './claude-capabilities.js';
@@ -641,8 +641,17 @@ export function checkAgainstSchema(output: unknown, schema: AdapterSchema): stri
     // reviewer "nits alone approve", and a nit does not contradict an approval the way a blocker
     // does. A finding carrying no severity is not a nit — the flows that do not use severities keep
     // the old all-or-nothing rule for free. Q-0073; supersedes Q-0006 E-4.
+    //
+    // An `observation:` entry is exempt for a different reason, and the difference is the whole of
+    // why it is a separate tag rather than a fourth severity: a nit is a MINOR claim about the
+    // change, while an observation is NOT A CLAIM ABOUT THE CHANGE AT ALL, so it cannot contradict
+    // any verdict. See *"A finding is a claim about the change; anything else is an observation"*
+    // (2026-09-11), which this rule is otherwise unchanged by.
     const findings: unknown[] = record.findings;
-    const contradicting = findings.filter((finding) => !String(finding).startsWith(`${NIT}: `));
+    const contradicting = findings.filter((finding) => {
+      const entry = String(finding);
+      return !entry.startsWith(`${NIT}: `) && !entry.startsWith(`${OBSERVATION_TAG}: `);
+    });
     if (record.verdict === verdicts[0] && contradicting.length) problems.push(`${verdicts[0]} permits only ${NIT} findings, got ${JSON.stringify(contradicting[0])}`);
     if (verdicts.slice(1).includes(record.verdict) && !findings.length) problems.push(`${record.verdict} requires findings`);
   }

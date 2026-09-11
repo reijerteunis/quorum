@@ -110,6 +110,40 @@ describe('AC-7 — checkAgainstSchema reports every problem, in push order', () 
       .toStrictEqual(['approve permits only nit findings, got "major: b.ts:2 not"']);
   });
 
+  test('an `observation:` entry is exempt, and it is exempt for a different reason than a nit', () => {
+    // Q-0117, and the distinction is the whole of why it is a tag rather than a fourth severity: a
+    // nit is a MINOR claim about the change, while an observation is not a claim about the change at
+    // all — so it can contradict no verdict. See *"A finding is a claim about the change; anything
+    // else is an observation"* (2026-09-11).
+    //
+    // It exists because two chore runs finished correct work and were refused for reporting
+    // something true: that the suite was intermittently red, and that a gate obligation requiring a
+    // merge could not be discharged before the merge. $111.48, and the only alternatives were to
+    // drop the measurement or file it as a `nit` — which `chore.yaml` routes on, so a misfiled
+    // observation can end a revise loop.
+    const schema = generatedSchema({ verdict: 'approve|revise' });
+    const implement = generatedSchema({ verdict: 'proceed|blocked' });
+
+    // The two real refusals, as they were actually written.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'proceed', findings: ['observation: the workspace suite is intermittently red and it is not this change'] }, implement)).toStrictEqual([]);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'proceed', findings: ['observation: GO-4 is not discharged and cannot be from here'] }, implement)).toStrictEqual([]);
+
+    // Beside a nit, in either order, and on the other affirmative vocabulary too.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['nit: a.ts:1 rename', 'observation: CI was red on an unrelated job'] }, schema)).toStrictEqual([]);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['observation: CI was red on an unrelated job', 'nit: a.ts:1 rename'] }, schema)).toStrictEqual([]);
+
+    // …and it exempts NOTHING else. A real claim about the change is still refused, which is the
+    // half that keeps the tag from becoming a way round the rule.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'proceed', findings: ['major: a.ts:1 my own work is broken'] }, implement))
+      .toStrictEqual(['proceed permits only nit findings, got "major: a.ts:1 my own work is broken"']);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['observations: plural is not the tag'] }, schema))
+      .toStrictEqual(['approve permits only nit findings, got "observations: plural is not the tag"']);
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'approve', findings: ['observation without a colon'] }, schema))
+      .toStrictEqual(['approve permits only nit findings, got "observation without a colon"']);
+    // The non-approving verdict was never governed by this rule and still is not.
+    expect(checkAgainstSchema({ summary: 'x', verdict: 'blocked', findings: ['major: a.ts:1 real'] }, implement)).toStrictEqual([]);
+  });
+
   test('a non-pass verdict with no findings is refused by name', () => {
     expect(checkAgainstSchema({ summary: 'x', verdict: 'revise', findings: [] }, generatedSchema({ verdict: 'approve|revise' })))
       .toStrictEqual(['revise requires findings']);

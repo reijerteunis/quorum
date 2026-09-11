@@ -168,3 +168,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [M2 closed: the product develops itself, through two of its seven flows](decisions/087-m2-closed-the-product-develops-itself.md)
 - [A probe that could not answer is not a negative](decisions/088-a-probe-that-could-not-answer-is-not-a-negative.md)
+
+## 2026-09-11
+
+- [A finding is a claim about the change; anything else is an observation](decisions/089-a-finding-is-a-claim-about-the-change.md)

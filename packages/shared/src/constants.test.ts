@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  DEFAULT_BASE_BRANCH, FINDING_PATTERN, FINDING_SEVERITIES, LOCK_ROOT, MANIFEST_FILE,
+  DEFAULT_BASE_BRANCH, FINDING_PATTERN, FINDING_SEVERITIES, LOCK_ROOT, MANIFEST_FILE, OBSERVATION_TAG,
   OCCURRENCE_DIR, OUTPUT_FILE, PROMPT_FILE, REPO_WORKTREE_ROOT, RUNS_LOG_FILE, RUN_HISTORY_ROOT,
   TICKET_ARTIFACT_DIR, USAGE_MEASURES, integrationBranch, occurrenceDirName, runIdOf, runLockPath,
   ticketBranch, ticketBranchPrefix, worktreeDirName,
@@ -88,8 +88,18 @@ describe('AC-10 — the constants are the one spelling every consumer reads', ()
     expect(DEFAULT_BASE_BRANCH).toBe('main');
     expect(RUNS_LOG_FILE).toBe('runs.log');
 
-    expect(FINDING_PATTERN).toBe('^(blocker|major|nit): .+:[1-9][0-9]* .+');
+    expect(FINDING_PATTERN).toBe('^((blocker|major|nit): .+:[1-9][0-9]* .+|observation: .+)');
     expect([...FINDING_SEVERITIES]).toEqual(['blocker', 'major', 'nit']);
+    // `observation` is deliberately NOT a severity: a severity answers *how bad is this claim about
+    // the change*, and an observation is not a claim about the change at all. The pattern's second
+    // alternative carries no `file:line` for the same reason — there is no line of the change for it
+    // to point at. Why: *"A finding is a claim about the change; anything else is an observation"*
+    // (2026-09-11).
+    expect([...FINDING_SEVERITIES]).not.toContain(OBSERVATION_TAG);
+    expect(new RegExp(FINDING_PATTERN).test(`${OBSERVATION_TAG}: the suite is intermittently red`),
+      'an observation without a file:line must satisfy the pattern').toBe(true);
+    expect(new RegExp(FINDING_PATTERN).test('nit: the suite is intermittently red'),
+      'a severity without a file:line must still be refused').toBe(false);
     // The pattern and the vocabulary are one fact; keep them from drifting apart.
     expect(FINDING_PATTERN).toContain(FINDING_SEVERITIES.join('|'));
 

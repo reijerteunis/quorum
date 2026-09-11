@@ -1,7 +1,7 @@
 ---
 id: Q-0117
 title: An implement step that finished has no way to report an unmet gate obligation
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0117/integration

@@ -179,11 +179,31 @@ export const FINDING_SEVERITIES = ['blocker', 'major', 'nit'] as const;
 export type FindingSeverity = (typeof FINDING_SEVERITIES)[number];
 
 /**
+ * The tag on an entry that is **not a claim about the change** — the environment it ran in, an
+ * obligation that belongs to somebody else, a defect in code the step was not sent to touch.
+ *
+ * It is not a severity, which is why it is declared apart from {@link FINDING_SEVERITIES}: a
+ * severity answers *how bad is this claim about the change*, and an observation is answering a
+ * different question. No verdict rule governs it, because it contradicts no verdict.
+ *
+ * See *"A finding is a claim about the change; anything else is an observation"* (2026-09-11). It
+ * exists because two chore runs finished correct work and were refused for reporting something
+ * true — $111.48, and in both cases the only alternatives were to drop the measurement or file it
+ * as a `nit`, which `chore.yaml` routes on.
+ */
+export const OBSERVATION_TAG = 'observation';
+
+/**
  * The shape a finding string must have — severity, then `file:line`, then the finding. The engine
  * puts this exact source string on the generated step schema when the verdict vocabulary contains
- * `changes-requested`; spike/src/engine.js:686. Kept here as one spelling, byte for byte.
+ * `changes-requested`.
+ *
+ * The second alternative carries **no `file:line`**, and that is the point rather than a relaxation:
+ * an {@link OBSERVATION_TAG} entry is not a claim about the change, so there is no line of the
+ * change for it to point at. Requiring one would force an observation to invent a location, which is
+ * how *"the suite is intermittently red"* would end up filed against an arbitrary file.
  */
-export const FINDING_PATTERN = '^(blocker|major|nit): .+:[1-9][0-9]* .+';
+export const FINDING_PATTERN = '^((blocker|major|nit): .+:[1-9][0-9]* .+|observation: .+)';
 
 /**
  * The five usage measures a vendor may report, in the order the spike declares them. Declared

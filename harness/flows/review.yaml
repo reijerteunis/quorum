@@ -36,6 +36,10 @@ steps:
       findings as blocker, major, or nit. Approve exactly when no blocker or major
       survives; nits alone approve, and a nit you have is reported rather than dropped. On
       approve every finding must be a nit; on changes-requested there must be at least one
+      Anything TRUE and worth recording that is NOT a claim about this change — the environment,
+      an obligation that is somebody else's, a defect in code you were not sent to touch — is
+      prefixed `observation: ` and carries no file:line. It contradicts no verdict, so a real one is
+      never dropped and never filed as a nit. See the 2026-09-11 decision entry.
       finding. Judge the reviews, not the code diff.
     on_fail:
       goto: flow:development

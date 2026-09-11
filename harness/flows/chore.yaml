@@ -63,6 +63,10 @@ steps:
       shape is rejected and the run stops. Approve only when no blocker or major survives;
       nits alone approve, and a nit you have is reported rather than dropped. On approve every
       finding must be a nit; on revise there must be at least one finding.
+      Anything TRUE and worth recording that is NOT a claim about this change — the environment,
+      an obligation that is somebody else's, a defect in code you were not sent to touch — is
+      prefixed `observation: ` and carries no file:line. It contradicts no verdict, so a real one is
+      never dropped and never filed as a nit. See the 2026-09-11 decision entry.
     on_fail: { goto: implement, max_iterations: 2, on_exhausted: gate }
 
   # No on_fail: a conflict with the base branch, or a suite red for a reason this flow did

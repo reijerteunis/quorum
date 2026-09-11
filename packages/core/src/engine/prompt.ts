@@ -105,7 +105,7 @@ export function schemaFor(step: Readonly<Record<string, unknown>>): GeneratedSch
     const items = vocabulary.includes('changes-requested')
       ? { type: 'string', pattern: FINDING_PATTERN }
       : { type: 'string' };
-    properties.findings = { type: 'array', items, description: 'Concrete, actionable findings. With the first verdict, only findings prefixed "nit: " are permitted.' };
+    properties.findings = { type: 'array', items, description: 'Concrete, actionable findings. With the first verdict, only findings prefixed "nit: " are permitted — plus "observation: " for anything TRUE and worth recording that is not a claim about this change: the environment, an obligation that is somebody else\'s, a defect in code you were not sent to touch. An observation contradicts no verdict, so a real one never has to be filed as a nit.' };
     required.push('verdict', 'findings');
   }
   return { type: 'object', properties, required, additionalProperties: false };
