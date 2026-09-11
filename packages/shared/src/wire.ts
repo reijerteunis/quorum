@@ -11,6 +11,13 @@ export type WireMessage =
  * The event branch deliberately retains an unknown payload. The browser parser validates that
  * payload with `eventSchema` after this schema has accepted the envelope.
  */
-export const wireMessageSchema: z.ZodType<WireMessage> = z.custom<WireMessage>(() => {
-  throw new Error('not implemented');
-});
+export const wireMessageSchema: z.ZodType<WireMessage> = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('event'),
+    event: z.unknown(),
+  }).strict(),
+  z.object({
+    type: z.literal('missed'),
+    count: z.number().int().nonnegative(),
+  }).strict(),
+]);
