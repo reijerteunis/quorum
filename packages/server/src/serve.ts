@@ -13,6 +13,7 @@ import type { Project } from '@quorum/core';
 
 import { createApp } from './http.js';
 import { createRunHost, type RunHost } from './host.js';
+import { mountRead } from './read.js';
 import { eventMessage, missedMessage } from './http.js';
 
 /**
@@ -88,7 +89,10 @@ export interface ServeOptions {
  * @returns the port actually bound, and a close that resolves when the socket is shut.
  */
 export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening> {
-  const app = createApp({ host });
+  // The read-only routes are mounted here rather than inside `createApp`, so a test that wants the
+  // run routes alone still gets them alone — and so the project a read answers about is the one the
+  // host is driving, which is the only project this process has.
+  const app = mountRead(createApp({ host }), host.project);
   let server: ReturnType<typeof serveNode>;
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 

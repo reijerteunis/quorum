@@ -243,17 +243,23 @@ describe('AC-3 — run identity has one authority, and it is not an event\'s pro
    * be `error`, so a read of an event's `message` is reported by its receiver rather than by
    * somebody noticing.
    */
-  const MESSAGE_READS: Record<string, string> = {
-    'host.ts': 'the error a failed stream closed with, in `consume`\'s catch — an Error, never an Event',
-    'failures.ts': 'the condition `core` named, in `conditionOf` — an Error, never an Event',
+  const MESSAGE_READS: Record<string, { receiver: string; why: string }> = {
+    'host.ts': { receiver: 'error', why: 'the error a failed stream closed with, in `consume`\'s catch — an Error, never an Event' },
+    'failures.ts': { receiver: 'error', why: 'the condition `core` named, in `conditionOf` — an Error, never an Event' },
+    // Q-0119. `readRun`'s `malformed` arm carries the READER's own diagnostic, which is a field of a
+    // narrowed result rather than prose from an event — so the receiver is the result. The register
+    // names it rather than the rule allowing any receiver: an unregistered one still fails, which is
+    // what keeps this from becoming a blanket exemption.
+    'read.ts': { receiver: 'read', why: "readRun's malformed outcome, whose message is the reader's own diagnostic — a narrowed result, never an Event" },
   };
 
   test('no `.message` is read off anything but an Error, and the register names where', () => {
     const withReads = production().filter(([, text]) => /\.message\b/.test(text)).map(([file]) => file);
     expect(withReads.sort()).toStrictEqual(Object.keys(MESSAGE_READS).sort());
     for (const [file, text] of production()) {
+      const allowed = MESSAGE_READS[file]?.receiver;
       for (const match of text.matchAll(/(\w+)\s*\.\s*message\b/g)) {
-        expect(match[1], `${file} reads .message off \`${String(match[1])}\``).toBe('error');
+        expect(match[1], `${file} reads .message off \`${String(match[1])}\`, which its register entry does not name`).toBe(allowed);
       }
     }
   });
