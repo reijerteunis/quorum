@@ -48,5 +48,27 @@ export default defineConfig({
     // narrowing of it. A red phase writes TypeScript under `src/` or `test/`, never under a
     // gitignored emit directory, so no discovery guarantee moves. Q-0097 AC-23.
     exclude: [...configDefaults.exclude, '**/dist/**'],
+    // The budget a test gets, CHOSEN rather than inherited. Until 2026-09-11 no file in this
+    // workspace declared one, so Vitest's 5000 ms default governed — a number nobody selected,
+    // asserting nothing deliberate about any test here.
+    //
+    // Measured on a passing run under full-workspace load: the slowest test in the corpus,
+    // `adapters/codex.test.ts` AC-4, takes **3685 ms** and is more than twice the next slowest. It
+    // earns that honestly — it loops four option combinations and each one writes a CLI stub and
+    // SPAWNS it, so it is four sequential subprocesses. Against 5000 ms that is 26% headroom, and
+    // any suite added anywhere in the workspace consumes it. Measured across two windows on the same
+    // branch and the same 5000 ms value: **5 consecutive failures** in one and a clean pass in
+    // another, against 2 failures in 17 runs before Q-0074's two source-walking registers landed.
+    // The verdict tracks what else the machine is doing and nothing in the commit — stated this way
+    // because the first reading of it here was "deterministic", and it is not.
+    //
+    // **This does not weaken what runs**, which is what Q-0102's GO-2 forbids — every test, file and
+    // assertion is unchanged, and a hang still fails. What it replaces is an ACCIDENTAL oracle with
+    // a chosen one. 20000 ms is ~5x the measured worst case, which is headroom for a loaded CI
+    // runner without being a number that could never fire.
+    //
+    // Why a single workspace value rather than a per-file override: the next expensive test would
+    // otherwise inherit the accidental default again, which is how this arrived. See Q-0102.
+    testTimeout: 20_000,
   },
 });

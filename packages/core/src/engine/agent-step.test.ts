@@ -10,7 +10,7 @@ import { commitAll as commitRepo, git, removeTempDirs, repo, write } from '../..
 import { stubAdapter } from '../../test/run-fixture.js';
 import { Backlog } from '../backlog/backlog.js';
 import type { TicketRecord } from '../backlog/backlog.js';
-import { branchExists } from '../fanout/fanout.js';
+import { branchProbe } from '../fanout/fanout.js';
 import { runAgentStep } from './steps.js';
 import type { RoutingContext } from './types.js';
 
@@ -83,7 +83,7 @@ describe('Q-0052 AC-7 — worktree, base sync, and the commit', () => {
     await expect(runAgentStep(step, context)).resolves.toBeNull();
 
     const worktree = worktreeOf(repoDir, 'harness/Q-0052/1-implement');
-    expect(branchExists(repoDir, 'harness/Q-0052/1-implement')).toBe(true);
+    expect(branchProbe(repoDir, 'harness/Q-0052/1-implement')).toBe('present');
     expect(infos(events)).toContain(`implement: worktree ${worktree} (harness/Q-0052/1-implement)`);
     // The DIRECTORY the adapter received, not merely that it was called: `cwd` is what decides
     // whether a code-writing step touches the user's checkout or its own worktree.
@@ -222,7 +222,7 @@ describe('Q-0052 AC-12c — every interpolation site this ticket adds coerces de
     const { context, repoDir } = agentContext();
     answering();
     await runAgentStep({ id: 'implement', worktree: true, branch: 2 }, context);
-    expect(branchExists(repoDir, '2')).toBe(true);
+    expect(branchProbe(repoDir, '2')).toBe('present');
   });
 
   test('a YAML number for verdict_file: writes that file, and its verdict JSON', async () => {

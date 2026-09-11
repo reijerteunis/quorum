@@ -4,8 +4,12 @@ import type { Event, Flow } from '@quorum/shared';
 
 import fixture from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
 import { coreSourceFiles } from '../../test/corpus.js';
+import type { BranchHeadResult } from '../fanout/fanout.js';
 import { finish, outcome, recordEvent } from './lifecycle.js';
 import type { LifecycleContext, RegressionFields, RunStatus } from './types.js';
+
+/** What a `vi.fn()` on the context recorded, without an `any` at each read site. */
+const callsOf = (fn: unknown): unknown[][] => (fn as { mock: { calls: unknown[][] } }).mock.calls;
 
 const render = (template: string, values: Record<string, string | number>): string =>
   template.replace(/<([^>]+)>/g, (whole, key: string) => String(values[key] ?? whole));
@@ -28,6 +32,11 @@ function declaredRunStatuses(): string[] {
   return members;
 }
 
+/** The three answers a branch-head read has, as fixtures, so a row names the one it means. */
+const resolved = (sha: string): BranchHeadResult => ({ state: 'resolved', sha, detail: null });
+const absent: BranchHeadResult = { state: 'no-such-ref', sha: null, detail: null };
+const unreadable: BranchHeadResult = { state: 'failed', sha: null, detail: 'fatal: not a git repository' };
+
 function lifecycle(overrides: Partial<LifecycleContext> = {}): LifecycleContext {
   const flow = { name: 'qa-red', consumes: 'solutioned', produces: 'red', steps: [] } as unknown as Flow;
   const ticket = {
@@ -49,7 +58,8 @@ function lifecycle(overrides: Partial<LifecycleContext> = {}): LifecycleContext 
       writeTicket: vi.fn(), appendLog: vi.fn(), recordOccurrenceEvent: vi.fn(),
       registerOccurrence: vi.fn(), finaliseManifest: vi.fn(), finaliseActiveOccurrences: vi.fn(),
     },
-    branchHeadAtStart: 'aaaaaaaaaaaaaaaa', readBranchHead: vi.fn(() => 'aaaaaaaaaaaaaaaa'), resetBranch: vi.fn(),
+    branchHeadAtStart: resolved('aaaaaaaaaaaaaaaa'), readBranchHead: vi.fn(() => resolved('aaaaaaaaaaaaaaaa')),
+    resetBranch: vi.fn(),
     ...overrides,
   } as unknown as LifecycleContext;
 }
@@ -180,17 +190,24 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
 
   test('rollback requires all four guards and never touches a neighbouring task branch', async () => {
     for (const [dry, status, start, current, expected] of [
-      [false, 'failed', 'aaaaaaaa', 'bbbbbbbb', 1],
-      [true, 'failed', 'aaaaaaaa', 'bbbbbbbb', 0],
-      [false, 'completed', 'aaaaaaaa', 'bbbbbbbb', 0],
-      [false, 'regressed', 'aaaaaaaa', 'bbbbbbbb', 0],
-      [false, 'failed', null, 'bbbbbbbb', 0],
-      [false, 'failed', 'aaaaaaaa', 'aaaaaaaa', 0],
-      [false, 'failed', 'aaaaaaaa', null, 0],
+      [false, 'failed', resolved('aaaaaaaa'), resolved('bbbbbbbb'), 1],
+      [true, 'failed', resolved('aaaaaaaa'), resolved('bbbbbbbb'), 0],
+      [false, 'completed', resolved('aaaaaaaa'), resolved('bbbbbbbb'), 0],
+      [false, 'regressed', resolved('aaaaaaaa'), resolved('bbbbbbbb'), 0],
+      [false, 'failed', absent, resolved('bbbbbbbb'), 0],
+      [false, 'failed', resolved('aaaaaaaa'), resolved('aaaaaaaa'), 0],
+      [false, 'failed', resolved('aaaaaaaa'), absent, 0],
+      // Q-0074 AC-6: the two rows the matrix could not hold while a head was `string | null`, and
+      // the reason the fix is a widening rather than a new test. They are SEPARATE because the two
+      // reads are — one at run start and one at rollback time — so a repair that widens
+      // `branchHead`'s return closes the first guard and leaves the second testing for truthiness.
+      // Neither resets, and neither is silent about it; the clause below asserts what they say.
+      [false, 'failed', unreadable, resolved('bbbbbbbb'), 0],
+      [false, 'failed', resolved('aaaaaaaa'), unreadable, 0],
       // Q-0040: the one non-advancing status that does not restore. Every guard this matrix tests
       // is satisfied — not dry, a start head, a current head, and the two differ — and the reset
       // still must not happen, which is the row no other status can stand in for.
-      [false, 'undecided', 'aaaaaaaa', 'bbbbbbbb', 0],
+      [false, 'undecided', resolved('aaaaaaaa'), resolved('bbbbbbbb'), 0],
     ] as const) {
       const reset = vi.fn();
       const ctx = lifecycle({ dry, branchHeadAtStart: start, readBranchHead: vi.fn(() => current), resetBranch: reset });
@@ -203,8 +220,9 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
       const fields = status === 'regressed'
         ? { targetFlow: 'development', stageBefore: 'solutioned', stageAfter: 'red', counter: 'f.x', count: 1, limit: 1, remaining: 0 }
         : undefined;
+      const row = `${String(dry)}/${status}/${start.state}/${current.state}`;
       await expect(finish(ctx, 'solutioned', status, null, fields)).resolves.toBeDefined();
-      expect(reset, `${dry}/${status}/${start}/${current}`).toHaveBeenCalledTimes(expected);
+      expect(reset, row).toHaveBeenCalledTimes(expected);
       if (expected) {
         expect(reset).toHaveBeenCalledWith('/repo', 'harness/Q-0050/integration', 'aaaaaaaa');
         expect(ctx.emit).toHaveBeenCalledWith({
@@ -215,14 +233,68 @@ describe('Q-0050 AC-9 — lifecycle is directly executable', () => {
           runId: 7, branch: 'harness/Q-0050/integration', shortCurrentSha: 'bbbbbbb', shortStartSha: 'aaaaaaa',
         }));
       }
+      // The half a count cannot see: the two rows that do not reset must not be silent about it,
+      // and the six that do not reset for an ordinary reason must stay exactly as quiet as before.
+      // `failed` is the only status in this table that restores a branch at all, so it is what
+      // decides whether either read is reached — the same disjunct `restoresBranch` applies.
+      const unreadableHead = !dry && status === 'failed'
+        && (start.state === 'failed' || (start.state === 'resolved' && current.state === 'failed'));
+      const warned = callsOf(ctx.emit)
+        .some(([event]) => (event as Event).type === 'warn' && String((event as { message: string }).message).includes('not rolled back'));
+      expect(warned, row).toBe(unreadableHead);
+      expect(callsOf(ctx.persistence.appendLog).some(([, line]) => String(line).includes('rollback-unverified')), row)
+        .toBe(unreadableHead);
     }
   });
 
-  test('a null current branch head skips rollback without manufacturing a warning', async () => {
-    const ctx = lifecycle({ branchHeadAtStart: 'aaaaaaaa', readBranchHead: vi.fn(() => null) });
+  test('a current branch head git says is NOT THERE skips rollback without manufacturing a warning', async () => {
+    // Unchanged by Q-0074, and the row it had to leave alone: git answered, there is no branch to
+    // put back, and silence keeps the one meaning it has had — nothing needed rolling back.
+    const ctx = lifecycle({ branchHeadAtStart: resolved('aaaaaaaa'), readBranchHead: vi.fn(() => absent) });
     await expect(finish(ctx, 'solutioned', 'failed', 'git unavailable')).resolves.toBeDefined();
     expect(ctx.resetBranch).not.toHaveBeenCalled();
     expect(ctx.emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'warn' }));
+  });
+
+  test('a head that could not be READ warns, records, and names git\'s own reason', async () => {
+    const ctx = lifecycle({ branchHeadAtStart: resolved('aaaaaaaa'), readBranchHead: vi.fn(() => unreadable) });
+    await expect(finish(ctx, 'solutioned', 'failed', null)).resolves.toBeDefined();
+    expect(ctx.resetBranch).not.toHaveBeenCalled();
+    expect(ctx.emit).toHaveBeenCalledWith({
+      type: 'warn',
+      message: 'harness/Q-0050/integration: not rolled back — its head could not be read at rollback'
+        + ' (fatal: not a git repository), so this run may have left `integrate`\'s merge on it',
+    });
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket,
+      'run=7 rollback-unverified branch=harness/Q-0050/integration head=current');
+  });
+
+  test('and so does one that could not be read at run start, which names the other end', async () => {
+    // Separately, because this one has no revision to reset TO — the two are different sentences
+    // about different reads, and a fix that closes one guard leaves the other exactly as it was.
+    const ctx = lifecycle({ branchHeadAtStart: unreadable, readBranchHead: vi.fn(() => resolved('bbbbbbbb')) });
+    await expect(finish(ctx, 'solutioned', 'failed', null)).resolves.toBeDefined();
+    expect(ctx.resetBranch).not.toHaveBeenCalled();
+    expect(ctx.readBranchHead, 'and it does not spend a spawn asking the other end').not.toHaveBeenCalled();
+    expect(ctx.emit).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'warn',
+      message: expect.stringContaining('could not be read at run start'),
+    }));
+    expect(ctx.persistence.appendLog).toHaveBeenCalledWith(ctx.ticket,
+      'run=7 rollback-unverified branch=harness/Q-0050/integration head=start');
+  });
+
+  test('neither unreadable-head record is spelled `rolled-back`, which is the opposite one', async () => {
+    // Q-0040 AC-5's guard asserts that an undecided run's log carries no `rolled-back` token, and
+    // the same reasoning binds here: two records that grep alike are one record.
+    for (const heads of [
+      { branchHeadAtStart: unreadable, readBranchHead: vi.fn(() => resolved('bbbbbbbb')) },
+      { branchHeadAtStart: resolved('aaaaaaaa'), readBranchHead: vi.fn(() => unreadable) },
+    ]) {
+      const ctx = lifecycle(heads);
+      await finish(ctx, 'solutioned', 'failed', null);
+      for (const [, line] of callsOf(ctx.persistence.appendLog)) expect(String(line)).not.toContain('rolled-back');
+    }
   });
 
   test('dry preserves in-memory mutations while the prototype view absorbs writes', async () => {
@@ -266,8 +338,11 @@ describe('Q-0040 AC-4 — three named questions, and no status takes both arms',
     worktrees: new Map([['harness/Q-0050/implement', '/repo/.harness/worktrees/harness__Q-0050__implement']]),
     readWorktreeChanges: vi.fn(() => []),
     removeWorktree: vi.fn(),
-    branchHeadAtStart: 'aaaaaaaa',
-    readBranchHead: vi.fn(() => 'bbbbbbbb'),
+    // Q-0074: these two were bare shas, and the `as unknown as` below is why the compiler said
+    // nothing when the reads became three-answer — the rows went on passing for `restores: false`
+    // and failing for `restores: true`, which is the cast doing what a cast does.
+    branchHeadAtStart: resolved('aaaaaaaa'),
+    readBranchHead: vi.fn(() => resolved('bbbbbbbb')),
     resetBranch: vi.fn(),
     ...overrides,
   } as unknown as Partial<LifecycleContext>);

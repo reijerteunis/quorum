@@ -19,7 +19,7 @@ import YAML from 'yaml';
 
 import { REPO_WORKTREE_ROOT, worktreeDirName } from '@quorum/shared';
 
-import { ensureWorktree } from '../git/git.js';
+import { ensureWorktree, exitStatus, failureDetail } from '../git/git.js';
 
 /**
  * A fan-out or integrate step that cannot proceed, carrying one sentence.
@@ -208,24 +208,59 @@ const safe = <T>(fn: () => T): T | null => {
 };
 
 /** One property off whatever `execFileSync` threw, or `undefined` when it carried none. */
-const errorProperty = (error: unknown, key: 'stderr' | 'message'): unknown =>
+const errorProperty = (error: unknown, key: 'stdout' | 'stderr' | 'message'): unknown =>
   typeof error === 'object' && error !== null && key in error
     ? (error as Record<string, unknown>)[key]
     : undefined;
 
 /**
- * Does `b` name a local branch?
+ * What a branch probe established, which is three answers rather than a boolean.
  *
- * Why: preserved defect, see Q-0048 AC-6. This returns `false` when git itself failed as well as
- * when the branch is absent — the conflation `ancestry()` in this same package was rewritten to
- * forbid. Latent because a run reaching here has already spawned git successfully several times.
+ * Spelled as a bare union rather than as a result object, and the two shapes in this package are
+ * chosen per question rather than uniformly: this one is read to decide what to *do* next and its
+ * failure is reported by the caller in the caller's own words, where {@link BranchHeadResult} is
+ * read into durable records that a reader meets without the run beside them.
  */
-export function branchExists(repo: string, b: string): boolean {
-  return Boolean(safe(() => git(['rev-parse', '--verify', '--quiet', `refs/heads/${b}`], repo)));
+export type BranchProbe =
+  /** git resolved the ref: the branch is there. */
+  | 'present'
+  /** git answered, with its own documented exit of 1: there is no such branch here. */
+  | 'absent'
+  /** The probe could not answer, which is never reported as either of the other two. */
+  | 'failed';
+
+/**
+ * Does `branch` name a local branch? Three answers, because the callers act differently on two of
+ * them and used to be told one.
+ *
+ * `--verify --quiet` is documented to exit **1** for a ref that is not there, and that exit — and
+ * only that exit — is `absent`; everything else is the probe failing. See *"A probe that could not
+ * answer is not a negative"* (2026-09-10).
+ *
+ * Named `branchProbe` and not `branchExists` because neither `if (!x)` nor a filter predicate is a
+ * type error under any three-answer shape, so only the rename makes a consumer that kept reading it
+ * as a boolean fail to compile.
+ */
+export function branchProbe(repo: string, branch: string): BranchProbe {
+  try { git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], repo); return 'present'; }
+  catch (error) { return exitStatus(error) === 1 ? 'absent' : 'failed'; }
 }
 
 /**
- * The full sha `branch` resolves to, or `null`.
+ * What the branch-head probe established, in `git/git.ts`'s `ShortShaResult` shape because it
+ * answers the same question about the same kind of failure — and separately from it, because that
+ * one abbreviates and a rollback needs the whole sha.
+ */
+export type BranchHeadResult =
+  /** git answered with the revision's full sha. */
+  | { state: 'resolved'; sha: string; detail: null }
+  /** git answered, with its own documented exit of 1: the revision does not resolve here. */
+  | { state: 'no-such-ref'; sha: null; detail: null }
+  /** The probe could not answer, which is never reported as either of the other two. */
+  | { state: 'failed'; sha: null; detail: string | null };
+
+/**
+ * The full sha `branch` resolves to, as three answers.
  *
  * `finish()` reads this before a run touches the ticket branch, so that a run which does not
  * complete can put it back where it found it: integrate merges task branches before anyone knows
@@ -233,10 +268,18 @@ export function branchExists(repo: string, b: string): boolean {
  * — so the next stage measured its red phase against a tree that already held the implementation.
  * Nothing is lost by rolling back; each task's work stays on its own branch. See Q-0033.
  *
- * Why: preserved defect, see Q-0048 AC-6 — `null` is also what a failed git returns.
+ * That is why the third answer is not optional here: the rollback reads a head at each end and
+ * *does nothing* where it reads none, so a failed probe collapsed into "the branch is not there"
+ * makes a failed run silently keep whatever integrate merged. `--verify --quiet` is what supplies
+ * the discrimination, and it resolves a revision expression exactly as the bare form did.
  */
-export function branchHead(repo: string, branch: string): string | null {
-  return safe(() => git(['rev-parse', branch], repo));
+export function branchHead(repo: string, branch: string): BranchHeadResult {
+  try { return { state: 'resolved', sha: git(['rev-parse', '--verify', '--quiet', branch], repo), detail: null }; }
+  catch (error) {
+    return exitStatus(error) === 1
+      ? { state: 'no-such-ref', sha: null, detail: null }
+      : { state: 'failed', sha: null, detail: failureDetail(error) };
+  }
 }
 
 /**
@@ -258,6 +301,30 @@ export function resetBranchTo(repo: string, branch: string, sha: string): void {
 }
 
 /**
+ * The paths one `status --porcelain` names, whatever this module's runner did to the first line.
+ *
+ * The status field is one or two characters and a space, and {@link git} trims the whole output —
+ * so on line one alone a leading ` M ` arrives as `M `, and the fixed `.slice(3)` that stood here
+ * ate a character of the path: `acklog/T-0001/ticket.md`. Dropping the first whitespace-delimited
+ * token instead is right for both shapes and leaves every other reading — a rename's `old -> new`
+ * among them — exactly where it was. The runner's own `.trim()` is untouched: it feeds every git
+ * call this module makes, and moving it would move all of their outputs (Q-0074 NG-3).
+ */
+const porcelainPaths = (status: string): string[] => status
+  .split('\n').map((line) => /^\s*\S{1,2}\s+(.*)$/.exec(line)?.[1]?.trim() ?? '').filter(Boolean);
+
+/** What `backlog/` is holding, or a refusal naming git's own reason for not being able to say. */
+function backlogChanges(dir: string, when: string): string[] {
+  try { return porcelainPaths(git(['status', '--porcelain', '--', 'backlog'], dir)); }
+  catch (error) {
+    const detail = failureDetail(error);
+    throw new IntegrationError(
+      `cannot read what backlog/ is holding in ${dir} ${when}${detail === null ? '' : ` — ${detail}`}`,
+    );
+  }
+}
+
+/**
  * Commit everything in `dir`, having first put `backlog/` back the way the engine left it.
  *
  * The engine owns everything under `backlog/`: a ticket's stage, counters, history and cost, and
@@ -269,19 +336,34 @@ export function resetBranchTo(repo: string, branch: string, sha: string): void {
  * deleted, so a dirty `backlog/` cannot block the next merge either. Work outside `backlog/` in the
  * same call commits normally: this is a revert of one directory, not a refusal to commit.
  *
- * Why: preserved defect, see Q-0048 AC-12. Both halves of the revert are tolerant of failure, so a
- * revert that FAILED still reports through `onDiscard` as though it had discarded.
+ * **The revert is judged by its outcome and never by the two exit codes**, which is what lets both
+ * halves stay tolerant of failure without either of them lying: one of the pair legitimately fails
+ * where the other did the work — `checkout -- backlog` has no pathspec to match when the only edit
+ * is a file the agent added — so a second status read is what establishes that the directory really
+ * did come back. Where it did not, or where either read could not be made at all, nothing is
+ * staged and nothing is committed: an unread `backlog/` is one this function cannot promise it put
+ * back, and committing over it is the incident above.
  *
  * @param message committed verbatim through argv — untrusted agent text, never a shell.
- * @param onDiscard called once, with what was reverted, whenever anything was. Never silent.
+ * @param onDiscard called once, with what was reverted, whenever anything was — and only once the
+ *   revert is proven, so it never reports a discard that did not happen. Never silent.
  * @returns the staged paths in git's order, or `null` when nothing was staged.
+ * @throws {IntegrationError} where `backlog/` could not be read, or is still dirty after the revert.
  */
 export function commitAll(dir: string, message: string, onDiscard?: (dropped: string[]) => void): string[] | null {
-  const dirty = (safe(() => git(['status', '--porcelain', '--', 'backlog'], dir)) ?? '')
-    .split('\n').map((l) => l.slice(3).trim()).filter(Boolean);
+  const dirty = backlogChanges(dir, 'before staging');
   if (dirty.length) {
+    // Why: response 3, see "A probe that could not answer is not a negative" (2026-09-10) — neither
+    // half's exit code is read as an answer, because the status read below is what answers.
     safe(() => git(['checkout', '--', 'backlog'], dir));   // revert tracked edits
     safe(() => git(['clean', '-qfd', '--', 'backlog'], dir)); // drop files the agent added
+    const left = backlogChanges(dir, 'after reverting it');
+    if (left.length) {
+      throw new IntegrationError(
+        `backlog/ in ${dir} is still holding ${left.join(', ')} after the revert,`
+        + ' and the engine owns it — nothing was committed',
+      );
+    }
     onDiscard?.(dirty);
   }
   git(['add', '-A'], dir);
@@ -291,31 +373,72 @@ export function commitAll(dir: string, message: string, onDiscard?: (dropped: st
   return staged.split('\n');
 }
 
-/** What a merge did. `error` is present only on failure; that asymmetry is the spike's. */
+/** What a merge did. `error` and `worktreeClean` are present only on failure; that asymmetry is the spike's. */
 export interface MergeResult {
   /** Whether the merge landed. `false` is a result the caller decides on, never a throw. */
   ok: boolean;
-  /** Paths left unmerged, read before the merge is aborted. Empty on success. */
-  conflicts: string[];
+  /**
+   * Paths left unmerged, read before the merge is aborted. Empty on success, and `null` where the
+   * probe that would have listed them could not answer — which is not the same claim as none.
+   */
+  conflicts: string[] | null;
   /** The LAST 500 characters of what git said — its own reason is at the end. Failure only. */
   error?: string;
+  /**
+   * Failure only: whether the worktree was left clean, established by asking whether a merge is
+   * still in progress rather than by reading the abort's exit code — an abort legitimately fails
+   * when there was no merge to abort, so its status is not the question. `null` where that could
+   * not be established either.
+   */
+  worktreeClean?: boolean | null;
 }
 
 /**
- * Merge `branch` into whatever is checked out at `dir`, and leave the worktree clean either way.
+ * git's own reason for a failure, from whichever stream carries it.
+ *
+ * stderr first, then **stdout**, then the error's message. The `??` that stood here read stderr and
+ * fell back to the message, and `??` does not fall back on an empty string — so a content conflict,
+ * whose `CONFLICT (content): …` git writes to *stdout*, reported an error of `''` and
+ * `engine/steps.ts`'s `mergeFailure` answered *"git reported no reason"* in the one
+ * case where the reason is the only information there is.
+ */
+const gitReason = (error: unknown): string =>
+  [errorProperty(error, 'stderr'), errorProperty(error, 'stdout'), errorProperty(error, 'message')]
+    .map((value) => String(value ?? ''))
+    .find((text) => text.trim() !== '') ?? '';
+
+/**
+ * Merge `branch` into whatever is checked out at `dir`, and say what the worktree was left holding.
  *
  * A conflict is a result, not a throw: the unmerged paths are collected, the merge is aborted, and
- * the caller decides. It never resolves a conflict, leaves a partial merge behind, or reports
- * success it did not have.
+ * the caller decides. It never resolves a conflict, leaves a partial merge behind silently, or
+ * reports success it did not have.
+ *
+ * The promise this used to make — that the worktree came back clean whichever way the merge went —
+ * was one the code could not keep and did not check: the abort is best-effort, so a merge could be
+ * left in progress and every later merge into the same worktree then failed for a reason none of
+ * them caused. It is corrected rather than made true, because forcing a worktree clean is a
+ * decision about somebody else's tree, and turning a failed cleanup fatal makes a failed run harder
+ * to recover from (Q-0074 NG-10, R-2). What is reported is what {@link MergeResult.worktreeClean}
+ * found.
  */
 export function mergeInto(dir: string, branch: string): MergeResult {
   try {
     git(['-c', 'user.email=harness@local', '-c', 'user.name=harness', 'merge', '--no-ff', '--no-edit', branch], dir);
     return { ok: true, conflicts: [] };
   } catch (e) {
-    const conflicts = (safe(() => git(['diff', '--name-only', '--diff-filter=U'], dir)) ?? '').split('\n').filter(Boolean);
+    // Why: response 3, see "A probe that could not answer is not a negative" (2026-09-10) — the
+    // abort's own status answers nothing (it fails when there was no merge), so the probe below is
+    // what the report rests on; a listing that could not be read stays `null` rather than empty.
+    const listed = safe(() => git(['diff', '--name-only', '--diff-filter=U'], dir));
     safe(() => git(['merge', '--abort'], dir));
-    return { ok: false, conflicts, error: String(errorProperty(e, 'stderr') ?? errorProperty(e, 'message')).slice(-500) };
+    const merging = branchHead(dir, 'MERGE_HEAD');
+    return {
+      ok: false,
+      conflicts: listed === null ? null : listed.split('\n').filter(Boolean),
+      error: gitReason(e).slice(-500),
+      worktreeClean: merging.state === 'failed' ? null : merging.state === 'no-such-ref',
+    };
   }
 }
 

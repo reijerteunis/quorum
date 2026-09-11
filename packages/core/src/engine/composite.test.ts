@@ -14,7 +14,7 @@ import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { worktreeDirName } from '@quorum/shared';
 import type { Event } from '@quorum/shared';
 
-import { commitAll as commitTree, git, removeTempDirs, repo, write } from '../../test/repo.js';
+import { commitAll as commitTree, git, installGitShim, removeTempDirs, repo, write } from '../../test/repo.js';
 import { Backlog } from '../backlog/backlog.js';
 import type { TicketRecord } from '../backlog/backlog.js';
 import { runFanOut, runIntegrate, syncBaseIntoTicketBranch } from './composite.js';
@@ -773,6 +773,75 @@ describe('Q-0053 AC-9 — install before test, and neither a kill nor a broken e
     // `composite.ts` names: `testsOk` is initialised true and only the test block ever clears it.
     expect(vi.mocked(f.context.persistence.appendLog)).toHaveBeenCalledWith(f.context.ticket,
       'run=4 step=integrate merged=1/2 tests=ok');
+  });
+});
+
+describe('Q-0074 AC-8 — an unanswerable probe never shortens the merge list, nor skips the base', () => {
+  /**
+   * Run `fn` with a git that fails `rev-parse` for one branch and answers everything else.
+   *
+   * The pattern names the branch as well as the subcommand, so `merge-base`, the merge itself and
+   * every other branch's probe are untouched: what is staged is one probe that could not answer,
+   * which is the condition, rather than a repository that has stopped working.
+   */
+  const withFailingProbeFor = <T>(branch: string, fn: () => T): T => {
+    const shim = installGitShim(`case " $* " in *rev-parse*${branch}*) exit 3 ;; esac`);
+    try { return fn(); } finally { shim.restore(); }
+  };
+
+  test('a branch git ANSWERS is not there is still dropped, which is the half that does not move', async () => {
+    const f = fixture();
+    const step = { id: 'integrate', type: 'integrate', branches: ['harness/{id}/gone'], output: { write: 'dev/i.md' } };
+
+    await expect(runIntegrate(step, f.context)).resolves.toBeNull();
+
+    expect(vi.mocked(f.context.persistence.appendLog))
+      .toHaveBeenCalledWith(f.context.ticket, 'run=4 step=integrate merged=0/0 tests=-');
+    expect(fs.readFileSync(path.join(f.ticketDir, 'dev/i.md'), 'utf8')).not.toContain('harness/Q-0053/gone');
+  });
+
+  test('a branch whose probe FAILED is merged anyway, and the step says it could not tell', async () => {
+    // The most severe consequence measured in either half of this ticket, and the one no earlier
+    // account stated: the filter here read `branchExists`, so a failed probe removed a REAL task
+    // branch from the list. Nothing reached `conflicts`, no line reached the notes, `testsOk` stayed
+    // true — and the suite then ran against a tree missing that task's work and could pass BECAUSE
+    // the work was absent. Demonstrated by the arithmetic: `merged=1/1`, not `0/0`.
+    const f = fixture();
+    f.branchWith('harness/Q-0053/t1', 'a.txt', 'a\n');
+    const step = { id: 'integrate', type: 'integrate', branches: ['harness/{id}/t1'], output: { write: 'dev/i.md' } };
+
+    await withFailingProbeFor('harness/Q-0053/t1', async () => {
+      await expect(runIntegrate(step, f.context)).resolves.toBeNull();
+    });
+
+    expect(vi.mocked(f.context.persistence.appendLog), 'the list was silently shortened')
+      .toHaveBeenCalledWith(f.context.ticket, 'run=4 step=integrate merged=1/1 tests=-');
+    const notes = fs.readFileSync(path.join(f.ticketDir, 'dev/i.md'), 'utf8');
+    expect(notes).toContain('could not tell whether it exists; merged anyway rather than dropped');
+    expect(notes, 'and the merge that then happened is recorded as it always was').toContain('- ✓ harness/Q-0053/t1');
+    expect(warns(f.events).join('\n')).toContain('could not tell whether harness/Q-0053/t1 exists — git failed');
+    // The work really is on the target, which is what `merged=1/1` is a claim about.
+    expect(fs.existsSync(path.join(f.worktree(INTEGRATION), 'a.txt'))).toBe(true);
+  });
+
+  test('and a base whose probe FAILED is synced anyway, rather than skipped as though absent', async () => {
+    // The sibling at the other site, separately, because a repair that moves one leaves the other
+    // exactly as it was — which is this ticket's own R-1 one function along. Skipping here is the
+    // Q-0004 defect: a ticket open for more than a day integrates against the base it was cut from.
+    const f = fixture();
+    write(path.join(f.repoDir, 'on-main.txt'), 'landed while the ticket was open\n');
+    commitTree(f.repoDir, 'main moves on');
+    const step = { id: 'integrate', type: 'integrate', branches: [], output: { write: 'dev/i.md' } };
+
+    await withFailingProbeFor('main', async () => {
+      await expect(runIntegrate(step, f.context)).resolves.toBeNull();
+    });
+
+    const notes = fs.readFileSync(path.join(f.ticketDir, 'dev/i.md'), 'utf8');
+    expect(notes).toContain('could not tell whether it exists; synced anyway rather than skipped');
+    expect(notes, 'and the sync that then happened is recorded as it always was').toContain('- ✓ base `main`');
+    expect(warns(f.events).join('\n')).toContain('could not tell whether base main exists — git failed');
+    expect(fs.existsSync(path.join(f.worktree(INTEGRATION), 'on-main.txt')), 'the base really was merged in').toBe(true);
   });
 });
 

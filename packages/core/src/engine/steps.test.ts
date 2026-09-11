@@ -88,6 +88,35 @@ describe('Q-0052 AC-12b — a sync failure always says why', () => {
     expect(mergeFailure(undefined)).toBe('git reported no reason');
     expect(mergeFailure(null)).toBe('git reported no reason');
   });
+
+  describe('Q-0074 AC-12 — and two things it may never say', () => {
+    test('an unread conflict list is never reported as no conflicts', () => {
+      // `[]` and `null` are one value apart and only the first is a claim about the merge. Both
+      // spellings are asserted, because a caller reading the sentence cannot see the field.
+      expect(mergeFailure({ conflicts: null })).toBe('git could not be asked which paths conflict');
+      expect(mergeFailure({ conflicts: null, error: 'fatal: not a git repository' }))
+        .toBe('git: fatal: not a git repository; the conflicting paths could not be read');
+      for (const merge of [{ conflicts: null }, { conflicts: null, error: 'fatal: x' }] as const) {
+        expect(mergeFailure(merge), 'an unread list read as an empty one').not.toContain('no reason');
+      }
+      // And the discrimination, rather than the two sentences alone: the empty list still says the
+      // other thing, so a fix that collapsed both onto one wording would fail here.
+      expect(mergeFailure({ conflicts: [] })).not.toBe(mergeFailure({ conflicts: null }));
+    });
+
+    test('a worktree the abort did not clean is named, and one it did is not mentioned', () => {
+      expect(mergeFailure({ conflicts: ['f.txt'], worktreeClean: false }))
+        .toBe('conflicts: f.txt; and a merge is still in progress in the worktree');
+      expect(mergeFailure({ conflicts: ['f.txt'], worktreeClean: null }))
+        .toBe('conflicts: f.txt; and whether the merge was aborted could not be established');
+      // The ordinary case is silent, which is what keeps the two above worth reading: a sentence
+      // appended to every failure is one nobody sees. Both the proven-clean and the
+      // nothing-was-asked spellings, so `undefined` is not quietly read as `false`.
+      for (const merge of [{ conflicts: ['f.txt'], worktreeClean: true }, { conflicts: ['f.txt'] }]) {
+        expect(mergeFailure(merge)).toBe('conflicts: f.txt');
+      }
+    });
+  });
 });
 
 /** Everything one script step's context needs, over a real directory it can run a command in. */
