@@ -8,13 +8,11 @@ export const DAEMON_ENDPOINTS = {
 } as const;
 
 /** The page-relative run-events path, with the handle confined to one segment. */
-export function runEventsPath(handle: string): string {
-  return `${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}/events`;
+export function runEventsPath(_handle: string): string {
+  throw new Error('not implemented');
 }
 
 /** A same-origin WebSocket URL derived from the page URL and run handle. */
-export function runEventsUrl(page: URL, handle: string): URL {
-  const url = new URL(runEventsPath(handle), page);
-  url.protocol = page.protocol.replace('http', 'ws');
-  return url;
+export function runEventsUrl(_page: URL, _handle: string): URL {
+  throw new Error('not implemented');
 }

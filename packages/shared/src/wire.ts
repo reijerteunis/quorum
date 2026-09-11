@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-/** One message emitted by the run-events WebSocket. */
-export const wireMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('event'), event: z.unknown() }).strict(),
-  z.object({ type: z.literal('missed'), count: z.number().finite().int().nonnegative() }).strict(),
-]);
-
 /** The transport envelope; event payloads require a second pass through `eventSchema`. */
-export type WireMessage = z.infer<typeof wireMessageSchema>;
+export type WireMessage =
+  | { readonly type: 'event'; readonly event: unknown }
+  | { readonly type: 'missed'; readonly count: number };
+
+/** Runtime validation for one message emitted by the run-events WebSocket. */
+export const wireMessageSchema: z.ZodType<WireMessage> = z.custom<WireMessage>(() => {
+  throw new Error('not implemented');
+});
