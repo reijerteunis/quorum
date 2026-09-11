@@ -55,6 +55,31 @@ function filesBelow(absolute: string): [string, string][] {
  */
 const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
 
+const forbiddenPersistence = ['localStorage', 'sessionStorage', 'indexedDB', `document.${'cookie'}`, 'caches'];
+
+function duplicateMissedDeclarations(files: [string, string][]): string[] {
+  return files.filter(([, text]) => /(?:interface|type)\s+\w+[\s\S]*?type\s*:\s*['"]missed['"][\s\S]*?count\s*[?:]/m.test(text)).map(([name]) => name);
+}
+
+describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
+  test('the web imports shared but never redeclares the missed envelope', () => {
+    expect(sourceFiles().some(([, text]) => importSpecifiers(text).includes(`@${'quorum'}/shared`))).toBe(true);
+    expect(duplicateMissedDeclarations(sourceFiles())).toStrictEqual([]);
+    expect(duplicateMissedDeclarations([['fixture.ts', "interface Bogus { type: 'missed'; count: number }"]])).toStrictEqual(['fixture.ts']);
+  });
+
+  test('no browser persistence API occurs and the guard detects a fixture', () => {
+    for (const [name, text] of sourceFiles()) for (const needle of forbiddenPersistence) expect(text.includes(needle), name).toBe(false);
+    expect(forbiddenPersistence.filter((needle) => `localStorage.setItem('run', handle)`.includes(needle))).toStrictEqual(['localStorage']);
+    expect(forbiddenPersistence).not.toContain('pushState');
+  });
+
+  test('the retired pending sentence is absent', () => {
+    const retired = ['no live connection yet', 'Q-0120 opens one'].join(' — ');
+    expect(sourceFiles().filter(([, text]) => text.includes(retired)).map(([name]) => name)).toStrictEqual([]);
+  });
+});
+
 /**
  * Every module specifier `text` imports or re-exports.
  *

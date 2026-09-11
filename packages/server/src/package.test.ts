@@ -149,6 +149,12 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     expect(own.type).toBe('module');
   });
 
+  test('no CORS middleware, header, or dependency is introduced', () => {
+    const source = production().map(([, text]) => text).join('\n').toLowerCase();
+    expect(source).not.toContain('cors');
+    expect(JSON.stringify(own).toLowerCase()).not.toContain('cors');
+  });
+
   test('and it declares the three tasks every package in this workspace owes', () => {
     for (const task of ['lint', 'typecheck', 'test']) {
       expect(own.scripts?.[task] ?? '', `no ${task} script`).not.toBe('');

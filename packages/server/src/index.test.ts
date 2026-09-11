@@ -10,6 +10,8 @@
  * (Q-0073). Adding an export is then a visible act, which is the rule `@quorum/core`'s own barrel
  * states: what a consumer may reach is decided here rather than by whoever types an import first.
  */
+import fs from 'node:fs';
+
 import { describe, expect, test } from 'vitest';
 
 import * as server from './index.js';
@@ -51,6 +53,11 @@ const SURFACE: Record<string, string> = {
 };
 
 describe('the public surface', () => {
+  test('wire.ts imports and re-exports the shared WireMessage type', () => {
+    const text = fs.readFileSync(new URL('./wire.ts', import.meta.url), 'utf8');
+    expect(text).toMatch(/import\s+type\s+\{\s*WireMessage\s*\}\s+from\s+'@quorum\/shared'/);
+    expect(text).toMatch(/export\s+type\s+\{\s*WireMessage\s*\}/);
+  });
   test('is exactly the register, in both directions', () => {
     expect(Object.keys(server).sort()).toStrictEqual(Object.keys(SURFACE).sort());
   });

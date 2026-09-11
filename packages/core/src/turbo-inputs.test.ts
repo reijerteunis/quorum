@@ -163,6 +163,7 @@ const SUITES = [
  */
 const MANIFEST: Record<string, Record<string, string>> = {
   '@quorum/shared#test': {
+    'pnpm-lock.yaml': 'wire.test.ts — Q-0120 AC-21, the web importer carries the shared workspace dependency',
     'CLAUDE.md': 'docs.test.ts — Q-0108, its term list against docs/README.md\'s. Registered by hand when the row was written and enforced by the scanner since, in the same change: widening the classifier to root-level files is what this read exposed',
     'turbo.json': 'docs.test.ts — Q-0097 AC-24, 04-architecture.md\'s description of the emit is compared against the shipped build task rather than against a literal',
     'docs/02-sdlc-pipeline-spec.md': 'docs.test.ts — the status line and the §5.8 chore section',

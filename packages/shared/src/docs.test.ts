@@ -46,6 +46,30 @@ function listed(): Listed[] {
 const onDisk = (): Map<string, string> =>
   new Map(decisionFiles().map((file) => [path.basename(file), read(file)]));
 
+describe('Q-0120 AC-23 — live connection documentation', () => {
+  test('architecture replaces the obsolete no-connection account with shared ownership and re-export', () => {
+    const architecture = repoFile('docs/04-architecture.md');
+    expect(architecture).not.toContain('There is no connection to the daemon');
+    expect(architecture).toMatch(/frame union[\s\S]*@quorum\/shared/i);
+    expect(architecture).toMatch(/packages\/server[\s\S]*re-export/i);
+  });
+
+  test('the glossary defines the closed, derived, memory-only connection state separately from run state', () => {
+    const glossary = repoFile('docs/GLOSSARY.md');
+    const start = glossary.indexOf('**Connection state**');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const entry = glossary.slice(start, glossary.indexOf('\n- **', start + 1) < 0 ? undefined : glossary.indexOf('\n- **', start + 1));
+    for (const state of ['idle', 'connecting', 'live', 'no daemon', 'no such run', 'ended', 'interrupted', 'dropped', 'protocol error']) expect(entry.toLowerCase()).toContain(state);
+    expect(entry).toMatch(/derived|per moment/i);
+    expect(entry).toMatch(/never (?:stored|persisted)|memory/i);
+    expect(entry).toMatch(/run state/i);
+  });
+
+  test('the repository architecture no longer calls frontend inert', () => {
+    expect(repoFile('harness/architecture.md')).not.toMatch(/frontend(?:`)? and data remain inert/i);
+  });
+});
+
 /** One decision entry's text, found the way the rest of the repository cites it: by title. */
 function entry(title: string): string {
   const row = listed().find((r) => r.title === title);
