@@ -1,12 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { describe, expect, test } from 'vitest';
 
+import { repoFile } from '../test/corpus.js';
 import { wireMessageSchema } from './wire.js';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 describe('AC-12/14 — browser-safe wire envelope', () => {
   test('accepts only the two envelope shapes and finite non-negative integer counts', () => {
@@ -17,7 +12,7 @@ describe('AC-12/14 — browser-safe wire envelope', () => {
   });
 
   test('the web importer declares shared in the lockfile', () => {
-    const lock = fs.readFileSync(path.join(ROOT, 'pnpm-lock.yaml'), 'utf8');
+    const lock = repoFile('pnpm-lock.yaml');
     const importer = lock.slice(lock.indexOf('  apps/web:'), lock.indexOf('\n  packages/', lock.indexOf('  apps/web:')));
     const scope = `@${'quorum'}/shared`;
     expect(importer).toContain(`'${scope}':`);
