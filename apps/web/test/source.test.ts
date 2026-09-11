@@ -58,7 +58,27 @@ const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
 const forbiddenPersistence = ['localStorage', 'sessionStorage', 'indexedDB', `document.${'cookie'}`, 'caches'];
 
 function duplicateMissedDeclarations(files: [string, string][]): string[] {
-  return files.filter(([, text]) => /(?:interface|type)\s+\w+[\s\S]*?type\s*:\s*['"]missed['"][\s\S]*?count\s*[?:]/m.test(text)).map(([name]) => name);
+  const declarationBodies = (text: string): string[] => {
+    const bodies: string[] = [];
+    const heads = /\b(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>{}]*>)?\s*(?:=\s*)?\{/g;
+    for (const head of text.matchAll(heads)) {
+      const start = (head.index ?? 0) + head[0].lastIndexOf('{');
+      let depth = 0;
+      for (let at = start; at < text.length; at += 1) {
+        if (text[at] === '{') depth += 1;
+        if (text[at] === '}') depth -= 1;
+        if (depth === 0) {
+          bodies.push(text.slice(start + 1, at));
+          break;
+        }
+      }
+    }
+    return bodies;
+  };
+
+  return files.filter(([, text]) => declarationBodies(text).some((body) =>
+    /\btype\s*:\s*['"]missed['"]/.test(body) && /\bcount\s*[?:]/.test(body)
+  )).map(([name]) => name);
 }
 
 describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
@@ -66,6 +86,8 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
     expect(sourceFiles().some(([, text]) => importSpecifiers(text).includes(`@${'quorum'}/shared`))).toBe(true);
     expect(duplicateMissedDeclarations(sourceFiles())).toStrictEqual([]);
     expect(duplicateMissedDeclarations([['fixture.ts', "interface Bogus { type: 'missed'; count: number }"]])).toStrictEqual(['fixture.ts']);
+    expect(duplicateMissedDeclarations([['fixture.ts', "type Bogus = { type: 'missed'; nested: { value: string }; count?: number }"]])).toStrictEqual(['fixture.ts']);
+    expect(duplicateMissedDeclarations([['separate.ts', "type Reference = { value: string };\nconst frame = { type: 'missed', count: 7 };"]])).toStrictEqual([]);
   });
 
   test('no browser persistence API occurs and the guard detects a fixture', () => {

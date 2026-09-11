@@ -1125,10 +1125,6 @@ const ROOT_DERIVATIONS: Record<string, Record<string, string>> = {
     'import.meta': 'createRequire resolving ajv\'s package.json inside node_modules, which is not repository corpus and is hashed through pnpm-lock.yaml',
     'createRequire': 'the same call',
   },
-  'packages/shared/src/wire.test.ts': {
-    'fileURLToPath': 'deriving the workspace root so the lockfile importer assertion can read its declared turbo input',
-    'import.meta': 'the module URL supplied to that same workspace-root derivation',
-  },
 };
 
 /**
@@ -1199,9 +1195,6 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
   'packages/core/src/run-history/reader.test.ts': {
     '..': 'the same token, handed to the guard and asserted refused',
     '../secret': 'a hostile run id, asserted refused; its target is built under os.tmpdir by the test itself',
-  },
-  'packages/shared/src/wire.test.ts': {
-    '..': 'the normalised workspace-root climb used only to read the lockfile declared as the shared test task input',
   },
   'packages/core/src/turbo-inputs.test.ts': {
     '..': 'the value `escapes` compares a normalised path against, and the key of two entries above',

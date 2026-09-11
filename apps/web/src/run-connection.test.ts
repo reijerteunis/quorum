@@ -21,6 +21,19 @@ const page = new URL(`https:${'/' + '/'}page.test/app`);
 const event = { type: 'step', stepId: 'implement', message: 'go' };
 
 describe('AC-16 to AC-18 — owned socket lifecycle', () => {
+  test('a fresh controller starts empty even after an earlier controller was disposed', () => {
+    const first = setup();
+    first.connection.connect('A', page);
+    first.sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
+    first.sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 7 }) });
+    first.connection.dispose();
+
+    const second = setup();
+    second.connection.connect('A', page);
+    expect(second.connection.snapshot.events).toStrictEqual([]);
+    expect(second.connection.snapshot.missedCount).toBeNull();
+  });
+
   test('connect opens one socket; replacement closes it and invalidates late callbacks', () => {
     const { connection, sockets, urls } = setup();
     connection.connect('A', page);
@@ -31,8 +44,10 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(2);
     expect(urls[1]!.pathname).toContain('/B/events');
     const before = connection.snapshot;
+    first.onopen?.();
     first.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
     first.onerror?.();
+    first.onclose?.({ code: 1013, reason: 'late close' });
     expect(connection.snapshot).toStrictEqual(before);
   });
 

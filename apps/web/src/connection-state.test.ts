@@ -19,6 +19,13 @@ describe('AC-15 — closed connection state machine', () => {
     expect(reduceConnection(live, { type: 'close', code, reason: 'browser reason' }).state.kind).toBe(kind);
   });
 
+  test('gives a 1008 refusal precedence even after a terminal event', () => {
+    const live: ConnectionMachine = { state: { kind: 'live', requestedUrl: url }, opened: true, terminalSeen: false };
+    const terminalSeen = reduceConnection(live, { type: 'event', event: terminal });
+    expect(reduceConnection(terminalSeen, { type: 'close', code: 1008, reason: 'unknown run' }).state)
+      .toStrictEqual({ kind: 'no-such-run' });
+  });
+
   test('only a normal close after a terminal event is ended', () => {
     const live: ConnectionMachine = { state: { kind: 'live', requestedUrl: url }, opened: true, terminalSeen: false };
     const seen = reduceConnection(reduceConnection(live, { type: 'event', event: step }), { type: 'event', event: terminal });
