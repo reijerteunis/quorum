@@ -1033,25 +1033,56 @@ describe('AC-9 — a replayed build is executable, and AC-22\'s chain runs end t
 });
 
 /**
- * Every `tsconfig.build.json` the workspace carries, found by **globbing rather than by naming**.
+ * Every `tsconfig.build.json` under `root`, found by **globbing rather than by naming**.
  *
  * A list of package names is the fail-open shape Q-0051 found in `q0050.source.test.ts`: a sixth
  * emitter would be outside the comparison while the suite reported agreement. The two roots are
  * `pnpm-workspace.yaml`'s own globs, and a package with no such file is absent from the result
  * rather than an error — `apps/web` emits through Vite and has none, which is a real and correct
  * divergence rather than a gap.
+ *
+ * Sorted, and the root is a parameter: the first so that a comparison's reference member is a
+ * property of the commit rather than of the order a filesystem hands back its entries, the second so
+ * that the discovery itself can be shown to find a package nobody named (AC-2's *"a sixth arrives
+ * without anyone remembering"*) over a synthetic tree instead of by asserting a count here.
  */
-const buildConfigs = (): [string, Record<string, unknown>][] => {
+const buildConfigs = (root = WORKSPACE): [string, Record<string, unknown>][] => {
   const found: [string, Record<string, unknown>][] = [];
-  for (const root of ['packages', 'apps']) {
-    for (const entry of fs.readdirSync(path.join(WORKSPACE, root), { withFileTypes: true })) {
+  for (const workspaceRoot of ['packages', 'apps']) {
+    const directory = path.join(root, workspaceRoot);
+    if (!fs.existsSync(directory)) continue;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const relative = `${root}/${entry.name}/tsconfig.build.json`;
-      if (!fs.existsSync(path.join(WORKSPACE, relative))) continue;
-      found.push([relative, parseJsonc(read(WORKSPACE, relative), relative) as Record<string, unknown>]);
+      const relative = `${workspaceRoot}/${entry.name}/tsconfig.build.json`;
+      if (!fs.existsSync(path.join(root, relative))) continue;
+      found.push([relative, parseJsonc(read(root, relative), relative) as Record<string, unknown>]);
     }
   }
-  return found;
+  return found.sort(([a], [b]) => a.localeCompare(b));
+};
+
+/**
+ * The `tsconfig.build.json` every **`tsc` emitter** owes, derived from what turbo says it would run.
+ *
+ * This is AC-2's subject, and it is derived rather than written down for the reason the criterion
+ * gives: *a sixth valid emitter joins the comparison automatically*. A package is a `tsc` emitter
+ * when turbo will run a `build` in it whose command drives `tsconfig.build.json` — so `apps/web`,
+ * whose command is `vite build`, is correctly absent, and a package that starts emitting with `tsc`
+ * is present the moment its script says so. Comparing this with {@link buildConfigs} is what makes
+ * both directions fail closed: an emitter whose configuration file is missing, and a configuration
+ * file in a package that emits nothing.
+ */
+const tscEmitConfigs = (): string[] => emitting()
+  .filter((task) => task.command.includes('tsconfig.build.json'))
+  .map((task) => `${task.directory}/tsconfig.build.json`)
+  .sort();
+
+/** Every disagreement among a set of emit configurations, named by file and by key. */
+const divergences = (configs: [string, Record<string, unknown>][]): string[] => {
+  const [reference, first] = configs[0] as [string, Record<string, unknown>];
+  return configs.slice(1).flatMap(([relative, config]) => ['compilerOptions', 'include', 'exclude']
+    .filter((key) => JSON.stringify(config[key]) !== JSON.stringify(first[key]))
+    .map((key) => `${relative}'s ${key} diverges from ${reference}'s`));
 };
 
 describe('Q-0125 AC-2 — the emit configurations agree, and the comparison finds them rather than naming them', () => {
@@ -1062,19 +1093,21 @@ describe('Q-0125 AC-2 — the emit configurations agree, and the comparison find
     // correct. What must agree is emitted LAYOUT — `outDir`, `rootDir`, `declaration`, `noEmit` and
     // the two file sets — because that is what the single root `outputs: ["dist/**"]` has to cover
     // for all of them at once.
+    //
+    // **The subject is derived from the emitters rather than listed here**, which is the correction
+    // the review of iteration 1 asked for: a written-down identity of four paths and a
+    // `configs.length` of 4 made a sixth `tsc` emitter fail a *census* assertion instead of joining
+    // the comparison, which is the fail-open shape this helper's own docblock refuses one layer up.
+    // What both sides now derive is the set — turbo's report of which packages run a `build` driving
+    // `tsconfig.build.json`, against the files the glob finds — so an emitter missing its
+    // configuration and a configuration in a package that emits nothing each fail by name.
     const configs = buildConfigs();
-    expect(configs.map(([relative]) => relative), 'the glob found a set this clause does not recognise').toStrictEqual([
-      'packages/cli/tsconfig.build.json',
-      'packages/core/tsconfig.build.json',
-      'packages/server/tsconfig.build.json',
-      'packages/shared/tsconfig.build.json',
-    ]);
+    const owed = tscEmitConfigs();
+    expect(owed.length, 'no emitter builds through a tsconfig.build.json, so this clause has no subject').toBeGreaterThan(1);
+    expect(configs.map(([relative]) => relative), 'the files the glob finds are not the ones the `tsc` emitters owe')
+      .toStrictEqual(owed);
+    expect(divergences(configs), 'the emit configurations disagree').toStrictEqual([]);
     const [, first] = configs[0] as [string, Record<string, unknown>];
-    for (const [relative, config] of configs.slice(1)) {
-      for (const key of ['compilerOptions', 'include', 'exclude']) {
-        expect(config[key], `${relative}'s ${key} diverges from packages/cli's`).toStrictEqual(first[key]);
-      }
-    }
     // The shape itself, so agreement on the WRONG four options is not mistaken for agreement.
     expect(first.compilerOptions).toStrictEqual({ outDir: 'dist', rootDir: 'src', declaration: true, noEmit: false });
     expect(first.include).toStrictEqual(['src/**/*.ts']);
@@ -1092,16 +1125,43 @@ describe('Q-0125 AC-2 — the emit configurations agree, and the comparison find
 
   test('and the comparison discriminates — one changed option is reported by name', () => {
     // Shown red over a fixture rather than by editing a shipped file, because the mutation AC-2 asks
-    // for is *a divergence between the four* and the assertion above would otherwise be satisfied by
-    // any four identical objects, including four wrong ones.
+    // for is *a divergence between the emitters* and the assertion above would otherwise be
+    // satisfied by any set of identical objects, including a set of wrong ones. The fixture is run
+    // through {@link divergences}, the same function the clause above asserts is empty, so what is
+    // demonstrated is that comparison discriminating rather than a second description of it.
     const configs = buildConfigs();
-    const [, first] = configs[0] as [string, Record<string, unknown>];
-    const diverged = { ...(first.compilerOptions as Record<string, unknown>), rootDir: 'source' };
-    expect(diverged, 'the fixture did not diverge, so it proves nothing').not.toStrictEqual(first.compilerOptions);
-    // And the glob is what makes a sixth arrive without anyone remembering: a package added to
-    // either root with such a file is in `configs` by construction, so the identity above fails
-    // rather than the comparison quietly covering three of four.
-    expect(configs.length, 'the glob found fewer files than there are tsc emitters').toBe(4);
+    const [reference, first] = configs[0] as [string, Record<string, unknown>];
+    const sixth: [string, Record<string, unknown>] = ['packages/sixth/tsconfig.build.json', {
+      ...first,
+      compilerOptions: { ...(first.compilerOptions as Record<string, unknown>), rootDir: 'source' },
+    }];
+    expect(divergences([...configs, sixth]), 'a divergent emit configuration is not reported by name')
+      .toStrictEqual([`packages/sixth/tsconfig.build.json's compilerOptions diverges from ${reference}'s`]);
+    expect(divergences([...configs, [sixth[0], { ...first }] as [string, Record<string, unknown>]]),
+      'an agreeing member is reported as a divergence, so the comparison says nothing').toStrictEqual([]);
+  });
+
+  test('and the glob finds a package nobody named, in either workspace root', () => {
+    // The property the deleted `configs.length` clause was claiming and could not establish: a count
+    // agreeing with today's tree says nothing about what happens when a sixth arrives. Demonstrated
+    // over a synthetic tree instead, in a directory this test makes and removes, so the discovery is
+    // exercised rather than described — and asked of **both** roots, because `apps` carries no such
+    // file today and a walk that had quietly stopped descending into it would look identical here.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-q0125-glob-'));
+    try {
+      const config = JSON.stringify({ extends: './tsconfig.json', compilerOptions: {}, include: [], exclude: [] });
+      for (const relative of ['packages/sixth', 'apps/seventh']) {
+        fs.mkdirSync(path.join(root, relative), { recursive: true });
+        fs.writeFileSync(path.join(root, relative, 'tsconfig.build.json'), config);
+      }
+      // A package with no such file is absent rather than an error, which is what lets `apps/web`
+      // emit through Vite without being a gap.
+      fs.mkdirSync(path.join(root, 'packages', 'eighth'), { recursive: true });
+      expect(buildConfigs(root).map(([relative]) => relative))
+        .toStrictEqual(['apps/seventh/tsconfig.build.json', 'packages/sixth/tsconfig.build.json']);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -54,6 +54,30 @@ interface Manifest {
 const read = (...parts: string[]): string => fs.readFileSync(path.join(...parts), 'utf8');
 const manifest = (dir: string): Manifest => JSON.parse(read(dir, 'package.json')) as Manifest;
 
+/**
+ * Q-0125 AC-3's invariant — *it emits and it is not distributed* — as one predicate, applied to the
+ * real manifest and to both hostile fixtures.
+ *
+ * **Why a function rather than two lists of assertions.** The criterion asks for the block to be
+ * shown red in both directions (R-7), and a demonstration written as a second set of expectations
+ * over a fixture proves nothing about the first set: it can agree with a manifest the real clauses
+ * no longer examine, so deleting those clauses leaves the discriminator green — which is the failure
+ * the review of run 2 iteration 1 found here. One rule, three subjects, is what closes it.
+ *
+ * Each problem names the **half** it belongs to, because the two are different claims and the
+ * criterion turns on telling them apart: `emission:` is about producing an artifact and publishing
+ * it, `distribution:` is about a tarball that does not exist. An empty list is the invariant holding.
+ */
+const emitsAndIsNotDistributed = (candidate: Manifest): string[] => [
+  candidate.scripts?.build === undefined ? 'emission: it declares no build script' : '',
+  candidate.exports === undefined ? 'emission: it publishes no exports map' : '',
+  candidate.main !== undefined ? 'emission: a top-level main is declared beside the map' : '',
+  candidate.types !== undefined ? 'emission: a top-level types is declared beside the map' : '',
+  candidate.files !== undefined ? 'distribution: a files allow-list claims a tarball that does not exist' : '',
+  candidate.bin !== undefined ? 'distribution: a bin entry ships an executable nothing packs' : '',
+  candidate.private !== true ? 'distribution: the package stopped being private' : '',
+].filter((problem) => problem !== '');
+
 /** Every `.ts` file below `src`, as `[path relative to src, text]`, derived from the tree. */
 const sources = (): [string, string][] => fs
   .readdirSync(SRC, { withFileTypes: true, recursive: true })
@@ -149,6 +173,10 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     // a package nothing packs is a claim about a tarball that does not exist. Why: "A fifth package
     // emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), clause 3, which
     // promotes 092's by-name exemption for `apps/web` into a class.
+    // The invariant first, so what the clauses below assert by name is the same rule the fixtures in
+    // the next test are judged by rather than a parallel description of it.
+    expect(emitsAndIsNotDistributed(own), 'the manifest stopped emitting, or started claiming to be distributed')
+      .toStrictEqual([]);
     expect(own.scripts?.build, 'the package emits nothing').not.toBe(undefined);
     expect(own.exports, 'the package publishes nothing').not.toBe(undefined);
     expect(own.main, 'a top-level main is declared beside the map').toBe(undefined);
@@ -164,17 +192,32 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     // **Shown red in BOTH directions, which is what stops this being read as "delete the clauses
     // that now fail"** (R-7). The inversion above passes today by the manifest having changed, so a
     // wrong implementation of AC-3 — dropping the two assertions rather than inverting them — would
-    // look identical. These two fixtures are the difference: the first is the manifest as it stood
-    // before this ticket, which must fail the emission half; the second is the manifest with a
-    // `files` allow-list, which must fail the DISTRIBUTION half and say so in those words.
+    // look identical.
+    //
+    // **The two fixtures are run through the production invariant rather than re-described here**,
+    // which is the correction the review of iteration 1 asked for: a fixture asserted against its own
+    // freshly written fields confirms only that the fixture was written as intended, and stays green
+    // over a manifest nothing examines. Each is handed to {@link emitsAndIsNotDistributed}, and what
+    // is asserted is the exact list of problems it reports — so the before fixture must fail the
+    // EMISSION half and nothing else, and the packed fixture must fail the DISTRIBUTION half and say
+    // so in those words.
     const asItWas: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined };
     delete asItWas.scripts?.build;
-    expect(asItWas.scripts?.build, 'the before fixture still declares a build script').toBe(undefined);
-    expect(asItWas.exports, 'the before fixture still declares an exports map').toBe(undefined);
+    expect(emitsAndIsNotDistributed(asItWas), 'the manifest as it stood before Q-0125 passes the emission half')
+      .toStrictEqual(['emission: it declares no build script', 'emission: it publishes no exports map']);
 
     const asIfPacked: Manifest = { ...own, files: ['dist'] };
-    expect(asIfPacked.files, 'the packed fixture declares no files, so it discriminates nothing').not.toBe(undefined);
-    expect(own.files, 'this package declares files and is therefore claiming to be distributed').toBe(undefined);
+    expect(emitsAndIsNotDistributed(asIfPacked), 'a files allow-list is not reported as a distribution claim')
+      .toStrictEqual(['distribution: a files allow-list claims a tarball that does not exist']);
+
+    // And the invariant is not satisfied by every input, which is what stops the two clauses above
+    // being read as "the function returns whatever was put in": a manifest that emits nothing AND
+    // claims a tarball fails both halves at once, and the halves are named separately.
+    const neither: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined, files: ['dist'], bin: 'x.js', private: false };
+    delete neither.scripts?.build;
+    const both = emitsAndIsNotDistributed(neither);
+    expect(both.filter((problem) => problem.startsWith('emission:')).length).toBe(2);
+    expect(both.filter((problem) => problem.startsWith('distribution:')).length).toBe(3);
   });
 
   test('Q-0125 AC-1 — the exports map is the shape its two siblings declare, publishing "." alone', () => {
