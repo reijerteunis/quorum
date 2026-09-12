@@ -19,16 +19,27 @@
 // keep proving TypeScript source while Node and a packed install get the emitted artifact — see
 // "The emit serves the binary, and no test verdict moves behind it" (2026-09-02), clause (b).
 //
-// It is `ssr.resolve` and not `resolve` because Vitest's node environment resolves through Vite's
-// server pipeline; setting the client list as well was measured to be redundant here and dropped.
+// BOTH lists carry it, and the reason the client one was once absent is worth keeping. Until
+// 2026-09-12 only `ssr.resolve` did, on a measurement that the client list was "redundant here" —
+// true while every test ran in Vitest's node environment, which resolves through Vite's SERVER
+// pipeline. A test file carrying `// @vitest-environment jsdom` resolves through the CLIENT one
+// instead, and Q-0014 landed the first of those. It passed only because `apps/web` imported no
+// workspace package; the moment Q-0120 gave it `@quorum/shared`, that file stopped loading at all —
+// "Failed to resolve import" before a single test ran, while every node-environment suite beside it
+// stayed green. So the redundancy was real and it expired; a measurement is true of the tree it was
+// taken on. Reproduced and fixed on a clone with no `packages/shared/dist`, which is the only tree
+// that discriminates: 1 file failed with "no tests" before, 35 passed after.
 // The default list is spread rather than replaced — narrowing it to one condition would strip
 // `module`, `node` and `import` and break every other resolution in the workspace. Removing
-// `quorum-source` from this array is what turns it red: `@quorum/core` then resolves to a `dist/`
+// `quorum-source` from either array is what turns it red: `@quorum/core` then resolves to a `dist/`
 // nothing has built, and Vite reports "Failed to resolve entry for package".
-import { defaultServerConditions } from 'vite';
+import { defaultClientConditions, defaultServerConditions } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    conditions: ['quorum-source', ...defaultClientConditions],
+  },
   ssr: {
     resolve: {
       conditions: ['quorum-source', ...defaultServerConditions],
