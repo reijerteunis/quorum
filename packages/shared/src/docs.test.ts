@@ -58,11 +58,24 @@ describe('Q-0120 AC-23 — live connection documentation', () => {
     const glossary = repoFile('docs/GLOSSARY.md');
     const start = glossary.indexOf('**Connection state**');
     expect(start).toBeGreaterThanOrEqual(0);
-    const entry = glossary.slice(start, glossary.indexOf('\n- **', start + 1) < 0 ? undefined : glossary.indexOf('\n- **', start + 1));
+    // The delimiter is `\n**` and not `\n- **`: this file's entries are `**Term**:` at line start
+    // rather than bullets, so the bullet form occurs ZERO times and the slice ran to the end of the
+    // document — 17,593 of 22,260 characters, with three clauses below satisfied by neighbouring
+    // entries. The nine-state list still discriminated, which is why the guard had a subject while
+    // not having the scoped one it reads as having. Q-0120 review round 1, N-3.
+    const next = glossary.indexOf('\n**', start + 1);
+    const entry = glossary.slice(start, next < 0 ? undefined : next);
+    // And the scope is asserted rather than assumed: a slice that swallowed its neighbours would
+    // pass every clause below for the wrong reason.
+    expect(entry.length, 'the entry slice reaches past its own term').toBeLessThan(2000);
+    expect(entry, 'the slice lost its subject').toContain('**Connection state**');
     for (const state of ['idle', 'connecting', 'live', 'no daemon', 'no such run', 'ended', 'interrupted', 'dropped', 'protocol error']) expect(entry.toLowerCase()).toContain(state);
     expect(entry).toMatch(/derived|per moment/i);
     expect(entry).toMatch(/never (?:stored|persisted)|memory/i);
     expect(entry).toMatch(/run state/i);
+    // AC-23's remaining clause: no member of the set is silence. Asserted here because the entry is
+    // where the vocabulary is fixed, and because B-2 is the same rule going unmet one layer up.
+    expect(entry, 'AC-23 requires the entry to state that no member of it is silence').toMatch(/no member of it is silence|none of them is silence/i);
   });
 
   test('the repository architecture no longer calls frontend inert', () => {
