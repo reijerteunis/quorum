@@ -38,3 +38,48 @@ whose stream has ended is `ended`, a state `RunView` already carries, not an abs
 **Sequencing.** After Q-0014, which creates a browser that can reload, and before or with Q-0015.
 
 ---
+
+## Re-measured against the tree, 2026-09-12, before the run
+
+The body above was transcribed at **Q-0014's** requirements gate on 2026-09-11. **Q-0120 shipped on
+2026-09-12**, between that gate and this run, and it moves two of the sentences above. Nothing here
+withdraws the ticket: the defect is real and unfixed, and what changes is *who* cannot reach a live
+run and *what a listing would have to carry*.
+
+**(a) "A browser that refreshes has lost every live run" is no longer true as written.** Q-0120
+shipped `/runs/:handle` as a route (`apps/web/src/routes.ts:124`) and `app.tsx` reads the handle out
+of the matched route's params and connects on it — so an ordinary reload keeps the handle in the URL
+bar, reconnects, and **does** reach `DEFAULT_RETENTION`'s buffer, `missed` count and all
+(`broadcast.ts:156`, `retain = 500` at `serve.ts:43`). What is unreachable is a client **that never
+held the handle**: a fresh tab, a second browser, a tab whose URL was closed, the `/runs` landing
+route itself, and — the ordinary case today — **any run started from the CLI**, which no browser
+learns of at all. The defect is *discovery*, not *survival*, and a criterion written against the
+original sentence would aim at a case Q-0120 already closed.
+
+**(b) The shipped app already names this gap as its reason for being empty.** `routes.ts:117`'s
+`/runs` landing entry carries, verbatim, *"No ticket builds this screen yet, and the daemon reports
+no listing of its live runs, so there is nothing here to list."* That is a live consumer of this
+ticket's deliverable and the one place a user meets the defect, so whichever half of that sentence
+this ticket makes false is the half that moves with it.
+
+**(c) `WireRun` cannot carry a listing as it stands.** `wire.ts:WireRun` is exactly
+`{handle, flow, runId, state}` — **no ticket id**. `RunView` holds `ticket: TicketRecord | null`,
+`gates`, `watchers`, `failure`, `refusal` and `terminal`, none of which crosses the wire today. So
+*"listing the host's live runs as `WireRun`s"* is under-specified rather than settled: a Runs
+landing screen that cannot say **which ticket** each run is against lists handles nobody can read.
+What a listing row carries is a design question for the gate, and widening `WireRun` is a change to
+a shape `POST /runs` already answers with.
+
+**(d) An inherited obligation this ticket is named in.** `packages/server/src/wire.ts`'s header says
+of `WireRefusal` and `WireRun`: *"whoever needs them from a browser (Q-0015 or Q-0121) moves them
+the same way rather than copying them"* — the way being `@quorum/shared`, where Q-0120 put
+`WireMessage` and its schema, because a browser needs a runtime **parser** and not a type. If this
+ticket's listing is consumed by `apps/web`, that move is this ticket's, and copying the interface
+into the app is the drift Q-0120's own body was opened on.
+
+**(e) Two citations verified, one corrected.** *"Nine routes are registered"* holds — three POSTs
+(`http.ts:122,141,156`), the WebSocket (`serve.ts:99`) and five GETs (`read.ts:76,82,97,120,140`) —
+and `POST /runs` is still the only one that ever tells a client a handle. `RunHost` still exposes
+`view(handle)` and no enumeration (`host.ts`). The no-client-side-persistence rule is at
+**`04-architecture.md:194`**, not `:183`; the line moved, the sentence did not — *"State from the
+WebSocket stream; no client-side persistence beyond UI preferences."*
