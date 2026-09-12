@@ -1,11 +1,16 @@
 {
   // The emit's configuration, and deliberately NOT the one `lint` and `typecheck` read — see
-  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The three
-  // **distribution** packages declare the same four options for the same reasons; a divergence
-  // between them would be a difference in emitted layout, which is what `outputs` has to cover.
-  // Three rather than "the three emitting packages", which is what this said until Q-0122: the
-  // emitting set is four now and the fourth, `apps/web`, has no `tsconfig.build.json` at all
-  // because a browser bundle is Vite's output rather than `tsc`'s.
+  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The four `tsc`
+  // emitters declare the same four options for the same reasons; a divergence between them would be
+  // a difference in emitted layout, which is what `outputs` has to cover.
+  // Four rather than "the three **distribution** packages", which is what this said until Q-0125:
+  // that phrase was exact while every `tsc` emitter happened to be packed, and `packages/server`
+  // emits without being distributed. The fifth emitter, `apps/web`, has no `tsconfig.build.json` at
+  // all because a browser bundle is Vite's output rather than `tsc`'s.
+  //
+  // This package's own build script appends `&& chmod +x dist/quorum.js`, which the other three do
+  // not, and that divergence is deliberate: `packages/cli/src/build.test.ts`'s Q-0125 AC-2
+  // comparison is over these configuration files and never over the scripts.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",

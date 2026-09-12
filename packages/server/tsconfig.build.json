@@ -3,10 +3,12 @@
   // `packages/shared/tsconfig.build.json`, which carries the argument in full. The four `tsc`
   // emitters declare the same four options for the same reasons; a divergence between them would be
   // a difference in emitted layout, which is what `outputs` has to cover.
-  // Four rather than "the three **distribution** packages", which is what this said until Q-0125:
-  // that phrase was exact while every `tsc` emitter happened to be packed, and `packages/server`
-  // emits without being distributed. The fifth emitter, `apps/web`, has no `tsconfig.build.json` at
-  // all because a browser bundle is Vite's output rather than `tsc`'s.
+  // Four rather than three, which is what the two sibling headers said until Q-0125: the emitting
+  // set is five and `apps/web`, the fifth, has no `tsconfig.build.json` at all because a browser
+  // bundle is Vite's output rather than `tsc`'s.
+  //
+  // This package emits and is NOT distributed, which is a combination no package had before — see
+  // "A fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12).
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",

@@ -32,9 +32,18 @@ export type { Refusal } from './refusal.js';
  * what crosses it without importing the routing, and **all three are now `@quorum/shared`'s and
  * re-exported here**: {@link WireMessage} moved at Q-0120 and {@link WireRefusal} and
  * {@link WireRun} at Q-0121, each with a schema, because a browser consumes them from
- * `@quorum/shared` directly — this package having no export surface — and needs a runtime parser
- * rather than a type. That is the whole of Q-0120's seam, and the reason this sentence no longer
- * claims Q-0014 codes against any of them. Q-0120 review round 2, N-3.
+ * `@quorum/shared` directly and needs a runtime parser rather than a type. That is the whole of
+ * Q-0120's seam, and the reason this sentence no longer claims Q-0014 codes against any of them.
+ * Q-0120 review round 2, N-3.
+ *
+ * **The arrangement stands and its stated reason moved at Q-0125.** This gave as its reason that
+ * nothing outside could name this package at all, which stopped being true the moment it declared
+ * an `exports` map. What holds instead is that a browser may not import this package —
+ * `apps/web` declares no dependency on it, and its own manifest register refuses one in both
+ * directions, which is the whole of the protection now that the impossibility is a guard. The
+ * shapes stay where they are for the reason that was always the load-bearing one: a moved type with
+ * no schema is the half-measure Q-0120 had to repair. Why: "A fifth package emits, and `resolved`
+ * is not a synonym for `distributed`" (2026-09-12), clause 5.
  *
  * Re-exported as **types only**, so this barrel's runtime register is unchanged and no existing
  * import breaks. A consumer wanting the schemas asks the package that owns them.

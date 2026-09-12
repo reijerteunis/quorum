@@ -39,8 +39,12 @@ const SPAWN_TIMEOUT_MS = 60_000;
  *
  * Re-measured at Q-0122, which made the emitting set four and so gave this fixture a `vite build`
  * it did not have: 3.3 s for the whole file over two runs, against a budget 55 times that. It was
- * *"the isolated `tsc`"* until then, and it is no longer only `tsc`. The budget does not move — the
- * measurement is what says so, rather than the margin being assumed to absorb it.
+ * *"the isolated `tsc`"* until then, and it is no longer only `tsc`.
+ *
+ * **Re-measured again at Q-0125**, which made the emitting set five and so gave it a fourth `tsc`
+ * emitter: **3.49 s and 3.53 s over two runs**, against a budget 51 times the upper figure. The
+ * budget does not move — the measurement is what says so, rather than the margin being assumed to
+ * absorb it, which is the sentence that makes this a re-measurement rather than a re-wording.
  */
 const FIXTURE_TIMEOUT_MS = 180_000;
 
