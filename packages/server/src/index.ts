@@ -28,8 +28,12 @@ export type { Refusal } from './refusal.js';
  * The transport, added by Q-0118: the Hono app over a host, and the process that serves it.
  *
  * Exported beside the host rather than instead of it — `createApp` is what a test drives without a
- * socket, and `serve` is what opens one. Q-0014 codes against {@link WireRefusal}, {@link WireRun}
- * and {@link WireMessage}, which is why the wire shapes are on this surface and the routing is not.
+ * socket, and `serve` is what opens one. The wire shapes are on this surface so a caller can name
+ * what crosses it without importing the routing; {@link WireRefusal} and {@link WireRun} are
+ * declared in `wire.ts`, while {@link WireMessage} is `@quorum/shared`'s and is re-exported here.
+ * **A browser consumes the last of those from `@quorum/shared` directly**, this package having no
+ * export surface — which is the whole of Q-0120's seam, and the reason this sentence no longer
+ * claims Q-0014 codes against any of them. Q-0120 review round 2, N-3.
  */
 export { createApp, startRequestOf, startRefusalCode, eventMessage, missedMessage } from './http.js';
 export type { AppOptions } from './http.js';

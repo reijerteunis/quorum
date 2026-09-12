@@ -74,6 +74,14 @@ function declarationBodies(text: string): string[] {
   const bodies: string[] = [];
   const heads = /\b(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>{}]*>)?\s*(?:=|\{)/g;
   for (const head of text.matchAll(heads)) {
+    // An `interface` ends at its own closing brace; a `type` alias ends at the `;`. The first
+    // version stopped only at a `;`, so after collecting an interface's body it kept scanning and
+    // swallowed the next `{ … }` it met — over-reporting only, so no re-declaration escaped, but it
+    // made the acceptance fixture narrower than it reads: the clause proving a VALUE literal is not
+    // a declaration held only because the fixture used a `type` alias, and `interface` is the
+    // likelier spelling here, where AppProps, ShellProps, SocketTransport and RunConnection all are.
+    // Q-0120 review round 2, N-4.
+    const isInterface = head[0].startsWith('interface');
     let at = (head.index ?? 0) + head[0].length - 1;
     if (text[at] === '{') at -= 1;
     for (; at < text.length; at += 1) {
@@ -87,6 +95,7 @@ function declarationBodies(text: string): string[] {
         if (depth === 0) break;
       }
       bodies.push(text.slice(open + 1, at));
+      if (isInterface) break;
     }
   }
 return bodies;
@@ -105,6 +114,9 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
     expect(duplicateMissedDeclarations([['fixture.ts', "interface Bogus { type: 'missed'; count: number }"]])).toStrictEqual(['fixture.ts']);
     expect(duplicateMissedDeclarations([['fixture.ts', "type Bogus = { type: 'missed'; nested: { value: string }; count?: number }"]])).toStrictEqual(['fixture.ts']);
     expect(duplicateMissedDeclarations([['separate.ts', "type Reference = { value: string };\nconst frame = { type: 'missed', count: 7 };"]])).toStrictEqual([]);
+    // The same clause in the likelier spelling: an interface has no terminating `;`, so a walk that
+    // stopped only at one swallowed the value literal below it and reported the file. N-4.
+    expect(duplicateMissedDeclarations([['iface.ts', "interface Reference { value: string }\nconst frame = { type: 'missed', count: 7 };"]])).toStrictEqual([]);
     // THE fixture the frozen contract names: the complete union, re-declared. Both spellings,
     // because the walk this replaced failed them for two different reasons — the multi-line form
     // never matched a head, and the single-line form matched and then stopped at the first member.

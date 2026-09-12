@@ -79,7 +79,23 @@ describe('Q-0120 AC-23 — live connection documentation', () => {
   });
 
   test('the repository architecture no longer calls frontend inert', () => {
-    expect(repoFile('harness/architecture.md')).not.toMatch(/frontend(?:`)? and data remain inert/i);
+    // Both directions, and the needle tolerates the backticks the file actually carries. Until
+    // Q-0120 review round 2 it read /frontend(?:`)? and data remain inert/i, which allows one
+    // optional backtick after `frontend` and then requires the bare words — while the sentence on
+    // main is "`frontend` and `data` remain inert", with backticks around `data` the pattern cannot
+    // consume. Measured: that needle matches main's text ZERO times, so the assertion was green over
+    // the unchanged file and would have stayed green if the correction were reverted. "A check is
+    // not established by reading it" (2026-08-29), in the guard added to enforce the correction.
+    const architecture = repoFile('harness/architecture.md');
+    const inert = /`?frontend`?\s+and\s+`?data`?\s+remain\s+inert/i;
+    expect(architecture, 'the architecture context still calls frontend inert').not.toMatch(inert);
+    // The needle has a subject: it matches the sentence it forbids, in the spelling that shipped.
+    expect('`frontend` and `data` remain inert. `apps/web` exists since Q-0008,').toMatch(inert);
+    // And the positive half, so the clause fails in both directions rather than only when the old
+    // sentence returns. This file is fed to the architect on every solutioning run, so a stale
+    // sentence here is one every future solution inherits — AC-23's one clause whose subject is a
+    // harness context file.
+    expect(architecture, 'the architecture context does not name frontend as active').toMatch(/`?frontend`?\s+is\s+active/i);
   });
 });
 

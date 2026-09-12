@@ -68,6 +68,7 @@ const EXCEPTION_REASONS: Record<string, string> = {
   'shell.test.ts:/nowhere/at/all': 'the unmatched URL the Not found view is proved on',
   'shell.test.ts:/backlog/%E0%A4%A': 'a malformed percent sequence, asserted not to throw',
   'run-connection.test.ts:/B/events': 'the second handle in the one-socket-at-a-time fixture',
+  'shell.test.ts:/runs/run%20one/events': 'the socket path the no-daemon sentence names, asserted to reach the page since round 2 M-1',
 };
 const EXCEPTIONS = new Set(Object.keys(EXCEPTION_REASONS));
 

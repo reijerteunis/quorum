@@ -1,3 +1,14 @@
+/**
+ * The connection's closed set of states, the reducer that moves between them, and the sentence each
+ * one renders.
+ *
+ * A pure reducer with no DOM and no socket, which is what lets AC-15 be asserted by value over every
+ * transition rather than by rendering. The state is derived per moment and never stored — see
+ * **Connection state** in `docs/GLOSSARY.md`, which also carries the rule this module exists to
+ * keep: **no member of the set is silence**. Every one renders something a reader can act on, which
+ * is why `no-daemon` and `no-such-run` are separate members — they are "start the daemon" and "that
+ * handle is wrong" — rather than one.
+ */
 import type { Event } from '@quorum/shared';
 
 /** The closed set rendered by the top bar's connection region. */

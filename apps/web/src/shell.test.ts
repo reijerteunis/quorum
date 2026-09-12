@@ -28,6 +28,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { App } from './app.js';
+import { connectionStateText } from './connection-state.js';
 import type { SocketTransport } from './run-connection.js';
 import { NOT_LOADED, RUN_FLOW_LABEL, TOP_BAR_REGIONS } from './shell.js';
 import { isRedirect, RAIL, ROUTES, type ScreenRoute } from './routes.js';
@@ -180,7 +181,12 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
       socketFactory: () => new FakeSocket(),
       pageUrl: new URL(`https:${'/' + '/'}page.test`),
     }));
-    const text = textOf(container);
+    // Scoped to `main` rather than the whole container: since M-1 the connection region renders
+    // `connectionStateText`, whose sentence names the requested URL — and that URL is correctly
+    // percent-encoded, AC-13 requiring `runEventsPath` to encode the handle one segment at a time.
+    // So the encoded form legitimately appears in the header while the route content must show the
+    // decoded one, and asserting over the whole page would force one of the two criteria to give.
+    const text = textOf(container.querySelector('main') as HTMLElement);
     expect(text, 'the segment was not decoded').toContain('run one');
     expect(text, 'the raw encoding is being shown instead').not.toContain('run%20one');
   });
@@ -279,7 +285,70 @@ describe('Q-0120 AC-20 — the run route mounts and renders its live connection'
       socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 2 }) });
     });
     const text = textOf(container.querySelector('header') as HTMLElement);
-    for (const expected of ['live', '2', '3', 'step', 'implement']) expect(text).toContain(expected);
+    // `Connected to …` and not the word `live`. The old assertion read `toContain('live')`, which
+    // `connectionStateText` never produces — it passed only because the kebab token was what
+    // rendered, so it pinned the defect M-1 reports rather than the criterion. Q-0120 round 2.
+    for (const expected of ['Connected to', '2', '3', 'step', 'implement']) expect(text).toContain(expected);
+    expect(text, 'the state token is rendered as visible text').not.toContain('live');
+    expect(container.querySelector('[data-state="live"]'), 'the machine-readable hook is gone').not.toBeNull();
     expect(text).not.toMatch(/cost|diff|trace/i);
+  });
+
+  // The zero case's third half. The frozen contract asks for `missedCount === 0`, distinct from
+  // `null`, an unchanged event list, AND that the rendered surface shows no notice; the first two
+  // are at run-connection.test.ts, and the render drove `count: 2` only — so `shell.tsx`'s
+  // `missedCount === 0 ? null : …` branch, the one clause separating "the daemon sent a zero, which
+  // it never does" from "a notice is due", was executed by no test. Q-0120 round 2, N-7.
+  test('a missed count of zero renders no notice', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => {
+      socket.onopen?.();
+      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 0 }) });
+    });
+    expect(textOf(container.querySelector('header') as HTMLElement)).not.toContain('missed');
+  });
+
+  // E-4 granted this assertion and round 2's M-5 found it missing, so a fixed blocker was guarded by
+  // nothing: AC-9's not-loaded count is blind to the connection region by construction, and
+  // returning `connection` to the optional form was green everywhere.
+  test('the connection region is present off a run route, carrying the idle sentence', async () => {
+    const container = await render(createElement(App, {
+      initialPath: RAIL[0]!.path,
+      socketFactory: () => new FakeSocket(),
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    expect(textOf(container.querySelector('header') as HTMLElement)).toContain(connectionStateText({ kind: 'idle' }));
+  });
+
+  // E-4's second: *no daemon* must name the URL the client asked for, and *no such run* must be a
+  // different sentence. The pair is what carries the whole distinction, and round 1 found it
+  // reaching the user as two hyphenated identifiers.
+  test('no daemon names the requested URL, and no such run says something else', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => { socket.onerror?.(); socket.onclose?.({ code: 1006, reason: '' }); });
+    const unreachable = textOf(container.querySelector('header') as HTMLElement);
+    expect(unreachable, 'no daemon must name the URL the client asked for').toContain('/runs/run%20one/events');
+    expect(unreachable).not.toContain('no-daemon');
+
+    const second = new FakeSocket();
+    const other = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => second,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => { second.onclose?.({ code: 1008, reason: 'no such run' }); });
+    const wrongHandle = textOf(other.querySelector('header') as HTMLElement);
+    expect(wrongHandle, 'no such run must not be the same sentence as no daemon').not.toBe(unreachable);
+    expect(wrongHandle).not.toContain('no-such-run');
   });
 });

@@ -1,8 +1,17 @@
 /**
  * The shapes that cross the wire, and the one place a refusal becomes a status.
  *
- * Kept apart from `http.ts` so the contract Q-0014 codes against can be read without reading the
- * routing, and so a status mapping is a table rather than a scattering of `c.json(..., 4xx)` calls.
+ * Kept apart from `http.ts` so a status mapping is a table rather than a scattering of
+ * `c.json(..., 4xx)` calls.
+ *
+ * **`WireMessage` is defined in `@quorum/shared` and re-exported here, not declared here.** This
+ * header used to say the contract *"Q-0014 codes against"* could be read in this file, and that
+ * sentence is what Q-0120's own ticket body names as the CAUSE of the drift it was opened on: an
+ * implementer follows it, finds `@quorum/server` unimportable from a browser, and copies the
+ * interfaces into the app — the drift arrived at by obeying the sentence forbidding it. The frame
+ * union now lives where a browser can execute its schema; `WireRefusal` and `WireRun` are still
+ * declared below, and whoever needs them from a browser (Q-0015 or Q-0121) moves them the same way
+ * rather than copying them. Q-0120 review round 2, N-3.
  *
  * **Nothing here renders.** `04-architecture.md` states the rule this is the other half of — *"a
  * lint record reaching a terminal, a browser and a WebSocket carries an escape byte in exactly one

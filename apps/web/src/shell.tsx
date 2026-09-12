@@ -96,10 +96,17 @@ function ConnectionRegion({ connection }: { connection: ShellConnectionProps }):
   const latest = snapshot.events.at(-1);
   return (
     <div className="flex items-center gap-3 font-mono">
-      {/* The state's own kind is the visible word — `connectionStateText`'s sentence can carry a
-          requested URL (percent-encoded, correctly, per AC-13), which does not belong in the page's
-          visible text; it is still reachable, unaltered, as a hover detail. */}
-      <span className="text-idle" title={text}>{snapshot.state.kind}</span>
+      {/* The SENTENCE is the visible text, and the kind is a `data-` hook beside it.
+          It was the other way round until Q-0120 review round 2, M-1: the visible word was
+          `no-daemon` or `protocol-error` and the sentence sat in a `title`, which is not the page's
+          text, is unreachable from a keyboard that never hovers, and does not exist on touch — so
+          AC-15's "renders in plain language" and its requirement that *no daemon* name the URL the
+          client asked for were both unmet, and the pair that carries the whole distinction
+          ("start the daemon" against "that handle is wrong") reached the user as two hyphenated
+          identifiers. React escapes text nodes and `runEventsPath` percent-encodes the handle one
+          segment at a time, so putting the sentence in the page costs nothing the title was
+          protecting against. */}
+      <span className="text-idle" data-state={snapshot.state.kind}>{text}</span>
       {snapshot.missedCount === null || snapshot.missedCount === 0 ? null : (
         <span className="text-waiting-on-human">missed {snapshot.missedCount}</span>
       )}
