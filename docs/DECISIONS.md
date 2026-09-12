@@ -174,3 +174,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 - [A finding is a claim about the change; anything else is an observation](decisions/089-a-finding-is-a-claim-about-the-change.md)
 - [A dry run changes nothing the caller passed it](decisions/090-a-dry-run-changes-nothing-the-caller-passed-it.md)
 - [A typed stub lives at its final path; `contracts/` holds what is not code](decisions/091-a-typed-stub-lives-at-its-final-path.md)
+
+## 2026-09-12
+
+- [A fourth package emits, and what it emits is served rather than shipped](decisions/092-a-fourth-package-emits-and-what-it-emits-is-served.md)
