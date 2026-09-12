@@ -56,15 +56,20 @@ const registered = (): Set<string> => {
 
 const SCREEN_ROUTES: ScreenRoute[] = ROUTES.filter((route): route is ScreenRoute => !isRedirect(route));
 
-const EXCEPTIONS = new Set([
-  'router.ts:/backlog/',
-  'router.ts:/har',
-  'router.ts:/runs/<handle>',
-  'shell.test.ts:/runs/run%20one',
-  'shell.test.ts:/nowhere/at/all',
-  'shell.test.ts:/backlog/%E0%A4%A',
-  'run-connection.test.ts:/B/events',
-]);
+// Identities of (file, literal, reason), which is what the frozen contract asks for. It was a bare
+// Set until Q-0120 review round 1, N-5: the exercised-use assertion below already fails a stale row,
+// but the reason column is what a reviewer weighs instead of re-deriving, and a contract document is
+// not where the next person editing this scan looks.
+const EXCEPTION_REASONS: Record<string, string> = {
+  'router.ts:/backlog/': 'the prefix the dynamic backlog route is matched by, not a route of its own',
+  'router.ts:/har': 'a truncated prefix used to prove the matcher is not a substring test',
+  'router.ts:/runs/<handle>': 'the placeholder form of a dynamic segment, never a literal URL',
+  'shell.test.ts:/runs/run%20one': 'the percent-encoded fixture handle the decoding assertions use',
+  'shell.test.ts:/nowhere/at/all': 'the unmatched URL the Not found view is proved on',
+  'shell.test.ts:/backlog/%E0%A4%A': 'a malformed percent sequence, asserted not to throw',
+  'run-connection.test.ts:/B/events': 'the second handle in the one-socket-at-a-time fixture',
+};
+const EXCEPTIONS = new Set(Object.keys(EXCEPTION_REASONS));
 
 describe('AC-6 — the rail is the seven entries the design brief names, in its order', () => {
   test('the seven ids, as an identity', () => {
