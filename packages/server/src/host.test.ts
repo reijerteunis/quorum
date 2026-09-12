@@ -100,6 +100,44 @@ describe('AC-3 — identity is the host\'s, and core\'s run number is correlated
   });
 });
 
+describe('Q-0121 AC-1 — the host enumerates every run it has minted, and it is the authority', () => {
+  test('a refused start, a running run and an ended one, in mint order and agreeing with view()', async () => {
+    // All three states in one host, because the enumeration's claim is about the SET rather than
+    // about any member: a reader that can only see the runs that are live cannot find the one that
+    // ended holding a replayable buffer, and cannot find the refusal at all.
+    const project = fixture({ flow: GATED_FLOW });
+    project.addTicket({ id: 'T-0002', folder: 'T-0002-second' });
+    const host = createRunHost({ project: project.project, retain: 100 });
+
+    // 1: refused, on a ticket that is not there. 2: running, parked at the gate. 3: ended, `auto`
+    // advancing that gate so it reaches its terminal event.
+    const refusedStart = await host.start({ flow: 'probe', ticket: 'T-0404' });
+    const running = await started(host, { flow: 'probe', ticket: TICKET_ID });
+    const ending = await started(host, { flow: 'probe', ticket: 'T-0002', auto: true });
+    await watch(host, ending).drained;
+    await until(() => (host.view(running)?.gates.length ?? 0) > 0, 'the second run to reach its gate');
+
+    const runs = host.runs();
+    expect(runs.map((view) => view.handle), 'the enumeration is not in mint order')
+      .toStrictEqual([handleOf(refusedStart), running, ending]);
+    expect(runs.map((view) => view.state)).toStrictEqual(['refused', 'running', 'ended']);
+    // Each entry is the same projection `view(handle)` answers, so the two readers cannot disagree.
+    for (const view of runs) expect(view).toStrictEqual(host.view(view.handle));
+    // …and the clause discriminates: filtering to the live runs — the shape a naive enumeration
+    // would have — loses two of the three.
+    expect(runs.filter((view) => view.state === 'running'), 'this clause would pass over a filtered enumeration')
+      .toHaveLength(1);
+
+    await host.shutdown();
+  });
+
+  test('a host that has started nothing enumerates nothing, which is not the same as failing', () => {
+    const project = fixture();
+    const host = createRunHost({ project: project.project, retain: 10 });
+    expect(host.runs()).toStrictEqual([]);
+  });
+});
+
 describe('AC-7 — the retention bound is refused where it is chosen', () => {
   test('a host built with a capacity nothing can honour does not look healthy until a run starts', () => {
     const project = fixture();

@@ -4,40 +4,27 @@
  * Kept apart from `http.ts` so a status mapping is a table rather than a scattering of
  * `c.json(..., 4xx)` calls.
  *
- * **`WireMessage` is defined in `@quorum/shared` and re-exported here, not declared here.** This
- * header used to say the contract *"Q-0014 codes against"* could be read in this file, and that
- * sentence is what Q-0120's own ticket body names as the CAUSE of the drift it was opened on: an
- * implementer follows it, finds `@quorum/server` unimportable from a browser, and copies the
- * interfaces into the app — the drift arrived at by obeying the sentence forbidding it. The frame
- * union now lives where a browser can execute its schema; `WireRefusal` and `WireRun` are still
- * declared below, and whoever needs them from a browser (Q-0015 or Q-0121) moves them the same way
- * rather than copying them. Q-0120 review round 2, N-3.
+ * **Every shape that crosses the wire is defined in `@quorum/shared` and re-exported here, not
+ * declared here.** This header used to say the contract *"Q-0014 codes against"* could be read in
+ * this file, and that sentence is what Q-0120's own ticket body names as the CAUSE of the drift it
+ * was opened on: an implementer follows it, finds `@quorum/server` unimportable from a browser, and
+ * copies the interfaces into the app — the drift arrived at by obeying the sentence forbidding it.
+ * Q-0120 moved the frame union; **Q-0121 moved the last two, `WireRefusal` and `WireRun`**, which
+ * this header named as its own obligation *"the same way rather than copying them"* — the way being
+ * with a schema, because a browser needs a runtime parser and not a type. What stays here is the
+ * three **constructors** and the status tables: a shape says what a value is, and building one out
+ * of a run this host is driving is something `@quorum/shared` may not know how to do.
  *
  * **Nothing here renders.** `04-architecture.md` states the rule this is the other half of — *"a
  * lint record reaching a terminal, a browser and a WebSocket carries an escape byte in exactly one
  * of the three"* — so no ANSI, no colour and no vendor branching crosses this boundary. The browser
  * decides how an event looks; this decides only what it is.
  */
-import type { AnswerRefusal, StartOutcome, StopRefusal } from './host.js';
+import type { AnswerRefusal, RunView, StopRefusal } from './host.js';
 import type { Refusal } from './refusal.js';
-import type { WireMessage } from '@quorum/shared';
+import type { WireMessage, WireRefusal, WireRun } from '@quorum/shared';
 
-export type { WireMessage };
-
-/**
- * What a refused request answers with: a machine-readable code, the condition in `core`'s own
- * words, and a remedy where the surface has one.
- *
- * The three fields are separate because they have different audiences and different authorities. A
- * client switches on `code`; a human reads `condition`, which is `core`'s sentence unaltered under
- * *"A `core` error names the condition; the remedy belongs to the surface"* (2026-09-07); and
- * `remedy` is this surface's, which is why it is `null` far more often than not.
- */
-export interface WireRefusal {
-  readonly code: string;
-  readonly condition: string;
-  readonly remedy: string | null;
-}
+export type { WireMessage, WireRefusal, WireRun };
 
 /** A refusal this transport raised before the host was reached at all. */
 export function badRequest(code: string, condition: string, remedy: string | null = null): WireRefusal {
@@ -103,21 +90,29 @@ export const STOP_REFUSAL_STATUS = {
 } as const satisfies Record<StopRefusal, number>;
 
 /**
- * A started run, as the wire reports it.
+ * One {@link RunView}, narrowed to what crosses the wire — the **one** projection every route that
+ * answers with a run goes through.
  *
- * `handle` is Q-0013 AC-3's, **inherited rather than re-decided**: it is what `:id` names in every
- * route below and what a client stores. `runId` is `core`'s own number and is `null` until the
- * terminal event carries it, which is a fact about the engine rather than about this transport.
+ * **Widened rather than joined by a second one** (Q-0121 AC-8). It took a `StartOutcome` until this
+ * ticket, so a listing would have needed its own projection and `POST /runs`, `GET /runs` and
+ * `GET /runs/:id` could have answered three shapes for one run. A `RunView` is what all three hold,
+ * so taking that is what makes one shape structural rather than remembered.
+ *
+ * `state` is the narrowing this ticket is about: the field was declared `string` and is now the
+ * host's closed three, and **the assignment below is the check** — a fourth `RunState` is not a
+ * `WireRunState` and fails to compile here rather than silently widening the wire back to `string`.
+ *
+ * `String()` on the id for the reason `read.ts` gives at its own ticket row: `Backlog.read` asserts
+ * rather than parses, so `meta.id` is a string by type and not by proof, and reporting what is
+ * actually on disk is preferred to trusting the declaration.
  */
-export interface WireRun {
-  readonly handle: string;
-  readonly flow: string;
-  readonly runId: number | null;
-  readonly state: string;
-}
-
-/** {@link StartOutcome}'s run, narrowed to what crosses the wire. */
-export function wireRunOf(outcome: StartOutcome): WireRun {
-  const { handle, flow, runId, state } = outcome.run;
-  return { handle, flow, runId, state };
+export function wireRunOf(view: RunView): WireRun {
+  return {
+    handle: view.handle,
+    flow: view.flow,
+    ticketId: view.ticket === null ? null : String(view.ticket.meta.id),
+    runId: view.runId,
+    state: view.state,
+    pendingGates: view.gates.length,
+  };
 }

@@ -118,7 +118,7 @@ export const ROUTES: readonly Route[] = [
     screen: 'Runs landing',
     ticket: null,
     waitingFor:
-      'No ticket builds this screen yet, and the daemon reports no listing of its live runs, so there is nothing here to list.',
+      'No ticket builds this screen yet. The daemon lists the runs it is driving, so what this route waits for is a screen that reads that listing.',
   },
   {
     path: '/runs/:handle',
