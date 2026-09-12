@@ -95,3 +95,8 @@
 2026-09-12T07:01:52.300Z run=7 step=verdict vendor=claude model=- verdict=changes-requested cost=7.093183999999999 ms=582786
 2026-09-12T07:01:52.322Z run=7 regressed stage=green→red cost=17.507 tokens=16906690
 2026-09-12T02:40:00.000Z note stage red -> green BY HAND, with no history entry, because no engine run advanced it. Review round 2's backward edge regressed the ticket and all fourteen of its findings were then fixed by hand (commit 53ae8c9 on harness/Q-0120/integration, see solution/errata.md E-5). Running development purely to move the stage would have fanned out nine tasks with nothing to do: every finding was already closed on the integration branch, so integrate would have merged nothing new and re-run a suite already verified. Measured instead, forced, on the branch: 21/21 turbo tasks 0 cached, apps/web 141 passed across 10 files. This is the Q-0050 shape and it is a caveat rather than a fact - a reader taking stage=green as the engine's word is over-reading it, which is why this line exists.
+2026-09-12T07:27:57.653Z run=8 flow=review start stage=green
+2026-09-12T07:28:46.840Z run=8 step=review-codex vendor=codex model=- verdict=- cost=? ms=49121
+2026-09-12T07:41:04.266Z run=8 step=review-claude vendor=claude model=- verdict=- cost=9.179159 ms=786549
+2026-09-12T07:47:21.193Z run=8 step=verdict vendor=claude model=- verdict=changes-requested cost=4.097450500000001 ms=376912
+2026-09-12T07:47:21.228Z run=8 regressed stage=green→red cost=13.277 tokens=10532296

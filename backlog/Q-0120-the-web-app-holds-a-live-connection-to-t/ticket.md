@@ -1,7 +1,7 @@
 ---
 id: Q-0120
 title: The web app holds a live connection to the daemon
-stage: green
+stage: red
 owner: ruud
 repos: []
 branch: harness/Q-0120/integration
@@ -12,7 +12,7 @@ iterations:
   solutioning.architecture-review: 3
   qa-red.scenario-review: 1
   development.integrate: 1
-  review: 2
+  review: 3
 history:
   - stage: draft
     run: 1
@@ -102,6 +102,14 @@ history:
     stage_after: red
     at: 2026-09-12T07:01:52.318Z
     cost: 17.507
+  - stage: red
+    run: 8
+    flow: review
+    status: regressed
+    stage_before: green
+    stage_after: red
+    at: 2026-09-12T07:47:21.225Z
+    cost: 13.277
 ---
 Successor A of Q-0014, transcribed in full from that ticket's merged requirement Appendix A. The frame parser, the connection states, missed and refusal rendering, socket lifecycle, manual retry, and where the three wire shapes live — because packages/server cannot be imported by name today.
 

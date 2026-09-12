@@ -291,3 +291,58 @@ literal after it — over-reporting only, but it made the acceptance fixture nar
 having already adjudicated it. The verdict step caught it both times by reading the branch tip rather
 than either report. **That is the argument for the verdict step being a step rather than a merge,
 made twice by one line of code**, and it belongs in this ticket's closing entry.
+
+---
+
+## E-6 — written at the close, after review round 3
+
+Round 3 returned **5 majors, 5 nits, 2 observations, no blocker**, and the backward edge spent the
+last of its three traversals. **All five majors and N-1 were taken by hand; four nits are recorded
+below as known and unfixed.** The trend across the three rounds is worth writing down because it is
+the ticket's most transferable measurement: **2 blockers / 5 majors / 6 nits → 0 / 5 / 9 → 0 / 5 /
+5.** Blockers gone, nits falling, and majors flat at five — each round finding five *different* ones.
+That is Q-0118's finding at a larger scale: *the rounds were not converging the way a bounded loop
+does.*
+
+### E-6(a) — M-5 supersedes E-3(c). My erratum was wrong.
+
+E-3(c) ruled that `parseFrame` treats a non-string, non-binary value as already parsed, so
+`parseFrame(42)` answers `non-object`. **AC-14's normative half says "Text frames only" and its
+*Test:* clause names "(e) a non-object *JSON* value"** — so the fall-through was a violation of the
+criterion, and E-3(c) stated the code's behaviour rather than checking it against the sentence it was
+meant to serve. That is the class this repository records most and it arrived inside an erratum
+written to close another instance of it.
+
+**Every non-string input is now `non-text-message`.** Five assertions pinned the old shape, including
+an `Infinity` row asserting a refusal carrying a value **no JSON frame can carry**, since
+`JSON.stringify({count: Infinity})` yields `null`. All five are re-aimed at JSON text, and the
+fall-through test is retired **by replacement** rather than deleted, because an assertion codifying
+the opposite of its criterion makes the correct behaviour a future regression.
+
+### E-6(b) — recorded, known and unfixed
+
+- **N-2** — the run route's identity is the presence of a `:handle` param, so both child routes hold
+  a socket. That is the reading `routes.ts` intends and no criterion names either alternative;
+  Q-0016's gate screen is where it is decided, and inventing a rule here would pre-empt it.
+- **N-3** — the route-literal exception register's *reason* column is not asserted. The register
+  carries reasons since E-5 and the exercised-use clause already fails a stale row; asserting
+  non-emptiness is worth doing where the register next moves.
+- **N-4** — `bypassNavigation` is new behaviour fixing a blocker, with no test. Stated rather than
+  waved away: a vite proxy's request path is not reachable from this suite at all, so the only honest
+  check is an integration one, and AC-13's own *Test:* clause deliberately does not claim the proxy's
+  runtime behaviour. **GO-4 is the measurement that covers it** and is still owed against a real dev
+  server.
+- **N-5** — `turbo-inputs.test.ts`'s `MANIFEST` row for `harness/architecture.md` names one reader
+  where there are now two. Fail-open, one line, and it belongs to whoever next edits that register.
+
+**Two observations the panel made about itself, kept because they are about the flow rather than the
+code.** The red report a QA gate reads is head-and-tail trimmed at 12,000 bytes each end, which over a
+seven-package workspace swallows `@quorum/web` and `@quorum/core` whole — **eight of twelve criteria**
+— and every one of the three scenario reviews established its verdict from the untrimmed artifact
+instead. That is **Q-0076**'s subject reaching the one artifact a gate reads to decide whether a red
+phase is honest. And the panel **contradicted itself on `connection-state.ts:76` in rounds 1, 2 and
+3**, codex calling it a defect and claude naming the same line correct by design each time; the
+verdict step adjudicated it three times by reading the branch tip rather than either report. **A judge
+deduplicating on titles would have propagated one of the two and never noticed the other existed**,
+which is the argument for the verdict step being a step rather than a merge, made three times by one
+line of code.
