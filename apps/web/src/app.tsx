@@ -39,6 +39,9 @@ const currentPageUrl = (): URL | undefined => (typeof window === 'undefined' ? u
  */
 const defaultSocketFactory: SocketFactory = (url) => new WebSocket(url.toString()) as unknown as SocketTransport;
 
+/** What the top bar shows wherever no run route holds a live connection. */
+const IDLE_SNAPSHOT: RunConnectionSnapshot = { state: { kind: 'idle' }, events: [], missedCount: null };
+
 /** Injectable application inputs used by the browser and the transport-driven tests. */
 export interface AppProps {
   readonly initialPath?: string;
@@ -83,6 +86,7 @@ export function App({ initialPath, socketFactory, pageUrl }: AppProps): ReactNod
   const handle = rendered.kind === 'screen' && 'handle' in rendered.params ? rendered.params.handle : undefined;
   const page = pageUrl ?? currentPageUrl();
   const pageHref = page?.href;
+  const pageOrigin = page?.origin;
 
   const connectionRef = useRef<RunConnection | null>(null);
   const [snapshot, setSnapshot] = useState<RunConnectionSnapshot | null>(null);
@@ -106,15 +110,20 @@ export function App({ initialPath, socketFactory, pageUrl }: AppProps): ReactNod
   }, [handle !== undefined, socketFactory]);
 
   useEffect(() => {
+    // Depends on the origin rather than the full href: `runEventsUrl` reads only protocol and host,
+    // and re-deriving the socket URL on every same-handle navigation would replace a live socket and
+    // discard the trace it has already accepted.
     if (handle === undefined || pageHref === undefined) return;
     connectionRef.current?.connect(handle, new URL(pageHref));
-  }, [handle, pageHref]);
+  }, [handle, pageOrigin]);
 
   const onRetry = useCallback(() => connectionRef.current?.retry(), []);
 
-  const connection: ShellConnectionProps | undefined =
+  // Always a real value, never absent: off a run route, or before the controller's first snapshot,
+  // the region shows the idle state rather than rendering nothing.
+  const connection: ShellConnectionProps =
     handle === undefined || snapshot === null
-      ? undefined
+      ? { snapshot: IDLE_SNAPSHOT, text: connectionStateText(IDLE_SNAPSHOT.state), retryable: canRetry(IDLE_SNAPSHOT.state), onRetry }
       : { snapshot, text: connectionStateText(snapshot.state), retryable: canRetry(snapshot.state), onRetry };
 
   return (
