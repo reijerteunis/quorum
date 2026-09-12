@@ -68,3 +68,25 @@ criteria count before deciding, on Q-0013's and Q-0122's own precedent.
 **After Q-0122**, which creates the bundle this ticket distributes; (a) has no subject until one
 exists. **p2** — it is on the cold-clone path M6 turns on, which is why it is not p3, and nothing is
 broken for a workspace user today, which is why it is not p1.
+
+## Settled 2026-09-12: (b) is its own ticket, and it is Q-0126
+
+The body above says *"Whether (b) is this ticket or its own is the first thing to settle."* Settled
+the same day, on a fact that was not in front of anyone when the body was written: **(b) acquired a
+blocker (a) does not share.**
+
+`packages/cli`'s AC-11 (`frame.source.test.ts:599`) forbids **every** production module in that
+package from importing `node:child_process`, because *"every read and every spawn goes through
+`@quorum/core`"*. Opening a browser is a spawn. So `quorum open` owes a new primitive in `core` and
+a ruling on where something that is neither git, backlog, adapter nor engine belongs — work with no
+bearing at all on how a tarball obtains the UI, which is this ticket's subject. Two subjects, one of
+which is packaging and one of which is a process-spawning primitive.
+
+**What the two still share is this ticket's question**, and Q-0126 names it as blocking at its own
+gate: `@quorum/cli` importing `@quorum/server` breaks the packed path exactly as shipping the bundle
+does, for the same `workspace:*` reason (Q-0098 M-8). So **this ticket's ruling now governs two
+packages rather than one** — `@quorum/web` and `@quorum/server` — and the shapes it weighs are
+unchanged: a fourth (and fifth) tarball, or `@quorum/cli` carrying another package's emitted artifact
+as its own asset. **Q-0125** makes `@quorum/server` the fifth emitter and deliberately leaves the
+distribution set at three, so by the time this ticket runs, **two** packages emit and are not
+distributed rather than one. That strengthens the case for ruling it once here.
