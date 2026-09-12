@@ -3306,7 +3306,55 @@ parked at p2 with its three written reopening thresholds.
   proxy already forwards `/runs` and already steps aside for a page navigation, Q-0120 round 1's B-1
   having fixed that prefix collision — recorded as an observation rather than pinned here, because a
   criterion over behaviour this change does not touch can only pass vacuously.
-- Q-0122 The daemon serves the built web app. *(Opened 2026-09-11 at the same gate, `draft`, p2.)*
+- Q-0122 The daemon serves the built web app. *(`requirements` 2026-09-12, **exhausted** at its
+  head-of-product gate and answered `advance`, p2. Opened 2026-09-11 at Q-0014's gate.)* **$22.47** —
+  $11.14 pm-claude, $4.85 and $6.49 across two head-of-product iterations, plus one unpriced codex
+  candidate. **Both iterations returned `needs-input` on the same two blockers and both stand on the
+  merits**: twenty criteria against this role's ceiling of fifteen, and a decision entry
+  `developer-generalist` may not write, without which AC-7 is unsatisfiable. **Decision 092 landed at
+  that gate** — *"A fourth package emits, and what it emits is served rather than shipped"*
+  (2026-09-12) — and **Q-0124** was opened there from Appendix B.
+  **The gate refused the split it recommended**, so this is one ticket of twenty: §4's eleven plus
+  Appendix A's nine promoted to AC-12 to AC-20 by **erratum E-1**, which accepts the size
+  deliberately and writes down what that costs. Q-0013 at eighteen and Q-0091 and Q-0096 at
+  twenty-one were each refused or split *at a gate and at cost*, so the precedent says a ticket this
+  size either splits or spends the difference in review rounds; the seam stays measured and written
+  out, so **the remedy if the loop exhausts on the serve half is a second erratum splitting it at
+  that gate, not a fourth implement round**. The confinement criterion is named as not eligible for
+  trimming: Appendix A(6) is the first surface in this product that turns a URL into a file read,
+  from a process with no authentication.
+  **Iteration 2 is the fourth recorded instance of a second pass on an unchanged tree, and the second
+  where it found something anyway.** It opened by saying so — tip `d18cde8`, `docs/decisions/` still
+  ending at 091, `Q-0123` still the highest allocated id — and then re-ran every measurement
+  iteration 1 rested a criterion on. **Three held and three were wrong.** The one worth keeping:
+  iteration 1 found `isolate()`'s consumers by grepping the *prose* *"three emitting packages"*,
+  which two files carry and `step-id.test.ts` does not, so it reported **two of three** — **a search
+  keyed on a name rather than on the behaviour**, the family this repository has recorded six times
+  (Q-0051, Q-0067, Q-0073, Q-0107, Q-0108, Q-0115), committed inside the document that names it. It
+  also found its own glossary count wrong in **both directions** — 36 terms, where the candidate said
+  38 and iteration 1 "corrected" it to 34 *while making a point of the correction in its own
+  provenance*, which is Q-0099's shape exactly. And it struck AC-5's conditional hedge, making that
+  criterion unconditional and stronger.
+  **It corrected this operator's own pre-run re-measurement in two places**, which is the argument
+  for running the flow rather than fast-tracking it. That note said `emitting()` is derived and
+  reaches *"at least four sites"* in `build.test.ts`; measured, it is **thirteen** — `:144`, `:360`,
+  `:558`, `:584`, `:603`, `:624`, `:635`, `:666`, `:838`, `:858`, `:905`, `:910`, `:1094`. And it was
+  more precise than the note about the B-1 hazard: **Hono matches an exact registered pattern**, so
+  prefix-shadowing is the Vite proxy's problem and not the daemon's, and what the daemon has is
+  **exact collision** on four of the shell's twelve paths — `/flows`, `/runs`, `/runs/:handle` against
+  `GET /runs/:id`, `/history`. Because a handler that returns ends the chain, **a fallback registered
+  after the JSON routes is never reached for those four**, which is Q-0120 round 1's B-1 reproduced
+  in the shipped product. `HOME_PATH` `/projects` against `GET /project` is correctly **not** a
+  collision.
+  **Two observations it recorded that no criterion could act on.**
+  `packages/server/src/package.test.ts:462`'s `registeredRoutes()` matches
+  `app.(get|post|put|patch|delete)` with a quoted literal and **does not match `app.use` at all** —
+  so a middleware mount, the natural shape for a static route, is invisible to the guard that holds
+  the route set against the architecture document. Appendix A(8) carries it: register with `app.get`
+  and a literal, or extend the derivation and show the extension red first. And **M3's done-when
+  names `quorum open` and no ticket in this milestone builds it** — verified at the gate:
+  `packages/cli` declares no dependency on `@quorum/server` and there is no `open` command. That is
+  Q-0124's (b).
   A `build` script and task for `apps/web`, a static route on the daemon, and **the glossary ruling
   Q-0014 deferred**: whether a served bundle is an **emitted artifact** or a third kind beside the
   artifact and the binary. `test-discovery.test.ts` calls a fourth emitter *"a visible act"* and the
@@ -3328,6 +3376,24 @@ parked at p2 with its three written reopening thresholds.
   since dropped, since `GET /runs/:id`'s `no run is registered under that handle` would then be false
   of it. **p3** and bounded in practice by a single-user local daemon's session length. **Q-0019** is
   the ticket most likely to change its premise.
+- Q-0124 How an installation outside the workspace obtains the UI. *(Opened 2026-09-12 at Q-0122's
+  requirements gate, from its Appendix B; `draft`, p2.)* **Two gaps, both measured at that gate and
+  neither ticketed anywhere before.** **(a)** After Q-0122 the bundle exists and is served from the
+  workspace, and **a locally packed install still has no web app**: the local distribution set is
+  three tarballs and `apps/web` is `private: true` with no `files` and no `exports`. Decision 092
+  ruled the emitting set four and the distribution set three **deliberately**, naming this question
+  as the one it does not pre-empt. **(b)** **M3's done-when names `quorum open` and no ticket in this
+  milestone builds it** — `packages/cli` declares no dependency on `@quorum/server` and there is no
+  `open` command, so nothing in the CLI can start a daemon.
+  **What it must decide**: either `@quorum/web` becomes a **fourth tarball**, which moves five
+  registers and requires the app to stop being `private: true`, colliding with 078(d) until Q-0029;
+  or `@quorum/cli` ships the bundle beside its templates on Q-0093's precedent, which requires **one
+  package's emitted artifact to become a tracked or copied asset of another** — a write
+  `build.test.ts:558`'s census reports by construction, so whether that census can express one at all
+  is part of the work. Whether (b) is this ticket or its own is the first thing to settle.
+  **Measure first**: the bundle's size, whether a tarball carrying it lengthens the cold-clone
+  install against M6's thirty minutes (Q-0014 measured the cold store doubling to 10.4 s and +50 MB
+  for the app's dependencies alone), and whether the census can express a cross-package copy.
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
 - Q-0017 Backlog board + ticket page (folder rendered as tabs).
