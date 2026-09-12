@@ -6,9 +6,16 @@
  * arrives, and the primary control is disabled because there is nothing behind it yet. A shell that
  * showed a plausible project name would be showing a fact nobody measured, which is the failure
  * this repository refuses in `quorum board`'s containment token and in its push-lag line.
+ *
+ * The one region that is loaded is the live connection: where the route the app has resolved to is
+ * a run route, `app.tsx` supplies a {@link ShellConnectionProps} built from the run connection's own
+ * snapshot, and the top bar renders exactly what it is given — state, a missed-count notice where
+ * one is due, the accepted event count, and the latest event's identity.
  */
 import type { ReactNode } from 'react';
+import type { Event } from '@quorum/shared';
 
+import type { RunConnectionSnapshot } from './run-connection.js';
 import { activeRailPath } from './router.js';
 import { RAIL } from './routes.js';
 
@@ -30,16 +37,27 @@ export const TOP_BAR_REGIONS: readonly { readonly id: string; readonly label: st
   { id: 'subscriptions', label: 'Subscriptions' },
 ];
 
-/**
- * The connection region's text until the live connection exists.
- *
- * It names the ticket that adds one, because the alternative — an empty region, or a region that
- * simply reads "offline" — is silence standing in for an answer.
- */
-export const CONNECTION_PENDING = 'no live connection yet — Q-0120 opens one';
-
 /** The primary control's label, disabled here and enabled by whichever ticket can start a run. */
 export const RUN_FLOW_LABEL = 'Run flow';
+
+/** The Retry action's label, offered only while the connection is in a failure state. */
+export const RETRY_LABEL = 'Retry';
+
+/** Live connection evidence supplied by the route-level controller. */
+export interface ShellConnectionProps {
+  readonly snapshot: RunConnectionSnapshot;
+  readonly text: string;
+  readonly retryable: boolean;
+  readonly onRetry: () => void;
+}
+
+/** Inputs shared by the application adapter and the global shell. */
+export interface ShellProps {
+  readonly path: string;
+  readonly onNavigate: (to: string) => void;
+  readonly children: ReactNode;
+  readonly connection?: ShellConnectionProps;
+}
 
 /** The left rail. Every entry is an anchor, so it is reachable and activatable from a keyboard. */
 function Rail({ path, onNavigate }: { path: string; onNavigate: (to: string) => void }): ReactNode {
@@ -67,8 +85,48 @@ function Rail({ path, onNavigate }: { path: string; onNavigate: (to: string) => 
   );
 }
 
-/** The top bar: three regions with nothing in them yet, a disabled action, and a connection state. */
-function TopBar(): ReactNode {
+/** What the latest accepted event is, in the shortest form that still names it. */
+function eventIdentity(event: Event): string {
+  return 'stepId' in event ? `${event.type} ${event.stepId}` : event.type;
+}
+
+/** The connection region: state, a missed-count notice where one is due, count, latest identity. */
+function ConnectionRegion({ connection }: { connection: ShellConnectionProps }): ReactNode {
+  const { snapshot, text, retryable, onRetry } = connection;
+  const latest = snapshot.events.at(-1);
+  return (
+    <div className="flex items-center gap-3 font-mono">
+      {/* The SENTENCE is the visible text, and the kind is a `data-` hook beside it.
+          It was the other way round until Q-0120 review round 2, M-1: the visible word was
+          `no-daemon` or `protocol-error` and the sentence sat in a `title`, which is not the page's
+          text, is unreachable from a keyboard that never hovers, and does not exist on touch — so
+          AC-15's "renders in plain language" and its requirement that *no daemon* name the URL the
+          client asked for were both unmet, and the pair that carries the whole distinction
+          ("start the daemon" against "that handle is wrong") reached the user as two hyphenated
+          identifiers. React escapes text nodes and `runEventsPath` percent-encodes the handle one
+          segment at a time, so putting the sentence in the page costs nothing the title was
+          protecting against. */}
+      <span className="text-idle" data-state={snapshot.state.kind}>{text}</span>
+      {snapshot.missedCount === null || snapshot.missedCount === 0 ? null : (
+        <span className="text-waiting-on-human">missed {snapshot.missedCount}</span>
+      )}
+      <span className="text-muted">{snapshot.events.length} events</span>
+      {latest === undefined ? null : <span className="text-muted">{eventIdentity(latest)}</span>}
+      {retryable ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded border border-border px-2 py-1 text-text hover:text-accent"
+        >
+          {RETRY_LABEL}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The top bar: three regions with nothing in them yet, the connection region, and a disabled action. */
+function TopBar({ connection }: { connection?: ShellConnectionProps }): ReactNode {
   return (
     <header className="flex items-center gap-6 border-b border-border bg-surface px-4 py-2 text-sm">
       {TOP_BAR_REGIONS.map((region) => (
@@ -78,7 +136,7 @@ function TopBar(): ReactNode {
         </div>
       ))}
       <div className="ml-auto flex items-center gap-4">
-        <span className="text-idle">{CONNECTION_PENDING}</span>
+        {connection === undefined ? null : <ConnectionRegion connection={connection} />}
         <button type="button" disabled className="rounded border border-border px-3 py-1 text-idle">
           {RUN_FLOW_LABEL}
         </button>
@@ -92,16 +150,13 @@ export function Shell({
   path,
   onNavigate,
   children,
-}: {
-  path: string;
-  onNavigate: (to: string) => void;
-  children: ReactNode;
-}): ReactNode {
+  connection,
+}: ShellProps): ReactNode {
   return (
     <div className="flex h-full bg-bg text-text">
       <Rail path={path} onNavigate={onNavigate} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
+        <TopBar connection={connection} />
         <main className="min-h-0 flex-1 overflow-auto p-6">{children}</main>
       </div>
     </div>

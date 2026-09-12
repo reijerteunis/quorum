@@ -17,17 +17,20 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
+import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
 import { HOME_PATH, isRedirect, RAIL, ROUTES, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
 
-/** The components — the files whose route-path literals clause 3 refuses. */
-const componentFiles = (): [string, string][] =>
-  fs.readdirSync(SOURCE)
-    .filter((name) => name.endsWith('.tsx'))
-    .sort()
-    .map((name) => [name, fs.readFileSync(path.join(SOURCE, name), 'utf8')]);
+/** Every source file, recursively: routes can be named outside React components. */
+const componentFiles = (): [string, string][] => {
+  const walk = (at: string, below = ''): [string, string][] => fs.readdirSync(at, { withFileTypes: true }).flatMap((entry) => {
+    const name = below ? `${below}/${entry.name}` : entry.name;
+    return entry.isDirectory() ? walk(path.join(at, entry.name), name) : [[name, fs.readFileSync(path.join(at, entry.name), 'utf8')]];
+  });
+  return walk(SOURCE).sort(([a], [b]) => a.localeCompare(b));
+};
 
 /**
  * Every quoted literal in `text` that begins with a slash.
@@ -52,6 +55,22 @@ const registered = (): Set<string> => {
 };
 
 const SCREEN_ROUTES: ScreenRoute[] = ROUTES.filter((route): route is ScreenRoute => !isRedirect(route));
+
+// Identities of (file, literal, reason), which is what the frozen contract asks for. It was a bare
+// Set until Q-0120 review round 1, N-5: the exercised-use assertion below already fails a stale row,
+// but the reason column is what a reviewer weighs instead of re-deriving, and a contract document is
+// not where the next person editing this scan looks.
+const EXCEPTION_REASONS: Record<string, string> = {
+  'router.ts:/backlog/': 'the prefix the dynamic backlog route is matched by, not a route of its own',
+  'router.ts:/har': 'a truncated prefix used to prove the matcher is not a substring test',
+  'router.ts:/runs/<handle>': 'the placeholder form of a dynamic segment, never a literal URL',
+  'shell.test.ts:/runs/run%20one': 'the percent-encoded fixture handle the decoding assertions use',
+  'shell.test.ts:/nowhere/at/all': 'the unmatched URL the Not found view is proved on',
+  'shell.test.ts:/backlog/%E0%A4%A': 'a malformed percent sequence, asserted not to throw',
+  'run-connection.test.ts:/B/events': 'the second handle in the one-socket-at-a-time fixture',
+  'shell.test.ts:/runs/run%20one/events': 'the socket path the no-daemon sentence names, asserted to reach the page since round 2 M-1',
+};
+const EXCEPTIONS = new Set(Object.keys(EXCEPTION_REASONS));
 
 describe('AC-6 — the rail is the seven entries the design brief names, in its order', () => {
   test('the seven ids, as an identity', () => {
@@ -165,10 +184,16 @@ describe('AC-6 — no component names a route the tables do not hold', () => {
   });
 
   test('every route-path literal a component carries is one the register holds', () => {
-    const held = registered();
-    const unregistered = componentFiles().flatMap(([name, text]) =>
-      pathLiterals(text).filter((literal) => !held.has(literal)).map((literal) => `${name}: ${literal}`));
+    const held = new Set([...registered(), ...Object.values(DAEMON_ENDPOINTS)]);
+    const seenExceptions = new Set<string>();
+    const unregistered = componentFiles().flatMap(([name, text]) => pathLiterals(text).flatMap((literal) => {
+      if (held.has(literal)) return [];
+      const identity = `${name}:${literal}`;
+      if (EXCEPTIONS.has(identity)) { seenExceptions.add(identity); return []; }
+      return [`${name}: ${literal}`];
+    }));
     expect(unregistered, 'a component names a path the register does not').toStrictEqual([]);
+    expect([...seenExceptions].sort(), 'a route-literal exception has lost its subject').toStrictEqual([...EXCEPTIONS].sort());
   });
 
   test('and the clause has a subject — the same scan reports one that is not registered', () => {

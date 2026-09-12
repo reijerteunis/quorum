@@ -1,8 +1,17 @@
 /**
  * The shapes that cross the wire, and the one place a refusal becomes a status.
  *
- * Kept apart from `http.ts` so the contract Q-0014 codes against can be read without reading the
- * routing, and so a status mapping is a table rather than a scattering of `c.json(..., 4xx)` calls.
+ * Kept apart from `http.ts` so a status mapping is a table rather than a scattering of
+ * `c.json(..., 4xx)` calls.
+ *
+ * **`WireMessage` is defined in `@quorum/shared` and re-exported here, not declared here.** This
+ * header used to say the contract *"Q-0014 codes against"* could be read in this file, and that
+ * sentence is what Q-0120's own ticket body names as the CAUSE of the drift it was opened on: an
+ * implementer follows it, finds `@quorum/server` unimportable from a browser, and copies the
+ * interfaces into the app — the drift arrived at by obeying the sentence forbidding it. The frame
+ * union now lives where a browser can execute its schema; `WireRefusal` and `WireRun` are still
+ * declared below, and whoever needs them from a browser (Q-0015 or Q-0121) moves them the same way
+ * rather than copying them. Q-0120 review round 2, N-3.
  *
  * **Nothing here renders.** `04-architecture.md` states the rule this is the other half of — *"a
  * lint record reaching a terminal, a browser and a WebSocket carries an escape byte in exactly one
@@ -11,6 +20,9 @@
  */
 import type { AnswerRefusal, StartOutcome, StopRefusal } from './host.js';
 import type { Refusal } from './refusal.js';
+import type { WireMessage } from '@quorum/shared';
+
+export type { WireMessage };
 
 /**
  * What a refused request answers with: a machine-readable code, the condition in `core`'s own
@@ -109,16 +121,3 @@ export function wireRunOf(outcome: StartOutcome): WireRun {
   const { handle, flow, runId, state } = outcome.run;
   return { handle, flow, runId, state };
 }
-
-/**
- * One WebSocket message.
- *
- * **One event per message, and the envelope carries no second vocabulary.** `event` is
- * `@quorum/shared`'s `Event` unaltered, so a client parses it with `eventSchema` and nothing here
- * has to be kept in step with the union. `missed` is the only thing this transport adds, and it is
- * not an event: a late subscriber is told how many it did not see rather than handed a silently
- * truncated stream, which is the answer Q-0013 OQ-1 left to this child.
- */
-export type WireMessage =
-  | { readonly type: 'event'; readonly event: unknown }
-  | { readonly type: 'missed'; readonly count: number };

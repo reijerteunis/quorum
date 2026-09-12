@@ -46,6 +46,71 @@ function listed(): Listed[] {
 const onDisk = (): Map<string, string> =>
   new Map(decisionFiles().map((file) => [path.basename(file), read(file)]));
 
+describe('Q-0120 AC-23 — live connection documentation', () => {
+  test('architecture replaces the obsolete no-connection account with shared ownership and re-export', () => {
+    const architecture = repoFile('docs/04-architecture.md');
+    expect(architecture).not.toContain('There is no connection to the daemon');
+    // Scoped to the section AC-23 names, because over the whole file both clauses were satisfied by
+    // the STATUS LINE alone: every ticket writes a dated entry there, this one's contains the phrase,
+    // and `packages/server` occurs earlier in the same line from an older entry — so the ordering
+    // clause passed too, and the section could have been deleted outright with this test green.
+    // The anti-over-slice clause is the shape the glossary guard above already uses, for the reason
+    // its own comment records. Q-0120 review round 3, M-1.
+    const start = architecture.indexOf('### `packages/server`');
+    expect(start, 'the section AC-23 names is gone').toBeGreaterThanOrEqual(0);
+    const next = architecture.indexOf('\n### ', start + 1);
+    const section = architecture.slice(start, next < 0 ? undefined : next);
+    expect(section.length, 'the slice reaches past its own section').toBeLessThan(12000);
+    expect(section, 'the slice lost its subject').toContain('### `packages/server`');
+    expect(section, 'the server section does not say where the frame union lives').toMatch(/frame union[\s\S]*@quorum\/shared/i);
+    expect(section, 'the server section does not say it re-exports').toMatch(/re-export/i);
+  });
+
+  test('the glossary defines the closed, derived, memory-only connection state separately from run state', () => {
+    const glossary = repoFile('docs/GLOSSARY.md');
+    const start = glossary.indexOf('**Connection state**');
+    expect(start).toBeGreaterThanOrEqual(0);
+    // The delimiter is `\n**` and not `\n- **`: this file's entries are `**Term**:` at line start
+    // rather than bullets, so the bullet form occurs ZERO times and the slice ran to the end of the
+    // document — 17,593 of 22,260 characters, with three clauses below satisfied by neighbouring
+    // entries. The nine-state list still discriminated, which is why the guard had a subject while
+    // not having the scoped one it reads as having. Q-0120 review round 1, N-3.
+    const next = glossary.indexOf('\n**', start + 1);
+    const entry = glossary.slice(start, next < 0 ? undefined : next);
+    // And the scope is asserted rather than assumed: a slice that swallowed its neighbours would
+    // pass every clause below for the wrong reason.
+    expect(entry.length, 'the entry slice reaches past its own term').toBeLessThan(2000);
+    expect(entry, 'the slice lost its subject').toContain('**Connection state**');
+    for (const state of ['idle', 'connecting', 'live', 'no daemon', 'no such run', 'ended', 'interrupted', 'dropped', 'protocol error']) expect(entry.toLowerCase()).toContain(state);
+    expect(entry).toMatch(/derived|per moment/i);
+    expect(entry).toMatch(/never (?:stored|persisted)|memory/i);
+    expect(entry).toMatch(/run state/i);
+    // AC-23's remaining clause: no member of the set is silence. Asserted here because the entry is
+    // where the vocabulary is fixed, and because B-2 is the same rule going unmet one layer up.
+    expect(entry, 'AC-23 requires the entry to state that no member of it is silence').toMatch(/no member of it is silence|none of them is silence/i);
+  });
+
+  test('the repository architecture no longer calls frontend inert', () => {
+    // Both directions, and the needle tolerates the backticks the file actually carries. Until
+    // Q-0120 review round 2 it read /frontend(?:`)? and data remain inert/i, which allows one
+    // optional backtick after `frontend` and then requires the bare words — while the sentence on
+    // main is "`frontend` and `data` remain inert", with backticks around `data` the pattern cannot
+    // consume. Measured: that needle matches main's text ZERO times, so the assertion was green over
+    // the unchanged file and would have stayed green if the correction were reverted. "A check is
+    // not established by reading it" (2026-08-29), in the guard added to enforce the correction.
+    const architecture = repoFile('harness/architecture.md');
+    const inert = /`?frontend`?\s+and\s+`?data`?\s+remain\s+inert/i;
+    expect(architecture, 'the architecture context still calls frontend inert').not.toMatch(inert);
+    // The needle has a subject: it matches the sentence it forbids, in the spelling that shipped.
+    expect('`frontend` and `data` remain inert. `apps/web` exists since Q-0008,').toMatch(inert);
+    // And the positive half, so the clause fails in both directions rather than only when the old
+    // sentence returns. This file is fed to the architect on every solutioning run, so a stale
+    // sentence here is one every future solution inherits — AC-23's one clause whose subject is a
+    // harness context file.
+    expect(architecture, 'the architecture context does not name frontend as active').toMatch(/`?frontend`?\s+is\s+active/i);
+  });
+});
+
 /** One decision entry's text, found the way the rest of the repository cites it: by title. */
 function entry(title: string): string {
   const row = listed().find((r) => r.title === title);

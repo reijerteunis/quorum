@@ -28,7 +28,9 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { App } from './app.js';
-import { CONNECTION_PENDING, NOT_LOADED, RUN_FLOW_LABEL, TOP_BAR_REGIONS } from './shell.js';
+import { connectionStateText } from './connection-state.js';
+import type { SocketTransport } from './run-connection.js';
+import { NOT_LOADED, RUN_FLOW_LABEL, TOP_BAR_REGIONS } from './shell.js';
 import { isRedirect, RAIL, ROUTES, type ScreenRoute } from './routes.js';
 import { DOES_NOT_EXIST, NOT_FOUND_HEADING, Placeholder } from './views.js';
 
@@ -60,11 +62,40 @@ async function render(element: ReactElement): Promise<HTMLElement> {
   return container;
 }
 
+/** Render into a root the caller keeps, so the same root can be re-rendered or unmounted. */
+async function renderAt(element: ReactElement): Promise<{ container: HTMLElement; root: ReturnType<typeof createRoot> }> {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(element));
+  mounted.push(() => root.unmount());
+  return { container, root };
+}
+
 /** The visible text of `element`, whitespace-normalised so a line break is not a difference. */
 const textOf = (element: HTMLElement): string => (element.textContent ?? '').replace(/\s+/g, ' ').trim();
 
 /** How many times `needle` occurs in `haystack` — a count, where `toContain` answers only presence. */
 const occurrences = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+
+/**
+ * The socket every test in this file uses in place of the real constructor.
+ *
+ * Hoisted out of the AC-20 block by Q-0120 review round 1, M-5: the AC-7 test two blocks above needs
+ * it too, because a run route rendered without a factory reaches `defaultSocketFactory` and opens a
+ * real connection to jsdom's default origin.
+ */
+class FakeSocket implements SocketTransport {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
+  /** Counted, so AC-17's React half can be asserted over what was released rather than over what
+   *  still exists — the shape Q-0118's round 2 caught, and what this fake could not record until
+   *  Q-0120 review round 3, M-3. */
+  closes = 0;
+  close(): void { this.closes += 1; }
+}
 
 describe('AC-2 — the application mounts into a real document, with no daemon running', () => {
   test('it renders the rail and the top bar without throwing', async () => {
@@ -152,8 +183,24 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
     // Percent-encoded on the way in, decoded on the way out: this is the only thing the shell knows
     // about the run, and showing the raw encoding would be showing what the browser sent rather
     // than what the user asked for.
-    const container = await render(createElement(App, { initialPath: '/runs/run%20one' }));
-    const text = textOf(container);
+    // The factory and the page URL are supplied, and that is load-bearing rather than tidy. Without
+    // them this run route reaches `defaultSocketFactory` and constructs a real WebSocket against
+    // jsdom's default origin, localhost port 3000 — so the suite made an outbound connection
+    // on every run, and where anything is listening on 3000 the socket OPENS, the app moves to
+    // `live` and state updates land outside `act()`. A test doing different work depending on what
+    // else is running on the machine is what "A test's verdict is a property of the commit, not of
+    // the checkout or the account" (2026-08-30) forbids. Q-0120 review round 1, M-5.
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => new FakeSocket(),
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    // Scoped to `main` rather than the whole container: since M-1 the connection region renders
+    // `connectionStateText`, whose sentence names the requested URL — and that URL is correctly
+    // percent-encoded, AC-13 requiring `runEventsPath` to encode the handle one segment at a time.
+    // So the encoded form legitimately appears in the header while the route content must show the
+    // decoded one, and asserting over the whole page would force one of the two criteria to give.
+    const text = textOf(container.querySelector('main') as HTMLElement);
     expect(text, 'the segment was not decoded').toContain('run one');
     expect(text, 'the raw encoding is being shown instead').not.toContain('run%20one');
   });
@@ -221,17 +268,129 @@ describe('AC-9 — the top bar reserves its regions and asserts nothing it has n
     expect((button?.textContent ?? '').trim()).toContain(RUN_FLOW_LABEL);
   });
 
-  test('the connection region says there is none yet, and names the ticket that opens one', async () => {
-    const container = await render(createElement(App, { initialPath: RAIL[0].path }));
-    const text = textOf(container.querySelector('header') as HTMLElement);
-    expect(text, 'the connection region is silent about there being no connection').toContain(CONNECTION_PENDING);
-    expect(CONNECTION_PENDING, 'the connection region names no successor').toMatch(new RegExp(`${'Q'}-\\d{4}`));
-  });
-
   test('and the shell shows no project name, cost or vendor state it has not been given', async () => {
     const container = await render(createElement(App, { initialPath: RAIL[0].path }));
     const text = textOf(container);
     expect(text, 'a currency figure appears with nothing behind it').not.toMatch(/\$\d/);
     expect(text, 'a branch name appears with nothing behind it').not.toMatch(/\bmain\b/);
+  });
+});
+
+describe('Q-0120 AC-20 — the run route mounts and renders its live connection', () => {
+  test('non-run routes open no socket, while the run route opens exactly one', async () => {
+    const reached: URL[] = [];
+    const factory = (url: URL): SocketTransport => { reached.push(url); return new FakeSocket(); };
+    await render(createElement(App, { initialPath: '/projects', socketFactory: factory, pageUrl: new URL(`https:${'/' + '/'}page.test`) }));
+    expect(reached).toStrictEqual([]);
+    await render(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: new URL(`https:${'/' + '/'}page.test`) }));
+    expect(reached).toHaveLength(1);
+  });
+
+  test('the panel shows state, missed notice, event count, and latest event identity only', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => {
+      socket.onopen?.();
+      for (let index = 0; index < 3; index += 1) socket.onmessage?.({ data: JSON.stringify({ type: 'event', event: { type: 'step', stepId: 'implement', message: `${index}` } }) });
+      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 7 }) });
+    });
+    const text = textOf(container.querySelector('header') as HTMLElement);
+    // `Connected to …` and not the word `live`. The old assertion read `toContain('live')`, which
+    // `connectionStateText` never produces — it passed only because the kebab token was what
+    // rendered, so it pinned the defect M-1 reports rather than the criterion. Q-0120 round 2.
+    // `missed 7` as a phrase, not the bare digit. The row used to drive `count: 2` and assert `'2'`,
+    // which the socket URL and the event count both satisfy — so nothing proved a non-zero notice
+    // was rendered at all. 7 occurs nowhere else in this header. Q-0120 review round 3, M-2.
+    for (const expected of ['Connected to', 'missed 7', '3', 'step', 'implement']) expect(text).toContain(expected);
+    expect(text, 'the state token is rendered as visible text').not.toContain('live');
+    expect(container.querySelector('[data-state="live"]'), 'the machine-readable hook is gone').not.toBeNull();
+    expect(text).not.toMatch(/cost|diff|trace/i);
+  });
+
+  // AC-17's React half: the effect's cleanup, which nothing reached because this file's fake socket
+  // could not record a close. Asserted over what was RELEASED rather than over what still exists —
+  // "the run still exists" is true whether or not anything was released, which is the shape
+  // Q-0118's round 2 caught. Q-0120 review round 3, M-3.
+  test('leaving a run route and unmounting each close the socket, and neither opens a replacement', async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (): SocketTransport => { const s = new FakeSocket(); sockets.push(s); return s; };
+    const page = new URL(`https:${'/' + '/'}page.test`);
+
+    // Left by NAVIGATING rather than by re-rendering: `initialPath` seeds `useState` once, so a
+    // second render at another path changes nothing about the route — a trap worth naming, because
+    // a test written that way asserts over a run route that never ended.
+    const { container } = await renderAt(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: page }));
+    expect(sockets).toHaveLength(1);
+    const rail = [...(container.querySelector('nav')?.querySelectorAll('a') ?? [])];
+    await act(async () => rail[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+    expect(sockets[0]!.closes, 'leaving the run route did not close the socket').toBeGreaterThanOrEqual(1);
+    expect(sockets, 'leaving the run route opened a replacement').toHaveLength(1);
+
+    const second = await renderAt(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: page }));
+    expect(sockets).toHaveLength(2);
+    await act(async () => second.root.unmount());
+    expect(sockets[1]!.closes, 'unmounting did not close the socket').toBeGreaterThanOrEqual(1);
+  });
+
+  // The zero case's third half. The frozen contract asks for `missedCount === 0`, distinct from
+  // `null`, an unchanged event list, AND that the rendered surface shows no notice; the first two
+  // are at run-connection.test.ts, and the render drove `count: 2` only — so `shell.tsx`'s
+  // `missedCount === 0 ? null : …` branch, the one clause separating "the daemon sent a zero, which
+  // it never does" from "a notice is due", was executed by no test. Q-0120 round 2, N-7.
+  test('a missed count of zero renders no notice', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => {
+      socket.onopen?.();
+      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 0 }) });
+    });
+    expect(textOf(container.querySelector('header') as HTMLElement)).not.toContain('missed');
+  });
+
+  // E-4 granted this assertion and round 2's M-5 found it missing, so a fixed blocker was guarded by
+  // nothing: AC-9's not-loaded count is blind to the connection region by construction, and
+  // returning `connection` to the optional form was green everywhere.
+  test('the connection region is present off a run route, carrying the idle sentence', async () => {
+    const container = await render(createElement(App, {
+      initialPath: RAIL[0]!.path,
+      socketFactory: () => new FakeSocket(),
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    expect(textOf(container.querySelector('header') as HTMLElement)).toContain(connectionStateText({ kind: 'idle' }));
+  });
+
+  // E-4's second: *no daemon* must name the URL the client asked for, and *no such run* must be a
+  // different sentence. The pair is what carries the whole distinction, and round 1 found it
+  // reaching the user as two hyphenated identifiers.
+  test('no daemon names the requested URL, and no such run says something else', async () => {
+    const socket = new FakeSocket();
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => socket,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => { socket.onerror?.(); socket.onclose?.({ code: 1006, reason: '' }); });
+    const unreachable = textOf(container.querySelector('header') as HTMLElement);
+    expect(unreachable, 'no daemon must name the URL the client asked for').toContain('/runs/run%20one/events');
+    expect(unreachable).not.toContain('no-daemon');
+
+    const second = new FakeSocket();
+    const other = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => second,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
+    await act(async () => { second.onclose?.({ code: 1008, reason: 'no such run' }); });
+    const wrongHandle = textOf(other.querySelector('header') as HTMLElement);
+    expect(wrongHandle, 'no such run must not be the same sentence as no daemon').not.toBe(unreachable);
+    expect(wrongHandle).not.toContain('no-such-run');
   });
 });
