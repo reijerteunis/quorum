@@ -51,3 +51,12 @@ export type { StartRefusalCode, WireMessage, WireRefusal, WireRun } from './wire
 /** Q-0119's read-only surface: project, tickets, flows and run history, mounted on an app. */
 export { mountRead } from './read.js';
 export type { WireTicket } from './read.js';
+
+/**
+ * Q-0122's static route: the built web app, served from a root the caller supplies.
+ *
+ * `mountStatic` is exported beside `createApp` for the same reason `mountRead` is — a caller may
+ * want the JSON surface alone — though `createApp` already calls it, because this one has to be
+ * registered ahead of the routes rather than behind them.
+ */
+export { BUNDLE_ENTRY, bundleRefusal, confinedFile, contentTypeOf, looksLikeAFile, mountStatic, NO_BUNDLE_REMEDY } from './static.js';

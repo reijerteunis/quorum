@@ -11,6 +11,15 @@
  * Every path those four touch is built from a string somebody else supplied — a ticket token from
  * argv and, from M3, from a request body; a write path or an `input.backlog` glob from a flow file.
  *
+ * **{@link pathInside} has a second caller outside this store since Q-0122**, and the module stays
+ * where it is rather than moving: `packages/server`'s static route turns a URL into a file read
+ * under the built bundle, which is the same question about a different declared root. It is on
+ * `@quorum/core`'s barrel for that reason, which is `docs/GLOSSARY.md`'s **Confinement** sentence —
+ * *"Enforced in `core`, so the CLI and M3's server inherit one rule instead of each writing a
+ * weaker one"* — being executed rather than reinterpreted. What is scoped to the backlog store is
+ * the paragraph above about **which methods** are guarded; the two questions below are general, and
+ * the register in `backlog.source.test.ts` is what keeps a third caller from growing its own copy.
+ *
  * Why: narrowed by hand after the gate, per *"A refused finding is a gate, not another round"*
  * (2026-08-31), which puts the repair for an overridden finding on the merge rather than on the
  * branch the gate approved. Q-0059's review raised it three times and the third was answered by an

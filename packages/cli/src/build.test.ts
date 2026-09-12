@@ -643,6 +643,52 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     ).toBe(true);
   }, 300_000);
 
+  test('Q-0122 AC-3(b) — a rebuild drops what the current source no longer produces, in every emit', () => {
+    // **Why this exists beside `build-fixture.test.ts`'s AC-11.** That clause proves the general
+    // property over a synthetic `tsc` emitter: turbo prunes an output directory on neither the miss
+    // path nor the hit path, so a stale artifact survives unless the build script clears it. What it
+    // cannot prove is that each REAL build script actually does — and the fourth emitter's is
+    // `vite build` rather than `tsc`, so the property is inherited from nothing and is demonstrated
+    // here instead. Q-0122 AC-3(b) asks for exactly that, and asks it of a real build in the copy.
+    //
+    // Derived over `emitting()` rather than aimed at `apps/web` alone: the criterion names the
+    // fourth, and a guard that named it back would go quiet on a fifth. The subject is asserted
+    // instead, so this clause fails loudly if the package it was written for ever leaves the set.
+    //
+    // **What the mutation measured, and the limit it puts on this clause.** Dropping `rm -rf dist &&`
+    // from a `tsc` emitter turns this red naming the survivor — measured on `packages/shared`,
+    // *"packages/shared/dist/q0122-stale.js"*. Dropping it from `apps/web` turns nothing red, because
+    // Vite empties `outDir` on its own. So for three of the four the clean step is what this clause
+    // establishes, and for the fourth the property holds by a bundler default this repository does
+    // not own. The `rm -rf` stays in that script anyway — uniform with its three siblings and not
+    // resting on a default that can move — but it is NOT load-bearing there today, and saying so
+    // here is cheaper than a later reader deducing it from a mutation that fires for everything else.
+    const root = isolate();
+    const tasks = emitting();
+    expect(tasks.map((task) => task.directory), 'the fourth emitter has left the set — this clause has lost the subject it was written for')
+      .toContain('apps/web');
+
+    // A first build, so every emit exists and the plant below lands beside real output rather than
+    // in a directory the build is about to create from nothing.
+    buildIn(root, '--force');
+    const planted = tasks.map((task) => `${task.directory}/${EMIT}/q0122-stale.js`);
+    for (const relative of planted) {
+      const full = path.join(root, relative);
+      expect(fs.existsSync(path.dirname(full)), `${relative}: the first build produced no emit to plant into`).toBe(true);
+      fs.writeFileSync(full, 'export const stale = 1;\n');
+    }
+
+    const before = inventory(root);
+    expect(planted.filter((relative) => !before.has(relative)), 'the plant did not take — the rebuild would prove nothing').toStrictEqual([]);
+
+    buildIn(root, '--force');
+    // Asked as a removal, which is the claim: not "the rebuild wrote something else" but "the file
+    // the current source does not produce is GONE". A build that merely wrote over it would satisfy
+    // any check phrased the other way round.
+    const gone = removedBetween(before, inventory(root));
+    expect(planted.filter((relative) => !gone.includes(relative)), 'a stale artifact survived a forced rebuild').toStrictEqual([]);
+  }, 300_000);
+
   test('the real workspace builds, and its emit and the declaration agree in both directions', () => {
     // **Retained and load-bearing** (merged requirement R-4, OQ-1): with no build step in CI, the
     // forced workspace suite is the only thing that builds this repository's own packages on every

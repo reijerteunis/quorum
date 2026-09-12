@@ -34,7 +34,14 @@ import { buildIn, disposeIsolated, isolate, PACKAGE, read } from '../test/worksp
 /** How long one spawned invocation may take before it is killed. */
 const SPAWN_TIMEOUT_MS = 60_000;
 
-/** How long the whole fixture may take to build and walk — the isolated `tsc` is all of it. */
+/**
+ * How long the whole fixture may take to build and walk — the isolated build is all of it.
+ *
+ * Re-measured at Q-0122, which made the emitting set four and so gave this fixture a `vite build`
+ * it did not have: 3.3 s for the whole file over two runs, against a budget 55 times that. It was
+ * *"the isolated `tsc`"* until then, and it is no longer only `tsc`. The budget does not move — the
+ * measurement is what says so, rather than the margin being assumed to absorb it.
+ */
 const FIXTURE_TIMEOUT_MS = 180_000;
 
 /** The ticket the fixture allocates, and the owner it supplies rather than inheriting (Q-0112). */

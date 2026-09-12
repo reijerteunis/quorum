@@ -50,6 +50,18 @@ const SURFACE: Record<string, string> = {
   STOP_REFUSAL_STATUS: 'the status each stop refusal answers with',
   wireRefusalOf: 'a host refusal carried over the wire under a code a client can switch on',
   wireRunOf: 'one run view, narrowed to what crosses the wire — the ONE projection every route answering with a run goes through (Q-0121)',
+
+  // Q-0122's static route. Unlike `mountRead`, `createApp` already calls `mountStatic` — it has to
+  // be registered AHEAD of the run routes rather than behind the read ones — so what these names
+  // are for is a caller that wants to reason about the bundle without going through a socket, and
+  // the four predicates below are the ones the confinement half is asserted over directly.
+  BUNDLE_ENTRY: 'the one file a built bundle must hold, and the answer to every navigation',
+  bundleRefusal: 'whether a supplied bundle root holds a build, asked once before anything binds',
+  confinedFile: 'the file a URL path names inside the bundle, or null — the whole of the boundary',
+  contentTypeOf: 'the content type a served file is given, from a closed table with no HTML default',
+  looksLikeAFile: 'whether a URL path names a file rather than a screen, which is what keeps a missing asset a 404',
+  mountStatic: 'the static route, registered ahead of everything else the app will carry',
+  NO_BUNDLE_REMEDY: 'what this surface offers a caller pointed at a directory holding no build',
 };
 
 describe('the public surface', () => {

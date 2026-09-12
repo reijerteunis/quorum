@@ -136,8 +136,13 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
   });
 
   test('it emits nothing: no build task, no exports map, no files allow-list, no bin', () => {
-    // The local distribution set is three packages and this ticket does not make it four, which is
-    // what keeps `packages/cli/src/build.test.ts`'s per-package emit register unchanged.
+    // Two registers, not one, and this package is in neither. The **emitting** set is
+    // `test-discovery.test.ts`'s and is four since Q-0122; the local **distribution** set is
+    // `build.test.ts`'s `DISTRIBUTION` and is three. This comment named the second and reasoned
+    // about the first, which was harmless while they were the same three packages and stopped being
+    // so when `apps/web` gained a build task — see "A fourth package emits, and what it emits is
+    // served rather than shipped" (2026-09-12). The assertions below are unaffected: a package that
+    // emits nothing and ships nothing is out of both.
     expect(own.scripts?.build).toBe(undefined);
     expect(own.exports).toBe(undefined);
     expect(own.main).toBe(undefined);
@@ -382,14 +387,38 @@ describe('AC-5 — the remedy exists at one site, and is not a shell imperative'
 });
 
 describe('AC-12 and AC-13 — a library, with no socket, no signal handler and no key path', () => {
-  test('nothing in this package opens or listens on anything', () => {
-    const network = [/node:net\b/, /node:http\b/, /node:https\b/, /node:tls\b/, /node:dgram\b/, /createServer\s*\(/, /\.listen\s*\(/, /\bfrom 'ws'/];
+  test('nothing in this package hand-rolls a transport, and nothing but the tests opens a client', () => {
+    // **Two corpora since Q-0122, and the split is a correction rather than a relaxation.** What
+    // this clause claims is that the package implements no transport of its own — `serve.ts` opens
+    // a socket THROUGH `@hono/node-server`, which is the architecture document's choice, and
+    // everything below it is a library. That is a claim about production source. The whole-package
+    // half stayed whole-package: a file that starts a second server, or reaches for a raw socket
+    // family with no client use, is a violation wherever it sits.
+    //
+    // What moved is `node:http`/`node:https`, and the reason is measured: `static.test.ts` has to
+    // write a request path onto the request line **unaltered**, because `fetch` builds a `URL` and
+    // a `URL` resolves `..` before a byte leaves the process — so a traversal suite driven through
+    // `fetch` would report every escape refused while never sending one. It needs a raw client, and
+    // a client is not a listener.
+    //
+    // **The honest half: this clause never bound the tests in the first place.** `serve.test.ts`
+    // has driven real sockets since Q-0118 and passes it only because `fetch` is a global needing
+    // no import — so the corpus already failed to see what it would have called a violation, and
+    // narrowing it here makes the two halves say what each is actually about.
+    const HAND_ROLLED = [/node:net\b/, /node:tls\b/, /node:dgram\b/, /createServer\s*\(/, /\.listen\s*\(/, /\bfrom 'ws'/];
+    const CLIENT_ONLY = [/node:http\b/, /node:https\b/];
     for (const [file, text] of packageFiles()) {
-      for (const pattern of network) {
+      for (const pattern of HAND_ROLLED) {
         expect(pattern.test(text), `${file} matches ${String(pattern)}`).toBe(false);
       }
     }
+    for (const [file, text] of production()) {
+      for (const pattern of CLIENT_ONLY) {
+        expect(pattern.test(text), `production file ${file} matches ${String(pattern)}`).toBe(false);
+      }
+    }
     expect(packageFiles().length, 'the package scan found nothing').toBeGreaterThan(5);
+    expect(production().length, 'the production scan found nothing').toBeGreaterThan(5);
   });
 
   test('nothing registers a process signal handler or exits the process', () => {
@@ -407,6 +436,12 @@ describe('AC-12 and AC-13 — a library, with no socket, no signal handler and n
     expect(/process\.(on|once|addListener)\s*\(\s*['"]SIG/.test(hostile)).toBe(true);
     expect(/process\.exit\s*\(/.test(hostile)).toBe(true);
     expect(/\.listen\s*\(/.test("server.listen(3000);")).toBe(true);
+    // And the half Q-0122 narrowed still fires where it now applies — a production file reaching
+    // for a raw HTTP module — so what moved is the corpus and not the rule.
+    expect(/node:http\b/.test("import http from 'node:http';")).toBe(true);
+    // …while a second server is refused in a TEST too, which is what keeps the narrowing from
+    // being a hole: the client is allowed there and the listener is not.
+    expect(/createServer\s*\(/.test("const s = http.createServer(handler);")).toBe(true);
   });
 
   test('loading the package adds no process listener at runtime either', async () => {
@@ -483,13 +518,19 @@ const registeredRoutes = (): string[] => {
  * hazard `packages/shared/src/docs.test.ts` names for its own slice of the same section, and it is
  * live here: the status line at the top of the document names several of these routes.
  *
- * **This read needs no declaration in a `packages/server/turbo.json`, and that is measured rather
- * than assumed** (Q-0072). One was written and then removed: with no package configuration here at
- * all, appending a line to `docs/04-architecture.md` moves this task's hash from `f03a2d8a7e5b817e`
- * to `247ae7d079123910`, because `@quorum/shared#test` declares that file for its own assertions
- * over this same section and the root `test` task's `^test` edge puts that task's hash inside this
- * one. Declaring it here would over-declare, which is the reasoning `packages/cli`'s own audit
- * gives for the reads it leaves out.
+ * **This read needs no declaration in `packages/server/turbo.json`, and that is measured rather
+ * than assumed** (Q-0072). Q-0121 wrote one and removed it: appending a line to
+ * `docs/04-architecture.md` moved this task's hash from `f03a2d8a7e5b817e` to `247ae7d079123910`
+ * with no package configuration at all, because `@quorum/shared#test` declares that file for its
+ * own assertions over this same section and the root `test` task's `^test` edge puts that task's
+ * hash inside this one. Declaring it here would over-declare, which is the reasoning
+ * `packages/cli`'s own audit gives for the reads it leaves out.
+ *
+ * **A configuration exists now and this read is still not in it** (Q-0122). That file declares the
+ * two `apps/web` paths `static.test.ts` reads, which no `^test` edge carries — this package does
+ * not depend on `@quorum/web` — and deliberately not this one. Re-measured with it in place, so the
+ * claim is about today's tree rather than Q-0121's: a line appended to `docs/04-architecture.md`
+ * moves the hash from `af22eee7bff15101` to `c4803a289c631250`, undeclared.
  *
  * The residual is stated rather than left to be found: **the coverage is transitive**, so it lasts
  * as long as `packages/shared` goes on reading that document. It is not fragile in practice — what
@@ -505,16 +546,34 @@ const architectureSection = (): string => {
 };
 
 describe('Q-0121 AC-13 — every route this package registers is named in the architecture document', () => {
-  test('the derived set is the eleven routes, so the register cannot silently shrink', () => {
+  test('the derived set is the twelve routes, so the register cannot silently shrink', () => {
     // An identity rather than a count (Q-0073): a count is satisfied by a route swapped for
-    // another. Two of these are this ticket's; the rest are Q-0118's and Q-0119's, and the document
-    // named Q-0119's five as a noun list and never as routes until now — which this guard is what
-    // found, a paragraph behind the code since 2026-09-11.
+    // another. `GET /*` is Q-0122's static route and sorts first; two are Q-0121's; the rest are
+    // Q-0118's and Q-0119's, and the document named Q-0119's five as a noun list and never as
+    // routes until Q-0121 — which this guard is what found, a paragraph behind the code.
     expect(registeredRoutes()).toStrictEqual([
+      'GET /*',
       'GET /flows', 'GET /history', 'GET /history/:id', 'GET /project', 'GET /runs',
       'GET /runs/:id', 'GET /runs/:id/events', 'GET /tickets',
       'POST /runs', 'POST /runs/:id/gate', 'POST /runs/:id/stop',
     ]);
+  });
+
+  test('Q-0122 — the static route is reachable by this derivation, which `app.use` would not be', () => {
+    // **The measured trap, named because the requirement named it and the alternative was real.**
+    // `registeredRoutes` matches `app.(get|post|put|patch|delete)` with a quoted first argument and
+    // **does not match `app.use` at all** — so mounting the static handler as middleware, which is
+    // the natural shape for one, would have made it invisible to the guard that holds the route set
+    // against the architecture document. It is registered with `app.get('/*', …)` for that reason,
+    // and this clause is what says so rather than a comment claiming it.
+    expect(registeredRoutes(), 'the static route left the derived set').toContain('GET /*');
+    const asMiddleware = "app.use('/*', staticHandler);";
+    const seen = [...asMiddleware.matchAll(/\bapp\.(get|post|put|patch|delete)\s*\(\s*([^,)]*)/g)];
+    expect(seen, 'app.use is matched after all, so this trap is closed and the comment is stale')
+      .toStrictEqual([]);
+    // …and the derivation does read the shape that shipped, over the real source.
+    expect(read(SRC, 'static.ts'), 'the static route is no longer registered with app.get and a literal')
+      .toContain("app.get('/*'");
   });
 
   test('and each of them appears in that document\'s own section', () => {

@@ -130,11 +130,13 @@ const SOURCE = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
  * How long one spawned invocation may take before it is killed.
  *
  * Measured rather than chosen by analogy, though as a bound rather than per invocation: the whole
- * file — the workspace copy, a forced build of the three emitting packages, and **nineteen** spawned
- * invocations across six scenarios — takes 5.0 s to 5.8 s as Vitest measures it, over three runs on
- * this machine. So no single invocation approaches a second, and sixty seconds is two orders of
- * magnitude of headroom for a loaded CI runner while still being short enough that a hung run fails
- * the suite rather than the job's own limit.
+ * file — the workspace copy, a forced build of the **four** emitting packages, and **nineteen**
+ * spawned invocations across six scenarios — takes 5.2 s to 5.4 s as Vitest measures it, over two
+ * runs on this machine. Re-derived at Q-0122 rather than left describing a build that no longer
+ * happens: the set was three until `apps/web` gained one, and its `vite build` adds 0.3 s to the
+ * 5.0 s to 5.8 s recorded for three. So no single invocation approaches a second, and sixty seconds
+ * is two orders of magnitude of headroom for a loaded CI runner while still being short enough that
+ * a hung run fails the suite rather than the job's own limit.
  *
  * Before Q-0011 the failure mode of an unanswered gate was a 24-minute hang rather than a red test,
  * which is why every spawn below carries a timeout and why a killed process is refused rather than

@@ -76,10 +76,12 @@ const SPAWN_TIMEOUT_MS = 60_000;
 /**
  * How long the whole fixture may take to build and walk.
  *
- * Measured: 0.1 s to copy the workspace, 2.1 s for the forced build of the three emitting packages,
- * and 2.2 s for the twelve invocations — 4.4 s in total, and 4.8 s to 5.9 s as Vitest measures the
- * whole file. Ninety seconds is fifteen times the upper figure, and what it has to absorb is a cold
- * `tsc` on a loaded runner, which is the only part of this that is not milliseconds.
+ * Re-derived at Q-0122, when the emitting set became four: the copy and the forced build now cover
+ * `apps/web` as well, whose `vite build` is 0.3 s against the three `tsc` emitters' 2.1 s. Vitest
+ * measures the whole file at 5.6 s to 5.7 s over two runs, against the 4.8 s to 5.9 s recorded for
+ * three. Ninety seconds is sixteen times the upper figure, and what it has to absorb is a cold
+ * `tsc` on a loaded runner, which is still the only part of this that is not milliseconds — so the
+ * budget does not move, and the reason it does not is a measurement rather than an inference.
  */
 const FIXTURE_TIMEOUT_MS = 90_000;
 
