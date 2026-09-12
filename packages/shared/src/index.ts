@@ -8,6 +8,7 @@ export * from './constants.js';
 export * from './containment.js';
 export * from './events.js';
 export * from './flow.js';
+export * from './navigation.js';
 export * from './project.js';
 export * from './push-lag.js';
 export * from './role.js';

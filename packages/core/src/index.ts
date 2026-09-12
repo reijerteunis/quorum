@@ -74,6 +74,7 @@ export type { CliVersionResult } from '@quorum/shared';
 export { overrideAdapters } from './adapters/override.js';
 export { Backlog } from './backlog/backlog.js';
 export type { TicketRecord } from './backlog/backlog.js';
+export { pathInside } from './backlog/confine.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
 export type { Project } from './backlog/project.js';
 export { initProject, ProjectExistsError } from './backlog/scaffold.js';

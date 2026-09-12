@@ -23,6 +23,7 @@
 import { Hono } from 'hono';
 
 import type { RunHost, RunState, StartRequest } from './host.js';
+import { mountStatic } from './static.js';
 import {
   ANSWER_REFUSAL_STATUS, badRequest, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS,
   type StartRefusalCode, type WireMessage, type WireRefusal, wireRefusalOf, wireRunOf,
@@ -39,6 +40,16 @@ export interface AppOptions {
    * what a client needs to drive a run, and the stream is how it watches one.
    */
   readonly upgrade?: (app: Hono, path: string, host: RunHost) => void;
+  /**
+   * The directory holding the built web app, or nothing to serve none.
+   *
+   * **Supplied, never discovered** (Q-0122): this package cannot compute it, the bundle's location
+   * being package-relative while the daemon's working directory is the operator's project. Absence
+   * is a state rather than a failure — with no bundle every route below behaves exactly as it did
+   * before this option existed and no HTML is ever emitted, which is what every test in this
+   * package that drives the app directly relies on.
+   */
+  readonly bundle?: string;
 }
 
 /** The body `POST /runs` accepts, before it is known to be one. */
@@ -142,8 +153,16 @@ export function missedMessage(count: number): string | null {
  * @param options the host to drive, and optionally the adapter's WebSocket upgrader.
  * @returns a Hono app, ready to serve or to be called directly by a test.
  */
-export function createApp({ host, upgrade }: AppOptions): Hono {
+export function createApp({ host, upgrade, bundle }: AppOptions): Hono {
   const app = new Hono();
+
+  // FIRST, and the order is the whole of why the static route works: four of the shell's twelve
+  // paths are also `GET` routes below, and a handler that returns a response ends the chain — so a
+  // fallback registered last is never reached for them and a reload 404s while in-app navigation
+  // hides it. `static.ts` carries the argument; what it does here is discriminate on the request
+  // and `next()` for everything that is not a file or a navigation, which leaves every route below
+  // answering exactly what it answered before.
+  mountStatic(app, bundle);
 
   app.post('/runs', async (c) => {
     let body: unknown;

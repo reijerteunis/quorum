@@ -264,11 +264,16 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
   });
 
   test('Q-0097 AC-13 — build is owed by the packages that emit, and the register names which', () => {
-    // Decision 078(c)'s sentence, asserted as an identity rather than a count (Q-0073): the three
-    // are named, so a fourth package that starts emitting, or one of these three that stops, is a
+    // Decision 078(c)'s sentence, asserted as an identity rather than a count (Q-0073): the four
+    // are named, so a fifth package that starts emitting, or one of these four that stops, is a
     // visible act. Derived from the manifests rather than transcribed, so the register cannot claim
     // a package emits while its manifest says otherwise.
-    expect(emittingPackages()).toStrictEqual(['packages/cli', 'packages/core', 'packages/shared']);
+    //
+    // `apps/web` is the fourth, and it is the one that is NOT distributed — the emitting set is four
+    // and the local distribution set is three, which is the whole of what this register may be read
+    // as claiming. Why: see "A fourth package emits, and what it emits is served rather than
+    // shipped" (2026-09-12). The packed set is `build.test.ts`'s `DISTRIBUTION`, not this list.
+    expect(emittingPackages()).toStrictEqual(['apps/web', 'packages/cli', 'packages/core', 'packages/shared']);
     for (const pkg of emittingPackages()) {
       const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
       for (const task of EMITTER_ONLY) {
@@ -279,9 +284,15 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
 
   test('and a package that emits nothing is not required to declare a no-op build script', () => {
     // The other direction, which keeps the derived rule from overshooting into the alternative 078
-    // rejects: a no-op build in the four stub packages would declare an artifact that does not
+    // rejects: a no-op build in the three stub packages would declare an artifact that does not
     // exist. Shown over the real non-emitting packages, of which there must be some for the clause
     // above to be discriminating at all.
+    //
+    // This clause was NOT falsified when `apps/web` began emitting, against what Q-0122's
+    // requirement predicted: `stubs` is derived by subtracting the register above, so the fourth
+    // emitter left this set rather than failing inside it. Four stubs became three and nothing here
+    // had to move — recorded because a prediction of red that does not come true is worth as much
+    // as one that does.
     const stubs = PACKAGES.filter((pkg) => !emittingPackages().includes(pkg));
     expect(stubs.length, 'every package emits — the emitting register discriminates nothing').toBeGreaterThan(0);
     for (const pkg of stubs) {

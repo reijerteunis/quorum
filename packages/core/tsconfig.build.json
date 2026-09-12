@@ -1,8 +1,11 @@
 {
   // The emit's configuration, and deliberately NOT the one `lint` and `typecheck` read — see
-  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The three emitting
-  // packages declare the same four options for the same reasons; a divergence between them would be
-  // a difference in emitted layout, which is what `outputs` has to cover.
+  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The three
+  // **distribution** packages declare the same four options for the same reasons; a divergence
+  // between them would be a difference in emitted layout, which is what `outputs` has to cover.
+  // Three rather than "the three emitting packages", which is what this said until Q-0122: the
+  // emitting set is four now and the fourth, `apps/web`, has no `tsconfig.build.json` at all
+  // because a browser bundle is Vite's output rather than `tsc`'s.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",

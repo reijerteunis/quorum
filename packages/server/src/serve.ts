@@ -14,6 +14,7 @@ import type { Project } from '@quorum/core';
 import { createApp } from './http.js';
 import { createRunHost, type RunHost } from './host.js';
 import { mountRead } from './read.js';
+import { bundleRefusal } from './static.js';
 import { eventMessage, missedMessage } from './http.js';
 
 /**
@@ -75,6 +76,12 @@ export interface ServeOptions {
   readonly host: RunHost;
   /** `0` asks the operating system for a free one, which is what a test wants. */
   readonly port?: number;
+  /**
+   * The directory holding the built web app, or nothing to serve none (Q-0122).
+   *
+   * A supplied directory that holds no build **refuses before anything binds** — see {@link serve}.
+   */
+  readonly bundle?: string;
 }
 
 /**
@@ -85,14 +92,26 @@ export interface ServeOptions {
  * OQ-1 left here. `missed` is a message kind and not an `Event`, so nothing that is not an event
  * ever reaches the event channel.
  *
- * @param options the host, and the port to ask for.
+ * **A `bundle` that holds no build refuses here, before anything binds** (Q-0122). Checked ahead of
+ * the listener rather than answered per request, because the alternative is a daemon that starts,
+ * prints a port, and then answers 404 at `/` to somebody who has already opened a browser — a
+ * misconfiguration reported as a missing page. Rejected rather than returned as a value: there is
+ * no request to answer, and `serve` already rejects on a bind that fails.
+ *
+ * @param options the host, the port to ask for, and the bundle to serve.
  * @returns the port actually bound, and a close that resolves when the socket is shut.
  */
-export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening> {
+export async function serve({ host, port = 0, bundle }: ServeOptions): Promise<Listening> {
+  if (bundle !== undefined) {
+    const refusal = bundleRefusal(bundle);
+    if (refusal) throw new Error(`${refusal.condition} — ${refusal.remedy ?? ''}`);
+  }
   // The read-only routes are mounted here rather than inside `createApp`, so a test that wants the
   // run routes alone still gets them alone — and so the project a read answers about is the one the
-  // host is driving, which is the only project this process has.
-  const app = mountRead(createApp({ host }), host.project);
+  // host is driving, which is the only project this process has. The static route is NOT mounted
+  // here: it has to sit ahead of the run routes rather than behind the read ones, so `createApp`
+  // registers it first and this option is passed through.
+  const app = mountRead(createApp({ host, bundle }), host.project);
   let server: ReturnType<typeof serveNode>;
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
@@ -181,14 +200,18 @@ export async function serve({ host, port = 0 }: ServeOptions): Promise<Listening
  * decision rather than an unused constant. `serve` still takes a host, because a caller that wants
  * to drive one directly — every test in this package — should not have to go through a socket.
  *
- * @param options the project to run against, the retention capacity, and the port to ask for.
+ * @param options the project to run against, the retention capacity, the port to ask for, and the
+ *   directory holding the built web app — supplied by whoever knows where it is, never discovered
+ *   here, and omitted by a caller that wants the JSON surface alone.
  * @returns the listening server, and the host it is serving.
  */
 export async function createDaemon(
-  { project, port = 0, retain = DEFAULT_RETENTION }: { project: Project; port?: number; retain?: number },
+  { project, port = 0, retain = DEFAULT_RETENTION, bundle }: {
+    project: Project; port?: number; retain?: number; bundle?: string;
+  },
 ): Promise<Listening & { readonly host: RunHost }> {
   const host = createRunHost({ project, retain });
-  const server = await serve({ host, port });
+  const server = await serve({ host, port, bundle });
   return {
     port: server.port,
     host,

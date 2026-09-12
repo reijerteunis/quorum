@@ -319,6 +319,7 @@ const NOT_READ: Record<string, string> = {
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
+  'apps/web': 'the same register again, gained when Q-0122 made the emitting set four; the manifest behind that derivation is read through the `apps` walk WALKS already declares, and nothing opens the directory. It is the one member of the register that is NOT distributed — see "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12) — which changes nothing about why this is data rather than a read',
   // The two below became visible when Q-0108 widened the classifier to root-level files. Both are
   // basenames joined onto a TEMP directory and written, never the repository's own copy — and both
   // are named here rather than pattern-excused, so a suite that one day opens the real file is

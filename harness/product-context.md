@@ -75,8 +75,10 @@ Every requirement carries acceptance criteria for these where they apply:
    human-approved merged branch in under 30 minutes reading only the README. A feature that
    lengthens the first 30 minutes needs a reason. **Two installation paths are claimed and one is
    refused:** the workspace-local path (`pnpm install`, `pnpm turbo run build`, `pnpm exec quorum`)
-   and the locally packed path (the three emitting packages' tarballs installed together outside the
-   repository) both work since Q-0098. **Registry-resolved `npx quorum` does not** — every package
+   and the locally packed path (the three **distribution** packages' tarballs installed together
+   outside the repository) both work since Q-0098. Distribution rather than emitting: since
+   Q-0122 four packages emit and three are packed, so the two are no longer one set and only the
+   packed one belongs in this sentence. **Registry-resolved `npx quorum` does not** — every package
    is `"private": true`, so it would fetch a stranger's package — and it is Q-0029's, in M6. Do not
    write a requirement, a test name or a success message that claims a cold machine can obtain
    Quorum from the public registry.
