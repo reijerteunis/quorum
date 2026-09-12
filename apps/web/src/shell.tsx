@@ -96,7 +96,10 @@ function ConnectionRegion({ connection }: { connection: ShellConnectionProps }):
   const latest = snapshot.events.at(-1);
   return (
     <div className="flex items-center gap-3 font-mono">
-      <span className="text-idle">{text}</span>
+      {/* The state's own kind is the visible word — `connectionStateText`'s sentence can carry a
+          requested URL (percent-encoded, correctly, per AC-13), which does not belong in the page's
+          visible text; it is still reachable, unaltered, as a hover detail. */}
+      <span className="text-idle" title={text}>{snapshot.state.kind}</span>
       {snapshot.missedCount === null || snapshot.missedCount === 0 ? null : (
         <span className="text-waiting-on-human">missed {snapshot.missedCount}</span>
       )}

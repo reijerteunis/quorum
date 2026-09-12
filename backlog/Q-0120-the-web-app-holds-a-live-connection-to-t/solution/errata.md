@@ -190,3 +190,62 @@ seven-package workspace, not a defect in this change. Both reviews established t
 untrimmed artifact instead, and so did I. It is **Q-0076**'s subject — nothing in run history has a
 cap — reaching the one artifact a gate reads to decide whether a red phase is honest, and it wants
 that ticket rather than a criterion here.
+
+---
+
+## E-4 — written at the review backward edge, run 5
+
+Round 1's panel returned **2 blockers, 5 majors, 6 nits and 2 observations**, the verdict was
+`changes-requested`, and the backward edge regressed the ticket `green → red`. That is the mechanism
+working — but **four of the fifteen findings name test files, and no development task may write
+one.** `development.yaml`'s fan-out instruction is *"Do not modify tests"*, and `qa-red`, whose
+`automation-qa` role owns them, consumes `solutioned` and cannot be re-entered from `red`. Handing
+them to the loop would be the sixteenth instance of a loop given work no agent in it can perform.
+
+**They were therefore fixed by hand and are already on `harness/Q-0120/integration`.** The
+development round that follows must **not** re-open them. This is *"A requirement may not name a
+surface its flow cannot write"* (2026-08-25) applied to a review verdict rather than to a
+requirement, which is a site that entry did not anticipate and which this run is the first to reach.
+
+**Closed by hand — do not re-litigate:**
+
+- **M-4**, `apps/web/test/source.test.ts` — the AC-12 declaration walk rewritten to the statement
+  rather than the first balanced body, with the complete-union fixture the frozen contract names, in
+  both spellings, shown **red against the old walk** before green. The accepting half is no longer
+  vacuous: the reference union is asserted to be *scanned* before it is asserted to be accepted.
+- **M-5**, `apps/web/src/shell.test.ts` — the AC-7 run-route render now supplies the fake factory and
+  a page URL, `FakeSocket` is hoisted to module scope, and a **new guard** reports any run route
+  rendered without a factory, demonstrated red by removing the prop just added.
+- **N-3**, `packages/shared/src/docs.test.ts` and `docs/GLOSSARY.md` — the entry delimiter is the
+  bold-term form, so the slice is **659 characters rather than 17,876**, it is asserted to contain its
+  own term, and AC-23's *"no member of it is silence"* clause is now both stated and checked.
+- **N-5**, `apps/web/test/routes.test.ts` — the exception register carries a reason per identity.
+
+**Still the fan-out's, and the development round owes all eleven:** B-1, B-2, M-1, M-2, M-3, N-1,
+N-2, N-6 (all `apps/web/src` or `apps/web/vite.config.ts`, `frontend`) and **N-4**
+(`packages/server/src`, `backend` — writable since the grant made at this ticket's requirements gate).
+
+**B-1 is the round's most important finding and its recommendation is taken rather than reworded.**
+The dev proxy derives its contexts from `DAEMON_ENDPOINTS` and vite matches with
+`url.startsWith(context)`, so `/projects` is swallowed by `/project` and `/runs`, `/flows` and
+`/history` are simultaneously rail routes and daemon prefixes — **seven of twelve routes**, including
+this ticket's own stated acceptance path. Narrow the contexts so they cannot match a shell route,
+**still deriving them from `DAEMON_ENDPOINTS`** as AC-13(d) requires. **No erratum is owed for AC-13's
+five-prefix wording**: the criterion asks for the five endpoints to be proxied, and exact or
+anchored forms proxy exactly those five. What was wrong is the implementation's assumption that a
+prefix is a route.
+
+**Two clauses of B-2 and M-1 touch tests and are exempted from the no-tests rule for this round
+only**, because the criterion they serve is unmet without them and the assertion is one line each:
+restoring the idle-region assertion at `RAIL[0].path` (B-2) and asserting over the rendered region
+that `no-daemon` names the requested URL (M-1). Both are additions beside existing cases in
+`apps/web/src/shell.test.ts`. **Nothing else in any test file may move.**
+
+**The observation the panel made about itself is worth keeping.** The two reviews were not comparable
+in reach — claude read the tests, the guards, the manifests and the shared package; codex read three
+files under `apps/web/src` and named no test, no register and nothing under `packages/`. And they
+**contradicted each other outright** on `connection-state.ts`'s close handling, one calling it a
+major defect and the other naming the same line correct by design. The verdict step read the branch
+tip rather than either report and adjudicated it as N-2. A judge deduplicating on titles would have
+propagated one without noticing the other existed, which is the argument for the verdict step being a
+step rather than a merge.
