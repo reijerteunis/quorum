@@ -3168,13 +3168,73 @@ parked at p2 with its three written reopening thresholds.
   Q-0096 measured for `@quorum/core` — while `wire.ts`'s own header calls itself *"the contract
   Q-0014 codes against"*. An implementer follows that sentence, finds it unresolvable, and copies the
   three interfaces into `apps/web`: **the drift arrived at by obeying the sentence forbidding it.**
-- Q-0121 The daemon reports its live runs. *(Opened 2026-09-11 at the same gate, `draft`, p2.)*
-  **A hole in Q-0118's own work.** Nine routes are registered and `POST /runs` is the only one that
-  ever tells a client a handle; `RunHost` exposes `view(handle)` and no enumeration, and no route
-  exposes even that. So a browser that refreshes has lost every live run, and
-  **`DEFAULT_RETENTION`'s late-joiner buffer — built precisely for *"a browser reopened after a
-  refresh"* — is unreachable**, because the reopened browser cannot name the run.
-  `04-architecture.md:183` forbids the storage workaround.
+- Q-0121 The daemon reports its live runs. *(`requirements` 2026-09-12, ready on the first pass and
+  answered `advance`, p2. Opened 2026-09-11 at Q-0014's gate.)* **$9.40** — $5.11 pm-claude, $4.29
+  head-of-product, plus 238,142 unpriced codex tokens. **Thirteen criteria**, against the fifteen
+  that split Q-0107 and the eighteen that refused Q-0013, and **every blocking question was ruled at
+  the gate rather than returned**.
+  **The run's first act was to refute the ticket body's own re-measurement, made hours earlier.**
+  That correction listed *"any run started from the CLI"* among the clients this ticket would reach;
+  measured, **it cannot**, and saying so removes a case no criterion could have closed. `RunHost` is
+  an in-process registry — `records` is a `Map` local to one `createRunHost` closure and a handle
+  comes from a module-level counter *"deliberately meaningless across a restart"* — so a `quorum
+  run` invocation shares a repository with the daemon and shares nothing else. When the two coexist
+  the enumeration will be **silent about the CLI's runs, correctly**, because reporting one would
+  mean inventing a handle for a run this process cannot watch, stop or answer. It is also already
+  half-served: Q-0119's `GET /history` lists a run in flight as incomplete, in the `<TICKET>-<n>` id
+  space, which is a true report rather than a gap to paper over. **Third consecutive ticket where a
+  requirements run corrected a body that had been re-measured against the tree hours before** —
+  Q-0037's lesson arriving on a measurement that was not copied.
+  **Four measurements neither candidate started with, each of which moved the work.**
+  `WireRun.state` is declared **`string`** and not a union (`wire.ts:116`), so narrowing it to the
+  host's `refused | running | ended` is a change rather than the restatement one candidate took it
+  for. **`POST /runs` never discloses a refused handle** — a refusal answers a `WireRefusal` of
+  `code`, `condition`, `remedy` and no handle at all — which is the fact that decides the listing's
+  selection rule and which neither candidate had. **`records` is never pruned**: `records.set` is
+  called once per `mint`, there is no `records.delete` or `records.clear` anywhere in the package,
+  and `shutdown()` filters for `state === 'running'` and removes nothing. And **`apps/web` makes no
+  HTTP request at all** — `grep "fetch("` returns nothing across `src/` and `test/` — so a browser
+  consumer of the listing would be the app's first fetch, first response parser, first
+  request-failure state and first not-yet-loaded moment, against `04-architecture.md:200`'s rule
+  that *"no placeholder is a blank panel, a spinner or a skeleton"*. That last one is why the
+  browser half is a **non-goal** rather than a trim, and it is the single best argument in the
+  document.
+  **The ruling worth keeping is about what a listing may not say.** One candidate wanted refused
+  starts listed as *"what a client most needs to see"*; the other wanted them excluded **and** then
+  answered `404 no run is registered under that handle` — a sentence the host's own records
+  contradict, which is *"a failed probe read as a proven negative"*, the class Q-0074 and Q-0115
+  exist to remove. The merge takes the exclusion and refuses the 404: the **listing** answers *what
+  can I join?* and omits a refused start, which has no broadcast, whose socket closes 1008 and whose
+  handle was never disclosed; the **lookup** answers *what do you know about this handle?* and
+  reports it `refused`, reserving 404 for a handle the host never minted. An **ended** run stays in
+  both, because `Broadcast.subscribe()` is documented and implemented *"Permitted after
+  `Broadcast.close`"*, so its retained buffer is still replayable — which is the thing this ticket
+  makes reachable.
+  **Its strongest criterion is behavioural rather than structural.** AC-2 discriminates the two
+  designs Appendix B left open by starting a run through the host object and never through
+  `POST /runs`: a transport-side index records what it *saw*, a host enumeration reports what
+  *exists*, and only the second lists that run. The signature stays solutioning's; what binds is
+  that the set of runs has one authority and it is the host.
+  **All four gate obligations were discharged at the gate**, before the chore run. **GO-1**: no
+  decision entry is owed and the document edit is — `04-architecture.md` lists the transport's
+  routes in two places (`:81–83`, `:157–159`) and carries a live-run listing in neither, verified by
+  hand, and AC-13's guard derives every registered route literal rather than checking two sentences.
+  **GO-2**: the successor is **Q-0123**, opened at that gate with its body in full. **GO-3**:
+  `ticketId` and `pendingGates` are ratified, on the rule that **a wire field narrowing a `RunView`
+  field may not keep that field's name** — `RunView.ticket` is a whole `TicketRecord` and
+  `RunView.gates` an array of questions — with `watchers` refused because it churns without any
+  run-state change and changes nothing a maintainer does. **GO-4**: no glossary term is coined and
+  none is owed, recorded so it is not re-litigated.
+  **One correction to the merged document, changing no criterion**: §0.1's
+  *"`grep` returns no source file in the workspace"* returns seven hits inside `packages/server`
+  itself — its manifest, two of its own suites and three module headers. **No file outside the
+  package names it**, which is the claim the criteria rest on. One step stronger than what was
+  measured, recorded rather than made an erratum, per *"An erratum is the last repair, not the
+  first"* (2026-08-30).
+  **R-1 is stated rather than mitigated away**: under the ruled scope the ticket ships with **no
+  user-visible consumer** — one corrected sentence in `routes.ts` and a route two suites exercise.
+  The alternative, bundling the screen, is what turned Q-0013 into three tickets and Q-0014 into
+  two.
 - Q-0122 The daemon serves the built web app. *(Opened 2026-09-11 at the same gate, `draft`, p2.)*
   A `build` script and task for `apps/web`, a static route on the daemon, and **the glossary ruling
   Q-0014 deferred**: whether a served bundle is an **emitted artifact** or a third kind beside the
@@ -3182,6 +3242,21 @@ parked at p2 with its three written reopening thresholds.
   glossary says the three emitting packages *"are also the local distribution set"*, which a served
   bundle is not. Ruled here, with the build task, rather than inside a shell — and it is what
   `quorum open` in M3's done-when needs.
+- Q-0123 A run host record is never released, and a listing makes it visible. *(Opened 2026-09-12 at
+  Q-0121's requirements gate as its GO-2, `draft`, p3.)* `records.set` is called once per `mint` and
+  there is **no `records.delete` and no `records.clear` anywhere in `packages/server`**; `shutdown()`
+  snapshots the runs whose state is `running` and removes no entry. So a record outlives its run,
+  outlives the host's shutdown, and is freed only when the process exits.
+  **Q-0121 is what makes it visible** — while `view(handle)` was the only reader a caller had to
+  already hold a handle, and an enumeration reports every unreleased record. **Both naive fixes are
+  already closed**, which is why this is a ticket and not a line: evicting ended records would remove
+  exactly what Q-0121 added, since an ended run's retained buffer is what its AC-4 and AC-11 make
+  reachable; and a cap on the *listing* would hide runs while looking complete. What is left is
+  whether a bound is the answer at all — `retain` is already bounded per run at 500, and what grows
+  is the number of small records — and what a client is told about a handle the host minted and has
+  since dropped, since `GET /runs/:id`'s `no run is registered under that handle` would then be false
+  of it. **p3** and bounded in practice by a single-user local daemon's session length. **Q-0019** is
+  the ticket most likely to change its premise.
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
 - Q-0017 Backlog board + ticket page (folder rendered as tabs).
