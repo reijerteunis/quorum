@@ -67,6 +67,21 @@ const textOf = (element: HTMLElement): string => (element.textContent ?? '').rep
 /** How many times `needle` occurs in `haystack` — a count, where `toContain` answers only presence. */
 const occurrences = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
 
+/**
+ * The socket every test in this file uses in place of the real constructor.
+ *
+ * Hoisted out of the AC-20 block by Q-0120 review round 1, M-5: the AC-7 test two blocks above needs
+ * it too, because a run route rendered without a factory reaches `defaultSocketFactory` and opens a
+ * real connection to jsdom's default origin.
+ */
+class FakeSocket implements SocketTransport {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
+  close(): void {}
+}
+
 describe('AC-2 — the application mounts into a real document, with no daemon running', () => {
   test('it renders the rail and the top bar without throwing', async () => {
     // The smoke test, and the only one that needs the whole app: nothing is listening on any port,
@@ -153,7 +168,18 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
     // Percent-encoded on the way in, decoded on the way out: this is the only thing the shell knows
     // about the run, and showing the raw encoding would be showing what the browser sent rather
     // than what the user asked for.
-    const container = await render(createElement(App, { initialPath: '/runs/run%20one' }));
+    // The factory and the page URL are supplied, and that is load-bearing rather than tidy. Without
+    // them this run route reaches `defaultSocketFactory` and constructs a real WebSocket against
+    // jsdom's default origin, localhost port 3000 — so the suite made an outbound connection
+    // on every run, and where anything is listening on 3000 the socket OPENS, the app moves to
+    // `live` and state updates land outside `act()`. A test doing different work depending on what
+    // else is running on the machine is what "A test's verdict is a property of the commit, not of
+    // the checkout or the account" (2026-08-30) forbids. Q-0120 review round 1, M-5.
+    const container = await render(createElement(App, {
+      initialPath: '/runs/run%20one',
+      socketFactory: () => new FakeSocket(),
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+    }));
     const text = textOf(container);
     expect(text, 'the segment was not decoded').toContain('run one');
     expect(text, 'the raw encoding is being shown instead').not.toContain('run%20one');
@@ -231,14 +257,6 @@ describe('AC-9 — the top bar reserves its regions and asserts nothing it has n
 });
 
 describe('Q-0120 AC-20 — the run route mounts and renders its live connection', () => {
-  class FakeSocket implements SocketTransport {
-    onopen: (() => void) | null = null;
-    onmessage: ((event: { readonly data: unknown }) => void) | null = null;
-    onerror: (() => void) | null = null;
-    onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
-    close(): void {}
-  }
-
   test('non-run routes open no socket, while the run route opens exactly one', async () => {
     const reached: URL[] = [];
     const factory = (url: URL): SocketTransport => { reached.push(url); return new FakeSocket(); };
