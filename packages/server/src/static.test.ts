@@ -20,6 +20,8 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test } from 'vitest';
 
+import { Hono } from 'hono';
+
 import { isNavigationRequest } from '@quorum/shared';
 
 import { createRunHost } from './host.js';
@@ -452,6 +454,68 @@ describe('Q-0122 AC-17 — no path outside the bundle root is served', () => {
     // function that answers null for everything.
     expect(confinedFile(root, '/assets/index-abc.js')).toContain('index-abc.js');
     expect(confinedFile(root, `/${BUNDLE_ENTRY}`)).toContain(BUNDLE_ENTRY);
+  });
+
+  test('and the entry itself is confined: an index.html linked out of the bundle is refused, never served', async () => {
+    // **Review round 1's blocker, as a fixture.** `index.html` is the one path this route chooses
+    // rather than one a caller names, and it was the one exempted from the boundary: clause 2 read
+    // it through a `path.join` computed at mount and `bundleRefusal` accepted it through a
+    // `statSync`, which follows a link. So a bundle whose entry resolved outside the supplied root
+    // passed startup and was then handed out, as `text/html`, on every navigation — while a direct
+    // `GET /index.html` for the same file was correctly refused, which is the inconsistency that
+    // says the exemption was the defect rather than the policy.
+    const root = tempDir('escaped-entry-');
+    const outside = path.join(path.dirname(root), 'q0122-outside-shell.html');
+    fs.writeFileSync(outside, '<!doctype html><body>q0122-outside-the-bundle</body>');
+    fs.symlinkSync(outside, path.join(root, BUNDLE_ENTRY));
+    write(path.join(root, 'assets', 'index-abc.js'), 'export const app = 1;\n');
+    // The fixture discriminates: a link-following `stat` reads this directory as holding a build,
+    // so what refuses it below is confinement and not an entry that was never there.
+    expect(fs.statSync(path.join(root, BUNDLE_ENTRY)).isFile(), 'the linked entry does not stat as a file')
+      .toBe(true);
+    expect(fs.lstatSync(path.join(root, BUNDLE_ENTRY)).isSymbolicLink(), 'the fixture entry is not a link')
+      .toBe(true);
+
+    // (1) Startup refuses it, naming the condition it actually found.
+    expect(bundleRefusal(root), 'a bundle whose entry resolves outside it was accepted at startup').not.toBeNull();
+    expect(bundleRefusal(root)?.condition).toContain(BUNDLE_ENTRY);
+    await expect(serve({ host: createRunHost({ project: fixture({}).project, retain: 10 }), bundle: root }))
+      .rejects.toThrow(BUNDLE_ENTRY);
+
+    // (2) …and the route refuses it on its own, asked without the startup check in front of it.
+    // The two are separate defences and a fixture that only proved the first would leave the
+    // handler free to serve what startup happened to have rejected.
+    const escaped = mountStatic(new Hono(), root);
+    const navigation = await escaped.request('/runs/run-3', { headers: { accept: NAVIGATION } });
+    expect(await navigation.text(), 'a navigation was answered with a file outside the bundle')
+      .not.toContain('q0122-outside-the-bundle');
+    expect(navigation.status, 'a navigation with no servable entry did not fall through to clause 3').toBe(404);
+    // …against the same instrument over a real bundle, so the 404 above is a refusal rather than a
+    // handler that never answers a navigation at all.
+    const served = await mountStatic(new Hono(), bundle()).request('/runs/run-3', { headers: { accept: NAVIGATION } });
+    expect(served.status).toBe(200);
+    expect(await served.text()).toContain('q0122-shell');
+  });
+
+  test('and the entry is resolved per request, so a link swapped in under a running daemon is refused', async () => {
+    // What makes *per request* load-bearing rather than incidental: a bundle is rebuilt while the
+    // daemon runs, so an entry confined once at mount is an answer that was true earlier. Against a
+    // mount-time resolution this clause goes red and the clause above still passes.
+    const live = bundle();
+    const outside = path.join(path.dirname(live), 'q0122-swapped-shell.html');
+    fs.writeFileSync(outside, '<!doctype html><body>q0122-outside-the-bundle</body>');
+    const { port, stop } = await listening({ bundle: live });
+    try {
+      expect((await request(port, '/runs/run-3', { accept: NAVIGATION })).body, 'the daemon did not serve the shell to begin with')
+        .toContain('q0122-shell');
+      fs.unlinkSync(path.join(live, BUNDLE_ENTRY));
+      fs.symlinkSync(outside, path.join(live, BUNDLE_ENTRY));
+      const after = await request(port, '/runs/run-3', { accept: NAVIGATION });
+      expect(after.body, 'the entry was resolved once at mount, so a link swapped in later was served')
+        .not.toContain('q0122-outside-the-bundle');
+    } finally {
+      await stop();
+    }
   });
 
   test('and the shapes below a file are refused too — a directory, an empty path, a NUL', () => {

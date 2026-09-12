@@ -28,6 +28,17 @@
  *    200 HTML answer for a missing script is a blank page with a successful status, which is the
  *    worst shape this could take.
  *
+ * **`index.html` goes through {@link confinedFile} like every other file, and that is review round
+ * 1's blocker.** It is the one path this route chooses rather than one a caller names, which is
+ * exactly why it was the one exempted from the boundary: clause 2 read it through a `path.join`
+ * computed once at mount, and {@link bundleRefusal} accepted it through a `statSync` that follows a
+ * link — so an `index.html` symlinked out of the bundle passed startup and was then served, with a
+ * `text/html` content type, on every navigation. A file a caller cannot name is still a file this
+ * process reads, and the whole point of a confined root is that nothing inside the module gets to
+ * decide it is exempt. Resolved **per request** rather than once, for the same reason clause 1 is:
+ * a bundle is rebuilt while the daemon runs, so an answer computed at startup is an answer that was
+ * true earlier.
+ *
  * **Why it is registered ahead of the JSON routes rather than behind them.** Hono matches an exact
  * registered pattern, so prefix-shadowing is the dev proxy's problem and not this one — but four of
  * the shell's twelve paths ARE daemon `GET` routes: `/flows`, `/runs`, `/runs/:handle` against
@@ -46,10 +57,16 @@ import { pathInside } from '@quorum/core';
 import { isNavigationRequest } from '@quorum/shared';
 import type { Context, Hono } from 'hono';
 
-import { refusalOf, type Refusal } from './refusal.js';
+import type { Refusal } from './refusal.js';
 
 /** The one file a built bundle must hold, and the answer to every navigation. */
 export const BUNDLE_ENTRY = 'index.html';
+
+/**
+ * {@link BUNDLE_ENTRY} as a URL path, so the entry reaches {@link confinedFile} in the shape every
+ * other file reaches it in — one function deciding what is inside the root, asked the same way.
+ */
+const ENTRY_PATH = `/${BUNDLE_ENTRY}`;
 
 /**
  * What this surface offers a caller pointed at a directory that holds no build.
@@ -132,17 +149,25 @@ export function confinedFile(bundle: string, urlPath: string): string | null {
 }
 
 /**
- * Whether `bundle` holds a build, or the refusal saying it does not.
+ * Whether `bundle` holds a build this route may serve, or the refusal saying it does not.
  *
  * Asked once, before a listener is bound, so a daemon pointed at the wrong directory says so at
  * startup instead of answering 404 at `/` to somebody who opened a browser. It asks for the entry
  * file rather than for the directory: a `dist/` that exists and is empty is the shape a cleaned
  * checkout has, and it is the one this most needs to catch.
+ *
+ * **Through {@link confinedFile} rather than `statSync`**, so startup and the route ask one question
+ * of one primitive and neither can accept what the other refuses — a `stat` follows a link, and an
+ * entry resolving outside the supplied root is not a build this server may serve. The condition is
+ * that predicate rather than a sentence per case: *"is not a file inside that directory"* is what
+ * was asked, and is true of an absent entry and of an escaping one alike.
  */
 export function bundleRefusal(bundle: string): Refusal | null {
-  const entry = path.join(bundle, BUNDLE_ENTRY);
-  if (fs.statSync(entry, { throwIfNoEntry: false })?.isFile() === true) return null;
-  return { condition: `no built web app at ${bundle}: ${BUNDLE_ENTRY} is not there`, remedy: NO_BUNDLE_REMEDY };
+  if (confinedFile(bundle, ENTRY_PATH) !== null) return null;
+  return {
+    condition: `no built web app at ${bundle}: ${BUNDLE_ENTRY} is not a file inside that directory`,
+    remedy: NO_BUNDLE_REMEDY,
+  };
 }
 
 /**
@@ -160,14 +185,18 @@ export function bundleRefusal(bundle: string): Refusal | null {
  */
 export function mountStatic(app: Hono, bundle: string | undefined): Hono {
   if (bundle === undefined) return app;
-  const entry = path.join(bundle, BUNDLE_ENTRY);
   app.get('/*', async (c, next) => {
     const file = confinedFile(bundle, c.req.path);
     if (file !== null) return sendFile(c, file);
     // Clause 4 before clause 2: a missing `.js` under `/assets/` is a 404 whatever it accepts, so a
     // script tag never receives the shell with a 200 and a browser never renders a blank page.
     if (!looksLikeAFile(c.req.path) && isNavigationRequest(c.req.method, c.req.header('accept'))) {
-      return sendFile(c, entry);
+      // The entry is resolved here rather than at mount, and through the same boundary as any other
+      // file: see the module docblock's clause 2. An entry that is gone or has become a link out of
+      // the bundle leaves nothing to answer a navigation with, so the request is one this route
+      // cannot serve and clause 3 takes it — `next()`, and the JSON routes' own 404.
+      const entry = confinedFile(bundle, ENTRY_PATH);
+      if (entry !== null) return sendFile(c, entry);
     }
     await next();
     return undefined;
