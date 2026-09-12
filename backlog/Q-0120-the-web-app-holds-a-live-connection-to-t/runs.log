@@ -37,3 +37,41 @@
 2026-09-11T21:50:13.365Z run=3 step=prove-red merged=1/1 tests=ok
 2026-09-11T21:59:58.327Z run=3 step=scenario-review vendor=claude model=opus verdict=revise cost=9.181678 ms=584941
 2026-09-11T21:59:58.339Z run=3 exhausted stage=solutioned→solutioned cost=0
+2026-09-11T22:17:37.476Z run=3 gate=human-locked answer=retry
+2026-09-11T22:17:37.476Z run=3 gate=retry counter=qa-red.scenario-review set=1 (one further traversal authorised)
+2026-09-11T22:22:51.576Z run=3 step=scenarios vendor=claude model=sonnet verdict=- cost=1.8665661999999998 ms=314094
+2026-09-11T22:25:31.115Z run=3 step=write-tests vendor=codex model=- verdict=- cost=? ms=159355
+2026-09-11T22:26:44.497Z run=3 step=prove-red merged=1/1 tests=ok
+2026-09-11T22:34:27.497Z run=3 step=scenario-review vendor=claude model=opus verdict=approve cost=5.605404000000001 ms=462981
+2026-09-11T22:39:00.855Z run=3 gate=human answer=advance
+2026-09-11T22:39:01.823Z run=3 removed-worktrees=2 kept=0
+2026-09-11T22:39:01.824Z run=3 completed stage=solutioned→red cost=31.076 tokens=26328121
+2026-09-11T22:39:23.036Z run=4 flow=development start stage=red
+2026-09-11T22:39:52.992Z run=4 step=dev:backend-lockfile-test-input vendor=codex model=- verdict=- cost=? ms=28172
+2026-09-11T22:41:16.200Z run=4 step=dev:frontend-daemon-endpoints vendor=claude model=sonnet verdict=- cost=2.6251089000000003 ms=112004
+2026-09-11T22:41:39.012Z run=4 step=dev:backend-wire-schema vendor=codex model=- verdict=- cost=? ms=135218
+2026-09-11T22:42:28.491Z run=4 step=dev:frontend-connection-state vendor=claude model=sonnet verdict=- cost=2.7729998 ms=184128
+2026-09-11T22:43:42.744Z run=4 step=dev:backend-connection-docs vendor=codex model=- verdict=- cost=? ms=257113
+2026-09-11T22:44:10.708Z run=4 step=dev:frontend-dev-proxy vendor=claude model=sonnet verdict=- cost=5.585143200000001 ms=285899
+2026-09-11T22:45:24.573Z run=4 step=dev:frontend-run-connection vendor=claude model=sonnet verdict=- cost=3.7300340000000007 ms=359544
+2026-09-11T22:56:13.993Z run=4 step=dev:frontend-react-connection vendor=claude model=sonnet verdict=- cost=12.2419345 ms=1008697
+2026-09-11T23:09:07.951Z run=4 step=dev:frontend-frame-parser vendor=claude model=sonnet verdict=- cost=9.781944999999997 ms=773034
+2026-09-11T23:10:18.129Z run=4 step=integrate merged=9/9 tests=fail
+2026-09-11T23:11:04.992Z run=4 step=dev:frontend-connection-state vendor=claude model=sonnet verdict=- cost=1.8035957999999999 ms=46600
+2026-09-11T23:11:52.440Z run=4 step=dev:frontend-daemon-endpoints vendor=claude model=sonnet verdict=- cost=2.4837670999999997 ms=94062
+2026-09-11T23:11:58.008Z run=4 step=dev:backend-lockfile-test-input vendor=codex model=- verdict=- cost=? ms=99440
+2026-09-11T23:12:00.293Z run=4 step=dev:backend-wire-schema vendor=codex model=- verdict=- cost=? ms=101989
+2026-09-11T23:12:04.019Z run=4 step=dev:backend-connection-docs vendor=codex model=- verdict=- cost=? ms=105292
+2026-09-11T23:14:35.336Z run=4 step=dev:frontend-run-connection vendor=claude model=sonnet verdict=- cost=3.2165607999999994 ms=256726
+2026-09-11T23:16:36.451Z run=4 step=dev:frontend-dev-proxy vendor=claude model=sonnet verdict=- cost=3.2896551999999994 ms=377979
+2026-09-11T23:21:28.072Z run=4 step=dev:frontend-react-connection vendor=claude model=sonnet verdict=- cost=5.3354372 ms=669387
+2026-09-11T23:25:32.831Z run=4 step=dev:frontend-frame-parser vendor=claude model=sonnet verdict=- cost=3.3039795999999995 ms=244422
+2026-09-11T23:26:40.767Z run=4 step=integrate merged=9/9 tests=ok
+2026-09-12T05:52:59.500Z run=4 gate=human answer=advance
+2026-09-12T05:53:04.783Z run=4 removed-worktrees=10 kept=0
+2026-09-12T05:53:04.786Z run=4 completed stage=red→green cost=56.17 tokens=112513709
+2026-09-12T05:53:20.438Z run=5 flow=review start stage=green
+2026-09-12T05:54:28.870Z run=5 step=review-codex vendor=codex model=- verdict=- cost=? ms=68357
+2026-09-12T06:09:09.859Z run=5 step=review-claude vendor=claude model=- verdict=- cost=9.57051 ms=949348
+2026-09-12T06:14:57.659Z run=5 step=verdict vendor=claude model=- verdict=changes-requested cost=4.679619999999999 ms=347788
+2026-09-12T06:14:57.678Z run=5 regressed stage=green→red cost=14.25 tokens=11805264
