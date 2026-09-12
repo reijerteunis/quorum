@@ -1258,3 +1258,249 @@ describe('Q-0014 AC-11 — the architecture document describes the shell that sh
     expect(asItWas).toMatch(/three emitting packages are still three/);
   });
 });
+
+describe('Q-0125 AC-10 and AC-11 — the architecture document says the daemon emits, and states what actually protects the browser', () => {
+  /**
+   * §`packages/server`, sliced out rather than searched for — the reason the two blocks above give,
+   * and it is live here twice over: the status line names this package and so does the package map.
+   */
+  const section = (): string => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('### `packages/server`');
+    if (start < 0) throw new Error('docs/04-architecture.md has no packages/server section — this check has lost its subject');
+    const end = text.indexOf('\n### ', start + 1);
+    return text.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+  };
+
+  test('AC-10 — it says the package emits, rather than that it emits nothing', () => {
+    // **The clause held the opposite until Q-0125, which is why the negative is asserted beside the
+    // positive.** This section read *"it emits nothing: the local distribution set is three
+    // packages"* — one sentence conflating the two registers, true of both while the package was in
+    // neither, and false of both the moment it entered one. What a document of this kind gets wrong
+    // is not the new sentence but the old one nobody re-read.
+    const text = section();
+    expect(text, 'the section still says the package emits nothing').not.toMatch(/it emits nothing/);
+    expect(text, 'the section does not say the package publishes an exports map')
+      .toMatch(/publishes that API through a conditional `exports` map/);
+    expect(text, 'the section does not say it emits the artifact the default condition names')
+      .toMatch(/emits the artifact the map's default condition names/);
+    expect(text, 'the section does not cite the entry that ruled it')
+      .toContain('A fifth package emits, and `resolved` is not a synonym for `distributed`');
+  });
+
+  test('AC-10 — and it says the two sets are different sizes, so "emits" is not read as "ships"', () => {
+    // The half that stops an export map being mistaken for a tarball. Both numbers are named, and
+    // the consequence is named with them: a packed CLI importing the daemon package would be
+    // broken, which is Q-0124's question rather than a silence. The reason the emit is owed at all
+    // is stated too, because no landed entry had it before this one — a workspace-internal consumer
+    // running outside the workspace's own conditions.
+    const text = section();
+    expect(text, 'the section does not say the emitting set is five').toMatch(/emitting set is five/);
+    expect(text, 'the section does not say the distribution set stays three').toMatch(/distribution set stays three/);
+    expect(text, 'the section does not say what a packed CLI importing it would do')
+      .toMatch(/a packed `@quorum\/cli` importing it would be broken/);
+    expect(text, 'the section does not route the distribution question to its owner').toContain('Q-0124');
+    expect(text, 'the section does not say why the emit is owed when nothing outside consumes the package')
+      .toMatch(/workspace-internal consumer running outside the workspace's own\s*\*\*? ?conditions|workspace-internal consumer running outside the workspace's own conditions/);
+  });
+
+  test('AC-11 — nothing gives "no exports map" as the reason a browser cannot import the daemon', () => {
+    // **The premise moved and the conclusion did not.** This said the app *"cannot import"* the
+    // daemon package *"at all: it has no `exports` map … where a guard is weaker than an
+    // impossibility"*, and Q-0125 removes the impossibility. Deleting premise and conclusion
+    // together would leave the page silent about a real hazard, so the sentence states the weaker,
+    // true thing instead: a dependency edge is what a link needs, and `apps/web`'s own manifest
+    // register refuses one in both directions. Decision 093 clause 5 records that the remedy first
+    // reached for — extending the browser-safety scan — is unnecessary for exactly that reason.
+    const text = section();
+    expect(text, 'the section still gives "no exports map" as the reason').not.toMatch(/it has no `exports` map/);
+    expect(text, 'the section no longer says a browser may not import the daemon')
+      .toMatch(/`apps\/web` must not import `@quorum\/server`/);
+    expect(text, 'the section does not name the register that actually refuses the dependency')
+      .toContain('apps/web/test/package.test.ts');
+    expect(text, 'the section does not say that register holds in both directions').toMatch(/both directions/);
+  });
+
+  test('AC-11 — and §`apps/web` stops giving the same dead reason for the same arrangement', () => {
+    // The second site, which carries the premise in different words: *"without giving the server
+    // package a browser-facing export surface"*. Sliced separately, because a clause satisfied by
+    // the `packages/server` section would not be about this one.
+    const whole = repoFile('docs/04-architecture.md');
+    const start = whole.indexOf('### `apps/web`');
+    expect(start, 'docs/04-architecture.md has no apps/web section — this check has lost its subject').toBeGreaterThan(-1);
+    const end = whole.indexOf('\n## ', start + 1);
+    const web = whole.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+    expect(web.length, 'the section is implausibly short').toBeGreaterThan(1000);
+    expect(web, 'the app section still gives the dead reason')
+      .not.toMatch(/without giving the server package a browser-facing export surface/);
+    expect(web, 'the app section no longer says why the frame union lives in the vocabulary package')
+      .toMatch(/without either end declaring a dependency on the other/);
+  });
+
+  test('and all three negatives have subjects — the same needles find the superseded wording', () => {
+    // Anti-vacuity, in the shape the Q-0122 AC-8 block above uses: a clause refusing a sentence is
+    // indistinguishable from one that matches nothing until it is shown finding it.
+    // **The fixtures name no package, and that is a constraint of this file rather than a choice.**
+    // `index.test.ts` forbids the workspace scope anywhere under `src/`, tests included, and
+    // assembles its own needle so the guard covers itself — so a fixture here reproduces the clause
+    // that moved and elides the package names around it. Each still carries the needle it is shown
+    // against, which is all an anti-vacuity fixture has to do.
+    const impossibility = 'cannot import it at all: it has no `exports` map, and a value import from a browser bundle would pull Node builtins in with it, where a guard is weaker than an impossibility.';
+    expect(impossibility, 'the fixture no longer reproduces the wording AC-11 refuses').toMatch(/it has no `exports` map/);
+    const emitsNothing = 'It declares the two workspace dependencies and no external dependency, and it emits nothing: the local distribution set is three packages.';
+    expect(emitsNothing, 'the fixture no longer reproduces the wording AC-10 refuses').toMatch(/it emits nothing/);
+    const surface = '`packages/server` imports and re-exports it so the server and browser share that contract without giving the server package a browser-facing export surface.';
+    expect(surface, 'the fixture no longer reproduces the wording the apps/web clause refuses')
+      .toMatch(/without giving the server package a browser-facing export surface/);
+  });
+
+  test('the slice has a subject, and stops where the section does', () => {
+    // Anti-vacuity: a slice running to the end of the document would carry `packages/cli`'s prose
+    // and the status line, and satisfy several clauses above without this section saying anything.
+    expect(section().length, 'the section is implausibly short').toBeGreaterThan(1000);
+    expect(section(), 'the slice ran past the end of the section').not.toContain('Same commands as the spike');
+    expect(section(), 'the slice ran back into the status line').not.toContain('*Status:');
+  });
+
+  test('and the status line records the change', () => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('*Status:');
+    expect(start, 'docs/04-architecture.md has no status line').toBeGreaterThan(-1);
+    const status = text.slice(start, text.indexOf('\n\n', start));
+    expect(status, 'the status line does not record this change').toContain('Q-0125');
+    expect(status, 'the status line does not carry the landing date').toContain('2026-09-12');
+  });
+});
+
+describe('Q-0125 AC-12 — every count-bearing sentence in the documents is classified, and no live one says four', () => {
+  /**
+   * The documentation half of AC-12's register. The source half is `packages/cli/src/build.test.ts`'s.
+   *
+   * **Two registers because there are two owners, and that is Q-0072's rule rather than a
+   * preference.** A task's cache hit may only claim that nothing it *reads* has changed, so a
+   * register belongs in the package whose task already hashes its subjects. This package's own
+   * `test` task
+   * declares the two documents below and the decision folder; it declares neither the per-package
+   * source glob nor the per-package build-configuration glob, so asserting a comment in
+   * `packages/cli` or `packages/core` from here would be a read `turbo-inputs.test.ts` refuses —
+   * correctly, because a cached pass would then stand over an edited comment. The four source sites
+   * are therefore asserted where they are hashed. (The two globs are described rather than spelled:
+   * a glob's separator closes a JSDoc block, which is what this paragraph did on its first draft.)
+   *
+   * **This is the only criterion of Q-0125 whose subject no existing guard reaches**, which is why
+   * it asserts rather than waits, and the measurement is worth keeping: the Q-0122 AC-8 slice above
+   * asserts `vite build`, *"served rather than shipped"* and a date and **no number**; the Q-0098
+   * glossary slice asserts that both terms are defined, that the entry is cited and that the
+   * no-synonym clauses hold, and **no number**; the Q-0013 GO-3 slice asserts six claims about the
+   * run host and none about emission. Every count site could have stayed at four with the whole
+   * suite green.
+   */
+  const LIVE: [string, RegExp][] = [
+    ['docs/04-architecture.md', /five\npackages emit and three are packed|five packages emit and three are packed/],
+    ['docs/04-architecture.md', /The five packages that emit are named under/],
+    ['docs/04-architecture.md', /\*\*Five packages emit and three are packed\*\*/],
+    ['docs/GLOSSARY.md', /five packages that emit/],
+    ['docs/GLOSSARY.md', /The \*\*emitting set\*\* is five/],
+  ];
+
+  /**
+   * The spellings a live site may no longer carry, asserted over the same two documents.
+   *
+   * An omission and a blanket replacement therefore fail differently: a site left at four fails
+   * {@link LIVE}, and a historical sentence rewritten fails {@link HISTORICAL}. That pairing is R-7 —
+   * the cheapest wrong implementation of this criterion is a find-and-replace over the word "four".
+   */
+  const SUPERSEDED: [string, RegExp][] = [
+    ['docs/04-architecture.md', /four\npackages emit and three are packed|four packages emit and three are packed/],
+    ['docs/04-architecture.md', /The four packages that emit are named under/],
+    ['docs/04-architecture.md', /\*\*Four packages emit and three are packed\*\*/],
+    ['docs/04-architecture.md', /the emitting set is four where the local distribution set stays three/],
+    ['docs/GLOSSARY.md', /four packages that emit/],
+    ['docs/GLOSSARY.md', /The \*\*emitting set\*\* is four/],
+    ['docs/GLOSSARY.md', / is the difference: it emits and is not distributed/],
+    ['docs/GLOSSARY.md', /none of the three is bundled/],
+  ];
+
+  /**
+   * Sentences about what a PAST ticket did, which stay exactly as they are.
+   *
+   * A decision entry is append-only and is not edited at all; the rest describe what Q-0122 changed
+   * and stay true of Q-0122 — the same reasoning that keeps *"seeded from the spike"* on a page
+   * whose spike has gone.
+   */
+  const HISTORICAL: [string, RegExp][] = [
+    ['docs/decisions/092-a-fourth-package-emits-and-what-it-emits-is-served.md', /the emitting set is four and the local distribution set/],
+    ['docs/04-architecture.md', /2026-09-12 \(Q-0122\)/],
+    ['docs/GLOSSARY.md', /which took it from three packages to four/],
+  ];
+
+  /** The whitespace-flattened read this block's prose clauses use, as the blocks above define it. */
+  const flowed = (file: string): string => repoFile(file).replace(/\s+/g, ' ');
+
+  test('every live site states the count the register derives, and none states the superseded one', () => {
+    for (const [file, needle] of LIVE) {
+      expect(repoFile(file), `${file} does not carry ${String(needle)}`).toMatch(needle);
+    }
+    for (const [file, needle] of SUPERSEDED) {
+      expect(repoFile(file), `${file} still carries the superseded ${String(needle)}`).not.toMatch(needle);
+    }
+  });
+
+  test('and every historical sentence is left alone, so a blanket replacement fails as loudly as an omission', () => {
+    for (const [file, needle] of HISTORICAL) {
+      expect(repoFile(file), `${file}'s record of what a past ticket did was rewritten`).toMatch(needle);
+    }
+  });
+
+  test('the negatives have subjects — every superseded needle finds the wording it refuses', () => {
+    // The same needles run against a fixture reproducing the superseded wording, so a clause that
+    // matched nothing is distinguishable from one that refused something. The fixture is the text as
+    // it stood on `main` before this ticket.
+    const asItWas = [
+      'true when `apps/web` gained a build task. Four rather than: four',
+      'packages emit and three are packed, so naming the packed set by the emitting set\'s name',
+      'The four packages that emit are named under **Testing strategy**, of which this serves one.',
+      '**Four packages emit and three are packed**, which since 2026-09-12 are two different sets',
+      'the emitting set is four where the local distribution set stays three, and `packages/server` serves',
+      'declared once in the root `turbo.json` and run in the four packages that emit. It is the',
+      'The **emitting set** is four — the vocabulary package, the engine,',
+      'The browser app is the difference: it emits and is not distributed, staying `private: true`',
+      'A **resolved** emitted artifact is not a "bundle" — none of the three is bundled, each source',
+    ].join('\n');
+    for (const [, needle] of SUPERSEDED) {
+      expect(asItWas, `the fixture no longer reproduces ${String(needle)}`).toMatch(needle);
+    }
+  });
+
+  test('the glossary defines `resolved` by what Node does rather than by the set it used to coincide with', () => {
+    // **The half that is a term rather than a count**, and the reason an entry was owed at all.
+    // 092 could write *"the resolved emit of the three distribution packages"* because every
+    // resolved emit happened to be packed; the daemon package makes that a coincidence of one
+    // particular day. A vocabulary that names a shape by a set it merely coincides with goes false
+    // again at the next emitter, so the repair is to define the shape by the mechanism.
+    const glossary = flowed('docs/GLOSSARY.md');
+    expect(glossary, 'the glossary still identifies the resolved shape by the distribution set')
+      .not.toMatch(/the \*\*resolved\*\* emit of the three distribution packages/);
+    expect(glossary, 'the glossary does not define resolved by what Node resolves')
+      .toMatch(/resolved\*\* emit is what Node resolves through a package's `default` condition/);
+    expect(glossary, 'the glossary does not say the two axes are independent')
+      .toMatch(/resolved and not distributed/);
+    expect(glossary, 'the glossary does not name both packages that are the difference')
+      .toMatch(/`@quorum\/web` and `@quorum\/server` are the difference/);
+    expect(glossary, 'the glossary does not cite the entry that ruled it')
+      .toContain('A fifth package emits, and `resolved` is not a synonym for `distributed`');
+    // The negative has a subject, in the shape the block above uses.
+    const asItWas = 'shapes**, and the words for them are *resolved* and *served*: the **resolved** emit of the three distribution packages, the JavaScript and declaration files Node and a packed install import;';
+    expect(asItWas, 'the fixture no longer reproduces the wording this clause refuses')
+      .toMatch(/the \*\*resolved\*\* emit of the three distribution packages/);
+  });
+
+  test('and the decision index carries the entry this ticket implements', () => {
+    // A landed entry is cited by title and date, never by number or file name — so the index row is
+    // what says it took its place, and the file is what says it exists.
+    expect(repoFile('docs/DECISIONS.md'), 'the index does not carry the fifth-emitter entry')
+      .toContain('A fifth package emits, and *resolved* is not a synonym for *distributed*');
+    expect(repoFile('docs/decisions/093-a-fifth-package-emits-and-resolved-is-not-distributed.md'), 'the entry does not open with its title and date')
+      .toMatch(/^# A fifth package emits, and \*resolved\* is not a synonym for \*distributed\* — 2026-09-12/);
+  });
+});

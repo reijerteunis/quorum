@@ -52,7 +52,9 @@ import { collects, includePatterns } from '../test/vitest-include.js';
 
 /** As much of a package manifest as these assertions read. */
 interface Manifest {
+  name?: string;
   scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
 }
 
 /**
@@ -76,9 +78,17 @@ const rootTasks = (): string[] =>
  *
  * The sentence the two registers assert is that entry's: *every package owes lint, typecheck and
  * test; build is owed by the packages that emit, and the register names which*. A no-op build script
- * in the four packages that emit nothing would declare an artifact that does not exist, which is the
- * under- and over-declaration hazard (c) exists to avoid, and it is the alternative that entry
+ * in the **two** packages that emit nothing would declare an artifact that does not exist, which is
+ * the under- and over-declaration hazard (c) exists to avoid, and it is the alternative that entry
  * rejects by name.
+ *
+ * **That figure was wrong before Q-0125 touched it, and is corrected rather than merely updated.**
+ * It read *"the four packages that emit nothing"*, which was exact when Q-0097 wrote it against
+ * three emitters and seven packages, and went stale the moment `apps/web` left the stub set at
+ * Q-0122 — four days of a sentence nobody re-read, in the file whose own register is the oracle for
+ * it. Q-0125 takes a wrong three to a correct two. The number is spelled out here rather than
+ * derived because this is prose about why the rule exists; what the clauses below assert is
+ * {@link emittingPackages}, which is derived from the manifests and cannot drift from them.
  *
  * This is the one hand-written line, and it fails closed: {@link TASKS} is everything else the root
  * declares, so a fifth task entered in neither column becomes owed by **every** package and the
@@ -264,16 +274,22 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
   });
 
   test('Q-0097 AC-13 — build is owed by the packages that emit, and the register names which', () => {
-    // Decision 078(c)'s sentence, asserted as an identity rather than a count (Q-0073): the four
-    // are named, so a fifth package that starts emitting, or one of these four that stops, is a
+    // Decision 078(c)'s sentence, asserted as an identity rather than a count (Q-0073): the five
+    // are named, so a sixth package that starts emitting, or one of these five that stops, is a
     // visible act. Derived from the manifests rather than transcribed, so the register cannot claim
-    // a package emits while its manifest says otherwise.
+    // a package emits while its manifest says otherwise. This clause predicted a fifth emitter at
+    // Q-0122 and Q-0125 is it, which is the register doing exactly what it was built to do.
     //
-    // `apps/web` is the fourth, and it is the one that is NOT distributed — the emitting set is four
-    // and the local distribution set is three, which is the whole of what this register may be read
-    // as claiming. Why: see "A fourth package emits, and what it emits is served rather than
-    // shipped" (2026-09-12). The packed set is `build.test.ts`'s `DISTRIBUTION`, not this list.
-    expect(emittingPackages()).toStrictEqual(['apps/web', 'packages/cli', 'packages/core', 'packages/shared']);
+    // **The emitting set is five and the local distribution set is three, and TWO packages are now
+    // the difference rather than one.** This comment named `apps/web` as *"the one that is NOT
+    // distributed"*, which was exact while the two partitions coincided for everything else and is
+    // false now: `@quorum/server` emits and is not distributed either. The two axes are independent
+    // — `apps/web` is *served* and not distributed, `@quorum/server` is *resolved* and not
+    // distributed — which is the whole of what this register may be read as claiming. Why: see "A
+    // fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), which
+    // extends "A fourth package emits, and what it emits is served rather than shipped"
+    // (2026-09-12). The packed set is `build.test.ts`'s `DISTRIBUTION`, not this list.
+    expect(emittingPackages()).toStrictEqual(['apps/web', 'packages/cli', 'packages/core', 'packages/server', 'packages/shared']);
     for (const pkg of emittingPackages()) {
       const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
       for (const task of EMITTER_ONLY) {
@@ -284,7 +300,7 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
 
   test('and a package that emits nothing is not required to declare a no-op build script', () => {
     // The other direction, which keeps the derived rule from overshooting into the alternative 078
-    // rejects: a no-op build in the three stub packages would declare an artifact that does not
+    // rejects: a no-op build in the two stub packages would declare an artifact that does not
     // exist. Shown over the real non-emitting packages, of which there must be some for the clause
     // above to be discriminating at all.
     //
@@ -292,7 +308,12 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     // requirement predicted: `stubs` is derived by subtracting the register above, so the fourth
     // emitter left this set rather than failing inside it. Four stubs became three and nothing here
     // had to move — recorded because a prediction of red that does not come true is worth as much
-    // as one that does.
+    // as one that does. **Q-0125 does not make that prediction a second time**: the same subtraction
+    // takes three stubs to two, `packages/compiler` and `packages/templates`, and what this
+    // criterion asks is only that the clause keep a subject. Two is enough for that and the
+    // anti-vacuity assertion below is what says so — but it is now the smallest this set has ever
+    // been, so a reader should notice that a sixth emitter leaving one stub, and a seventh leaving
+    // none, would make this clause vacuous and then fail it in that order.
     const stubs = PACKAGES.filter((pkg) => !emittingPackages().includes(pkg));
     expect(stubs.length, 'every package emits — the emitting register discriminates nothing').toBeGreaterThan(0);
     for (const pkg of stubs) {
@@ -302,6 +323,43 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
         expect(scripts[task] ?? '', `${pkg} declares no ${task} script`).not.toBe('');
       }
     }
+  });
+
+  test('Q-0125 AC-13 — nothing depends on @quorum/server, which is what holds this ticket inside its own boundary', () => {
+    // **The criterion that makes a non-goal checkable rather than a promise.** Q-0125 gives this
+    // package an export surface and an emit and adds NO consumer: `quorum open` is Q-0126's, and
+    // whether the package is distributed is Q-0124's. A dependency edge is also the only thing that
+    // creates a `node_modules` link, so adding one here would change what every resolution proof in
+    // the workspace is measuring — and it would break a packed `@quorum/cli`, which carries three
+    // tarballs and not four, for the `workspace:*` reason Q-0098's M-8 measured.
+    //
+    // Read over every manifest the workspace holds plus the root's, which `packages/core/turbo.json`
+    // already declares as `../../packages/*/package.json`, `../../apps/*/package.json` and
+    // `../../package.json` — so no new declaration is owed and a cached pass cannot stand over an
+    // added edge. The one permitted occurrence is this package naming itself.
+    const manifests: [string, string][] = [['package.json', repoFile('package.json')]];
+    for (const pkg of PACKAGES) manifests.push([`${pkg}/package.json`, packageFile(pkg, 'package.json')]);
+    expect(manifests.length, 'the manifest scan found nothing').toBeGreaterThan(5);
+
+    for (const [name, text] of manifests) {
+      const permitted = name === 'packages/server/package.json';
+      const occurrences = [...text.matchAll(/@quorum\/server/g)].length;
+      expect(occurrences, `${name} names @quorum/server ${occurrences} times`).toBe(permitted ? 1 : 0);
+    }
+    // …and the one that is permitted is the `name` field rather than a self-dependency, which the
+    // count alone cannot say.
+    const own = JSON.parse(packageFile('packages/server', 'package.json')) as Manifest;
+    expect(own.name).toBe('@quorum/server');
+    expect(Object.keys(own.dependencies ?? {}), 'the package depends on itself').not.toContain('@quorum/server');
+  });
+
+  test('and that clause fires — a declared dependency on the daemon is reported by name', () => {
+    // Shown red over a fixture rather than by editing a manifest, because the clause above passes
+    // today by the edge not existing and would look identical if the scan matched nothing at all.
+    // This is Q-0126's first line, and it must fail here.
+    const hostile = JSON.stringify({ name: '@quorum/cli', dependencies: { '@quorum/server': 'workspace:*' } });
+    expect([...hostile.matchAll(/@quorum\/server/g)].length, 'the fixture does not name the daemon, so it proves nothing').toBe(1);
+    expect(hostile, 'the needle this demonstration runs is not the one under test').toMatch(/@quorum\/server/);
   });
 
   test('the register has a subject — the array it replaced cannot see a package that owes a build', () => {

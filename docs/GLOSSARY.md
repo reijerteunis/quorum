@@ -190,30 +190,37 @@ exist before its first run — `review` diffs against that branch and only `inte
 later, creates it (see 02-sdlc-pipeline-spec.md §5.8).
 
 **Build task**: Turborepo's `build` task, declared once in the root `turbo.json` and run in the
-four packages that emit. It is the **first task in this workspace whose `outputs` is non-empty**,
+five packages that emit. It is the **first task in this workspace whose `outputs` is non-empty**,
 so a cache hit on it replays an *artifact* where `lint`, `typecheck` and `test` replay only a
 verdict — the distinction the 2026-09-02 decision rests on. Not a "pipeline", a "job" or a "step":
 a pipeline is turbo's own retired name for the task table, a job is one of CI's seven, and a step is
 a flow's. Nothing in `harness/flows/` runs it, and no test verdict in this workspace moves behind
 it: the suites resolve TypeScript source through the `quorum-source` export condition, and the emit
 is what Node, a packed install and a browser get. See *"The emit serves the binary, and no test
-verdict moves behind it"* (2026-09-02) and *"A fourth package emits, and what it emits is served
-rather than shipped"* (2026-09-12), which took it from three packages to four.
+verdict moves behind it"* (2026-09-02), *"A fourth package emits, and what it emits is served
+rather than shipped"* (2026-09-12), which took it from three packages to four, and *"A fifth package
+emits, and `resolved` is not a synonym for `distributed`"* (2026-09-12), which took it to five.
 
 **Emitted artifact**: Whatever a **build task** writes under a package's `dist/`, gitignored and
 reproducible from the commit. **What emits and what ships are two facts, and since 2026-09-12 they
-are two different sets.** The **emitting set** is four — `@quorum/shared`, `@quorum/core`,
-`@quorum/cli` and `@quorum/web` — and the **local distribution set** is the first three, what a
-`pnpm pack` of this repository produces and what an installation outside the workspace consumes.
-`@quorum/web` is the difference: it emits and is not distributed, staying `private: true` with no
-`exports`, no `files` and no `bin`, so how an installation outside this workspace obtains the UI is
-an open question rather than something this term answers. Emitted artifacts come in exactly **two
-shapes**, and the words for them are *resolved* and *served*: the **resolved** emit of the three
-distribution packages, the JavaScript and declaration files Node and a packed install import; and
-the **served** bundle of `@quorum/web`, which a browser is handed over HTTP and which nothing
-imports. Distinguished from the **binary**, which is the single file `packages/cli`'s `bin.quorum`
+are two different sets.** The **emitting set** is five — `@quorum/shared`, `@quorum/core`,
+`@quorum/cli`, `@quorum/server` and `@quorum/web` — and the **local distribution set** is the first
+three, what a `pnpm pack` of this repository produces and what an installation outside the workspace
+consumes. **`@quorum/web` and `@quorum/server` are the difference**, and they are not the same kind:
+each emits and is not distributed, staying `private: true` with no `files` and no `bin`, so how an
+installation outside this workspace obtains the UI **or the daemon** is an open question rather than
+something this term answers. Emitted artifacts come in exactly **two
+shapes**, and the words for them are *resolved* and *served*. **Each names a mechanism and neither
+names a set**: the **resolved** emit is what Node resolves through a package's `default` condition —
+the JavaScript and declaration files an import receives, which is `@quorum/shared`, `@quorum/core`,
+`@quorum/cli` and `@quorum/server`; the **served** bundle is `@quorum/web`'s, which a browser is
+handed over HTTP and which nothing imports. *Resolved* named *"the emit of the three distribution
+packages"* until 2026-09-12, which was exact only while those two partitions coincided —
+`@quorum/server` is the first artifact that is **resolved and not distributed**, so the two axes are
+independent and neither word may be used for the other. Distinguished from the **binary**, which is
+the single file `packages/cli`'s `bin.quorum`
 names: the binary is one emitted artifact among many and the two words are not interchangeable. A
-**resolved** emitted artifact is not a "bundle" — none of the three is bundled, each source file
+**resolved** emitted artifact is not a "bundle" — none of the four is bundled, each source file
 emits its own counterpart — while the served one *is* bundled, which is a fact about its shape and
 never a second name for it; and neither is a "build output directory", which names the container
 rather than the contents. Since Q-0098 the binary carries a shebang and an executable bit, both
@@ -222,7 +229,9 @@ stale tick: the tick lies about the past, the artifact lies about the present �
 has that hazard in its sharpest form, a cache hit being able to serve a page built from code nobody
 is looking at any more, which is why the term widened to cover it rather than a third kind being
 coined outside the warning. See *"A fourth package emits, and what it emits is served rather than
-shipped"* (2026-09-12).
+shipped"* (2026-09-12) and *"A fifth package emits, and `resolved` is not a synonym for
+`distributed`"* (2026-09-12), which separated *resolved* from *distributed* the way the first
+separated *emitting* from *shipping*.
 
 **Verified version**: The CLI version one **adapter** was last verified against, recorded as one
 string in that adapter's `capabilities.ts` (`verifiedVersion`) and compared on every

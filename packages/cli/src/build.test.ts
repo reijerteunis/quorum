@@ -82,9 +82,23 @@ const ASSETS = 'templates';
  * behind every clause below.
  */
 function parseTurboConfig(text: string, name: string): { tasks: Record<string, Record<string, unknown>> } {
+  return parseJsonc(text, name) as { tasks: Record<string, Record<string, unknown>> };
+}
+
+/**
+ * The JSONC reader both configuration kinds in this file share.
+ *
+ * Extracted at Q-0125 rather than copied: `tsconfig.build.json` carries whole-line `//` comments for
+ * the same reason a package's `turbo.json` does — each one is the sentence saying why an option is
+ * there — and a second stripper beside this one is two implementations of one rule, free to diverge
+ * on the day somebody widens either. The contract is unchanged and is the strict half: the one form
+ * understood is a whole-line `//`, and anything else **stops the reader** rather than resolving to a
+ * default nobody wrote.
+ */
+function parseJsonc(text: string, name: string): unknown {
   const stripped = text.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
   try {
-    return JSON.parse(stripped) as { tasks: Record<string, Record<string, unknown>> };
+    return JSON.parse(stripped);
   } catch (cause) {
     throw new Error(`${name} is not JSON once whole-line comments are removed — this reader understands no other comment form`, { cause });
   }
@@ -206,8 +220,13 @@ function filesUnder(root: string, prune: readonly string[] = []): string[] {
  *     run, which is why the bound is registered instead. Found by review round 4 of chore run 3,
  *     which was right that `requirements/errata.md` E-2 overclaimed in saying the isolated audit
  *     descends into `node_modules` with no blind spot — E-3 corrects that sentence. No shipped build
- *     script can reach it: all three are `rm -rf dist && tsc -p tsconfig.build.json`, and `tsc`
- *     writes only under its `outDir`.
+ *     script can reach it: the four `tsc` emitters are `rm -rf dist && tsc -p tsconfig.build.json`
+ *     — `@quorum/cli`'s with a `chmod +x` on its own emit appended — and `tsc` writes only under its
+ *     `outDir`, while `@quorum/web`'s `vite build` writes only under its own. **This said "all
+ *     three" until Q-0125 and was already stale by one**: `apps/web` became the fourth emitter at
+ *     Q-0122 with a bundler rather than a compiler, so the sentence excused a build this file had
+ *     stopped describing. Found while adding the fifth, and corrected rather than left, because a
+ *     registered bound is only as good as the enumeration it rests on.
  */
 function fingerprint(full: string, stat: fs.Stats): string {
   // `realpath` and not `readlink`, so a link re-pointed at the same relative spelling from a
@@ -881,11 +900,27 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     // `./dist/index.js` and its `types` as `./dist/index.d.ts`, and Q-0097 AC-22 gives
     // `@quorum/shared` the same pair. A manifest promising a `.d.ts` the build does not write is an
     // export map that typechecks nothing outside this workspace.
+    //
+    // **Q-0125 AC-6: the `continue` below is why this needs a second clause.** An emitter with no
+    // `exports['.']` is skipped in silence, which is right for two of the five and is exactly how a
+    // package that DOES declare a map could go unchecked if its map were later dropped: the loop
+    // would pass over it rather than fail on it. So the set this loop actually examines is derived
+    // and asserted, and `@quorum/server` is the first member it has gained since Q-0097.
+    //
+    // **Measured rather than inherited, and the requirement's own figure was wrong.** Q-0125 AC-6
+    // reasoned that this loop covered *"the three distribution packages"* and that the daemon would
+    // be the fourth member. It covered **two**: `@quorum/cli` declares a `bin` and no `exports` map
+    // at all, so it has always taken the `continue` — its emit is a file something EXECUTES, which
+    // `Q-0098 AC-15` and `AC-16` assert directly, rather than a module something imports. The two
+    // skipped members are skipped for two different reasons and both are correct: a served bundle
+    // publishes nothing, and a binary is named by `bin` rather than by a map.
+    const checked: string[] = [];
     for (const task of emitting()) {
       const entry = ((JSON.parse(read(WORKSPACE, task.directory, 'package.json')) as {
         exports?: Record<string, Record<string, unknown>>;
       }).exports ?? {})['.'];
       if (entry === undefined) continue;
+      checked.push(task.package);
       for (const key of ['types', 'default']) {
         const promised = entry[key];
         if (typeof promised !== 'string') continue;
@@ -895,12 +930,21 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
         ).toBe(true);
       }
     }
+    expect(checked.sort(), 'an emitter that declares an exports map is being skipped by the continue above')
+      .toStrictEqual(['@quorum/core', '@quorum/server', '@quorum/shared']);
+    // And the two that are legitimately skipped are named, so "skipped" stays a decision rather than
+    // becoming whatever the loop happens to do: `@quorum/web` is served and imported by nothing,
+    // `@quorum/cli` is executed and named by `bin`. A third joining them is a visible act.
+    expect(emitting().map((task) => task.package).filter((name) => !checked.includes(name)).sort())
+      .toStrictEqual(['@quorum/cli', '@quorum/web']);
   });
 
   test('and no *.tsbuildinfo is produced, because a gitignored output the declaration omits is under-declaration', () => {
     // `.gitignore:9` ignores `*.tsbuildinfo`, so an `incremental` or `composite` build would emit a
-    // file the `outputs` declaration does not name and nothing would report it. Refused in the three
+    // file the `outputs` declaration does not name and nothing would report it. Refused in the four
     // `tsconfig.build.json` files by leaving both options off, and asserted rather than trusted.
+    // Four rather than three since Q-0125, and the assertion is over `emitting()` rather than over
+    // that number, so the fifth emitter arrived here without this loop changing.
     for (const task of emitting()) {
       const stale = filesUnder(path.join(WORKSPACE, task.directory), INSTALLED).filter((relative) => relative.endsWith('.tsbuildinfo'));
       expect(stale, `${task.package} emits build metadata the declaration does not cover`).toStrictEqual([]);
@@ -986,6 +1030,385 @@ describe('AC-9 — a replayed build is executable, and AC-22\'s chain runs end t
     const shared = inPlainNode(path.join(WORKSPACE, 'packages', 'core'), "(await import('@quorum/shared')).STAGES.length");
     expect(shared.code, `AC-22: the emitted core cannot reach shared: ${shared.message}`).toBe('RESOLVED');
   }, 120_000);
+});
+
+/**
+ * Every `tsconfig.build.json` the workspace carries, found by **globbing rather than by naming**.
+ *
+ * A list of package names is the fail-open shape Q-0051 found in `q0050.source.test.ts`: a sixth
+ * emitter would be outside the comparison while the suite reported agreement. The two roots are
+ * `pnpm-workspace.yaml`'s own globs, and a package with no such file is absent from the result
+ * rather than an error — `apps/web` emits through Vite and has none, which is a real and correct
+ * divergence rather than a gap.
+ */
+const buildConfigs = (): [string, Record<string, unknown>][] => {
+  const found: [string, Record<string, unknown>][] = [];
+  for (const root of ['packages', 'apps']) {
+    for (const entry of fs.readdirSync(path.join(WORKSPACE, root), { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const relative = `${root}/${entry.name}/tsconfig.build.json`;
+      if (!fs.existsSync(path.join(WORKSPACE, relative))) continue;
+      found.push([relative, parseJsonc(read(WORKSPACE, relative), relative) as Record<string, unknown>]);
+    }
+  }
+  return found;
+};
+
+describe('Q-0125 AC-2 — the emit configurations agree, and the comparison finds them rather than naming them', () => {
+  test('every tsconfig.build.json declares the same options, include and exclude', () => {
+    // **Over the configuration files and never over the build scripts**, which is a distinction the
+    // scripts themselves force: `@quorum/cli`'s appends `&& chmod +x dist/quorum.js` for a `bin` the
+    // others do not have, so an all-scripts-identical clause would be false of a divergence that is
+    // correct. What must agree is emitted LAYOUT — `outDir`, `rootDir`, `declaration`, `noEmit` and
+    // the two file sets — because that is what the single root `outputs: ["dist/**"]` has to cover
+    // for all of them at once.
+    const configs = buildConfigs();
+    expect(configs.map(([relative]) => relative), 'the glob found a set this clause does not recognise').toStrictEqual([
+      'packages/cli/tsconfig.build.json',
+      'packages/core/tsconfig.build.json',
+      'packages/server/tsconfig.build.json',
+      'packages/shared/tsconfig.build.json',
+    ]);
+    const [, first] = configs[0] as [string, Record<string, unknown>];
+    for (const [relative, config] of configs.slice(1)) {
+      for (const key of ['compilerOptions', 'include', 'exclude']) {
+        expect(config[key], `${relative}'s ${key} diverges from packages/cli's`).toStrictEqual(first[key]);
+      }
+    }
+    // The shape itself, so agreement on the WRONG four options is not mistaken for agreement.
+    expect(first.compilerOptions).toStrictEqual({ outDir: 'dist', rootDir: 'src', declaration: true, noEmit: false });
+    expect(first.include).toStrictEqual(['src/**/*.ts']);
+    expect(first.exclude).toStrictEqual(['src/**/*.test.ts']);
+    // Neither `incremental` nor `composite`, which is what keeps `*.tsbuildinfo` out of an emit the
+    // `outputs` declaration does not name — the clause above asserts the absence of the file, this
+    // asserts the absence of the option that produces it.
+    for (const [relative, config] of configs) {
+      const options = config.compilerOptions as Record<string, unknown>;
+      for (const option of ['incremental', 'composite']) {
+        expect(options[option], `${relative} declares ${option}`).toBe(undefined);
+      }
+    }
+  });
+
+  test('and the comparison discriminates — one changed option is reported by name', () => {
+    // Shown red over a fixture rather than by editing a shipped file, because the mutation AC-2 asks
+    // for is *a divergence between the four* and the assertion above would otherwise be satisfied by
+    // any four identical objects, including four wrong ones.
+    const configs = buildConfigs();
+    const [, first] = configs[0] as [string, Record<string, unknown>];
+    const diverged = { ...(first.compilerOptions as Record<string, unknown>), rootDir: 'source' };
+    expect(diverged, 'the fixture did not diverge, so it proves nothing').not.toStrictEqual(first.compilerOptions);
+    // And the glob is what makes a sixth arrive without anyone remembering: a package added to
+    // either root with such a file is in `configs` by construction, so the identity above fails
+    // rather than the comparison quietly covering three of four.
+    expect(configs.length, 'the glob found fewer files than there are tsc emitters').toBe(4);
+  });
+});
+
+describe('Q-0125 AC-12 — the source comments that carry a count are classified, live against historical', () => {
+  /**
+   * The source half of AC-12's register. The documentation half is `packages/shared/src/docs.test.ts`'s.
+   *
+   * **Two registers because there are two owners, and that is Q-0072's rule rather than a
+   * preference.** A task's hit may only claim that nothing it reads has changed, so a register
+   * belongs where its subjects are hashed. These five files reach `@quorum/cli#test` — three are
+   * this package's own through the default input set, and the other two through the per-package
+   * source and build-configuration globs its `turbo.json` declares — while `@quorum/shared#test`
+   * declares neither, which is why the documents are asserted there and these here.
+   *
+   * **The classification is the deliverable, not the replacement.** *"Q-0122 made the emitting set
+   * four"* is a true record of a past change and stays; *"the emitting set is four now"* is a claim
+   * about the present and is false. A find-and-replace over the word "four" is the cheapest wrong
+   * implementation of this criterion, so both directions are asserted and it fails either way (R-7).
+   */
+  const LIVE: [string, RegExp][] = [
+    ['packages/cli/tsconfig.build.json', /The four `tsc`/],
+    ['packages/core/tsconfig.build.json', /The four `tsc`/],
+    ['packages/core/src/test-discovery.test.ts', /the \*\*two\*\* packages that emit nothing/],
+  ];
+
+  const SUPERSEDED: [string, RegExp][] = [
+    ['packages/cli/tsconfig.build.json', /The three\s*\/\/ \*\*distribution\*\* packages declare|the emitting set is four now/],
+    ['packages/core/tsconfig.build.json', /The three\s*\/\/ \*\*distribution\*\* packages declare|the emitting set is four now/],
+    ['packages/core/src/test-discovery.test.ts', /in the four packages that emit nothing/],
+    ['packages/core/src/test-discovery.test.ts', /it is the one that is NOT distributed/],
+    ['packages/core/src/turbo-inputs.test.ts', /It is the one member of the register that is NOT distributed/],
+  ];
+
+  /**
+   * Comments about what Q-0122 did, which stay exactly as they are.
+   *
+   * The first two are the timeout budgets, which are **re-measured rather than re-worded**: each
+   * stakes its figure on `isolate()` copying and building every emitting package, and each says in
+   * its own words that the measurement rather than the margin is what holds the budget. Q-0125
+   * re-ran both and appended the new numbers beside Q-0122's rather than replacing them, so the
+   * movement is visible instead of silent.
+   */
+  const HISTORICAL: [string, RegExp][] = [
+    ['packages/cli/src/end-to-end.test.ts', /Re-derived at Q-0122, when the emitting set became four/],
+    ['packages/cli/src/step-id.test.ts', /Re-measured at Q-0122, which made the emitting set four/],
+    ['packages/core/src/turbo-inputs.test.ts', /gained when Q-0122 made the emitting set four/],
+  ];
+
+  /** The two fixtures whose budgets Q-0125 re-measured, with the figure each must now carry. */
+  const REMEASURED: [string, RegExp][] = [
+    ['packages/cli/src/end-to-end.test.ts', /Re-measured again at Q-0125/],
+    ['packages/cli/src/step-id.test.ts', /Re-measured again at Q-0125/],
+  ];
+
+  test('every live comment states the count the register derives, and none states the superseded one', () => {
+    for (const [file, needle] of LIVE) {
+      expect(read(WORKSPACE, file), `${file} does not carry ${String(needle)}`).toMatch(needle);
+    }
+    for (const [file, needle] of SUPERSEDED) {
+      expect(read(WORKSPACE, file), `${file} still carries the superseded ${String(needle)}`).not.toMatch(needle);
+    }
+  });
+
+  test('and every historical comment is left alone, with the two budgets re-measured beside it', () => {
+    for (const [file, needle] of HISTORICAL) {
+      expect(read(WORKSPACE, file), `${file}'s record of what Q-0122 did was rewritten`).toMatch(needle);
+    }
+    for (const [file, needle] of REMEASURED) {
+      expect(read(WORKSPACE, file), `${file} inherited a four-emitter budget without re-measuring it`).toMatch(needle);
+    }
+  });
+
+  test('the negatives have subjects — every superseded needle finds the wording it refuses', () => {
+    // The same needles run against a fixture reproducing the wording as it stood on `main`, so a
+    // clause that matched nothing is distinguishable from one that refused something.
+    const asItWas = [
+      '  // `packages/shared/tsconfig.build.json`, which carries the argument in full. The three',
+      '  // **distribution** packages declare the same four options for the same reasons; a divergence',
+      '  // Three rather than "the three emitting packages", which is what this said until Q-0122: the',
+      '  // emitting set is four now and the fourth, `apps/web`, has no `tsconfig.build.json` at all',
+      ' * in the four packages that emit nothing would declare an artifact that does not exist, which is the',
+      '    // `apps/web` is the fourth, and it is the one that is NOT distributed — the emitting set is four',
+      "  'apps/web': 'the same register again. It is the one member of the register that is NOT distributed — see',",
+    ].join('\n');
+    for (const [, needle] of SUPERSEDED) {
+      expect(asItWas, `the fixture no longer reproduces ${String(needle)}`).toMatch(needle);
+    }
+  });
+
+  test('and no tsconfig.build.json states a number the glob contradicts', () => {
+    // **Derived from the count rather than matched against a literal**, so this cannot be satisfied
+    // by a header agreeing with a hard-coded expectation while the tree says otherwise. Four files
+    // exist, so a header may say "four `tsc` emitters" and no other number;
+    // `packages/shared/tsconfig.build.json` carries the argument and no count at all, which is why
+    // it is absent from LIVE rather than exempted by name.
+    const files = buildConfigs().map(([relative]) => relative);
+    const spelled = ['one', 'two', 'three', 'four', 'five', 'six', 'seven'][files.length - 1] ?? '';
+    expect(spelled, 'the count has no spelling, so the clauses below would match nothing').not.toBe('');
+    for (const relative of files) {
+      const text = read(WORKSPACE, relative);
+      for (const other of ['one', 'two', 'three', 'four', 'five', 'six', 'seven'].filter((word) => word !== spelled)) {
+        expect(text, `${relative} says "${other} \`tsc\` emitters" where the glob finds ${spelled}`)
+          .not.toMatch(new RegExp(`${other} \`tsc\` emitters`));
+      }
+    }
+  });
+});
+
+describe('Q-0125 AC-5 — the build writes the emit and nothing else, from a clean start', () => {
+  test('a stale emit is cleared, and what replaces it is the production modules and no test', () => {
+    // Against an isolated copy, so the verdict is the commit's: in the real checkout this package's
+    // `dist/` may hold whatever an earlier test in this file left, and a clean-start claim measured
+    // over that is a claim about the checkout.
+    const root = isolate();
+    const server = path.join(root, 'packages', 'server');
+    const emit = path.join(server, EMIT);
+
+    // The sentinel is planted BEFORE the first build, which is what makes this a clean-start proof
+    // rather than a rebuild one: turbo prunes an output directory on neither the miss path nor the
+    // hit path, so anything already there survives unless the script clears it.
+    fs.mkdirSync(emit, { recursive: true });
+    fs.writeFileSync(path.join(emit, 'q0125-stale.js'), 'export const stale = 1;\n');
+    expect(fs.existsSync(path.join(emit, 'q0125-stale.js')), 'the plant did not take').toBe(true);
+
+    buildIn(root, '--force');
+    expect(fs.existsSync(path.join(emit, 'q0125-stale.js')), 'a stale artifact survived the first build').toBe(false);
+
+    // The production half derived from the copy's own source rather than counted here, so a twelfth
+    // module is covered without anyone remembering — and a derivation that matched nothing is
+    // refused rather than making every clause below vacuous.
+    const modules = fs.readdirSync(path.join(server, 'src'))
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+      .map((name) => name.slice(0, -3))
+      .sort();
+    expect(modules.length, 'the production scan found no module at all').toBeGreaterThan(5);
+
+    const emitted = fs.readdirSync(emit, { recursive: true, encoding: 'utf8' }).sort();
+    expect(emitted).toStrictEqual([...modules.map((name) => `${name}.d.ts`), ...modules.map((name) => `${name}.js`)].sort());
+
+    // Stated as three separate refusals rather than inferred from the identity above, because each
+    // names a different thing that could have gone wrong and a reader of a failure wants to know
+    // which. `tsc` writes `.js`, so an emitted test module is `*.test.js` and never `*.test.ts`.
+    expect(emitted.filter((name) => /\.test\.[jd]/.test(name)), 'a test module was emitted').toStrictEqual([]);
+    expect(emitted.filter((name) => name.endsWith('.test.ts')), 'a test source was copied into the emit').toStrictEqual([]);
+    expect(emitted.filter((name) => name.endsWith('.tsbuildinfo')), 'build metadata the outputs declaration does not name').toStrictEqual([]);
+  }, 300_000);
+
+  test('and `exclude` is load-bearing — without it the build stops rather than emitting', () => {
+    // **The counterfactual, run rather than described — and it does NOT do what Q-0125 AC-5
+    // predicted, which is why it is measured here rather than transcribed.** That criterion expected
+    // removing `exclude` to *"produce nine emitted test modules rather than none"*. Measured, the
+    // build **fails** with `TS6059`: five of the nine test files import `../test/fixture.js`, which
+    // sits outside `rootDir: "src"`, so `tsc` refuses the program before emitting anything. The
+    // prediction was reasonable and general — an emitted `*.test.js` is what AC-23's sandbox
+    // demonstrates over real files — and it is wrong of THIS package for a reason specific to it.
+    //
+    // It is a red demonstration either way, and a louder one: `exclude` is what makes this build
+    // succeed at all, so the option cannot be dropped and quietly do nothing. The stray half is
+    // recorded because it is the sharper hazard: the failed run also wrote `test/fixture.js` and
+    // `test/fixture.d.ts` OUTSIDE `dist/`, which `outputs: ["dist/**"]` does not name — so a
+    // configuration that got as far as emitting would under-declare, which is the same family as
+    // the `*.tsbuildinfo` refusal two clauses down.
+    const root = isolate();
+    const server = path.join(root, 'packages', 'server');
+    const configPath = path.join(server, 'tsconfig.build.json');
+    const config = parseJsonc(fs.readFileSync(configPath, 'utf8'), configPath) as Record<string, unknown>;
+    expect(config.exclude, 'the copy carries no exclude, so removing it changes nothing').toStrictEqual(['src/**/*.test.ts']);
+    const sources = fs.readdirSync(path.join(server, 'src')).filter((name) => name.endsWith('.test.ts'));
+    expect(sources.length, 'the package carries no test file, so this mutation has no subject').toBeGreaterThan(5);
+    delete config.exclude;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+    let failure = '';
+    try {
+      buildIn(root, '--force');
+    } catch (error) {
+      const reported = error as { stdout?: string; stderr?: string; message?: string };
+      failure = `${reported.stdout ?? ''}${reported.stderr ?? ''}${reported.message ?? ''}`;
+    }
+    expect(failure, 'the build succeeded without `exclude`, so that option keeps nothing out').not.toBe('');
+    expect(failure, 'the build failed for a reason that is not about the test files').toMatch(/\.test\.ts/);
+  }, 300_000);
+});
+
+describe('Q-0125 AC-6 and AC-7 — a plain node process is sent to the emit, and can run it', () => {
+  test('the declarations the map promises exist', () => {
+    // AC-6's own half. The loop in AC-8 above proves this for every emitter carrying a map; this
+    // names the two files, so a failure here says which of the two is missing rather than reporting
+    // that a derived set disagreed.
+    runBuild();
+    for (const file of ['index.js', 'index.d.ts']) {
+      expect(fs.existsSync(path.join(WORKSPACE, 'packages', 'server', EMIT, file)), `the build does not write ${file}`).toBe(true);
+    }
+  }, 300_000);
+
+  test('AC-7 — it resolves through `default`, imports, and hands back the barrel the source declares', () => {
+    // **The link is synthesised, and that is the honest half of this criterion.** Nothing in this
+    // workspace declares a dependency on `@quorum/server` — AC-13 asserts that, and it is what
+    // non-goal 1 keeps true — so no `node_modules/@quorum/server` exists and `import.meta.resolve`
+    // answers `ERR_MODULE_NOT_FOUND` at the LINK stage, before a manifest is ever opened. That is a
+    // prior failure to the one this ticket is about, so the link stands in for the dependency edge
+    // Q-0126 will declare. **It must not be read as proof that the name resolves from the workspace
+    // as it stands**: it proves that once an edge exists, what the edge leads to is a file that
+    // exists and runs.
+    runBuild();
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-q0125-'));
+    temporaries.push(root);
+    fs.mkdirSync(path.join(root, 'node_modules', '@quorum'), { recursive: true });
+    fs.symlinkSync(path.join(WORKSPACE, 'packages', 'server'), path.join(root, 'node_modules', '@quorum', 'server'));
+
+    // (a) Resolution. No `--conditions`, no loader, no Vitest — so what is read is the `default`
+    // branch of the map, which is the branch `packages/cli/dist/quorum.js` will get.
+    const resolved = inPlainNode(root, "import.meta.resolve('@quorum/server')");
+    expect(resolved.code, `resolving @quorum/server failed: ${resolved.message}`).toBe('RESOLVED');
+    expect(resolved.value.endsWith(`/${EMIT}/index.js`), `resolved to ${resolved.value}`).toBe(true);
+
+    // (b) Execution, which resolution does not imply: `import.meta.resolve` answers from the
+    // manifest without the target existing, which is why Q-0096 could use it and why this may not.
+    // Importing by absolute `file://` URL is what proves the emitted module's OWN specifiers
+    // resolve from where it sits — `hono`, `@hono/node-server`, `@hono/node-ws`, `@quorum/core` and
+    // `@quorum/shared`, the last two through their own `default` conditions into their own emits.
+    const entry = new URL(`file://${path.join(WORKSPACE, 'packages', 'server', EMIT, 'index.js')}`).href;
+    const loaded = inPlainNode(root, `Object.keys(await import(${JSON.stringify(entry)})).sort().join(',')`);
+    expect(loaded.code, `importing the emitted artifact failed: ${loaded.message}`).toBe('RESOLVED');
+
+    // (c) Identity, derived from the register the package already keeps rather than retyped here.
+    // A count would pass while a name was swapped for another (Q-0073), and two hand-written copies
+    // of one list is the transcription defect this repository keeps paying for.
+    expect(loaded.value.split(','), 'the emitted barrel is not the surface the source declares').toStrictEqual(serverSurface());
+  }, 300_000);
+});
+
+/**
+ * The runtime names `@quorum/server` publishes, read out of its own `SURFACE` register.
+ *
+ * That register is what `packages/server/src/index.test.ts` already asserts `Object.keys(server)`
+ * against when Vitest resolves the **source**; AC-7(c) asks the same question of the **emit**, in a
+ * plain `node` process. Deriving keeps one source of truth, which is the reasoning {@link publicApi}
+ * gives for `@quorum/core` one package over.
+ *
+ * The throw is the anti-vacuity half: a regex that matched nothing would make AC-7(c) compare an
+ * empty list with an empty list and pass.
+ */
+function serverSurface(): string[] {
+  const text = read(WORKSPACE, 'packages', 'server', 'src', 'index.test.ts');
+  const block = /\nconst SURFACE: Record<string, string> = \{([\s\S]*?)\n\};/.exec(text)?.[1] ?? '';
+  // `_` is in both classes deliberately: eleven of the register's entries are SCREAMING_SNAKE
+  // constants, and a class without it matched the twenty-two camelCase names and silently dropped
+  // them — measured, 22 against 33, which the identity below reported rather than passing over.
+  const names = [...block.matchAll(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s/gm)].map((match) => match[1] ?? '');
+  if (names.length === 0) {
+    throw new Error('the @quorum/server SURFACE register yielded no names — a regex that matched nothing would make AC-7(c) vacuous');
+  }
+  return names.sort();
+}
+
+describe('Q-0125 AC-8 — no verdict that exists today moves behind the new emit', () => {
+  test('078(b) holds: test and typecheck gain no ^build edge, and build alone declares outputs', () => {
+    // Read out of the file rather than compared with a literal written here, so this is about what
+    // turbo is configured to do rather than about what a copy of the configuration says.
+    const tasks = rootTurbo().tasks;
+    expect(tasks.test?.dependsOn, 'the test task depends on something other than its own kind').toStrictEqual(['^test']);
+    expect(tasks.typecheck?.dependsOn, 'the typecheck task depends on something other than its own kind').toStrictEqual(['^typecheck']);
+    expect(tasks.lint?.dependsOn, 'the lint task depends on something other than its own kind').toStrictEqual(['^lint']);
+    expect(tasks.build?.dependsOn, 'the build task no longer orders itself by dependency').toStrictEqual(['^build']);
+    // …and the asymmetry that makes the three above meaningful: `build` is the only task with a
+    // non-empty `outputs`, so it is the only one whose hit replays an artifact.
+    for (const [name, task] of Object.entries(tasks)) {
+      expect(task.outputs ?? [], `${name} declares outputs and is not the build task`)
+        .toStrictEqual(name === 'build' ? ['dist/**'] : []);
+    }
+  });
+
+  test('and the fifth emitter resolves TypeScript source under the workspace condition', () => {
+    // Clause (b): the emit exists and the suites do not go behind it, because `quorum-source` still
+    // names `src/index.ts`. `packages/server/src/package.test.ts` holds the other end of this —
+    // `import.meta.resolve` answering `/packages/core/src/index.ts` from inside that package, which
+    // Q-0125 left unchanged and which is the evidence that adding an emit moved no verdict.
+    const entry = ((JSON.parse(read(WORKSPACE, 'packages', 'server', 'package.json')) as {
+      exports: Record<string, Record<string, Record<string, string>>>;
+    }).exports)['.'];
+    expect(entry?.['quorum-source']?.default, 'the source condition no longer names TypeScript source').toBe('./src/index.ts');
+    expect(entry?.['quorum-source']?.types, 'the source condition no longer types from TypeScript source').toBe('./src/index.ts');
+  });
+
+  test('no package script builds anything before linting, typechecking or testing', () => {
+    // The other half of 078(b), which a task graph cannot say: an edge removed from `turbo.json` and
+    // reintroduced as `"test": "pnpm build && vitest run"` would put an emit behind a verdict again
+    // with the graph unchanged. Over every package the workspace holds, derived from the same two
+    // globs the build register uses.
+    const manifests: [string, Record<string, string>][] = [];
+    for (const root of ['packages', 'apps']) {
+      for (const entry of fs.readdirSync(path.join(WORKSPACE, root), { withFileTypes: true })) {
+        if (!entry.isDirectory() || !fs.existsSync(path.join(WORKSPACE, root, entry.name, 'package.json'))) continue;
+        const scripts = (JSON.parse(read(WORKSPACE, root, entry.name, 'package.json')) as { scripts?: Record<string, string> }).scripts ?? {};
+        manifests.push([`${root}/${entry.name}`, scripts]);
+      }
+    }
+    expect(manifests.length, 'the manifest scan found nothing').toBeGreaterThan(5);
+    for (const [name, scripts] of manifests) {
+      for (const task of ['lint', 'typecheck', 'test']) {
+        const script = scripts[task];
+        if (script === undefined) continue;
+        expect(script, `${name}'s ${task} script builds first, which puts an artifact behind a verdict`).not.toMatch(/\bbuild\b/);
+      }
+    }
+  });
 });
 
 describe('AC-12 — the artifact is invisible to every source scan', () => {
