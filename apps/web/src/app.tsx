@@ -115,7 +115,13 @@ export function App({ initialPath, socketFactory, pageUrl }: AppProps): ReactNod
     // discard the trace it has already accepted.
     if (handle === undefined || pageHref === undefined) return;
     connectionRef.current?.connect(handle, new URL(pageHref));
-  }, [handle, pageOrigin]);
+    // `socketFactory` is a dependency here as well as above, and the mismatch was the defect: the
+    // effect above rebuilds the controller when the factory's identity moves, and without this one
+    // firing too the replacement was never connected — leaving the region at `idle`, which offers no
+    // Retry, a state with no user action and the thing AC-15 exists to forbid. Unreachable from
+    // `main.tsx`, which passes no factory, but `AppProps` exports the seam and the idiomatic call is
+    // an inline arrow. Q-0120 review round 3, N-1.
+  }, [handle, pageOrigin, socketFactory]);
 
   const onRetry = useCallback(() => connectionRef.current?.retry(), []);
 
