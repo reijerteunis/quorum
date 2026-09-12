@@ -52,6 +52,7 @@ const JUSTIFICATIONS: Record<string, string> = {
   jsdom: "the document AC-2 mounts into, selected by one test file's own environment docblock rather than by configuration. Held at 29 rather than 30 because jsdom 30 declares `node: ^22.22.2 || ^24.15.0 || >=26.0.0`, which this workspace's own `engines.node` floor of 22.13.0 does not satisfy; 29's `^20.19.0 || ^22.13.0 || >=24.0.0` matches that floor exactly.",
   '@types/react': "React ships no types of its own, so this is what makes `tsc --noEmit` cover the app's components.",
   '@types/react-dom': 'the same, for the renderer half.',
+  vite: "the bundler the build script runs, and the dev server vite.config.ts configures. Declared here at Q-0122 rather than left to resolve from the workspace root by directory walk: this is the package the build runs in, both plugins above take vite as a peer, and a dependency reached by walking up is one no manifest records. Held at the root's own ^8.2.2 so one version resolves.",
 };
 
 /**
@@ -132,8 +133,37 @@ describe('Q-0120 AC-22 — browser source resolution', () => {
     expect(config).toMatch(/conditions\s*:\s*\[\s*\.\.\.defaultClientConditions/);
   });
 
-  test('the app remains non-emitting', () => {
-    expect(manifest().scripts?.build).toBeUndefined();
+});
+
+describe('Q-0122 — the app emits, and what it emits is served rather than shipped', () => {
+  // Why: "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12).
+  // This block replaces the two clauses that asserted the opposite — `the app remains non-emitting`
+  // here, and the `build` half of AC-3's task clause below — which were correct until that entry.
+
+  test('it declares a build script, and one that clears its emit first', () => {
+    const build = manifest().scripts?.build;
+    expect(build, 'the app declares no build script, so nothing produces a bundle to serve').toBeDefined();
+    // Turbo prunes an output directory on neither the miss path nor the hit path, so something in
+    // the script has to, or a rebuild leaves behind whatever the current source no longer produces.
+    // The three `tsc` emitters get that from `rm -rf dist &&` and nothing else; **this one gets it
+    // from Vite, which empties `outDir` itself** — measured by mutation, and the reason the pin
+    // below is uniformity rather than the mechanism. It is kept because a default a bundler owns is
+    // a thing that can move, and because four scripts that clear their emit the same way are easier
+    // to reason about than three that do and one that is fine for a different reason.
+    // `build.test.ts` runs the case, over every emitter, and records the same measurement.
+    expect(build, 'the clean step went, leaving the property resting on a bundler default alone').toMatch(/^rm -rf dist &&/);
+  });
+
+  test('and it emits without being distributed — no exports, files, main, types or bin', () => {
+    // The two sets came apart here, which is the entry's first clause: four packages emit and three
+    // are packed. Asserted on the manifest rather than left to prose, because every one of these
+    // five keys is a step towards a tarball and none of them is this ticket's to add. How an
+    // installation outside this workspace obtains the UI is Q-0124's, and nothing here answers it.
+    const own = JSON.parse(readPackageFile('package.json')) as Record<string, unknown>;
+    expect(own.private, 'the app stopped being private, which is a publishing decision 078(d) refuses').toBe(true);
+    for (const key of ['exports', 'files', 'main', 'types', 'bin']) {
+      expect(own[key], `the app declares ${key}, so something now resolves or packs it`).toBeUndefined();
+    }
   });
 });
 
@@ -200,13 +230,14 @@ describe('AC-3 — the compiler covers every new file, and relaxes nothing the b
       'a strict-family flag is set locally').toStrictEqual([]);
   });
 
-  test('the package still declares the three tasks every package owes', () => {
-    // And no `build`: this package emits nothing, which is what keeps the emitting register at
-    // three. Whether a served bundle is an emitted artifact at all is Q-0122's, with the task.
+  test('the package declares every task the root asks of an emitting package', () => {
+    // Four now rather than three: `build` joined them at Q-0122, which is what took the emitting
+    // register from three entries to four. The authority for a package that emits and is not
+    // packed is "A fourth package emits, and what it emits is served rather than shipped"
+    // (2026-09-12); the block above asserts the not-packed half.
     const scripts = manifest().scripts ?? {};
-    for (const task of ['lint', 'typecheck', 'test']) {
+    for (const task of ['build', 'lint', 'typecheck', 'test']) {
       expect(scripts[task] ?? '', `no ${task} script`).not.toBe('');
     }
-    expect(scripts.build, 'this package declares a build script and emits nothing').toBeUndefined();
   });
 });

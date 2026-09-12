@@ -13,7 +13,7 @@ Vitest for tests, ESLint for lint. The workspace globs are `packages/*` and `app
 | `@quorum/shared` | zod schemas (flow, ticket, role, step output), the trace/event union, cross-package constants. Depends on no workspace package. |
 | `@quorum/core` | the engine: run loop, backlog, fan-out, git, adapters, lint, contracts, run history. Imports `shared`'s schemas and declares none of its own. |
 | `@quorum/cli` | the `quorum` binary — a presentation layer over `core`'s public API. |
-| `@quorum/server` | the daemon: the in-process run host, and a Hono HTTP + WebSocket surface over it. |
+| `@quorum/server` | the daemon: the in-process run host, a Hono HTTP + WebSocket surface over it, and the static route that serves the built `apps/web`. |
 | `@quorum/web` | the browser app. `src/` is what a browser gets and may import no Node capability. |
 | `@quorum/compiler` | M5's harness compiler. A stub today. |
 | `@quorum/templates` | a scaffold holding no assets — the shipped templates are `packages/cli/templates/`. |
@@ -22,9 +22,13 @@ Four top-level directories are not packages and are read by the flows rather tha
 `harness/` (this file, `rules.md`, `product-context.md`, `flows/`, `roles/`), `backlog/` (one folder
 per ticket), `contracts/` (one folder per ticket that emitted any), and `docs/`.
 
-Three packages emit — `shared`, `core` and `cli` — and they are also what a `pnpm pack` produces.
-`apps/web` declares no `build` script today; whether a served bundle is an emitted artifact at all
-is Q-0122's to rule.
+**Four packages emit and three are packed, and since 2026-09-12 those are two different sets.**
+`shared`, `core` and `cli` emit and are what a `pnpm pack` produces — the **local distribution
+set**. `apps/web` is the fourth emitter: its `vite build` writes a bundle the daemon **serves**, and
+it stays `private: true` with no `exports`, no `files` and no `bin`, so nothing packs it. Both
+shapes are **emitted artifacts**; the vocabulary widened rather than gaining a third kind. See
+*"A fourth package emits, and what it emits is served rather than shipped"* (2026-09-12). How an
+installation outside this workspace obtains the UI is open and is Q-0124's.
 
 ## Boundaries the architect must respect
 

@@ -1,9 +1,12 @@
 /**
  * The dev server and bundler configuration for the shell.
  *
- * There is no `build` section and no `base`, because this package declares no `build` script:
- * what the daemon serves is Q-0122's, together with the ruling on whether a served bundle is an
- * emitted artifact at all.
+ * There is a `build` script since Q-0122 and still no `build` section and no `base` here, because
+ * Vite's defaults are what this package wants: `dist/` is the `outputs` the root `turbo.json`
+ * already declares, and the app is served from the root of the daemon's origin rather than from a
+ * sub-path. What the emit is called is settled — see *"A fourth package emits, and what it emits is
+ * served rather than shipped"* (2026-09-12), which widened **emitted artifact** to cover a served
+ * bundle rather than coining a third kind.
  *
  * `resolve.conditions` adds `quorum-source` to Vite's own client defaults rather than replacing
  * them, so the browser keeps every ordinary condition (`module`, `browser`, `import`, ...) and
@@ -32,12 +35,24 @@
  * round 1, B-1). `bypassNavigation` tells the proxy to step aside for exactly that case: a
  * top-level browser navigation requests `text/html`, where a same-origin `fetch` of the daemon's
  * JSON and the run-events WebSocket upgrade do not, so the two are told apart without touching
- * either.
+ * either. **The predicate itself is `@quorum/shared`'s** since Q-0122, because the daemon's static
+ * route answers the same question about the shipped product and two definitions of it would mean a
+ * route that works here and 404s there — which is the defect above, one environment along.
+ *
+ * **It is imported by source path rather than by package name, and that is measured rather than
+ * stylistic.** Vite bundles this config with its own resolver, which knows nothing of the
+ * `quorum-source` condition `tsconfig.base.json` and `vitest.shared.js` select, so
+ * `from '@quorum/shared'` resolves to `packages/shared/dist/index.js` and the config fails to load
+ * wherever that emit has not been built. Measured with `packages/shared/dist` renamed away: the
+ * package-name import dies in `bundleAndLoadConfigFile`, the source-path import builds. The `build`
+ * task's `^build` edge would hide that on the build path and not on the dev server, which is the
+ * one this file exists for.
  */
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defaultClientConditions, defineConfig, type ProxyOptions } from 'vite';
 
+import { isNavigationRequest } from '../../packages/shared/src/navigation.js';
 import { DAEMON_ENDPOINTS } from './src/daemon-endpoints.js';
 
 const DAEMON_TARGET = {
@@ -47,7 +62,7 @@ const DAEMON_TARGET = {
 } as const;
 
 const bypassNavigation: NonNullable<ProxyOptions['bypass']> = (req) =>
-  req.method === 'GET' && req.headers.accept?.includes('text/html') ? '/index.html' : undefined;
+  isNavigationRequest(req.method ?? '', req.headers.accept) ? '/index.html' : undefined;
 
 const proxy: Record<string, ProxyOptions> = Object.fromEntries(
   Object.values(DAEMON_ENDPOINTS).map((prefix) => [

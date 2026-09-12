@@ -347,6 +347,13 @@ const DOMAIN = [
   'validateArtifact', 'readData', 'containment', 'overrideAdapters',
   'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal', 'readRun',
   'initProject', 'pushLag', 'configuredUser', 'cliVersion',
+  // Q-0122 added `pathInside`, and it is the first entry NO command names. That is legal by this
+  // register's own shape — `domainOffenders` asks that the frame name none and that a command name
+  // only its own row's, never that every symbol has a caller here — and it is what the entry means:
+  // a helper `@quorum/core` owns and this package may not reimplement. Its caller is
+  // `packages/server`'s static route, which confines a URL to the built bundle with the same
+  // primitive the backlog store uses, per `docs/GLOSSARY.md`'s **Confinement**.
+  'pathInside',
 ];
 
 /**
@@ -539,14 +546,16 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     const added = [...COMMAND_DOMAIN['board.ts'], ...COMMAND_DOMAIN['adapters.ts']];
     expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
       .toStrictEqual([]);
-    expect(DOMAIN, 'the register still holds the twenty-three it held before Q-0067').not.toHaveLength(23);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(24);
+    expect(DOMAIN, 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(25);
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
       .toContain('pushLag');
     expect(DOMAIN, 'the name Q-0112 added is not on the list it is supposed to be on')
       .toContain('configuredUser');
     expect(DOMAIN, 'the name Q-0067 added is not on the list it is supposed to be on')
       .toContain('cliVersion');
+    expect(DOMAIN, 'the name Q-0122 added is not on the list it is supposed to be on')
+      .toContain('pathInside');
   });
 
   test('Q-0099 AC-10 — two production modules landed and the other two registers kept their size', () => {

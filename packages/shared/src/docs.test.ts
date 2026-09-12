@@ -60,7 +60,17 @@ describe('Q-0120 AC-23 — live connection documentation', () => {
     expect(start, 'the section AC-23 names is gone').toBeGreaterThanOrEqual(0);
     const next = architecture.indexOf('\n### ', start + 1);
     const section = architecture.slice(start, next < 0 ? undefined : next);
-    expect(section.length, 'the slice reaches past its own section').toBeLessThan(12000);
+    // **The anti-over-slice clause, retired by replacement rather than by having its number
+    // raised** (Q-0122). It was `length < 12000`, a proxy for *the slice stopped at the section
+    // boundary* that a section growing legitimately falsifies — this one reached 13,245 characters
+    // when the static route was documented, and a bumped ceiling would have to be bumped again by
+    // whoever writes the next paragraph. What replaces it asks the property directly, in the shape
+    // `packages/server/src/package.test.ts`'s own slice guard already uses: a slice that ran past
+    // the end would carry the heading after it, and one that ran backwards would carry the status
+    // line. Neither depends on how much prose the section holds.
+    expect(section, 'the slice ran past the end of the section').not.toContain('### `packages/cli`');
+    expect(section, 'the slice ran back into the status line').not.toContain('*Status:');
+    expect(section.length, 'the section is implausibly short — the slice lost most of its subject').toBeGreaterThan(1000);
     expect(section, 'the slice lost its subject').toContain('### `packages/server`');
     expect(section, 'the server section does not say where the frame union lives').toMatch(/frame union[\s\S]*@quorum\/shared/i);
     expect(section, 'the server section does not say it re-exports').toMatch(/re-export/i);
@@ -1222,5 +1232,29 @@ describe('Q-0014 AC-11 — the architecture document describes the shell that sh
     // §Adapters and satisfy a clause without this section saying anything at all.
     expect(section().length, 'the section is implausibly short').toBeGreaterThan(1000);
     expect(section(), 'the slice ran past the end of the section').not.toContain('is the first community milestone');
+  });
+
+  test('Q-0122 AC-8 — and it says the app emits, rather than that it emits nothing', () => {
+    // **The clause held the opposite until 2026-09-12, and that is why it is a clause rather than a
+    // correction.** This section read *"The app emits nothing: it declares no `build` script, so
+    // the three emitting packages are still three"* — true when Q-0014 wrote it and false the
+    // moment `apps/web` declared one. What a document of this kind gets wrong is not the new
+    // sentence but the old one nobody re-read, so the negative is asserted beside the positive:
+    // a later edit restoring the previous wording fails here by name.
+    const text = section();
+    expect(text, 'the section still says the app emits nothing').not.toMatch(/[Tt]he app emits nothing/);
+    expect(text, 'the section still says the emitting set is three').not.toMatch(/three emitting packages are still three/);
+    expect(text, 'the section does not say the app emits').toMatch(/[Tt]he app emits/);
+    // And the two halves the entry rules, which are what stop *"emits"* being read as *"ships"*:
+    // the emitting set is four, the distribution set is three, and this package is in one of them.
+    expect(text, 'the section does not name the build script the app declares').toContain('vite build');
+    expect(text, 'the section does not say the output is served rather than shipped').toMatch(/served rather than shipped/);
+    expect(text, 'the section does not cite the entry that ruled it').toContain('2026-09-12');
+    // The negatives have a subject: the same needles find the superseded wording where it is
+    // written, so this clause is refusing a sentence rather than matching nothing.
+    const asItWas = 'All connection data remains in memory. **The app emits nothing**: it declares no `build` script, so the three emitting packages are still three,';
+    expect(asItWas, 'the fixture no longer reproduces the wording this clause refuses')
+      .toMatch(/[Tt]he app emits nothing/);
+    expect(asItWas).toMatch(/three emitting packages are still three/);
   });
 });

@@ -369,7 +369,7 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(24);
+    expect(domain()).toHaveLength(25);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
@@ -454,12 +454,22 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // is the eighth symbol a command reaches, and the first admitted by that clause for a reason
     // that is not a git fact — the string it compares against lives in a capabilities module the
     // barrel deliberately does not publish, so no command module could derive it.
-    expect(domain(), 'the register still holds the twenty-three it held before this ticket').not.toHaveLength(23);
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(24);
+    // Q-0122 moved them to 25 and 30, and this one is unlike every entry above it: `pathInside` is
+    // the first name on the register that **no command reaches**. It is here because
+    // `packages/server`'s static route turns a URL into a file read and must inherit `core`'s
+    // confinement rather than write a weaker one — `docs/GLOSSARY.md`'s **Confinement** says so in
+    // as many words — and this register is what the barrel is derived from, so a symbol the barrel
+    // must carry has to appear on it. What that costs is stated rather than hidden: a
+    // `packages/cli` register grew for a `packages/server` need. What it buys is that the frame is
+    // still forbidden to reimplement it, which is this register's own sentence and is true of it.
+    expect(domain(), 'the register still holds the twenty-four it held before this ticket').not.toHaveLength(24);
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(25);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel still holds the twenty-eight it held before this ticket')
-      .not.toHaveLength(28);
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(29);
+    expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before this ticket')
+      .not.toHaveLength(29);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(30);
+    expect(domain(), 'pathInside is not on the register the barrel is derived from').toContain('pathInside');
+    expect(typeof barrel.pathInside, 'pathInside is not a function on the barrel').toBe('function');
     expect(domain(), 'cliVersion is not on the register the barrel is derived from').toContain('cliVersion');
     expect(typeof barrel.cliVersion, 'cliVersion is not a function on the barrel').toBe('function');
     expect(domain(), 'pushLag is not on the register the barrel is derived from').toContain('pushLag');

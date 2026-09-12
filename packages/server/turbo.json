@@ -1,0 +1,35 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // As in packages/core/turbo.json: a hit claims that nothing this task READS has changed.
+    //
+    // This package had no configuration at all until Q-0122. Q-0121 wrote one, measured it
+    // unnecessary and deleted it, recording both hashes — and that measurement still holds:
+    // appending a line to `docs/04-architecture.md` moves this task's hash today, because
+    // `@quorum/shared#test` declares that file for its own assertions over this same section and
+    // the root `test` task's `^test` edge puts that task's hash inside this one. It is therefore
+    // still NOT declared here, which would be the same claim twice, free to drift.
+    //
+    // What IS declared is the read that measurement does not cover. `src/static.test.ts` reads
+    // `apps/web/src/routes.ts` — AC-14's instruction is to derive the shell's twelve paths from the
+    // register rather than transcribe them — and `apps/web/vite.config.ts`, which AC-18 asks
+    // whether both ends of the navigation predicate reach one definition. Neither is in any other
+    // task this one depends on: `packages/server` does not depend on `@quorum/web`, so no `^test`
+    // edge carries them. Measured rather than assumed, and measured the way Q-0072 asks: with no
+    // declaration, appending a line to `apps/web/src/routes.ts` left this task's hash at
+    // `5d08bff32eb9ceac` — a cached pass would have stood over a changed register.
+    //
+    // **`src/turbo-inputs.test.ts` does not scan this package**, its `SUITES` being
+    // `@quorum/shared#test` and `@quorum/core#test`, so nothing would have reported the omission.
+    // That is why this file is written from a measurement rather than in answer to a red test, and
+    // it is the standing residual: a later read out of this package is covered by nobody's guard.
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../apps/web/src/routes.ts",
+        "../../apps/web/vite.config.ts"
+      ]
+    }
+  }
+}
