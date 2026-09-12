@@ -19,6 +19,7 @@ const setup = () => {
 };
 const page = new URL(`https:${'/' + '/'}page.test/app`);
 const event = { type: 'step', stepId: 'implement', message: 'go' };
+const terminalEvent = { type: 'terminal', runId: 1, stageBefore: 'a', stageAfter: 'b', cost: 0, tokens: 0, status: 'completed' };
 
 describe('AC-16 to AC-18 — owned socket lifecycle', () => {
   test('a fresh controller starts empty even after an earlier controller was disposed', () => {
@@ -78,6 +79,23 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(only.onmessage, 'the handlers are still attached to a closed socket').toBeNull();
     // No second close was issued: invalidating is not closing again.
     expect(only.closes, 'the controller closed a socket that had already closed').toBe(0);
+  });
+
+  // M-4: a refused frame must end the socket, or the refusal is erased by whatever happens next.
+  test('a protocol error closes its socket, and nothing after it can erase the refusal', () => {
+    const { connection, sockets } = setup();
+    connection.connect('A', page);
+    const only = sockets[0]!;
+    only.onopen?.();
+    only.onmessage?.({ data: 'not json at all {' });
+    expect(connection.snapshot.state.kind).toBe('protocol-error');
+    expect(only.closes, 'a refused frame left its socket open').toBe(1);
+    // The case that made it matter: a terminal event then a normal close used to take the
+    // `terminalSeen` branch and report the run as simply finished.
+    only.onmessage?.({ data: JSON.stringify({ type: 'event', event: terminalEvent }) });
+    only.onclose?.({ code: 1000, reason: '' });
+    expect(connection.snapshot.state.kind, 'a later close erased the protocol error').toBe('protocol-error');
+    expect(connection.snapshot.events, 'a frame was accepted after the refusal').toHaveLength(0);
   });
 
   test('missed counts are retained as notices, replace one another, and are never events', () => {

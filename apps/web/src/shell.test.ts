@@ -62,6 +62,16 @@ async function render(element: ReactElement): Promise<HTMLElement> {
   return container;
 }
 
+/** Render into a root the caller keeps, so the same root can be re-rendered or unmounted. */
+async function renderAt(element: ReactElement): Promise<{ container: HTMLElement; root: ReturnType<typeof createRoot> }> {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(element));
+  mounted.push(() => root.unmount());
+  return { container, root };
+}
+
 /** The visible text of `element`, whitespace-normalised so a line break is not a difference. */
 const textOf = (element: HTMLElement): string => (element.textContent ?? '').replace(/\s+/g, ' ').trim();
 
@@ -80,7 +90,11 @@ class FakeSocket implements SocketTransport {
   onmessage: ((event: { readonly data: unknown }) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
-  close(): void {}
+  /** Counted, so AC-17's React half can be asserted over what was released rather than over what
+   *  still exists — the shape Q-0118's round 2 caught, and what this fake could not record until
+   *  Q-0120 review round 3, M-3. */
+  closes = 0;
+  close(): void { this.closes += 1; }
 }
 
 describe('AC-2 — the application mounts into a real document, with no daemon running', () => {
@@ -282,16 +296,44 @@ describe('Q-0120 AC-20 — the run route mounts and renders its live connection'
     await act(async () => {
       socket.onopen?.();
       for (let index = 0; index < 3; index += 1) socket.onmessage?.({ data: JSON.stringify({ type: 'event', event: { type: 'step', stepId: 'implement', message: `${index}` } }) });
-      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 2 }) });
+      socket.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 7 }) });
     });
     const text = textOf(container.querySelector('header') as HTMLElement);
     // `Connected to …` and not the word `live`. The old assertion read `toContain('live')`, which
     // `connectionStateText` never produces — it passed only because the kebab token was what
     // rendered, so it pinned the defect M-1 reports rather than the criterion. Q-0120 round 2.
-    for (const expected of ['Connected to', '2', '3', 'step', 'implement']) expect(text).toContain(expected);
+    // `missed 7` as a phrase, not the bare digit. The row used to drive `count: 2` and assert `'2'`,
+    // which the socket URL and the event count both satisfy — so nothing proved a non-zero notice
+    // was rendered at all. 7 occurs nowhere else in this header. Q-0120 review round 3, M-2.
+    for (const expected of ['Connected to', 'missed 7', '3', 'step', 'implement']) expect(text).toContain(expected);
     expect(text, 'the state token is rendered as visible text').not.toContain('live');
     expect(container.querySelector('[data-state="live"]'), 'the machine-readable hook is gone').not.toBeNull();
     expect(text).not.toMatch(/cost|diff|trace/i);
+  });
+
+  // AC-17's React half: the effect's cleanup, which nothing reached because this file's fake socket
+  // could not record a close. Asserted over what was RELEASED rather than over what still exists —
+  // "the run still exists" is true whether or not anything was released, which is the shape
+  // Q-0118's round 2 caught. Q-0120 review round 3, M-3.
+  test('leaving a run route and unmounting each close the socket, and neither opens a replacement', async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (): SocketTransport => { const s = new FakeSocket(); sockets.push(s); return s; };
+    const page = new URL(`https:${'/' + '/'}page.test`);
+
+    // Left by NAVIGATING rather than by re-rendering: `initialPath` seeds `useState` once, so a
+    // second render at another path changes nothing about the route — a trap worth naming, because
+    // a test written that way asserts over a run route that never ended.
+    const { container } = await renderAt(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: page }));
+    expect(sockets).toHaveLength(1);
+    const rail = [...(container.querySelector('nav')?.querySelectorAll('a') ?? [])];
+    await act(async () => rail[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+    expect(sockets[0]!.closes, 'leaving the run route did not close the socket').toBeGreaterThanOrEqual(1);
+    expect(sockets, 'leaving the run route opened a replacement').toHaveLength(1);
+
+    const second = await renderAt(createElement(App, { initialPath: '/runs/run%20one', socketFactory: factory, pageUrl: page }));
+    expect(sockets).toHaveLength(2);
+    await act(async () => second.root.unmount());
+    expect(sockets[1]!.closes, 'unmounting did not close the socket').toBeGreaterThanOrEqual(1);
   });
 
   // The zero case's third half. The frozen contract asks for `missedCount === 0`, distinct from

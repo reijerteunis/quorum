@@ -30,28 +30,25 @@ export type FrameParseResult =
   | { readonly ok: true; readonly frame: ParsedFrame }
   | { readonly ok: false; readonly refusal: FrameRefusal };
 
-/** True for the binary WebSocket message shapes a text-only protocol refuses. */
-function isBinaryMessage(data: unknown): boolean {
-  return (
-    data instanceof ArrayBuffer ||
-    ArrayBuffer.isView(data as ArrayBufferView) ||
-    (typeof Blob !== 'undefined' && data instanceof Blob)
-  );
-}
-
 /** Parse and validate one received message without throwing. */
 export function parseFrame(data: unknown): FrameParseResult {
-  let parsed: unknown;
-  if (typeof data === 'string') {
-    try {
-      parsed = JSON.parse(data);
-    } catch {
-      return { ok: false, refusal: { kind: 'invalid-json' } };
-    }
-  } else if (isBinaryMessage(data)) {
+  // TEXT FRAMES ONLY, which AC-14 states and this function did not enforce: anything that was
+  // neither a string nor one of three recognised binary shapes used to be treated as ALREADY
+  // PARSED, so an object handed in directly was accepted as a valid frame. A browser's
+  // `MessageEvent.data` is a string, a `Blob` or an `ArrayBuffer`, so the production reach was nil —
+  // what made it worth repairing is that the suite pinned the fall-through as behaviour, and an
+  // assertion codifying the opposite of its criterion makes the correct behaviour a future
+  // regression. Every non-string is now `non-text-message`; there is no shape list to keep current,
+  // which is the other thing the old triage got wrong. Q-0120 review round 3, M-5; supersedes
+  // erratum E-3(c), which stated the fall-through rather than checking it against the criterion.
+  if (typeof data !== 'string') {
     return { ok: false, refusal: { kind: 'non-text-message' } };
-  } else {
-    parsed = data;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return { ok: false, refusal: { kind: 'invalid-json' } };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

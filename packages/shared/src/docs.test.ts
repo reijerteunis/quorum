@@ -50,8 +50,20 @@ describe('Q-0120 AC-23 — live connection documentation', () => {
   test('architecture replaces the obsolete no-connection account with shared ownership and re-export', () => {
     const architecture = repoFile('docs/04-architecture.md');
     expect(architecture).not.toContain('There is no connection to the daemon');
-    expect(architecture).toMatch(/frame union[\s\S]*@quorum\/shared/i);
-    expect(architecture).toMatch(/packages\/server[\s\S]*re-export/i);
+    // Scoped to the section AC-23 names, because over the whole file both clauses were satisfied by
+    // the STATUS LINE alone: every ticket writes a dated entry there, this one's contains the phrase,
+    // and `packages/server` occurs earlier in the same line from an older entry — so the ordering
+    // clause passed too, and the section could have been deleted outright with this test green.
+    // The anti-over-slice clause is the shape the glossary guard above already uses, for the reason
+    // its own comment records. Q-0120 review round 3, M-1.
+    const start = architecture.indexOf('### `packages/server`');
+    expect(start, 'the section AC-23 names is gone').toBeGreaterThanOrEqual(0);
+    const next = architecture.indexOf('\n### ', start + 1);
+    const section = architecture.slice(start, next < 0 ? undefined : next);
+    expect(section.length, 'the slice reaches past its own section').toBeLessThan(12000);
+    expect(section, 'the slice lost its subject').toContain('### `packages/server`');
+    expect(section, 'the server section does not say where the frame union lives').toMatch(/frame union[\s\S]*@quorum\/shared/i);
+    expect(section, 'the server section does not say it re-exports').toMatch(/re-export/i);
   });
 
   test('the glossary defines the closed, derived, memory-only connection state separately from run state', () => {

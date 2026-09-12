@@ -121,6 +121,17 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       const result = parseFrame(message.data);
       if (!result.ok) {
         dispatch({ type: 'protocol-error', refusal: result.refusal.kind });
+        // A refused frame ENDS this socket. It did not until Q-0120 review round 2's M-4, found by
+        // both reviewers independently, and the consequence was that AC-14's "refused and surfaced
+        // rather than ignored" was defeated at the moment it mattered: the socket stayed open, later
+        // frames kept moving the event count under a permanent error sentence, and when the run's
+        // `terminal` event arrived the close took the `terminalSeen` branch — so the user finished
+        // at "The run has finished." with no record that anything had been refused. It also made
+        // AC-18 incoherent, offering Retry over a healthy connection whose only offered action
+        // destroyed it. Closing here makes `protocol-error` terminal for its socket, which is how
+        // this module already read, and makes that Retry honest.
+        socket = null;
+        detachAndClose(next);
         notify();
         return;
       }

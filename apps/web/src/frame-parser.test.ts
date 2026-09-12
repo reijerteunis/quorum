@@ -22,13 +22,25 @@ describe('AC-14 — staged frame parsing', () => {
     expect(parseFrame(input)).toStrictEqual({ ok: false, refusal });
   });
 
-  test.each(['7', -1, 1.5, Infinity])('refuses invalid count %s distinctly', (count) => {
-    expect(parseFrame({ type: 'missed', count })).toStrictEqual({ ok: false, refusal: { kind: 'invalid-count', count } });
-  });
+  // Driven over JSON TEXT, which is the only way a frame reaches this function and what AC-14's
+  // Test clause always said — "(e) a non-object JSON value", "(h) each invalid count". These rows
+  // used to hand `parseFrame` an object directly, so all four were proven over a path no socket
+  // uses; `Infinity` was worse still, asserting a refusal carrying a value no JSON frame can carry,
+  // since `JSON.stringify({count: Infinity})` yields `null`. Q-0120 review round 3, M-5.
+  test.each([['7', '7'], [-1, -1], [1.5, 1.5], [Infinity, null]] as [number | string, unknown][])(
+    'refuses invalid count %s distinctly, over the wire', (count, carried) => {
+      expect(parseFrame(JSON.stringify({ type: 'missed', count }))).toStrictEqual({ ok: false, refusal: { kind: 'invalid-count', count: carried } });
+    });
 
-  test('treats a non-string, non-binary input as already parsed before the object check', () => {
-    expect(() => parseFrame(42)).not.toThrow();
-    expect(parseFrame(42)).toStrictEqual({ ok: false, refusal: { kind: 'non-object' } });
+  // Retired by replacement rather than deleted: the behaviour it pinned was the violation, and the
+  // criterion it should have pinned is that a non-object JSON value is refused as such.
+  test('a non-object JSON value is refused as one, and a non-string message never reaches JSON', () => {
+    expect(() => parseFrame('42')).not.toThrow();
+    expect(parseFrame('42')).toStrictEqual({ ok: false, refusal: { kind: 'non-object' } });
+    expect(parseFrame('null')).toStrictEqual({ ok: false, refusal: { kind: 'non-object' } });
+    // And the fall-through is gone: an object handed in directly is a non-text message, not a frame.
+    expect(parseFrame({ type: 'event', event: { type: 'info', message: 'x' } })).toStrictEqual({ ok: false, refusal: { kind: 'non-text-message' } });
+    expect(parseFrame(42)).toStrictEqual({ ok: false, refusal: { kind: 'non-text-message' } });
   });
 
   test('malformed surrogate text never escapes as an exception', () => {

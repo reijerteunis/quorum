@@ -62,6 +62,17 @@ Since Q-0096 the package publishes that API through a conditional `exports` map,
 
 ### `packages/server`
 
+**The frame union is declared in `@quorum/shared` and re-exported here, not declared here.** It is
+what crosses the run-events socket, so both ends need it — and only one end can reach this package.
+`apps/web` cannot import `@quorum/server` at all: it has no `exports` map, and a value import from a
+browser bundle would pull `hono`, `@quorum/core` and Node builtins in with it, where a guard is
+weaker than an impossibility. `@quorum/shared` is the one package with an export surface, a
+browser-safety check over every file, and a header naming the web app as its reason — and the schema
+must be executable rather than a type, because a `JSON.parse` result assigned to a `WireMessage` is a
+silent default. So the definition sits there and this package re-exports the name, which keeps this
+barrel unchanged and keeps the contract single. `WireRefusal` and `WireRun` are still declared here;
+whoever first needs one from a browser moves it the same way rather than copying it (Q-0120).
+
 **Since Q-0118 this package is the daemon.** `serve()` opens a socket on `127.0.0.1` and nothing
 else — not configurable, because there is no authentication of any kind and the process starts agent
 runs and writes to a git repository, so a non-loopback bind puts that on a network. This document
