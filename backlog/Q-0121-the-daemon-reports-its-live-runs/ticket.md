@@ -1,14 +1,22 @@
 ---
 id: Q-0121
 title: The daemon reports its live runs
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0121/integration
 priority: p2
 created: 2026-09-11
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-12T11:37:59.273Z
+    cost: 9.397
 ---
 Successor B of Q-0014, from Appendix B. RunHost exposes view(handle) and no enumeration, and no route exposes even that, so a browser that refreshes has lost every live run and DEFAULT_RETENTION's late-joiner buffer is unreachable.
 
