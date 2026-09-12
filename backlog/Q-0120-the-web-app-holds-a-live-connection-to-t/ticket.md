@@ -1,7 +1,7 @@
 ---
 id: Q-0120
 title: The web app holds a live connection to the daemon
-stage: red
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0120/integration
