@@ -91,6 +91,15 @@ export interface FixtureOptions {
   readonly stage?: string;
   /** The `harness/harness.yaml` body. */
   readonly config?: string;
+  /**
+   * The ticket's own prose, below the frontmatter.
+   *
+   * Supplied so a test can put a distinctive marker in it and then assert that marker crosses no
+   * wire — Q-0121 AC-9, where the claim is that a `TicketRecord` narrows to its id rather than
+   * travelling whole. Asserting over the fixture's default body would make that check depend on a
+   * phrase nobody chose for it.
+   */
+  readonly body?: string;
 }
 
 /** One prepared project: where it is, what is in it, and the loaded `Project` a host takes. */
@@ -142,7 +151,7 @@ export function fixture(options: FixtureOptions = {}): Fixture {
     'iterations: {}',
     'history: []',
     '---',
-    'ticket body',
+    options.body ?? 'ticket body',
     '',
   ].join('\n');
 

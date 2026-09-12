@@ -1,5 +1,5 @@
 /**
- * The Hono app over a {@link RunHost}: three routes and a WebSocket, and nothing else.
+ * The Hono app over a {@link RunHost}: five routes and a WebSocket, and nothing else.
  *
  * **It owns no run state.** Every route reads or moves the host, and the host is what Q-0013 proved
  * — the registry, the identity, the single-consumer fan-out, the gate registry and the shutdown
@@ -12,11 +12,17 @@
  * handle. Hono is that document's choice too, which is why three dependencies arrive here with no
  * decision entry: executing a landed document is not changing the architecture (Q-0013 OQ-3).
  *
+ * **Q-0121 added the two reads, and that document moved with them** rather than after them: a route
+ * a landed document does not list is a document edit, which is the narrower half of the precedent
+ * above. `GET /runs` answers *what can I join?* and `GET /runs/:id` answers *what do you know about
+ * this handle?* — two different questions, which is why they select differently and why only one of
+ * them is entitled to a 404.
+ *
  * Why: deliberate addition, not preservation — Q-0118.
  */
 import { Hono } from 'hono';
 
-import type { RunHost, StartRequest } from './host.js';
+import type { RunHost, RunState, StartRequest } from './host.js';
 import {
   ANSWER_REFUSAL_STATUS, badRequest, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS,
   type StartRefusalCode, type WireMessage, type WireRefusal, wireRefusalOf, wireRunOf,
@@ -100,6 +106,26 @@ export function startRefusalCode(condition: string): StartRefusalCode {
   return 'refused';
 }
 
+/**
+ * Whether a listing carries a run in this state, as a table over the host's own union.
+ *
+ * **A table rather than `state !== 'refused'`**, so a fourth `RunState` has to be classified here
+ * instead of silently inheriting *listed*: `Record<RunState, boolean>` is total, and `satisfies`
+ * refuses a key the host cannot produce.
+ *
+ * A **refused** start is the one the host cannot back, and the reason is measured rather than
+ * stylistic: `begin` returns before `record.broadcast` is assigned, so `host.subscribe` answers
+ * `null` and the socket route closes 1008 — and no client was ever told the handle, a refusal
+ * answering a {@link WireRefusal} that carries none. Listing it would surface a row nobody asked for
+ * and none can open. An **ended** run stays listed: its retained buffer is replayable after close,
+ * which is the whole thing this listing makes reachable.
+ */
+const LISTED_BY_STATE = {
+  refused: false,
+  running: true,
+  ended: true,
+} as const satisfies Record<RunState, boolean>;
+
 /** One WebSocket message for an event, ready to send. */
 export function eventMessage(event: unknown): string {
   return JSON.stringify({ type: 'event', event } satisfies WireMessage);
@@ -135,7 +161,33 @@ export function createApp({ host, upgrade }: AppOptions): Hono {
       const code = startRefusalCode(outcome.refusal.condition);
       return c.json(wireRefusalOf(code, outcome.refusal), START_REFUSAL_STATUS[code]);
     }
-    return c.json(wireRunOf(outcome), 201);
+    return c.json(wireRunOf(outcome.run), 201);
+  });
+
+  // The runs a client can join, newest first. **Order is specified because it is the only recency
+  // the wire carries**: the handle is opaque, so a client may not read age out of it, and the row a
+  // maintainer most often wants is the last run started. Derived per request with no cache, which is
+  // the discipline `read.ts` already applies to containment and push lag — a run listed as `running`
+  // is listed as `ended` after it finishes, under the same handle.
+  //
+  // An empty host answers `200 {"runs": []}` and never a 404: nothing is missing, there is nothing
+  // to list, and those are different sentences.
+  app.get('/runs', (c) => c.json({
+    runs: [...host.runs()]
+      .filter((view) => LISTED_BY_STATE[view.state])
+      .reverse()
+      .map((view) => wireRunOf(view)),
+  }));
+
+  // And what the host knows about ONE handle, which is a different question from the listing's.
+  // A refused start is reported `refused` rather than reported absent: 404 is reserved for a handle
+  // this host never minted, which is what makes its condition — "no run is registered under that
+  // handle" — true of the case it answers. Answering it for a handle the host's own records hold
+  // would be a failed probe read as a proven negative, the class Q-0074 and Q-0115 exist to remove.
+  app.get('/runs/:id', (c) => {
+    const view = host.view(c.req.param('id'));
+    if (!view) return c.json(badRequest('no-such-run', refusalCondition('no-such-run'), null), 404);
+    return c.json(wireRunOf(view));
   });
 
   app.post('/runs/:id/gate', async (c) => {

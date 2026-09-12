@@ -7,10 +7,14 @@
  */
 import { afterAll, describe, expect, test } from 'vitest';
 
+import { WIRE_RUN_STATES, wireRunListSchema, wireRunSchema } from '@quorum/shared';
+import type { GateQuestionEvent, WireRun } from '@quorum/shared';
+
 import { createRunHost } from './host.js';
+import type { RunHost } from './host.js';
 import { createApp, eventMessage, missedMessage, startRefusalCode, startRequestOf } from './http.js';
 import { ANSWER_REFUSAL_STATUS, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS } from './wire.js';
-import { fixture, removeTempDirs, TICKET_ID } from '../test/fixture.js';
+import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
 
@@ -31,6 +35,46 @@ async function post(app: ReturnType<typeof createApp>, url: string, body?: unkno
     headers: { 'content-type': 'application/json' },
     body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
   });
+}
+
+/**
+ * `GET /runs`, parsed through the schema a browser would parse it with.
+ *
+ * The validation is the point rather than convenience: `wireRunListSchema` is what a client
+ * executes, so running the route's own bytes through it is what stops that schema being a
+ * declaration with no subject — and an added field, a widened state or a missing one fails here
+ * rather than at whichever screen reads it first.
+ */
+async function listRuns(app: ReturnType<typeof createApp>): Promise<readonly WireRun[]> {
+  const response = await app.request('/runs');
+  expect(response.status, 'a listing is not a not-found').toBe(200);
+  const parsed = wireRunListSchema.safeParse(await response.json());
+  expect(parsed.error?.issues, 'the listing does not satisfy the schema a browser parses it with').toBeUndefined();
+  if (!parsed.success) throw new Error('unreachable');
+  return parsed.data.runs;
+}
+
+/** Start one run, failing with the refusal's own sentence when it did not start. */
+async function startedRun(host: RunHost, request: { flow: string; ticket: string; dry?: boolean; auto?: boolean }): Promise<string> {
+  const outcome = await host.start(request);
+  if (!outcome.started) throw new Error(`the run did not start: ${outcome.refusal.condition}`);
+  return outcome.run.handle;
+}
+
+/** Drain one run's fan-out to its end, so a test can act on a run that is over. */
+async function drainRun(host: RunHost, handle: string): Promise<void> {
+  const subscription = host.subscribe(handle);
+  if (!subscription) throw new Error(`no subscription for ${handle}`);
+  for await (const _event of subscription.events) { /* to the end */ }
+}
+
+/** Wait until `predicate` holds, or say what never happened rather than hanging. */
+async function until(predicate: () => boolean, what: string): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > 10_000) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => { setTimeout(resolve, 5); });
+  }
 }
 
 describe('Q-0118 — POST /runs validates before the host is reached, and starts nothing when it refuses', () => {
@@ -161,6 +205,250 @@ describe('Q-0118 — the gate and stop routes move the host and report its refus
     const { app } = served();
     const response = await post(app, '/runs/nope/gate', { gateId: '1:1', answer: 'nonsense' });
     expect(response.status, 'the route judged the envelope itself').toBe(ANSWER_REFUSAL_STATUS['no-such-run']);
+  });
+});
+
+describe('Q-0121 AC-2 — the transport keeps no index of its own', () => {
+  test('a run started through the host object, never through POST /runs, is in the listing', async () => {
+    // **This is the clause that discriminates the two designs.** A transport-side index records
+    // what it SAW — the starts that came through its own route — where a host enumeration reports
+    // what EXISTS. Driving the host directly is the one request that tells them apart, and it is
+    // not a contrivance: `createDaemon` hands a caller the host, and Q-0019's resume will start
+    // runs that no client asked for.
+    const { host, app } = served();
+    const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID, dry: true });
+    await drainRun(host, handle);
+
+    const runs = await listRuns(app);
+    expect(runs.map((run) => run.handle), 'the listing is an index of what the route saw').toStrictEqual([handle]);
+  });
+});
+
+describe('Q-0121 AC-3 — GET /runs answers an envelope, newest first, stably', () => {
+  test('a host with nothing to list answers 200 with an empty array and never a 404', async () => {
+    // Nothing is missing; there is nothing to list. Those are different sentences, and answering
+    // 404 to the second would tell a client its request was wrong about a daemon that is fine.
+    const { app } = served();
+    const response = await app.request('/runs');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual({ runs: [] });
+  });
+
+  test('three runs come back in the reverse of the host\'s mint order, and repeating the request does not move them', async () => {
+    // Order is specified because it is the only recency the wire carries: the handle is opaque, so
+    // a client may not read age out of `run-<n>`, and the row a maintainer most often wants is the
+    // last run started. Three dry walks, which take no lock, so all three run against one ticket.
+    const { host, app } = served();
+    const handles: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID, dry: true });
+      await drainRun(host, handle);
+      handles.push(handle);
+    }
+
+    const first = await listRuns(app);
+    expect(first.map((run) => run.handle)).toStrictEqual([...host.runs()].map((view) => view.handle).reverse());
+    expect(first.map((run) => run.handle), 'the newest run is not first').toStrictEqual([...handles].reverse());
+    // Stable: nothing was started in between, so the same request answers the same array. A
+    // listing whose order moved under a reader would make every row a client held ambiguous.
+    expect((await listRuns(app)).map((run) => run.handle)).toStrictEqual(first.map((run) => run.handle));
+  });
+});
+
+describe('Q-0121 AC-4 — the listing carries the runs this host can back, and derives them per request', () => {
+  test('a running run and an ended one are listed, a refused start is not, and the state moves with the run', async () => {
+    const project = fixture({ flow: GATED_FLOW });
+    project.addTicket({ id: 'T-0002', folder: 'T-0002-second' });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+
+    const refused = await host.start({ flow: 'probe', ticket: 'T-0404' });
+    const live = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    const ended = await startedRun(host, { flow: 'probe', ticket: 'T-0002', auto: true });
+    await drainRun(host, ended);
+    await until(() => (host.view(live)?.gates.length ?? 0) > 0, 'the gated run to reach its gate');
+
+    const listed = await listRuns(app);
+    // An ENDED run stays listed: its retained buffer is replayable after close, which is exactly
+    // what this listing makes reachable (AC-11). A REFUSED start is excluded — it has no stream,
+    // its socket closes 1008, and its handle was disclosed to no client — and it is asserted absent
+    // BY VALUE rather than by a count, because a count is satisfied by a substitution.
+    expect(listed.map((run) => run.state).sort()).toStrictEqual(['ended', 'running']);
+    expect(listed.map((run) => run.handle), 'a refused start was listed')
+      .not.toContain(refused.run.handle);
+    expect(listed.map((run) => run.handle).sort()).toStrictEqual([live, ended].sort());
+    // …and the exclusion is a SELECTION rather than a silent drop: the lookup route still knows
+    // the handle the listing left out, which is what AC-5 is about.
+    expect((await app.request(`/runs/${refused.run.handle}`)).status, 'the run the listing excluded was reported absent by the lookup').toBe(200);
+
+    // Nothing is cached: the same handle is `ended` once the run finishes, with the three identity
+    // fields unchanged and `runId` moving from null to core's number.
+    const before = listed.find((run) => run.handle === live);
+    expect(before?.runId, 'a running run claimed a run number').toBeNull();
+    const gate = host.view(live)?.gates[0] as GateQuestionEvent;
+    expect(host.answer(live, { gateId: gate.gateId, answer: 'advance' })).toBeNull();
+    await until(() => host.view(live)?.state === 'ended', 'the gated run to end');
+
+    const after = (await listRuns(app)).find((run) => run.handle === live);
+    expect(after?.state, 'the listing answered from a cache').toBe('ended');
+    expect(after?.handle).toBe(before?.handle);
+    expect(after?.flow).toBe(before?.flow);
+    expect(after?.ticketId).toBe(before?.ticketId);
+    expect(after?.runId, "core's run number did not arrive with the terminal event").toBe(1);
+  });
+});
+
+describe('Q-0121 AC-5 — GET /runs/:id answers for any handle this host minted', () => {
+  test('a running run, a refused start, and a handle nobody minted', async () => {
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const live = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    const refused = await host.start({ flow: 'probe', ticket: 'T-0404' });
+
+    const running = await app.request(`/runs/${live}`);
+    expect(running.status).toBe(200);
+    expect(wireRunSchema.parse(await running.json()).state).toBe('running');
+
+    // The refused start is reported `refused` rather than reported ABSENT. A 404 here would print
+    // "no run is registered under that handle" about a handle the host's own records hold, which is
+    // a failed probe read as a proven negative — the class Q-0074 and Q-0115 exist to remove.
+    const known = await app.request(`/runs/${refused.run.handle}`);
+    expect(known.status, 'a handle the host minted was reported absent').toBe(200);
+    const row = wireRunSchema.parse(await known.json());
+    expect(row.state).toBe('refused');
+    expect(row.ticketId, 'a start that never resolved a ticket claimed one').toBeNull();
+
+    // 404 only where the host minted no such handle, which is what makes the condition TRUE of the
+    // case it answers — and the body is `badRequest`'s three fields, no more and no fewer.
+    const absent = await app.request('/runs/run-nobody-minted');
+    expect(absent.status).toBe(404);
+    const refusal = await absent.json() as Record<string, unknown>;
+    expect(Object.keys(refusal).sort()).toStrictEqual(['code', 'condition', 'remedy']);
+    expect(refusal.code).toBe('no-such-run');
+    expect(refusal.condition).toBe('no run is registered under that handle');
+    expect(refusal.remedy).toBeNull();
+
+    await host.shutdown();
+  });
+});
+
+describe('Q-0121 AC-6 — both reads are GETs, and reading moves nothing', () => {
+  test('a DELETE or PUT to either is not routed, nor a POST to the lookup', async () => {
+    // `read.test.ts:45`'s method loop, applied to the two paths this ticket adds — with one
+    // DIVERGENCE stated rather than smoothed over. That loop asserts GET 200, POST 404 and
+    // DELETE 404; its POST row **cannot** hold for `/runs`, because `POST /runs` is Q-0118's start
+    // route and §4.8 keeps it. So the POST row is asserted for the lookup path, where it is true,
+    // and asserted the OTHER way for the collection, so the divergence is pinned rather than
+    // silent. See this round's report: AC-6's literal reading contradicts non-goal 8 of its own
+    // document, and this is the reading that leaves the product's start route alone.
+    const { host, app } = served();
+    const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID, dry: true });
+    await drainRun(host, handle);
+
+    for (const route of ['/runs', `/runs/${handle}`]) {
+      expect((await app.request(route)).status, `${route} does not answer a GET`).toBe(200);
+      expect((await app.request(route, { method: 'DELETE' })).status, `${route} accepted a DELETE`).toBe(404);
+      expect((await app.request(route, { method: 'PUT' })).status, `${route} accepted a PUT`).toBe(404);
+    }
+    expect((await app.request(`/runs/${handle}`, { method: 'POST' })).status, 'the lookup path accepted a POST').toBe(404);
+    // And the collection's POST is still the start route: a refusal carrying a code, which is what
+    // an unrouted method could not produce.
+    const start = await post(app, '/runs', { flow: 'probe', ticket: 'T-0404' });
+    expect(start.status, 'POST /runs stopped being the start route').toBe(404);
+    expect((await start.json() as { code: string }).code).toBe('no-such-ticket');
+  });
+
+  test('listing a run parked at a gate leaves the gate waiting, the watchers alone, and the disk untouched', async () => {
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    await until(() => (host.view(handle)?.gates.length ?? 0) > 0, 'the run to reach its gate');
+
+    // A real watcher first, so `watchers` is NON-ZERO before the reads. Asserting it stays at zero
+    // would be satisfied by a counter that never moves at all; asserting it stays at one is the
+    // claim — a read neither takes a subscription nor drops somebody else's.
+    const subscription = host.subscribe(handle);
+    if (!subscription) throw new Error('no subscription');
+    expect(host.view(handle)?.watchers, 'the count this clause rests on did not move for a real watcher').toBe(1);
+
+    const gatesBefore = host.view(handle)?.gates;
+    const logBefore = project.runsLog();
+    await listRuns(app);
+    await listRuns(app);
+    await app.request(`/runs/${handle}`);
+
+    expect(host.view(handle)?.gates, 'a read answered or dropped a gate').toStrictEqual(gatesBefore);
+    expect(host.view(handle)?.gates, 'the gate this clause rests on is not there').toHaveLength(1);
+    expect(host.view(handle)?.watchers, 'a read took or dropped a subscription').toBe(1);
+    expect(host.view(handle)?.state, 'a read stopped or resumed the run').toBe('running');
+    expect(project.runsLog(), 'a read wrote to the ticket').toBe(logBefore);
+
+    subscription.close();
+    await host.shutdown();
+  });
+});
+
+describe('Q-0121 AC-8 — one projection, and a row says which ticket and how many gates are waiting', () => {
+  test('a run at a gate reports pendingGates 1, and POST /runs answers the same key set as a listing row', async () => {
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+
+    const start = await post(app, '/runs', { flow: 'probe', ticket: TICKET_ID });
+    expect(start.status).toBe(201);
+    const created = await start.json() as Record<string, unknown>;
+    const handle = String(created.handle);
+    await until(() => (host.view(handle)?.gates.length ?? 0) > 0, 'the run to reach its gate');
+
+    const [row] = await listRuns(app);
+    expect(row?.pendingGates, 'a run waiting on a human is indistinguishable from one that is not').toBe(1);
+    expect(row?.ticketId, 'the row does not say which ticket the run is against').toBe(TICKET_ID);
+    // ONE projection, asserted as a KEY SET rather than field by field: a second projection for the
+    // listing is exactly how `POST /runs`, `GET /runs` and `GET /runs/:id` come to answer three
+    // shapes for one run, and a field-by-field check over the fields that exist cannot see it.
+    expect(Object.keys(created).sort()).toStrictEqual(Object.keys(row ?? {}).sort());
+    const looked = await (await app.request(`/runs/${handle}`)).json() as Record<string, unknown>;
+    expect(Object.keys(looked).sort()).toStrictEqual(Object.keys(created).sort());
+    expect(Object.keys(created).sort())
+      .toStrictEqual(['flow', 'handle', 'pendingGates', 'runId', 'state', 'ticketId']);
+    // `state` is the host's closed three rather than the string it was declared as until this ticket.
+    expect([...WIRE_RUN_STATES], 'the wire state vocabulary widened').toContain(String(created.state));
+
+    await host.shutdown();
+  });
+});
+
+describe('Q-0121 AC-9 — no ticket record, event or gate question crosses the wire', () => {
+  test('a marker in the ticket body and the gate\'s own reason appear in neither response', async () => {
+    // Asserted over SERIALISED BYTES rather than over the type, because the type is what gets got
+    // right and the bytes are what ships: a field added to the projection later, or a `RunView`
+    // handed to `c.json` by mistake, is caught here and by nothing a compiler does.
+    const marker = `${'MARKER'}-ticket-prose-must-not-cross-the-wire`;
+    const project = fixture({ flow: GATED_FLOW, body: marker });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    await until(() => (host.view(handle)?.gates.length ?? 0) > 0, 'the run to reach its gate');
+
+    // The fixture put the marker where a TicketRecord would carry it, and the gate's reason is what
+    // a GateQuestionEvent carries — so both needles are known to exist on the host's own view.
+    expect(host.view(handle)?.ticket?.body, 'the marker is not in the ticket, so this proves nothing').toContain(marker);
+    expect(host.view(handle)?.gates[0]?.reason, 'the gate carries no reason, so this proves nothing').toContain('approve to advance');
+
+    for (const route of ['/runs', `/runs/${handle}`]) {
+      const body = await (await app.request(route)).text();
+      expect(body, `${route} carried the ticket's prose`).not.toContain(marker);
+      expect(body, `${route} carried the gate's question`).not.toContain('approve to advance');
+      expect(body, `${route} carried the ticket's folder`).not.toContain('the-server-runs-a-flow');
+      expect(body, `${route} said nothing at all`).toContain(handle);
+    }
+    // …and the narrowings are present rather than the fields merely being absent.
+    expect((await listRuns(app))[0]?.pendingGates).toBe(1);
+    expect((await listRuns(app))[0]?.ticketId).toBe(TICKET_ID);
+
+    await host.shutdown();
   });
 });
 

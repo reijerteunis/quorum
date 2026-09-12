@@ -172,6 +172,24 @@ export interface RunHost {
   /** What the host knows about one run, or `null` under a handle it never minted. */
   view(handle: string): RunView | null;
   /**
+   * Every run this host has minted, in mint order, whatever state each is in.
+   *
+   * **The set of runs has one authority and it is the host** (Q-0121 AC-1/AC-2). A transport that
+   * kept an index of its own would record what it *saw* — the runs that came through its own start
+   * route — where this reports what *exists*, which is the difference a run started by calling this
+   * object directly makes visible.
+   *
+   * It adds no state, no lifecycle and no failure mode: it projects the same records through the
+   * same `viewOf` that {@link RunHost.view} uses, so an entry here and that handle's view cannot
+   * disagree. A refused start is included, because it is a run this host minted and the caller
+   * asking *what do you know about this handle?* is owed an answer; deciding which of them a
+   * **listing** may carry is the transport's, and is a narrower question.
+   *
+   * **Nothing is pruned, and a reader should know it**: `records` grows for the life of the process,
+   * which this method is the first thing to make visible. Registered rather than fixed — Q-0123.
+   */
+  runs(): readonly RunView[];
+  /**
    * Attach a watcher to one run, or `null` where there is no stream to watch — an unknown handle or
    * a start that was refused.
    */
@@ -385,6 +403,13 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     view(handle) {
       const record = records.get(handle);
       return record ? viewOf(record) : null;
+    },
+
+    // Mint order, because that is `Map` insertion order and `mint` is the only thing that inserts.
+    // A reader wanting recency reverses it; reversing here would make the method's own name a lie
+    // about what it enumerates.
+    runs() {
+      return [...records.values()].map(viewOf);
     },
 
     subscribe(handle) {

@@ -445,6 +445,118 @@ describe('AC-12 and AC-13 — a library, with no socket, no signal handler and n
   });
 });
 
+/**
+ * Every route this package registers, derived from the source rather than written down.
+ *
+ * `METHOD path` pairs rather than paths alone, and the method is what makes the guard able to see
+ * this ticket's own work: `GET /runs` and `POST /runs` are the same path, so a path-only register
+ * would report the listing as documented on the strength of a sentence about the start route
+ * written in August — the guard would pass over the one route it was added for, and GO-5's red
+ * demonstration would be impossible for it.
+ *
+ * It reads the FIRST ARGUMENT of each `app.get(` / `app.post(` call, over the production half of
+ * `src`, so `serve.ts`'s WebSocket upgrade is collected with the rest. No parser: a call whose path
+ * is not a quoted literal is reported rather than skipped, which fails closed the way
+ * `turbo-inputs.test.ts` clause C1 does.
+ */
+const registeredRoutes = (): string[] => {
+  const found: string[] = [];
+  const unquoted: string[] = [];
+  for (const [file, text] of production()) {
+    for (const match of text.matchAll(/\bapp\.(get|post|put|patch|delete)\s*\(\s*([^,)]*)/g)) {
+      const method = (match[1] ?? '').toUpperCase();
+      const argument = (match[2] ?? '').trim();
+      const literal = /^(['"])(\/[^'"]*)\1$/.exec(argument);
+      if (literal) found.push(`${method} ${literal[2] ?? ''}`);
+      else unquoted.push(`${file}: app.${match[1] ?? ''}(${argument})`);
+    }
+  }
+  expect(unquoted, 'a route is registered at a path this guard cannot read, so it cannot be checked')
+    .toStrictEqual([]);
+  return [...new Set(found)].sort();
+};
+
+/**
+ * §`packages/server` of the architecture document, sliced out rather than searched for.
+ *
+ * A sentence elsewhere on the page must not satisfy a claim about what this section says — the
+ * hazard `packages/shared/src/docs.test.ts` names for its own slice of the same section, and it is
+ * live here: the status line at the top of the document names several of these routes.
+ *
+ * **This read needs no declaration in a `packages/server/turbo.json`, and that is measured rather
+ * than assumed** (Q-0072). One was written and then removed: with no package configuration here at
+ * all, appending a line to `docs/04-architecture.md` moves this task's hash from `f03a2d8a7e5b817e`
+ * to `247ae7d079123910`, because `@quorum/shared#test` declares that file for its own assertions
+ * over this same section and the root `test` task's `^test` edge puts that task's hash inside this
+ * one. Declaring it here would over-declare, which is the reasoning `packages/cli`'s own audit
+ * gives for the reads it leaves out.
+ *
+ * The residual is stated rather than left to be found: **the coverage is transitive**, so it lasts
+ * as long as `packages/shared` goes on reading that document. It is not fragile in practice — what
+ * reads it there is `docs.test.ts`'s own block over this very section — but a change removing that
+ * would take this read's hash with it, silently.
+ */
+const architectureSection = (): string => {
+  const text = read(WORKSPACE, 'docs/04-architecture.md');
+  const start = text.indexOf('### `packages/server`');
+  if (start < 0) throw new Error('docs/04-architecture.md has no packages/server section — this check has lost its subject');
+  const end = text.indexOf('\n### ', start + 1);
+  return text.slice(start, end < 0 ? undefined : end);
+};
+
+describe('Q-0121 AC-13 — every route this package registers is named in the architecture document', () => {
+  test('the derived set is the eleven routes, so the register cannot silently shrink', () => {
+    // An identity rather than a count (Q-0073): a count is satisfied by a route swapped for
+    // another. Two of these are this ticket's; the rest are Q-0118's and Q-0119's, and the document
+    // named Q-0119's five as a noun list and never as routes until now — which this guard is what
+    // found, a paragraph behind the code since 2026-09-11.
+    expect(registeredRoutes()).toStrictEqual([
+      'GET /flows', 'GET /history', 'GET /history/:id', 'GET /project', 'GET /runs',
+      'GET /runs/:id', 'GET /runs/:id/events', 'GET /tickets',
+      'POST /runs', 'POST /runs/:id/gate', 'POST /runs/:id/stop',
+    ]);
+  });
+
+  test('and each of them appears in that document\'s own section', () => {
+    // Derived rather than a string check on two sentences, so it keeps working when a later ticket
+    // adds a route: the failure then names the route rather than reporting that a paragraph moved.
+    const section = architectureSection();
+    for (const route of registeredRoutes()) {
+      expect(section, `04-architecture.md's packages/server section does not name ${route}`).toContain(`\`${route}\``);
+    }
+  });
+
+  test('the slice has a subject and stops where the section does', () => {
+    // Anti-vacuity, in the shape `docs.test.ts` uses: a slice running to the end of the document
+    // would carry the status line and `packages/cli`'s prose and satisfy the clause above without
+    // this section saying anything.
+    expect(architectureSection().length, 'the section is implausibly short').toBeGreaterThan(1000);
+    expect(architectureSection(), 'the slice ran past the end of the section').not.toContain('Same commands as the spike');
+    expect(architectureSection(), 'the slice ran back into the status line').not.toContain('*Status:');
+  });
+
+  test('and the clause fires — a route registered without the prose is reported by name (GO-5)', () => {
+    // **Shown red rather than trusted green.** A guard over documentation that has already been
+    // corrected passes vacuously, so the demonstration runs the real derivation and the real
+    // comparison over a hostile source: one extra route, registered and undocumented.
+    const hostile = "app.get('/runs/:id/cost', (c) => c.json({}));\napp.delete('/runs/:id', (c) => c.body(null, 204));";
+    const derived = [...hostile.matchAll(/\bapp\.(get|post|put|patch|delete)\s*\(\s*(['"])(\/[^'"]*)\2/g)]
+      .map((match) => `${(match[1] ?? '').toUpperCase()} ${match[3] ?? ''}`);
+    expect(derived, 'the derivation this demonstration runs is not the one under test')
+      .toStrictEqual(['GET /runs/:id/cost', 'DELETE /runs/:id']);
+    const section = architectureSection();
+    for (const route of derived) {
+      expect(section, `${route} is documented, so this demonstration proves nothing`).not.toContain(`\`${route}\``);
+    }
+    // …and a path the guard cannot read is reported rather than skipped, which is the other
+    // direction: a route reached through a constant would otherwise pass unseen.
+    const computed = "const RUNS = '/runs';\napp.get(RUNS, (c) => c.json({}));";
+    const readable = [...computed.matchAll(/\bapp\.(get|post)\s*\(\s*([^,)]*)/g)]
+      .map((match) => /^(['"])(\/[^'"]*)\1$/.exec((match[2] ?? '').trim()));
+    expect(readable, 'a computed route path was read as a literal').toStrictEqual([null]);
+  });
+});
+
 describe('AC-14 — this package declares no budget of its own', () => {
   test('no file sets a testTimeout, and the configuration is the shared one re-exported', () => {
     // `vitest.shared.js`'s 20 s was CHOSEN against a measured worst case, and its own comment names

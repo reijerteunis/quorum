@@ -35,7 +35,7 @@ const SURFACE: Record<string, string> = {
   ANSWER_REFUSAL_STATUS: 'the status each gate-answer refusal answers with, as a table rather than a scattering',
   badRequest: 'a refusal this transport raised before the host was reached at all',
   BIND_HOSTNAME: 'the only address the server binds, and not configurable — Q-0013 OQ-2',
-  createApp: 'the Hono app over a host: three routes and a WebSocket, owning no run state',
+  createApp: 'the Hono app over a host: five routes and a WebSocket, owning no run state',
   eventMessage: 'one event as one WebSocket message, JSON, with nothing rendered',
   missedMessage: 'what a late subscriber is told it missed, which is a message kind and never an `Event`',
   createDaemon: 'a project in, a listening server out — the one place that chooses a retention capacity',
@@ -49,14 +49,27 @@ const SURFACE: Record<string, string> = {
   startRequestOf: 'the one place a request body becomes a `StartRequest`, or the refusal saying why not',
   STOP_REFUSAL_STATUS: 'the status each stop refusal answers with',
   wireRefusalOf: 'a host refusal carried over the wire under a code a client can switch on',
-  wireRunOf: 'a started run, narrowed to what crosses the wire',
+  wireRunOf: 'one run view, narrowed to what crosses the wire — the ONE projection every route answering with a run goes through (Q-0121)',
 };
 
 describe('the public surface', () => {
-  test('wire.ts imports and re-exports the shared WireMessage type', () => {
+  test('wire.ts imports and re-exports all three shared wire shapes, and declares none of them', () => {
+    // Widened at Q-0121 rather than left naming one: `WireRefusal` and `WireRun` joined
+    // `WireMessage` in `@quorum/shared`, which is what this package's own `wire.ts` header had
+    // named as its obligation — so the clause that checked the first of the three now covers the
+    // set, and the negative half is what makes it more than a spelling check.
     const text = fs.readFileSync(new URL('./wire.ts', import.meta.url), 'utf8');
-    expect(text).toMatch(/import\s+type\s+\{\s*WireMessage\s*\}\s+from\s+'@quorum\/shared'/);
-    expect(text).toMatch(/export\s+type\s+\{\s*WireMessage\s*\}/);
+    const imported = /import\s+type\s+\{([^}]*)\}\s+from\s+'@quorum\/shared'/.exec(text)?.[1] ?? '';
+    const reexported = /export\s+type\s+\{([^}]*)\}\s*;/.exec(text)?.[1] ?? '';
+    const names = (list: string): string[] => list.split(',').map((name) => name.trim()).filter(Boolean).sort();
+    expect(names(imported)).toStrictEqual(['WireMessage', 'WireRefusal', 'WireRun']);
+    expect(names(reexported)).toStrictEqual(['WireMessage', 'WireRefusal', 'WireRun']);
+    // And none is DECLARED here, which is the half a re-export alone does not say: a second
+    // declaration beside the re-export is free to drift, and drift is what Q-0120 had to repair.
+    for (const shape of ['WireMessage', 'WireRefusal', 'WireRun']) {
+      expect(text, `wire.ts declares ${shape} as well as re-exporting it`)
+        .not.toMatch(new RegExp(`export interface ${shape}\\b`));
+    }
   });
   test('is exactly the register, in both directions', () => {
     expect(Object.keys(server).sort()).toStrictEqual(Object.keys(SURFACE).sort());
