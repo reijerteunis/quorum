@@ -57,25 +57,42 @@ const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
 
 const forbiddenPersistence = ['localStorage', 'sessionStorage', 'indexedDB', `document.${'cookie'}`, 'caches'];
 
-function duplicateMissedDeclarations(files: [string, string][]): string[] {
-  const declarationBodies = (text: string): string[] => {
-    const bodies: string[] = [];
-    const heads = /\b(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>{}]*>)?\s*(?:=\s*)?\{/g;
-    for (const head of text.matchAll(heads)) {
-      const start = (head.index ?? 0) + head[0].lastIndexOf('{');
+// Every top-level object body of a declaration, union members INCLUDED.
+  //
+  // The first version of this matched a head ending in `{` and stopped at the first balanced body,
+  // which could not see the one shape AC-12 exists to forbid. A union alias written over several
+  // lines has `|` between `=` and `{`, so the head never matched at all and the scan returned
+  // nothing; written on one line the head matched and the walk stopped after the FIRST member, so a
+  // `missed` member two positions along was never read. A copied `WireMessage` union passed
+  // silently either way — the guard blind to its own subject, inside the guard drafted to close
+  // exactly that class. Q-0120 review round 1, M-4.
+  //
+  // So the unit is the STATEMENT: from the head to the `;` that closes it at depth zero, collecting
+  // each `{ … }` encountered at depth zero along the way. An `interface` has exactly one such body;
+  // a union alias has one per member.
+function declarationBodies(text: string): string[] {
+  const bodies: string[] = [];
+  const heads = /\b(?:interface|type)\s+[A-Za-z_$][\w$]*(?:\s*<[^>{}]*>)?\s*(?:=|\{)/g;
+  for (const head of text.matchAll(heads)) {
+    let at = (head.index ?? 0) + head[0].length - 1;
+    if (text[at] === '{') at -= 1;
+    for (; at < text.length; at += 1) {
+      if (text[at] === ';') break;
+      if (text[at] !== '{') continue;
       let depth = 0;
-      for (let at = start; at < text.length; at += 1) {
+      const open = at;
+      for (; at < text.length; at += 1) {
         if (text[at] === '{') depth += 1;
         if (text[at] === '}') depth -= 1;
-        if (depth === 0) {
-          bodies.push(text.slice(start + 1, at));
-          break;
-        }
+        if (depth === 0) break;
       }
+      bodies.push(text.slice(open + 1, at));
     }
-    return bodies;
-  };
+  }
+return bodies;
+}
 
+function duplicateMissedDeclarations(files: [string, string][]): string[] {
   return files.filter(([, text]) => declarationBodies(text).some((body) =>
     /\btype\s*:\s*['"]missed['"]/.test(body) && /\bcount\s*[?:]/.test(body)
   )).map(([name]) => name);
@@ -88,6 +105,56 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
     expect(duplicateMissedDeclarations([['fixture.ts', "interface Bogus { type: 'missed'; count: number }"]])).toStrictEqual(['fixture.ts']);
     expect(duplicateMissedDeclarations([['fixture.ts', "type Bogus = { type: 'missed'; nested: { value: string }; count?: number }"]])).toStrictEqual(['fixture.ts']);
     expect(duplicateMissedDeclarations([['separate.ts', "type Reference = { value: string };\nconst frame = { type: 'missed', count: 7 };"]])).toStrictEqual([]);
+    // THE fixture the frozen contract names: the complete union, re-declared. Both spellings,
+    // because the walk this replaced failed them for two different reasons — the multi-line form
+    // never matched a head, and the single-line form matched and then stopped at the first member.
+    const unionMultiline = [
+      'type Copied =',
+      "  | { readonly type: 'event'; readonly event: unknown }",
+      "  | { readonly type: 'missed'; readonly count: number };",
+    ].join('\n');
+    expect(duplicateMissedDeclarations([['copied.ts', unionMultiline]])).toStrictEqual(['copied.ts']);
+    expect(duplicateMissedDeclarations([['oneline.ts', "type Copied = { type: 'event'; event: unknown } | { type: 'missed'; count: number };"]])).toStrictEqual(['oneline.ts']);
+    // And the accepting half is not vacuous: the three legitimate unions are unions too, so under
+    // the old walk they were never scanned at all and "accepted" meant "not looked at". Each is
+    // asserted to be SEEN — its own members are collected — and then to be accepted.
+    const parsedFrame = "type ParsedFrame =\n  | { readonly type: 'event'; readonly event: Event }\n  | Extract<WireMessage, { type: 'missed' }>;";
+    expect(declarationBodies(parsedFrame).length, 'the reference union was not scanned at all').toBeGreaterThanOrEqual(2);
+    expect(duplicateMissedDeclarations([['parsed.ts', parsedFrame]])).toStrictEqual([]);
+  });
+
+  test('no test renders a run route without supplying a socket factory', () => {
+    // The one place the un-injected `defaultSocketFactory` could run, and it did: a run route
+    // rendered without a factory constructs a real WebSocket against jsdom's default origin, so the
+    // suite made an outbound connection and its verdict depended on whether anything was listening
+    // on that port. Fixed by passing the fake; pinned here so the next edit cannot undo it quietly.
+    // Q-0120 review round 1, M-5.
+    const renders = (text: string): string[] => {
+      const found: string[] = [];
+      for (const at of [...text.matchAll(/createElement\(App,\s*\{/g)]) {
+        let depth = 0;
+        const open = (at.index ?? 0) + at[0].length - 1;
+        let end = open;
+        for (; end < text.length; end += 1) {
+          if (text[end] === '{') depth += 1;
+          if (text[end] === '}') depth -= 1;
+          if (depth === 0) break;
+        }
+        found.push(text.slice(open, end + 1));
+      }
+      return found;
+    };
+    const offenders = sourceFiles().flatMap(([name, text]) => renders(text)
+      .filter((props) => /initialPath:\s*['"`]\/runs\//.test(props) && !props.includes('socketFactory'))
+      .map((props) => `${name}: ${/initialPath:\s*(['"`][^'"`]*['"`])/.exec(props)?.[1] ?? props}`));
+    expect(offenders, 'a run route is rendered with no socket factory').toStrictEqual([]);
+    // It examined something, and it discriminates: a run route without a factory is reported, a
+    // non-run route without one is not.
+    expect(renders(`createElement(App, { initialPath: '/runs/x' })`).length, 'the scan found no render at all').toBe(1);
+    const fixture: [string, string][] = [['fixture.ts', `createElement(App, { initialPath: '/runs/x' });\ncreateElement(App, { initialPath: '/projects' });`]];
+    expect(fixture.flatMap(([name, text]) => renders(text)
+      .filter((props) => /initialPath:\s*['"`]\/runs\//.test(props) && !props.includes('socketFactory'))
+      .map(() => name))).toStrictEqual(['fixture.ts']);
   });
 
   test('no browser persistence API occurs and the guard detects a fixture', () => {
