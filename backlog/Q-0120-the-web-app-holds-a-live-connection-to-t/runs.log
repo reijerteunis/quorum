@@ -65,3 +65,13 @@
 2026-09-11T23:14:35.336Z run=4 step=dev:frontend-run-connection vendor=claude model=sonnet verdict=- cost=3.2165607999999994 ms=256726
 2026-09-11T23:16:36.451Z run=4 step=dev:frontend-dev-proxy vendor=claude model=sonnet verdict=- cost=3.2896551999999994 ms=377979
 2026-09-11T23:21:28.072Z run=4 step=dev:frontend-react-connection vendor=claude model=sonnet verdict=- cost=5.3354372 ms=669387
+2026-09-11T23:25:32.831Z run=4 step=dev:frontend-frame-parser vendor=claude model=sonnet verdict=- cost=3.3039795999999995 ms=244422
+2026-09-11T23:26:40.767Z run=4 step=integrate merged=9/9 tests=ok
+2026-09-12T05:52:59.500Z run=4 gate=human answer=advance
+2026-09-12T05:53:04.783Z run=4 removed-worktrees=10 kept=0
+2026-09-12T05:53:04.786Z run=4 completed stage=red→green cost=56.17 tokens=112513709
+2026-09-12T05:53:20.438Z run=5 flow=review start stage=green
+2026-09-12T05:54:28.870Z run=5 step=review-codex vendor=codex model=- verdict=- cost=? ms=68357
+2026-09-12T06:09:09.859Z run=5 step=review-claude vendor=claude model=- verdict=- cost=9.57051 ms=949348
+2026-09-12T06:14:57.659Z run=5 step=verdict vendor=claude model=- verdict=changes-requested cost=4.679619999999999 ms=347788
+2026-09-12T06:14:57.678Z run=5 regressed stage=green→red cost=14.25 tokens=11805264
