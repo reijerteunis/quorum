@@ -178,3 +178,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-12
 
 - [A fourth package emits, and what it emits is served rather than shipped](decisions/092-a-fourth-package-emits-and-what-it-emits-is-served.md)
+- [A fifth package emits, and *resolved* is not a synonym for *distributed*](decisions/093-a-fifth-package-emits-and-resolved-is-not-distributed.md)

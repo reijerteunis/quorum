@@ -1,14 +1,31 @@
 ---
 id: Q-0125
 title: "@quorum/server resolves, exports and emits"
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0125/integration
 priority: p1
 created: 2026-09-12
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-12T20:01:01.764Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-12T20:04:12.559Z
+    cost: 19.037
 ---
 packages/server declares no exports, no main, no types and no build script — verbatim the state Q-0096 measured for @quorum/core — so nothing can import it by name and it emits nothing. Every consumer M3 has left needs it: quorum open must construct a daemon from packages/cli, and the built binary runs under plain Node, which does not know the quorum-source condition.
 
