@@ -1,14 +1,31 @@
 ---
 id: Q-0122
 title: The daemon serves the built web app
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0122/integration
 priority: p2
 created: 2026-09-11
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-12T14:10:26.633Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-12T14:49:59.727Z
+    cost: 22.472
 ---
 Successor C of Q-0014, from Appendix C. A build script and task for apps/web, a static route on the daemon, and the glossary ruling Q-0014 deferred: whether a served bundle is an emitted artifact or a third kind beside the artifact and the binary.
 
