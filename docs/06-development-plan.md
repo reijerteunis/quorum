@@ -3475,6 +3475,60 @@ parked at p2 with its three written reopening thresholds.
   **Measure first**: the bundle's size, whether a tarball carrying it lengthens the cold-clone
   install against M6's thirty minutes (Q-0014 measured the cold store doubling to 10.4 s and +50 MB
   for the app's dependencies alone), and whether the census can express a cross-package copy.
+  **(b) was settled the same day and is Q-0126**, on a fact nobody had when the body was written: it
+  acquired a blocker (a) does not share — the CLI may not spawn, so `quorum open` owes a `core`
+  primitive with no bearing on packaging. What the two still share is **this** ticket's question, and
+  after Q-0125 it governs **two** packages rather than one: `@quorum/web` and `@quorum/server` both
+  emit and neither is distributed.
+- Q-0125 `@quorum/server` resolves, exports and emits. *(Opened 2026-09-12 after Q-0122 shipped;
+  `draft`, **p1**.)* **The daemon and the bundle both exist and nothing can start them.**
+  `packages/server` declares **no `exports`, no `main`, no `types`** — verbatim the state Q-0096
+  measured for `@quorum/core` — **and no `build` script**, which is the half Q-0097 then added there.
+  Nothing outside the package imports it: `grep -rn "@quorum/server"` returns seven hits, all inside
+  the package itself. `wire.ts`'s header already records that as the reason `WireMessage` went to
+  `@quorum/shared` at Q-0120 and `WireRefusal` and `WireRun` followed at Q-0121.
+  **The measurement it turns on: an `exports` map alone is not enough, so Q-0096's six-criterion
+  shape does not transfer.** The workspace-local path this repository claims is
+  `pnpm turbo run build` then `pnpm exec quorum`, which runs `packages/cli/dist/quorum.js` under
+  **plain Node** — and plain Node does not know `quorum-source`, which only
+  `tsconfig.base.json`'s `customConditions` and `vitest.shared.js` select. So a CLI module importing
+  `@quorum/server` resolves through **`default`**, which must name a file that exists. The package
+  must **emit**, and the emitting set becomes **five**. A map without an emit would typecheck, pass
+  every suite, and fail the moment the binary ran.
+  **What moves is the register decision 092 moved a day earlier**: `test-discovery.test.ts`'s
+  emitting register and its stub clause, the derived `emitting()` reached at thirteen sites in
+  `build.test.ts`, and `turbo-inputs.test.ts`'s `NOT_READ` rows. A fifth `tsc` emitter should be
+  cheaper than Q-0122's Vite bundle was — **a prediction to measure, not a claim**.
+  **It deliberately does not decide whether `@quorum/server` is distributed.** 092 split the emitting
+  set from the local distribution set on purpose; this makes the first five and leaves the second at
+  three, so the package emits and stays `private: true` exactly as `@quorum/web` does. That is stated
+  out loud rather than deferred quietly: **a packed `@quorum/cli` importing it would be broken**, for
+  the `workspace:*` reason Q-0098's M-8 measured — which is **Q-0124's** question and becomes urgent
+  at **Q-0126**, not here, this ticket adding no consumer at all.
+- Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12; `draft`, **p1**.
+  Depends on Q-0125.)* **It owns a line of this milestone's own done-when that no ticket owned** —
+  *"`quorum open` starts daemon + browser"* — measured at Q-0122's gate and confirmed when it was
+  opened: `packages/cli` declares no dependency on `@quorum/server`, there is no `open` command, and
+  the daemon has only ever run under its own test suite. After Q-0122 that is sharper than a loose
+  end: **the product has a UI nobody can open.**
+  **The constraint that shapes it is not the obvious one.** `frame.source.test.ts:599`'s AC-11
+  forbids **every** production module in `packages/cli` from importing `node:child_process`, because
+  *"every read and every spawn goes through `@quorum/core`"* — and opening a browser is a spawn
+  (`open`, `xdg-open`, `start`). So the browser half cannot live in that package at all, on Q-0093's
+  exact precedent, where `init`'s scaffolding became `core/backlog/scaffold.ts` for this same rule
+  and the command kept one expression. Where a primitive that is neither git, backlog, adapter nor
+  engine belongs is the ticket's real design question, against `04-architecture.md`'s principle 1.
+  **Its blocking question is a regression on a tested path, not a missing feature.** `main.ts`
+  dispatches `HANDLERS[cmd](parsed)` from a **static** table, so an `open` module importing
+  `@quorum/server` loads whatever command was typed — and `@quorum/server` is not in the three
+  tarballs a packed install gets, so **Q-0098's packed fixture may go red on `quorum help`**. Three
+  answers are offered — a fourth tarball (Q-0124's), dynamic import at dispatch, or holding for
+  Q-0124 — and the body says to **measure the fixture first**, because that claim is reasoned from
+  the static dispatch and has not been reproduced.
+  It also owes **the port** — `vite.config.ts` records 7717 as *"a dev-server convention, not a
+  contract"* and says `quorum open` is what will have to agree with it — and **lifecycle**, since a
+  command that starts a daemon owns when `close()` runs, `core` installing no signal handler by
+  *"What a run's event stream carries"* (2026-08-28).
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
 - Q-0017 Backlog board + ticket page (folder rendered as tabs).
