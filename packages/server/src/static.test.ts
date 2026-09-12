@@ -26,9 +26,10 @@ import { isNavigationRequest } from '@quorum/shared';
 
 import { createRunHost } from './host.js';
 import { BIND_HOSTNAME, serve } from './serve.js';
+import type { ConfinedFile } from './static.js';
 import {
   BUNDLE_ENTRY, bundleRefusal, confinedFile, contentTypeOf, looksLikeAFile, mountStatic,
-  NO_BUNDLE_REMEDY,
+  NO_BUNDLE_REMEDY, readConfined,
 } from './static.js';
 import { createApp } from './http.js';
 import { mountRead } from './read.js';
@@ -63,6 +64,18 @@ function bundle(): string {
   write(path.join(root, 'assets', 'index-abc.js'), 'export const app = 1;\n');
   write(path.join(root, 'assets', 'index-abc.css'), ':root { color: red }\n');
   return root;
+}
+
+/**
+ * What `confinedFile` approved, or a failure naming what it was asked.
+ *
+ * The swap tests below are only about anything if the check PASSED first: a `null` travelling into
+ * them would make every refusal they assert a refusal of something that was never admitted.
+ */
+function approved(root: string, urlPath: string): ConfinedFile {
+  const file = confinedFile(root, urlPath);
+  if (file === null) throw new Error(`the check refused ${urlPath} before anything was swapped`);
+  return file;
 }
 
 /** One raw HTTP response: the parts these assertions read. */
@@ -452,8 +465,8 @@ describe('Q-0122 AC-17 — no path outside the bundle root is served', () => {
       .toBeUndefined();
     // …against the file beside them that IS served, so the two nulls are refusals rather than a
     // function that answers null for everything.
-    expect(confinedFile(root, '/assets/index-abc.js')).toContain('index-abc.js');
-    expect(confinedFile(root, `/${BUNDLE_ENTRY}`)).toContain(BUNDLE_ENTRY);
+    expect(confinedFile(root, '/assets/index-abc.js')?.path).toContain('index-abc.js');
+    expect(confinedFile(root, `/${BUNDLE_ENTRY}`)?.path).toContain(BUNDLE_ENTRY);
   });
 
   test('and the entry itself is confined: an index.html linked out of the bundle is refused, never served', async () => {
@@ -518,13 +531,81 @@ describe('Q-0122 AC-17 — no path outside the bundle root is served', () => {
     }
   });
 
+  test('and the check and the read name one file: a leaf swapped between them is refused', () => {
+    // **Review round 2's blocker, as a fixture.** Confinement decides where a path is *at the moment
+    // it is checked* — `docs/GLOSSARY.md` says that in as many words — so a boundary that hands the
+    // read a NAME lets the name be resolved a second time, and the second resolution was never
+    // approved by the first. Deterministic rather than timed: the check and the read are two calls
+    // here and the swap happens between them, on this thread, with nothing racing.
+    //
+    // At unit level for the same reason the symlink clause above is: what is being asked is which
+    // of the module's two steps refuses, and a socket puts one request across both of them.
+    const root = bundle();
+    const outside = path.join(path.dirname(root), 'q0122-swapped-asset.js');
+    fs.writeFileSync(outside, 'q0122-outside-the-bundle');
+    const asset = path.join(root, 'assets', 'index-abc.js');
+
+    const file = approved(root, '/assets/index-abc.js');
+    expect(readConfined(file)?.toString('utf8'), 'the approved asset was not readable before the swap')
+      .toContain('export const app');
+
+    // The swap: the leaf becomes a link out of the bundle, after the check and before the read.
+    fs.unlinkSync(asset);
+    fs.symlinkSync(outside, asset);
+    // The fixture discriminates — the swapped name still stats as a file, so what refuses the read
+    // below is the identity comparison and not a path that stopped resolving.
+    expect(fs.statSync(asset).isFile(), 'the swapped leaf does not stat as a file').toBe(true);
+
+    expect(readConfined(file), 'the read resolved the name a second time and followed the new link')
+      .toBeNull();
+    // …and what the previous shape did, in one line, kept as a demonstration rather than as a
+    // sentence about a commit nobody can run: reading the NAME hands back the outside bytes.
+    expect(fs.readFileSync(file.path, 'utf8'), 'the fixture no longer reproduces the defect')
+      .toContain('q0122-outside-the-bundle');
+  });
+
+  test('and a parent directory swapped between them is refused too, which no open flag covers', () => {
+    // The half an `O_NOFOLLOW` open cannot reach: that flag governs the LAST component, and Node
+    // exposes no `openat` to walk the rest, so a directory replaced after the check is followed by
+    // any open of the name. Holding the descriptor against the identity that was approved is what
+    // answers this one, which is why the boundary is built from a comparison rather than a flag.
+    const root = bundle();
+    const elsewhere = tempDir('outside-assets-');
+    write(path.join(elsewhere, 'index-abc.js'), 'q0122-outside-the-bundle');
+
+    const file = approved(root, '/assets/index-abc.js');
+    const assets = path.join(root, 'assets');
+    fs.renameSync(assets, path.join(root, 'assets-moved'));
+    fs.symlinkSync(elsewhere, assets);
+
+    // The swap took: the same name now reaches a file outside the bundle entirely.
+    expect(fs.readFileSync(file.path, 'utf8'), 'the parent swap did not take')
+      .toContain('q0122-outside-the-bundle');
+    expect(readConfined(file), 'a parent replaced after the check was followed').toBeNull();
+  });
+
+  test('and the module performs exactly one read, on the descriptor it checked', () => {
+    // An identity rather than a count (Q-0073): a second `readFileSync` anywhere in this module is
+    // a second resolution of a name, which is the defect above however carefully it is written. The
+    // argument list is what the clause is about — `readFileSync(handle)` is the approved descriptor
+    // and `readFileSync(file.path)` is the name, and only the first may appear.
+    const code = codeOnly(repoFile('packages/server/src/static.ts'));
+    expect([...code.matchAll(/readFileSync\s*\(([^)]*)\)/g)].map((match) => match[1]?.trim()))
+      .toStrictEqual(['handle']);
+    // …and the scan discriminates rather than merely matching: over the shape it forbids it yields
+    // a different argument, which is what makes the equality above a check and not a spelling.
+    expect([...codeOnly('const b = fs.readFileSync(file.path);').matchAll(/readFileSync\s*\(([^)]*)\)/g)]
+      .map((match) => match[1]?.trim()))
+      .toStrictEqual(['file.path']);
+  });
+
   test('and the shapes below a file are refused too — a directory, an empty path, a NUL', () => {
     const root = bundle();
     expect(confinedFile(root, '/assets'), 'a directory was served').toBeNull();
     expect(confinedFile(root, '/'), 'the root was served as a file').toBeNull();
     expect(confinedFile(root, '/index%00.html'), 'a NUL reached the filesystem').toBeNull();
     expect(confinedFile(root, '/%zz'), 'an undecodable path was passed on as bytes').toBeNull();
-    expect(confinedFile(root, '///assets///index-abc.js'), 'repeated separators are not collapsed')
+    expect(confinedFile(root, '///assets///index-abc.js')?.path, 'repeated separators are not collapsed')
       .toContain('index-abc.js');
   });
 

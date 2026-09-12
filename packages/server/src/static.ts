@@ -39,6 +39,19 @@
  * a bundle is rebuilt while the daemon runs, so an answer computed at startup is an answer that was
  * true earlier.
  *
+ * **The check and the read name one file, and that is review round 2's blocker.** Confinement
+ * decides where a path is *at the moment it is checked* — `docs/GLOSSARY.md` says so in as many
+ * words — so a boundary built from a path alone hands the read a *name*, and a name is resolved
+ * again when it is opened. Between the two, a rebuild or anything else with write access to the
+ * chain can put a link where the file was, or put one where a parent directory was, and the second
+ * resolution lands somewhere the first never approved. So {@link confinedFile} answers with the
+ * **identity** of what it validated and {@link readConfined} refuses unless the descriptor it opened
+ * carries that identity: the bytes this route returns come from the inode confinement approved, or
+ * from nothing. A replaced *parent* is why this is an identity comparison rather than an
+ * `O_NOFOLLOW` open — that flag governs the last component only, and Node exposes no `openat` to
+ * walk the rest — and it is also why the check is not narrowed to refuse a link outright, which
+ * would refuse the alias *inside* the root that `pathInside` deliberately admits.
+ *
  * **Why it is registered ahead of the JSON routes rather than behind them.** Hono matches an exact
  * registered pattern, so prefix-shadowing is the dev proxy's problem and not this one — but four of
  * the shell's twelve paths ARE daemon `GET` routes: `/flows`, `/runs`, `/runs/:handle` against
@@ -116,6 +129,23 @@ export function looksLikeAFile(urlPath: string): boolean {
 }
 
 /**
+ * A file confinement has approved: the path it was asked about, and the identity it approved.
+ *
+ * The identity travels because the check and the read are two syscalls and the name between them is
+ * not stable — see the module docblock's round-2 paragraph. `dev` and `ino` together name one file
+ * on one filesystem, and they are `bigint` because an inode is a 64-bit number that `Number` cannot
+ * hold on every filesystem, which is the whole reason Node offers `{ bigint: true }` at all.
+ */
+export interface ConfinedFile {
+  /** The joined path, as `pathInside` answers with — what the caller named, never the resolved one. */
+  readonly path: string;
+  /** The filesystem the approved file sits on. */
+  readonly dev: bigint;
+  /** The approved file itself, which is what the opened descriptor is held against. */
+  readonly ino: bigint;
+}
+
+/**
  * The file `urlPath` names inside `bundle`, or `null` when it names anything else.
  *
  * **Every refusal in this function is a refusal to read**, and they are separate because they fail
@@ -130,8 +160,11 @@ export function looksLikeAFile(urlPath: string): boolean {
  * create its own target outside the root. Nothing is added to that here.
  *
  * A directory is not a file, so `/assets` answers `null` and there is no listing of any kind.
+ *
+ * **What it answers with is a {@link ConfinedFile} rather than a path**, so that the one read in this
+ * module can prove it opened the file this approved rather than whatever the name means by then.
  */
-export function confinedFile(bundle: string, urlPath: string): string | null {
+export function confinedFile(bundle: string, urlPath: string): ConfinedFile | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(urlPath);
@@ -145,7 +178,50 @@ export function confinedFile(bundle: string, urlPath: string): string | null {
   if (relative === '') return null;
   const full = pathInside(bundle, relative);
   if (full === null) return null;
-  return fs.statSync(full, { throwIfNoEntry: false })?.isFile() === true ? full : null;
+  const approved = fs.statSync(full, { bigint: true, throwIfNoEntry: false });
+  if (approved === undefined || !approved.isFile()) return null;
+  return { path: full, dev: approved.dev, ino: approved.ino };
+}
+
+/**
+ * The bytes of an approved file, or `null` if what opened is not the file that was approved.
+ *
+ * **This is the second half of the boundary and not an optimisation.** `fstat` on the descriptor is
+ * asked of the open handle rather than of the name, so a leaf replaced by a link out of the bundle,
+ * a parent directory replaced by one, and a file moved away and another put in its place are all one
+ * answer: a different `dev`/`ino` from the one {@link confinedFile} approved, and a refusal. The read
+ * is then performed **on that descriptor**, so no third resolution of the name happens between
+ * agreeing and reading.
+ *
+ * What it cannot claim, stated rather than implied: the approved inode may itself have been linked
+ * elsewhere, and bytes appended to it after the check are the bytes returned. Both are the same file
+ * confinement approved, and neither is a path outside the root being served.
+ *
+ * Read whole rather than streamed: this bundle is measured in hundreds of kilobytes, a stream would
+ * need its own error path on a socket that has already been given a status, and a local daemon
+ * serving one browser is not where that complexity earns anything.
+ *
+ * Deliberately not on `index.ts`'s barrel, where {@link confinedFile} is: that one is a predicate a
+ * caller can reason with, and this one opens a file.
+ */
+export function readConfined(file: ConfinedFile): Buffer | null {
+  let handle: number;
+  try {
+    handle = fs.openSync(file.path, 'r');
+  } catch {
+    // Between the check and here the name can stop resolving at all, which is a file that is not
+    // there rather than an error this surface has anything to say about.
+    return null;
+  }
+  try {
+    const opened = fs.fstatSync(handle, { bigint: true });
+    if (!opened.isFile() || opened.dev !== file.dev || opened.ino !== file.ino) return null;
+    return fs.readFileSync(handle);
+  } catch {
+    return null;
+  } finally {
+    fs.closeSync(handle);
+  }
 }
 
 /**
@@ -205,23 +281,18 @@ export function mountStatic(app: Hono, bundle: string | undefined): Hono {
 }
 
 /**
- * Answer with a file's bytes, or with a 404 if it went between the check and the read.
+ * Answer with an approved file's bytes, or with a 404 if {@link readConfined} would not stand behind
+ * them — the file gone between the check and the read, or something else standing where it was.
  *
- * Read whole rather than streamed: this bundle is measured in hundreds of kilobytes, a stream would
- * need its own error path on a socket that has already been given a status, and a local daemon
- * serving one browser is not where that complexity earns anything. `HEAD` is answered by the same
- * handler with the body dropped, so the two cannot report different statuses or content types.
+ * Reported as absent rather than as a 500 or as a refusal naming what it found: what a caller can
+ * act on is that this route has nothing to give it, and a daemon telling a browser which inode it
+ * declined to read is telling it about the disk. `HEAD` is answered by the same handler with the
+ * body dropped, so the two cannot report different statuses or content types.
  */
-function sendFile(c: Context, file: string): Response {
-  let bytes: Buffer;
-  try {
-    bytes = fs.readFileSync(file);
-  } catch {
-    // Between `statSync` and here the file can go. Reported as absent rather than as a 500: what a
-    // caller can act on is that it is not there, and a stack from a daemon is not that.
-    return c.body(null, 404);
-  }
-  const headers = { 'content-type': contentTypeOf(file), 'content-length': String(bytes.byteLength) };
+function sendFile(c: Context, file: ConfinedFile): Response {
+  const bytes = readConfined(file);
+  if (bytes === null) return c.body(null, 404);
+  const headers = { 'content-type': contentTypeOf(file.path), 'content-length': String(bytes.byteLength) };
   if (c.req.method === 'HEAD') return c.body(null, 200, headers);
   return c.body(new Uint8Array(bytes), 200, headers);
 }
