@@ -249,3 +249,45 @@ major defect and the other naming the same line correct by design. The verdict s
 tip rather than either report and adjudicated it as N-2. A judge deduplicating on titles would have
 propagated one without noticing the other existed, which is the argument for the verdict step being a
 step rather than a merge.
+
+---
+
+## E-5 — written at the review backward edge, run 7
+
+Round 2 returned **0 blockers, 5 majors, 9 nits, 1 refused, 2 observations**. B-1 and B-2 are closed
+and the code works; what remained divided almost exactly in half by who may write it, and **all
+fourteen were taken by hand.** The reasons are worth stating rather than assumed.
+
+**Seven named test files**, which `development.yaml` forbids every task to modify and which
+`qa-red`'s `automation-qa` cannot reach from stage `red` — E-4's partition, unchanged.
+
+**And M-1 was not deliverable by the loop at all**, which is the sharper reason and the one the
+verdict step supplied: fixing the render turns `shell.test.ts:282` red, because that assertion reads
+`toContain('live')` and `connectionStateText` never produces the word — it passed **because the
+kebab token was what rendered**. So an implementer could leave the render wrong or break a test it
+may not repair. Handing that to a third traversal unchanged would have been the seventeenth instance
+of a loop given work no agent in it can perform, and the first where a *review verdict* rather than
+a requirement created it.
+
+**Recorded as deliberate rather than fixed**, both being the branch round 1 explicitly offered:
+
+- **N-2** — the accepted-event list is copied per event, which is O(n) each and quadratic over a long
+  stream. Kept, with the note in place: `snapshotOf` returns the array by reference, so pushing would
+  make every snapshot a live view that grows under its holder, and Q-0015 renders from this snapshot
+  while Q-0121 will hold several controllers. Trading an immutability every consumer can rely on for
+  a constant factor is not a nit's worth of risk, and the cap AC-19 leaves open is where it belongs.
+- **N-6** — an unknown key on a `missed` frame lands on `invalid-count`, because the branch is
+  `.strict()` and AC-14's closed set has no member for it. Dropping the payload means making `count`
+  optional on `FrameRefusal`, which is a frozen contract and not a nit's to move. The count is not
+  rendered, so what was wrong is the name a developer reads, and that is now said in place.
+
+**Three of the findings are defects in the work E-4 did by hand**, which is recorded rather than
+smoothed over: **N-4** (the statement walk broke only at a `;`, so an `interface` swallowed the value
+literal after it — over-reporting only, but it made the acceptance fixture narrower than it reads),
+**M-3** and **M-4**. Each is now demonstrated in both directions.
+
+**The panel contradicted itself on the same line for the second round running** —
+`connection-state.ts:76`, codex calling it a defect and claude naming it correct by design, round 1
+having already adjudicated it. The verdict step caught it both times by reading the branch tip rather
+than either report. **That is the argument for the verdict step being a step rather than a merge,
+made twice by one line of code**, and it belongs in this ticket's closing entry.
