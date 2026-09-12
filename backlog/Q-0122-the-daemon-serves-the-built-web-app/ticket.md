@@ -51,3 +51,67 @@ checked rather than assumed.
 **Read first.** *"The emit serves the binary, and no test verdict moves behind it"* (2026-09-02): its
 argument is that a non-empty `outputs` replays an **artifact** where the other three tasks replay a
 verdict, and a bundle inherits that hazard the moment something executes it.
+
+## Re-measured against the tree, 2026-09-12, before the run
+
+The body above was transcribed at **Q-0014's** requirements gate on 2026-09-11. **Q-0120 and Q-0121
+both shipped on 2026-09-12**, between that gate and this run. Every claim was re-run rather than
+relayed; seven hold, one line reference drifted, and **two findings change the shape of the work**.
+
+**(a) The "Nothing else moves" list is incomplete, and the missing half is the larger one.**
+`build.test.ts`'s `DISTRIBUTION` register *is* a hand-written `['cli', 'core', 'shared']`
+(`build.test.ts:1604`) over the three **packed** packages, and it does not move — the body is right
+about that. But **`emitting()` is derived, not hand-written**: `packages/cli/test/workspace.ts:107`
+is `dry('build').tasks.filter((task) => task.command !== NO_SCRIPT)`, so the moment `apps/web`
+declares a `build` script it returns **four** tasks, and at least four sites in `build.test.ts` loop
+over it —
+`:144` (clears every emitting package's `dist/` before a build), `:357` (*"turbo resolves the same
+definition for every emitting package"*, asserting each task's resolved `outputs` equals the root's
+declared `["dist/**"]` and its `dependsOn` equals `["^build"]`), `:558` (a whole-copy census
+asserting **the build wrote nothing outside every emitting package's `dist/`**) and `:568`
+(`agreesWithTheDeclaration` per task). A Vite bundle is not `tsc` output, so this is where the
+ticket meets the build test rather than only the discovery test, and **`:558` is the one to measure
+first**: it is a census over every git-visible path the build touched.
+
+**(b) The static route inherits Q-0120's B-1 as a production hazard, and the body names neither
+half.** Q-0120 review round 1's blocker was that the dev proxy matched by prefix, so **seven of
+twelve routes 404'd on a reload** while in-app navigation kept working and hid it. That was fixed
+for the **dev server** by `vite.config.ts`'s `bypassNavigation`, which steps aside for a top-level
+navigation — `req.headers.accept?.includes('text/html')` → `/index.html`. A static route on the
+daemon has the same two problems in the **shipped** product and none of that fix: a deep link such
+as `/runs/run-3` must be answered with `index.html` rather than 404, or the built app reproduces
+B-1 exactly; and a mount that matches too broadly **shadows the daemon's own JSON routes**, which
+**Q-0121 has just taken from three to five** — `GET /runs` and `GET /runs/:id` now sit precisely
+where an SPA fallback would want to answer `index.html`. So the route's matching rule is the
+ticket's central design question, and it is one the body does not ask.
+
+**(c) No new dependency is needed, measured rather than assumed.**
+`@hono/node-server` already declares `./serve-static` in its `exports` map and is already a
+dependency of `packages/server` (`^1.19.11`, installed 1.19.17). So *"a new dependency needs a
+one-line justification and, if it changes architecture, a DECISIONS entry"* does not fire, and the
+question does not need a gate. Whether to use it or to read the file directly stays solutioning's.
+
+**(d) One line reference drifted; the sentence is unchanged and there is now a second, better one.**
+The *"will serve `apps/web`'s build output … that app has no build task and emits nothing today"*
+sentence is at **`04-architecture.md:190–191`**, not `:149–151`. Q-0120 added a richer statement at
+**`:233`** which already routes all three halves here by name: *"the build task, the static route
+that serves its output, and the ruling on whether a served bundle is an **emitted artifact** at all
+are **Q-0122's**"*. `apps/web/vite.config.ts`'s own header says the same in its first paragraph. So
+three live sites point at this ticket and all three move with it.
+
+**(e) Seven claims verified unchanged.** `apps/web` declares `lint`, `typecheck` and `test` and **no
+`build`**; `packages/server` serves no file (no `serveStatic`, `sendFile` or `createReadStream` in
+its production source); `.gitignore:4` is `dist/`; `packages/core/turbo.json:72–74` declares
+`../../apps/*/package.json` and two siblings; `vitest.shared.js:61` is
+`exclude: [...configDefaults.exclude, '**/dist/**']`; `docs/GLOSSARY.md:202` says *"The JavaScript
+and declaration files"* and `:204` *"which is also the **local distribution set**"*, the two clauses
+one of which must move; and `harness/roles/developer-generalist.md:3`'s `paths:` carries `docs` and
+**not** `CLAUDE.md`, so §1.6's split — amending the glossary may be a criterion, coining a term and
+writing the entry may not — holds as written.
+
+**(f) Both `test-discovery.test.ts` clauses do go red, and the mechanism is confirmed.**
+`PACKAGES` is `workspacePackages()`, derived from `pnpm-workspace.yaml`'s `packages/*` **and
+`apps/*`**, so `apps/web` is already a member: `:271`'s
+`toStrictEqual(['packages/cli', 'packages/core', 'packages/shared'])` and `:289`'s stub clause —
+*"`${pkg}` declares a build script and emits nothing"* over every non-emitting package — both fail
+on a fourth emitter, as the body says.
