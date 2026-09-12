@@ -61,8 +61,14 @@ than exploratory:
   Both go red. `PACKAGES` derives from `pnpm-workspace.yaml`'s `packages/*` and `apps/*`, so
   `packages/server` is already a member.
 - `emitting()` in `packages/cli/test/workspace.ts` is **derived** from `turbo run build --dry`, not
-  hand-written, and is reached at **thirteen** sites in `build.test.ts` — `:144`, `:360`, `:558`,
-  `:584`, `:603`, `:624`, `:635`, `:666`, `:838`, `:858`, `:905`, `:910`, `:1094`. Q-0122 measured
+  hand-written, and is reached at **fourteen** call sites in `build.test.ts` — `:144`, `:360`,
+  `:558`, `:584`, `:603`, `:624`, `:635`, `:667`, `:712`, `:884`, `:904`, `:951`, `:956`, `:1140`,
+  with a fifteenth occurrence at `:654` inside a comment. **This figure was thirteen in this body
+  until it was re-measured on 2026-09-12 against the merged tree**: the thirteen sites and their
+  line numbers were Q-0122's iteration-2 measurement, taken at that ticket's requirements gate
+  against the tree *before* its own merge, and its static-serve criteria added a call site and moved
+  every line below `:635`. The count is therefore an inherited measurement that rotted inside a day,
+  which is the reason this body says to re-derive it rather than transcribe it. Q-0122 measured
   its whole-copy census passing 65/65 unedited with four emitters; a fifth is a `tsc` emitter like
   the original three, so this is expected to be cheaper than Q-0122's Vite bundle was, **which is a
   prediction to measure and not a claim**.
