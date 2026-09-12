@@ -29,11 +29,15 @@ export type { Refusal } from './refusal.js';
  *
  * Exported beside the host rather than instead of it — `createApp` is what a test drives without a
  * socket, and `serve` is what opens one. The wire shapes are on this surface so a caller can name
- * what crosses it without importing the routing; {@link WireRefusal} and {@link WireRun} are
- * declared in `wire.ts`, while {@link WireMessage} is `@quorum/shared`'s and is re-exported here.
- * **A browser consumes the last of those from `@quorum/shared` directly**, this package having no
- * export surface — which is the whole of Q-0120's seam, and the reason this sentence no longer
+ * what crosses it without importing the routing, and **all three are now `@quorum/shared`'s and
+ * re-exported here**: {@link WireMessage} moved at Q-0120 and {@link WireRefusal} and
+ * {@link WireRun} at Q-0121, each with a schema, because a browser consumes them from
+ * `@quorum/shared` directly — this package having no export surface — and needs a runtime parser
+ * rather than a type. That is the whole of Q-0120's seam, and the reason this sentence no longer
  * claims Q-0014 codes against any of them. Q-0120 review round 2, N-3.
+ *
+ * Re-exported as **types only**, so this barrel's runtime register is unchanged and no existing
+ * import breaks. A consumer wanting the schemas asks the package that owns them.
  */
 export { createApp, startRequestOf, startRefusalCode, eventMessage, missedMessage } from './http.js';
 export type { AppOptions } from './http.js';

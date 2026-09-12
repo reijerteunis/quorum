@@ -125,6 +125,42 @@ describe('AC-6 — the route table holds the twelve paths, each exactly once', (
   });
 });
 
+describe('Q-0121 AC-12 — the Runs landing route no longer says the daemon reports no listing', () => {
+  /** The row the placeholder shows verbatim, which is the one place this sentence exists. */
+  const runsRoute = (): ScreenRoute => {
+    const route = SCREEN_ROUTES.find((entry) => entry.path === '/runs');
+    if (!route) throw new Error('no /runs screen route — this check has lost its subject');
+    return route;
+  };
+
+  test('the claim that became false is gone, and the one that is still true stays', () => {
+    // Two clauses stood here and this ticket makes exactly one of them false. The daemon lists its
+    // live runs now, so the sentence is corrected to what remains true — and it may NOT be replaced
+    // by one promising a screen that does not exist, which is the rule the register is under:
+    // no placeholder shows a fabricated run, and none says a screen is on its way when it is not.
+    const { waitingFor, ticket } = runsRoute();
+    expect(waitingFor, 'the route still tells a user the daemon reports no listing')
+      .not.toMatch(/reports no listing/);
+    expect(waitingFor, 'the route still tells a user there is nothing to list')
+      .not.toMatch(/nothing here to list/);
+    expect(waitingFor, 'the half that is still true was dropped with the half that is not')
+      .toMatch(/No ticket builds this screen yet/);
+    expect(ticket, 'a ticket was claimed for a screen no ticket builds').toBeNull();
+  });
+
+  test('and it says what it is now waiting for, which is a screen rather than a daemon', () => {
+    // The register carries the sentence so that what a user reads and what the register claims
+    // cannot come apart; this is the half that says the replacement is an ANSWER rather than the
+    // absence of the old claim.
+    const { waitingFor } = runsRoute();
+    expect(waitingFor).toMatch(/listing/);
+    expect(waitingFor.trim().endsWith('.'), 'the sentence a user reads is not a sentence').toBe(true);
+    // And the shipped text is what this clause was written against, so an edit that emptied the
+    // field would fail rather than satisfy every negative above.
+    expect(waitingFor.length, 'the sentence is implausibly short').toBeGreaterThan(60);
+  });
+});
+
 describe('AC-6 — the router is built from the tables rather than beside them', () => {
   test.each(SCREEN_ROUTES.map((route) => route.path))('%s resolves to its own row', (declared) => {
     // Driven through the register's own pattern with each dynamic segment filled, so the router is

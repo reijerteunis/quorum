@@ -7,6 +7,8 @@
  */
 import { afterAll, describe, expect, test } from 'vitest';
 
+import { wireRunListSchema } from '@quorum/shared';
+
 import { createRunHost } from './host.js';
 import { BIND_HOSTNAME, createDaemon, DEFAULT_RETENTION, MAX_BUFFERED_BYTES, overBuffered, serve } from './serve.js';
 import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
@@ -198,6 +200,76 @@ describe('Q-0118 — the WebSocket route carries a real run to a real client', (
     } finally {
       await host.shutdown();
       await server.close();
+    }
+  });
+});
+
+describe('Q-0121 AC-7 and AC-11 — a client with no handle finds a run and joins it', () => {
+  test('the two reads answer over a real port, on the same host as POST /runs', async () => {
+    const { project, server, url, host } = await listening();
+    try {
+      const started = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID, dry: true }),
+      });
+      const run = await started.json() as { handle: string };
+
+      // The SAME host, which is the half a second registry would break: the run this listing
+      // answers with is the run that start produced, over a socket rather than in process.
+      const listed = wireRunListSchema.parse(await (await fetch(`${url}/runs`)).json());
+      expect(listed.runs.map((row) => row.handle), 'the listing does not know the daemon\'s own run')
+        .toStrictEqual([run.handle]);
+      const looked = await fetch(`${url}/runs/${run.handle}`);
+      expect(looked.status).toBe(200);
+      expect((await looked.json() as { handle: string }).handle).toBe(run.handle);
+      expect((await fetch(`${url}/runs/run-nobody-minted`)).status).toBe(404);
+    } finally {
+      await host.shutdown();
+      await server.close();
+    }
+  });
+
+  test('the acceptance path: discard the handle, list, take one, and receive the retained replay', async () => {
+    // **The criterion that proves the ticket did its job.** `DEFAULT_RETENTION` exists for *a
+    // browser opened after a run began, or reopened after a refresh*, and until this ticket a
+    // client that never held the handle had no way to name what to join — so the buffer was
+    // unreachable by exactly the reader it was built for.
+    //
+    // Discarding the start's handle is LOAD-BEARING: a test that reused it would exercise Q-0118's
+    // socket route and prove nothing this ticket adds. Everything below the discard is what a
+    // freshly opened tab can do.
+    const project = fixture();
+    const daemon = await createDaemon({ project: project.project });
+    try {
+      const url = `http://${BIND_HOSTNAME}:${String(daemon.port)}`;
+      const started = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID, dry: true }),
+      });
+      expect(started.status).toBe(201);
+      await started.json();
+      // …and from here nothing knows a handle.
+
+      const listing = wireRunListSchema.parse(await (await fetch(`${url}/runs`)).json());
+      expect(listing.runs.length, 'the daemon listed no run, so there is nothing to join').toBe(1);
+      const handle = listing.runs[0]?.handle ?? '';
+      expect(handle, 'the listed row carries no handle to open a socket on').not.toBe('');
+
+      const { messages, code } = await collect(url, handle);
+      expect(messages.length, 'the handle taken from the listing reached no retained events').toBeGreaterThan(0);
+      const kinds = messages.map((message) => (message as { type: string }).type);
+      // The replay is COMPLETE, so no `missed` message is due — which is the honest form of "with
+      // its `missed` message where one is due" at this retention. The nonzero case has its own
+      // coverage: `host.test.ts` drives it at capacity zero, and `missedMessage` is pinned in
+      // `http.test.ts`.
+      expect(kinds, 'a replay within the retention bound reported a truncation').not.toContain('missed');
+      const events = messages.map((message) => (message as { event?: { type?: string } }).event);
+      expect(events.map((event) => event?.type), 'the terminal event was not replayed').toContain('terminal');
+      expect(code, 'the socket did not close normally over a run that had ended').toBe(1000);
+    } finally {
+      await daemon.close();
     }
   });
 });
