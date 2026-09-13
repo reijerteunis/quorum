@@ -325,6 +325,23 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     }
   });
 
+  /**
+   * Q-0125 AC-13's rule — *no manifest names the daemon, except the daemon's own, once* — as one
+   * predicate, applied to every real manifest and to the hostile fixture below.
+   *
+   * Returns the problem, or `null` where the rule holds, so the demonstration asserts the exact
+   * sentence rather than merely that something failed. A function rather than an inline loop for the
+   * reason Q-0125's own AC-3 needed one: a fixture checked by a matcher written beside it proves the
+   * fixture was written as intended and nothing about the rule.
+   */
+  const namesTheDaemon = (name: string, text: string): string | null => {
+    const allowed = name === 'packages/server/package.json' ? 1 : 0;
+    const occurrences = [...text.matchAll(/@quorum\/server/g)].length;
+    if (occurrences === allowed) return null;
+    const plural = occurrences === 1 ? 'time' : 'times';
+    return `${name} names @quorum/server ${occurrences} ${plural}, and may name it ${allowed === 0 ? 'none' : allowed}`;
+  };
+
   test('Q-0125 AC-13 — nothing depends on @quorum/server, which is what holds this ticket inside its own boundary', () => {
     // **The criterion that makes a non-goal checkable rather than a promise.** Q-0125 gives this
     // package an export surface and an emit and adds NO consumer: `quorum open` is Q-0126's, and
@@ -342,9 +359,7 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     expect(manifests.length, 'the manifest scan found nothing').toBeGreaterThan(5);
 
     for (const [name, text] of manifests) {
-      const permitted = name === 'packages/server/package.json';
-      const occurrences = [...text.matchAll(/@quorum\/server/g)].length;
-      expect(occurrences, `${name} names @quorum/server ${occurrences} times`).toBe(permitted ? 1 : 0);
+      expect(namesTheDaemon(name, text), `${name} names @quorum/server where it may not`).toBe(null);
     }
     // …and the one that is permitted is the `name` field rather than a self-dependency, which the
     // count alone cannot say.
@@ -357,9 +372,26 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     // Shown red over a fixture rather than by editing a manifest, because the clause above passes
     // today by the edge not existing and would look identical if the scan matched nothing at all.
     // This is Q-0126's first line, and it must fail here.
+    //
+    // **The fixture is run through {@link namesTheDaemon}, the same predicate the clause above
+    // applies to every real manifest**, rather than re-described with a matcher written here. Q-0125
+    // run 2 iteration 2's nit: the demonstration asserted that a string it had just built containing
+    // `@quorum/server` contained `@quorum/server`, which is true of any such string and says nothing
+    // about the rule — so deleting or inverting the rule left this green. One predicate, three
+    // subjects, is the shape iteration 2 had already adopted for AC-3 twelve files away, applied
+    // here to the clause that reported it.
     const hostile = JSON.stringify({ name: '@quorum/cli', dependencies: { '@quorum/server': 'workspace:*' } });
-    expect([...hostile.matchAll(/@quorum\/server/g)].length, 'the fixture does not name the daemon, so it proves nothing').toBe(1);
-    expect(hostile, 'the needle this demonstration runs is not the one under test').toMatch(/@quorum\/server/);
+    expect(namesTheDaemon('packages/cli/package.json', hostile), 'a declared dependency on the daemon is not reported')
+      .toBe('packages/cli/package.json names @quorum/server 1 time, and may name it none');
+
+    // And the permission is a property of the path rather than of the text: the identical body under
+    // `packages/server`'s own name is the one occurrence that is allowed, so the predicate
+    // discriminates rather than matching everything it is shown.
+    const own = JSON.stringify({ name: '@quorum/server' });
+    expect(namesTheDaemon('packages/server/package.json', own), 'the package may name itself once').toBe(null);
+    const selfDependent = JSON.stringify({ name: '@quorum/server', dependencies: { '@quorum/server': 'workspace:*' } });
+    expect(namesTheDaemon('packages/server/package.json', selfDependent), 'a self-dependency is one occurrence too many')
+      .toBe('packages/server/package.json names @quorum/server 2 times, and may name it 1');
   });
 
   test('the register has a subject — the array it replaced cannot see a package that owes a build', () => {

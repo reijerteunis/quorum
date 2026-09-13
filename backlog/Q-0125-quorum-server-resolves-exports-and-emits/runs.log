@@ -7,3 +7,13 @@
 2026-09-12T20:03:45.418Z run=1 gate=human-locked answer=advance
 2026-09-12T20:04:12.553Z run=1 gate=human answer=advance
 2026-09-12T20:04:12.561Z run=1 completed stage=draft→requirements cost=19.037 tokens=14486787
+2026-09-12T20:06:46.943Z run=2 flow=chore start stage=requirements
+2026-09-12T20:12:00.000Z run=2 note=GO-1 discharged by measurement: decision entry "A fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12) appears in .quorum/runs/Q-0125-2/steps/001-implement/prompt.txt — 1 occurrence by title with the date adjacent, 1 by file path, via requirements/errata.md E-1, which also carries the explicit "NOT blocked on OQ-1" instruction. merged.md's superseded "OQ-1 (BLOCKING" text is present once and is overridden by E-1 in the same prompt. Measured rather than assumed, per Q-0097's lost errata and Q-0062's three rounds.
+2026-09-12T20:44:15.933Z run=2 step=implement vendor=claude model=- verdict=proceed cost=49.902752 ms=2248557
+2026-09-12T20:45:23.049Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=67068
+2026-09-12T20:57:57.700Z run=2 step=implement vendor=claude model=- verdict=proceed cost=12.1642955 ms=754525
+2026-09-12T20:58:35.690Z run=2 step=review vendor=codex model=- verdict=approve cost=? ms=37937
+2026-09-12T21:00:00.563Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-13T05:35:06.199Z run=2 gate=human answer=advance
+2026-09-13T05:35:07.853Z run=2 removed-worktrees=2 kept=0
+2026-09-13T05:35:07.856Z run=2 completed stage=requirements→reviewed cost=62.067 tokens=101422335
