@@ -161,6 +161,11 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'harness/roles/code-reviewer.md': 'templates.test.ts — Q-0093 AC-4 as Q-0107 AC-14 re-aims it: the byte-shared set is the flow directory above and this one role, so the shipped template tree is compared against what this repository runs rather than against the spike\'s copy of it, which Q-0103 deleted',
     'packages/core/turbo.json': 'build.test.ts — Q-0097 AC-13, every package that declares a turbo.json is read to prove it declares `inputs` and nothing else. Q-0107 named spike-dependencies.test.ts here; Q-0103 deleted that register with its subject, and this reader is the one that remains',
     'packages/shared/turbo.json': 'build.test.ts — the same scan, over the second package that declares one',
+    'packages/core/tsconfig.build.json': 'build.test.ts — Q-0125 AC-2(b), every tsconfig.build.json under both workspace roots is globbed and compared, because what the single root `outputs: ["dist/**"]` covers for all of them at once is emitted layout',
+    'packages/shared/tsconfig.build.json': 'build.test.ts — the same comparison, over the second of the four',
+    'packages/server/tsconfig.build.json': 'build.test.ts — the same comparison, over the file Q-0125 added; this is the one of the four whose edit moved no hash here until it was declared, measured at `7de4164544dc0218` unchanged',
+    'apps/web': 'build.test.ts — Q-0125 AC-2(b) globs `apps/*/tsconfig.build.json` too and this package has none, which is correct rather than a gap: a Vite bundle is not `tsc` output. The directory is the subject the glob is asked about; AC-8\'s script scan reads its manifest, which arrives through @quorum/core#test\'s own `../../apps/*/package.json` and the root `^test` edge',
+    'packages/server/src/index.test.ts': 'build.test.ts — Q-0125 AC-7(c), the emitted barrel\'s runtime names are compared against that package\'s own SURFACE register rather than a second copy of the list; covered by the per-package source glob already declared',
   };
 
   /**
@@ -201,6 +206,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     '../../.github/workflows/ci.yml', '../../.github/scripts/git-identity-sweep.sh', '../../harness/harness.yaml',
     '../../harness/flows/*.yaml', '../../harness/roles/code-reviewer.md',
     '../../packages/*/src/**', '../../packages/*/turbo.json',
+    '../../packages/*/tsconfig.build.json', '../../apps/*/tsconfig.build.json',
   ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {

@@ -78,10 +78,16 @@ const SPAWN_TIMEOUT_MS = 60_000;
  *
  * Re-derived at Q-0122, when the emitting set became four: the copy and the forced build now cover
  * `apps/web` as well, whose `vite build` is 0.3 s against the three `tsc` emitters' 2.1 s. Vitest
- * measures the whole file at 5.6 s to 5.7 s over two runs, against the 4.8 s to 5.9 s recorded for
- * three. Ninety seconds is sixteen times the upper figure, and what it has to absorb is a cold
- * `tsc` on a loaded runner, which is still the only part of this that is not milliseconds — so the
- * budget does not move, and the reason it does not is a measurement rather than an inference.
+ * measured the whole file at 5.6 s to 5.7 s over two runs, against the 4.8 s to 5.9 s recorded for
+ * three.
+ *
+ * **Re-measured again at Q-0125**, which made the emitting set five and so gave this fixture a
+ * fourth `tsc` emitter to copy and build: **5.83 s and 6.00 s over two runs**, against 5.6 s to
+ * 5.7 s for four. Ninety seconds is fifteen times the upper figure, and what it has to absorb is a
+ * cold `tsc` on a loaded runner, which is still the only part of this that is not milliseconds — so
+ * the budget does not move, and the reason it does not is a measurement rather than an inference.
+ * That sentence is why this is re-run rather than re-worded on every change to {@link isolate}'s
+ * subject: a margin assumed to absorb a cost is not a measurement of one.
  */
 const FIXTURE_TIMEOUT_MS = 90_000;
 

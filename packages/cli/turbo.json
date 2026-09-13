@@ -68,8 +68,26 @@
         // The fifth stays with a different reader: `src/build.test.ts` reads every package that
         // declares a `turbo.json` to prove none of them declares more than `inputs` (Q-0097 AC-13),
         // and the four scaffold packages it also reaches are covered by no edge.
+        //
+        // Q-0125 adds two, and they are the only reads that ticket earned — measured rather than
+        // declared by reflex. `src/build.test.ts` globs every `tsconfig.build.json` under both
+        // workspace roots to prove the four `tsc` emitters agree on emitted layout (AC-2b), and an
+        // appended line in `packages/server/tsconfig.build.json` left this task's hash at
+        // `7de4164544dc0218` with nothing declared — so a cached pass would have stood over a
+        // divergence the comparison exists to catch. The same measurement is why the manifests that
+        // guard ALSO reads are NOT declared: appending to `packages/server/package.json` moved
+        // `@quorum/core#test` from `61a91e5467c83455` to `073c0b8600adeb30` and this task with it,
+        // through that task's own `../../packages/*/package.json` and the root `^test` edge, so
+        // declaring them here would be the same claim twice, free to drift (Q-0121's measurement).
+        // That coverage is transitive and the residual is R-6's rather than this ticket's.
+        //
+        // The `apps/*` half matches nothing today — `@quorum/web` emits through Vite and has no
+        // such file — and is declared anyway, because the comparison globs both roots and a first
+        // one appearing there must move this hash rather than arriving behind a cache hit.
         "../../packages/*/src/**",
-        "../../packages/*/turbo.json"
+        "../../packages/*/turbo.json",
+        "../../packages/*/tsconfig.build.json",
+        "../../apps/*/tsconfig.build.json"
       ]
     }
   }

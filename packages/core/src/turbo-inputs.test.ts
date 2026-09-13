@@ -319,7 +319,8 @@ const NOT_READ: Record<string, string> = {
   'packages/core': 'role.test.ts uses it as a value in a role\'s `paths` list, and test-discovery.test.ts as a member of the emitting-set register — both data, neither a read',
   'packages/cli': 'test-discovery.test.ts names it in the emitting-set register Q-0097 AC-13 asks for, which is an identity assertion over values derived from the manifests (Q-0073, "a count is not an identity"). Nothing opens the directory: the manifests behind that derivation are read through the `packages` walk WALKS already declares',
   'packages/shared': 'the same register, same reasoning — and the package\'s own files reach this task through the workspace dependency edge rather than through any literal',
-  'apps/web': 'the same register again, gained when Q-0122 made the emitting set four; the manifest behind that derivation is read through the `apps` walk WALKS already declares, and nothing opens the directory. It is the one member of the register that is NOT distributed — see "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12) — which changes nothing about why this is data rather than a read',
+  'apps/web': 'the same register again, gained when Q-0122 made the emitting set four; the manifest behind that derivation is read through the `apps` walk WALKS already declares, and nothing opens the directory. It is one of the TWO members of the register that are NOT distributed — this row said "the one" until Q-0125 made `packages/server` the other, and the two are not the same kind: this one is *served* and that one is *resolved*. See "A fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), which extends "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12). Neither changes why this is data rather than a read',
+  'packages/server': 'the same register again, gained when Q-0125 made the emitting set five; the manifest behind that derivation is read through the `packages` walk WALKS already declares, and nothing opens the directory. It is the second member that is NOT distributed, and the first artifact that is *resolved* and not distributed — a plain `node` process is sent to its emit through the `default` condition and no tarball carries it, which is why the two axes are independent. See "A fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12)',
   // The two below became visible when Q-0108 widened the classifier to root-level files. Both are
   // basenames joined onto a TEMP directory and written, never the repository's own copy — and both
   // are named here rather than pattern-excused, so a suite that one day opens the real file is
@@ -327,6 +328,13 @@ const NOT_READ: Record<string, string> = {
   'README.md': 'backlog.test.ts writes one into a temp backlog root to prove `list` ignores a non-ticket file; the repository\'s own README is opened by nothing in either suite',
   '.gitignore': 'turbo-inputs.test.ts writes one into a temp repository so the inventory fixture has ignored roots to exclude; this file names it as data and opens nothing',
   'docs/05-design-prompt.md': 'named nowhere but this file, as clause A\'s and clause B\'s own fixture below',
+  // Q-0125. The architecture document's `packages/server` section names this file as the register
+  // that refuses a browser dependency on the daemon, because that register is what the protection
+  // rests on now that the package has an export surface — see "A fifth package emits, and
+  // `resolved` is not a synonym for `distributed`" (2026-09-12), clause 5. `docs.test.ts` asserts
+  // the SENTENCE names it; nothing opens the file, and nothing should: a second enforcer of one
+  // rule is the drift this register exists to make visible rather than to hide.
+  'apps/web/test/package.test.ts': 'docs.test.ts asserts that 04-architecture.md\'s packages/server section names this register as what refuses a browser dependency on the daemon; the claim is about the document\'s wording and no suite opens the file',
 };
 
 /**

@@ -54,6 +54,30 @@ interface Manifest {
 const read = (...parts: string[]): string => fs.readFileSync(path.join(...parts), 'utf8');
 const manifest = (dir: string): Manifest => JSON.parse(read(dir, 'package.json')) as Manifest;
 
+/**
+ * Q-0125 AC-3's invariant — *it emits and it is not distributed* — as one predicate, applied to the
+ * real manifest and to both hostile fixtures.
+ *
+ * **Why a function rather than two lists of assertions.** The criterion asks for the block to be
+ * shown red in both directions (R-7), and a demonstration written as a second set of expectations
+ * over a fixture proves nothing about the first set: it can agree with a manifest the real clauses
+ * no longer examine, so deleting those clauses leaves the discriminator green — which is the failure
+ * the review of run 2 iteration 1 found here. One rule, three subjects, is what closes it.
+ *
+ * Each problem names the **half** it belongs to, because the two are different claims and the
+ * criterion turns on telling them apart: `emission:` is about producing an artifact and publishing
+ * it, `distribution:` is about a tarball that does not exist. An empty list is the invariant holding.
+ */
+const emitsAndIsNotDistributed = (candidate: Manifest): string[] => [
+  candidate.scripts?.build === undefined ? 'emission: it declares no build script' : '',
+  candidate.exports === undefined ? 'emission: it publishes no exports map' : '',
+  candidate.main !== undefined ? 'emission: a top-level main is declared beside the map' : '',
+  candidate.types !== undefined ? 'emission: a top-level types is declared beside the map' : '',
+  candidate.files !== undefined ? 'distribution: a files allow-list claims a tarball that does not exist' : '',
+  candidate.bin !== undefined ? 'distribution: a bin entry ships an executable nothing packs' : '',
+  candidate.private !== true ? 'distribution: the package stopped being private' : '',
+].filter((problem) => problem !== '');
+
 /** Every `.ts` file below `src`, as `[path relative to src, text]`, derived from the tree. */
 const sources = (): [string, string][] => fs
   .readdirSync(SRC, { withFileTypes: true, recursive: true })
@@ -135,23 +159,96 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     expect(lock.slice(lock.indexOf('packages/server:'))).toContain('@quorum/core');
   });
 
-  test('it emits nothing: no build task, no exports map, no files allow-list, no bin', () => {
-    // Two registers, not one, and this package is in neither. The **emitting** set is
-    // `test-discovery.test.ts`'s and is four since Q-0122; the local **distribution** set is
-    // `build.test.ts`'s `DISTRIBUTION` and is three. This comment named the second and reasoned
-    // about the first, which was harmless while they were the same three packages and stopped being
-    // so when `apps/web` gained a build task — see "A fourth package emits, and what it emits is
-    // served rather than shipped" (2026-09-12). The assertions below are unaffected: a package that
-    // emits nothing and ships nothing is out of both.
-    expect(own.scripts?.build).toBe(undefined);
-    expect(own.exports).toBe(undefined);
-    expect(own.main).toBe(undefined);
-    expect(own.types).toBe(undefined);
-    expect(own.files).toBe(undefined);
-    expect(own.bin).toBe(undefined);
+  test('Q-0125 AC-3 — it emits and is not distributed, which is a combination no package had before', () => {
+    // **Two registers, not one, and since Q-0125 this package is in the first and not the second.**
+    // The **emitting** set is `test-discovery.test.ts`'s and is five; the local **distribution** set
+    // is `build.test.ts`'s `DISTRIBUTION` and stays three. This block asserted that the package was
+    // out of both until Q-0125, under a comment whose closing sentence — *"a package that emits
+    // nothing and ships nothing is out of both"* — is what had to move: two of its nine clauses
+    // invert and seven survive, because `@quorum/core` and `@quorum/shared` put `types` and
+    // `default` INSIDE the conditional map and declare no top-level `main` or `types` either.
+    //
+    // No `files`, and that is a rule rather than this package's exemption: a package that emits and
+    // is not distributed declares no `files`, no `bin` and keeps `private: true`, because `files` on
+    // a package nothing packs is a claim about a tarball that does not exist. Why: "A fifth package
+    // emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), clause 3, which
+    // promotes 092's by-name exemption for `apps/web` into a class.
+    // The invariant first, so what the clauses below assert by name is the same rule the fixtures in
+    // the next test are judged by rather than a parallel description of it.
+    expect(emitsAndIsNotDistributed(own), 'the manifest stopped emitting, or started claiming to be distributed')
+      .toStrictEqual([]);
+    expect(own.scripts?.build, 'the package emits nothing').not.toBe(undefined);
+    expect(own.exports, 'the package publishes nothing').not.toBe(undefined);
+    expect(own.main, 'a top-level main is declared beside the map').toBe(undefined);
+    expect(own.types, 'a top-level types is declared beside the map').toBe(undefined);
+    expect(own.files, 'a files allow-list claims a tarball that does not exist').toBe(undefined);
+    expect(own.bin, 'the package declares a binary').toBe(undefined);
     expect(own.name).toBe('@quorum/server');
-    expect(own.private).toBe(true);
+    expect(own.private, 'the package stopped being private, which is Q-0124\'s to decide').toBe(true);
     expect(own.type).toBe('module');
+  });
+
+  test('AC-3 — and the two halves discriminate: emitting is not distributing', () => {
+    // **Shown red in BOTH directions, which is what stops this being read as "delete the clauses
+    // that now fail"** (R-7). The inversion above passes today by the manifest having changed, so a
+    // wrong implementation of AC-3 — dropping the two assertions rather than inverting them — would
+    // look identical.
+    //
+    // **The two fixtures are run through the production invariant rather than re-described here**,
+    // which is the correction the review of iteration 1 asked for: a fixture asserted against its own
+    // freshly written fields confirms only that the fixture was written as intended, and stays green
+    // over a manifest nothing examines. Each is handed to {@link emitsAndIsNotDistributed}, and what
+    // is asserted is the exact list of problems it reports — so the before fixture must fail the
+    // EMISSION half and nothing else, and the packed fixture must fail the DISTRIBUTION half and say
+    // so in those words.
+    const asItWas: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined };
+    delete asItWas.scripts?.build;
+    expect(emitsAndIsNotDistributed(asItWas), 'the manifest as it stood before Q-0125 passes the emission half')
+      .toStrictEqual(['emission: it declares no build script', 'emission: it publishes no exports map']);
+
+    const asIfPacked: Manifest = { ...own, files: ['dist'] };
+    expect(emitsAndIsNotDistributed(asIfPacked), 'a files allow-list is not reported as a distribution claim')
+      .toStrictEqual(['distribution: a files allow-list claims a tarball that does not exist']);
+
+    // And the invariant is not satisfied by every input, which is what stops the two clauses above
+    // being read as "the function returns whatever was put in": a manifest that emits nothing AND
+    // claims a tarball fails both halves at once, and the halves are named separately.
+    const neither: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined, files: ['dist'], bin: 'x.js', private: false };
+    delete neither.scripts?.build;
+    const both = emitsAndIsNotDistributed(neither);
+    expect(both.filter((problem) => problem.startsWith('emission:')).length).toBe(2);
+    expect(both.filter((problem) => problem.startsWith('distribution:')).length).toBe(3);
+  });
+
+  test('Q-0125 AC-1 — the exports map is the shape its two siblings declare, publishing "." alone', () => {
+    // Asserted by VALUE rather than by shape, because what a plain `node` process does depends on
+    // which branch it lands in: `quorum-source` is what `tsconfig.base.json`'s `customConditions`
+    // and `vitest.shared.js` select, and `default` is what the built binary gets. A map whose
+    // `default` named `./src/index.ts` would pass every suite here and fail the moment
+    // `packages/cli/dist/quorum.js` imported it — the shape decision 093 refuses by name.
+    const entry = (own.exports as Record<string, Record<string, unknown>>)['.'];
+    expect(entry, 'the map declares no "." at all').not.toBe(undefined);
+    expect(entry?.['quorum-source'], 'the workspace source condition is not the first branch')
+      .toStrictEqual({ types: './src/index.ts', default: './src/index.ts' });
+    expect(entry?.types, 'the declarations condition does not name the emit').toBe('./dist/index.d.ts');
+    expect(entry?.default, 'the default condition does not name the emit').toBe('./dist/index.js');
+  });
+
+  test('AC-1 — and it publishes no subpath pattern, so no internal module is public by accident', () => {
+    // The refusal `packages/cli/src/package.test.ts` already makes for `@quorum/core`: a `./*` key
+    // defers what a consumer may import to whoever types one first. What this package publishes
+    // stays exactly `src/index.ts`'s barrel, which `index.test.ts`'s `SURFACE` register holds.
+    const keys = Object.keys(own.exports as Record<string, unknown>);
+    expect(keys).toStrictEqual(['.']);
+    expect(keys.filter((key) => key.includes('*')), 'no wildcard subpath').toStrictEqual([]);
+  });
+
+  test('Q-0125 AC-2 — the build script is the two `tsc` siblings\' and not the binary\'s', () => {
+    // `@quorum/cli`'s appends `&& chmod +x dist/quorum.js` for a `bin` this package does not have,
+    // so the agreement clause AC-2 asks for is over the four `tsconfig.build.json` files and never
+    // over the scripts — that divergence is real and correct. `build.test.ts` owns the
+    // configuration comparison, this owns the script.
+    expect(own.scripts?.build).toMatch(/^rm -rf dist && tsc -p tsconfig\.build\.json$/);
   });
 
   test('no CORS middleware, header, or dependency is introduced', () => {
@@ -170,6 +267,12 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     // Proven by resolution rather than by the manifest saying so, and aimed at `src` because that
     // is what `quorum-source` selects — the condition `vitest.shared.js` sets and `tsconfig.base`
     // declares. A `dist` here would mean the suite was proving an emit nobody built.
+    //
+    // **Q-0125 AC-8(c): unchanged by that ticket, and that is the point of it.** This package now
+    // emits, and these two lines are the evidence that adding an emit moved no verdict inside it —
+    // the suites still resolve TypeScript source, so *"no test verdict moves behind it"* survives a
+    // fifth emitter. See "A fifth package emits, and `resolved` is not a synonym for `distributed`"
+    // (2026-09-12), clause 4.
     expect(typeof runFlow).toBe('function');
     expect(typeof loadFlowByName).toBe('function');
     expect(typeof eventSchema.safeParse).toBe('function');
@@ -614,6 +717,41 @@ describe('Q-0121 AC-13 — every route this package registers is named in the ar
       .map((match) => /^(['"])(\/[^'"]*)\1$/.exec((match[2] ?? '').trim()));
     expect(readable, 'a computed route path was read as a literal').toStrictEqual([null]);
   });
+});
+
+describe('Q-0125 AC-11 — nothing gives "no export surface" as the reason an arrangement exists', () => {
+  test('the barrel keeps the arrangement and states the reason that survives', () => {
+    // **The premise moved and the conclusion did not, which is why this asserts both halves.** The
+    // transport docblock gave *"this package having no export surface"* as why `WireMessage`,
+    // `WireRefusal` and `WireRun` live in `@quorum/shared`. That premise is false since AC-1, and
+    // `.claude/rules/engineering.md` forbids a comment claiming what the code cannot back — but
+    // deleting the premise and the conclusion together would reinstate the drift Q-0120 repaired,
+    // a moved type with no schema. So the negative and the positive are asserted as a pair: the
+    // dead reason is gone, the arrangement is still named, and the owner is still `@quorum/shared`.
+    const barrel = read(SRC, 'index.ts');
+    expect(barrel, 'the barrel still gives "no export surface" as a reason').not.toMatch(/no export surface/);
+    expect(barrel, 'the barrel no longer names @quorum/shared as the owner of the wire shapes')
+      .toMatch(/all three are now `@quorum\/shared`'s and\s+\* re-exported here/);
+    expect(barrel, 'the barrel does not say why the shapes stay there now')
+      .toMatch(/a moved type with\s+\* no schema is the half-measure Q-0120 had to repair/);
+  });
+
+  test('and the negative has a subject — the same needle finds the superseded wording', () => {
+    // Anti-vacuity in the shape `docs.test.ts` uses: a clause refusing a sentence must be shown to
+    // find it where it is written, or it is indistinguishable from one that matches nothing.
+    const asItWas = 'because a browser consumes them from\n * `@quorum/shared` directly — this package having no export surface — and needs a runtime parser';
+    expect(asItWas, 'the fixture no longer reproduces the wording this clause refuses').toMatch(/no export surface/);
+  });
+
+  // **No third clause reading `apps/web`'s manifest, and the omission is deliberate.** Decision 093
+  // clause 5 records that the protection left behind is that register — `apps/web/test/package.test.ts`
+  // holds the justifications against the declared manifest in both directions and pins
+  // `dependencies` to exactly three names, so adding `@quorum/server` there fails two assertions
+  // with no change from this ticket. Asserting it a second time from here would be one rule with
+  // two enforcers, which is the drift this repository keeps finding — and it would add an
+  // out-of-package read from the one package `turbo-inputs.test.ts` does not scan, where nothing
+  // would report the missing declaration (R-5). What is owed is the document correction, and that
+  // is `docs.test.ts`'s.
 });
 
 describe('AC-14 — this package declares no budget of its own', () => {
