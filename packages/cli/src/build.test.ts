@@ -46,6 +46,7 @@ import { configDefaults } from 'vitest/config';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
 import { HELP } from './commands.js';
+import { NO_DAEMON_CONDITION, NO_DAEMON_REMEDY } from './open.js';
 import {
   buildIn, disposeIsolated, dry, emitting, isolate, PACKAGE, read, rootTurbo, trackedUnder,
   turboBin, turboEnv, WORKSPACE, WORKSPACE_FILES, type TurboTask,
@@ -2098,6 +2099,42 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     expect(helpNames(result.stdout), 'the command list is not the frame\'s').toStrictEqual(helpNames(HELP));
   }, 300_000);
 
+  test('Q-0126 AC-8 — the EMITTED open module resolves the daemon from an expression, never statically', () => {
+    // **The claim is about what Node loads, which is why it is asserted over the emit.** `open.ts`
+    // names `@quorum/server` in several places and only one of them costs a resolution: a
+    // `typeof import(...)` type query is erased by `tsc`, the refusal sentence and
+    // `isDaemonUnresolved`'s needle are plain strings, and the `await import(...)` is the whole
+    // point. A source scan cannot tell an erased occurrence from a live one — the ticket body's own
+    // first probe passed while proving nothing, because `tsc` elided an unused import and the module
+    // was never loaded at all.
+    runBuild();
+    const emitted = fs.readFileSync(path.join(PACKAGE, EMIT, 'open.js'), 'utf8');
+    expect(emitted, 'the emit does not name the daemon at all, so this test proves nothing')
+      .toContain('@quorum/server');
+    // A static `import … from` or a re-export is what would make loading this module cost resolving
+    // that package, which is what kills `quorum help` on an installation that skipped the optional
+    // edge. Both spellings, in any quoting.
+    expect(/(?:^|\n)\s*(?:import|export)[^\n]*from\s*['"`]@quorum\/server['"`]/.test(emitted),
+      'the emit statically resolves @quorum/server').toBe(false);
+    expect(/import\s*\(\s*['"`]@quorum\/server['"`]\s*\)/.test(emitted),
+      'the emit no longer defers the specifier').toBe(true);
+    // And the needle discriminates rather than being satisfied by anything: the static form it
+    // forbids is recognised when it is there.
+    expect(/(?:^|\n)\s*(?:import|export)[^\n]*from\s*['"`]@quorum\/server['"`]/
+      .test("\nimport { createDaemon } from '@quorum/server';\n")).toBe(true);
+
+    // The other half of AC-10: in the WORKSPACE the same emit resolves the daemon and starts. Run
+    // through a plain `node` process against the built target, so what is exercised is the emit's
+    // own resolution rather than Vitest's — and stopped immediately, because what is claimed is that
+    // it got past the import rather than anything about serving.
+    const refusal = spawnSync(process.execPath, [binTarget(), 'open', '--port', 'later'], {
+      cwd: WORKSPACE, encoding: 'utf8',
+    });
+    expect(refusal.status, 'the workspace emit did not reach the flag guard').toBe(1);
+    expect(refusal.stderr, 'the workspace emit failed to resolve the daemon').not.toContain(NO_DAEMON_CONDITION);
+    expect(refusal.stderr, 'the emit stopped somewhere other than the port guard').toContain('--port');
+  }, 300_000);
+
   test('and pnpm exec fails rather than falling back — it resolves locally or not at all', () => {
     // The guarantee the test above rests on, **shown to discriminate rather than assumed**. `pnpm
     // exec` is not `npx` and not `pnpm dlx`: it runs a binary already linked into `node_modules/.bin`
@@ -2204,23 +2241,43 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
       .filter((entry) => entry !== '' && !entry.endsWith('/'))
       .sort();
 
+  /** As much of a manifest as the workspace-protocol assertions below read. */
+  interface PackedManifest {
+    version?: string;
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+  }
+
+  /**
+   * Every dependency a manifest declares under either key that a packer is expected to rewrite.
+   *
+   * **Both sections since Q-0126, and the widening is the whole of AC-7's second register.** This
+   * read was `.dependencies` alone, which was exact while no manifest here declared anything else —
+   * and `packages/cli` now declares `@quorum/server` under `optionalDependencies`, so the edge whose
+   * rewriting AC-19(b)'s install depends on was invisible to the only check that a `workspace:*`
+   * still becomes a resolvable version. An optional edge npm cannot resolve is *skipped silently*,
+   * which is exactly why it must be the one this guard can see.
+   */
+  const declaredDeps = (manifest: PackedManifest): Record<string, string> =>
+    ({ ...manifest.dependencies, ...manifest.optionalDependencies });
+
   /** The manifest a tarball carries, which is **not** always the manifest on disk — see the last test. */
-  const manifestIn = (tarball: string): { dependencies?: Record<string, string> } =>
-    JSON.parse(execFileSync('tar', ['-xzOf', tarball, 'package/package.json'], { encoding: 'utf8' })) as
-      { dependencies?: Record<string, string> };
+  const manifestIn = (tarball: string): PackedManifest =>
+    JSON.parse(execFileSync('tar', ['-xzOf', tarball, 'package/package.json'], { encoding: 'utf8' })) as PackedManifest;
 
   /** One of the three packages, read from disk. */
-  const manifestOf = (name: string): { version: string; dependencies?: Record<string, string> } =>
-    JSON.parse(read(WORKSPACE, 'packages', name, 'package.json')) as { version: string; dependencies?: Record<string, string> };
+  const manifestOf = (name: string): PackedManifest & { version: string } =>
+    JSON.parse(read(WORKSPACE, 'packages', name, 'package.json')) as PackedManifest & { version: string };
 
   /** The version a `workspace:` range resolves to, which is the sibling package's own. */
   const versionOf = (packageName: string): string => manifestOf(packageName.replace('@quorum/', '')).version;
 
   /** The names `name` depends on through the `workspace:` protocol, which is what a packer rewrites. */
   const workspaceDepsOf = (name: string): string[] =>
-    Object.entries(manifestOf(name).dependencies ?? {})
+    Object.entries(declaredDeps(manifestOf(name)))
       .filter(([, range]) => range.startsWith('workspace:'))
-      .map(([dependency]) => dependency);
+      .map(([dependency]) => dependency)
+      .sort();
 
   /** Packs `directory` with pnpm and returns its paths — the packer AC-19(b)'s install requires. */
   const packedPaths = (directory: string, destination: string): string[] =>
@@ -2361,6 +2418,18 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
       cwd: project, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    // **Q-0126 AC-10: the install completed at all, which is the whole of why the daemon edge is
+    // optional.** With `@quorum/server` under `dependencies` this `npm install` dies before any
+    // module loads — `ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli` — because `pnpm pack`
+    // rewrites `workspace:*` to `0.0.0` and the registry above is a closed port. An optional edge
+    // npm cannot resolve is skipped, and the three tarballs install exactly as they did. Asserted
+    // rather than implied: the daemon is NOT in the installed tree, and `@quorum/core` is, so the
+    // skip is a property of that key rather than of the install having failed quietly.
+    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'core')),
+      'the required workspace dependency did not install — the comparison below is vacuous').toBe(true);
+    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'server')),
+      'the packed install carries the daemon, so nothing here is about an absent one').toBe(false);
+
     const shim = path.join(project, 'node_modules', '.bin', 'quorum');
     expect(fs.existsSync(shim), 'the packed install linked no quorum shim').toBe(true);
     // AC-20, positively: the executed file lies inside the temporary installation and not inside the
@@ -2369,7 +2438,54 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const executed = fs.realpathSync(shim);
     expect(executed.startsWith(fs.realpathSync(project)), `the packed shim resolves to ${executed}`).toBe(true);
     expect(executed.startsWith(fs.realpathSync(WORKSPACE)), 'the packed shim reaches back into the repository').toBe(false);
-    expect(execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env })).toContain('usage: quorum');
+    const packedHelp = execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env });
+    expect(packedHelp).toContain('usage: quorum');
+    // **Q-0126 AC-10, the half the ticket body predicted wrongly.** `main.ts` imports every command
+    // module statically, so `open.js` is loaded whatever command was typed; a static
+    // `from '@quorum/server'` there would make THIS invocation die with `ERR_MODULE_NOT_FOUND`
+    // against an installation that skipped the optional edge. The deferred specifier is what keeps
+    // every other command working, and the ten-entry help is what says so — derived from `HELP`
+    // rather than transcribed, as AC-15 already requires of the plain-node spawn.
+    expect(helpNames(packedHelp), 'the packed help is not the frame\'s command list')
+      .toStrictEqual(helpNames(HELP));
+    expect(helpNames(packedHelp), 'the packed help does not list the command this ticket added')
+      .toContain('open');
+
+    // And `quorum open` there says something TRUE: what failed to resolve *here*, and where the
+    // daemon is. It may not report that the daemon is missing, broken or deliberately omitted — an
+    // import that did not resolve cannot establish any of the three, and *"A probe that could not
+    // answer is not a negative"* (2026-09-10) is what that would break. Asserted **by bytes** against
+    // the literals `open.ts` declares, so the packed sentence and the command's cannot drift.
+    const refused = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
+    expect(refused.status, 'quorum open succeeded on an installation carrying no daemon').not.toBe(0);
+    expect(refused.stderr, 'the packed refusal is not the CLI\'s own condition').toContain(NO_DAEMON_CONDITION);
+    expect(refused.stderr, 'the packed refusal does not say where the daemon is').toContain(NO_DAEMON_REMEDY);
+    for (const forbidden of ['missing', 'not installed', 'broken', 'omitted']) {
+      expect(refused.stderr, `the packed refusal claims the daemon is ${forbidden}`).not.toContain(forbidden);
+    }
+
+    // **And a daemon that resolved and then failed is NOT reported as one that did not resolve** —
+    // the finding run 2 iteration 2 returned, end to end through the emitted command rather than
+    // over the predicate alone. The fixture is the sharp case rather than an easy one: a dependency
+    // missing from inside the daemon raises the SAME `ERR_MODULE_NOT_FOUND` an absent package does,
+    // so a narrowing that read only the code would still be wrong here. Reporting it as the refusal
+    // above would claim an absence contradicted by the directory written two lines up, and bury the
+    // failure a maintainer has to act on behind a packaging sentence.
+    const installed = path.join(project, 'node_modules', '@quorum', 'server');
+    fs.mkdirSync(installed, { recursive: true });
+    fs.writeFileSync(path.join(installed, 'package.json'),
+      JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
+    fs.writeFileSync(path.join(installed, 'index.js'), "import 'a-package-that-is-not-installed';\n");
+    const damaged = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
+    expect(damaged.status, 'a daemon that failed to load did not stop the command').not.toBe(0);
+    expect(damaged.stderr, 'a daemon that resolved and then failed is reported as one that did not resolve')
+      .not.toContain(NO_DAEMON_CONDITION);
+    expect(damaged.stderr, 'the failure a maintainer has to act on was swallowed')
+      .toContain('a-package-that-is-not-installed');
+    // Put back as it was, so the assertions after this one meet the installation the fixture
+    // installed rather than the one this paragraph damaged.
+    fs.rmSync(installed, { recursive: true, force: true });
+    expect(fs.existsSync(installed), 'the fixture daemon outlived the assertion it was written for').toBe(false);
 
     // **Q-0093 AC-5(d): the command that needs the assets is run from the packed install.**
     // Asserting that `files` contains `"templates"` proves a manifest key; this is the only
@@ -2443,19 +2559,37 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // so it has nothing to rewrite and is deliberately absent.
     const dependents = DISTRIBUTION.filter((name) => workspaceDepsOf(name).length > 0);
     expect(dependents, 'the set of packages declaring a workspace dependency moved').toStrictEqual(['cli', 'core']);
+    // **Q-0126 AC-7's third register.** The widening above has to CHANGE this derivation rather than
+    // leave it identical — a widening that changes nothing has not been established — so the edge it
+    // added is named here, and the reader that could not see it is shown still not seeing it.
+    expect(workspaceDepsOf('cli'), 'the optional daemon edge is invisible to the workspace-protocol check')
+      .toStrictEqual(['@quorum/core', '@quorum/server', '@quorum/shared']);
+    const dependenciesOnly = Object.keys(manifestOf('cli').dependencies ?? {}).sort();
+    expect(dependenciesOnly, 'the pre-Q-0126 reader now finds the optional edge too, so the widening proved nothing')
+      .toStrictEqual(['@quorum/core', '@quorum/shared']);
 
     for (const name of dependents) {
       const directory = path.join(WORKSPACE, 'packages', name);
-      const byPnpm = manifestIn(packWith('pnpm', directory, destination)).dependencies ?? {};
-      const byNpm = manifestIn(packWith('npm', directory, destination)).dependencies ?? {};
+      const byPnpm = declaredDeps(manifestIn(packWith('pnpm', directory, destination)));
+      const byNpm = declaredDeps(manifestIn(packWith('npm', directory, destination)));
       for (const dependency of workspaceDepsOf(name)) {
         // Derived from the sibling's own manifest rather than written down, so the assertion is
         // about the substitution and not about the number `0.0.0` happening to be current.
         const substituted = versionOf(dependency);
         expect(byPnpm[dependency], `pnpm no longer rewrites ${dependency} for @quorum/${name} — AC-19(b) would resolve it from a registry`).toBe(substituted);
         expect(byNpm[dependency], `npm now rewrites ${dependency} for @quorum/${name}; the reason this fixture packs with pnpm has gone`)
-          .toBe(manifestOf(name).dependencies?.[dependency]);
+          .toBe(declaredDeps(manifestOf(name))[dependency]);
         expect(byNpm[dependency]?.startsWith('workspace:'), `npm's packed manifest no longer carries the literal protocol for ${dependency}`).toBe(true);
+      }
+      // And the optional edge stays in the section it was declared in: a packer that promoted it to
+      // `dependencies` would rewrite it correctly and still kill the install, which is the one
+      // failure the substitution assertions above cannot see.
+      if (name === 'cli') {
+        const packed = manifestIn(packWith('pnpm', directory, destination));
+        expect(packed.optionalDependencies?.['@quorum/server'], 'the packed manifest lost the optional daemon edge')
+          .toBe(versionOf('@quorum/server'));
+        expect(packed.dependencies?.['@quorum/server'], 'the packer promoted the optional edge to a required one')
+          .toBe(undefined);
       }
     }
   }, 300_000);

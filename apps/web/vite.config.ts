@@ -22,11 +22,15 @@
  * the browser could read it. `ws: true` is set on every entry because the run-events route
  * upgrades to a WebSocket and a plain HTTP request through the same entry is unaffected by it.
  *
- * `DAEMON_TARGET`'s port is read from `QUORUM_DAEMON_PORT` with 7717 as its documented default —
- * a dev-server convention, not a contract: the daemon itself has no default port
- * (`packages/server` binds whatever the OS hands back), so `quorum open` is what will later have
- * to agree with this value. No test reads the variable (AC-13(c)), which is why `turbo.json`'s
- * `test` task `env` list stays `["QUORUM_REAL_CLI"]`.
+ * `DAEMON_TARGET`'s port is read from `QUORUM_DAEMON_PORT` with `DEFAULT_DAEMON_PORT` under it.
+ * **That default is `@quorum/shared`'s since Q-0126 and no longer a literal here**, which is what
+ * the sentence this paragraph used to carry asked for: the number was *"a dev-server convention,
+ * not a contract … so `quorum open` is what will later have to agree with this value"*, and
+ * `quorum open` now exists. Agreement is structural rather than asserted — this file and
+ * `packages/cli/src/open.ts` import one declaration, so there is no second literal to drift.
+ * The daemon itself still has no default port: `packages/server` binds whatever it is given, and
+ * `0` still asks the operating system for a free one. No test reads the variable (AC-13(c)), which
+ * is why `turbo.json`'s `test` task `env` list stays `["QUORUM_REAL_CLI"]`.
  *
  * Three of the five prefixes this proxy forwards — `/runs`, `/flows`, `/history` — are also rail
  * and router paths (`src/routes.ts`), and `/project` is a prefix of the shell's own `/projects`;
@@ -52,12 +56,13 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defaultClientConditions, defineConfig, type ProxyOptions } from 'vite';
 
+import { DEFAULT_DAEMON_PORT } from '../../packages/shared/src/constants.js';
 import { isNavigationRequest } from '../../packages/shared/src/navigation.js';
 import { DAEMON_ENDPOINTS } from './src/daemon-endpoints.js';
 
 const DAEMON_TARGET = {
   host: '127.0.0.1',
-  port: Number(process.env.QUORUM_DAEMON_PORT ?? 7717),
+  port: Number(process.env.QUORUM_DAEMON_PORT ?? DEFAULT_DAEMON_PORT),
   protocol: 'http',
 } as const;
 

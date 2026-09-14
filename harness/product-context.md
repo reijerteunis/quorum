@@ -78,7 +78,14 @@ Every requirement carries acceptance criteria for these where they apply:
    and the locally packed path (the three **distribution** packages' tarballs installed together
    outside the repository) both work since Q-0098. Distribution rather than emitting: since
    Q-0122 four packages emit and three are packed, so the two are no longer one set and only the
-   packed one belongs in this sentence. **Registry-resolved `npx quorum` does not** — every package
+   packed one belongs in this sentence. **One command is an exception since Q-0126 and it is named
+   rather than the claim being softened**: `quorum open` starts the daemon, which is
+   `@quorum/server` — a package that is not distributed — so it works on the workspace-local path
+   and refuses on the packed one, naming what did not resolve there. Every other command works on
+   both, which is why this stays *two paths are claimed* and does not become *mostly works*. How an
+   installation outside this repository obtains the UI or the daemon is **Q-0124's** and is open.
+   See *"An optional edge says the daemon may be absent, and never why"* (2026-09-14), clause 3.
+   **Registry-resolved `npx quorum` does not** — every package
    is `"private": true`, so it would fetch a stranger's package — and it is Q-0029's, in M6. Do not
    write a requirement, a test name or a success message that claims a cold machine can obtain
    Quorum from the public registry.

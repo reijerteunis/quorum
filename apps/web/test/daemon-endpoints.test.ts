@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { describe, expect, test } from 'vitest';
 
 import { DAEMON_ENDPOINTS, runEventsPath, runEventsUrl } from '../src/daemon-endpoints.js';
@@ -33,6 +34,33 @@ describe('AC-13 — same-origin daemon endpoints', () => {
     expect(config).toContain("from './src/daemon-endpoints.js'");
     expect(config).toContain('DAEMON_ENDPOINTS');
     expect(Object.values(DAEMON_ENDPOINTS).sort()).toStrictEqual(['/flows', '/history', '/project', '/runs', '/tickets']);
+  });
+
+  test('Q-0126 AC-5 — the dev proxy and `quorum open` resolve one declared port, not two literals', async () => {
+    // The sentence this file's own header carried until Q-0126 — *"7717 is a dev-server convention,
+    // not a contract … `quorum open` is what will later have to agree with this value"* — as a check
+    // rather than a promise. Agreement is structural now: both readers import `DEFAULT_DAEMON_PORT`
+    // and neither spells a number, so there is no second literal to drift.
+    //
+    // **The value is RESOLVED rather than read out of the text.** The config is imported and its
+    // proxy target is inspected, so an expression that happened to mention the constant while
+    // computing something else would fail here. A text assertion alone could not tell those apart.
+    const loaded = (await import('../vite.config.js')).default as {
+      server?: { proxy?: Record<string, { target?: { port?: number } }> };
+    };
+    const targets = Object.values(loaded.server?.proxy ?? {});
+    expect(targets.length, 'the dev proxy forwards nothing — this test proves nothing').toBeGreaterThan(4);
+    for (const target of targets) {
+      expect(target.target?.port, 'a proxy entry no longer resolves the declared default')
+        .toBe(DEFAULT_DAEMON_PORT);
+    }
+    // And the config reaches it by import rather than by copy, which is what makes the equality
+    // above a property of one declaration instead of two that currently agree.
+    const config = fs.readFileSync(path.join(ROOT, 'vite.config.ts'), 'utf8');
+    expect(config, 'the config stopped importing the declared default').toContain('DEFAULT_DAEMON_PORT');
+    expect(/\b7717\b/.test(config), 'the config spells a second copy of the default').toBe(false);
+    // The needle discriminates, over a literal assembled so this file is not its own subject.
+    expect(/\b7717\b/.test(`const p = ${'77'}${'17'};`)).toBe(true);
   });
 
   test('browser source contains no socket scheme, daemon hostname, or chosen daemon port', () => {

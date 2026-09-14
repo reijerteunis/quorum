@@ -35,10 +35,15 @@ installation outside this workspace obtains the UI is open and is Q-0124's.
 1. **The dependency direction is one-way: `core` → `shared`, never the reverse.** Nothing in
    `shared` may import `core`, `cli`, `server`, `compiler`, `templates` or `apps/web`. No cycle
    between workspace packages is permitted.
-2. **`core` has no I/O it does not own.** It spawns CLIs, reads and writes the project folder and
-   git. It never touches the network, never stores secrets, never reads an API key. Everything else
-   is a thin shell around it — so a design that asks `core` to call an HTTP service is refused
-   before preference enters.
+2. **`core` has no I/O it does not own.** It spawns CLIs, opens a URL in the platform's default
+   browser, reads and writes the project folder and git. It never touches the network, never stores
+   secrets, never reads an API key. Everything else is a thin shell around it — so a design that
+   asks `core` to call an HTTP service is refused before preference enters. The browser launch was
+   added by Q-0126 and is **one item of the enumeration rather than a change to the rule**: handing
+   a URL to a local launcher opens no socket. See *"`core` opens a URL, and the ninth folder is named
+   for what it is about"* (2026-09-14). This file carries the same sentence as
+   `docs/04-architecture.md`'s principle 1 and moved with it, because an agent is fed this one at
+   run time and a boundary that reads two ways is not one.
 3. **Domain logic belongs in `core`.** `packages/cli` and `packages/server` present it. A command
    that needs a new behaviour needs a new `core` symbol, not a local copy.
 4. **`apps/web/src` may import no `node:` specifier, no bare Node builtin and no `@quorum/core`**,

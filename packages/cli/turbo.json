@@ -87,7 +87,24 @@
         "../../packages/*/src/**",
         "../../packages/*/turbo.json",
         "../../packages/*/tsconfig.build.json",
-        "../../apps/*/tsconfig.build.json"
+        "../../apps/*/tsconfig.build.json",
+        // Q-0126 adds two, and they are the only reads that ticket earned. `src/commands.test.ts`
+        // holds the README's command table and `docs/USAGE.md`'s `###` sections against `COMMANDS`,
+        // derived so that a tenth command fails until it is documented — and neither document is
+        // hashed by anything else this task reaches: `@quorum/shared#test` declares `docs/USAGE.md`
+        // for its own assertion about the BYOS refusal and that arrives through the root `^test`
+        // edge, but `README.md` is hashed by no task at all, and relying on a sibling's declaration
+        // for one of a pair while the other has none would be the residual Q-0121 recorded rather
+        // than a coverage claim. Both are named, so the pair moves this hash together.
+        //
+        // `packages/server/package.json` is deliberately NOT declared beside them, and that is a
+        // measurement rather than an omission: `src/build.test.ts` derives the version the optional
+        // `@quorum/server` edge is rewritten to from that manifest, and the `optionalDependencies`
+        // edge Q-0126 added creates the same `^test` edge a required one would — appending a line
+        // there moved this task from `e381d3d003a8d31e` to `45b8b67c3f133524` with nothing declared.
+        // Declaring it would be the same claim twice, free to drift (Q-0121's measurement).
+        "../../README.md",
+        "../../docs/USAGE.md"
       ]
     }
   }
