@@ -3586,8 +3586,9 @@ parked at p2 with its three written reopening thresholds.
   it would still be broken** for the `workspace:*` reason Q-0098's M-8 measured. That becomes urgent
   at **Q-0126**, which this unblocks and which adds the first consumer.
 - Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12, p1; depends on
-  Q-0125. **The daemon half — AC-1 to AC-11 — is implemented; the browser half is not**, and this
-  line is written to what happened rather than to what was planned.)*
+  Q-0125. **Both halves are implemented — the daemon's AC-1 to AC-11 in round 1, the browser's
+  AC-12 to AC-16 in round 2** — and this line is written to what happened rather than to what was
+  planned.)*
   **`quorum open` runs**: it opens the project through `@quorum/core`, starts the daemon on
   loopback, serves the built `apps/web` bundle, prints one URL, and closes cleanly on `SIGINT` or
   `SIGTERM` — the host shut down before the socket, so stopping the UI leaves no ticket locked — and

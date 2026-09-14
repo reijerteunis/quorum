@@ -51,7 +51,10 @@
  * **The order of the three refusals is ruled** — daemon, then project, then bundle. On a packed
  * install this file sits at `node_modules/@quorum/cli/dist/`, so {@link BUNDLE} resolves to a path
  * with no meaning there, and checking it first would report *no build at `node_modules/apps/web/dist`*
- * instead of the true thing, which is that this installation did not resolve the daemon.
+ * instead of the true thing, which is that this installation did not resolve the daemon. The
+ * positional refusal sits ahead of all three and is not a fourth member of that order: those three
+ * are claims about an *installation*, and this one is about what was typed, which is wrong on every
+ * installation and costs nothing to establish.
  */
 import { loadProject, openUrl, ProjectNotFoundError, type BrowserLaunch } from '@quorum/core';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
@@ -90,6 +93,16 @@ export const NO_DAEMON_CONDITION = '@quorum/server did not resolve from this ins
 /** The remedy for {@link NO_DAEMON_CONDITION}: where the daemon is, and what is unaffected. */
 export const NO_DAEMON_REMEDY =
   'the Quorum workspace carries it at packages/server; every other command works here';
+
+/**
+ * What this command takes, quoted at a refusal.
+ *
+ * Byte-identical to the flags `commands.ts`'s own `open` line offers, because the two are read by
+ * the same person a moment apart and a usage line that disagreed with the help would be a second,
+ * quieter promise. `--project` is left out of both for the same reason it is left out of every
+ * other line: no command's help has ever named it.
+ */
+const USAGE = 'usage: quorum open [--port <n>] [--no-open]';
 
 /** The one line a started daemon prints, and the only thing this command writes on success. */
 export const servingLine = (url: string): string =>
@@ -257,7 +270,14 @@ async function untilStopped(): Promise<void> {
  */
 export const openOn = (
   { bundle = BUNDLE, launcher }: { bundle?: string | URL; launcher?: Parameters<typeof openUrl>[1] } = {},
-): CommandHandler => async ({ flags }) => {
+): CommandHandler => async ({ rest, flags }) => {
+  // AC-2's clause that this command accepts no positional argument, enforced rather than merely
+  // unread: `quorum open my-project` is the mistake the shape invites — `init` takes a directory
+  // there — and a handler that ignored `rest` would serve the working directory instead, which is
+  // the silent default `.claude/rules/engineering.md` forbids. The first token is named because it
+  // is the one that is wrong, and {@link USAGE} beside it is what the command does take.
+  if (rest.length > 0) die(`quorum open takes no positional argument, and was given ${JSON.stringify(rest[0])} — ${USAGE}`);
+
   const { BIND_HOSTNAME, createDaemon } = await daemon();
   const project = projectAt(flags.project);
   const port = portFrom(flags.port);

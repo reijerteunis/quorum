@@ -35,6 +35,7 @@ import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { parseArgv } from './argv.js';
+import { HELP } from './commands.js';
 import { ERROR, SIGNAL } from './exit.js';
 import {
   isDaemonUnresolved, launchWarning, NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine,
@@ -248,6 +249,60 @@ describe('AC-2 — the command opens a project, starts the daemon, and prints on
       process.chdir(cwd);
     }
   });
+
+  test('a positional argument is refused, and nothing starts', async () => {
+    // AC-2's "it accepts no positional argument", read as a refusal rather than as a silence. The
+    // shape invites the mistake — `quorum init` takes a directory in that position — so
+    // `quorum open my-project` is what a person types, and a handler that destructured only
+    // `flags` would serve the working directory and say nothing about the argument it ignored.
+    //
+    // **The positional is written immediately after the command name, which is deliberate**: the
+    // parser gives a flag the next token unless it starts with `--` (Q-0090 AC-2's preserved
+    // behaviour 4), so `--no-open my-project` would make the path the *value* of that flag and
+    // leave `rest` empty. Typed where a person types it, it is a positional.
+    build();
+    const port = await freePort();
+    const running = capture(() => openOn({ bundle: pathToFileURL(`${bundle}/`), launcher: { spawn: neverCalled } })(
+      parseArgv(['open', 'my-project', '--project', project, '--no-open', '--port', String(port)])));
+    // A stop the refusing path never reaches, and not part of the claim: a regression that served
+    // instead of refusing would never return, so without this the failure would be Vitest's
+    // timeout rather than an assertion naming what broke (Q-0107).
+    const rescue = setTimeout(() => { process.emit('SIGINT'); }, 3_000);
+    const result = await running;
+    clearTimeout(rescue);
+
+    expect(result.exitCode, 'a positional argument was accepted').toBe(ERROR);
+    expect(plain(result.stderr), 'the refusal does not name the token that was wrong')
+      .toContain('"my-project"');
+    // **The usage it quotes is the help's own `open` line, derived rather than transcribed.** The
+    // two are read a moment apart and a refusal offering flags the help does not would be a
+    // quieter promise beside the loud one — and this is an `endsWith` rather than a `toContain`
+    // for a reason met while writing it: containment is satisfied by a usage that has *gained* a
+    // flag, so the first version of this clause passed over exactly the drift it exists to catch.
+    const offered = (HELP.split('\n').find((line) => line.trim().startsWith('quorum open')) ?? '')
+      .trim().split(/\s{2,}/)[0];
+    expect(offered, 'the help carries no `quorum open` line, so this clause has no subject')
+      .toMatch(/^quorum open \[/);
+    const said = plain(result.stderr).trim();
+    expect(said.endsWith(`usage: ${offered}`),
+      `the refusal does not end with the help's own open line — it said: ${said}`).toBe(true);
+    // Nothing started, which is the half `exitCode` alone does not carry: this command prints its
+    // URL the instant it is listening, so an empty stdout is a daemon that never bound. That is
+    // the clause a regression trips first, and the socket check below is what it means.
+    expect(result.stdout, 'a URL was printed, so the daemon started before the argv was read').toBe('');
+    expect(await answers(port), 'the port is still held after the command was refused').toBe(false);
+  }, 60_000);
+
+  test('and the refusal is the positional clause rather than a command that refuses everything', async () => {
+    // The discriminator, kept separate so it cannot be read as part of the assertion above: the
+    // identical invocation without the positional gets *past* this clause and is stopped further
+    // down by the port instead.
+    const result = await invoke(['open', '--project', project, '--port', 'later']);
+    expect(result.exitCode).toBe(ERROR);
+    expect(plain(result.stderr), 'the positional clause fired on a line that carries no positional')
+      .not.toContain('takes no positional argument');
+    expect(plain(result.stderr), 'the line was refused for some third reason').toContain('--port');
+  }, 60_000);
 
   test('no production module offers a --host, and none spells the bind address', () => {
     // AC-2's clause that no flag may move the bind. `BIND_HOSTNAME` is `@quorum/server`'s and is the
