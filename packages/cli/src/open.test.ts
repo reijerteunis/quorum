@@ -17,8 +17,13 @@
  *
  * **Nothing here spawns the binary.** The emit's own assertions live in `build.test.ts`, which is
  * the file Q-0098 AC-15(c) rules may spawn it — AC-8's claim about what `dist/open.js` resolves and
- * AC-10's about what a packed install answers are both there.
+ * AC-10's about what a packed install answers are both there. {@link daemonImportFailure} spawns a
+ * plain `node` process over a fixture of its own and is not that: what it needs is **Node's** error
+ * for a failed import, which Vitest cannot produce because it resolves through Vite and the
+ * `quorum-source` condition. `build.test.ts` and `package.test.ts` each keep a plain-process probe
+ * for the same reason.
  */
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -31,7 +36,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { parseArgv } from './argv.js';
 import { ERROR, SIGNAL } from './exit.js';
-import { launchWarning, NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine } from './open.js';
+import {
+  isDaemonUnresolved, launchWarning, NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine,
+} from './open.js';
 import { capture, invoke, plain, type Invocation } from '../test/invoke.js';
 
 /** This package's own root, reached package-relatively rather than by climbing to a repository. */
@@ -325,6 +332,104 @@ describe('AC-4 — a directory holding no build refuses, and nothing binds', () 
     }
     // And the scan discriminates, so a future rewording that DID claim one fails here.
     expect(`${sentence} the daemon is missing`).toContain('missing');
+  });
+});
+
+/**
+ * What Node really raises for one way of failing to load `@quorum/server`, measured against a
+ * fixture installation this test builds rather than described in a comment.
+ *
+ * `entry` is the daemon module's text, or `null` for an installation that carries no daemon at all.
+ * The probe runs in a plain process rooted at that fixture, so what comes back is the error the
+ * shipped predicate will actually be handed on a packed install — an import performed here would be
+ * Vite's and would fail in a different shape.
+ */
+function daemonImportFailure(entry: string | null): { code: string; message: string } {
+  const root = fs.mkdtempSync(path.join(sandbox, 'import-'));
+  if (entry !== null) {
+    const daemon = path.join(root, 'node_modules', '@quorum', 'server');
+    fs.mkdirSync(daemon, { recursive: true });
+    fs.writeFileSync(path.join(daemon, 'package.json'),
+      JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
+    fs.writeFileSync(path.join(daemon, 'index.js'), entry);
+  }
+  const script = "try { await import('@quorum/server'); console.log(JSON.stringify({ code: 'LOADED', message: '' })) }"
+    + ' catch (e) { console.log(JSON.stringify({ code: e?.code ?? "", message: String(e?.message) })) }';
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: root, encoding: 'utf8' });
+  const failure = JSON.parse(out) as { code: string; message: string };
+  // A fixture that loaded is a probe with no subject, and would make every comparison below read as
+  // agreement. It says so here rather than surfacing as a confusing assertion.
+  if (failure.code === 'LOADED') throw new Error('the fixture daemon loaded — this probe has nothing to measure');
+  return failure;
+}
+
+describe('AC-10 — the refusal is for a daemon that did not resolve, never one that failed after it had', () => {
+  test('the four ways loading it can fail are told apart, and two of them share a code', () => {
+    const absent = daemonImportFailure(null);
+    const transitive = daemonImportFailure("import 'a-package-that-is-not-installed';\n");
+    const syntax = daemonImportFailure('export const = ;\n');
+    const threw = daemonImportFailure('throw new Error("the daemon blew up while loading");\n');
+
+    // Each fixture failed for the reason it was built to fail for, so everything below is about
+    // Node's behaviour rather than about objects written in this file.
+    expect(absent.message, 'the fixture root resolved a daemon, so the absent case is not absent')
+      .toContain("Cannot find package '@quorum/server'");
+    expect(transitive.message, 'the inner dependency resolved, so this is not the case it claims to be')
+      .toContain('a-package-that-is-not-installed');
+    expect(syntax.message, 'the unparseable fixture parsed').toContain('Unexpected token');
+    expect(threw.message, 'the throwing fixture did not throw').toContain('the daemon blew up while loading');
+    // And the probe can tell a failure from a success at all: a daemon that loads is refused rather
+    // than returned as an empty failure, which is what would make all four comparisons vacuous.
+    expect(() => daemonImportFailure('export const loads = 1;\n'),
+      'a fixture that loaded would be read as a fixture that failed').toThrow('nothing to measure');
+
+    // **The measurement the narrowing rests on.** An absent package and a dependency missing from
+    // inside a package that is present raise the SAME code, so a guard that read only `code` would
+    // report the second as the first — which is what the blanket catch this replaced did to all
+    // three of the resolved cases. If Node ever stops sharing it, this fails rather than the
+    // message clause quietly becoming decoration.
+    expect(transitive.code, 'the two shapes no longer share a code — the message clause has no subject')
+      .toBe(absent.code);
+    expect(absent.code, 'an absent package stopped raising the code this reads').toBe('ERR_MODULE_NOT_FOUND');
+    expect([syntax.code, threw.code], 'a failure to load started carrying a resolution code')
+      .toStrictEqual(['', '']);
+
+    expect(isDaemonUnresolved(absent), 'an installation carrying no daemon is no longer refused').toBe(true);
+    // The finding this round closed: a daemon that resolved and then failed is a package that IS
+    // here, and reporting one as absent both claims what the process never established and hides
+    // the failure a maintainer has to act on. Why: see *"An optional edge says the daemon may be
+    // absent, and never why"* (2026-09-14), clause 2.
+    const resolvedAndFailed = [
+      ['a dependency missing from inside the daemon', transitive],
+      ['a daemon that will not parse', syntax],
+      ['a daemon that threw while loading', threw],
+    ] as const;
+    for (const [what, failure] of resolvedAndFailed) {
+      expect(isDaemonUnresolved(failure), `${what} is reported as a daemon that did not resolve`).toBe(false);
+    }
+  }, 60_000);
+
+  test('both clauses are load-bearing, and nothing that is not an error is read as one', () => {
+    // `dieOnUnexpected` is handed whatever was thrown, which need not be an `Error` at all, so the
+    // predicate deciding whether to reach it has to survive the same values. The two halves below
+    // carry one clause each and neither is enough on its own, which is what stops the pair reading
+    // as one condition written twice.
+    const refused: [string, unknown][] = [
+      ['nothing at all', null],
+      ['an absent value', undefined],
+      ['a thrown string', 'Cannot find package \'@quorum/server\''],
+      ['a thrown number', 42],
+      ['the code without the specifier', { code: 'ERR_MODULE_NOT_FOUND', message: "Cannot find package 'hono'" }],
+      ['the specifier without the code', { message: "Cannot find package '@quorum/server' imported from x" }],
+    ];
+    for (const [what, thrown] of refused) {
+      expect(isDaemonUnresolved(thrown), `${what} was read as a daemon that did not resolve`).toBe(false);
+    }
+    // And the pair together IS recognised, so the six above are refused for their own reason rather
+    // than by a predicate that answers `false` to everything.
+    expect(isDaemonUnresolved({
+      code: 'ERR_MODULE_NOT_FOUND', message: "Cannot find package '@quorum/server' imported from /x/open.js",
+    }), 'the predicate no longer recognises the one shape it is for').toBe(true);
   });
 });
 

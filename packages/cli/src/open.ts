@@ -36,6 +36,13 @@
  * carries it, and says nothing about why. A failed probe is not a proven negative — *"A probe that
  * could not answer is not a negative"* (2026-09-10).
  *
+ * **And it is reached only where that package is what failed to resolve.** A daemon that resolved
+ * and then failed — a syntax error, a top-level throw, a dependency missing from inside it — is a
+ * package that *is* here, so rendering one of those as *did not resolve from this installation*
+ * would assert the absence that entry forbids asserting and bury an actionable failure behind a
+ * packaging sentence. {@link isDaemonUnresolved} is that distinction, and everything it does not
+ * recognise propagates as itself.
+ *
  * **The bundle root is this module's own location and nothing else.** `process.cwd()` answers the
  * operator's directory and an environment variable answers whatever was exported, which is the
  * argument `static.ts`'s header already makes for the daemon and which reaches its caller unchanged.
@@ -148,16 +155,49 @@ const isPortInUse = (error: unknown): boolean =>
   (error as { code?: unknown } | null)?.code === 'EADDRINUSE';
 
 /**
+ * Whether `error` is the daemon's own specifier failing to **resolve**, rather than a failure of
+ * something inside a package that resolved perfectly well.
+ *
+ * **Two clauses, because the `code` alone cannot separate the four shapes — measured against Node
+ * rather than reasoned about.** An installation carrying no daemon raises `ERR_MODULE_NOT_FOUND`
+ * with `Cannot find package '@quorum/server' imported from …`; a dependency missing from *inside*
+ * the daemon raises **the identical code** with `Cannot find package 'hono' imported from
+ * …/@quorum/server/dist/index.js`. A module that will not parse is a `SyntaxError` and a top-level
+ * throw is whatever was thrown, and neither carries a `code` at all. So the code separates two of
+ * the shapes and the **quoted** specifier separates the other two: Node quotes the specifier it
+ * could not find and leaves the importer's path beside it unquoted, which is what keeps this from
+ * matching a path that merely contains the daemon's own directory.
+ *
+ * **Reading a message is what {@link isPortInUse} above refuses to do, and this exception is bounded
+ * rather than an oversight.** There is nothing else to read — the error's own properties are
+ * `stack`, `code` and `message` — so the specifier that failed is in the sentence or nowhere. What
+ * makes it safe is the direction it fails in: a runtime that rewords that sentence stops matching,
+ * and an error this does not recognise **propagates** to `main().catch(dieOnUnexpected)` as a stack
+ * instead of being reported as an absence. A rewording costs the refusal, never the truth of it, and
+ * `build.test.ts`'s packed fixture is what goes red the day one arrives.
+ */
+export function isDaemonUnresolved(error: unknown): boolean {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  if (code !== 'ERR_MODULE_NOT_FOUND' || typeof message !== 'string') return false;
+  return message.includes("'@quorum/server'");
+}
+
+/**
  * The daemon's module, or this command's one refusal.
  *
  * The specifier is deferred and nothing else is: the module must not be named anywhere `tsc` would
  * resolve it eagerly, which is why the return type is a `typeof import(...)` query — erased by the
- * compiler, so the emit carries exactly one occurrence of the specifier and it is inside this call.
+ * compiler, so the only occurrence the emit *loads* anything for is inside this call.
  */
 async function daemon(): Promise<typeof import('@quorum/server')> {
   try {
     return await import('@quorum/server');
-  } catch {
+  } catch (error) {
+    // Only this package failing to resolve becomes the refusal; a daemon that resolved and then
+    // failed is rethrown so `main().catch(dieOnUnexpected)` prints its stack, which is `run.ts`'s
+    // own shape for the same distinction. Why: see *"An optional edge says the daemon may be absent,
+    // and never why"* (2026-09-14), clause 2.
+    if (!isDaemonUnresolved(error)) throw error;
     return die(`${NO_DAEMON_CONDITION} — ${NO_DAEMON_REMEDY}`);
   }
 }

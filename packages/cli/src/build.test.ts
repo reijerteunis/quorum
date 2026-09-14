@@ -2101,10 +2101,12 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
 
   test('Q-0126 AC-8 — the EMITTED open module resolves the daemon from an expression, never statically', () => {
     // **The claim is about what Node loads, which is why it is asserted over the emit.** `open.ts`
-    // names `@quorum/server` twice in source: once in a `typeof import(...)` type query, which `tsc`
-    // erases, and once in the `await import(...)` that is the whole point. A source scan cannot tell
-    // an erased occurrence from a live one — the ticket body's own first probe passed while proving
-    // nothing, because `tsc` elided an unused import and the module was never loaded at all.
+    // names `@quorum/server` in several places and only one of them costs a resolution: a
+    // `typeof import(...)` type query is erased by `tsc`, the refusal sentence and
+    // `isDaemonUnresolved`'s needle are plain strings, and the `await import(...)` is the whole
+    // point. A source scan cannot tell an erased occurrence from a live one — the ticket body's own
+    // first probe passed while proving nothing, because `tsc` elided an unused import and the module
+    // was never loaded at all.
     runBuild();
     const emitted = fs.readFileSync(path.join(PACKAGE, EMIT, 'open.js'), 'utf8');
     expect(emitted, 'the emit does not name the daemon at all, so this test proves nothing')
@@ -2461,6 +2463,29 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     for (const forbidden of ['missing', 'not installed', 'broken', 'omitted']) {
       expect(refused.stderr, `the packed refusal claims the daemon is ${forbidden}`).not.toContain(forbidden);
     }
+
+    // **And a daemon that resolved and then failed is NOT reported as one that did not resolve** —
+    // the finding run 2 iteration 2 returned, end to end through the emitted command rather than
+    // over the predicate alone. The fixture is the sharp case rather than an easy one: a dependency
+    // missing from inside the daemon raises the SAME `ERR_MODULE_NOT_FOUND` an absent package does,
+    // so a narrowing that read only the code would still be wrong here. Reporting it as the refusal
+    // above would claim an absence contradicted by the directory written two lines up, and bury the
+    // failure a maintainer has to act on behind a packaging sentence.
+    const installed = path.join(project, 'node_modules', '@quorum', 'server');
+    fs.mkdirSync(installed, { recursive: true });
+    fs.writeFileSync(path.join(installed, 'package.json'),
+      JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
+    fs.writeFileSync(path.join(installed, 'index.js'), "import 'a-package-that-is-not-installed';\n");
+    const damaged = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
+    expect(damaged.status, 'a daemon that failed to load did not stop the command').not.toBe(0);
+    expect(damaged.stderr, 'a daemon that resolved and then failed is reported as one that did not resolve')
+      .not.toContain(NO_DAEMON_CONDITION);
+    expect(damaged.stderr, 'the failure a maintainer has to act on was swallowed')
+      .toContain('a-package-that-is-not-installed');
+    // Put back as it was, so the assertions after this one meet the installation the fixture
+    // installed rather than the one this paragraph damaged.
+    fs.rmSync(installed, { recursive: true, force: true });
+    expect(fs.existsSync(installed), 'the fixture daemon outlived the assertion it was written for').toBe(false);
 
     // **Q-0093 AC-5(d): the command that needs the assets is run from the packed install.**
     // Asserting that `files` contains `"templates"` proves a manifest key; this is the only

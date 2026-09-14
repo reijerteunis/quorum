@@ -846,6 +846,26 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
       .toContain('.pathname');
   });
 
+  test('Q-0126 AC-10 — the daemon catch looks at what it caught, and rethrows what it does not own', () => {
+    // Structural for the reason the `openOn` seam exists: in this workspace `@quorum/server` always
+    // resolves, so no fixture can drive that catch at all. The behavioural half is `build.test.ts`'s
+    // packed fixture, which damages a daemon that IS installed and requires the packaging refusal
+    // not to be what comes out; this is the cheap half that fails in the ordinary suite.
+    //
+    // Read through `codeOf`, which the clause above needed the hard way: the module's own docblock
+    // explains this distinction, so a scan of the raw text would be satisfied by the explanation
+    // rather than by the code.
+    const command = codeOf(commandModules().find(([name]) => name === 'open.ts')?.[1] ?? '');
+    expect(command, 'open.ts is not among the command modules').not.toBe('');
+    expect(command, 'the catch no longer asks whether it was this package that failed to resolve')
+      .toContain('if (!isDaemonUnresolved(error)) throw error;');
+    // A bare `catch {` is the defect itself rather than a neighbouring smell: a catch with no
+    // binding cannot have looked at what it caught, which is how every load failure became the one
+    // sentence that says the package is not here.
+    expect(/catch\s*\{/.test(command), 'open.ts catches something without looking at it').toBe(false);
+    expect(/catch\s*\{/.test('try { load() } catch { refuse() }'), 'the needle matches nothing').toBe(true);
+  });
+
   test('a frame module doing it fails, and so does a second command module', () => {
     // Both mutations AC-10(d) names, over copies rather than over the tree: the shipped tree passes,
     // and a clause that can only be observed passing is not established (2026-08-29).
