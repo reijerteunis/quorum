@@ -73,6 +73,75 @@ Q-0124 rules the distribution set. **Measure before choosing, and measure the fi
 claim above that `quorum help` breaks is reasoned from `main.ts`'s static dispatch and has **not**
 been reproduced.
 
+### Measured 2026-09-14, and the paragraph above is wrong about where it breaks
+
+The instruction was followed before this ticket was launched. A throwaway worktree off `main` at
+`9bef7d0` carried a production `packages/cli/src/open.ts` reaching `@quorum/server`, wired into
+`HANDLERS` **and** `COMMANDS` so the emit really loads it, and each shape was run against Q-0098's own
+fixture — *"the packed set installs outside the workspace with the registry dead, and runs"*, which
+executes `quorum help` and `quorum init` in the packed project.
+
+| `@quorum/cli` declares | import shape | packed `npm install` | packed `quorum help` | workspace `quorum open` |
+| --- | --- | --- | --- | --- |
+| `dependencies` | static | **FAILS** — `ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli` | never reached | works |
+| `optionalDependencies` | static | passes | **FAILS** — `ERR_MODULE_NOT_FOUND` from `dist/open.js` | works |
+| `optionalDependencies` | **dynamic** | **passes** | **passes** | **works** |
+
+**The prediction above is row 2 and the tree gives row 1.** `pnpm pack` rewrites `workspace:*` to
+`0.0.0` — verified by unpacking the tarball's own manifest, which reads
+`{"@quorum/core":"0.0.0","@quorum/shared":"0.0.0","@quorum/server":"0.0.0"}` — so npm reaches for a
+registry that is not there and **the install dies before any module loads**. `quorum help` is never
+reached, so the failure is a dependency-resolution failure and not a module-resolution one.
+
+**Therefore the second of the three answers does not work on its own, and the body names only one
+half of it.** A dynamic import cannot help a manifest: with `dependencies`, the install fails
+whatever shape the import takes. What works is **both** — `optionalDependencies`, so npm skips an
+unresolvable optional and the install completes, **plus** a dynamic import inside the handler, so the
+absence is catchable and `quorum open` can print a sentence while every other command is untouched.
+Row 3 is that combination and it is demonstrated rather than proposed.
+
+**This unblocks the ticket from Q-0124 rather than settling Q-0124.** The third answer — hold until
+the distribution set is ruled — becomes optional rather than necessary. **The caveat is stated rather
+than buried: under row 3 a packed install still cannot open the UI.** That is not a regression, there
+being no `open` today, but it means this ticket ships a command that works on **one** of the two
+paths this repository claims, and the end state stays Q-0124's. Whether that is acceptable is a gate
+question, not a measurement.
+
+**The requirement should weigh row 3 rather than adopt it.** It is the cheapest shape that keeps both
+paths alive, and it has a cost the gate should price: `optionalDependencies` makes a *silent* skip the
+normal case, so an adopter whose install genuinely half-failed and one whose install is working as
+designed reach the same sentence. That is the shape this repository refuses elsewhere — *"a failed
+probe read as a proven negative"* (Q-0074, Q-0115) — and saying `the daemon is not installed here`
+when the real cause is something else is exactly that class. Whether the command can tell the two
+apart is worth a criterion.
+
+### The blast radius, measured the same way: six registers, and the first is Q-0125's own
+
+A full forced suite under the probe shape failed **6 tests across 2 packages**, every one a guard
+working as designed:
+
+- `packages/core/src/test-discovery.test.ts` — **Q-0125 AC-13**, *"nothing depends on
+  `@quorum/server`"*, whose own comment reads *"This is Q-0126's first line, and it must fail here."*
+  It did. The criterion shipped the day before, firing on exactly the change it was written for.
+- `packages/core/src/adapters/cli-version.test.ts` **clause D** — the namespace-import route check.
+  `await import('@quorum/server')` binds every export under one identifier, which is that clause's
+  stated subject. **Whether it genuinely reaches this use or is a false positive here is a ruling this
+  requirement owes**, and it matters because it means row 3's shape is not free: it trips a guard in a
+  package this ticket does not otherwise touch.
+- `packages/cli/src/commands.test.ts` — the registry is *"help plus the spike's eight … and nothing
+  else"*, so a ninth command fails it.
+- `packages/cli/src/frame.source.test.ts` ×3 — the frame/command partition, the derived barrel
+  re-export, and the frame-implements-no-command clause.
+
+And `pnpm install --frozen-lockfile` refuses until the lockfile is committed, which is the flag CI
+uses.
+
+**One methodological note, because it nearly cost the measurement.** The first probe passed the packed
+fixture and proved nothing: `main.ts` imported `open` without using it, so `tsc` elided the import and
+the module was never loaded. Wiring `open` into `HANDLERS` is what made the emit carry it. *A check is
+not established by reading it* (2026-08-29), inside the measurement written to settle this question —
+so a criterion here must assert that the emit **loads** the module, not merely that a file imports it.
+
 ## What else it owes
 
 The **port**. `apps/web/vite.config.ts`'s header records that `QUORUM_DAEMON_PORT`'s 7717 is *"a
