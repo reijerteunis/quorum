@@ -6,6 +6,8 @@
  *
  * Why: deliberate addition, not preservation — Q-0118.
  */
+import { fileURLToPath } from 'node:url';
+
 import { serve as serveNode } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 
@@ -80,9 +82,30 @@ export interface ServeOptions {
    * The directory holding the built web app, or nothing to serve none (Q-0122).
    *
    * A supplied directory that holds no build **refuses before anything binds** — see {@link serve}.
+   *
+   * **A `URL` is accepted beside a path since Q-0126, and the widening is the caller's constraint
+   * rather than this package's taste.** `packages/cli` may import no `node:url`
+   * (`frame.source.test.ts`'s `IO_MODULE`, asserted empty over every production module of that
+   * package), so the one caller that knows where the bundle is can compute
+   * `new URL('…/apps/web/dist/', import.meta.url)` and cannot convert it — and `new URL(…).pathname`
+   * is not the conversion, because it leaves percent-encoding in place and an installation under a
+   * path containing a space would be refused by {@link bundleRefusal} on a machine where the build
+   * is present. So the package that owns the confined root converts, at the one site below. That is
+   * `initProject(dir: string, templates: string | URL)`'s shape at a second site, which
+   * `packages/cli/src/init.ts` already relies on for exactly this reason.
    */
-  readonly bundle?: string;
+  readonly bundle?: string | URL;
 }
+
+/**
+ * A bundle root as a directory path, whichever of the two shapes the caller supplied.
+ *
+ * The one conversion in this package, so {@link ServeOptions.bundle}'s widening reaches no further:
+ * everything below `serve` — {@link bundleRefusal}, `mountStatic`, `confinedFile`, `pathInside` —
+ * goes on taking a `string`, because a confined root is a filesystem path and a `URL` is not one.
+ */
+const bundleDir = (bundle: string | URL | undefined): string | undefined =>
+  bundle === undefined ? undefined : typeof bundle === 'string' ? bundle : fileURLToPath(bundle);
 
 /**
  * Serve one host on loopback.
@@ -102,8 +125,9 @@ export interface ServeOptions {
  * @returns the port actually bound, and a close that resolves when the socket is shut.
  */
 export async function serve({ host, port = 0, bundle }: ServeOptions): Promise<Listening> {
-  if (bundle !== undefined) {
-    const refusal = bundleRefusal(bundle);
+  const directory = bundleDir(bundle);
+  if (directory !== undefined) {
+    const refusal = bundleRefusal(directory);
     if (refusal) throw new Error(`${refusal.condition} — ${refusal.remedy ?? ''}`);
   }
   // The read-only routes are mounted here rather than inside `createApp`, so a test that wants the
@@ -111,7 +135,7 @@ export async function serve({ host, port = 0, bundle }: ServeOptions): Promise<L
   // host is driving, which is the only project this process has. The static route is NOT mounted
   // here: it has to sit ahead of the run routes rather than behind the read ones, so `createApp`
   // registers it first and this option is passed through.
-  const app = mountRead(createApp({ host, bundle }), host.project);
+  const app = mountRead(createApp({ host, bundle: directory }), host.project);
   let server: ReturnType<typeof serveNode>;
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
@@ -207,7 +231,7 @@ export async function serve({ host, port = 0, bundle }: ServeOptions): Promise<L
  */
 export async function createDaemon(
   { project, port = 0, retain = DEFAULT_RETENTION, bundle }: {
-    project: Project; port?: number; retain?: number; bundle?: string;
+    project: Project; port?: number; retain?: number; bundle?: string | URL;
   },
 ): Promise<Listening & { readonly host: RunHost }> {
   const host = createRunHost({ project, retain });

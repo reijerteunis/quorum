@@ -25,6 +25,7 @@ export * from './gate.js';
 export * from './init.js';
 export * from './lint.js';
 export * from './main.js';
+export * from './open.js';
 export * from './run.js';
 export * from './runs.js';
 export * from './ticket.js';

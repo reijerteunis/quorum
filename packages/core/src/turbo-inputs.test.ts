@@ -300,6 +300,30 @@ const WALKS: readonly Walk[] = [
       && (/^[^/]+\/(?:package\.json|vitest\.config\.js)$/.test(below) || below.endsWith('.test.ts')),
     why: 'the same walk, over the second glob pnpm-workspace.yaml declares',
   },
+  // Q-0126 AC-12 — a SECOND walk of each of those two directories, by a different suite and under a
+  // different rule, which is why these are rows of their own rather than a widening of the two
+  // above. `browser.source.test.ts` claims that exactly one site in the workspace launches a
+  // browser, and a claim about every package can only be answered by reading every package: the two
+  // rows above collect manifests and test files, so without these the new walk's production reads —
+  // `packages/server/src`, `packages/shared/src`, `apps/web/src` among them — would be hashed by
+  // nothing while clause B stayed green, the literals being registered already. That is the
+  // fail-open shape this file exists to close, and it is closed by naming the rule rather than by
+  // trusting the directory.
+  {
+    taskId: '@quorum/core#test',
+    dir: 'packages',
+    collects: (below) => !below.split('/').some((part) => ['node_modules', 'dist', '.turbo'].includes(part))
+      && !below.startsWith('shared/')
+      && /\.tsx?$/.test(below),
+    why: 'walk() — browser.source.test.ts, every TypeScript file the workspace carries, tests included. `shared/` is excluded there and here for one reason: it is this package\'s workspace dependency, so the edge hashes it and the clause below asserts that core covers it by that edge and never by an input. The walk states the same bound and reads that package\'s own child-process guard instead',
+  },
+  {
+    taskId: '@quorum/core#test',
+    dir: 'apps',
+    collects: (below) => !below.split('/').some((part) => ['node_modules', 'dist', '.turbo'].includes(part))
+      && /\.tsx?$/.test(below),
+    why: 'the same walk, over the second glob pnpm-workspace.yaml declares',
+  },
 ];
 
 /**
@@ -734,6 +758,10 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/backlog/backlog.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, \'packages/cli/src\')': 'the literal is inside the argument, which clause B collects and WALKS declares — Q-0059 AC-8 reads the second package because the register claims something about it',
+  },
+  'packages/core/src/browser/browser.source.test.ts': {
+    'repoRoot → dir': 'walk()\'s parameter, and both call sites pass a literal: the two workspace globs, \'packages\' and \'apps\', which clause B collects and WALKS declares. Q-0126 AC-12 claims that ONE site in the workspace launches a browser, and a claim about every package can only be answered by reading every package',
+    'repoFile → `${COVERED_ELSEWHERE}/src/index.test.ts`': 'COVERED_ELSEWHERE is the literal \'packages/shared\' at the top of that file, and clause B collects the joined path as a literal too. It is the one package the walk does not enter — the workspace dependency edge hashes it — and this read is what makes that exclusion checkable rather than argued',
   },
   'packages/core/src/caught-failures.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal TWO-element array at the top of that file — packages/core/src and packages/cli/src — and clause B collects both. The Q-0059 AC-8 shape over a second tree, because Q-0115 AC-3 claims something about the roots it walks; shared is deliberately out, for the reason recorded above that array',
@@ -1711,6 +1739,9 @@ const READ_BASES: Record<string, Record<string, string>> = {
     target: 'path.join(runDirOf(start), \'manifest.json\') — inside a run directory under the same sandbox',
     'runDirOf(start)': 'the run directory a `start` would allocate, derived from the sandbox repoDir it names',
     stray: 'path.join(history.dir, \'manifest.json.tmp\') — likewise',
+  },
+  'packages/core/src/browser/browser.source.test.ts': {
+    here: 'path.join(repoRoot, dir) for the two workspace globs, then a directory `readdirSync` returned from inside one of them — so every read is below \'packages\' or \'apps\', the two literals WALKS declares for this task',
   },
   'packages/core/src/test-command.test.ts': {
     // Q-0107 AC-16 removed `dir` with `spikeSources()`, whose walk of the spike's source directory

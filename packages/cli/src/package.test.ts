@@ -28,6 +28,15 @@ interface Manifest {
   engines?: { node?: string };
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
+  /**
+   * The third dependency key, declared here at Q-0126 so this register can describe it.
+   *
+   * It was absent until then — not as a decision but because the manifest had none — which made an
+   * optional edge **invisible** to the assertions below: `dependencies` was asserted strictly and
+   * `devDependencies` asserted absent, and a third section could have been added without either
+   * moving. That is the silent-register shape this repository keeps finding, closed on the way in.
+   */
+  optionalDependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   exports?: unknown;
   main?: unknown;
@@ -49,6 +58,26 @@ describe('AC-1 — the manifest', () => {
     // YAML reader, no colour library. The frame preserves the spike's parser, and a library would
     // silently "fix" the two behaviours `argv.test.ts` pins (Q-0090 non-goal 13).
     expect(own.devDependencies).toBe(undefined);
+  });
+
+  test('Q-0126 AC-7 — the daemon is an OPTIONAL edge, and the whole dependency shape says so', () => {
+    // **Optional and not required, which is the difference between an install that works and one
+    // that does not.** `@quorum/server` is `private: true` with no `files`, so it is in none of the
+    // three tarballs a packed install gets; `pnpm pack` rewrites `workspace:*` to the sibling's
+    // `0.0.0`, and with a REQUIRED edge `npm install` of those three reaches a registry for a fourth
+    // package it cannot find and dies before any module loads. Measured, not reasoned:
+    // `ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli`. An optional edge npm cannot satisfy is
+    // skipped and the install completes.
+    //
+    // Why: *"An optional edge says the daemon may be absent, and never why"* (2026-09-14). It is
+    // **provisional against Q-0124**: when that ticket rules a distribution route the edge becomes
+    // required, the import may become static, and 094 is superseded rather than amended.
+    expect(own.optionalDependencies).toStrictEqual({ '@quorum/server': 'workspace:*' });
+    expect(own.dependencies?.['@quorum/server'], 'the daemon became a required dependency').toBe(undefined);
+    // All three sections asserted together, so a fourth key cannot arrive unremarked the way a third
+    // could until this ticket. `devDependencies` stays absent and `dependencies` stays the two.
+    expect(Object.keys(own).filter((key) => key.toLowerCase().endsWith('dependencies')).sort())
+      .toStrictEqual(['dependencies', 'optionalDependencies']);
   });
 
   test('names the binary `quorum`, and the package stays @quorum/cli', () => {
@@ -166,6 +195,9 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     'packages/server/tsconfig.build.json': 'build.test.ts — the same comparison, over the file Q-0125 added; this is the one of the four whose edit moved no hash here until it was declared, measured at `7de4164544dc0218` unchanged',
     'apps/web': 'build.test.ts — Q-0125 AC-2(b) globs `apps/*/tsconfig.build.json` too and this package has none, which is correct rather than a gap: a Vite bundle is not `tsc` output. The directory is the subject the glob is asked about; AC-8\'s script scan reads its manifest, which arrives through @quorum/core#test\'s own `../../apps/*/package.json` and the root `^test` edge',
     'packages/server/src/index.test.ts': 'build.test.ts — Q-0125 AC-7(c), the emitted barrel\'s runtime names are compared against that package\'s own SURFACE register rather than a second copy of the list; covered by the per-package source glob already declared',
+    'README.md': 'commands.test.ts — Q-0126 AC-11, the command table is held against COMMANDS so a tenth command fails until it is documented. Hashed by no other task at all, so it is declared',
+    'docs/USAGE.md': 'commands.test.ts — Q-0126 AC-11, the `###` sections are held against the same register. It reaches @quorum/shared#test through its own declaration for the BYOS quotation, but relying on a sibling for one of a pair while the other has none is a residual rather than coverage, so it is declared beside README.md',
+    'packages/server/package.json': 'build.test.ts — Q-0126 AC-7, the version the optional @quorum/server edge is rewritten to is derived from that package\'s own manifest rather than written down as 0.0.0. NOT declared, and measured rather than assumed: the optionalDependencies edge this ticket added creates the same `^test` edge a required one would, so appending a line there moved this task from `e381d3d003a8d31e` to `45b8b67c3f133524` with nothing declared. Declaring it would be the same claim twice, free to drift (Q-0121\'s measurement)',
   };
 
   /**
@@ -207,6 +239,7 @@ describe('AC-10(a) — this suite reads two repository files, and declares both'
     '../../harness/flows/*.yaml', '../../harness/roles/code-reviewer.md',
     '../../packages/*/src/**', '../../packages/*/turbo.json',
     '../../packages/*/tsconfig.build.json', '../../apps/*/tsconfig.build.json',
+    '../../README.md', '../../docs/USAGE.md',
   ];
 
   test('the turbo task declares exactly the reads nothing else covers', () => {
@@ -375,9 +408,27 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(25);
+    expect(domain()).toHaveLength(26);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
+  });
+
+  test('Q-0126 AC-16 — the register moved again, and the new name is the one a command CANNOT hold', async () => {
+    // The pin above read 25 until this ticket, and is shown red against that value rather than
+    // edited to fit — the demonstration Q-0091, Q-0092 and Q-0093 each wrote for their own
+    // additions, for the same reason.
+    expect(domain(), 'the register still holds the twenty-five it held before this ticket').not.toHaveLength(25);
+
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    expect(domain(), 'openUrl is exported and the register does not name it').toContain('openUrl');
+    expect(typeof barrel.openUrl, 'openUrl is not a function on the barrel').toBe('function');
+
+    // And the name no command needs stays off the surface, which is the rule every addition above
+    // arrived under. `BROWSER_LAUNCH_STATES` is the closed set `openUrl` answers from; `open.ts`
+    // reads one result and never enumerates the set, so publishing the tuple here would be a name
+    // added because its module exports it — what Q-0092 withheld `manifestShapeError` for.
+    expect(Object.keys(barrel), 'BROWSER_LAUNCH_STATES is on the public surface and no command needs it')
+      .not.toContain('BROWSER_LAUNCH_STATES');
   });
 
   test('the barrel exports exactly the domain register plus the error classes, and every one is defined', async () => {
@@ -468,12 +519,23 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // must carry has to appear on it. What that costs is stated rather than hidden: a
     // `packages/cli` register grew for a `packages/server` need. What it buys is that the frame is
     // still forbidden to reimplement it, which is this register's own sentence and is true of it.
-    expect(domain(), 'the register still holds the twenty-four it held before this ticket').not.toHaveLength(24);
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(25);
+    // Q-0126 moved them to 26 and 31, and `openUrl` is the first entry that is here because a
+    // command module **cannot** hold it rather than because it may not: opening a browser is a
+    // spawn, and `frame.source.test.ts`'s `IO_MODULE` refuses `node:child_process` in every
+    // production module of this package. So the register's sentence — helpers the frame is forbidden
+    // to reimplement — is satisfied by a helper this package could not have written at all. See
+    // *"`core` opens a URL, and the ninth folder is named for what it is about"* (2026-09-14).
+    expect(domain(), 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
+    expect(domain(), 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(26);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before this ticket')
+    expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before Q-0122')
       .not.toHaveLength(29);
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(30);
+    expect(Object.keys(barrel), 'the barrel still holds the thirty it held before Q-0126')
+      .not.toHaveLength(30);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(31);
+    expect(domain(), 'openUrl is not on the register the barrel is derived from').toContain('openUrl');
+    expect(typeof barrel.openUrl, 'openUrl is not a function on the barrel').toBe('function');
     expect(domain(), 'pathInside is not on the register the barrel is derived from').toContain('pathInside');
     expect(typeof barrel.pathInside, 'pathInside is not a function on the barrel').toBe('function');
     expect(domain(), 'cliVersion is not on the register the barrel is derived from').toContain('cliVersion');

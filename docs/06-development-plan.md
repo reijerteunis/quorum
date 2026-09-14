@@ -2939,7 +2939,16 @@ parked at p2 with its three written reopening thresholds.
 **Done when**
 - `packages/server`: start/stop runs, stream events over WebSocket, answer gates.
 - `apps/web`: projects home, backlog board, mission control (parallel trace columns, per-vendor cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions — **not** "override with reason", which `gateAnswerEnvelopeSchema` refuses and which Q-0013's gate recorded as this page's half of GO-2, corrected 2026-09-11 by Q-0118), run history.
-- `quorum open` starts daemon + browser; CLI and UI can both answer the same gate.
+- `quorum open` starts daemon + browser; CLI and UI can both answer the same gate. **The first
+  clause is met in full since Q-0126 and the second by nothing here, and the split is stated rather
+  than blurred.** `quorum open` starts the daemon against this project, serves the built web app on
+  loopback, prints one URL, opens it in the platform's default browser and closes cleanly on a
+  signal. The browser half arrived in that ticket's second round, once its GO-4 was ruled: the
+  launcher is `@quorum/core`'s, in a **ninth folder** named for what it is about, because
+  `packages/cli` may spawn nothing — and a launch that did not happen is a **warning** rather than a
+  failed run, with `--no-open` as the opt-out and **Windows named `unsupported` rather than
+  attempted**. *"CLI and UI can both answer the same gate"* is met by nothing here: this makes the
+  UI **reachable**, and the gate screen is Q-0016's.
 - Resumable runs after daemon restart.
 
 **Tickets**
@@ -3576,8 +3585,82 @@ parked at p2 with its three written reopening thresholds.
   keeps `private: true` and declares no `files` and no `bin`, and **a packed `@quorum/cli` importing
   it would still be broken** for the `workspace:*` reason Q-0098's M-8 measured. That becomes urgent
   at **Q-0126**, which this unblocks and which adds the first consumer.
-- Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12; `draft`, **p1**.
-  Depends on Q-0125.)* **It owns a line of this milestone's own done-when that no ticket owned** —
+- Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12, p1; depends on
+  Q-0125. **Both halves are implemented — the daemon's AC-1 to AC-11 in round 1, the browser's
+  AC-12 to AC-16 in round 2** — and this line is written to what happened rather than to what was
+  planned.)*
+  **`quorum open` runs**: it opens the project through `@quorum/core`, starts the daemon on
+  loopback, serves the built `apps/web` bundle, prints one URL, and closes cleanly on `SIGINT` or
+  `SIGTERM` — the host shut down before the socket, so stopping the UI leaves no ticket locked — and
+  exits 130. The frame dispatches **ten** names where it dispatched nine. **The product's UI is
+  reachable for the first time.**
+  **The packaging shape shipped as decision 094 ruled it, and the ticket body's own measurement was
+  right about the answer and wrong about where it breaks.** `@quorum/cli` declares `@quorum/server`
+  under `optionalDependencies` and reaches it through a **dynamic import inside the handler**; both
+  halves are required and neither rescues the other. Q-0098's packed fixture now executes
+  `quorum open` as well as `quorum help` and asserts the refusal **by bytes** against the literal the
+  CLI declares — so the claim that a packed install keeps every other command is a red test rather
+  than a paragraph, and so is the clause that the refusal names *what failed to resolve here* and
+  never why.
+  **One clause of Q-0125's export surface moved and no other**: `ServeOptions.bundle` takes
+  `string | URL`. That was §0.1 of the requirement and it is the run's most useful correction —
+  iteration 1's AC-3 was **unimplementable**, because `packages/cli` may import no `node:url` and
+  `new URL(…).pathname` does not decode percent-encoding, so an installation under a path containing
+  a space would have been refused for a build that is present. Ruled onto `initProject(dir,
+  templates)`'s precedent, with a space-in-the-path round trip as the red test.
+  **The browser landed in round 2, and the round-1 `blocked` is why it is sound rather than a
+  round lost.** That round completed AC-1 to AC-11 and stopped on AC-16, which requires in as many
+  words that *"the decision entry GO-4 asks for is landed before a line of code"* — an entry
+  `developer-generalist` may not write. It refused to pick a folder and **measured instead**:
+  `fanout/` is closed to a third file by a landed pin, `adapters/` is vendor-CLI knowledge by the
+  architecture's own rule, and the remaining six are each named for something this is not, so **no
+  folder a measurement selects** and a ninth is the branch that needs an entry. **Erratum E-2 is
+  where the operator's error is recorded**: E-1 carried GO-4 forward as *"the successor's"* while
+  refusing the split that would have created a successor, so the run became its own successor and
+  GO-4 became a second blocking precondition nobody had discharged. The cost is one round, $57.30,
+  with nothing wasted — the eleven were complete and green on the branch and round 2 verified them
+  rather than repeating them.
+  **Decision 095 is what round 2 implemented**: *"`core` opens a URL, and the ninth folder is named
+  for what it is about"* (2026-09-14). `packages/core/src/browser/` holds one exported primitive;
+  **principle 1's enumeration widens by one item and its rule does not move**, with every clause it
+  forbids restated in the entry so the widening cannot be read as general, and
+  `harness/architecture.md` carries the same sentence and moved in the same change because that file
+  is fed to an agent at run time. The launcher spawns `open` or `xdg-open` **with the URL as one
+  argv element and never a command string** — no shell, so no injection surface, which is what makes
+  the widening safe to state — and **Windows is `unsupported` explicitly**, its `start` being a
+  `cmd.exe` builtin an argument-based spawn cannot exec, which is a smaller promise than a row
+  nobody has run and is Q-0098's POSIX-only registration at a second site.
+  **The result is a closed set of four and none of them is a claim about a browser**, which is the
+  half worth keeping: the primitive knows the process it started and how that process exited, so
+  `launched` never means *a page is showing* and no state says *there is no browser*.
+  `executable-unavailable` is produced **only by `ENOENT`** — the one failure that is an observation
+  rather than the absence of one — and every other throw is `launch-failed`, the *could not tell*
+  member. **Containment**'s, **push lag**'s and **verified version**'s discipline at a fourth
+  subject. The surface renders it as a **warning and never a failed run**: the daemon is listening
+  by then, the URL line is byte-identical whether or not a browser was launched, and `--no-open` is
+  the whole of the opt-out — **no SSH, display or container is detected**, because an environment
+  oracle would make a fixture's verdict a property of the machine.
+  **Its first wording was refused by its own test**, which is the round's smallest useful finding:
+  *"Quorum knows no browser launcher for win32"* contains the phrase *no browser*, and the guard
+  forbidding a sentence that claims a browser is absent fired on it. It reads *"has no launcher"*
+  now. What is absent is a row in a table, never a browser on the machine.
+  **Two things the run found that no criterion asked for.** The `optionalDependencies` edge creates
+  the same turbo `^test` edge a required one would, measured at `e381d3d003a8d31e` →
+  `45b8b67c3f133524` — so `packages/server/package.json` is covered transitively and declaring it
+  would be the same claim twice. And **two guards tripped on their own prose while being written**:
+  an AC-3 clause matched the docblock explaining why `.pathname` is refused, and the comment
+  explaining why this suite installs no signal handler was itself read as installing one. Both are
+  the class `frame.source.test.ts`'s `codeOf` exists for, met twice in one ticket and fixed rather
+  than worked around. **Round 2 met a third of the same family and one wider**: `open.ts`'s docblock
+  named `initProject` while explaining the precedent it follows, and AC-10's scan reads a module's
+  whole text, so a command naming another command's domain symbol failed it **from a comment**. The
+  prose was reworded rather than the scan narrowed.
+  **Round 2 also corrected a count nothing checks.** `packages/core/src/index.ts`'s header said
+  *"Twenty-nine value symbols"* against a file exporting **thirty**: Q-0122 added `pathInside` to the
+  register and left the prose, and what `package.test.ts` pins is the register's length and the error
+  list's, never a number written in that docblock. Re-derived to 31 rather than incremented from a
+  figure that was already wrong. *(Original body follows.)*
+  **It owns a line of this milestone's own done-when that no ticket owned** —
   *"`quorum open` starts daemon + browser"* — measured at Q-0122's gate and confirmed when it was
   opened: `packages/cli` declares no dependency on `@quorum/server`, there is no `open` command, and
   the daemon has only ever run under its own test suite. After Q-0122 that is sharper than a loose

@@ -162,6 +162,29 @@ export function ticketBranch(ticketId: string, leaf: string): string {
  */
 export const DEFAULT_BASE_BRANCH = 'main';
 
+// ---------- the daemon's port ----------
+
+/**
+ * The port `quorum open` asks for, and the one `apps/web`'s dev proxy forwards to.
+ *
+ * **One declaration with two readers, which is the whole of why it is here.** `apps/web`'s dev
+ * server has carried 7717 since Q-0120 and its own header called the number *"a dev-server
+ * convention, not a contract: the daemon itself has no default port (`packages/server` binds
+ * whatever the OS hands back), so `quorum open` is what will later have to agree with this value."*
+ * This is that later, and agreement is structural rather than asserted: both readers import this,
+ * neither spells a number, and a second literal anywhere is the defect rather than the fix.
+ *
+ * **The promotion is stated rather than absorbed** (Q-0126 OQ-6). It was a convention while one
+ * reader had it; it is a shipped default now, because `quorum open` prints a URL a human bookmarks.
+ * What has *not* changed is that `packages/server` keeps no default of its own — `serve` binds the
+ * port it is given and `0` still asks the operating system for a free one, which is what every test
+ * in that package uses. The default belongs to the command that chooses one, not to the library.
+ *
+ * Declarations only, like every constant here: nothing reads the environment. `apps/web`'s
+ * `QUORUM_DAEMON_PORT` override is the dev server's own, and `--port` is the command's.
+ */
+export const DEFAULT_DAEMON_PORT = 7717;
+
 // ---------- the ticket folder's append-only log ----------
 
 /** Spike: `path.join(ticket.dir, 'runs.log')` — spike/src/backlog.js:159, spike/src/engine.js:747. */

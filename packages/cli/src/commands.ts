@@ -34,10 +34,19 @@
  * `spike/bin/harness.js:5` sits between `:4` and `:6`, and `adapters` between `lint` and `validate`,
  * because `:8` sits between `:7` and `:9`. The eight the spike has are now the eight the frame
  * dispatches, so nothing is listed that is not there.
+ *
+ * **Q-0126 adds `open`, appended last, and it is the first name this list has held that the spike
+ * never had.** Every insertion above took its place in `spike/bin/harness.js`'s header order, and
+ * that header has no `open` line to insert against — so appending is the only position that changes
+ * no existing relative order, which is what the rule above was protecting. It is also the first
+ * entry whose command may be unavailable at run time: `@quorum/server` is an optional dependency,
+ * and `open` is listed because the frame dispatches it, which it does on every installation. What
+ * differs is what that dispatch then reports. Why: see *"An optional edge says the daemon may be
+ * absent, and never why"* (2026-09-14).
  */
 
 /** Every command name {@link HELP} may mention and the frame's dispatch table must handle. */
-export const COMMANDS = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs'] as const;
+export const COMMANDS = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs', 'open'] as const;
 
 /** One of {@link COMMANDS}. */
 export type Command = (typeof COMMANDS)[number];
@@ -68,4 +77,5 @@ commands:
   quorum lint                             lint the whole flow directory (structure + cross-flow edges)
   quorum adapters [--probe] [--json]      which vendor CLIs are installed, on subscription login; --probe also proves the login
   quorum validate <schema.json> <file…>   check artifacts against a contract; exit 1 on failure
-  quorum runs [ticket|run-id] [--json]    run history: list, filter by ticket, or show one run`;
+  quorum runs [ticket|run-id] [--json]    run history: list, filter by ticket, or show one run
+  quorum open [--port <n>] [--no-open]    serve the web app on loopback, print its URL and open it; Ctrl-C stops it`;

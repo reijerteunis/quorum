@@ -71,7 +71,29 @@
         "../../packages/*/**/*.test.ts",
         "../../apps/*/package.json",
         "../../apps/*/vitest.config.js",
-        "../../apps/*/**/*.test.ts"
+        "../../apps/*/**/*.test.ts",
+        // Q-0126 AC-12: src/browser/browser.source.test.ts claims that exactly ONE site in the
+        // workspace launches a browser, and a claim about every package is answered by reading
+        // every package — so this task's verdict depends on the TypeScript source of every package
+        // that walk enters, production files included, not only on the test files declared above.
+        //
+        // **Named per package rather than as `packages/**`, and `@quorum/shared` is deliberately
+        // absent.** That package is this one's workspace dependency and the edge is what hashes it:
+        // `src/turbo-inputs.test.ts` asserts, in as many words, that core covers shared's source by
+        // `dependsOn` and never by an input, so a glob reaching it would be the edge's claim written
+        // twice. The walk skips it for that reason and says so, and what it costs is checked rather
+        // than assumed — that package's own suite refuses `child_process` in every one of its
+        // sources, which `browser.source.test.ts` reads.
+        //
+        // A package added later is walked and is NOT here, so the walk's own assertion in
+        // `src/turbo-inputs.test.ts` fails until someone adds it. That is the intended shape: the
+        // list fails closed rather than silently under-covering.
+        "../../packages/cli/**/*.ts",
+        "../../packages/server/**/*.ts",
+        "../../packages/compiler/**/*.ts",
+        "../../packages/templates/**/*.ts",
+        "../../apps/**/*.ts",
+        "../../apps/**/*.tsx"
       ]
     }
   }

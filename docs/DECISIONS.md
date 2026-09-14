@@ -183,3 +183,4 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-14
 
 - [An optional edge says the daemon may be absent, and never why](decisions/094-an-optional-edge-says-the-daemon-may-be-absent.md)
+- [`core` opens a URL, and the ninth folder is named for what it is about](decisions/095-core-opens-a-url-and-the-folder-is-named-for-it.md)
