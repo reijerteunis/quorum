@@ -1,14 +1,31 @@
 ---
 id: Q-0126
 title: quorum open starts the daemon and opens a browser
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0126/integration
 priority: p1
 created: 2026-09-12
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 2
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: exhausted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-14T19:07:13.867Z
+    cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-14T19:30:08.796Z
+    cost: 18.073
 ---
 M3's done-when names quorum open and no ticket builds it. packages/cli declares no dependency on @quorum/server, there is no open command, and the CLI's AC-11 forbids every production module from importing node:child_process — so the browser spawn cannot happen in packages/cli at all.
 

@@ -179,3 +179,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 
 - [A fourth package emits, and what it emits is served rather than shipped](decisions/092-a-fourth-package-emits-and-what-it-emits-is-served.md)
 - [A fifth package emits, and *resolved* is not a synonym for *distributed*](decisions/093-a-fifth-package-emits-and-resolved-is-not-distributed.md)
+
+## 2026-09-14
+
+- [An optional edge says the daemon may be absent, and never why](decisions/094-an-optional-edge-says-the-daemon-may-be-absent.md)
