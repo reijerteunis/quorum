@@ -265,9 +265,19 @@ const resolvesOwnLocation = (text: string): boolean =>
  * **The frame is permitted none**, which is the half that keeps this a rule rather than a list: a
  * frame module resolving its own location is the mechanism Q-0090 AC-7 replaced, and a second
  * command module doing it would mean two places knew where the package is.
+ *
+ * **Q-0126 admits the second, and the sentence above is what it had to answer rather than an
+ * obstacle it went round.** *Two places knew where the package is* is the objection, and it does not
+ * reach here: `open.ts` is not locating the package, it is locating `apps/web/dist` — a directory
+ * outside this package altogether, whose position relative to the running module is the only thing
+ * that answers the same way from `src/` and from `dist/`. The two alternatives are worse and both
+ * are refused by the same reasoning `static.ts`'s header gives the daemon: `process.cwd()` answers
+ * the operator's directory, and an environment variable answers whatever was exported. The register
+ * is two entries and remains a claim rather than a list, because both directions below still fire.
  */
 const SELF_LOCATING: Record<string, string> = {
   'init.ts': 'the shipped template tree is at <package>/templates/harness, which is knowable only relative to this module — 078(e)',
+  'open.ts': 'the built web app is at <workspace>/apps/web/dist, which answers the same from src/ and from dist/ only relative to this module — Q-0126 AC-3',
 };
 
 describe('the module scan has a subject', () => {
@@ -287,7 +297,7 @@ describe('the module scan has a subject', () => {
     const names = (entries: [string, string][]): string[] => entries.map(([name]) => name).sort();
     expect(names(commandModules()), 'the command modules are not what COMMANDS says they are')
       .toStrictEqual([
-        'adapters.ts', 'board.ts', 'init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts',
+        'adapters.ts', 'board.ts', 'init.ts', 'lint.ts', 'open.ts', 'run.ts', 'runs.ts', 'ticket.ts',
         'validate.ts',
       ]);
     expect(names(commandModules()), 'the partition still holds the two modules it held before Q-0092')
@@ -300,6 +310,11 @@ describe('the module scan has a subject', () => {
       .not.toStrictEqual(['init.ts', 'lint.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
     expect(names(commandModules()), 'the partition still holds the six modules it held before Q-0099')
       .not.toStrictEqual(['init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts', 'validate.ts']);
+    expect(names(commandModules()), 'the partition still holds the eight modules it held before Q-0126')
+      .not.toStrictEqual([
+        'adapters.ts', 'board.ts', 'init.ts', 'lint.ts', 'run.ts', 'runs.ts', 'ticket.ts',
+        'validate.ts',
+      ]);
     // `run.ts` is a command module and `gate.ts` and `trace.ts` are not, which is the derivation
     // rather than a decision: `run` is dispatched and the other two are the halves under it. It is
     // asserted because it is what makes the AC-10 row below `run.ts`'s alone.
@@ -407,6 +422,13 @@ const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   // this module may not derive itself.
   'ticket.ts': ['Backlog', 'configuredUser', 'loadProject'],
   'run.ts': ['runFlow', 'loadFlowByName', 'lintDirectory', 'loadProject', 'overrideAdapters'],
+  // Q-0126: one name, and the row is what says so. `quorum open` opens the project and hands it to
+  // a daemon; everything else it needs — the host, the bind address, the retention capacity — is
+  // `@quorum/server`'s and reaches this module through a deferred specifier rather than through
+  // `core`. In particular it does NOT name `@quorum/server`'s own `openProject`, which lives in the
+  // package an installation may not carry: routing project resolution through it would make *no
+  // project here* unreportable on exactly the installation where the daemon is absent.
+  'open.ts': ['loadProject'],
   'validate.ts': ['validateArtifact', 'readData'],
   'runs.ts': [
     'loadProject', 'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal',
@@ -563,7 +585,12 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // both are the kind a new command silently joins. Asserted here beside the rows that did move,
     // so the two that did not are a measurement rather than a silence.
     expect(Object.keys(TERMINAL_OWNER)).toStrictEqual(['gate.ts']);
-    expect(Object.keys(SELF_LOCATING)).toStrictEqual(['init.ts']);
+    // Q-0126 moved this one, and the value it replaced is refused rather than the assertion being
+    // widened to a `toContain` that would accept either — the shape every superseded register in
+    // this file already takes.
+    expect(Object.keys(SELF_LOCATING), 'the register still holds the one module it held before Q-0126')
+      .not.toStrictEqual(['init.ts']);
+    expect(Object.keys(SELF_LOCATING)).toStrictEqual(['init.ts', 'open.ts']);
     expect(terminalOffenders(production(), TERMINAL_OWNER)).toStrictEqual([]);
     expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
   });
@@ -722,7 +749,58 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
   test('the frame resolves no location, and the one command that does is the one with an entry', () => {
     expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
     expect(Object.keys(SELF_LOCATING), 'the register is empty — this test proves nothing')
-      .toStrictEqual(['init.ts']);
+      .toStrictEqual(['init.ts', 'open.ts']);
+  });
+
+  test('Q-0126 AC-3 — the second entry is a real self-location, and it answers the same from src/ and dist/', () => {
+    // Both halves of what the entry claims, measured rather than read. The first is that `open.ts`
+    // performs the mechanism its entry permits, which `locationOffenders` already refuses to assume;
+    // the second is the property 078(e) fixes the binary's depth for, and which is the whole reason a
+    // self-location is the honest answer here rather than a working directory.
+    const resolved = (from: string): string => new URL('../../../apps/web/dist/', `file://${from}`).pathname;
+    expect(resolved('/x/packages/cli/src/open.ts')).toBe('/x/apps/web/dist/');
+    expect(resolved('/x/packages/cli/dist/open.js')).toBe(resolved('/x/packages/cli/src/open.ts'));
+    // And the module really spells that expression, so the arithmetic above is about the shipped
+    // literal rather than about one written here.
+    const command = commandModules().find(([name]) => name === 'open.ts')?.[1] ?? '';
+    expect(command, 'open.ts is not among the command modules').not.toBe('');
+    expect(command, 'the bundle root stopped being module-relative')
+      .toContain("new URL('../../../apps/web/dist/', import.meta.url)");
+  });
+
+  test('Q-0126 AC-3 — the root travels as a URL, because .pathname would not survive a space', () => {
+    // The measurement §0.1 rests on, as a red test rather than a paragraph. `packages/cli` may not
+    // import `node:url` (the `IO_MODULE` clause below, asserted empty over every production module),
+    // so `fileURLToPath` is unavailable here and `new URL(…).pathname` is the only conversion this
+    // package could write — and it leaves percent-encoding in place. An installation under a path
+    // containing a space would therefore be handed a directory that does not exist, and
+    // `bundleRefusal` would report *no built web app* on a machine where the build is present, which
+    // is the worst shape the failure can take: the right condition for the wrong reason.
+    const spaced = new URL('../../../apps/web/dist/', 'file:///Users/me/My Project/packages/cli/dist/open.js');
+    expect(spaced.pathname, 'the encoding this package cannot decode').toContain('%20');
+    expect(spaced.pathname, 'pathname answers a directory that is not there').not.toContain('My Project');
+    // What ships instead: the URL crosses the boundary unconverted and `packages/server` — which may
+    // import `node:url` — decodes it. `ServeOptions.bundle` takes `string | URL` for this reason,
+    // which is `initProject(dir, templates)`'s shape at a second site.
+    expect(files().some(([name]) => name === 'open.ts'), 'open.ts is not in this package').toBe(true);
+    const command = commandModules().find(([name]) => name === 'open.ts')?.[1] ?? '';
+    // Read through `codeOf`, which is the rule `resolvesOwnLocation` already follows and which this
+    // assertion needed the hard way: the module's own docblock explains why `.pathname` is refused,
+    // and a scan of the raw text was satisfied by the explanation — a guard talked out of firing by
+    // text it does not execute, which is Q-0079 round 1's finding reproduced on first writing.
+    expect(codeOf(command), 'the bundle root is being converted here rather than handed across')
+      .not.toContain('.pathname');
+    // The root reaches the daemon as the `URL` this module computed: it is the handler's default
+    // parameter and is passed through unconverted, so both halves are asserted — the default is
+    // `BUNDLE`, and what `createDaemon` receives is that binding rather than something derived here.
+    expect(codeOf(command), 'the bundle root stopped being this module\'s own default')
+      .toContain('bundle = BUNDLE');
+    expect(codeOf(command), 'open.ts hands something other than that binding to the daemon')
+      .toContain('createDaemon({ project, port, bundle })');
+    // And the distinction is load-bearing rather than incidental: the prose IS there, so a clause
+    // reading the raw text would pass over a real conversion introduced beside it.
+    expect(command, 'the docblock stopped explaining the refusal, so codeOf is no longer what makes this pass')
+      .toContain('.pathname');
   });
 
   test('a frame module doing it fails, and so does a second command module', () => {
@@ -740,11 +818,20 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
   test('and an entry permitting a self-location its module does not perform fails, so the list cannot rot', () => {
     // The other direction, which is what stops the register outliving the mechanism it excuses —
     // the shape `domainOffenders` already refuses for the domain symbols.
-    const plain: [string, string][] = [['init.ts', "import path from 'node:path';"]];
+    // Both entries, one per direction, so neither row is shown red only by its neighbour (Q-0107):
+    // `init.ts` is present and has stopped self-locating, `open.ts` is absent from the corpus
+    // altogether, and the two produce different sentences.
+    const plain: [string, string][] = [
+      ['init.ts', "import path from 'node:path';"],
+      ['open.ts', "const BUNDLE = new URL('../../../apps/web/dist/', import.meta.url);"],
+    ];
     expect(locationOffenders([], plain, SELF_LOCATING))
       .toStrictEqual(['init.ts: its entry permits a self-location the module does not perform']);
     expect(locationOffenders([], [], SELF_LOCATING))
-      .toStrictEqual(["init.ts: an entry for a module that is no command's"]);
+      .toStrictEqual([
+        "init.ts: an entry for a module that is no command's",
+        "open.ts: an entry for a module that is no command's",
+      ]);
   });
 
   test('the clause reads what a module executes, not what its prose says — which is why IO_MODULE missed it', () => {
@@ -820,7 +907,20 @@ describe('Q-0091 AC-5 — the flattening lives in core and is not copied here', 
 });
 
 /**
- * The one file in this package that registers a process signal handler.
+ * The files in this package that register a process signal handler, and why each does.
+ *
+ * **Two since Q-0126, and the claim is unchanged rather than weakened.** What this register says is
+ * that owning process-level behaviour is a property some named file has and not something a command
+ * acquires quietly — so a third owner fails, and either of these two losing its handler fails too.
+ *
+ * `src/run.ts` owns one because an interrupt has to reach the engine and a reader parked on a gate
+ * question. `src/open.ts` owns one because it is the only command that does not return: it starts a
+ * daemon and serves until it is asked to stop, and `createDaemon`'s `close()` releases every live
+ * run through the abandonment path before the socket stops answering. `core` installs none of its
+ * own (Q-0050 AC-5), which is exactly why both live here.
+ *
+ * Both install when their work starts and remove in a `finally`; neither registers at module scope,
+ * which is what the runtime listener count below is for and why that count must stay unchanged.
  *
  * **This register is what AC-4(d)'s first clause became**, and it was re-aimed rather than deleted.
  * Until Q-0094 the clause read *"no file in this package registers a signal handler"*, correctly:
@@ -829,12 +929,15 @@ describe('Q-0091 AC-5 — the flattening lives in core and is not copied here', 
  * and `SIGTERM` at `spike/src/engine.js:113–114` and exits 130 at `:111`, and with the engine out of
  * that business the handler has nowhere else to live.
  *
- * **A blanket exemption for `src/**` is refused.** The claim worth keeping is that exactly one file
- * owns process-level behaviour, so a handler appearing in a second command — or this one quietly
- * losing its — is a failure either way. Package-relative, because the scan's subject is the package
- * and not `src`.
+ * **A blanket exemption for `src/**` is refused.** The claim worth keeping is that a named set of
+ * files owns process-level behaviour, so a handler appearing in a command that is not on this list —
+ * or one of these quietly losing its — is a failure either way. Package-relative, because the scan's
+ * subject is the package and not `src`.
+ *
+ * Sorted, because {@link signalHandlers} answers in the order the inventory walks and a register
+ * whose order was a property of the filesystem would be a second thing this could fail on.
  */
-const SIGNAL_HANDLER_OWNER = ['src/run.ts'];
+const SIGNAL_HANDLER_OWNER = ['src/open.ts', 'src/run.ts'];
 
 /** Every file in `files` that registers a process signal handler, excluding this guard's own. */
 const signalHandlers = (candidates: readonly [string, string][]): string[] => candidates
@@ -842,11 +945,29 @@ const signalHandlers = (candidates: readonly [string, string][]): string[] => ca
   .filter(([, text]) => /process\.(on|once|addListener)\s*\(\s*['"]SIG/.test(text))
   .map(([name]) => name);
 
-describe('AC-4(d) — 130 is a row of the table, and exactly one file installs the handler for it', () => {
-  test('one file in this package registers a signal handler, and it is the run command', () => {
+describe('AC-4(d) — 130 is a row of the table, and the files that install the handler for it are named', () => {
+  test('the files in this package that register a signal handler are the two the register names', () => {
     // Over the package rather than over `src/**/*.ts`, because the criterion's subject is
     // `packages/cli` and `vitest.config.js` is executable too. Same reasoning as AC-12's scan.
-    expect(signalHandlers(packageFiles())).toStrictEqual(SIGNAL_HANDLER_OWNER);
+    expect(signalHandlers(packageFiles()).sort()).toStrictEqual(SIGNAL_HANDLER_OWNER);
+  });
+
+  test('Q-0126 AC-6 — the register moved rather than being widened, and the value it replaced is refused', () => {
+    // The shape every superseded register in this file takes: the old value no longer describes the
+    // package, so a later change dropping `open.ts`'s handler fails here by name instead of passing.
+    expect(SIGNAL_HANDLER_OWNER, 'the register still holds the one file it held before Q-0126')
+      .not.toStrictEqual(['src/run.ts']);
+    expect(signalHandlers(packageFiles()), 'the run command stopped installing one').toContain('src/run.ts');
+    expect(signalHandlers(packageFiles()), 'the open command installs none').toContain('src/open.ts');
+    // And a THIRD owner still fails, which is what keeps two a claim rather than a description of
+    // whatever is there. Over a copy, because the shipped tree passes.
+    const third: [string, string][] = [
+      ['src/open.ts', "process.on('SIGINT', a);"],
+      ['src/run.ts', "process.on('SIGINT', b);"],
+      ['src/board.ts', "process.once('SIGTERM', c);"],
+    ];
+    expect(signalHandlers(third).sort()).not.toStrictEqual(SIGNAL_HANDLER_OWNER);
+    expect(signalHandlers(third).sort()).toStrictEqual(['src/board.ts', 'src/open.ts', 'src/run.ts']);
   });
 
   test('and the register fires both ways — a second owner fails, and so does none at all', () => {

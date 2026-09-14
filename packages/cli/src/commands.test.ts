@@ -127,13 +127,38 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(mentioned(HELP)).not.toContain('<command>');
   });
 
-  test('the registry is help plus the spike\'s eight, in the spike header\'s order, and nothing else', () => {
-    // Complete since Q-0099. Until then, listing a command the frame did not dispatch would have
-    // been a green tick over a subject that does not exist: it would fall through AC-6's default
-    // branch to this same text and exit 0.
-    const registry = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs'];
+  test('the registry is help plus the spike\'s eight plus `open`, in that order, and nothing else', () => {
+    // Complete since Q-0099 and one wider since Q-0126. Until Q-0099, listing a command the frame
+    // did not dispatch would have been a green tick over a subject that does not exist: it would
+    // fall through AC-6's default branch to this same text and exit 0.
+    const registry = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs', 'open'];
     expect([...COMMANDS]).toStrictEqual(registry);
     expect(mentioned(HELP)).toStrictEqual(registry);
+  });
+
+  test('Q-0126 AC-1 — `open` is appended last, and the value the two pins replaced is refused', () => {
+    // Both pins above read nine entries until this ticket, and neither was widened to a `toContain`
+    // that would accept either — the demonstration every command child before this one wrote for
+    // its own addition.
+    const beforeQ0126 = ['help', 'init', 'ticket', 'board', 'run', 'lint', 'adapters', 'validate', 'runs'];
+    expect([...COMMANDS], 'the frame still registers only the spike\'s eight and help')
+      .not.toStrictEqual(beforeQ0126);
+    expect(mentioned(HELP), 'the help still lists only the spike\'s eight and help')
+      .not.toStrictEqual(beforeQ0126);
+    expect(isCommand('open'), 'the help lists open and the frame does not dispatch it').toBe(true);
+    // Appended rather than inserted, which is the only position that changes no existing relative
+    // order: every name before it took its place in `spike/bin/harness.js`'s header, and that header
+    // has no `open` line to insert against.
+    expect([...COMMANDS].slice(0, -1), 'appending moved one of the nine that were already there')
+      .toStrictEqual(beforeQ0126);
+    expect([...COMMANDS][COMMANDS.length - 1]).toBe('open');
+
+    const line = HELP.split('\n').find((text) => text.startsWith('  quorum open')) ?? '';
+    expect(line, 'the flag it takes').toContain('[--port <n>]');
+    expect(line, 'what it does — the app, the bind, and how it stops')
+      .toMatch(/serve the web app on loopback and print its URL; Ctrl-C stops it/);
+    // AC-2's clause that no flag may move the bind: the help names no host flag and no hostname.
+    expect(line, 'the help offers a way to move the bind').not.toContain('--host');
   });
 
   test('and both pins moved rather than being edited to fit — the value they replaced is refused', () => {
@@ -176,10 +201,13 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
     expect(line, 'the arguments it takes').toContain('[ticket|run-id] [--json]');
     expect(line, 'what it does — listing, the ticket filter, and one run in detail')
       .toMatch(/run history: list, filter by ticket, or show one run/);
-    // Last, because `spike/bin/harness.js:10` is the last line of that header. AC-1's ordering rule
-    // is the spike's own wherever it has one.
-    expect(mentioned(HELP)[mentioned(HELP).length - 1]).toBe('runs');
+    // Last of the spike's eight, because `spike/bin/harness.js:10` is the last line of that header.
+    // AC-1's ordering rule is the spike's own wherever it has one — and Q-0126's `open` is appended
+    // after it, having no line in that header to be ordered against, so what this asserts is the
+    // relative order the rule is about rather than a position that a later command can take.
     expect(mentioned(HELP).indexOf('validate')).toBeLessThan(mentioned(HELP).indexOf('runs'));
+    expect(mentioned(HELP).indexOf('runs'), 'runs is no longer the last of the spike\'s eight')
+      .toBe(mentioned(HELP).filter((name) => name !== 'open').length - 1);
   });
 
   test('Q-0093 AC-1 — `init` and `ticket` are registered, listed above `lint`, and say what they take', () => {
@@ -292,18 +320,114 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
       });
     expect(columns, 'a command line carries no description at all').not.toContain(-1);
     expect(new Set(columns).size, `the description column is ragged: ${columns.join(', ')}`).toBe(1);
-    // Nine since Q-0099, seven before it. The count is the register: a command whose line is missing
-    // entirely would otherwise leave a single-column block reporting perfect alignment over eight.
-    expect(columns.length, 'no command lines were found — this proves nothing').toBe(9);
+    // Ten since Q-0126, nine since Q-0099, seven before it. The count is the register: a command
+    // whose line is missing entirely would otherwise leave a single-column block reporting perfect
+    // alignment over nine.
+    expect(columns.length, 'no command lines were found — this proves nothing').toBe(10);
     expect(columns.length, 'the register still holds the seven lines it held before Q-0099').not.toBe(7);
+    expect(columns.length, 'the register still holds the nine lines it held before Q-0126').not.toBe(9);
     // The column is 42 and the two new prefixes are 14 and 36, so neither forced a reflow of the
     // seven that were already there — which is what makes this a check on the addition rather than
-    // on a wholesale re-indent nobody asked for.
+    // on a wholesale re-indent nobody asked for. Q-0126's prefix is 26 and fits the same column.
     expect(columns[0]).toBe(42);
     // And the measurement discriminates: a line one space short reports a different column.
     const ragged = '  quorum runs [ticket|run-id] [--json]   x'.slice(2);
     expect(2 + (/ {2,}/.exec(ragged)?.index ?? 0) + (/ {2,}/.exec(ragged)?.[0].length ?? 0))
       .not.toBe(columns[0]);
+  });
+});
+
+/**
+ * The workspace root, which is this package's grandparent — reached package-relatively rather than
+ * by climbing until something looks like a repository.
+ */
+const WORKSPACE = new URL('../../../', import.meta.url);
+
+/** One repository document, read for the derived documentation check below. */
+const document = (relative: string): string => fs.readFileSync(new URL(relative, WORKSPACE), 'utf8');
+
+/**
+ * The command name after `quorum`, stopping at whitespace **or at the closing backtick**.
+ *
+ * `[^\s`]+` rather than `\S+`, which is the spelling {@link mentioned} can use and these two cannot:
+ * a help line always has a description after it, while `` `quorum board` `` ends at the code span —
+ * so `\S+` reads the name as ``board` `` and the comparison fails for a document that is correct.
+ * Measured on first writing rather than reasoned about.
+ */
+const NAME = '([^\\s`]+)';
+
+/** The commands `README.md`'s table lists: a table row whose first cell opens with the binary. */
+const inReadme = (text: string): string[] =>
+  [...text.matchAll(new RegExp(`^\\| \`quorum ${NAME}`, 'gm'))].map((match) => match[1]);
+
+/** The commands `docs/USAGE.md` documents: an `###` heading whose first token is the binary. */
+const inUsage = (text: string): string[] =>
+  [...text.matchAll(new RegExp(`^### \`quorum ${NAME}`, 'gm'))].map((match) => match[1]);
+
+/**
+ * The one command neither document lists, and why that is correct rather than a gap.
+ *
+ * `help` is what a reader of either document is *already* doing, and neither is a reference for it:
+ * the README's table is what a stranger runs, and USAGE's sections are the flags and exit codes of
+ * commands that take some. Named rather than filtered silently, so a second exclusion is a visible
+ * act instead of a quiet widening.
+ */
+const UNDOCUMENTED_BY_DESIGN = ['help'];
+
+describe('Q-0126 AC-11 — every command the frame dispatches is documented, derived rather than listed', () => {
+  // **In `packages/cli` and not in `packages/shared`.** Deriving this from `COMMANDS` means reading
+  // `packages/cli/src/commands.ts`, and a check in `shared` doing that would reverse the dependency
+  // direction `04-architecture.md` forbids — which is the exact refusal Q-0089 met when it put both
+  // trees' checks there and Q-0072's input guard reported it as an undeclared read. The two
+  // documents are declared inputs of this task instead; `package.test.ts`'s `OUTSIDE` register
+  // carries the reason for each.
+  const expected = (): string[] => [...COMMANDS].filter((name) => !UNDOCUMENTED_BY_DESIGN.includes(name)).sort();
+
+  test('the README table and the USAGE reference each list exactly the dispatched set', () => {
+    const readme = inReadme(document('README.md'));
+    const usage = inUsage(document('docs/USAGE.md'));
+    expect(readme.length, 'the README table was not found — this check proves nothing').toBeGreaterThan(5);
+    expect(usage.length, 'the USAGE reference was not found — this check proves nothing').toBeGreaterThan(5);
+    expect(readme.sort(), 'the README table and the dispatched set disagree').toStrictEqual(expected());
+    expect(usage.sort(), 'the USAGE reference and the dispatched set disagree').toStrictEqual(expected());
+    // And the exclusion is load-bearing rather than defensive: without it the comparison is wrong,
+    // so a later reader cannot mistake it for a filter that happens to change nothing.
+    expect([...COMMANDS].sort(), 'help is documented after all, so the exclusion excuses nothing')
+      .not.toStrictEqual(expected());
+  });
+
+  test('and it fires in both directions — an undocumented command fails, and so does a documented one that is gone', () => {
+    // Over text rather than over the tree, because the shipped documents pass. Both halves, because
+    // a check that only refused a *missing* entry would let a document go on describing a command
+    // the frame had dropped — which is the direction a deletion takes.
+    const table = '| `quorum init [dir]` | scaffold |\n| `quorum board` | a board |\n';
+    expect(inReadme(table)).toStrictEqual(['init', 'board']);
+    expect(inReadme(table), 'a command the table omits is not noticed').not.toContain('open');
+
+    const withStray = `${table}| \`quorum teleport\` | a command nothing dispatches |\n`;
+    expect(inReadme(withStray).filter((name) => !isCommand(name)), 'a documented name that is no command passes')
+      .toStrictEqual(['teleport']);
+
+    const sections = '### `quorum init [dir]`\n\ntext\n\n### `quorum open [--port <n>]`\n\ntext\n';
+    expect(inUsage(sections)).toStrictEqual(['init', 'open']);
+    expect(inUsage('## `quorum init`\n'), 'a heading at the wrong level is read as a section').toStrictEqual([]);
+    expect(inUsage('Run `quorum init` first.\n'), 'prose naming a command is read as a section').toStrictEqual([]);
+  });
+
+  test('the command this ticket added is in both, and each says what a packed install cannot do', () => {
+    // The clause that keeps the documents honest rather than merely complete. README's install
+    // section claims both paths work, so a table listing a command that works on one of them is a
+    // false claim by omission — `harness/product-context.md` quality pillar 7, narrowed precisely by
+    // *"An optional edge says the daemon may be absent, and never why"* (2026-09-14) clause 3 rather
+    // than weakened to "mostly works".
+    const readme = document('README.md');
+    const usage = document('docs/USAGE.md');
+    expect(inReadme(readme)).toContain('open');
+    expect(inUsage(usage)).toContain('open');
+    for (const [where, text] of [['README.md', readme], ['docs/USAGE.md', usage]] as const) {
+      expect(text, `${where} does not say the packed path lacks the daemon`).toContain('packed install');
+      expect(text, `${where} does not route the question to the ticket that owns it`).toContain('Q-0124');
+    }
   });
 });
 

@@ -1,0 +1,217 @@
+/**
+ * `quorum open` — start the daemon against this project, serve the built web app, print one URL.
+ *
+ * The command M3's done-when has named since the milestone was written, and the one that makes the
+ * UI reachable at all: after Q-0122 `apps/web` emits a bundle and `packages/server` serves it on
+ * `GET /*`, and until this existed the only way to see either was to write a process.
+ *
+ * **The daemon is reached through a dynamic import, and that is a packaging constraint rather than
+ * a style.** `@quorum/cli` declares `@quorum/server` under `optionalDependencies`, so an
+ * installation that could not resolve it still installs; `main.ts` imports every command module
+ * statically and dispatches from a table, so the module is loaded whatever command was typed, and a
+ * static specifier here would make `quorum help` die with `ERR_MODULE_NOT_FOUND` on that
+ * installation. What must be deferred is therefore the **specifier**, not the module. Both halves
+ * are required and neither rescues the other. Why: see *"An optional edge says the daemon may be
+ * absent, and never why"* (2026-09-14).
+ *
+ * **What the refusal may claim is the other half of that entry.** An import that did not resolve
+ * cannot tell an installation deliberately without the daemon from one that is damaged, so
+ * {@link NO_DAEMON_CONDITION} reports what failed to resolve *here* and names the workspace that
+ * carries it, and says nothing about why. A failed probe is not a proven negative — *"A probe that
+ * could not answer is not a negative"* (2026-09-10).
+ *
+ * **The bundle root is this module's own location and nothing else.** `process.cwd()` answers the
+ * operator's directory and an environment variable answers whatever was exported, which is the
+ * argument `static.ts`'s header already makes for the daemon and which reaches its caller unchanged.
+ * It travels as a `URL` because this package may import no `node:url` — see {@link BUNDLE}.
+ *
+ * **The order of the three refusals is ruled** — daemon, then project, then bundle. On a packed
+ * install this file sits at `node_modules/@quorum/cli/dist/`, so {@link BUNDLE} resolves to a path
+ * with no meaning there, and checking it first would report *no build at `node_modules/apps/web/dist`*
+ * instead of the true thing, which is that this installation did not resolve the daemon.
+ */
+import { loadProject, ProjectNotFoundError } from '@quorum/core';
+import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
+
+import { c } from './colour.js';
+import { die, dieNoProject } from './fail.js';
+import { SIGNAL } from './exit.js';
+import type { CommandHandler } from './main.js';
+
+/**
+ * The built web app, resolved relative to this module and to nothing else.
+ *
+ * **A `URL`, handed across the package boundary unconverted**, which is the shape `init.ts`'s
+ * `TEMPLATES` already has and for the identical reason: `frame.source.test.ts`'s `IO_MODULE`
+ * refuses `node:url` in every production module of this package, so `fileURLToPath` is not
+ * available here — and `new URL(…).pathname` is not a substitute, because it leaves percent-encoding
+ * in place, so an installation under a path containing a space would resolve to a directory that
+ * does not exist and be refused for a build that is present. `ServeOptions.bundle` therefore takes
+ * `string | URL` and `packages/server` converts at the one site that needs a path.
+ *
+ * Three levels up because this module sits at `<package>/src/` under the source condition and at
+ * `<package>/dist/` under the emit, and 078(e) fixes that depth so both answer the same directory.
+ */
+const BUNDLE = new URL('../../../apps/web/dist/', import.meta.url);
+
+/**
+ * What this command says when `@quorum/server` did not resolve.
+ *
+ * Two constants rather than one sentence, on `refusal.ts`'s split: the **condition** is what was
+ * observed and the **remedy** is what this surface offers for it. It names no cause, because the
+ * import cannot establish one — it may not say the daemon is missing, broken or deliberately
+ * omitted, all three of which are claims about an installation this process cannot inspect.
+ */
+export const NO_DAEMON_CONDITION = '@quorum/server did not resolve from this installation';
+
+/** The remedy for {@link NO_DAEMON_CONDITION}: where the daemon is, and what is unaffected. */
+export const NO_DAEMON_REMEDY =
+  'the Quorum workspace carries it at packages/server; every other command works here';
+
+/** The one line a started daemon prints, and the only thing this command writes on success. */
+export const servingLine = (url: string): string =>
+  `${c.green('✓')} Quorum is serving ${url} — press Ctrl-C to stop`;
+
+/**
+ * The port this run asks for: `--port <n>` where one is supplied, and {@link DEFAULT_DAEMON_PORT}
+ * where none is. `0` asks the operating system for a free one, which is `serve`'s own meaning for it
+ * and what a test wants.
+ *
+ * **Spelled rather than coerced**, because every interesting failure here is one `Number` swallows:
+ * `argv.ts:54` gives a valueless `--port` the boolean `true`, which `Number` reads as the port `1`,
+ * and `--port ""` is `0`, which would silently bind somewhere nobody can guess instead of where the
+ * flag said. A digit string is what a port is written as, so that is what this accepts; the bounds
+ * are the protocol's rather than a policy.
+ */
+function portFrom(value: unknown): number {
+  if (value === undefined) return DEFAULT_DAEMON_PORT;
+  const asked = typeof value === 'string' && /^[0-9]+$/.test(value) ? Number(value) : -1;
+  if (asked < 0 || asked > 65_535) {
+    die(`--port takes a number from 0 to 65535, and was given ${JSON.stringify(value)}`);
+  }
+  return asked;
+}
+
+/**
+ * Whether `error` is a port that something else already holds.
+ *
+ * Read off the `code` Node sets rather than off the message, which is locale-dependent and which a
+ * runtime is free to reword. A port in use **refuses naming the port** and never selects another:
+ * the dev proxy and any bookmarked URL both assume the one they were given, so a daemon that drifted
+ * would be reachable at an address nothing has — the **run lock**'s own rule, *"a second run refuses
+ * and names the holder; it never waits"*, at a second subject. `--port` is what makes that refusal a
+ * message rather than a dead end.
+ */
+const isPortInUse = (error: unknown): boolean =>
+  (error as { code?: unknown } | null)?.code === 'EADDRINUSE';
+
+/**
+ * The daemon's module, or this command's one refusal.
+ *
+ * The specifier is deferred and nothing else is: the module must not be named anywhere `tsc` would
+ * resolve it eagerly, which is why the return type is a `typeof import(...)` query — erased by the
+ * compiler, so the emit carries exactly one occurrence of the specifier and it is inside this call.
+ */
+async function daemon(): Promise<typeof import('@quorum/server')> {
+  try {
+    return await import('@quorum/server');
+  } catch {
+    return die(`${NO_DAEMON_CONDITION} — ${NO_DAEMON_REMEDY}`);
+  }
+}
+
+/**
+ * The project this daemon serves, or the sentence a stranger reads when there is none.
+ *
+ * `run.ts`'s `openProject` at a second site, and reached through `@quorum/core` rather than through
+ * `@quorum/server`'s own `openProject` — which is measured rather than stylistic. That symbol lives
+ * in the package that may not be installed, so routing project resolution through it would make
+ * *no project here* unreportable on exactly the installation where the daemon is absent.
+ */
+function projectAt(where: unknown): ReturnType<typeof loadProject> {
+  try {
+    return loadProject(where as string | undefined);
+  } catch (error) {
+    if (!(error instanceof ProjectNotFoundError)) throw error;
+    return dieNoProject(error.message);
+  }
+}
+
+/**
+ * Resolve when this process is asked to stop, leaving no listener behind either way.
+ *
+ * **Installed here and removed in a `finally`, never at module scope**, which is `run.ts:179–200`'s
+ * precedent and what keeps `frame.source.test.ts`'s runtime listener count unchanged after the
+ * barrel is imported. `core` installs none of its own — *"What a run's event stream carries, and how
+ * a gate answer travels back"* (2026-08-28) — so a command that starts a daemon is what owns when
+ * `close()` runs. One handler serves both signals and settling twice is a no-op, so holding Ctrl-C
+ * accumulates nothing.
+ */
+async function untilStopped(): Promise<void> {
+  let onSignal = (): void => {};
+  try {
+    await new Promise<void>((resolve) => {
+      onSignal = (): void => { resolve(); };
+      process.on('SIGINT', onSignal);
+      process.on('SIGTERM', onSignal);
+    });
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+  }
+}
+
+/**
+ * Start the daemon, print the URL, and serve until a signal arrives.
+ *
+ * `close()` shuts the host down before the socket, which is `createDaemon`'s order and not this
+ * command's to choose: every live run is released through the abandonment path first, so stopping
+ * the UI never leaves a ticket locked. A shutdown that fails is **reported and exits non-zero**
+ * rather than being swallowed, because what it failed to do is release those runs.
+ *
+ * Ctrl-C is the documented way to stop this command, and it still exits {@link SIGNAL}: the table is
+ * closed at five codes and re-interpreting one of them for the single command whose job is to keep
+ * running is not a decision to take in passing (Q-0126 OQ-5).
+ */
+export const openOn = ({ bundle = BUNDLE }: { bundle?: string | URL } = {}): CommandHandler => async ({ flags }) => {
+  const { BIND_HOSTNAME, createDaemon } = await daemon();
+  const project = projectAt(flags.project);
+  const port = portFrom(flags.port);
+
+  let listening;
+  try {
+    listening = await createDaemon({ project, port, bundle });
+  } catch (error) {
+    // Two conditions reach here and they are told apart by `code` rather than by message: a port
+    // something else holds, and `serve`'s own refusal for a bundle root that carries no build. The
+    // second is composed by `packages/server`'s `bundleRefusal`, names the directory and the entry
+    // it wanted, and is rendered unaltered — this module composes no advice of its own for it.
+    if (isPortInUse(error)) die(`port ${String(port)} is already in use`);
+    if (error instanceof Error) die(error.message);
+    throw error;
+  }
+
+  console.log(servingLine(`http://${BIND_HOSTNAME}:${String(listening.port)}`));
+  await untilStopped();
+
+  try {
+    await listening.close();
+  } catch (error) {
+    die(`the daemon did not shut down cleanly: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  process.exit(SIGNAL);
+};
+
+/**
+ * `quorum open` against the bundle this module's own location names — the handler the frame
+ * registers, and the only one an operator can reach.
+ *
+ * **The parameter above is `run.ts`'s `runOn({ … })` at a second site and not a `--bundle` flag**,
+ * which non-goal 6 refuses: there stays exactly one way for an operator to find the bundle, and what
+ * the parameter buys is a test that can serve a fixture without writing into a sibling package's
+ * emit directory — a write that would race `build.test.ts`'s own `runBuild()`. `test/invoke.ts`'s
+ * `capture` documents the same shape for the gate reader's streams. What AC-3 claims is that the
+ * shipped root is module-relative rather than taken from the working directory or the environment,
+ * and this default is that root.
+ */
+export const open: CommandHandler = openOn();

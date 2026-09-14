@@ -2939,7 +2939,13 @@ parked at p2 with its three written reopening thresholds.
 **Done when**
 - `packages/server`: start/stop runs, stream events over WebSocket, answer gates.
 - `apps/web`: projects home, backlog board, mission control (parallel trace columns, per-vendor cost tickers, step timeline), gate screen (verdict, side-by-side diffs, advance / take the other / re-run with edited instructions — **not** "override with reason", which `gateAnswerEnvelopeSchema` refuses and which Q-0013's gate recorded as this page's half of GO-2, corrected 2026-09-11 by Q-0118), run history.
-- `quorum open` starts daemon + browser; CLI and UI can both answer the same gate.
+- `quorum open` starts daemon + browser; CLI and UI can both answer the same gate. **Partly met
+  since Q-0126, and the split is stated rather than blurred.** The daemon half ships: `quorum open`
+  starts the daemon against this project, serves the built web app on loopback, prints one URL and
+  closes cleanly on a signal. **The browser half does not** — that ticket's AC-12 to AC-16 are a
+  `core` primitive that spawns, and where it lives is a ruling nobody has taken. *"CLI and UI can
+  both answer the same gate"* is met by nothing here: this makes the UI **reachable**, and the gate
+  screen is Q-0016's.
 - Resumable runs after daemon restart.
 
 **Tickets**
@@ -3576,8 +3582,46 @@ parked at p2 with its three written reopening thresholds.
   keeps `private: true` and declares no `files` and no `bin`, and **a packed `@quorum/cli` importing
   it would still be broken** for the `workspace:*` reason Q-0098's M-8 measured. That becomes urgent
   at **Q-0126**, which this unblocks and which adds the first consumer.
-- Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12; `draft`, **p1**.
-  Depends on Q-0125.)* **It owns a line of this milestone's own done-when that no ticket owned** —
+- Q-0126 `quorum open` starts the daemon and opens a browser. *(Opened 2026-09-12, p1; depends on
+  Q-0125. **The daemon half — AC-1 to AC-11 — is implemented; the browser half is not**, and this
+  line is written to what happened rather than to what was planned.)*
+  **`quorum open` runs**: it opens the project through `@quorum/core`, starts the daemon on
+  loopback, serves the built `apps/web` bundle, prints one URL, and closes cleanly on `SIGINT` or
+  `SIGTERM` — the host shut down before the socket, so stopping the UI leaves no ticket locked — and
+  exits 130. The frame dispatches **ten** names where it dispatched nine. **The product's UI is
+  reachable for the first time.**
+  **The packaging shape shipped as decision 094 ruled it, and the ticket body's own measurement was
+  right about the answer and wrong about where it breaks.** `@quorum/cli` declares `@quorum/server`
+  under `optionalDependencies` and reaches it through a **dynamic import inside the handler**; both
+  halves are required and neither rescues the other. Q-0098's packed fixture now executes
+  `quorum open` as well as `quorum help` and asserts the refusal **by bytes** against the literal the
+  CLI declares — so the claim that a packed install keeps every other command is a red test rather
+  than a paragraph, and so is the clause that the refusal names *what failed to resolve here* and
+  never why.
+  **One clause of Q-0125's export surface moved and no other**: `ServeOptions.bundle` takes
+  `string | URL`. That was §0.1 of the requirement and it is the run's most useful correction —
+  iteration 1's AC-3 was **unimplementable**, because `packages/cli` may import no `node:url` and
+  `new URL(…).pathname` does not decode percent-encoding, so an installation under a path containing
+  a space would have been refused for a build that is present. Ruled onto `initProject(dir,
+  templates)`'s precedent, with a space-in-the-path round trip as the red test.
+  **What is NOT done, stated rather than implied: AC-12 to AC-16, the browser.** `quorum open`
+  prints a URL a human pastes; it opens nothing. The implement step returned **`blocked`** on AC-16,
+  which requires in as many words that *"the decision entry GO-4 asks for is landed before a line of
+  code"* — an entry `developer-generalist` may not write — and GO-4 itself, which E-1 left standing,
+  asks a gate to settle whether principle 1 widens or the primitive sits in an existing folder. It
+  was not settled before the run. Measured at that point: `fanout/` is closed to a third file by a
+  landed pin, `adapters/` is vendor-CLI knowledge by the architecture's own rule, and a ninth folder
+  is the branch that needs the entry — **no folder a measurement selects**, which is the argument for
+  the ruling rather than an argument against the ticket.
+  **Two things the run found that no criterion asked for.** The `optionalDependencies` edge creates
+  the same turbo `^test` edge a required one would, measured at `e381d3d003a8d31e` →
+  `45b8b67c3f133524` — so `packages/server/package.json` is covered transitively and declaring it
+  would be the same claim twice. And **two guards tripped on their own prose while being written**:
+  an AC-3 clause matched the docblock explaining why `.pathname` is refused, and the comment
+  explaining why this suite installs no signal handler was itself read as installing one. Both are
+  the class `frame.source.test.ts`'s `codeOf` exists for, met twice in one ticket and fixed rather
+  than worked around. *(Original body follows.)*
+  **It owns a line of this milestone's own done-when that no ticket owned** —
   *"`quorum open` starts daemon + browser"* — measured at Q-0122's gate and confirmed when it was
   opened: `packages/cli` declares no dependency on `@quorum/server`, there is no `open` command, and
   the daemon has only ever run under its own test suite. After Q-0122 that is sharper than a loose

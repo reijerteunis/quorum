@@ -157,6 +157,61 @@ const namedAsWritten = (sources: readonly [string, string][], needles: readonly 
 /** The two producing-or-rendering sites, plus the barrel, which re-exports and reads nothing. */
 const ALLOWED_NAMERS = [...Object.keys(STATE_SITES), 'packages/core/src/index.ts'].sort();
 
+/**
+ * The production modules permitted to resolve a module from an expression, with why.
+ *
+ * **Clause D's first permitted entry, and there is exactly one.** Until Q-0126 the dynamic half of
+ * that clause was `toStrictEqual([])` with no register anywhere in this file, which was the right
+ * shape while nothing in either corpus needed one: a dynamic import is a route to a symbol that
+ * spells none of its names, so every one of them has to be accounted for by identity or clauses A
+ * to C stop being exhaustive.
+ *
+ * `packages/cli/src/open.ts` needs one because `@quorum/server` is an **optional** dependency of
+ * that package: `main.ts` imports every command module statically and dispatches from a table, so a
+ * static specifier there would make `quorum help` die on an installation that could not resolve the
+ * daemon. Both halves are required — the manifest key and the deferred specifier — and neither
+ * rescues the other. Why: *"An optional edge says the daemon may be absent, and never why"*
+ * (2026-09-14).
+ *
+ * **It buys no bypass of this file's own subject**, which is what makes the entry admissible: the
+ * module it reaches is `@quorum/server`, whose surface carries no version state, no `cliVersion` and
+ * neither `--json` key — it is a run host and a transport. A register naming a module that *did*
+ * would be a hole in clauses A to C, and the reason is recorded here rather than assumed.
+ *
+ * **Keyed by file, and this clause reads the file as written** — {@link namedAsWritten} passes
+ * `(text) => text` where its sibling passes {@link scannable}, so comments count. A one-line
+ * authority comment naming the mechanism belongs in the registered file; a sibling explaining the
+ * deferral names it without spelling the literal, or it joins this register from a file that has no
+ * business being in it.
+ */
+const DEFERRED_SPECIFIER: Record<string, string> = {
+  'packages/cli/src/open.ts':
+    '`quorum open` reaches @quorum/server, an optional dependency a packed install may not carry, so the specifier is deferred and never the module — Q-0126 AC-8',
+};
+
+/**
+ * Everything wrong with `sources` as a description of who may resolve a module from an expression,
+ * one sentence each.
+ *
+ * A function over its inputs rather than an inline comparison, for the reason
+ * `frame.source.test.ts`'s `locationOffenders` is one: both directions are shown firing on a mutated
+ * copy, so an entry that outlived the mechanism it excuses is a failure rather than a silence.
+ */
+const deferredOffenders = (
+  sources: readonly [string, string][],
+  allowed: Record<string, string>,
+): string[] => {
+  const problems: string[] = [];
+  const found = new Set(namedAsWritten(sources, ['import(', 'require(']));
+  for (const name of found) {
+    if (allowed[name] === undefined) problems.push(`${name}: it resolves a module from an expression and no entry says why it may`);
+  }
+  for (const name of Object.keys(allowed)) {
+    if (!found.has(name)) problems.push(`${name}: its entry permits a deferred specifier the module does not use`);
+  }
+  return problems.sort();
+};
+
 /** `import * as <name> from '<specifier>'`, in any quoting. */
 const NAMESPACE_IMPORT = /import\s+\*\s+as\s+\w+\s+from\s+['"`]([^'"`]+)['"`]/g;
 
@@ -303,10 +358,15 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
       workspaceNamespaceImports(sources),
       'a namespace import of a workspace module reaches cliVersion without naming it',
     ).toStrictEqual([]);
+    // **The namespace half is asserted unchanged and still empty**, which is what keeps the two
+    // halves apart: `await import('@quorum/server')` does not satisfy `NAMESPACE_IMPORT`, so the
+    // half Q-0126 needed an entry for is the dynamic one and the ticket body named the wrong one.
     expect(
-      namedAsWritten(sources, ['import(', 'require(']),
+      deferredOffenders(sources, DEFERRED_SPECIFIER),
       'a dynamic import or a require resolves a module from an expression, which no source scan can follow',
     ).toStrictEqual([]);
+    expect(Object.keys(DEFERRED_SPECIFIER), 'the register is empty — the clause below proves nothing')
+      .toStrictEqual(['packages/cli/src/open.ts']);
   });
 
   test('and clause D has a subject — a namespace import of this package is found', () => {
@@ -315,6 +375,43 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(workspaceNamespaceImports(planted)).toStrictEqual([['packages/cli/src/version-badge.ts', '@quorum/core']]);
     // And it is invisible to every other clause, which is why clause D is not redundant with them.
     expect(namedIn(planted, VOCABULARY), 'clause B fired, so this does not isolate clause D').toStrictEqual(ALLOWED_NAMERS);
+  });
+
+  test('Q-0126 AC-8 — the deferred-specifier register fires in both directions, over mutated copies', () => {
+    // A SECOND dynamic import is reported by name, which is what makes the one entry a permission
+    // rather than a relaxation: the clause did not stop looking, it learned one identity.
+    const second = withPlanted('packages/cli/src/version-badge.ts', "const m = await import('@quorum/core');\n");
+    expect(deferredOffenders(second, DEFERRED_SPECIFIER))
+      .toStrictEqual(['packages/cli/src/version-badge.ts: it resolves a module from an expression and no entry says why it may']);
+    // `require(` is the other needle and is covered by the same register rather than by a second one.
+    const required = withPlanted('packages/cli/src/version-badge.ts', "const m = require('@quorum/core');\n");
+    expect(deferredOffenders(required, DEFERRED_SPECIFIER))
+      .toStrictEqual(['packages/cli/src/version-badge.ts: it resolves a module from an expression and no entry says why it may']);
+    // And the other direction: an entry outliving the mechanism it excuses fails, so the register
+    // cannot rot into a wish once `@quorum/server` becomes a required dependency at Q-0124 — at
+    // which point 094 clause 4 says this entry is DELETED rather than widened.
+    const plain = withPlanted('packages/cli/src/open.ts', "import { createDaemon } from '@quorum/server';\n");
+    expect(deferredOffenders(plain, DEFERRED_SPECIFIER))
+      .toStrictEqual(['packages/cli/src/open.ts: its entry permits a deferred specifier the module does not use']);
+  });
+
+  test('Q-0126 AC-8 — and it reads the file as written, so a comment spelling the literal is caught', () => {
+    // §0.2's trap as a red test rather than a paragraph. `namedAsWritten` passes `(text) => text`
+    // and not `scannable`, so prose counts — and `.claude/rules/engineering.md` requires one line
+    // naming the authority wherever behaviour is deliberately counterintuitive, which a deferred
+    // specifier is. The authority line therefore lives in the REGISTERED file, and any sibling
+    // explaining the deferral names the mechanism without writing the literal.
+    //
+    // The needle in this fixture is assembled so this test does not become its own subject.
+    const inProse = withPlanted('packages/cli/src/main.ts', `// open.ts uses ${'import'}${'('}) and this file does not\n`);
+    expect(deferredOffenders(inProse, DEFERRED_SPECIFIER))
+      .toStrictEqual(['packages/cli/src/main.ts: it resolves a module from an expression and no entry says why it may']);
+    // And the shipped sibling that DOES explain the deferral is clean, which is the half that says
+    // the rule above was followed rather than merely stated.
+    const dispatch = productionSources().find(([name]) => name === 'packages/cli/src/main.ts')?.[1] ?? '';
+    expect(dispatch, 'main.ts is not among the production sources').not.toBe('');
+    expect(dispatch, 'the dispatch table no longer explains why open.ts defers its specifier').toContain('specifier');
+    expect(deferredOffenders([['packages/cli/src/main.ts', dispatch]], {})).toStrictEqual([]);
   });
 
   test('clause E — and the --json entry never leaves the module that builds it', () => {

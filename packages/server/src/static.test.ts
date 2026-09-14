@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { afterAll, describe, expect, test } from 'vitest';
 
@@ -119,7 +120,7 @@ function request(port: number, urlPath: string, options: { method?: string; acce
 }
 
 /** A listening daemon over a throwaway repository, with or without a bundle to serve. */
-async function listening(options: { bundle?: string } = {}) {
+async function listening(options: { bundle?: string | URL } = {}) {
   const project = fixture({});
   const host = createRunHost({ project: project.project, retain: 100 });
   const server = await serve({ host, bundle: options.bundle });
@@ -206,6 +207,36 @@ describe('Q-0122 AC-13 — a supplied root holding no build refuses before anyth
     expect(fs.existsSync(empty)).toBe(true);
     expect(bundleRefusal(empty)?.condition).toContain(empty);
     expect(bundleRefusal(bundle()), 'a real bundle was refused').toBeNull();
+  });
+
+  test('Q-0126 AC-3 — a bundle root supplied as a URL is served, and survives a space in the path', async () => {
+    // **The widening `packages/cli` needs, and the measurement that made it necessary.** That
+    // package may import no `node:url` — `frame.source.test.ts`'s `IO_MODULE`, asserted empty over
+    // every production module — so `quorum open` computes its root as a `URL` and cannot convert it.
+    // The only conversion it could write is `new URL(…).pathname`, which does not decode
+    // percent-encoding: an installation under a path containing a space yields `…/My%20Project/…`,
+    // `realpathSync` refuses it, and `bundleRefusal` then reports *no built web app* on a machine
+    // where the build is present — the right condition for the wrong reason.
+    //
+    // So this package converts, at the one site that needs a path, and the space is in the fixture
+    // rather than in a comment about it.
+    const root = path.join(tempDir('url-bundle-'), 'My Project', 'dist');
+    write(path.join(root, BUNDLE_ENTRY), SHELL);
+    // The defect this exists to forbid, shown first: `.pathname` answers a directory that is not
+    // there, and `bundleRefusal` correctly refuses it — which is what the command would have hit.
+    const asPathname = new URL(`${pathToFileURL(root).href}/`).pathname;
+    expect(asPathname, 'the fixture path carries nothing to encode, so this proves nothing').toContain('%20');
+    expect(bundleRefusal(asPathname), 'a path that does not exist was accepted').not.toBeNull();
+
+    // And the URL itself round-trips: handed across unconverted, decoded here, and served.
+    const daemon = await listening({ bundle: pathToFileURL(`${root}/`) });
+    try {
+      const page = await request(daemon.port, '/', { accept: NAVIGATION });
+      expect(page.status, 'a URL bundle root under a path with a space was not served').toBe(200);
+      expect(page.body).toBe(SHELL);
+    } finally {
+      await daemon.stop();
+    }
   });
 
   test('and it binds no listener — proven by refusing on a port that is already taken', async () => {

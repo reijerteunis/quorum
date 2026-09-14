@@ -17,11 +17,17 @@
  * not exist yet — a `bin` target is Q-0096's, together with everything else about making this
  * workspace emit JavaScript.
  *
- * **No command is implemented here**, and eight now exist beside it: `lint` and `validate` are
+ * **No command is implemented here**, and nine now exist beside it: `lint` and `validate` are
  * Q-0091's, `runs` is Q-0092's, `init` and `ticket` are Q-0093's, `run` — with the gate reader and
- * the signal handler under it — is Q-0094's, and `board` and `adapters` are Q-0099's, each in one
- * module of its own, dispatched through {@link HANDLERS}. That is the whole of the spike's set, so
- * the frame now dispatches every command the help lists and lists every command it dispatches.
+ * the signal handler under it — is Q-0094's, `board` and `adapters` are Q-0099's, and `open` is
+ * Q-0126's, each in one module of its own, dispatched through {@link HANDLERS}. The first eight are
+ * the whole of the spike's set and `open` is the first that was never in it; the frame dispatches
+ * every command the help lists and lists every command it dispatches.
+ *
+ * **The dispatch table stays static and `open` is loaded with it**, which is why that module defers
+ * its own specifier rather than being reached lazily from here. A lazy dispatch would make every
+ * command's load asynchronous to solve one command's packaging problem, and the problem is not that
+ * `open.ts` is loaded — it is that resolving `@quorum/server` must not be what loading it costs.
  */
 import { adapters } from './adapters.js';
 import { parseArgv, type ParsedArgv } from './argv.js';
@@ -30,6 +36,7 @@ import { COMMANDS, HELP, isCommand, type Command } from './commands.js';
 import { failSoftly } from './fail.js';
 import { init } from './init.js';
 import { lint } from './lint.js';
+import { open } from './open.js';
 import { run } from './run.js';
 import { runs } from './runs.js';
 import { ticket } from './ticket.js';
@@ -72,6 +79,7 @@ export const HANDLERS: Readonly<Record<Command, CommandHandler>> = {
   adapters,
   validate,
   runs,
+  open,
 };
 
 /**
