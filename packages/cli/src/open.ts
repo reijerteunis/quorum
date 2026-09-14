@@ -51,9 +51,9 @@
  * **The order of the three refusals is ruled** — daemon, then project, then bundle. On a packed
  * install this file sits at `node_modules/@quorum/cli/dist/`, so {@link BUNDLE} resolves to a path
  * with no meaning there, and checking it first would report *no build at `node_modules/apps/web/dist`*
- * instead of the true thing, which is that this installation did not resolve the daemon. The
- * positional refusal sits ahead of all three and is not a fourth member of that order: those three
- * are claims about an *installation*, and this one is about what was typed, which is wrong on every
+ * instead of the true thing, which is that this installation did not resolve the daemon. The two
+ * argv refusals sit ahead of all three and are not further members of that order: those three are
+ * claims about an *installation*, and these are about what was typed, which is wrong on every
  * installation and costs nothing to establish.
  */
 import { loadProject, openUrl, ProjectNotFoundError, type BrowserLaunch } from '@quorum/core';
@@ -278,6 +278,19 @@ export const openOn = (
   // is the one that is wrong, and {@link USAGE} beside it is what the command does take.
   if (rest.length > 0) die(`quorum open takes no positional argument, and was given ${JSON.stringify(rest[0])} — ${USAGE}`);
 
+  // The same clause where the parser hides it from `rest`. `argv.ts:54` gives a flag the token after
+  // it unless that token starts with `--` (Q-0090 AC-2's preserved behaviour 4), so
+  // `quorum open --no-open my-project` parks the path in this flag and leaves `rest` empty: the
+  // guard above sees nothing, a truthy string switches the launch off exactly as `true` would, and
+  // the argument the person typed is discarded in silence — the failure that guard exists to
+  // prevent, one token further along. **This is the command's only valueless flag**, which is what
+  // bounds the check to one: `--port` is spelled rather than coerced (see {@link portFrom}) and
+  // `--project` takes a value, so a token after either belongs to that flag.
+  const noOpen = flags['no-open'];
+  if (noOpen !== undefined && noOpen !== true) {
+    die(`--no-open takes no value, and was given ${JSON.stringify(noOpen)} — ${USAGE}`);
+  }
+
   const { BIND_HOSTNAME, createDaemon } = await daemon();
   const project = projectAt(flags.project);
   const port = portFrom(flags.port);
@@ -304,7 +317,9 @@ export const openOn = (
   const url = `http://${BIND_HOSTNAME}:${String(listening.port)}`;
   console.log(servingLine(url));
 
-  if (!flags['no-open']) {
+  // `undefined` and not falsiness, because the guard above has already left this `true` or absent:
+  // the launch happens where the operator did not type the flag, and nowhere else.
+  if (noOpen === undefined) {
     // Raced against the stop for the reason above, and `undefined` is the arm that means the person
     // stopped the command first — which is not a launch failure and is not warned about.
     const result = await Promise.race([openUrl(url, launcher), stopped.then(() => undefined)]);

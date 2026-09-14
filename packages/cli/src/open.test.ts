@@ -178,6 +178,24 @@ const files = (): [string, string][] => {
 
 const read = (...parts: string[]): string => fs.readFileSync(path.join(PACKAGE, ...parts), 'utf8');
 
+/**
+ * What the help offers for `quorum open`, **derived from {@link HELP} rather than transcribed**.
+ *
+ * Both argv refusals quote a usage line and the two are read a moment apart by the same person, so
+ * a refusal offering flags the help does not would be a quieter promise beside the loud one. Derived
+ * once rather than in each clause, because a second transcription is exactly the drift the
+ * comparison exists to catch — and it is an `endsWith` at the call sites rather than a `toContain`
+ * for a reason met while writing the first of them: containment is satisfied by a usage that has
+ * *gained* a flag, so the clause would pass over the drift it is for.
+ */
+function offeredUsage(): string {
+  const line = (HELP.split('\n').find((candidate) => candidate.trim().startsWith('quorum open')) ?? '')
+    .trim().split(/\s{2,}/)[0];
+  expect(line, 'the help carries no `quorum open` line, so this clause has no subject')
+    .toMatch(/^quorum open \[/);
+  return line;
+}
+
 describe('AC-2 — the command opens a project, starts the daemon, and prints one URL', () => {
   test('it serves the bundle at /, the JSON surface beside it, and ends 130 on a signal', async () => {
     build();
@@ -274,23 +292,71 @@ describe('AC-2 — the command opens a project, starts the daemon, and prints on
     expect(result.exitCode, 'a positional argument was accepted').toBe(ERROR);
     expect(plain(result.stderr), 'the refusal does not name the token that was wrong')
       .toContain('"my-project"');
-    // **The usage it quotes is the help's own `open` line, derived rather than transcribed.** The
-    // two are read a moment apart and a refusal offering flags the help does not would be a
-    // quieter promise beside the loud one — and this is an `endsWith` rather than a `toContain`
-    // for a reason met while writing it: containment is satisfied by a usage that has *gained* a
-    // flag, so the first version of this clause passed over exactly the drift it exists to catch.
-    const offered = (HELP.split('\n').find((line) => line.trim().startsWith('quorum open')) ?? '')
-      .trim().split(/\s{2,}/)[0];
-    expect(offered, 'the help carries no `quorum open` line, so this clause has no subject')
-      .toMatch(/^quorum open \[/);
+    // The usage it quotes is the help's own `open` line — see {@link offeredUsage}, which both argv
+    // refusals read so the comparison exists once rather than twice.
     const said = plain(result.stderr).trim();
-    expect(said.endsWith(`usage: ${offered}`),
+    expect(said.endsWith(`usage: ${offeredUsage()}`),
       `the refusal does not end with the help's own open line — it said: ${said}`).toBe(true);
     // Nothing started, which is the half `exitCode` alone does not carry: this command prints its
     // URL the instant it is listening, so an empty stdout is a daemon that never bound. That is
     // the clause a regression trips first, and the socket check below is what it means.
     expect(result.stdout, 'a URL was printed, so the daemon started before the argv was read').toBe('');
     expect(await answers(port), 'the port is still held after the command was refused').toBe(false);
+  }, 60_000);
+
+  test('a positional the parser parked in --no-open is refused too, and nothing starts', async () => {
+    // The same clause where `rest` cannot carry it, which is the ordering the test above had to
+    // avoid in order to be about `rest` at all. Asserted at the **argv level first**, because what
+    // makes this a second case rather than the same one is a property of the parser rather than of
+    // this command: a guard reading `rest` alone is complete only if nothing else can hold a
+    // positional, and here something can.
+    const hidden = parseArgv(['open', '--no-open', 'my-project']);
+    expect(hidden.rest, 'the parser left the token in `rest`, so this needs no second clause')
+      .toStrictEqual([]);
+    expect(hidden.flags['no-open'], 'the flag no longer swallows the token after it')
+      .toBe('my-project');
+    // Pinned in `argv.test.ts` as Q-0090 AC-2's behaviour 2 and not this file's to change: what is
+    // asserted here is that this command meets it, not that the parser should stop doing it.
+
+    build();
+    const port = await freePort();
+    const running = capture(() => openOn({ bundle: pathToFileURL(`${bundle}/`), launcher: { spawn: neverCalled } })(
+      parseArgv(['open', '--project', project, '--no-open', 'my-project', '--port', String(port)])));
+    // The same rescue as above, and not part of the claim: a regression here serves rather than
+    // refusing, and would hang rather than fail (Q-0107).
+    const rescue = setTimeout(() => { process.emit('SIGINT'); }, 3_000);
+    const result = await running;
+    clearTimeout(rescue);
+
+    expect(result.exitCode, 'a value on --no-open was accepted').toBe(ERROR);
+    const said = plain(result.stderr).trim();
+    // **Read off the condition half rather than off the whole sentence**, which is a distinction
+    // met rather than anticipated: the usage clause below quotes a line that itself contains
+    // `--no-open`, so a clause asserting the flag is named anywhere passes over a refusal that
+    // names nothing — it is the usage that satisfies it. Split at the em dash, the two halves are
+    // what this command observed and what it offers, and only the first can carry either.
+    const condition = said.split(' — ')[0];
+    expect(condition, 'the refusal does not name the flag that took a value').toContain('--no-open');
+    expect(condition, 'the refusal does not name the token that was swallowed').toContain('"my-project"');
+    expect(said.endsWith(`usage: ${offeredUsage()}`),
+      `the refusal does not end with the help's own open line — it said: ${said}`).toBe(true);
+    // Nothing started, which is what separates this from a command that merely said something: the
+    // URL is printed the instant the daemon is listening, so an empty stdout is a daemon that never
+    // bound, and the socket is what that means.
+    expect(result.stdout, 'a URL was printed, so the daemon started before the argv was read').toBe('');
+    expect(await answers(port), 'the port is still held after the command was refused').toBe(false);
+  }, 60_000);
+
+  test('and a --no-open that took no value is not refused, so that clause is about the value', async () => {
+    // The discriminator, kept separate for the reason the positional one below is: the flag as a
+    // person types it — `true`, because the token after it is another flag — gets past this clause
+    // and is stopped further down by the port instead. Without it the clause above would be
+    // satisfied by a command that refused `--no-open` outright.
+    const result = await invoke(['open', '--project', project, '--no-open', '--port', 'later']);
+    expect(result.exitCode).toBe(ERROR);
+    expect(plain(result.stderr), 'a valueless --no-open was refused as though it carried a value')
+      .not.toContain('takes no value');
+    expect(plain(result.stderr), 'the line was refused for some third reason').toContain('--port');
   }, 60_000);
 
   test('and the refusal is the positional clause rather than a command that refuses everything', async () => {
