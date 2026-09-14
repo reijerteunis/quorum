@@ -115,7 +115,25 @@ const production = (): [string, string][] => workspaceFiles()
 const namesTheLauncher = (text: string): boolean =>
   text.includes(`'${LAUNCHER}'`) || text.includes(`"${LAUNCHER}"`);
 
-/** Whether `text` both starts a process and decides something from the machine it is on. */
+/**
+ * Whether `text` both starts a process and decides something from the machine it is on.
+ *
+ * **A conjunction, and the residual that costs is registered rather than implied.** A second
+ * launcher evades this by spelling either half differently — importing `platform` from `node:os` as
+ * a bare function, reaching a process helper instead of the builtin, or spawning `open` with no
+ * platform branch at all. So clause B backs *"exactly one production module imports the spawn
+ * builtin AND branches on the platform"*, which is a real property and is **narrower than "nothing
+ * else launches a browser"**. Clause A carries the rest of the weight by name.
+ *
+ * Found by a cross-vendor review of code no in-flow reviewer saw, the diff having been truncated
+ * before this folder began. **Widening it to a disjunction was measured and not taken**: nine
+ * production modules name the builtin — `exec.ts`, `fanout.ts`, `command.ts`, `diff.ts`,
+ * `engine.ts`, `git.ts` among them — and every one of them spawns a CLI, which is `core`'s
+ * authorised I/O rather than this folder's subject. Registering eight files to catch a ninth
+ * hypothetical is a register that stops discriminating, so the claim moved instead of the
+ * predicate. Q-0072 E-1's rule: a registered gap is acceptable and the same gap unmentioned is the
+ * defect.
+ */
 const spawnsByPlatform = (text: string): boolean =>
   text.includes('node:child_process') && /\b(?:process|os)\.platform\b/.test(text);
 
@@ -138,6 +156,23 @@ function offenders(
 }
 
 /** The module's own text, which several clauses below read. */
+/**
+ * `text` with its comments blanked, so a scan reads what the module DOES and not what it says.
+ *
+ * **Added because the clause below shipped without it and a cross-vendor review caught that.** The
+ * detached/unref guard matched raw source, so commenting out the real `spawn(…)` call and writing a
+ * second one without `detached` left every assertion green — the guard carrying a claim it could not
+ * back, which is the exact class it was written to close, committed inside the fix for it. Q-0079's
+ * round 2 found the same shape: *the repair for a comment bypass, written by the hand that had just
+ * been shown the mistake.*
+ *
+ * Block comments first, then line comments, and the replacement keeps newlines so a reported line
+ * number still means something. It is asserted on a fixture below rather than trusted.
+ */
+const withoutComments = (text: string): string => text
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+  .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+
 const moduleText = (): string => {
   const found = coreSourceFiles().find(([name]) => name === MODULE)?.[1];
   if (found === undefined) throw new Error(`${MODULE} is not in the corpus — every clause below proves nothing`);
@@ -199,12 +234,14 @@ describe('the workspace scan has a subject', () => {
   });
 });
 
-describe('AC-12 — one site launches a browser, across every package and every app', () => {
+describe('AC-12 — one site names a browser launcher, and one branches on the platform to spawn', () => {
   test('clause A: exactly the registered files name the launcher, tests included', () => {
     expect(offenders(workspaceFiles(), LAUNCHES, namesTheLauncher, 'names a browser launcher')).toStrictEqual([]);
   });
 
-  test('clause B: exactly one production module spawns by platform', () => {
+  test('clause B: exactly one production module imports the spawn builtin and branches on platform', () => {
+    // Narrower than "nothing else launches a browser", which no conjunction can back — see
+    // {@link spawnsByPlatform}, which carries the residual and why widening it was refused.
     expect(offenders(production(), PLATFORM_SPAWNERS, spawnsByPlatform, 'spawns a process chosen by platform'))
       .toStrictEqual([]);
   });
@@ -260,19 +297,35 @@ describe('AC-12 — one site launches a browser, across every package and every 
     //
     // Measured before it was written: with both removed the whole workspace stayed green — 7/7
     // tasks forced, 0 cached — because the `LaunchSpawn` seam is `(command, args)` and carries no
-    // options object, so no behavioural test can reach the real launcher's. That made the docblock
-    // a claim nothing backed, which `.claude/rules/engineering.md` refuses, and it is a source fact
-    // rather than a seam that was missing. Found by hand at Q-0126's chore gate, the cross-vendor
-    // review having been handed a diff truncated 67,881 bytes before this folder began.
-    const text = moduleText();
-    expect(text, 'the launcher stopped being detached, so Ctrl-C would reach the browser')
-      .toContain("detached: true");
-    expect(text, 'the launcher stopped being unreferenced, so this process waits on a child it abandoned')
+    // options object, so no behavioural test can reach the real launcher's.
+    //
+    // **Scanned over {@link withoutComments}, which the first version of this clause did not do.**
+    // A cross-vendor review of the code no in-flow reviewer ever saw — the diff having been
+    // truncated 67,881 bytes before this folder began — found that commenting the real call out and
+    // writing a second one without `detached` satisfied every assertion here. The guard claimed a
+    // move into a comment would fail it, and that claim was exactly what it could not back.
+    const code = withoutComments(moduleText());
+    expect(code, 'the launcher stopped being detached, so Ctrl-C would reach the browser')
+      .toContain('detached: true');
+    expect(code, 'the launcher stopped being unreferenced, so this process waits on a child it abandoned')
       .toContain('.unref();');
-    // And the two are on the real launcher rather than anywhere in the file: the spawn options and
-    // the call are asserted together, so moving either into a comment or a second function fails.
-    expect(text, 'the spawn options are no longer the real launcher\'s')
+    expect(code, 'the spawn options are no longer the real launcher\'s')
       .toMatch(/spawn\(command, \[\.\.\.args\], \{ stdio: 'ignore', detached: true \}\)/);
+  });
+
+  test('and the comment blanking it rests on has a subject, in both directions', () => {
+    // The check on the check: a helper that blanked nothing would make the clause above pass over
+    // exactly the bypass it was added to close, and a helper that blanked too much would make it
+    // fail over code that is really there.
+    const commented = "// const child = spawn(command, [...args], { stdio: 'ignore', detached: true });";
+    expect(withoutComments(commented).includes('detached: true'), 'a line comment survived the blanking').toBe(false);
+    const block = "/* spawn(command, [...args], { stdio: 'ignore', detached: true }) */";
+    expect(withoutComments(block).includes('detached: true'), 'a block comment survived the blanking').toBe(false);
+    const real = "  const child = spawn(command, [...args], { stdio: 'ignore', detached: true });";
+    expect(withoutComments(real), 'real code was blanked, so the clause above could fail over code that is there')
+      .toContain('detached: true');
+    // Line numbers survive, so a failure this guard reports still points somewhere.
+    expect(withoutComments('a\n// b\nc').split('\n')).toHaveLength(3);
   });
 
   test('the folder is exactly one source file, and nothing in it prints', () => {
