@@ -9,6 +9,7 @@ priority: p1
 created: 2026-09-12
 iterations:
   requirements.head-of-product: 2
+  chore.implement: 1
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,14 @@ history:
     stage_after: requirements
     at: 2026-09-14T19:30:08.796Z
     cost: 18.073
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-14T20:27:18.833Z
+    cost: 0
 ---
 M3's done-when names quorum open and no ticket builds it. packages/cli declares no dependency on @quorum/server, there is no open command, and the CLI's AC-11 forbids every production module from importing node:child_process — so the browser spawn cannot happen in packages/cli at all.
 
