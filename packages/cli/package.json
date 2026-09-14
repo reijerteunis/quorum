@@ -23,5 +23,8 @@
   "dependencies": {
     "@quorum/core": "workspace:*",
     "@quorum/shared": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@quorum/server": "workspace:*"
   }
 }

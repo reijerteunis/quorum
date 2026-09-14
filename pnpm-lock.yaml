@@ -75,6 +75,10 @@ importers:
       '@quorum/shared':
         specifier: workspace:*
         version: link:../shared
+    optionalDependencies:
+      '@quorum/server':
+        specifier: workspace:*
+        version: link:../server
 
   packages/compiler: {}
 

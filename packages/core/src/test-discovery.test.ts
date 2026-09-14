@@ -55,6 +55,7 @@ interface Manifest {
   name?: string;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 }
 
 /**
@@ -326,17 +327,37 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
   });
 
   /**
-   * Q-0125 AC-13's rule — *no manifest names the daemon, except the daemon's own, once* — as one
-   * predicate, applied to every real manifest and to the hostile fixture below.
+   * Q-0125 AC-13's rule, widened by Q-0126 — *no manifest names the daemon, except the daemon's own
+   * as its `name`, and `packages/cli`'s under `optionalDependencies`*.
    *
-   * Returns the problem, or `null` where the rule holds, so the demonstration asserts the exact
-   * sentence rather than merely that something failed. A function rather than an inline loop for the
-   * reason Q-0125's own AC-3 needed one: a fixture checked by a matcher written beside it proves the
-   * fixture was written as intended and nothing about the rule.
+   * Returns the problem, or `null` where the rule holds, so a demonstration asserts the exact
+   * sentence rather than merely that something failed. One predicate, every subject — the real
+   * manifests and the fixtures below — which is the shape Q-0125 iteration 2 adopted after its
+   * review reported the opposite as a nit.
+   *
+   * **Keyed on the KEY and never on the count, which is the whole of Q-0126 AC-9.** An
+   * `optionalDependencies` edge and a `dependencies` edge are both exactly one occurrence of the
+   * same string, so a count cannot tell the permitted edge from the one that kills the packed
+   * install — measured: with `dependencies`, `npm install` of the three tarballs dies
+   * `ECONNREFUSED` reaching a registry for a fourth package, before any module loads. Why: *"An
+   * optional edge says the daemon may be absent, and never why"* (2026-09-14).
    */
+  const DAEMON = '@quorum/server';
+
   const namesTheDaemon = (name: string, text: string): string | null => {
-    const allowed = name === 'packages/server/package.json' ? 1 : 0;
     const occurrences = [...text.matchAll(/@quorum\/server/g)].length;
+    const manifest = JSON.parse(text) as Manifest;
+    const required = manifest.dependencies?.[DAEMON] !== undefined;
+    const optional = manifest.optionalDependencies?.[DAEMON] !== undefined;
+
+    if (name === 'packages/cli/package.json') {
+      if (required) return `${name} requires @quorum/server, which kills the packed install`;
+      if (!optional) return `${name} declares no optional @quorum/server, so quorum open cannot reach it`;
+      return occurrences === 1 ? null : `${name} names @quorum/server ${occurrences} times, and may name it once`;
+    }
+
+    const allowed = name === 'packages/server/package.json' ? 1 : 0;
+    if (required || optional) return `${name} depends on @quorum/server, which only packages/cli may`;
     if (occurrences === allowed) return null;
     const plural = occurrences === 1 ? 'time' : 'times';
     return `${name} names @quorum/server ${occurrences} ${plural}, and may name it ${allowed === 0 ? 'none' : allowed}`;
@@ -380,9 +401,27 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     // about the rule — so deleting or inverting the rule left this green. One predicate, three
     // subjects, is the shape iteration 2 had already adopted for AC-3 twelve files away, applied
     // here to the clause that reported it.
+    // **Q-0126 widened this by KEY, and these two fixtures are why a count could not do it.** Both
+    // carry exactly ONE occurrence of the same string and only one of them is permitted: the
+    // required edge kills the packed install (`npm install` of the three tarballs dies
+    // `ECONNREFUSED` reaching a registry for a fourth package), the optional one does not.
     const hostile = JSON.stringify({ name: '@quorum/cli', dependencies: { '@quorum/server': 'workspace:*' } });
-    expect(namesTheDaemon('packages/cli/package.json', hostile), 'a declared dependency on the daemon is not reported')
-      .toBe('packages/cli/package.json names @quorum/server 1 time, and may name it none');
+    expect(namesTheDaemon('packages/cli/package.json', hostile), 'a required dependency on the daemon is not reported')
+      .toBe('packages/cli/package.json requires @quorum/server, which kills the packed install');
+
+    const permitted = JSON.stringify({ name: '@quorum/cli', optionalDependencies: { '@quorum/server': 'workspace:*' } });
+    expect(namesTheDaemon('packages/cli/package.json', permitted), 'the optional edge Q-0126 landed is refused').toBe(null);
+
+    // The two differ in the key alone — asserted rather than described, so a later predicate that
+    // went back to counting fails here rather than passing over two inputs it cannot tell apart.
+    const occurrencesIn = (text: string): number => [...text.matchAll(/@quorum\/server/g)].length;
+    expect(occurrencesIn(hostile), 'the fixtures differ in more than the key, so this pair proves nothing')
+      .toBe(occurrencesIn(permitted));
+
+    // And `packages/cli` with NO edge at all is refused too, in the other direction: after Q-0126 the
+    // command needs the optional one to exist, so its absence is a defect rather than the old clean state.
+    expect(namesTheDaemon('packages/cli/package.json', JSON.stringify({ name: '@quorum/cli' })), 'a missing optional edge passes')
+      .toBe('packages/cli/package.json declares no optional @quorum/server, so quorum open cannot reach it');
 
     // And the permission is a property of the path rather than of the text: the identical body under
     // `packages/server`'s own name is the one occurrence that is allowed, so the predicate
@@ -391,7 +430,12 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     expect(namesTheDaemon('packages/server/package.json', own), 'the package may name itself once').toBe(null);
     const selfDependent = JSON.stringify({ name: '@quorum/server', dependencies: { '@quorum/server': 'workspace:*' } });
     expect(namesTheDaemon('packages/server/package.json', selfDependent), 'a self-dependency is one occurrence too many')
-      .toBe('packages/server/package.json names @quorum/server 2 times, and may name it 1');
+      .toBe('packages/server/package.json depends on @quorum/server, which only packages/cli may');
+
+    // A third package taking the edge is refused whichever key it uses, so the permission is scoped
+    // to packages/cli rather than to "any manifest that declares it optionally".
+    expect(namesTheDaemon('packages/core/package.json', permitted.replace('@quorum/cli', '@quorum/core')), 'a third package may take the edge')
+      .toBe('packages/core/package.json depends on @quorum/server, which only packages/cli may');
   });
 
   test('the register has a subject — the array it replaced cannot see a package that owes a build', () => {
