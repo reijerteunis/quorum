@@ -25,12 +25,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { openUrl } from '@quorum/core';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { parseArgv } from './argv.js';
 import { ERROR, SIGNAL } from './exit.js';
-import { NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine } from './open.js';
+import { launchWarning, NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine } from './open.js';
 import { capture, invoke, plain, type Invocation } from '../test/invoke.js';
 
 /** This package's own root, reached package-relatively rather than by climbing to a repository. */
@@ -102,9 +103,57 @@ async function untilServing(port: number): Promise<void> {
   throw new Error(`nothing answered on ${String(port)} — the daemon did not start`);
 }
 
-/** Run `quorum open` over a fixture bundle, through the frame's own argv parser. */
+/**
+ * Run `quorum open` over a fixture bundle, through the frame's own argv parser.
+ *
+ * **`--no-open` on every fixture that is not about the browser**, with {@link neverCalled} behind it
+ * so the flag is load-bearing rather than trusted: a regression that ignored it reaches a spawn that
+ * refuses, which surfaces as a warning on a stream these tests require to be empty. AC-15's own
+ * fixtures supply their spawn and leave the flag off.
+ */
 const runOpen = async (root: string, ...argv: string[]): Promise<Invocation> =>
-  capture(() => openOn({ bundle: pathToFileURL(`${root}/`) })(
+  capture(() => openOn({ bundle: pathToFileURL(`${root}/`), launcher: { spawn: neverCalled } })(
+    parseArgv(['open', '--project', project, '--no-open', ...argv])));
+
+/**
+ * A spawn no fixture outside AC-15 may reach, and which fails loudly where one does.
+ *
+ * Every fixture in this file that starts a daemon would otherwise launch a **real browser** on the
+ * machine running the suite, which is both a side effect a test may not have and a verdict that
+ * would depend on what is installed (*"A test's verdict is a property of the commit, not of the
+ * checkout or the account"*, 2026-08-30). A refusal rather than a silent stub, so a fixture that
+ * starts reaching it says so instead of quietly proving less.
+ */
+const neverCalled: NonNullable<Parameters<typeof openUrl>[1]>['spawn'] = (command) =>
+  Promise.reject(new Error(`this fixture launched ${command}, which no test here may do`));
+
+/** A spawn that records what it was asked to start, and says when it was first reached. */
+function recordingSpawn(code: number | null = 0): {
+  spawn: NonNullable<Parameters<typeof openUrl>[1]>['spawn'];
+  calls: string[];
+  called: Promise<void>;
+} {
+  const calls: string[] = [];
+  let reached = (): void => {};
+  const called = new Promise<void>((resolve) => { reached = resolve; });
+  return {
+    calls,
+    called,
+    spawn: (command, args) => {
+      calls.push(`${command} ${args.join(' ')}`);
+      reached();
+      return Promise.resolve(code);
+    },
+  };
+}
+
+/** `quorum open` over a fixture bundle with the browser spawn supplied by the caller. */
+const runOpenLaunching = async (
+  root: string,
+  launcher: Parameters<typeof openUrl>[1],
+  ...argv: string[]
+): Promise<Invocation> =>
+  capture(() => openOn({ bundle: pathToFileURL(`${root}/`), launcher })(
     parseArgv(['open', '--project', project, ...argv])));
 
 /** Every file this package carries, for the package-wide scan below. */
@@ -325,8 +374,8 @@ describe('AC-5 — the port has one default, and one in use refuses rather than 
     // than arrived at by coercion, which is what the refusals above are protecting.
     build();
     const result = await capture(async () => {
-      const running = capture(() => openOn({ bundle: pathToFileURL(`${bundle}/`) })(
-        parseArgv(['open', '--project', project, '--port', '0'])));
+      const running = capture(() => openOn({ bundle: pathToFileURL(`${bundle}/`), launcher: { spawn: neverCalled } })(
+        parseArgv(['open', '--project', project, '--no-open', '--port', '0'])));
       // The port is unknown to this test by construction, so what is claimed is only that the
       // command got past `portFrom` and printed a URL — which the assertions below read.
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -390,4 +439,112 @@ describe('AC-6 — the daemon\'s lifetime is the command\'s', () => {
   // directions: `during` requires the counts to have GONE UP, which cannot pass over a command that
   // registered nothing, and only then does the comparison after it require them back where they
   // started. A vacuous version of this test would fail at the first of the two.
+});
+
+describe('AC-15 — a browser is launched, a failed launch is a warning, and --no-open serves without one', () => {
+  test('the URL line is byte-identical with and without a launch, and exactly one of them spawns', async () => {
+    // **The same port for both runs**, which is what makes "byte-identical" a claim about bytes
+    // rather than about how the line is composed: two ports would differ in the one place the line
+    // carries a number, and comparing `servingLine(url)` with itself would prove only that the
+    // helper is deterministic. The first daemon is stopped before the second starts.
+    build();
+    const port = await freePort();
+
+    const launching = recordingSpawn();
+    const withBrowser = runOpenLaunching(bundle, { platform: 'linux', spawn: launching.spawn }, '--port', String(port));
+    await untilServing(port);
+    await launching.called;
+    process.emit('SIGINT');
+    const opened = await withBrowser;
+
+    const declined = recordingSpawn();
+    const withoutBrowser = runOpenLaunching(
+      bundle, { platform: 'linux', spawn: declined.spawn }, '--port', String(port), '--no-open');
+    await untilServing(port);
+    process.emit('SIGINT');
+    const quiet = await withoutBrowser;
+
+    expect(opened.stdout, 'the URL line moved when a browser was launched').toBe(quiet.stdout);
+    expect(plain(opened.stdout).trim()).toBe(plain(servingLine(`http://127.0.0.1:${String(port)}`)));
+    expect(launching.calls, 'the launch did not reach the platform table').toStrictEqual([
+      `xdg-open http://127.0.0.1:${String(port)}`,
+    ]);
+    expect(declined.calls, '--no-open launched a browser anyway').toStrictEqual([]);
+    // Neither run is a failure: a launch that worked and a launch that never happened both end the
+    // way a stopped command ends.
+    expect([opened.exitCode, quiet.exitCode]).toStrictEqual([SIGNAL, SIGNAL]);
+    expect([opened.stderr, quiet.stderr], 'a successful serve wrote to stderr').toStrictEqual(['', '']);
+  }, 60_000);
+
+  test('a launch that failed warns and changes nothing else — the run is not failed', async () => {
+    // The whole of "a warning, not a failed run", over the shipped `openUrl` with only its spawn
+    // supplied: the daemon went on serving, the exit code is the one a stopped command has, and the
+    // sentence carries the URL a person can use instead.
+    build();
+    const port = await freePort();
+    const failing = recordingSpawn(1);
+    const running = runOpenLaunching(bundle, { platform: 'linux', spawn: failing.spawn }, '--port', String(port));
+    await untilServing(port);
+    await failing.called;
+
+    // Still serving AFTER the launch failed, which is the claim; asserted over the socket rather
+    // than from the absence of a shutdown message.
+    const page = await fetch(`http://127.0.0.1:${String(port)}/`, { headers: { accept: 'text/html' } });
+    expect(page.status, 'a failed browser launch took the daemon down with it').toBe(200);
+
+    process.emit('SIGINT');
+    const result = await running;
+    expect(result.exitCode, 'a failed launch changed the exit code').toBe(SIGNAL);
+    // `hard` is deliberately NOT the discriminator here and the reason is worth stating: this
+    // command ends every successful run through `process.exit(SIGNAL)`, so `capture` reports a hard
+    // exit whether or not anything failed, and an assertion on it would pass over a `die`. What
+    // separates the two is the code — a refusal is `ERROR`, and AC-4 asserts that shape directly.
+    expect(result.exitCode, 'a failed launch was rendered as a refusal').not.toBe(ERROR);
+    expect(plain(result.stdout).trim(), 'the URL line moved because the launch failed')
+      .toBe(plain(servingLine(`http://127.0.0.1:${String(port)}`)));
+    const warning = plain(result.stderr).trim();
+    expect(warning, 'nothing was said about a launch that did not happen').not.toBe('');
+    expect(warning, 'the warning does not carry the URL').toContain(`http://127.0.0.1:${String(port)}`);
+    expect(warning, 'the warning does not say the daemon is still running').toContain('still running');
+    expect(warning, 'the launcher own verdict was not reported').toContain('xdg-open exited 1');
+  }, 60_000);
+
+  test('and the warning is built from the closed set, claiming nothing about a browser', () => {
+    // Unit-level over `launchWarning`, because three of the four states cannot be produced by a
+    // fixture on the machine running this suite without making the verdict a property of that
+    // machine. Each is asserted by what it says AND by what it may not: `openUrl` reports the
+    // launcher it ran, so a sentence here inferring that no browser exists would be the claim
+    // *"A probe that could not answer is not a negative"* (2026-09-10) refuses.
+    const url = 'http://127.0.0.1:7717';
+    const sentences = [
+      launchWarning({ state: 'unsupported-platform', platform: 'win32' }, url),
+      launchWarning({ state: 'executable-unavailable', command: 'xdg-open' }, url),
+      launchWarning({ state: 'launch-failed', command: 'open', reason: 'open exited 3' }, url),
+    ].map(plain);
+    expect(sentences[0], 'the unsupported platform is not named').toContain('win32');
+    expect(sentences[1], 'the launcher that was not found is not named').toContain('xdg-open');
+    expect(sentences[2], 'the launcher own verdict is not reported').toContain('open exited 3');
+    for (const sentence of sentences) {
+      expect(sentence, 'the warning does not carry the URL').toContain(url);
+      expect(sentence, 'the warning does not say the daemon survives').toContain('the daemon is still running');
+      for (const forbidden of ['no browser', 'browser is not', 'not installed', 'missing']) {
+        expect(sentence, `the warning claims "${forbidden}"`).not.toContain(forbidden);
+      }
+    }
+    // And the scan discriminates, so a rewording that DID make one of those claims fails here.
+    expect(`${sentences[0]} no browser is installed`).toContain('no browser');
+  });
+
+  test('SSH and any other environment are not detected, so what it does does not move with the machine', () => {
+    // Codex's OQ-6, declined on the record. An environment oracle — `SSH_TTY`, `DISPLAY`, a
+    // container probe — would make a fixture's verdict a function of where it runs, which *"A
+    // test's verdict is a property of the commit, not of the checkout or the account"* (2026-08-30)
+    // forbids, and it would change what the command does for a reason nobody typed. `--no-open` is
+    // the whole of the opt-out.
+    const text = read('src', 'open.ts');
+    for (const probe of ['SSH_TTY', 'SSH_CONNECTION', 'DISPLAY', 'WAYLAND', 'isTTY', 'process.env']) {
+      expect(text.includes(probe), `open.ts reads ${probe} to decide whether to launch`).toBe(false);
+    }
+    expect(text, 'the opt-out is no longer a flag the operator types').toContain("flags['no-open']");
+  });
 });

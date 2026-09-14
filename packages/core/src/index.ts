@@ -1,13 +1,20 @@
 /**
  * The public API of `@quorum/core`.
  *
- * Twenty-nine value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
+ * Thirty-one value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
  * command children (Q-0091 to Q-0094) import from here, and what they may reach is settled by
  * whoever adds a name to this file rather than by whoever types an import first. That is why
  * `package.json` publishes `"."` alone and no `./*` subpath — a wildcard would defer the decision
  * to the first consumer (Q-0096 AC-5).
  *
- * Twenty-four of the twenty-nine are the domain helpers `packages/cli/src/frame.source.test.ts` names
+ * **Both figures were re-derived at Q-0126 rather than incremented, and one of them was already
+ * wrong.** This sentence read *twenty-nine* against a file exporting thirty: Q-0122 added
+ * `pathInside` to the register below without moving the prose, which nothing checks — the counts
+ * `packages/cli/src/package.test.ts` pins are the register's length and the error list's, never a
+ * number written here. Corrected to what the file exports rather than to what the last edit
+ * implied, which is this repository's own rule about a measurement copied from a document.
+ *
+ * Twenty-six of the thirty-one are the domain helpers `packages/cli/src/frame.source.test.ts` names
  * in its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
  * command module may name only where its own command needs them — and the other five are the error
  * classes a caller has to catch. `packages/cli/src/package.test.ts` derives the surface from that
@@ -65,6 +72,17 @@
  * `RunFlowOptions`, because a caller composing one is checked structurally against `runFlow`'s own
  * parameter and never has to name it — `packages/server` stores its own request shape instead.
  *
+ * **Q-0126 added one, and it is the ninth folder's whole surface.** `openUrl` is what lets
+ * `quorum open` show the UI it started, and it is here by the clause every name above arrived
+ * under: a command needs it. It is also the one name on this list that a command module could not
+ * hold even if the rule allowed it — `packages/cli`'s own guard refuses `node:child_process` in
+ * every production module of that package, so the primitive is `core`'s by construction rather than
+ * by preference. `BrowserLaunch` is re-exported beside it as a type, so a caller of the function can
+ * name what it answers from the package it called; `BROWSER_LAUNCH_STATES` is withheld, because no
+ * command enumerates the set and a name is added here because a command needs it — the rule Q-0092
+ * applied to `manifestShapeError` and Q-0093 to `currentBranch`. Why: see *"`core` opens a URL, and
+ * the ninth folder is named for what it is about"* (2026-09-14).
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else.
@@ -78,6 +96,8 @@ export { pathInside } from './backlog/confine.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
 export type { Project } from './backlog/project.js';
 export { initProject, ProjectExistsError } from './backlog/scaffold.js';
+export { openUrl } from './browser/browser.js';
+export type { BrowserLaunch } from './browser/browser.js';
 export { readData, validateArtifact } from './contracts/contracts.js';
 export type { ArtifactValidationResult } from './contracts/contracts.js';
 export { runFlow } from './engine/engine.js';

@@ -408,9 +408,27 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(25);
+    expect(domain()).toHaveLength(26);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
+  });
+
+  test('Q-0126 AC-16 — the register moved again, and the new name is the one a command CANNOT hold', async () => {
+    // The pin above read 25 until this ticket, and is shown red against that value rather than
+    // edited to fit — the demonstration Q-0091, Q-0092 and Q-0093 each wrote for their own
+    // additions, for the same reason.
+    expect(domain(), 'the register still holds the twenty-five it held before this ticket').not.toHaveLength(25);
+
+    const barrel = (await import('@quorum/core')) as Record<string, unknown>;
+    expect(domain(), 'openUrl is exported and the register does not name it').toContain('openUrl');
+    expect(typeof barrel.openUrl, 'openUrl is not a function on the barrel').toBe('function');
+
+    // And the name no command needs stays off the surface, which is the rule every addition above
+    // arrived under. `BROWSER_LAUNCH_STATES` is the closed set `openUrl` answers from; `open.ts`
+    // reads one result and never enumerates the set, so publishing the tuple here would be a name
+    // added because its module exports it — what Q-0092 withheld `manifestShapeError` for.
+    expect(Object.keys(barrel), 'BROWSER_LAUNCH_STATES is on the public surface and no command needs it')
+      .not.toContain('BROWSER_LAUNCH_STATES');
   });
 
   test('the barrel exports exactly the domain register plus the error classes, and every one is defined', async () => {
@@ -501,12 +519,23 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // must carry has to appear on it. What that costs is stated rather than hidden: a
     // `packages/cli` register grew for a `packages/server` need. What it buys is that the frame is
     // still forbidden to reimplement it, which is this register's own sentence and is true of it.
-    expect(domain(), 'the register still holds the twenty-four it held before this ticket').not.toHaveLength(24);
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(25);
+    // Q-0126 moved them to 26 and 31, and `openUrl` is the first entry that is here because a
+    // command module **cannot** hold it rather than because it may not: opening a browser is a
+    // spawn, and `frame.source.test.ts`'s `IO_MODULE` refuses `node:child_process` in every
+    // production module of this package. So the register's sentence — helpers the frame is forbidden
+    // to reimplement — is satisfied by a helper this package could not have written at all. See
+    // *"`core` opens a URL, and the ninth folder is named for what it is about"* (2026-09-14).
+    expect(domain(), 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
+    expect(domain(), 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(26);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
-    expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before this ticket')
+    expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before Q-0122')
       .not.toHaveLength(29);
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(30);
+    expect(Object.keys(barrel), 'the barrel still holds the thirty it held before Q-0126')
+      .not.toHaveLength(30);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(31);
+    expect(domain(), 'openUrl is not on the register the barrel is derived from').toContain('openUrl');
+    expect(typeof barrel.openUrl, 'openUrl is not a function on the barrel').toBe('function');
     expect(domain(), 'pathInside is not on the register the barrel is derived from').toContain('pathInside');
     expect(typeof barrel.pathInside, 'pathInside is not a function on the barrel').toBe('function');
     expect(domain(), 'cliVersion is not on the register the barrel is derived from').toContain('cliVersion');

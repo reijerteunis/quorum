@@ -242,13 +242,34 @@ quorum runs T-0001-1        # one run, step by step
 Codex steps report tokens rather than a price, and Quorum renders that as `n/a` rather than
 inventing a number.
 
-### `quorum open [--port <n>]`
+### `quorum open [--port <n>] [--no-open]`
 
-Starts the daemon against this project, serves the built web app on loopback, and prints one URL:
+Starts the daemon against this project, serves the built web app on loopback, prints one URL and
+opens it in your default browser:
 
 ```
 ✓ Quorum is serving http://127.0.0.1:7717 — press Ctrl-C to stop
 ```
+
+**The browser is a convenience and never the point.** `--no-open` serves without launching one, and
+a launch that fails is a **warning rather than a failure** — the daemon is already listening, the
+line above is printed either way and is byte-identical either way, and the warning tells you to open
+that URL yourself:
+
+```
+! did not launch a browser: Quorum has no launcher for win32 — open http://127.0.0.1:7717 yourself; the daemon is still running
+```
+
+Quorum spawns `open` on macOS and `xdg-open` on Linux, with the URL as a single argument and no
+shell. **Windows is not supported here and says so** rather than being attempted: its `start` is a
+shell builtin rather than a program, and composing your URL into a command line is the one thing
+this must not do. Nothing about the launch is inferred from your environment — there is no SSH,
+container or display detection, because a command that quietly does something different depending on
+where it runs is harder to trust than one that always does the same thing and takes a flag.
+
+What Quorum cannot tell you is whether a page actually appeared. It knows which program it started
+and how that program exited; it never reports that you have no browser, because it has no way to
+find that out.
 
 **It does not return.** The command occupies the terminal until you stop it; there is no background
 or detached mode, and nothing discovers or reuses an already-running daemon. Ctrl-C — or `SIGTERM` —

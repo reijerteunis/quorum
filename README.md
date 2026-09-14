@@ -156,7 +156,7 @@ behaviour a test could fail on before it exists.
 | `quorum lint` | check the flow directory, including cross-flow edges |
 | `quorum validate <schema> <file…>` | check artifacts against a contract |
 | `quorum runs [ticket\|run-id]` | run history: cost, tokens, every step |
-| `quorum open [--port <n>]` | serve the web app on loopback and print its URL; Ctrl-C stops it |
+| `quorum open [--port <n>] [--no-open]` | serve the web app on loopback, print its URL and open it; Ctrl-C stops it |
 
 **`quorum open` works from the workspace and not from a packed install.** The daemon it starts is
 `@quorum/server`, which is not one of the three tarballs a local `pnpm pack` produces, so a packed

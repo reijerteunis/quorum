@@ -78,4 +78,4 @@ commands:
   quorum adapters [--probe] [--json]      which vendor CLIs are installed, on subscription login; --probe also proves the login
   quorum validate <schema.json> <file…>   check artifacts against a contract; exit 1 on failure
   quorum runs [ticket|run-id] [--json]    run history: list, filter by ticket, or show one run
-  quorum open [--port <n>]                serve the web app on loopback and print its URL; Ctrl-C stops it`;
+  quorum open [--port <n>] [--no-open]    serve the web app on loopback, print its URL and open it; Ctrl-C stops it`;

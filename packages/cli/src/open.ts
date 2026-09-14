@@ -1,9 +1,25 @@
 /**
- * `quorum open` — start the daemon against this project, serve the built web app, print one URL.
+ * `quorum open` — start the daemon against this project, serve the built web app, print one URL and
+ * open it.
  *
  * The command M3's done-when has named since the milestone was written, and the one that makes the
  * UI reachable at all: after Q-0122 `apps/web` emits a bundle and `packages/server` serves it on
  * `GET /*`, and until this existed the only way to see either was to write a process.
+ *
+ * **The browser is opened by `@quorum/core` and not here, and that is a rule rather than a layering
+ * preference.** `frame.source.test.ts`'s `IO_MODULE` refuses `node:child_process` in every
+ * production module of this package, on the stated ground that every read and every spawn goes
+ * through `@quorum/core` — and opening a browser is a spawn. So this module holds one expression
+ * and `core/browser/` holds the table, which is the division Q-0093 made for `quorum init`'s
+ * scaffolding at a second site. That command's own helper is deliberately *not* named here: AC-10's
+ * scan reads a module's whole text, and a command naming another command's domain symbol fails it
+ * whether the mention is code or prose. Why: see *"`core` opens a URL, and the ninth folder is named
+ * for what it is about"* (2026-09-14).
+ *
+ * **A launch that did not happen is a warning and never a failed run.** By the time it could fail
+ * the daemon is listening and the URL has been printed, so what is lost is a convenience —
+ * {@link launchWarning} says so and the exit code does not move. `--no-open` serves without
+ * launching, and the URL line is byte-identical either way.
  *
  * **The daemon is reached through a dynamic import, and that is a packaging constraint rather than
  * a style.** `@quorum/cli` declares `@quorum/server` under `optionalDependencies`, so an
@@ -30,7 +46,7 @@
  * with no meaning there, and checking it first would report *no build at `node_modules/apps/web/dist`*
  * instead of the true thing, which is that this installation did not resolve the daemon.
  */
-import { loadProject, ProjectNotFoundError } from '@quorum/core';
+import { loadProject, openUrl, ProjectNotFoundError, type BrowserLaunch } from '@quorum/core';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 
 import { c } from './colour.js';
@@ -71,6 +87,32 @@ export const NO_DAEMON_REMEDY =
 /** The one line a started daemon prints, and the only thing this command writes on success. */
 export const servingLine = (url: string): string =>
   `${c.green('✓')} Quorum is serving ${url} — press Ctrl-C to stop`;
+
+/**
+ * What a launch that did not happen is told to a person — a **warning**, never a failed run.
+ *
+ * The daemon is listening by the time this can be written, so nothing shuts down and the exit code
+ * does not move: what was lost is a convenience, and {@link servingLine} has already printed the URL
+ * that replaces it. That line is byte-identical either way, which is what makes the fallback an
+ * instruction rather than a second, different answer.
+ *
+ * **No branch of this claims anything about a browser**, which is `openUrl`'s own rule arriving at
+ * the surface that renders it: `core` reports the launcher it ran and how that exited, and a
+ * sentence here saying *no browser is installed* would be the inference that primitive refuses to
+ * draw. See *"A probe that could not answer is not a negative"* (2026-09-10).
+ */
+export const launchWarning = (result: Exclude<BrowserLaunch, { state: 'launched' }>, url: string): string => {
+  // `has no launcher for` rather than `knows no browser launcher for`, which was the first wording
+  // and which its own test refused: that sentence contains the phrase *no browser*, and a reader
+  // skimming it learns something this command cannot establish. The distinction is the whole of
+  // clause 6 — what is absent is a row in a table here, never a browser on the machine.
+  const because = result.state === 'unsupported-platform'
+    ? `Quorum has no launcher for ${result.platform}`
+    : result.state === 'executable-unavailable'
+      ? `${result.command} was not found on this system`
+      : result.reason;
+  return `${c.amber('!')} did not launch a browser: ${because} — open ${url} yourself; the daemon is still running`;
+};
 
 /**
  * The port this run asks for: `--port <n>` where one is supplied, and {@link DEFAULT_DAEMON_PORT}
@@ -162,7 +204,7 @@ async function untilStopped(): Promise<void> {
 }
 
 /**
- * Start the daemon, print the URL, and serve until a signal arrives.
+ * Start the daemon, print the URL, open it, and serve until a signal arrives.
  *
  * `close()` shuts the host down before the socket, which is `createDaemon`'s order and not this
  * command's to choose: every live run is released through the abandonment path first, so stopping
@@ -173,7 +215,9 @@ async function untilStopped(): Promise<void> {
  * closed at five codes and re-interpreting one of them for the single command whose job is to keep
  * running is not a decision to take in passing (Q-0126 OQ-5).
  */
-export const openOn = ({ bundle = BUNDLE }: { bundle?: string | URL } = {}): CommandHandler => async ({ flags }) => {
+export const openOn = (
+  { bundle = BUNDLE, launcher }: { bundle?: string | URL; launcher?: Parameters<typeof openUrl>[1] } = {},
+): CommandHandler => async ({ flags }) => {
   const { BIND_HOSTNAME, createDaemon } = await daemon();
   const project = projectAt(flags.project);
   const port = portFrom(flags.port);
@@ -191,8 +235,22 @@ export const openOn = ({ bundle = BUNDLE }: { bundle?: string | URL } = {}): Com
     throw error;
   }
 
-  console.log(servingLine(`http://${BIND_HOSTNAME}:${String(listening.port)}`));
-  await untilStopped();
+  // Armed BEFORE anything that can take time, and awaited last. `untilStopped` registers its two
+  // handlers synchronously, so from here on Ctrl-C reaches this command whatever the launcher below
+  // is doing — which is what `docs/USAGE.md`'s claim that Ctrl-C stops it costs. A launcher that
+  // does not return is the case: `xdg-open` may exec a browser in the foreground where no desktop
+  // opener answers, and without this the stop would have to wait for the browser to be closed.
+  const stopped = untilStopped();
+  const url = `http://${BIND_HOSTNAME}:${String(listening.port)}`;
+  console.log(servingLine(url));
+
+  if (!flags['no-open']) {
+    // Raced against the stop for the reason above, and `undefined` is the arm that means the person
+    // stopped the command first — which is not a launch failure and is not warned about.
+    const result = await Promise.race([openUrl(url, launcher), stopped.then(() => undefined)]);
+    if (result !== undefined && result.state !== 'launched') console.error(launchWarning(result, url));
+  }
+  await stopped;
 
   try {
     await listening.close();
@@ -206,12 +264,18 @@ export const openOn = ({ bundle = BUNDLE }: { bundle?: string | URL } = {}): Com
  * `quorum open` against the bundle this module's own location names — the handler the frame
  * registers, and the only one an operator can reach.
  *
- * **The parameter above is `run.ts`'s `runOn({ … })` at a second site and not a `--bundle` flag**,
- * which non-goal 6 refuses: there stays exactly one way for an operator to find the bundle, and what
- * the parameter buys is a test that can serve a fixture without writing into a sibling package's
- * emit directory — a write that would race `build.test.ts`'s own `runBuild()`. `test/invoke.ts`'s
- * `capture` documents the same shape for the gate reader's streams. What AC-3 claims is that the
- * shipped root is module-relative rather than taken from the working directory or the environment,
- * and this default is that root.
+ * **Both parameters above are `run.ts`'s `runOn({ … })` at a second site, and neither is a flag.**
+ * Non-goal 6 refuses a `--bundle`, so there stays exactly one way for an operator to find the
+ * bundle; what `bundle` buys is a test that can serve a fixture without writing into a sibling
+ * package's emit directory — a write that would race `build.test.ts`'s own `runBuild()`.
+ * `test/invoke.ts`'s `capture` documents the same shape for the gate reader's streams. What AC-3
+ * claims is that the shipped root is module-relative rather than taken from the working directory or
+ * the environment, and this default is that root.
+ *
+ * **`launcher` is `openUrl`'s own options object and is deliberately not a stub of `openUrl`**: a
+ * test that replaced the function would prove this module calls something, where one that supplies
+ * the spawn drives the shipped table, the shipped four states and the shipped refusal to infer a
+ * missing browser from a failed launch. It is typed off that function rather than through a new
+ * name on `@quorum/core`'s barrel, which is what keeps this ticket's export count at one.
  */
 export const open: CommandHandler = openOn();

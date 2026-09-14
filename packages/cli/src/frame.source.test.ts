@@ -369,6 +369,13 @@ const DOMAIN = [
   // `packages/server`'s static route, which confines a URL to the built bundle with the same
   // primitive the backlog store uses, per `docs/GLOSSARY.md`'s **Confinement**.
   'pathInside',
+  // Q-0126 added `openUrl`, and it is the one entry on this list a command module could not hold
+  // even if the rule permitted it: opening a browser is a spawn, and `IO_MODULE` below refuses
+  // `node:child_process` in every production module of this package. So where the rest of the
+  // register records a helper this package MAY NOT reimplement, this one records a helper it CANNOT
+  // — which is Q-0093's `initProject` at a second site. Why: see *"`core` opens a URL, and the ninth
+  // folder is named for what it is about"* (2026-09-14).
+  'openUrl',
 ];
 
 /**
@@ -428,7 +435,11 @@ const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   // `core`. In particular it does NOT name `@quorum/server`'s own `openProject`, which lives in the
   // package an installation may not carry: routing project resolution through it would make *no
   // project here* unreportable on exactly the installation where the daemon is absent.
-  'open.ts': ['loadProject'],
+  //
+  // `openUrl` is the second, and it is the only name in this whole register that its module could
+  // not have written for itself: the browser launch is a spawn, and `IO_MODULE` refuses
+  // `node:child_process` here. AC-14 asserts that separately, over the same corpus.
+  'open.ts': ['loadProject', 'openUrl'],
   'validate.ts': ['validateArtifact', 'readData'],
   'runs.ts': [
     'loadProject', 'readRunsDir', 'sortRuns', 'isIncomplete', 'occurrenceSeq', 'vendorTokenTotal',
@@ -569,9 +580,12 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(added.filter((symbol) => !DOMAIN.includes(symbol)), 'a row names a symbol DOMAIN lacks')
       .toStrictEqual([]);
     expect(DOMAIN, 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(25);
+    expect(DOMAIN, 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(26);
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
       .toContain('pushLag');
+    expect(DOMAIN, 'the name Q-0126 added is not on the list it is supposed to be on')
+      .toContain('openUrl');
     expect(DOMAIN, 'the name Q-0112 added is not on the list it is supposed to be on')
       .toContain('configuredUser');
     expect(DOMAIN, 'the name Q-0067 added is not on the list it is supposed to be on')
@@ -632,6 +646,35 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
 
   test('and that clause has a subject — this package\'s tests do import them', () => {
     expect(files().filter(([, text]) => IO_MODULE.test(text)).length).toBeGreaterThan(2);
+  });
+
+  test('Q-0126 AC-14 — the browser command still spawns nothing, and the clause gained no exemption', () => {
+    // The criterion this ticket had to meet by *not* editing anything here. Opening a browser is a
+    // spawn, so a `quorum open` that launched one itself would need `node:child_process` and the
+    // clause above would have had to grow its first exemption — the shape that turns a rule into a
+    // list. It did not: the launcher is `@quorum/core`'s `openUrl`, in the ninth folder, which is
+    // this package's `initProject` division at a second site. Why: see *"`core` opens a URL, and
+    // the ninth folder is named for what it is about"* (2026-09-14).
+    const command = production().find(([name]) => name === 'open.ts');
+    expect(command, 'open.ts is not a production module, so this clause has no subject').toBeDefined();
+    const text = command?.[1] ?? '';
+    // The two halves of "still spawns nothing": the shared clause is unchanged and still empty, and
+    // this module in particular is inside the corpus it is empty over.
+    expect(IO_MODULE.test(text), 'the browser command imports a spawning module after all').toBe(false);
+    expect(production().filter(([, IO]) => IO_MODULE.test(IO)).map(([name]) => name)).toStrictEqual([]);
+    // The regex itself did not move to let this module through, asserted by its own source rather
+    // than by its verdict — a widened clause would be empty over the same corpus and prove nothing.
+    expect(IO_MODULE.source, 'the package-wide list was widened for this command')
+      .toBe(String.raw`from '(node:fs[^']*|node:child_process|node:os|node:url)'`);
+    // And there is no exemption register for it to have been added to: the two registers this file
+    // carries are for a terminal and for a self-location, and `open.ts` appears in neither as a
+    // spawner. Named explicitly so that adding a third is a visible act rather than a quiet one.
+    expect(Object.keys(TERMINAL_OWNER), 'the terminal register gained the browser command')
+      .not.toContain('open.ts');
+    // Shown discriminating over a copy: a module that DID spawn is reported by name, so the empty
+    // result above is a property of the tree rather than of a clause that stopped matching.
+    const spawning: [string, string][] = [['open.ts', "import { spawn } from 'node:child_process';"]];
+    expect(spawning.filter(([, IO]) => IO_MODULE.test(IO)).map(([name]) => name)).toStrictEqual(['open.ts']);
   });
 
   test('Q-0094 AC-11 — exactly one production module opens a terminal, and it is the gate reader', () => {

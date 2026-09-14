@@ -155,8 +155,12 @@ describe('AC-7 — the help lists only commands the frame dispatches', () => {
 
     const line = HELP.split('\n').find((text) => text.startsWith('  quorum open')) ?? '';
     expect(line, 'the flag it takes').toContain('[--port <n>]');
-    expect(line, 'what it does — the app, the bind, and how it stops')
-      .toMatch(/serve the web app on loopback and print its URL; Ctrl-C stops it/);
+    // Q-0126 AC-15: the second flag, and the help is where an operator learns the command launches
+    // a browser at all. Both are asserted, because a line naming the flag without naming what it
+    // turns off would document an option nobody could read a purpose into.
+    expect(line, 'the flag that serves without launching').toContain('[--no-open]');
+    expect(line, 'what it does — the app, the bind, the browser, and how it stops')
+      .toMatch(/serve the web app on loopback, print its URL and open it; Ctrl-C stops it/);
     // AC-2's clause that no flag may move the bind: the help names no host flag and no hostname.
     expect(line, 'the help offers a way to move the bind').not.toContain('--host');
   });
