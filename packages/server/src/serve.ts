@@ -12,6 +12,7 @@ import { serve as serveNode } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 
 import type { Project } from '@quorum/core';
+import { NO_BUNDLE_CODE } from '@quorum/shared';
 
 import { createApp } from './http.js';
 import { createRunHost, type RunHost } from './host.js';
@@ -128,7 +129,14 @@ export async function serve({ host, port = 0, bundle }: ServeOptions): Promise<L
   const directory = bundleDir(bundle);
   if (directory !== undefined) {
     const refusal = bundleRefusal(directory);
-    if (refusal) throw new Error(`${refusal.condition} — ${refusal.remedy ?? ''}`);
+    // Carrying a `code`, so a caller can catch THIS and rethrow everything else. Without one the
+    // only way to recognise it is its sentence, and a caller that catches every `Error` here reports
+    // a permission failure or a defect inside this package as "no built web app" — asserting a cause
+    // it did not establish, which is what *"An optional edge says the daemon may be absent, and never
+    // why"* (2026-09-14) clause 2 refuses one layer up. Q-0126 run 2 iteration 5's major.
+    if (refusal) {
+      throw Object.assign(new Error(`${refusal.condition} — ${refusal.remedy ?? ''}`), { code: NO_BUNDLE_CODE });
+    }
   }
   // The read-only routes are mounted here rather than inside `createApp`, so a test that wants the
   // run routes alone still gets them alone — and so the project a read answers about is the one the

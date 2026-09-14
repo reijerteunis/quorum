@@ -242,3 +242,19 @@ export const USAGE_MEASURES = [
 ] as const;
 
 export type UsageMeasure = (typeof USAGE_MEASURES)[number];
+
+/**
+ * The `code` the daemon's no-bundle refusal carries, so a caller catches that condition and no other.
+ *
+ * **Here rather than in the server package because the one caller that needs it cannot import that
+ * package.** The CLI declares the daemon as an *optional* dependency and reaches it through a
+ * dynamic import, so a static specifier for this constant would reintroduce exactly the failure that
+ * arrangement exists to prevent — see *"An optional edge says the daemon may be absent, and never
+ * why"* (2026-09-14). This package is what two packages may define against, which is the same reason
+ * the wire shapes moved here at Q-0120 and Q-0121.
+ *
+ * Written without naming either package, because `index.test.ts` forbids a workspace package name
+ * anywhere under this `src` — a rule about what a browser bundle may reach, which a docblock trips
+ * as readily as an import.
+ */
+export const NO_BUNDLE_CODE = 'QUORUM_NO_BUNDLE';

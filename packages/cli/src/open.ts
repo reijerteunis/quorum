@@ -57,7 +57,7 @@
  * installation and costs nothing to establish.
  */
 import { loadProject, openUrl, ProjectNotFoundError, type BrowserLaunch } from '@quorum/core';
-import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
+import { DEFAULT_DAEMON_PORT, NO_BUNDLE_CODE } from '@quorum/shared';
 
 import { c } from './colour.js';
 import { die, dieNoProject } from './fail.js';
@@ -166,6 +166,17 @@ function portFrom(value: unknown): number {
  */
 const isPortInUse = (error: unknown): boolean =>
   (error as { code?: unknown } | null)?.code === 'EADDRINUSE';
+
+/**
+ * Whether `error` is `serve`'s own refusal for a bundle root that carries no build.
+ *
+ * By `code` and never by message, which is what {@link isPortInUse} does and what
+ * {@link isDaemonUnresolved} has to depart from for want of anything else to read. `serve` attaches
+ * {@link NO_BUNDLE_CODE} at the throw site precisely so this caller need not read a sentence, and
+ * the sentence it then renders is `packages/server`'s own, unaltered.
+ */
+const isMissingBundle = (error: unknown): boolean =>
+  (error as { code?: unknown } | null)?.code === NO_BUNDLE_CODE;
 
 /**
  * Whether `error` is the daemon's own specifier failing to **resolve**, rather than a failure of
@@ -304,7 +315,16 @@ export const openOn = (
     // second is composed by `packages/server`'s `bundleRefusal`, names the directory and the entry
     // it wanted, and is rendered unaltered — this module composes no advice of its own for it.
     if (isPortInUse(error)) die(`port ${String(port)} is already in use`);
-    if (error instanceof Error) die(error.message);
+    if (isMissingBundle(error)) die((error as Error).message);
+    // **Everything else propagates, and that is the whole of Q-0126 run 2 iteration 5's major.**
+    // This arm read `if (error instanceof Error) die(error.message)` until then, which rendered a
+    // permission failure, a defect inside `packages/server` and a bundle that is genuinely absent as
+    // one sentence and dropped the stack — asserting a cause it had not established, and hiding the
+    // one failure a maintainer could act on. AC-4 authorises catching the missing bundle; AC-5
+    // authorises `EADDRINUSE`; nothing authorises the rest, so the rest reaches
+    // `main().catch(dieOnUnexpected)` as a stack. Same shape as {@link isDaemonUnresolved} above,
+    // and the same reason: *"An optional edge says the daemon may be absent, and never why"*
+    // (2026-09-14) clause 2.
     throw error;
   }
 

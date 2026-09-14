@@ -251,6 +251,30 @@ describe('AC-12 — one site launches a browser, across every package and every 
     expect(text, 'the URL stopped being a single argv element').toContain('launch(command, [url])');
   });
 
+  test('the launcher is detached and unreferenced, which its own docblock calls load-bearing', () => {
+    // **The clause this file was missing.** `spawnLauncher`'s docblock says `detached` is "the
+    // load-bearing option and it is not a tidy-up": without it the launcher — and on Linux any
+    // browser it execs rather than hands off to — shares this process's group, so the Ctrl-C that
+    // stops `quorum open` reaches a browser the operator is at that moment reading. `unref` follows
+    // from it, this process not being held open by a child it has stopped waiting for.
+    //
+    // Measured before it was written: with both removed the whole workspace stayed green — 7/7
+    // tasks forced, 0 cached — because the `LaunchSpawn` seam is `(command, args)` and carries no
+    // options object, so no behavioural test can reach the real launcher's. That made the docblock
+    // a claim nothing backed, which `.claude/rules/engineering.md` refuses, and it is a source fact
+    // rather than a seam that was missing. Found by hand at Q-0126's chore gate, the cross-vendor
+    // review having been handed a diff truncated 67,881 bytes before this folder began.
+    const text = moduleText();
+    expect(text, 'the launcher stopped being detached, so Ctrl-C would reach the browser')
+      .toContain("detached: true");
+    expect(text, 'the launcher stopped being unreferenced, so this process waits on a child it abandoned')
+      .toContain('.unref();');
+    // And the two are on the real launcher rather than anywhere in the file: the spawn options and
+    // the call are asserted together, so moving either into a comment or a second function fails.
+    expect(text, 'the spawn options are no longer the real launcher\'s')
+      .toMatch(/spawn\(command, \[\.\.\.args\], \{ stdio: 'ignore', detached: true \}\)/);
+  });
+
   test('the folder is exactly one source file, and nothing in it prints', () => {
     // The `adapters/` and `fanout/` rule at a ninth folder: a second file here would be a second
     // place that knows how to start a process, which is what "one exported primitive" forbids.
