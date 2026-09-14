@@ -90,3 +90,65 @@ start from. Verify rather than assume, and if they are, say so in your report an
 §0's measurements stand, including the correction that the ticket body and codex's AC-16 both named
 the wrong half of clause D, and the ruling that `ServeOptions.bundle` widens to `string | URL` with
 no decision entry owed. GO-4, GO-5 and GO-6 stand unchanged.
+
+## E-2 — GO-4 is ruled and its entry is landed; the `blocked` was right and E-1 was not — 2026-09-14
+
+**Supersedes** E-1's *"GO-4, GO-5 and GO-6 stand unchanged"* as it applies to **GO-4**, and AC-16's
+requirement as work still owed. GO-5 and GO-6 are unaffected. `merged.md` is otherwise unamended and
+all sixteen criteria stand.
+
+### The `blocked` verdict was correct, and E-1 is what made it necessary
+
+Round 1 completed **AC-1 to AC-11** and stopped on **AC-16**, which requires *"the decision entry
+GO-4 asks for is landed before a line of code"* — work `developer-generalist` may not do. That is
+this repository's own definition of `blocked` and the step applied it correctly, including refusing
+to choose a folder when its measurement showed none was selected.
+
+**The gap was in E-1, and it is recorded rather than smoothed over.** GO-4 reads *"(the successor's,
+but the argument belongs to a gate) … settle this before the successor runs."* That parenthetical was
+true under the recommended split and false the moment the gate refused it: **refusing the split made
+this run the successor**, so GO-4 stopped being deferred work and became a second blocking
+precondition beside GO-1. E-1 carried it forward as *unchanged* and did not notice. The cost is one
+implement round that ended at eleven of sixteen criteria rather than sixteen — $57.30, of which
+nothing is wasted, the eleven being complete and green on the branch.
+
+### The ruling
+
+**The entry is landed. It is *"`core` opens a URL, and the ninth folder is named for what it is
+about"* (2026-09-14)**, `docs/decisions/095-core-opens-a-url-and-the-folder-is-named-for-it.md`,
+indexed in `docs/DECISIONS.md`. Cite it by **title and date**. It is committed on
+`harness/Q-0126/implement` — the branch this worktree is on — rather than on `main`, so it arrives
+with the merge; Q-0067 GO-2's reason a second time. **Verify it is present and do not re-create it.**
+
+What it rules, which AC-12 to AC-16 now implement rather than decide:
+
+1. **The primitive lives in a ninth folder, `packages/core/src/browser/`**, holding one exported
+   symbol. The measurement round 1 supplied is adopted as the reason: `fanout/` is closed by
+   `fanout.source.test.ts:44`'s landed pin, `adapters/` is confined to vendor knowledge by
+   `harness/architecture.md` and `exec.ts`'s own docblock, and the remaining six folders are each
+   about something this is not.
+2. **Principle 1's enumeration widens by one item and its rule does not move.**
+   `docs/04-architecture.md:51` becomes *"It spawns CLIs, opens a URL in the platform's default
+   browser, reads/writes the project folder and git."* The clauses it keeps — never the network,
+   never a secret, never an API key — are restated in the entry so the widening cannot be read as
+   general. **That document edit is AC-16's, in this round.**
+3. **The launcher spawns an executable with the URL as one argv element and never composes a command
+   string.** `open` on darwin, `xdg-open` on Linux.
+4. **Windows is `unsupported`, explicitly.** `start` is a `cmd.exe` builtin rather than an
+   executable, so an argument-based spawn cannot exec it, and the string form is the injection
+   surface clause 3 refuses. This answers Appendix A's blocking question: the platform table returns
+   the **`unsupported platform`** member AC-13's closed set already carries, and does **not** claim a
+   Windows row. Q-0098's POSIX-only registration is the precedent.
+5. **The result reports what was spawned, never what a browser did.** *launched* means the launcher
+   exited zero, never *a browser is showing this page*, and a failure is never rendered as *there is
+   no browser* — AC-13's own wording, which this entry ratifies rather than changes.
+
+### What this does not amend
+
+**AC-1 to AC-11 are done and are not to be re-done.** Round 1 verified `806cd31`'s GO-2 work rather
+than repeating it and says so; do the same with round 1's own. E-1's no-split ruling stands, as does
+its named remedy: **if this round exhausts on the browser half, the remedy is a third erratum
+promoting AC-12 to AC-16 into a successor — not a further implement round.** GO-5 and GO-6 stand.
+
+**The implementer is not blocked on GO-4 or AC-16's precondition.** Both are ruled and the entry is
+on this branch. `blocked` remains correct for anything else outside the role's authority.
