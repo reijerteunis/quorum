@@ -69,3 +69,46 @@ closure walk did not resolve through `realpath`, so transitive dependencies — 
 were invisible to it. Two line citations in it are also wrong: the packed refusal is
 `build.test.ts:2461–2462`, `:2482` is the damaged-daemon case, and the workspace assertion is
 `:2134`.
+
+## E-2 — the lockfile half is landed by hand; the branch starts with two tests red — 2026-09-15
+
+**Supersedes** nothing in `merged.md`; it adds a gate obligation the document does not carry.
+Every criterion stands.
+
+### Why this is prep and not a criterion
+
+`harness/roles/developer-generalist.md`'s `paths:` do not reach the tracked root-level
+`pnpm-lock.yaml`, while `harness/harness.yaml:34` runs `pnpm install --frozen-lockfile` in the
+integration worktree **before the suite**. The two dependency-kind moves this ticket requires both
+change the lockfile, because pnpm records a dependency's *kind* per importer. **Measured rather than
+assumed**: with the manifests moved and the lockfile untouched, the frozen install fails naming the
+exact mismatch — *"`dependencies` in the lockfile … doesn't match the same field in package.json"*.
+
+So an implement step that made those moves would write manifests it may write, be unable to write the
+lockfile they require, and `integrate` would die `ERR_PNPM_OUTDATED_LOCKFILE` **after implement and
+review had been paid for**. Q-0103's shape, and Q-0126's measured reason for the same prep.
+
+### What is already on `harness/Q-0124/integration` — verify, do not redo
+
+Commit `4ffa5d7`:
+
+- **`apps/web`**: `react`, `react-dom` and `@quorum/shared` moved to `devDependencies`.
+- **`packages/cli`**: `@quorum/server` moved from `optionalDependencies` to `dependencies`.
+- **`pnpm-lock.yaml`** regenerated, and `pnpm install --frozen-lockfile` clean.
+- **Four guards inverted rather than deleted**, each the mechanical consequence of those two moves:
+  `test-discovery.test.ts`'s `namesTheDaemon` (an *optional* edge is now the defect, still keyed on
+  the key and never the count), `apps/web/test/package.test.ts`'s dependency division, and
+  `packages/cli/src/package.test.ts`'s two manifest assertions — the second of which Q-0126's own
+  comment called *"provisional against Q-0124"*. Both inversions were shown red by mutation.
+
+### The branch starts RED, deliberately, and on exactly this ticket's subject
+
+`pnpm turbo run test --force` on that commit is **679 passed, 2 failed**, and both failures are the
+packed fixture in `build.test.ts` — *"the packed set installs outside the workspace with the registry
+dead, and runs"* and its pnpm/npm packer-agreement sibling. They fail because the fixture packs
+**three** tarballs against a CLI that now requires a fourth.
+
+**That is the ticket's headline criterion and it is the run's to turn green, not prep to be done for
+it.** Nothing else is red: everything the manifest moves mechanically inverted is already green, so a
+red suite during this run means the remaining work, and not an inherited breakage. Do not read the two
+failures as a defect on the branch — they are the subject.
