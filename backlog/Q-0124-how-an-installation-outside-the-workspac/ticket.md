@@ -173,3 +173,60 @@ nothing, so React must not be one). Packed as it stands, a distributed `@quorum/
 to slip in elsewhere. If the ruling keeps `@quorum/web` undistributed, the existing division stays
 correct and nothing moves.
 
+## Ruled at the gate, 2026-09-15: tarballs four and five
+
+**The maintainer ruled that `@quorum/web` and `@quorum/server` both become distributed**, so the
+local distribution set goes from three to five and matches the emitting set again. Two corrections
+to how that choice was put, both made before any work began:
+
+**1. `private: true` does NOT have to move, and this does not touch 078(d).** The option was
+described as *"files declared, private dropped"*. Measured: all three packages distributed today —
+`@quorum/cli`, `@quorum/core`, `@quorum/shared` — carry `"private": true` **and pack**, because
+`pnpm pack` does not refuse a private package; only `npm publish` does, and
+`pnpm pack --dir packages/core` was run to confirm it. So privacy is orthogonal to local
+distribution, **078(d)'s refusal of registry-resolved `npx quorum` is untouched, and Q-0029 stays
+where it is**. What the ruling actually costs is `files`, the register moves, and the react demotion.
+
+**2. The CLI cannot find the bundle by the path it uses today, and that is a third piece of work.**
+`packages/cli/src/open.ts` computes `BUNDLE = new URL('../../../apps/web/dist/', import.meta.url)`,
+and its own docblock already records what that means outside the workspace: *"On a packed install
+this file sits at `node_modules/@quorum/cli/dist/`, so BUNDLE resolves to a path with no meaning
+there"* — which is why the refusal order is daemon, then project, then bundle. Once `@quorum/web` is
+a tarball it lands at `node_modules/@quorum/web/dist/`, so the CLI must locate it **by package name**.
+**Constrained**: `packages/cli` may import no `node:url` (`frame.source.test.ts:186`), so
+`fileURLToPath` is out — but `import.meta.resolve` yields a URL string and Q-0126 already widened the
+seam to `string | URL` for exactly this class of reason. Whether `@quorum/web` therefore needs an
+`exports` map, and of what shape for a package nothing imports as a module, is this ticket's.
+
+## What the entry must rule, and it supersedes one
+
+A decision entry is owed before code and `developer-generalist` may not write one.
+
+1. **The local distribution set is five**, and the emitting set and the distribution set are the same
+   five again — which un-does the split decision 092 made on 2026-09-12 and 093 widened on
+   2026-09-13. Both are named, neither is edited.
+2. **It supersedes *"An optional edge says the daemon may be absent, and never why"* (2026-09-14)**,
+   which says so of itself: *"when Q-0124 rules a distribution route, the optional edge becomes a
+   required one, the import may become static, and this entry is superseded rather than amended —
+   the exemption it authorises is deleted, not widened."* So `@quorum/cli`'s
+   `optionalDependencies` becomes `dependencies`, and `cli-version.test.ts`'s clause-D register —
+   that clause's only permitted entry — is **deleted rather than kept**.
+3. **`react` and `react-dom` move to `devDependencies`**, inverting `apps/web/test/package.test.ts`'s
+   landed division on the ground that *what a bundle contains* and *what npm must install beside a
+   tarball* select opposite sets for a self-contained bundle. Measured: 8.2 MB that the 316 K bundle
+   already contains.
+4. **`private: true` stays on all five**, with the reason recorded so a later reader does not read
+   distribution as publication.
+
+## What to measure before implementing
+
+- **The packed fixture is the oracle**, not reasoning: `build.test.ts`'s *"the packed set installs
+  outside the workspace with the registry dead, and runs"* installs the distribution set **together**
+  against a dead registry. Five tarballs rather than three is the change, and `DISTRIBUTION` at
+  `:2133` is the one list to move.
+- **`quorum open` must be shown working in a packed install**, which is the whole point and which no
+  test can currently assert — `:2458–2462` asserts the opposite, that it refuses. That assertion
+  **inverts** rather than being deleted.
+- **The cold-clone cost**, since this is M6's path: +492 K emitted and +1.7 MB of `hono` closure,
+  against Q-0014's measured +50 MB for the app's own dependencies. Re-derive rather than trust these.
+
