@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-12
 iterations:
   requirements.head-of-product: 2
+  chore.implement: 1
 history:
   - stage: draft
     run: 1
@@ -26,6 +27,14 @@ history:
     stage_after: requirements
     at: 2026-09-15T17:29:10.328Z
     cost: 20.404
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-15T19:15:45.656Z
+    cost: 0
 ---
 After Q-0122 the bundle exists and is served from the workspace, and a locally packed install still has no web app: the local distribution set is three tarballs and apps/web is private:true with no files and no exports. Separately M3's done-when names quorum open and no ticket in this milestone builds it — packages/cli declares no dependency on @quorum/server, so nothing in the CLI can start a daemon at all.
 
