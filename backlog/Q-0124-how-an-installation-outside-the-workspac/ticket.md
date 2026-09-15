@@ -90,3 +90,86 @@ unchanged: a fourth (and fifth) tarball, or `@quorum/cli` carrying another packa
 as its own asset. **Q-0125** makes `@quorum/server` the fifth emitter and deliberately leaves the
 distribution set at three, so by the time this ticket runs, **two** packages emit and are not
 distributed rather than one. That strengthens the case for ruling it once here.
+
+## Measured 2026-09-15, after Q-0125 and Q-0126 both landed
+
+**The subject moved twice while this ticket sat, and both moves narrow it.** Q-0125 made
+`@quorum/server` the fifth emitter with an `exports` map and left it undistributed; Q-0126 gave
+`@quorum/cli` an `optionalDependencies` edge to it and a `quorum open` command. So the state a
+packed install is in today is **decided and tested**, not accidental:
+
+    @quorum/cli   dependencies         @quorum/core, @quorum/shared
+                  optionalDependencies @quorum/server
+                  files                dist, templates
+    apps/web        private: true   files: none   exports: none
+    packages/server private: true   files: none   exports: YES (Q-0125)
+
+`build.test.ts:2458–2462` asserts that a packed `quorum open` **refuses**, naming the condition and
+the remedy, and `:2482` that the workspace one does not. That is *"An optional edge says the daemon
+may be absent, and never why"* (2026-09-14) working as ruled — and that entry names **this ticket**
+as the one that either supersedes it or leaves it standing. So this ticket inherits a stated
+obligation rather than an open question.
+
+### The three measurements the body asks for
+
+**1. Emitted bytes.** `apps/web/dist` **316 K in 3 files**; `packages/server/dist` **176 K**.
+Against `@quorum/cli` 220 K, `@quorum/core` 680 K and `@quorum/shared` 216 K distributed today, both
+together are **+492 K on ~1.1 M** — nothing against M6's thirty minutes.
+
+**2. The install closure, which is the figure that actually scales — and the two halves are NOT
+alike.** Walked transitively through the installed tree:
+
+    packages/server   3 third-party packages   1.7 MB   hono, @hono/node-server, @hono/node-ws
+    apps/web          2 third-party packages   8.2 MB   react, react-dom
+
+**`apps/web`'s 8.2 MB is a build-time cost and not a shipped one, and that is the finding.** The
+served bundle is **self-contained**: one 300 K JavaScript file, and a grep for a bare runtime
+specifier in it returns **nothing**, so React is already inside and nothing resolves from
+`node_modules` when a browser runs it. The daemon is the opposite — its emit imports `hono` at run
+time, so **1.7 MB across three packages genuinely must be installed** and no asset-copy shape avoids
+it.
+
+So the two packages decision 092 and 093 put in one class — *emits and is not distributed* — want
+**different answers**, which neither entry anticipated. The UI is a static asset; the daemon is
+executable code with a closure.
+
+**3. Can `build.test.ts`'s census express a cross-package asset copy? Yes — the body says no.** That
+claim was *"`:558` asserts the build wrote nothing outside every emitting package's own `dist/`, so a
+cross-package asset copy is exactly what that census exists to catch."* Read, the clause filters
+writes against **every emitting package's own `dist/`**, so a copy landing in
+`packages/cli/dist/web/` is inside a permitted prefix, and `agreesWithTheDeclaration` then matches it
+against the root's `outputs: ["dist/**"]`. **The census permits it.** What it forbids is writing into
+*another* package's directory, which is not the shape proposed.
+
+**The real obstacles are two others and neither is in the body.** `turbo run build --dry` shows
+`@quorum/cli#build` depending on `@quorum/core#build` and `@quorum/shared#build` only —
+`dependsOn: ["^build"]` is topological and `@quorum/cli` does not depend on `@quorum/web` — so **the
+copy would read a `dist/` that may not exist yet**. And `apps/web/dist` would have to become a
+declared **input** of `@quorum/cli#build`, or a cache hit replays a stale bundle, which is verbatim
+decision 092 clause 5's hazard.
+
+### The Q-0093 precedent does not transfer cleanly
+
+The body offers *"`@quorum/cli` ships the bundle beside its templates, on Q-0093's precedent"*.
+Measured: `packages/cli/templates/` is **20 tracked files** — source — while `apps/web/dist` is
+**gitignored**. So that phrase is two different proposals: **copy at build time**, which needs the
+two fixes above and keeps the artifact reproducible, or **track a built bundle**, which contradicts
+the glossary's *"gitignored and reproducible from the commit"* and makes a commit carry an emit.
+
+### A ruling this ticket owes that nobody has named: `react` as a dependency
+
+If `@quorum/web` is distributed, its manifest must change, and that is **not a tidy-up**.
+`apps/web/test/package.test.ts:96–99` pins `dependencies` to exactly
+`['@quorum/shared','react','react-dom']` under the comment *"The two that ship to a browser are
+dependencies, and the build-time ones are not. The division is the claim: what a bundle contains
+against what only builds or tests it."*
+
+That division is **correct under its own framing and wrong under npm's, and for a bundler the two are
+opposites**: the existing rule reads *dependency* as *what ends up in the bundle* (React does, so it
+is one); npm reads it as *what must be installed alongside the tarball* (a self-contained bundle needs
+nothing, so React must not be one). Packed as it stands, a distributed `@quorum/web` would install
+**8.2 MB of React the bundle already contains**. Nothing is broken today because nothing packs it —
+**distribution is what activates it** — which is what makes it this ticket's to rule rather than a fix
+to slip in elsewhere. If the ruling keeps `@quorum/web` undistributed, the existing division stays
+correct and nothing moves.
+
