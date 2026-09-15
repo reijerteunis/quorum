@@ -230,3 +230,29 @@ A decision entry is owed before code and `developer-generalist` may not write on
 - **The cold-clone cost**, since this is M6's path: +492 K emitted and +1.7 MB of `hono` closure,
   against Q-0014's measured +50 MB for the app's own dependencies. Re-derive rather than trust these.
 
+## The packaging cost, measured 2026-09-15 rather than estimated
+
+Taken in a throwaway worktree with `files: ["dist"]` declared on both new members and a forced build,
+by packing all five with `pnpm pack`:
+
+    @quorum/core    184 K        @quorum/web      100 K   (new)
+    @quorum/cli      72 K        @quorum/server    48 K   (new)
+    @quorum/shared   52 K
+    ------------------------------------------------------------
+    three today     308 K        five             456 K
+
+**So the ruling costs +148 K of tarball, a 48% increase on 308 K** — and not the +492 K the `dist`
+figures suggest, because those are uncompressed and a bundle compresses well. What each new tarball
+carries was read rather than assumed: `@quorum/web` is **5 entries** — `dist/index.html`, the hashed
+`.js` and `.css`, its manifest and the licence — and `@quorum/server` is **24**, its `dist` emit.
+
+**The install closure is where the real cost sits, and it is one-sided.** `@quorum/server` drags
+`hono`, `@hono/node-server` and `@hono/node-ws` — **1.7 MB installed** — because its emit imports
+them at run time. `@quorum/web` drags **nothing**, *provided* clause 3's demotion happens; left as
+`dependencies`, it would pull **8.2 MB of React the 100 K tarball already contains**.
+
+**Against M6's thirty minutes this is comfortable**, and the figure to watch is the 1.7 MB rather than
+the 148 K. For scale, Q-0014 measured the cold *store* at +50 MB for `apps/web`'s own dependencies,
+which is the number this ticket must not reproduce on the install path — and the demotion is what
+keeps it off.
+
