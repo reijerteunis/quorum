@@ -311,13 +311,20 @@ describe('AC-2 — the command opens a project, starts the daemon, and prints on
     // makes this a second case rather than the same one is a property of the parser rather than of
     // this command: a guard reading `rest` alone is complete only if nothing else can hold a
     // positional, and here something can.
+    // **The parser was fixed, and this clause is what said so.** Until Q-0124 it read
+    // `expect(hidden.rest).toStrictEqual([])` under the message *"the parser left the token in
+    // `rest`, so this needs no second clause"* — written to fail the day the parser stopped parking
+    // a positional in a valueless flag. It failed on that day. `--no-open` is now in `argv.ts`'s
+    // `VALUELESS` set, so the token stays a positional and the `rest` guard above catches it.
+    //
+    // **The comment this replaces cited the wrong pin**, and that mis-citation is why the defect was
+    // routed away twice. It claimed `argv.test.ts` pinned the consumption as Q-0090 AC-2's
+    // behaviour 2; behaviour 2 is the empty-string value and behaviour 4 is the single-dash token,
+    // and neither is this. Nothing pinned a *valueless* flag swallowing a positional, so there was
+    // nothing to preserve — which Q-0112 and Q-0126 both took on trust from the same sentence.
     const hidden = parseArgv(['open', '--no-open', 'my-project']);
-    expect(hidden.rest, 'the parser left the token in `rest`, so this needs no second clause')
-      .toStrictEqual([]);
-    expect(hidden.flags['no-open'], 'the flag no longer swallows the token after it')
-      .toBe('my-project');
-    // Pinned in `argv.test.ts` as Q-0090 AC-2's behaviour 2 and not this file's to change: what is
-    // asserted here is that this command meets it, not that the parser should stop doing it.
+    expect(hidden.rest, 'the parser parks a positional in a valueless flag again').toStrictEqual(['my-project']);
+    expect(hidden.flags['no-open'], 'the flag took a value it cannot take').toBe(true);
 
     build();
     const port = await freePort();
@@ -337,8 +344,14 @@ describe('AC-2 — the command opens a project, starts the daemon, and prints on
     // names nothing — it is the usage that satisfies it. Split at the em dash, the two halves are
     // what this command observed and what it offers, and only the first can carry either.
     const condition = said.split(' — ')[0];
-    expect(condition, 'the refusal does not name the flag that took a value').toContain('--no-open');
-    expect(condition, 'the refusal does not name the token that was swallowed').toContain('"my-project"');
+    // **The refusal moved to the better of the two, and that is the parser fix showing through.**
+    // This asked for `--no-open` to be named, because the token used to arrive as that flag's value
+    // and the flag was the only place it could be reported from. It now arrives as a positional, so
+    // the clause that answers is the positional guard and the sentence names the token itself —
+    // which is what the operator typed, and a more direct account than naming the flag it was
+    // parked in. Both guards are still present; what changed is which one gets there first.
+    expect(condition, 'the refusal does not say a positional was refused').toContain('no positional argument');
+    expect(condition, 'the refusal does not name the token the operator typed').toContain('"my-project"');
     expect(said.endsWith(`usage: ${offeredUsage()}`),
       `the refusal does not end with the help's own open line — it said: ${said}`).toBe(true);
     // Nothing started, which is what separates this from a command that merely said something: the

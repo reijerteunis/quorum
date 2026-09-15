@@ -232,8 +232,18 @@ export const openOn = (
   // is the one that is wrong, and {@link USAGE} beside it is what the command does take.
   if (rest.length > 0) die(`quorum open takes no positional argument, and was given ${JSON.stringify(rest[0])} — ${USAGE}`);
 
-  // The same clause where the parser hides it from `rest`. `argv.ts:54` gives a flag the token after
-  // it unless that token starts with `--` (Q-0090 AC-2's preserved behaviour 4), so
+  // The same clause where the parser used to hide it from `rest`. **Q-0124 fixed that at the
+  // parser**: `--no-open` is in `argv.ts`'s `VALUELESS` set, so the token after it stays a
+  // positional and the guard above catches it. This clause is kept as a backstop against that
+  // hand-maintained set losing an entry, and it is no longer the only thing standing between the
+  // operator and a silently discarded argument.
+  //
+  // **The citation this replaces was wrong, and the error cost two deferrals.** It read "Q-0090
+  // AC-2's preserved behaviour 4", which is the single-dash token; behaviour 2 is the empty-string
+  // value. Neither pins a valueless flag consuming a positional — nothing did — so the defect was
+  // treated as preserved and routed to a successor twice (Q-0112's body, then here) on the strength
+  // of a pin that did not exist. `argv.ts:54` gives a flag the token after it unless that token
+  // starts with `--`, so
   // `quorum open --no-open my-project` parks the path in this flag and leaves `rest` empty: the
   // guard above sees nothing, a truthy string switches the launch off exactly as `true` would, and
   // the argument the person typed is discarded in silence — the failure that guard exists to

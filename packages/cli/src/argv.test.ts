@@ -63,6 +63,33 @@ describe('AC-2 — the seven behaviours, each pinned on its own', () => {
     expect(parseArgv(['--gate-answer', '--json']).gateAnswers).toStrictEqual([true]);
   });
 
+  test('a valueless flag does not consume the token after it, for every member of the set', () => {
+    // **The defect this closes, measured on the real commands before it was fixed**: `--json`,
+    // `--verbose`, `--dry` and `--auto` each took the positional that followed them, so
+    // `quorum runs --json Q-0124` listed every run with `rest` empty, and `quorum run --dry chore
+    // Q-0124` lost the flow name. The operator typed a token and the parser discarded it in silence.
+    //
+    // Pinned per member rather than once, so the set's *effect* is checked even though its
+    // membership is hand-maintained — see {@link VALUELESS}, which states that residual.
+    for (const flag of ['auto', 'dry', 'help', 'json', 'no-open', 'probe', 'verbose']) {
+      const parsed = parseArgv(['board', `--${flag}`, 'Q-0124']);
+      expect(parsed.flags[flag], `--${flag} took a value`).toBe(true);
+      expect(parsed.rest, `--${flag} swallowed the positional after it`).toStrictEqual(['Q-0124']);
+    }
+  });
+
+  test('and a flag that DOES take a value still takes it, so the fix discriminates', () => {
+    // The other direction, without which the clause above is satisfied by a parser that never
+    // consumes anything. `--adapter`, `--base`, `--project`, `--port`, `--owner` and `--intent` all
+    // carry values, and `--gate-answer` carries one and accumulates.
+    for (const flag of ['adapter', 'base', 'project', 'port', 'owner', 'intent']) {
+      const parsed = parseArgv(['run', `--${flag}`, 'value']);
+      expect(parsed.flags[flag], `--${flag} stopped taking its value`).toBe('value');
+      expect(parsed.rest, `--${flag} left its value as a positional`).toStrictEqual([]);
+    }
+    expect(parseArgv(['run', '--gate-answer', 'advance']).gateAnswers).toStrictEqual(['advance']);
+  });
+
   test('4 — a single-dash token is a positional, not a flag', () => {
     // Why: preserved defect, see Q-0090 AC-2 behaviour 4. The test is `startsWith('--')` and
     // nothing else, so `-v` lands in `rest` where a well-behaved parser would read it as a flag.

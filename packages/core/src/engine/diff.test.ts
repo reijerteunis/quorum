@@ -78,6 +78,7 @@ function contextFor(repoDir: string, vars: Record<string, unknown>, overrides: P
     ticket: ticketRecord(repoDir),
     runId: 1,
     baseOverride: null,
+    emit: () => { /* overridden where a clause reads what was emitted */ },
     deferredDiffs: new Map<string, DeferredDiff>(),
     persistence: { appendLog: () => { /* no sink in a direct call */ } },
     ...overrides,
@@ -691,6 +692,82 @@ describe('Q-0051 AC-7 — a deferred range\'s remedy is about the state that act
 // AC-8 — truncation
 // ---------------------------------------------------------------------------------------------
 
+describe('Q-0124 — a truncated diff says so where a watcher is, and names what it hid', () => {
+  // **Why this exists.** Four consecutive tickets were reviewed against a diff cut at the configured
+  // limit, and nothing in front of anyone said so: the reviewer was told inside its own prompt, and
+  // the operator was told in `runs.log`, which nobody reads while a run is happening. `git diff`
+  // orders by path, so a head-only cut hides the alphabetical tail — the same region every time.
+
+  test('the warn reaches the event stream, and names the files with no patch at all', () => {
+    const root = repoWith();
+    git(root, 'checkout', '-q', BRANCH);
+    // Three files, so the cut lands past the first and the later two are wholly absent. Named
+    // z-last/y-mid deliberately: `git diff` sorts by path, so these are the tail a head cut loses.
+    write(path.join(root, 'a-first.txt'), `${'padding line\n'.repeat(200)}`);
+    write(path.join(root, 'y-mid.txt'), `${'padding line\n'.repeat(200)}`);
+    write(path.join(root, 'z-last.txt'), `${'padding line\n'.repeat(200)}`);
+    commitAll(root, 'three files');
+    git(root, 'checkout', '-q', 'main');
+
+    const events: Event[] = [];
+    const lines: string[] = [];
+    const context = contextFor(root, { base: 'main', id: TICKET }, {
+      config: { repo: { base_branch: 'main', max_diff_bytes: 900 } },
+      persistence: { appendLog: (_ticket, line) => { lines.push(line); } },
+      emit: (event) => { events.push(event); },
+    });
+
+    const out = materialiseDiff(STEP, context);
+
+    const warns = events.filter((e) => e.type === 'warn').map((e) => e.message);
+    expect(warns, 'a truncated diff emitted no warn, so only runs.log knows').toHaveLength(1);
+    expect(warns[0], 'the warn does not name the files the reviewer was given no patch for')
+      .toContain('z-last.txt');
+    expect(warns[0]).toContain('y-mid.txt');
+    expect(warns[0], 'the warn does not name a file the reviewer CAN see, which would be a false alarm')
+      .not.toContain('a-first.txt');
+
+    // The same fact in all three places a reader might look, so none of them is the only one.
+    expect(lines[0], 'runs.log lost it').toContain('z-last.txt');
+    expect(out, 'the reviewer is not told which files it has no patch for').toContain('z-last.txt');
+    expect(out).toMatch(/no patch at all for these 2 file\(s\)/);
+  });
+
+  test('and where nothing is wholly absent it says THAT, rather than listing nothing', () => {
+    // One file cut mid-hunk: every file has some patch. "no patch for 0 file(s):" with an empty list
+    // would be an over-claim of exactly the kind this change removes, one layer in.
+    const root = repoWith();
+    git(root, 'checkout', '-q', BRANCH);
+    write(path.join(root, 'a.txt'), `${'padding line\n'.repeat(400)}`);
+    commitAll(root, 'one file');
+    git(root, 'checkout', '-q', 'main');
+
+    const events: Event[] = [];
+    const context = contextFor(root, { base: 'main', id: TICKET }, {
+      config: { repo: { base_branch: 'main', max_diff_bytes: 500 } },
+      emit: (event) => { events.push(event); },
+    });
+    const out = materialiseDiff(STEP, context);
+    const warns = events.filter((e) => e.type === 'warn').map((e) => e.message);
+    expect(warns[0], 'a cut inside the only file was reported as files being absent')
+      .toContain('every file has some patch and the last one is cut short');
+    expect(warns[0]).not.toMatch(/no patch at all/);
+    expect(out).toContain('no file is wholly absent');
+  });
+
+  test('and an untruncated diff emits nothing at all', () => {
+    const root = repoWith();
+    git(root, 'checkout', '-q', BRANCH);
+    write(path.join(root, 'a.txt'), 'a diff small enough to need no truncation\n');
+    commitAll(root, 'small');
+    git(root, 'checkout', '-q', 'main');
+    const events: Event[] = [];
+    const context = contextFor(root, { base: 'main', id: TICKET }, { emit: (event) => { events.push(event); } });
+    materialiseDiff(STEP, context);
+    expect(events, 'a diff that fits warned anyway, so the warn means nothing').toStrictEqual([]);
+  });
+});
+
 describe('Q-0051 AC-8 — truncation is byte-honest, and the trim is tested by name', () => {
   test('E8 — a valid range is untouched: same patch, same stat, same truncation', () => {
     const root = repoWith();
@@ -719,7 +796,9 @@ describe('Q-0051 AC-8 — truncation is byte-honest, and the trim is tested by n
     // The kept byte count is the truncated patch's own length, and the log line is the spike's format.
     const kept = Number(/Patch truncated to (\d+) UTF-8 bytes/.exec(truncated)![1]);
     expect(kept).toBeLessThanOrEqual(500);
-    expect(lines).toStrictEqual([`run=1 diff truncated range=main...${BRANCH} limit=500 kept=${kept}`]);
+    expect(lines[0], 'the log line lost the range= token AC-9.5 counts on').toContain(`diff truncated range=main...${BRANCH} limit=500 kept=${kept}`);
+    expect(lines[0], 'the log no longer says what the truncation cost').toMatch(/cut short|no patch at all for/);
+    expect(lines).toHaveLength(1);
   });
 
   test('trimIncompleteUtf8Suffix cuts back to a character boundary and no further', () => {

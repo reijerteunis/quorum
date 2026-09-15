@@ -42,6 +42,7 @@ function context(overrides: Partial<PromptContext> = {}): PromptContext {
     vars: { id: 'Q-0052', iter: 2, run: 3, base: 'main' },
     deferredDiffs: new Map(), diffInputs: new Map([['main...harness/Q-0052/implement', DIFF]]),
     persistence: { appendLog: () => { /* no log in a prompt */ } },
+    emit: () => { /* a prompt emits nothing; the truncation warn is diff.test.ts's subject */ },
     backlog: new Backlog(path.join(root, 'backlog')), harnessDir, dry: false,
     ...overrides,
   };

@@ -25,7 +25,7 @@ import type { Flow, ProjectConfig } from '@quorum/shared';
 import type { TicketRecord } from '../backlog/backlog.js';
 import { emptyRangeEvidence, shortSha, type ShortShaResult } from '../git/git.js';
 import { interpolate } from './loaders.js';
-import { FlowError, type RunPersistence } from './types.js';
+import { FlowError, type EmitEvent, type RunPersistence } from './types.js';
 
 /** Which end of a three-dot range an endpoint is, left to right. */
 export type EndpointSide = 'left' | 'right';
@@ -94,6 +94,14 @@ export interface DiffContext {
   baseOverride: string | null;
   deferredDiffs: ReadonlyMap<string, DeferredDiff>;
   persistence: Pick<RunPersistence, 'appendLog'>;
+  /**
+   * Where a truncation says so, so the fact reaches a watcher and not only `runs.log`.
+   *
+   * Added because four consecutive tickets were reviewed against a truncated diff and nothing in
+   * front of anyone said so: the reviewer was told in its own prompt, and the run's operator was
+   * told in a file nobody reads during a run.
+   */
+  emit: EmitEvent;
 }
 
 /** What {@link preflightDiffs} reads: {@link DiffContext} plus the flow it walks and the maps it fills. */
@@ -364,11 +372,59 @@ export function materialiseDiff(step: DiffStep, context: DiffContext): string {
   const limit = context.config.repo?.max_diff_bytes ?? 200000;
   const truncated = full.length > limit;
   const bytes = truncated ? trimIncompleteUtf8Suffix(full.subarray(0, limit)) : full;
+  // **Which files fell outside, named rather than left to be inferred.** `git diff` orders by path,
+  // so a head-only cut hides the alphabetical tail — the same region every time, which is how four
+  // consecutive tickets were reviewed without their last files ever being seen. The reviewer gets
+  // the complete `--stat` above and so knows the file *names*, but nothing told it which of those
+  // it had been given no patch for. This does.
+  const omitted = truncated ? filesAfter(full, bytes.length) : [];
   if (truncated) {
-    context.persistence.appendLog(context.ticket, `run=${context.runId} diff truncated range=${range} limit=${limit} kept=${bytes.length}`);
+    // **Zero omitted files is a real and different answer**, not an empty list: it means the cut
+    // landed inside the last file the reviewer can see, so every file has *some* patch and one has
+    // less than all of it. Saying "no patch for 0 file(s):" with nothing after the colon would be
+    // the shape this change exists to remove, one layer in.
+    const lost = omitted.length === 0
+      ? 'every file has some patch and the last one is cut short'
+      : `no patch at all for ${String(omitted.length)} file(s): ${omitted.join(', ')}`;
+    // **The log keeps its original `range=… limit=… kept=…` shape and appends**, because that line is
+    // read by machine as well as by a person: `diff.test.ts`'s AC-9.5 counts materialisations with
+    // `/diff truncated range=(\S+)/`, so a rewrite that dropped the token would have silently turned
+    // a working counter into one that matches nothing — the defect class this change is about,
+    // committed while fixing it. Found by that test going red rather than by reading.
+    const summary = `range=${range} limit=${String(limit)} kept=${String(bytes.length)} of ${String(full.length)} — ${lost}`;
+    context.persistence.appendLog(context.ticket, `run=${context.runId} diff truncated ${summary}`);
+    // A `warn` and not an `info`: a review whose subject is partly absent is a weaker verdict than
+    // it looks, which is the one thing a watcher needs to know while it is happening.
+    context.emit({ type: 'warn', message: `${step.id ?? 'diff'}: diff truncated ${summary}` });
   }
-  const notice = truncated ? `\n\n## Truncation notice\n\nPatch truncated to ${bytes.length} UTF-8 bytes (configured limit ${limit}).` : '';
+  const notice = truncated
+    ? `\n\n## Truncation notice\n\nPatch truncated to ${String(bytes.length)} UTF-8 bytes (configured limit ${String(limit)}). `
+      + (omitted.length === 0
+        ? 'Every file above has some patch and the last one is cut short, so no file is wholly absent.'
+        : `**You were given no patch at all for these ${String(omitted.length)} file(s)**, though they appear in `
+          + `the \`--stat\` above: ${omitted.join(', ')}. Say so in your review rather than judging them from `
+          + 'the stat alone.')
+    : '';
   return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+}
+
+/**
+ * The paths whose `diff --git` header begins at or after `kept` — the files a truncated patch
+ * carries no hunk for.
+ *
+ * Read off the raw bytes rather than re-running git, so it describes exactly the buffer that was
+ * cut. A file straddling the boundary is **not** listed: it has a header and some hunks, which is a
+ * different and lesser problem than having none, and reporting it as absent would be the
+ * over-claim this whole change exists to remove.
+ */
+function filesAfter(full: Buffer, kept: number): string[] {
+  const names: string[] = [];
+  const pattern = /^diff --git a\/(\S+)/gm;
+  const text = full.toString('utf8');
+  for (let m = pattern.exec(text); m !== null; m = pattern.exec(text)) {
+    if (Buffer.byteLength(text.slice(0, m.index), 'utf8') >= kept) names.push(m[1]);
+  }
+  return names;
 }
 
 /** Everything {@link emptyRangeFailure} quotes, gathered by the caller that already read it. */

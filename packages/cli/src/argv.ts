@@ -43,6 +43,21 @@ export interface ParsedArgv {
  * positional, and the command decides what to do with it. Inventing one here would be a behaviour
  * change, not a port.
  */
+/**
+ * The flags that take no value, so a token after one of them is a positional and not its value.
+ *
+ * **Hand-maintained, and the residual is stated rather than hidden**: nothing in this package
+ * declares a flag schema, so a new valueless flag is added here by whoever adds it, and one that is
+ * forgotten keeps the old behaviour of swallowing the next token. What makes that bounded is
+ * `argv.test.ts`, which pins the *effect* for every member — so the set going stale is a missing
+ * entry rather than a silent change to the ones that are here. Deriving it would need a schema this
+ * frame deliberately does not have (Q-0090 non-goal 13: no argument-parsing library).
+ *
+ * `gate-answer` is absent on purpose: it takes a value and accumulates, which is the one flag whose
+ * repetition is meaningful.
+ */
+const VALUELESS = new Set(['auto', 'dry', 'help', 'json', 'no-open', 'probe', 'verbose']);
+
 export function parseArgv(argv: readonly string[]): ParsedArgv {
   const flags: Record<string, FlagValue | FlagValue[]> = {};
   const positional: string[] = [];
@@ -51,7 +66,19 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     if (token.startsWith('--')) {
       const key = token.slice(2);
       const next = argv[i + 1];
-      const value: FlagValue = next && !next.startsWith('--') ? argv[++i] : true;
+      // **A flag that takes no value never consumes the token after it**, which is what stops
+      // `quorum runs --json Q-0124` reading the ticket as the flag's value and then listing every
+      // run because `rest` is empty. Measured across the real set before this was written:
+      // `runs --json <id>`, `board --verbose <id>`, `run --dry <flow> <id>` and `run --auto <flow>
+      // <id>` all silently discarded a positional the operator typed.
+      //
+      // **Not a preserved defect, which is why it is fixed here rather than pinned.** Q-0090 AC-2's
+      // preserved behaviours are the single-dash token (4), the bare `--` (5) and the empty-string
+      // value (2); none of them is this, and `argv.test.ts`'s clause 2 pins consumption for a flag
+      // that genuinely takes a value — `--adapter mock` — which is unchanged. What was never
+      // examined is a *valueless* flag meeting a positional. Q-0126 closed one instance inside
+      // `open.ts`; this closes the class one layer down, which is where the parser can see it.
+      const value: FlagValue = !VALUELESS.has(key) && next && !next.startsWith('--') ? argv[++i] : true;
       if (key === GATE_ANSWER) {
         const seen = flags[key];
         flags[key] = [...(Array.isArray(seen) ? seen : []), value];

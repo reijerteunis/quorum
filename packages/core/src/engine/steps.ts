@@ -251,7 +251,7 @@ export async function runAgentStep(
   const promptContext: PromptContext = {
     repoDir: context.repoDir, config: context.config, vars, ticket, runId: context.runId,
     baseOverride: context.baseOverride, deferredDiffs: context.deferredDiffs, diffInputs: context.diffInputs,
-    persistence: context.persistence, backlog: context.backlog, harnessDir: context.harnessDir, dry: context.dry,
+    persistence: context.persistence, emit: context.emit, backlog: context.backlog, harnessDir: context.harnessDir, dry: context.dry,
   };
   const prompt = buildPrompt(step, role, promptContext) + (extra.promptSuffix?.(cwd) ?? '');
   const started = `${adapterName}${model ? '/' + model : ''} role=${String(step.role ?? '-')}`;
