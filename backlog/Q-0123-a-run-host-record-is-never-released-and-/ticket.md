@@ -1,7 +1,7 @@
 ---
 id: Q-0123
 title: A run host record is never released, and a listing makes it visible
-stage: draft
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0123/integration
@@ -69,3 +69,64 @@ measured hurting anything, registered so that the first person it does hurt does
 rediscover it. **Q-0019** (resumable runs after daemon restart) is the ticket most likely to change
 the premise, since a durable store would make a handle mean something across a restart and would
 move where this state lives.
+
+## Ruled 2026-09-16: nothing is evicted, and the cost is measured rather than called small
+
+**Fixed by hand rather than run through the flows**, on Q-0108's precedent — the gate costs more than
+the work. The deliverable is what §2 of *What it must decide* said it might be: a measurement, a
+ruling, and a pin. **No decision entry is owed**: nothing here contradicts a landed entry, and the
+one ruling — that nothing is evicted — is what Q-0121 already chose and this only writes down.
+
+### The body's own premise was wrong in the direction that matters, and is corrected here
+
+This ticket said *"one small record per run, each small"*. A `RunRecord` holds a `Broadcast`
+retaining up to `retain` events and a whole `TicketRecord`, and **`record.broadcast` is assigned once
+and never nulled** — `close()` cannot clear the buffer, because replaying it after close is precisely
+what Q-0121 added. So "small" needed measuring rather than asserting.
+
+**Measured, and the premise survives — for real data.** `stdout` events are emitted **one per line**
+(`claude.ts:118`, `codex.ts:126` both pass `onLine`), and over **8,054 lines** of this repository's own
+run history the distribution is:
+
+    mean 214 B · median 119 B · p90 163 B · p99 758 B · max 71,119 B
+
+At `DEFAULT_RETENTION = 500` that is **roughly 0.1 MB per ended run**, so the fifty-run session this
+body imagines costs single-digit megabytes. **p3 is correct and stays.**
+
+**The first attempt at that measurement was wrong and is recorded rather than quietly redone.**
+Filling 20 broadcasts with 500 identical 8 KB strings reported 4.0 MB where the arithmetic says 82 MB
+— V8 had deduplicated them. Re-run with unique content per event it reports 82.7 MB, which matches.
+*Distrust a figure that does not scale*, and the tell was the arithmetic rather than the code.
+
+### What holds, and what does not
+
+- **A record holds no operating-system resource.** After a run ends its `iterator` is exhausted, its
+  `controller` inert, `drained` settled. **The run lock is `core`'s**, taken and released inside
+  `runFlow`, so an unreleased record holds no ticket — there is no correctness consequence, only
+  bytes.
+- **The bound is the event COUNT and never a byte size.** One line in that history reached 71,119 B,
+  so a run whose last 500 events were all outliers costs far more than 0.1 MB. Stated as the residual
+  rather than smoothed over.
+- **`quorum open` (Q-0126) changed the premise's weight**, and this body predates it: a daemon now
+  runs for a real user session where it previously ran only under tests. The session-length bound is
+  real rather than hypothetical — and at 0.1 MB a run, still comfortable.
+
+### What is pinned, in `packages/server/src/host.test.ts`
+
+Two clauses, both shown red by mutation:
+
+1. **A source guard**: no file in this package contains `records.delete` or `records.clear`. Adding
+   one fails it **by file name**, which is what makes eviction a visible act that must first answer
+   OQ-3 — an evicted handle makes `GET /runs/:id`'s *"no run is registered under that handle"* false
+   for a handle the host **did** mint, the class Q-0074 and Q-0115 spent two tickets removing.
+   Verified red by evicting an ended record: *"a record is evicted somewhere, and OQ-3 owes an answer
+   before it may be: expected [ 'host.ts' ]"*.
+2. **A behavioural clause**: an ended run is still listed, still viewable, and **still replays its
+   retained buffer**, and `shutdown()` removes no entry. Evicting on shutdown turns **five** tests
+   red, Q-0121's own properties among them — which is the measurement that says eviction is not a
+   free tidy-up.
+
+**Q-0019 still owns the premise change.** A durable store would make a handle mean something across a
+restart and move where this state lives, at which point the ruling above is re-opened by that ticket
+rather than by this one.
+

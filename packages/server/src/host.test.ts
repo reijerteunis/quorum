@@ -657,3 +657,73 @@ describe('AC-14 — the verdict is a property of the commit', () => {
     expect(fs.existsSync(path.join(project.repoDir, 'probe.txt'))).toBe(true);
   });
 });
+
+describe('Q-0123 — the record set is unbounded on purpose, and what that costs is measured', () => {
+  /**
+   * **`records` grows for the life of the process, and this block is the ruling rather than a fix.**
+   * `records.set` is called once per `mint` and nothing anywhere in this package deletes or clears
+   * an entry, so a record outlives its run and outlives `shutdown()`, which snapshots the `running`
+   * ones and removes none. Q-0121's enumeration is what made that visible: while `view(handle)` was
+   * the only reader a caller had to already hold a handle, and an unreleased record answered nobody.
+   *
+   * **Nothing is evicted, and both naive fixes are closed.** Evicting an *ended* record would remove
+   * exactly what Q-0121 added — `Broadcast.subscribe()` is documented and implemented as *"Permitted
+   * after `Broadcast.close`"*, so an ended run's handle still replays its retained events with a
+   * `missed` count. Capping the *listing* instead would hide runs while looking complete, which is
+   * the shape *"A probe that could not answer is not a negative"* (2026-09-10) refuses.
+   *
+   * **So the deliverable is the measurement and this pin, not an eviction path** — Q-0123's own OQ-2
+   * asked whether a bound was even the answer, and measured, it is not:
+   *
+   * - A record holds **no operating-system resource**. After a run ends its `iterator` is exhausted,
+   *   its `controller` is inert and `drained` is a settled promise. **The run lock is `core`'s**,
+   *   taken and released inside `runFlow`, so an unreleased record holds no ticket.
+   * - What it does hold is the retained buffer, bounded **per run** at `retain`
+   *   (`DEFAULT_RETENTION` = 500). Measured against real vendor output rather than assumed: stdout
+   *   events are emitted **one per line**, and over 8,054 lines of this repository's own run history
+   *   the mean line is **214 B**, the median **119 B** and the 99th percentile **758 B**. At 500
+   *   events that is **roughly 0.1 MB per ended run**, so a session of fifty runs costs single-digit
+   *   megabytes.
+   *
+   * **The residual is stated rather than hidden.** One line in that history reached 71,119 B, so a
+   * run whose last 500 events were all outliers would cost far more than 0.1 MB — the bound is the
+   * event *count*, never a byte size. And `quorum open` (Q-0126) means a daemon now runs for a real
+   * user session where it previously ran only under tests, which is what makes the session-length
+   * bound a real one rather than a hypothetical. **Q-0019** may move this state into a durable store
+   * and change the premise entirely.
+   */
+  test('nothing in this package removes a record, and adding something is a visible act', () => {
+    // A source guard rather than a behavioural one, because the claim is about what the package does
+    // NOT do. If a later change adds eviction this fails, and what it owes is Q-0123's OQ-3: an
+    // evicted handle makes `GET /runs/:id`'s "no run is registered under that handle" false for a
+    // handle the host DID mint, which is the class Q-0074 and Q-0115 spent two tickets removing.
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const sources = fs.readdirSync(here).filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'));
+    expect(sources.length, 'the walk found no source, so this scan proves nothing').toBeGreaterThan(5);
+    const evicting = sources.filter((name) => /records\.(delete|clear)\b/.test(fs.readFileSync(path.join(here, name), 'utf8')));
+    expect(evicting, 'a record is evicted somewhere, and OQ-3 owes an answer before it may be').toStrictEqual([]);
+    // The needle has a subject: it finds the thing it forbids when that thing is there.
+    expect(/records\.(delete|clear)\b/.test('records.delete(handle);'), 'the needle matches nothing').toBe(true);
+  });
+
+  test('an ended run is still enumerable and still replayable, which is what eviction would break', async () => {
+    const project = fixture({ flow: ONE_STEP_FLOW });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const handle = await started(host, { flow: 'probe', ticket: TICKET_ID });
+    await watch(host, handle).drained;
+
+    // The run has ended. Both of Q-0121's properties still hold over the same record, and an
+    // eviction of any shape would remove one of them.
+    expect(host.runs().some((row) => row.handle === handle), 'an ended run left the listing').toBe(true);
+    expect(host.view(handle), 'an ended run stopped being viewable').not.toBe(undefined);
+    const replayed = watch(host, handle);
+    await replayed.drained;
+    expect(replayed.events.length, 'an ended run replayed nothing, so its buffer has already gone')
+      .toBeGreaterThan(0);
+
+    await host.shutdown();
+    // And shutdown removes no entry either, which is the growth this block rules on rather than fixes.
+    expect(host.view(handle), 'shutdown evicted the record, which OQ-3 does not yet answer for')
+      .not.toBe(undefined);
+  });
+});
