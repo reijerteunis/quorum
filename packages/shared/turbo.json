@@ -44,7 +44,7 @@
         // harness/product-context.md's pillar 7 against the set of packages that really declare a
         // `files` allow-list, rather than against a written-down count — so a sixth distributed
         // package fails until both documents move. That needs the manifests as well as the README,
-        // and both workspace roots, because two of the five live under `apps/`. The
+        // and both workspace roots, because one of the five lives under `apps/`. The
         // `../core/package.json` entry below predates this and is a subset of the first glob; it is
         // left where it is because it is declared for a different reader and a glob covering it is
         // not a second claim about it.

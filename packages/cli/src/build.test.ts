@@ -2422,7 +2422,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
   const DISTRIBUTION = ['cli', 'core', 'server', 'shared', 'web'];
 
   /**
-   * Where a package in {@link DISTRIBUTION} lives, because **two of the five are not under
+   * Where a package in {@link DISTRIBUTION} lives, because **one of the five is not under
    * `packages/`**.
    *
    * Every loop below spelled `path.join(WORKSPACE, 'packages', name)` while the set was three, which

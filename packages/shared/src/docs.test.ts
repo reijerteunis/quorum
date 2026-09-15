@@ -1583,7 +1583,7 @@ describe('Q-0124 AC-13 — the installation documents describe the install a str
    * list of names, which is the seventh recorded instance of that distinction in this repository and
    * the reason a sixth distributed package fails the two clauses below rather than passing them.
    *
-   * Both workspace roots, because two of the five are not under `packages/` — the assumption that
+   * Both workspace roots, because one of the five is not under `packages/` — `apps/web`, and the assumption that
    * broke `build.test.ts`'s own loops at this ticket, found here as well because `README.md`
    * documents the same walk for a human to type.
    */
@@ -1614,7 +1614,7 @@ describe('Q-0124 AC-13 — the installation documents describe the install a str
   /** A count as a reader meets it in prose. Five entries, because the set has never been near ten. */
   const IN_WORDS: Record<number, string> = { 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven' };
 
-  test('the derivation has a subject, and finds the two that are not under packages/', () => {
+  test('the derivation has a subject, and reaches the one that is not under packages/', () => {
     // Anti-vacuity first: a walk that found nothing would leave both clauses below true of nothing,
     // and a walk that reached only `packages/` would leave the README's loop unchecked in exactly
     // the place it is wrong.

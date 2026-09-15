@@ -691,7 +691,7 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     // Q-0124 AC-13, and the shape is `test-discovery.test.ts`'s two rows for the same walk: the
     // local distribution set is derived from which manifests declare a `files` allow-list, so the
     // README's tarball list and pillar 7's count are held against the tree rather than against a
-    // number somebody typed. Both workspace roots, because two of the five are not under packages/.
+    // number somebody typed. Both workspace roots, because one of the five is not under packages/ — apps/web.
     'repoRoot → root': 'a member of WORKSPACE_ROOTS, a literal array of the two workspace globs\' parents declared in the same describe, which clause B collects',
     'repoRoot → relative': "one of those two joined to a directory found beneath it, for the existence check that decides whether a directory is a package at all",
     'repoFile → `${relative}/${MANIFEST}`': "the same directory joined to MANIFEST, which is the literal 'package.json' declared in that describe",
