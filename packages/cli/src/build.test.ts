@@ -47,6 +47,7 @@ import { configDefaults } from 'vitest/config';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
 import { HELP } from './commands.js';
+import { SIGNAL } from './exit.js';
 import {
   buildIn, disposeIsolated, dry, emitting, isolate, PACKAGE, read, rootTurbo, trackedUnder,
   turboBin, turboEnv, WORKSPACE, WORKSPACE_FILES, type TurboTask,
@@ -2144,6 +2145,34 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     expect(refusal.stderr, 'the emit stopped somewhere other than the port guard').toContain('--port');
   }, 300_000);
 
+  test('Q-0124 AC-6(a) — and in the WORKSPACE the same expression answers this workspace\'s own build', () => {
+    // **The other end of *one expression answers both installations*.** The packed half is in
+    // AC-10's fixture, where the locator must answer inside `node_modules/@quorum/web`; this is the
+    // half that says where it answers here. Neither is the criterion on its own — what AC-6 claims
+    // is that **one** expression is right in two places, and a test that only checked the packed one
+    // would be satisfied by a locator that had simply stopped working in the workspace.
+    //
+    // Run through a plain `node` process rooted at the emit, because the suites resolve through the
+    // `quorum-source` condition and a packed install through `default`: a Vitest-only assertion
+    // proves the wrong resolver (R-6). It answers **without the build existing**, resolution reading
+    // the manifest rather than opening the target, which is what keeps `serve`'s own missing-build
+    // refusal reachable at all — the case AC-6(b) exercises in the packed install above.
+    runBuild();
+    const resolved = execFileSync(
+      process.execPath,
+      ['--input-type=module', '-e', "process.stdout.write(import.meta.resolve('@quorum/web/bundle'))"],
+      { cwd: path.join(PACKAGE, EMIT), encoding: 'utf8' },
+    );
+    const web = path.join(fs.realpathSync(path.join(WORKSPACE, 'apps', 'web')), EMIT);
+    expect(resolved.startsWith(`file://${web}`),
+      `the bundle resolved to ${resolved}, outside this workspace's own build`).toBe(true);
+    // The entry document spelled as a literal, which is this file's and `open.test.ts`'s existing
+    // idiom for it: `BUNDLE_ENTRY` is `@quorum/server`'s and importing it here to check a locator in
+    // `@quorum/web` would tie this assertion to a third package for one string.
+    expect(resolved.endsWith('/index.html'),
+      `the locator answered ${resolved} rather than the bundle's entry document`).toBe(true);
+  }, 300_000);
+
   test('Q-0124 AC-2 — the served bundle carries what it needs, which is why nothing is a runtime dependency', () => {
     // **The evidence `apps/web`'s manifest rests on, asserted over the emitted bundle rather than
     // argued.** That package moved `react`, `react-dom` and `@quorum/shared` to `devDependencies`
@@ -2265,7 +2294,27 @@ const firstLine = async (child: ReturnType<typeof spawn>): Promise<string> => ne
 });
 
 /**
- * Stop a child that may already have stopped.
+ * How a child stopped — **a result rather than a completion**, which is what this helper was
+ * missing.
+ *
+ * `forced` is the field that carries it. The timeout below exists so a hung daemon cannot wedge the
+ * suite, and while this returned `void` that rescue was **indistinguishable from a clean
+ * shutdown**: a daemon that ignored `SIGTERM` for thirty seconds and was then `SIGKILL`ed satisfied
+ * the fixture exactly as one that shut down in a moment did, so AC-10(b)'s *"stopped through the
+ * existing shutdown path and exits cleanly"* had no subject. `code` and `signal` are the other half
+ * — whether the process left through its own {@link SIGNAL} exit or was ended by the kernel.
+ */
+interface Stopped {
+  /** The child's own exit status, or `null` where a signal ended it. */
+  code: number | null;
+  /** The signal that ended the child, or `null` where it exited by itself. */
+  signal: NodeJS.Signals | null;
+  /** Whether `SIGTERM` was ignored long enough that `SIGKILL` had to be sent. */
+  forced: boolean;
+}
+
+/**
+ * Stop a child that may already have stopped, and **say how it went**.
  *
  * **Written this way because the obvious form hangs for ever**, and it did: awaiting `once('exit')`
  * after `kill` is correct only while the child is still running, and a `quorum open` that refused —
@@ -2273,13 +2322,23 @@ const firstLine = async (child: ReturnType<typeof spawn>): Promise<string> => ne
  * listener is registered for an event that will never fire again. The failure it produced was a
  * *timeout* rather than the refusal the assertion above had already caught, which is the worst shape
  * for a fixture to fail in: the report named the budget instead of the defect.
+ *
+ * **It reports rather than asserting, which is what lets one call site use it twice**: once at the
+ * end of a `try`, where the result is what AC-10(b) is about, and once in the `finally` as the
+ * rescue for a fixture that failed earlier. An `expect` inside this helper would fire from that
+ * `finally` and mask whichever failure sent it there.
  */
-const stop = async (child: ReturnType<typeof spawn>): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+const stop = async (child: ReturnType<typeof spawn>): Promise<Stopped> => {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode, forced: false };
+  }
   child.kill('SIGTERM');
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 30_000);
-    child.once('exit', () => { clearTimeout(timer); resolve(); });
+  return new Promise<Stopped>((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve({ code: null, signal: null, forced: true });
+    }, 30_000);
+    child.once('exit', (code, signal) => { clearTimeout(timer); resolve({ code, signal, forced: false }); });
   });
 };
 
@@ -2470,6 +2529,12 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     version?: string;
     dependencies?: Record<string, string>;
     optionalDependencies?: Record<string, string>;
+    /**
+     * Read by AC-2(d) alone, and deliberately **not** by {@link declaredDeps}: what a packer does to
+     * a `workspace:` range in this section is a measurement this ticket owes, and folding it into
+     * the register the install depends on would make a latent difference look like a live one.
+     */
+    devDependencies?: Record<string, string>;
   }
 
   /**
@@ -2758,6 +2823,52 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     expect(filesUnder(path.join(scaffolded, 'harness')), 'the packed install scaffolded a different tree').toStrictEqual(shipped);
     expect(shipped.length, 'the shipped tree is empty — the comparison above is vacuous').toBeGreaterThan(10);
 
+    // **Q-0124 AC-6(b): a build that is not there is refused by name, and the name is a directory
+    // inside THIS installation.**
+    //
+    // Asserted here rather than in `open.test.ts`, and the reason is the whole of the ticket. That
+    // file reaches the handler through `openOn({ bundle })` with a fixture root injected, so it
+    // never evaluates `BUNDLE` and never exercises `import.meta.resolve` at all: what it establishes
+    // is the refusal's *wording*, which is `packages/server`'s. **Where the directory comes from can
+    // only be established by running the shipped emit, and only a packed install discriminates** —
+    // from `packages/cli/dist/`, the module-relative locator this ticket replaced answered
+    // `<workspace>/apps/web/dist`, which is right in the workspace and is `node_modules/apps/web/dist`
+    // here, a directory that has never existed anywhere.
+    //
+    // **Saved and restored rather than deleted**, in the shape AC-10(d) uses one block up: every
+    // assertion below meets whichever installation this paragraph leaves behind, so the restore is
+    // asserted rather than assumed. A port is asked for rather than taken as the default, so the
+    // verdict does not depend on what else is running on this machine — `serve` refuses a bundle
+    // before it binds, which is what makes the flag belt-and-braces rather than load-bearing.
+    const web = path.join(project, 'node_modules', '@quorum', 'web');
+    const built = path.join(web, EMIT);
+    const heldBack = `${built}-saved`;
+    const refusedPort = await freePort();
+    fs.renameSync(built, heldBack);
+    try {
+      const refused = spawnSync(shim, ['open', '--no-open', '--project', scaffolded, '--port', String(refusedPort)],
+        { cwd: project, encoding: 'utf8', env });
+      expect(refused.status, 'a packed install carrying no build did not refuse').not.toBe(0);
+      // Realpathed because `os.tmpdir()` is a symlink on macOS and the resolver answers through it,
+      // which is the same correction {@link inInstall}'s assertion below already carries.
+      expect(refused.stderr, 'the refusal does not name the bundle directory inside this installation')
+        .toContain(path.join(fs.realpathSync(web), EMIT));
+      expect(refused.stderr, 'the refusal does not name the entry it wanted').toContain('index.html');
+      // **The counterfactual, named rather than implied**: this is the exact path the locator this
+      // ticket replaced would have produced in this installation, and AC-6(b) asks to see it absent.
+      expect(refused.stderr, 'the refusal names the path a module-relative locator produces, so the bundle is still found by open.js\'s own location')
+        .not.toContain(path.join('node_modules', 'apps', 'web'));
+      // And it stopped at the bundle rather than upstream of it. The project is the one `quorum
+      // init` scaffolded a moment ago, so a refusal about the project would mean this never reached
+      // the daemon and the clauses above passed over the wrong sentence.
+      expect(refused.stderr, 'the command stopped before it reached the bundle').not.toContain('quorum init');
+    } finally {
+      fs.rmSync(built, { recursive: true, force: true });
+      fs.renameSync(heldBack, built);
+    }
+    expect(fs.existsSync(path.join(built, 'index.html')),
+      'the fixture did not put the build back, so every assertion after it is about an installation it broke').toBe(true);
+
     // **Q-0124 AC-10(b): `quorum open` SERVES from the packed install, which is the whole point of
     // the ticket.** This asserted a refusal until now — the packed install had no daemon, so the
     // command reported what had failed to resolve — and the assertion inverts rather than being
@@ -2807,6 +2918,21 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
         expect(resolved.startsWith(`file://${fs.realpathSync(project)}`),
           `the ${what} resolved to ${resolved}, outside the packed install`).toBe(true);
       }
+
+      // **AC-10(b)'s second half: it stops through its own shutdown path.** Asserted here rather
+      // than in the `finally` below, for the reason {@link stop} documents — an `expect` from a
+      // `finally` fires on the way out of whichever assertion above failed and reports the wrong
+      // thing. The `finally` still calls `stop`, which returns immediately once the child has gone.
+      //
+      // **`forced` is the clause that has a subject**: the helper's thirty-second `SIGKILL` is a
+      // rescue against a hung daemon, and until it was reported a daemon that ignored `SIGTERM`
+      // entirely passed this test. The exit status is the other half — `quorum open` leaves through
+      // `process.exit(SIGNAL)` after `close()` has released every live run, so a child ended *by*
+      // the signal instead has skipped that release, which is the failure this criterion is about.
+      const stopped = await stop(serving);
+      expect(stopped.forced, 'the packed daemon ignored SIGTERM and had to be killed — it did not shut down').toBe(false);
+      expect(stopped.signal, 'the packed daemon was ended by a signal rather than exiting through close()').toBe(null);
+      expect(stopped.code, 'the packed daemon did not exit through the signal path quorum open documents').toBe(SIGNAL);
     } finally {
       await stop(serving);
     }
@@ -2918,8 +3044,9 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
 
     // A register rather than a count, per Q-0073: a subject that quietly emptied would leave the
     // loop below reporting success over nothing. `@quorum/shared` depends on no workspace sibling,
-    // and `@quorum/web` declares its one under `devDependencies`, which a packer does not rewrite
-    // because npm never installs them — so both are deliberately absent.
+    // and `@quorum/web` declares its one under `devDependencies`, which {@link workspaceDepsOf}
+    // does not read — so both are absent here, and what a packer does to the web one is measured
+    // separately below rather than asserted from this loop's silence.
     const dependents = DISTRIBUTION.filter((name) => workspaceDepsOf(name).length > 0);
     expect(dependents, 'the set of packages declaring a workspace dependency moved')
       .toStrictEqual(['cli', 'core', 'server']);
@@ -2968,6 +3095,51 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
           .toBe(undefined);
       }
     }
+  }, 300_000);
+
+  test('Q-0124 AC-2(d) — and what each packer writes for @quorum/web\'s dev-section workspace range is measured', () => {
+    // **The measurement AC-2(d) asks for, and it refutes the sentence that stood here instead.**
+    // The register above excluded `@quorum/web` on the stated ground that a `workspace:` range in
+    // `devDependencies` is one *"a packer does not rewrite"*. That was a claim about a tool's
+    // behaviour with nothing executing it, and it is **wrong for pnpm**: measured on this tree,
+    // `pnpm pack` rewrites it to the sibling's concrete version exactly as it does a runtime edge,
+    // and `npm pack` leaves the protocol literal — the same divergence as the loop above, in a
+    // section that loop cannot see. What AC-2(d) refuses is shipping this unmeasured; it is
+    // recorded here rather than repaired, because nothing depends on it either way.
+    //
+    // **Why it is latent, stated so a later reader does not "fix" it**: npm does not install a
+    // dependency's `devDependencies`, so neither spelling is ever resolved by AC-19(b)'s install
+    // against the dead registry — which is the whole reason `react` and `@quorum/shared` were moved
+    // into that section in the first place (AC-2, and the 7.94 MB the bundle already contains).
+    //
+    // **Kept outside {@link dependents}**, which is the register the install genuinely rests on: an
+    // edge in there failing to be rewritten breaks a packed install, and one in here does not. One
+    // list meaning both is how a real failure would come to read as an accepted one.
+    runBuild();
+    const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-devmanifest-'));
+    temporaries.push(destination);
+
+    const directory = directoryOf('web');
+    const onDisk = manifestOf('web').devDependencies?.['@quorum/shared'];
+    expect(onDisk, '@quorum/web no longer declares its sibling in the dev section — this measurement has no subject')
+      .toBe('workspace:*');
+    // And it is in that section and no other, which is AC-2's own claim and what puts this
+    // measurement outside the loop above rather than inside it.
+    expect(declaredDeps(manifestOf('web'))['@quorum/shared'],
+      '@quorum/web declares its sibling where a packer rewriting matters, so this belongs in the register above')
+      .toBe(undefined);
+
+    const byPnpm = manifestIn(packWith('pnpm', directory, destination)).devDependencies?.['@quorum/shared'];
+    const byNpm = manifestIn(packWith('npm', directory, destination)).devDependencies?.['@quorum/shared'];
+    expect(byPnpm, 'pnpm no longer rewrites a dev-section workspace range — the recorded measurement has moved')
+      .toBe(versionOf('@quorum/shared'));
+    expect(byNpm, 'npm now rewrites a dev-section workspace range — the recorded measurement has moved')
+      .toBe('workspace:*');
+    // The two really do differ, asserted rather than left to be read off the pair above: it is the
+    // divergence that is the finding, and a future where both packers agreed would satisfy each
+    // clause separately while making the sentence they support false.
+    expect(byPnpm, 'the two packers agree on a dev-section workspace range, so the divergence recorded here has gone')
+      .not.toBe(byNpm);
   }, 300_000);
 });
 

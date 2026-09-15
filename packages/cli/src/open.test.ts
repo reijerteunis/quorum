@@ -401,6 +401,15 @@ describe('AC-2 — the command opens a project, starts the daemon, and prints on
 });
 
 describe('AC-4 — a directory holding no build refuses, and nothing binds', () => {
+  // **What this block does NOT establish, named so it cannot be read as covering it.** Every
+  // fixture here supplies its bundle root through `openOn({ bundle })`, so `BUNDLE` is never
+  // evaluated and `import.meta.resolve` is never reached: what is claimed below is the refusal's
+  // *content* — the sentence, the entry it names, and that nothing bound — over a root this file
+  // controls. **Q-0124 AC-6(b)'s claim is a different one** — that the root the shipped command
+  // derives is a directory inside the installation the reader is standing in — and it can only be
+  // made by running the emit, in the installation where the locator this ticket replaced would have
+  // answered `node_modules/apps/web/dist`. That is `build.test.ts`'s packed fixture, per this
+  // file's own header rule that nothing here spawns anything.
   test('the refusal names the directory and the entry it wanted, and no socket was opened', async () => {
     // The bundle directory exists and is empty, which is the shape a cleaned checkout has and the
     // one this most needs to catch — `bundleRefusal` asks for the entry rather than for the
