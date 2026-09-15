@@ -34,17 +34,10 @@ importers:
         version: 4.1.11(@types/node@26.3.0)(jsdom@29.1.1)(vite@8.2.2(@types/node@26.3.0)(jiti@2.7.0)(yaml@2.9.0))
 
   apps/web:
-    dependencies:
+    devDependencies:
       '@quorum/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      react:
-        specifier: ^19.3.0
-        version: 19.3.0
-      react-dom:
-        specifier: ^19.3.0
-        version: 19.3.0(react@19.3.0)
-    devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.2(@types/node@26.3.0)(jiti@2.7.0)(yaml@2.9.0))
@@ -60,6 +53,12 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -72,13 +71,15 @@ importers:
       '@quorum/core':
         specifier: workspace:*
         version: link:../core
-      '@quorum/shared':
-        specifier: workspace:*
-        version: link:../shared
-    optionalDependencies:
       '@quorum/server':
         specifier: workspace:*
         version: link:../server
+      '@quorum/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@quorum/web':
+        specifier: workspace:*
+        version: link:../../apps/web
 
   packages/compiler: {}
 

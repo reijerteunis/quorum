@@ -49,10 +49,12 @@ const manifest = (dir: string): Manifest => JSON.parse(read(dir, 'package.json')
 describe('AC-1 — the manifest', () => {
   const own = manifest(PACKAGE);
 
-  test('declares the two workspace dependencies and no third-party one', () => {
+  test('declares the four workspace dependencies and no third-party one', () => {
     expect(own.dependencies).toStrictEqual({
       '@quorum/core': 'workspace:*',
+      '@quorum/server': 'workspace:*',
       '@quorum/shared': 'workspace:*',
+      '@quorum/web': 'workspace:*',
     });
     // It gains nothing merely because `spike/package.json` has it: no argument-parsing library, no
     // YAML reader, no colour library. The frame preserves the spike's parser, and a library would
@@ -60,24 +62,34 @@ describe('AC-1 — the manifest', () => {
     expect(own.devDependencies).toBe(undefined);
   });
 
-  test('Q-0126 AC-7 — the daemon is an OPTIONAL edge, and the whole dependency shape says so', () => {
-    // **Optional and not required, which is the difference between an install that works and one
-    // that does not.** `@quorum/server` is `private: true` with no `files`, so it is in none of the
-    // three tarballs a packed install gets; `pnpm pack` rewrites `workspace:*` to the sibling's
-    // `0.0.0`, and with a REQUIRED edge `npm install` of those three reaches a registry for a fourth
-    // package it cannot find and dies before any module loads. Measured, not reasoned:
-    // `ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli`. An optional edge npm cannot satisfy is
-    // skipped and the install completes.
+  test('Q-0124 AC-4 — the daemon is a REQUIRED edge and the web app joins it, so a packed install has both', () => {
+    // **The inversion of Q-0126's AC-7, and its own comment said this was coming.** That clause read
+    // *"the daemon is an OPTIONAL edge"* and called itself **provisional against Q-0124**: the edge
+    // was optional because `@quorum/server` was `private: true` with no `files` and therefore in
+    // none of the three tarballs a packed install got, so a required edge made `npm install` reach a
+    // registry for a fourth package and die before any module loaded — `ECONNREFUSED`,
+    // `requiredBy: node_modules/@quorum/cli`.
     //
-    // Why: *"An optional edge says the daemon may be absent, and never why"* (2026-09-14). It is
-    // **provisional against Q-0124**: when that ticket rules a distribution route the edge becomes
-    // required, the import may become static, and 094 is superseded rather than amended.
-    expect(own.optionalDependencies).toStrictEqual({ '@quorum/server': 'workspace:*' });
-    expect(own.dependencies?.['@quorum/server'], 'the daemon became a required dependency').toBe(undefined);
-    // All three sections asserted together, so a fourth key cannot arrive unremarked the way a third
-    // could until this ticket. `devDependencies` stays absent and `dependencies` stays the two.
+    // Five tarballs is what removes that, and it removes it in both directions: the fourth package
+    // is now in the install, and an edge npm could not satisfy is exactly what must NOT be skipped
+    // silently. `@quorum/web` arrives beside it for a different reason — without the edge there is
+    // no `node_modules/@quorum/web`, and `open.ts`'s `import.meta.resolve` has nothing to answer
+    // from. Why: *"The distribution set is five, and rejoins the emitting set"* (2026-09-15).
+    expect(own.dependencies?.['@quorum/server'], 'the daemon is not a required dependency').toBe('workspace:*');
+    expect(own.dependencies?.['@quorum/web'], 'the web app is not a required dependency').toBe('workspace:*');
+    expect(own.optionalDependencies, 'an optional section survived, so an edge can be skipped in silence')
+      .toBe(undefined);
+    // **The key-set derivation is KEPT rather than replaced by three literal checks**, and that is
+    // deliberate: Q-0126 added it precisely because an optional edge was invisible to a strict read
+    // of `dependencies` alone, and the section it was added for going away is the moment the
+    // derivation is least defensible to delete. A fourth section still cannot arrive unremarked.
     expect(Object.keys(own).filter((key) => key.toLowerCase().endsWith('dependencies')).sort())
-      .toStrictEqual(['dependencies', 'optionalDependencies']);
+      .toStrictEqual(['dependencies']);
+    // And the superseded shape is refused by name, so a revert to the optional edge fails here
+    // rather than passing over a section nothing asserts.
+    expect(Object.keys(own).filter((key) => key.toLowerCase().endsWith('dependencies')).sort(),
+      'the manifest still declares the two sections it declared before Q-0124')
+      .not.toStrictEqual(['dependencies', 'optionalDependencies']);
   });
 
   test('names the binary `quorum`, and the package stays @quorum/cli', () => {

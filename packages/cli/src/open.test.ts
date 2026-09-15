@@ -6,8 +6,10 @@
  * exits with — goes through {@link invoke} and therefore through `main`, because that boundary is
  * part of what is claimed (Q-0091 AC-2). Everything that has to *serve* goes through {@link capture}
  * over `openOn({ bundle })`, which is the seam `test/invoke.ts` documents for `quorum run`'s gate
- * reader: the shipped bundle root is module-relative by AC-3 and names `apps/web/dist`, and a test
- * that wrote a fixture there would race `build.test.ts`'s own `runBuild()` inside this same package.
+ * reader: the shipped bundle root is derived rather than supplied — through `@quorum/web`'s manifest
+ * since Q-0124, and module-relative before it — and it names `apps/web/dist` in this workspace
+ * either way, so a test that wrote a fixture there would race `build.test.ts`'s own `runBuild()`
+ * inside this same package.
  *
  * **Nothing here requires {@link DEFAULT_DAEMON_PORT} to be free.** Every fixture that binds asks
  * the operating system for a port a moment earlier, which keeps the verdict a property of the commit
@@ -15,15 +17,14 @@
  * commit, not of the checkout or the account"*, 2026-08-30). The default is asserted as a **value**,
  * once, and never by binding it.
  *
- * **Nothing here spawns the binary.** The emit's own assertions live in `build.test.ts`, which is
- * the file Q-0098 AC-15(c) rules may spawn it — AC-8's claim about what `dist/open.js` resolves and
- * AC-10's about what a packed install answers are both there. {@link daemonImportFailure} spawns a
- * plain `node` process over a fixture of its own and is not that: what it needs is **Node's** error
- * for a failed import, which Vitest cannot produce because it resolves through Vite and the
- * `quorum-source` condition. `build.test.ts` and `package.test.ts` each keep a plain-process probe
- * for the same reason.
+ * **Nothing here spawns anything.** The emit's own assertions live in `build.test.ts`, which is the
+ * file Q-0098 AC-15(c) rules may spawn the binary — AC-8's claim about what `dist/open.js` resolves
+ * and AC-10's about what a packed install answers are both there. A `daemonImportFailure` helper
+ * spawned a plain `node` process here until Q-0124, because Q-0126's narrowing needed **Node's** own
+ * error for a failed import and Vitest cannot produce one, resolving through Vite and the
+ * `quorum-source` condition; the daemon is a required dependency now, that narrowing is gone, and
+ * the helper went with it rather than being kept for a case nothing can reach.
  */
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -38,7 +39,7 @@ import { parseArgv } from './argv.js';
 import { HELP } from './commands.js';
 import { ERROR, SIGNAL } from './exit.js';
 import {
-  isDaemonUnresolved, launchWarning, NO_DAEMON_CONDITION, NO_DAEMON_REMEDY, openOn, servingLine,
+  launchWarning, openOn, servingLine,
 } from './open.js';
 import { capture, invoke, plain, type Invocation } from '../test/invoke.js';
 
@@ -425,132 +426,63 @@ describe('AC-4 — a directory holding no build refuses, and nothing binds', () 
     expect(text, 'the library refusal is no longer rendered unaltered').toContain('die(error.message)');
   });
 
-  test('and the daemon-absent refusal is checked first, which is what makes that message right', () => {
-    // The ordering ruling, asserted structurally because in this workspace `@quorum/server` always
-    // resolves and the other branch cannot be taken. On a packed install `open.js` sits at
-    // `node_modules/@quorum/cli/dist/`, so the bundle root resolves to `node_modules/apps/web/dist`
-    // — a path with no meaning there — and checking it first would report *no build at* that
-    // nonsense path instead of the true thing. The packed half is `build.test.ts`'s AC-10.
+  test('Q-0124 AC-6 — the project refusal is checked first, and the order is two members rather than three', () => {
+    // **The ordering ruling, re-aimed rather than deleted.** Q-0126 ordered three refusals — daemon,
+    // project, bundle — and put the bundle last because on a packed install its root resolved to
+    // `node_modules/apps/web/dist`, a directory with no meaning there. Both halves of that reason
+    // have gone: the daemon is a required dependency, so *it did not resolve* is no longer a case,
+    // and the bundle is found through `@quorum/web`'s manifest, so it names a real directory on
+    // either installation. What remains is ordered by cost. Why: *"The distribution set is five, and
+    // rejoins the emitting set"* (2026-09-15).
     const text = read('src', 'open.ts');
-    const daemonFirst = text.indexOf('await daemon()');
+    const projectFirst = text.indexOf('projectAt(flags.project)');
     const bundleUsed = text.indexOf('createDaemon({ project, port, bundle })');
-    expect(daemonFirst, 'open.ts no longer resolves the daemon through a named step').toBeGreaterThan(-1);
+    expect(projectFirst, 'open.ts no longer opens the project through a named step').toBeGreaterThan(-1);
     expect(bundleUsed, 'open.ts no longer hands the bundle to the daemon').toBeGreaterThan(-1);
-    expect(daemonFirst, 'the bundle is reached before the daemon').toBeLessThan(bundleUsed);
-  });
-
-  test('the two refusal sentences are this command\'s own literals, so a packed install and this agree', () => {
-    // AC-10 asserts the packed refusal by bytes against these, which is why they are exported rather
-    // than written twice. The condition claims what failed to resolve HERE and nothing about why: an
-    // import that did not resolve cannot tell a deliberately daemon-less install from a damaged one.
-    // Why: *"An optional edge says the daemon may be absent, and never why"* (2026-09-14), clause 2.
-    expect(NO_DAEMON_CONDITION).toContain('@quorum/server');
-    expect(NO_DAEMON_CONDITION).toContain('this installation');
-    expect(NO_DAEMON_REMEDY, 'the remedy does not name where the daemon is').toContain('packages/server');
-    const sentence = `${NO_DAEMON_CONDITION} ${NO_DAEMON_REMEDY}`;
-    for (const forbidden of ['missing', 'not installed', 'broken', 'omitted', 'deliberately']) {
-      expect(sentence, `the refusal claims the daemon is ${forbidden}`).not.toContain(forbidden);
-    }
-    // And the scan discriminates, so a future rewording that DID claim one fails here.
-    expect(`${sentence} the daemon is missing`).toContain('missing');
+    expect(projectFirst, 'the bundle is reached before the project').toBeLessThan(bundleUsed);
+    // And the third member is gone rather than merely unasserted: the refusal it produced, the
+    // predicate that reached it and the step that composed it all went together, so a reader meeting
+    // the docblock's talk of ordering cannot find a member the code no longer has.
+    expect(text, 'the daemon-absent refusal survived a required dependency edge')
+      .not.toContain('NO_DAEMON_CONDITION');
+    expect(text, 'the daemon is still reached through a named resolution step').not.toContain('await daemon()');
   });
 });
 
-/**
- * What Node really raises for one way of failing to load `@quorum/server`, measured against a
- * fixture installation this test builds rather than described in a comment.
- *
- * `entry` is the daemon module's text, or `null` for an installation that carries no daemon at all.
- * The probe runs in a plain process rooted at that fixture, so what comes back is the error the
- * shipped predicate will actually be handed on a packed install — an import performed here would be
- * Vite's and would fail in a different shape.
- */
-function daemonImportFailure(entry: string | null): { code: string; message: string } {
-  const root = fs.mkdtempSync(path.join(sandbox, 'import-'));
-  if (entry !== null) {
-    const daemon = path.join(root, 'node_modules', '@quorum', 'server');
-    fs.mkdirSync(daemon, { recursive: true });
-    fs.writeFileSync(path.join(daemon, 'package.json'),
-      JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
-    fs.writeFileSync(path.join(daemon, 'index.js'), entry);
-  }
-  const script = "try { await import('@quorum/server'); console.log(JSON.stringify({ code: 'LOADED', message: '' })) }"
-    + ' catch (e) { console.log(JSON.stringify({ code: e?.code ?? "", message: String(e?.message) })) }';
-  const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: root, encoding: 'utf8' });
-  const failure = JSON.parse(out) as { code: string; message: string };
-  // A fixture that loaded is a probe with no subject, and would make every comparison below read as
-  // agreement. It says so here rather than surfacing as a confusing assertion.
-  if (failure.code === 'LOADED') throw new Error('the fixture daemon loaded — this probe has nothing to measure');
-  return failure;
-}
+describe('Q-0124 AC-7 — the daemon-absent refusal and everything under it are gone', () => {
+  // **What this block replaces, stated rather than silently dropped.** Q-0126's AC-10 measured the
+  // four ways loading `@quorum/server` can fail, found that an absent package and a dependency
+  // missing from *inside* a present one share `ERR_MODULE_NOT_FOUND`, and used that to narrow a
+  // catch so the second was never reported as the first. That work was right and its subject has
+  // gone: the daemon is a required dependency, so *this installation does not have it* is no longer
+  // a case the command can meet, and a corrupt install is something every command should fail
+  // loudly on rather than one command report politely. Why: *"The distribution set is five, and
+  // rejoins the emitting set"* (2026-09-15), clause 4, which supersedes *"An optional edge says the
+  // daemon may be absent, and never why"* (2026-09-14) rather than amending it.
+  //
+  // What is asserted instead is that the deletion is complete. A predicate left exported with no
+  // caller, or a sentence left in the module with nothing composing it, is the register-that-outlived
+  // -its-mechanism shape this package refuses everywhere else.
 
-describe('AC-10 — the refusal is for a daemon that did not resolve, never one that failed after it had', () => {
-  test('the four ways loading it can fail are told apart, and two of them share a code', () => {
-    const absent = daemonImportFailure(null);
-    const transitive = daemonImportFailure("import 'a-package-that-is-not-installed';\n");
-    const syntax = daemonImportFailure('export const = ;\n');
-    const threw = daemonImportFailure('throw new Error("the daemon blew up while loading");\n');
-
-    // Each fixture failed for the reason it was built to fail for, so everything below is about
-    // Node's behaviour rather than about objects written in this file.
-    expect(absent.message, 'the fixture root resolved a daemon, so the absent case is not absent')
-      .toContain("Cannot find package '@quorum/server'");
-    expect(transitive.message, 'the inner dependency resolved, so this is not the case it claims to be')
-      .toContain('a-package-that-is-not-installed');
-    expect(syntax.message, 'the unparseable fixture parsed').toContain('Unexpected token');
-    expect(threw.message, 'the throwing fixture did not throw').toContain('the daemon blew up while loading');
-    // And the probe can tell a failure from a success at all: a daemon that loads is refused rather
-    // than returned as an empty failure, which is what would make all four comparisons vacuous.
-    expect(() => daemonImportFailure('export const loads = 1;\n'),
-      'a fixture that loaded would be read as a fixture that failed').toThrow('nothing to measure');
-
-    // **The measurement the narrowing rests on.** An absent package and a dependency missing from
-    // inside a package that is present raise the SAME code, so a guard that read only `code` would
-    // report the second as the first — which is what the blanket catch this replaced did to all
-    // three of the resolved cases. If Node ever stops sharing it, this fails rather than the
-    // message clause quietly becoming decoration.
-    expect(transitive.code, 'the two shapes no longer share a code — the message clause has no subject')
-      .toBe(absent.code);
-    expect(absent.code, 'an absent package stopped raising the code this reads').toBe('ERR_MODULE_NOT_FOUND');
-    expect([syntax.code, threw.code], 'a failure to load started carrying a resolution code')
-      .toStrictEqual(['', '']);
-
-    expect(isDaemonUnresolved(absent), 'an installation carrying no daemon is no longer refused').toBe(true);
-    // The finding this round closed: a daemon that resolved and then failed is a package that IS
-    // here, and reporting one as absent both claims what the process never established and hides
-    // the failure a maintainer has to act on. Why: see *"An optional edge says the daemon may be
-    // absent, and never why"* (2026-09-14), clause 2.
-    const resolvedAndFailed = [
-      ['a dependency missing from inside the daemon', transitive],
-      ['a daemon that will not parse', syntax],
-      ['a daemon that threw while loading', threw],
-    ] as const;
-    for (const [what, failure] of resolvedAndFailed) {
-      expect(isDaemonUnresolved(failure), `${what} is reported as a daemon that did not resolve`).toBe(false);
+  test('the module composes no packaging sentence and exports no resolution predicate', () => {
+    const text = read('src', 'open.ts');
+    for (const gone of ['isDaemonUnresolved', 'NO_DAEMON_CONDITION', 'NO_DAEMON_REMEDY']) {
+      expect(text, `${gone} outlived the case it was written for`).not.toContain(gone);
     }
-  }, 60_000);
+    // And the needles discriminate, over a fixture carrying what they refuse — otherwise three
+    // clauses matching nothing would be indistinguishable from three clauses refusing something.
+    const asItWas = 'export function isDaemonUnresolved(error: unknown): boolean {';
+    expect(asItWas).toContain('isDaemonUnresolved');
+  });
 
-  test('both clauses are load-bearing, and nothing that is not an error is read as one', () => {
-    // `dieOnUnexpected` is handed whatever was thrown, which need not be an `Error` at all, so the
-    // predicate deciding whether to reach it has to survive the same values. The two halves below
-    // carry one clause each and neither is enough on its own, which is what stops the pair reading
-    // as one condition written twice.
-    const refused: [string, unknown][] = [
-      ['nothing at all', null],
-      ['an absent value', undefined],
-      ['a thrown string', 'Cannot find package \'@quorum/server\''],
-      ['a thrown number', 42],
-      ['the code without the specifier', { code: 'ERR_MODULE_NOT_FOUND', message: "Cannot find package 'hono'" }],
-      ['the specifier without the code', { message: "Cannot find package '@quorum/server' imported from x" }],
-    ];
-    for (const [what, thrown] of refused) {
-      expect(isDaemonUnresolved(thrown), `${what} was read as a daemon that did not resolve`).toBe(false);
-    }
-    // And the pair together IS recognised, so the six above are refused for their own reason rather
-    // than by a predicate that answers `false` to everything.
-    expect(isDaemonUnresolved({
-      code: 'ERR_MODULE_NOT_FOUND', message: "Cannot find package '@quorum/server' imported from /x/open.js",
-    }), 'the predicate no longer recognises the one shape it is for').toBe(true);
+  test('and the daemon is reached as an ordinary import rather than through a resolution step', () => {
+    // The positive half: the specifier is static, which is what the deletion above is a consequence
+    // of rather than a neighbour to. Asserted on the source here and on the EMIT in `build.test.ts`,
+    // because only the second can tell an erased type query from a load.
+    const text = read('src', 'open.ts');
+    expect(text, 'the daemon is no longer imported statically')
+      .toMatch(/import \{[^}]*createDaemon[^}]*\} from '@quorum\/server';/);
+    expect(text, 'the specifier is still deferred').not.toContain('@quorum/server\')');
   });
 });
 

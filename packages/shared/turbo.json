@@ -40,6 +40,23 @@
         // authority comment: Q-0103 E-2 made it the human's to WRITE, which is a different act.
         "../../CLAUDE.md",
         "../../harness/harness.yaml",
+        // Q-0124 AC-13: docs.test.ts holds README.md's packed-install block and
+        // harness/product-context.md's pillar 7 against the set of packages that really declare a
+        // `files` allow-list, rather than against a written-down count — so a sixth distributed
+        // package fails until both documents move. That needs the manifests as well as the README,
+        // and both workspace roots, because two of the five live under `apps/`. The
+        // `../core/package.json` entry below predates this and is a subset of the first glob; it is
+        // left where it is because it is declared for a different reader and a glob covering it is
+        // not a second claim about it.
+        "../../README.md",
+        "../../packages/*/package.json",
+        "../../apps/*/package.json",
+        // Collected by clause B from the `package.json` literal that walk joins onto each package
+        // directory: the scan resolves a bare root-level literal against the repository root, so the
+        // root manifest is declared even though the walk never opens it. `packages/core` declares
+        // the same file for the same reason (Q-0108), and the alternative — spelling the name some
+        // other way to evade the scan — is the obfuscation that guard exists to refuse.
+        "../../package.json",
         // Q-0107 AC-18: role.test.ts compares the third column of `harness/architecture.md`'s role
         // table against every role's `paths:` frontmatter. `spike/test/smoke.js` was the only thing
         // doing that and Q-0103 deletes it, so the read — and the hash — move here.

@@ -65,17 +65,22 @@ pnpm exec quorum help
 
 ### As a packed install, into another project
 
-Three tarballs, installed together — `@quorum/cli` depends on the other two through `workspace:*`,
-which is not resolvable outside the workspace, so installing it alone fails.
+Five tarballs, installed together — `@quorum/cli` depends on the other four through `workspace:*`,
+which is not resolvable outside the workspace, so installing it alone fails. Four of the five live
+under `packages/` and the web app lives under `apps/`, which is why the loop below names a directory
+per package rather than a package name.
 
 ```bash
 # in the quorum checkout
 pnpm turbo run build
-for p in shared core cli; do (cd "packages/$p" && pnpm pack --pack-destination /tmp/quorum); done
+for p in packages/shared packages/core packages/server packages/cli apps/web; do \
+  (cd "$p" && pnpm pack --pack-destination /tmp/quorum); done
 
 # in your own project
 npm install /tmp/quorum/quorum-shared-0.0.0.tgz \
             /tmp/quorum/quorum-core-0.0.0.tgz \
+            /tmp/quorum/quorum-server-0.0.0.tgz \
+            /tmp/quorum/quorum-web-0.0.0.tgz \
             /tmp/quorum/quorum-cli-0.0.0.tgz
 npx quorum help          # resolves locally, from node_modules/.bin
 ```
@@ -158,11 +163,8 @@ behaviour a test could fail on before it exists.
 | `quorum runs [ticket\|run-id]` | run history: cost, tokens, every step |
 | `quorum open [--port <n>] [--no-open]` | serve the web app on loopback, print its URL and open it; Ctrl-C stops it |
 
-**`quorum open` works from the workspace and not from a packed install.** The daemon it starts is
-`@quorum/server`, which is not one of the three tarballs a local `pnpm pack` produces, so a packed
-installation has every other command and refuses this one — naming what did not resolve there. How
-an installation outside this repository obtains the UI is open (Q-0124). Everything else in the
-table works on both paths.
+Every command in the table works on both paths — the workspace and a packed install — including
+`quorum open`, which the five tarballs above are what makes true.
 
 Full reference, including every flag and what each exit code means: **[docs/USAGE.md](docs/USAGE.md)**.
 

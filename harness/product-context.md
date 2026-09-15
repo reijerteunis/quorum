@@ -75,16 +75,13 @@ Every requirement carries acceptance criteria for these where they apply:
    human-approved merged branch in under 30 minutes reading only the README. A feature that
    lengthens the first 30 minutes needs a reason. **Two installation paths are claimed and one is
    refused:** the workspace-local path (`pnpm install`, `pnpm turbo run build`, `pnpm exec quorum`)
-   and the locally packed path (the three **distribution** packages' tarballs installed together
-   outside the repository) both work since Q-0098. Distribution rather than emitting: since
-   Q-0122 four packages emit and three are packed, so the two are no longer one set and only the
-   packed one belongs in this sentence. **One command is an exception since Q-0126 and it is named
-   rather than the claim being softened**: `quorum open` starts the daemon, which is
-   `@quorum/server` — a package that is not distributed — so it works on the workspace-local path
-   and refuses on the packed one, naming what did not resolve there. Every other command works on
-   both, which is why this stays *two paths are claimed* and does not become *mostly works*. How an
-   installation outside this repository obtains the UI or the daemon is **Q-0124's** and is open.
-   See *"An optional edge says the daemon may be absent, and never why"* (2026-09-14), clause 3.
+   and the locally packed path (the five **distribution** packages' tarballs installed together
+   outside the repository) both work since Q-0098. **Distribution rather than emitting, and the two
+   registers stay separate even where they agree**: they were one set until Q-0122, two different
+   sets from then until Q-0124, and the same five again since — a sixth emitter could part them, and
+   only the packed one belongs in this sentence. **Every command works on both paths**, `quorum open`
+   included since Q-0124, which packs the daemon and the web app; it was the one exception for a
+   single day. See *"The distribution set is five, and rejoins the emitting set"* (2026-09-15).
    **Registry-resolved `npx quorum` does not** — every package
    is `"private": true`, so it would fetch a stranger's package — and it is Q-0029's, in M6. Do not
    write a requirement, a test name or a success message that claims a cold machine can obtain

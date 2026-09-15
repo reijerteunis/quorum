@@ -35,10 +35,11 @@
  * workspace reads `dist/`, which is clause (b) of the entry above and what AC-23's
  * present-and-absent assertion re-checks rather than assumes.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -46,7 +47,6 @@ import { configDefaults } from 'vitest/config';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
 import { HELP } from './commands.js';
-import { NO_DAEMON_CONDITION, NO_DAEMON_REMEDY } from './open.js';
 import {
   buildIn, disposeIsolated, dry, emitting, isolate, PACKAGE, read, rootTurbo, trackedUnder,
   turboBin, turboEnv, WORKSPACE, WORKSPACE_FILES, type TurboTask,
@@ -913,8 +913,11 @@ describe('AC-8 — the declared outputs cover exactly what the build writes', ()
     // be the fourth member. It covered **two**: `@quorum/cli` declares a `bin` and no `exports` map
     // at all, so it has always taken the `continue` — its emit is a file something EXECUTES, which
     // `Q-0098 AC-15` and `AC-16` assert directly, rather than a module something imports. The two
-    // skipped members are skipped for two different reasons and both are correct: a served bundle
-    // publishes nothing, and a binary is named by `bin` rather than by a map.
+    // skipped members are skipped for two different reasons and both are correct: a binary is named
+    // by `bin` rather than by a map, and a served bundle publishes **no `"."`** — Q-0124 gave
+    // `@quorum/web` one locator subpath so `packages/cli` can find the bundle by package name, and
+    // deliberately no root entry, because nothing imports a 317 KB bundle as a module. So this
+    // `continue` still skips it, and the set below is unmoved by that ticket.
     const checked: string[] = [];
     for (const task of emitting()) {
       const entry = ((JSON.parse(read(WORKSPACE, task.directory, 'package.json')) as {
@@ -1359,14 +1362,14 @@ describe('Q-0125 AC-6 and AC-7 — a plain node process is sent to the emit, and
   }, 300_000);
 
   test('AC-7 — it resolves through `default`, imports, and hands back the barrel the source declares', () => {
-    // **The link is synthesised, and that is the honest half of this criterion.** Nothing in this
-    // workspace declares a dependency on `@quorum/server` — AC-13 asserts that, and it is what
-    // non-goal 1 keeps true — so no `node_modules/@quorum/server` exists and `import.meta.resolve`
-    // answers `ERR_MODULE_NOT_FOUND` at the LINK stage, before a manifest is ever opened. That is a
-    // prior failure to the one this ticket is about, so the link stands in for the dependency edge
-    // Q-0126 will declare. **It must not be read as proof that the name resolves from the workspace
-    // as it stands**: it proves that once an edge exists, what the edge leads to is a file that
-    // exists and runs.
+    // **The link is synthesised, and since Q-0126 that is a choice rather than a necessity.** When
+    // this was written nothing in the workspace declared a dependency on `@quorum/server`, so no
+    // `node_modules/@quorum/server` existed and the link stood in for an edge that did not yet
+    // exist. `packages/cli` declares one now — optionally at Q-0126, required at Q-0124 — so the
+    // name would resolve from that package's own directory. The synthesised root is kept anyway,
+    // because what this criterion is about is the **map's `default` branch**, and resolving from a
+    // directory inside the workspace would answer through whatever conditions that corner is
+    // configured with. An isolated root with one symlink is the narrower subject.
     runBuild();
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-q0125-'));
     temporaries.push(root);
@@ -2099,40 +2102,89 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     expect(helpNames(result.stdout), 'the command list is not the frame\'s').toStrictEqual(helpNames(HELP));
   }, 300_000);
 
-  test('Q-0126 AC-8 — the EMITTED open module resolves the daemon from an expression, never statically', () => {
-    // **The claim is about what Node loads, which is why it is asserted over the emit.** `open.ts`
-    // names `@quorum/server` in several places and only one of them costs a resolution: a
-    // `typeof import(...)` type query is erased by `tsc`, the refusal sentence and
-    // `isDaemonUnresolved`'s needle are plain strings, and the `await import(...)` is the whole
-    // point. A source scan cannot tell an erased occurrence from a live one — the ticket body's own
-    // first probe passed while proving nothing, because `tsc` elided an unused import and the module
-    // was never loaded at all.
+  test('Q-0124 AC-7 — the EMITTED open module resolves the daemon statically, never from an expression', () => {
+    // **The claim is about what Node loads, which is why it is asserted over the emit** — and the
+    // two needles below are Q-0126's, with their verdicts traded. That ticket required a deferred
+    // specifier, because `@quorum/server` was optional and a static one would kill `quorum help` on
+    // an installation that skipped the edge; the edge is required now, so the deferral has no reason
+    // and the exemption that permitted it in `cli-version.test.ts` is deleted rather than widened.
+    // Why: *"The distribution set is five, and rejoins the emitting set"* (2026-09-15), clause 4.
+    //
+    // A source scan cannot tell an erased occurrence from a live one — the ticket body's own first
+    // probe passed while proving nothing, because `tsc` elided an unused import and the module was
+    // never loaded at all. That is why this reads the emit, and it is the half that stays true of
+    // the inverted claim: a `typeof import(...)` type query would be erased here too, so only the
+    // emit can say the module really loads the package.
     runBuild();
     const emitted = fs.readFileSync(path.join(PACKAGE, EMIT, 'open.js'), 'utf8');
     expect(emitted, 'the emit does not name the daemon at all, so this test proves nothing')
       .toContain('@quorum/server');
-    // A static `import … from` or a re-export is what would make loading this module cost resolving
-    // that package, which is what kills `quorum help` on an installation that skipped the optional
-    // edge. Both spellings, in any quoting.
-    expect(/(?:^|\n)\s*(?:import|export)[^\n]*from\s*['"`]@quorum\/server['"`]/.test(emitted),
-      'the emit statically resolves @quorum/server').toBe(false);
-    expect(/import\s*\(\s*['"`]@quorum\/server['"`]\s*\)/.test(emitted),
-      'the emit no longer defers the specifier').toBe(true);
-    // And the needle discriminates rather than being satisfied by anything: the static form it
-    // forbids is recognised when it is there.
-    expect(/(?:^|\n)\s*(?:import|export)[^\n]*from\s*['"`]@quorum\/server['"`]/
-      .test("\nimport { createDaemon } from '@quorum/server';\n")).toBe(true);
+    const STATIC = /(?:^|\n)\s*(?:import|export)[^\n]*from\s*['"`]@quorum\/server['"`]/;
+    const DEFERRED = /import\s*\(\s*['"`]@quorum\/server['"`]\s*\)/;
+    expect(STATIC.test(emitted), 'the emit does not statically resolve @quorum/server').toBe(true);
+    expect(DEFERRED.test(emitted), 'the emit still defers the specifier').toBe(false);
+    // And both needles discriminate rather than being satisfied by anything, which matters more
+    // now than it did: the clause that used to be the positive one is the negative one, and a
+    // negative that matches nothing is indistinguishable from a negative that refuses something.
+    expect(STATIC.test("\nimport { createDaemon } from '@quorum/server';\n")).toBe(true);
+    expect(DEFERRED.test("const m = await import('@quorum/server');\n")).toBe(true);
+    expect(STATIC.test("const m = await import('@quorum/server');\n"),
+      'the static needle matches a deferred specifier, so the two clauses are not independent').toBe(false);
 
-    // The other half of AC-10: in the WORKSPACE the same emit resolves the daemon and starts. Run
-    // through a plain `node` process against the built target, so what is exercised is the emit's
-    // own resolution rather than Vitest's — and stopped immediately, because what is claimed is that
-    // it got past the import rather than anything about serving.
+    // The other half: in the WORKSPACE the same emit resolves the daemon and starts. Run through a
+    // plain `node` process against the built target, so what is exercised is the emit's own
+    // resolution rather than Vitest's — and stopped immediately, because what is claimed is that it
+    // got past the import rather than anything about serving.
     const refusal = spawnSync(process.execPath, [binTarget(), 'open', '--port', 'later'], {
       cwd: WORKSPACE, encoding: 'utf8',
     });
     expect(refusal.status, 'the workspace emit did not reach the flag guard').toBe(1);
-    expect(refusal.stderr, 'the workspace emit failed to resolve the daemon').not.toContain(NO_DAEMON_CONDITION);
+    expect(refusal.stderr, 'the workspace emit failed to resolve the daemon or the bundle')
+      .not.toContain('ERR_MODULE_NOT_FOUND');
     expect(refusal.stderr, 'the emit stopped somewhere other than the port guard').toContain('--port');
+  }, 300_000);
+
+  test('Q-0124 AC-2 — the served bundle carries what it needs, which is why nothing is a runtime dependency', () => {
+    // **The evidence `apps/web`'s manifest rests on, asserted over the emitted bundle rather than
+    // argued.** That package moved `react`, `react-dom` and `@quorum/shared` to `devDependencies`
+    // because a self-contained bundle obliges a consumer to install nothing; the claim is only true
+    // if the bundle really is self-contained, and this is where it is checked — here rather than in
+    // `apps/web`'s own suite, because that package's `test` task waits for no build and a clause
+    // there would have a verdict that depended on whether anyone had run one.
+    runBuild();
+    const dist = path.join(WORKSPACE, 'apps', 'web', EMIT, 'assets');
+    const scripts = fs.readdirSync(dist).filter((name) => name.endsWith('.js'));
+    expect(scripts.length, 'the bundle emitted no JavaScript — this scan has no subject').toBeGreaterThan(0);
+    // A bare specifier is one beginning with neither `.` nor `/`: what Node or a browser would have
+    // to resolve from somewhere else. A relative one is the bundle's own chunk.
+    const BARE = /\bfrom\s*["'](?![./])[^"']+["']/;
+    for (const name of scripts) {
+      const text = fs.readFileSync(path.join(dist, name), 'utf8');
+      expect(BARE.test(text), `${name} carries a bare import specifier, so something must be installed beside it`).toBe(false);
+      expect(text, `${name} resolves @quorum/shared at run time rather than containing it`)
+        .not.toContain('@quorum/shared');
+    }
+    // The needle discriminates, which is the whole of whether the loop above refused anything.
+    expect(BARE.test("import { render } from 'react-dom';"), 'the needle does not find a bare specifier').toBe(true);
+    expect(BARE.test("import { a } from './chunk-abc.js';"), 'the needle reports the bundle\'s own chunk').toBe(false);
+  }, 300_000);
+
+  test('Q-0124 AC-2 — and the demotion did not cost the bundle its build-order edge', () => {
+    // Measured after the move rather than assumed: turbo builds its package graph from all three
+    // dependency sections, so `@quorum/shared#build` still runs first. If it ever stopped, the
+    // bundle would be built against a stale vocabulary package — decision 092 clause 5's hazard on
+    // the artifact it was written about — and the remedy would be an explicit `dependsOn`.
+    const tasks = dry('build').tasks;
+    const web = tasks.find((task) => task.taskId === '@quorum/web#build');
+    expect(web, 'the web app declares no build task').toBeDefined();
+    expect(web?.dependencies, 'the bundle no longer waits for the vocabulary package it compiles against')
+      .toStrictEqual(['@quorum/shared#build']);
+    // Q-0124 AC-4's half, in the same report: the CLI's two new edges are visible to turbo, which is
+    // what orders the bundle and the daemon before the binary that now carries both.
+    const cli = tasks.find((task) => task.taskId === '@quorum/cli#build');
+    expect(cli?.dependencies, 'the CLI does not wait for every package it now depends on').toStrictEqual([
+      '@quorum/core#build', '@quorum/server#build', '@quorum/shared#build', '@quorum/web#build',
+    ]);
   }, 300_000);
 
   test('and pnpm exec fails rather than falling back — it resolves locally or not at all', () => {
@@ -2165,9 +2217,142 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
   });
 });
 
+/**
+ * A port nothing is listening on, obtained by asking the operating system for one and giving it
+ * back — `open.test.ts`'s helper at a second site, and for the same reason.
+ *
+ * The packed daemon is asked for a specific port rather than `0`, because reading the port back out
+ * of the printed line and *then* making a request is what {@link firstLine} is for, and a fixture
+ * that bound the default would have a verdict depending on whatever else is running on the machine.
+ */
+const freePort = async (): Promise<number> => new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    probe.close(() => { resolve(port); });
+  });
+});
+
+/**
+ * The first line the child writes to stdout, or a failure naming what it wrote instead.
+ *
+ * A command that serves until a signal never closes its stdout, so the whole-output helpers this
+ * file uses elsewhere would wait for ever. The timeout is generous and is a **stop** rather than an
+ * oracle: what is asserted is the line's content, and a fixture that timed out reports the partial
+ * output so the failure says what actually happened.
+ */
+const firstLine = async (child: ReturnType<typeof spawn>): Promise<string> => new Promise((resolve, reject) => {
+  let seen = '';
+  let stderr = '';
+  const timer = setTimeout(() => {
+    reject(new Error(`the packed daemon printed no line in 60s — stdout so far: ${JSON.stringify(seen)}, stderr: ${JSON.stringify(stderr)}`));
+  }, 60_000);
+  child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
+  child.stdout?.on('data', (chunk: Buffer) => {
+    seen += chunk.toString('utf8');
+    const end = seen.indexOf('\n');
+    if (end >= 0) {
+      clearTimeout(timer);
+      resolve(seen.slice(0, end));
+    }
+  });
+  child.once('exit', (code) => {
+    clearTimeout(timer);
+    reject(new Error(`the packed daemon exited ${String(code)} before printing a URL — stderr: ${JSON.stringify(stderr)}`));
+  });
+});
+
+/**
+ * Stop a child that may already have stopped.
+ *
+ * **Written this way because the obvious form hangs for ever**, and it did: awaiting `once('exit')`
+ * after `kill` is correct only while the child is still running, and a `quorum open` that refused —
+ * a bad flag, no project, no bundle — has already exited by the time the `finally` runs, so the
+ * listener is registered for an event that will never fire again. The failure it produced was a
+ * *timeout* rather than the refusal the assertion above had already caught, which is the worst shape
+ * for a fixture to fail in: the report named the budget instead of the defect.
+ */
+const stop = async (child: ReturnType<typeof spawn>): Promise<void> => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  child.kill('SIGTERM');
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 30_000);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+  });
+};
+
+/**
+ * One `GET` over a real socket, reduced to the three things AC-10(b) asserts.
+ *
+ * **`accept` is not decoration and the default is not a browser's.** The daemon serves the shell to
+ * a *navigation* — clause 4 of its static route — which it recognises by the `Accept` header, and
+ * Node's own `fetch` sends `*​/*`. A request left at that default is answered 404 by design, so a
+ * fixture that used it would report the route broken while the product was correct. What is passed
+ * below is what a browser sends.
+ */
+const get = async (url: string, accept: string): Promise<{ status: number; contentType: string; body: string }> => {
+  const response = await fetch(url, { headers: { accept } });
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type') ?? '',
+    body: await response.text(),
+  };
+};
+
+/** What a browser asks for when a person types a URL, which is what clause 4 discriminates on. */
+const BROWSER_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
 describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared contract', () => {
-  /** The three packages decision 078(c) names as emitting, which is the local distribution set (R-2). */
-  const DISTRIBUTION = ['cli', 'core', 'shared'];
+  /**
+   * The local distribution set — **five since Q-0124**, and the same five that emit.
+   *
+   * It was `['cli', 'core', 'shared']` from Q-0098 until here, and the two that join are the two
+   * that emitted without being packed: the served bundle and the daemon. **It stays a register of
+   * its own rather than being replaced by `emitting()`**, even though the two lists are identical
+   * today — they are answers to different questions (*what does a build write* against *what does a
+   * `pnpm pack` produce*), they were different sets for three days, and a sixth emitter could part
+   * them again. One list meaning both is how the next divergence would go unnoticed. Why: *"The
+   * distribution set is five, and rejoins the emitting set"* (2026-09-15), clause 1.
+   */
+  const DISTRIBUTION = ['cli', 'core', 'server', 'shared', 'web'];
+
+  /**
+   * Where a package in {@link DISTRIBUTION} lives, because **two of the five are not under
+   * `packages/`**.
+   *
+   * Every loop below spelled `path.join(WORKSPACE, 'packages', name)` while the set was three, which
+   * was exact and is not any more: `apps/web` is under the other workspace root. A path column on
+   * the register would not have been enough either — {@link versionOf} is reached with a **dependency
+   * name read out of a manifest** rather than with a register member, so what is needed is a
+   * name-to-directory map that answers for anything the workspace holds.
+   *
+   * Derived from `pnpm-workspace.yaml`'s own globs rather than written down, so a third workspace
+   * root is covered without anyone remembering, and a member that resolves nowhere is a failure
+   * naming the member rather than an `ENOENT` raised from inside a `JSON.parse`.
+   */
+  const directoryOf = (() => {
+    const roots = ['packages', 'apps'];
+    const found = new Map<string, string>();
+    for (const root of roots) {
+      const base = path.join(WORKSPACE, root);
+      if (!fs.existsSync(base)) continue;
+      for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+        if (entry.isDirectory() && fs.existsSync(path.join(base, entry.name, 'package.json'))) {
+          found.set(entry.name, path.join(base, entry.name));
+        }
+      }
+    }
+    return (name: string): string => {
+      const short = name.replace('@quorum/', '');
+      const directory = found.get(short);
+      if (directory === undefined) {
+        throw new Error(`${name} resolves to no workspace directory — searched ${roots.map((root) => `${root}/${short}`).join(' and ')}`);
+      }
+      return directory;
+    };
+  })();
 
   /**
    * What each of the three declares in `files`, as a register rather than as one shared literal.
@@ -2186,7 +2371,9 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
   const DECLARED_FILES: Record<string, readonly string[]> = {
     cli: [EMIT, ASSETS],
     core: [EMIT],
+    server: [EMIT],
     shared: [EMIT],
+    web: [EMIT],
   };
 
   /** A path npm must never ship: a test file, anything under `src/`, and anything under `.turbo/`. */
@@ -2212,7 +2399,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
    *
    * Why not {@link packWith}: `npm pack` re-applies *publish* semantics — the package's own `files`
    * field, its ignore files, and whatever `npm-packlist` in the ambient npm makes of them. That is
-   * the right thing for the three packages this suite is *about*, whose declared allow-list is the
+   * the right thing for the five packages this suite is *about*, whose declared allow-list is the
    * subject of AC-19. It is the wrong thing for the offline mirror, which only has to reproduce the
    * tree pnpm already installed and verified against the lockfile. Re-deriving a publishable file
    * set there adds a failure mode belonging to neither this repository nor its criteria, and one
@@ -2231,6 +2418,43 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const tarball = path.join(destination, `mirror-${name.replace(/[^a-zA-Z0-9]+/g, '-')}.tgz`);
     execFileSync('tar', ['-czf', tarball, '-C', staging, 'package'], { encoding: 'utf8' });
     return tarball;
+  };
+
+  /**
+   * A dependency's installed directory, found by **walking `node_modules` upward** rather than by
+   * asking the resolver for a subpath the dependency chooses whether to publish.
+   *
+   * **This replaced `createRequire(…).resolve(`<name>/package.json`)` at Q-0124, and the reason is a
+   * measurement.** Every dependency the mirror carried until then — `ajv`, `ajv-formats`, `yaml`,
+   * `zod` and the four `ajv` reaches — exports `./package.json`, so that call answered. **All three
+   * of the daemon's refuse it**: `hono`, `@hono/node-server` and `@hono/node-ws` each declare an
+   * `exports` map without that key, and the call raises `ERR_PACKAGE_PATH_NOT_EXPORTED` before the
+   * mirror is built at all. Whether a manifest is reachable is the dependency's decision to make
+   * about **consumers**; it is not a decision about whether the package is installed, and the mirror
+   * only has to reproduce a tree pnpm has already put on disk.
+   *
+   * `ws` is the other half of the same finding and fails differently: it is nobody's direct
+   * dependency here, reached only through `@hono/node-ws`, so a resolver rooted at `packages/server`
+   * answers `MODULE_NOT_FOUND` for it however the subpath question is settled. Walking from the
+   * importer is what finds it, which is what Node's own algorithm does and what pnpm's layout is
+   * built for.
+   *
+   * **Realpathed**, because pnpm's `node_modules/<name>` is a symlink into `.pnpm` and the
+   * completeness guard below counts files with `find`, which does not follow one — so a symlinked
+   * directory would be counted as zero files and reported as a short mirror. The old resolver
+   * returned a real path and this had to keep doing so.
+   */
+  const packageDirOf = (name: string, from: string): string => {
+    let directory = from;
+    for (;;) {
+      const candidate = path.join(directory, 'node_modules', name);
+      if (fs.existsSync(path.join(candidate, 'package.json'))) return fs.realpathSync(candidate);
+      const parent = path.dirname(directory);
+      if (parent === directory) {
+        throw new Error(`the offline mirror cannot find ${name} installed anywhere above ${from}`);
+      }
+      directory = parent;
+    }
   };
 
   /** The files a tarball carries, named relative to the package root. */
@@ -2265,9 +2489,17 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
   const manifestIn = (tarball: string): PackedManifest =>
     JSON.parse(execFileSync('tar', ['-xzOf', tarball, 'package/package.json'], { encoding: 'utf8' })) as PackedManifest;
 
-  /** One of the three packages, read from disk. */
+  /**
+   * One of the five packages, read from disk — **and reached with a dependency name as often as
+   * with a register member**, which is what {@link directoryOf} exists for.
+   *
+   * `versionOf` below calls this with whatever `workspaceDepsOf` yielded, so after Q-0124 it is
+   * called with `@quorum/web` and `@quorum/server`. Under the old `packages/<name>` join the first
+   * of those raised `ENOENT` from inside a `JSON.parse` — a failure whose obvious repair is a
+   * `try`/`catch` that would hide the real defect.
+   */
   const manifestOf = (name: string): PackedManifest & { version: string } =>
-    JSON.parse(read(WORKSPACE, 'packages', name, 'package.json')) as PackedManifest & { version: string };
+    JSON.parse(read(directoryOf(name), 'package.json')) as PackedManifest & { version: string };
 
   /** The version a `workspace:` range resolves to, which is the sibling package's own. */
   const versionOf = (packageName: string): string => manifestOf(packageName.replace('@quorum/', '')).version;
@@ -2299,7 +2531,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packed-'));
     temporaries.push(destination);
     for (const name of DISTRIBUTION) {
-      const directory = path.join(WORKSPACE, 'packages', name);
+      const directory = directoryOf(name);
       const declared = (JSON.parse(read(directory, 'package.json')) as { files?: string[] }).files;
       expect(declared, `@quorum/${name} declares no files field, so the checkout decides the tarball`)
         .toStrictEqual(DECLARED_FILES[name]);
@@ -2355,7 +2587,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     }
   });
 
-  test('the packed set installs outside the workspace with the registry dead, and runs', () => {
+  test('the packed set installs outside the workspace with the registry dead, and runs', async () => {
     // AC-19(b) and AC-20's packed half. The project is created under `os.tmpdir()`, outside the
     // repository, with no workspace symlinks; `npm_config_registry` points at a closed local port,
     // retries are zero and the npm cache is inside the sandbox, so no warm cache can serve a real
@@ -2369,8 +2601,10 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     // what pnpm writes; both are real, one per packer. **Guarded by the last test in this block**
     // rather than asserted here, because the choice of packer rests on it.
     //
-    // The three tarballs are installed TOGETHER, which is what lets npm satisfy `@quorum/core@0.0.0`
-    // and `@quorum/shared@0.0.0` from siblings rather than from a registry that does not have them.
+    // The five tarballs are installed TOGETHER, which is what lets npm satisfy `@quorum/core@0.0.0`
+    // and its four siblings from each other rather than from a registry that does not have them.
+    // Three until Q-0124; supporting a subset is a non-goal and this together-ness is the shape the
+    // README documents.
     runBuild();
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-consumer-'));
     temporaries.push(sandbox);
@@ -2379,7 +2613,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const cache = path.join(sandbox, 'npm-cache');
     for (const directory of [tarballs, project, cache]) fs.mkdirSync(directory);
 
-    const packed = DISTRIBUTION.map((name) => packWith('pnpm', path.join(WORKSPACE, 'packages', name), tarballs));
+    const packed = DISTRIBUTION.map((name) => packWith('pnpm', directoryOf(name), tarballs));
 
     // The distribution set's third-party dependencies, supplied as tarballs packed from this
     // workspace's own installed tree. They are genuine public packages this ticket did not
@@ -2388,17 +2622,26 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const closure = new Map<string, string>();
     const collect = (name: string, from: string): void => {
       if (closure.has(name) || name.startsWith('@quorum/')) return;
-      const resolved = createRequire(path.join(from, 'noop.js')).resolve(`${name}/package.json`);
-      closure.set(name, path.dirname(resolved));
-      const nested = JSON.parse(fs.readFileSync(resolved, 'utf8')) as { dependencies?: Record<string, string> };
-      for (const dependency of Object.keys(nested.dependencies ?? {})) collect(dependency, path.dirname(resolved));
+      const directory = packageDirOf(name, from);
+      closure.set(name, directory);
+      const nested = JSON.parse(read(directory, 'package.json')) as { dependencies?: Record<string, string> };
+      for (const dependency of Object.keys(nested.dependencies ?? {})) collect(dependency, directory);
     };
     for (const name of DISTRIBUTION) {
-      const directory = path.join(WORKSPACE, 'packages', name);
+      const directory = directoryOf(name);
       const own = JSON.parse(read(directory, 'package.json')) as { dependencies?: Record<string, string> };
       for (const dependency of Object.keys(own.dependencies ?? {})) collect(dependency, directory);
     }
-    expect(closure.size, 'the third-party closure is empty — the install below would prove less than it appears to').toBeGreaterThan(0);
+    // **An identity and never a count** (Q-0073): a walk that silently lost a package would leave a
+    // size assertion green and the install below failing from inside somebody else's module. Four
+    // members arrived with the daemon at Q-0124 and `apps/web` contributed **none**, which is AC-2's
+    // measured payoff — its React is a `devDependency` because the bundle already contains it, and
+    // npm does not install a dependency's dev section. `ws` is named here because it is nobody's
+    // direct dependency and every earlier account of this closure missed it.
+    expect([...closure.keys()].sort(), 'the third-party closure moved and no ticket said so').toStrictEqual([
+      '@hono/node-server', '@hono/node-ws', 'ajv', 'ajv-formats', 'fast-deep-equal', 'fast-uri',
+      'hono', 'json-schema-traverse', 'require-from-string', 'ws', 'yaml', 'zod',
+    ]);
     const mirrored = [...closure].map(([name, directory]) => mirror(name, directory, tarballs));
 
     // The mirror is proven complete before it is installed, so a dependency that arrives short says
@@ -2418,17 +2661,28 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
       cwd: project, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // **Q-0126 AC-10: the install completed at all, which is the whole of why the daemon edge is
-    // optional.** With `@quorum/server` under `dependencies` this `npm install` dies before any
-    // module loads — `ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli` — because `pnpm pack`
-    // rewrites `workspace:*` to `0.0.0` and the registry above is a closed port. An optional edge
-    // npm cannot resolve is skipped, and the three tarballs install exactly as they did. Asserted
-    // rather than implied: the daemon is NOT in the installed tree, and `@quorum/core` is, so the
-    // skip is a property of that key rather than of the install having failed quietly.
-    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'core')),
-      'the required workspace dependency did not install — the comparison below is vacuous').toBe(true);
-    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'server')),
-      'the packed install carries the daemon, so nothing here is about an absent one').toBe(false);
+    // **Q-0124 AC-10(a): the install completed at all, and it carries all five.** Q-0126 asserted
+    // the opposite here — that `@quorum/server` was NOT in the installed tree — because a required
+    // edge to a package no tarball carried made this `npm install` die before any module loaded
+    // (`ECONNREFUSED`, `requiredBy: node_modules/@quorum/cli`), and an optional edge npm could not
+    // resolve was skipped instead. Five tarballs is what removes that: the packages the edges name
+    // are in the install, so a required edge resolves from a sibling exactly as `@quorum/core`
+    // always has.
+    //
+    // **The install is part of the criterion rather than a precondition for it.** It runs against a
+    // closed registry with retries at zero, so a member that failed to install cannot be satisfied
+    // from anywhere — which is what makes the existence assertions below a claim about the tarballs.
+    for (const name of ['cli', 'core', 'server', 'shared', 'web']) {
+      expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', name)),
+        `@quorum/${name} is not in the packed install — every assertion below is vacuous`).toBe(true);
+    }
+    // And the two that arrived at Q-0124 carry an emit rather than an empty directory, which is the
+    // assertion Q-0093 AC-5(d) exists to make at the neighbouring site: a `files` allow-list naming
+    // `dist` proves a manifest key, and a tarball shipping an empty `dist` would satisfy it.
+    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'web', EMIT, 'index.html')),
+      'the web tarball carries no bundle entry').toBe(true);
+    expect(fs.existsSync(path.join(project, 'node_modules', '@quorum', 'server', EMIT, 'index.js')),
+      'the daemon tarball carries no emit').toBe(true);
 
     const shim = path.join(project, 'node_modules', '.bin', 'quorum');
     expect(fs.existsSync(shim), 'the packed install linked no quorum shim').toBe(true);
@@ -2440,52 +2694,53 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     expect(executed.startsWith(fs.realpathSync(WORKSPACE)), 'the packed shim reaches back into the repository').toBe(false);
     const packedHelp = execFileSync(shim, ['help'], { cwd: project, encoding: 'utf8', env });
     expect(packedHelp).toContain('usage: quorum');
-    // **Q-0126 AC-10, the half the ticket body predicted wrongly.** `main.ts` imports every command
-    // module statically, so `open.js` is loaded whatever command was typed; a static
-    // `from '@quorum/server'` there would make THIS invocation die with `ERR_MODULE_NOT_FOUND`
-    // against an installation that skipped the optional edge. The deferred specifier is what keeps
-    // every other command working, and the ten-entry help is what says so — derived from `HELP`
-    // rather than transcribed, as AC-15 already requires of the plain-node spawn.
+    // **Q-0124 AC-11: every other command is unchanged, and this is the regression guard rather
+    // than new work.** Decision 094's *Alternatives considered* refused a required daemon edge
+    // precisely on the ground that it broke `quorum help` and `quorum init` in a packed install;
+    // shipping the daemon voids that refusal, and these assertions prove the voiding instead of
+    // assuming it. The ten-entry help is derived from `HELP` rather than transcribed, as AC-15
+    // already requires of the plain-node spawn.
     expect(helpNames(packedHelp), 'the packed help is not the frame\'s command list')
       .toStrictEqual(helpNames(HELP));
-    expect(helpNames(packedHelp), 'the packed help does not list the command this ticket added')
+    expect(helpNames(packedHelp), 'the packed help does not list the command Q-0126 added')
       .toContain('open');
 
-    // And `quorum open` there says something TRUE: what failed to resolve *here*, and where the
-    // daemon is. It may not report that the daemon is missing, broken or deliberately omitted — an
-    // import that did not resolve cannot establish any of the three, and *"A probe that could not
-    // answer is not a negative"* (2026-09-10) is what that would break. Asserted **by bytes** against
-    // the literals `open.ts` declares, so the packed sentence and the command's cannot drift.
-    const refused = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
-    expect(refused.status, 'quorum open succeeded on an installation carrying no daemon').not.toBe(0);
-    expect(refused.stderr, 'the packed refusal is not the CLI\'s own condition').toContain(NO_DAEMON_CONDITION);
-    expect(refused.stderr, 'the packed refusal does not say where the daemon is').toContain(NO_DAEMON_REMEDY);
-    for (const forbidden of ['missing', 'not installed', 'broken', 'omitted']) {
-      expect(refused.stderr, `the packed refusal claims the daemon is ${forbidden}`).not.toContain(forbidden);
-    }
-
-    // **And a daemon that resolved and then failed is NOT reported as one that did not resolve** —
-    // the finding run 2 iteration 2 returned, end to end through the emitted command rather than
-    // over the predicate alone. The fixture is the sharp case rather than an easy one: a dependency
-    // missing from inside the daemon raises the SAME `ERR_MODULE_NOT_FOUND` an absent package does,
-    // so a narrowing that read only the code would still be wrong here. Reporting it as the refusal
-    // above would claim an absence contradicted by the directory written two lines up, and bury the
-    // failure a maintainer has to act on behind a packaging sentence.
+    // **Q-0124 AC-10(b): `quorum open` SERVES there, which is the whole point of the ticket.** This
+    // asserted a refusal until Q-0124 — the packed install had no daemon, so the command reported
+    // what had failed to resolve — and the assertion inverts rather than being deleted. An exit code
+    // is not the claim: what is claimed is that a browser pointed at the printed URL receives the
+    // shell, so the page is fetched over the real socket. `--no-open` because no test may open a
+    // browser on the machine it runs on.
+    //
+    // **Q-0124 AC-10(d): a daemon that resolved and then failed is still not swallowed.** Q-0126
+    // built this fixture by CREATING a fake `@quorum/server` and deleting it afterwards, because
+    // the real one was absent; the real one is installed now, so the fixture saves it, replaces it,
+    // and puts it back — and the restore is asserted, because every assertion after this one meets
+    // whichever installation this paragraph leaves behind.
+    //
+    // What it claims is narrower than Q-0126's, and deliberately so: that ticket required the
+    // failure NOT to be reported as a packaging absence, a distinction that no longer exists. What
+    // survives is that the command fails loudly and names the thing a maintainer has to act on
+    // rather than swallowing it — which is what decision 096 clause 4 accepts as the cost of a
+    // required edge.
     const installed = path.join(project, 'node_modules', '@quorum', 'server');
-    fs.mkdirSync(installed, { recursive: true });
-    fs.writeFileSync(path.join(installed, 'package.json'),
-      JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
-    fs.writeFileSync(path.join(installed, 'index.js'), "import 'a-package-that-is-not-installed';\n");
-    const damaged = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
-    expect(damaged.status, 'a daemon that failed to load did not stop the command').not.toBe(0);
-    expect(damaged.stderr, 'a daemon that resolved and then failed is reported as one that did not resolve')
-      .not.toContain(NO_DAEMON_CONDITION);
-    expect(damaged.stderr, 'the failure a maintainer has to act on was swallowed')
-      .toContain('a-package-that-is-not-installed');
-    // Put back as it was, so the assertions after this one meet the installation the fixture
-    // installed rather than the one this paragraph damaged.
-    fs.rmSync(installed, { recursive: true, force: true });
-    expect(fs.existsSync(installed), 'the fixture daemon outlived the assertion it was written for').toBe(false);
+    const saved = `${installed}-saved`;
+    fs.renameSync(installed, saved);
+    try {
+      fs.mkdirSync(installed, { recursive: true });
+      fs.writeFileSync(path.join(installed, 'package.json'),
+        JSON.stringify({ name: '@quorum/server', version: '0.0.0', type: 'module', main: 'index.js' }));
+      fs.writeFileSync(path.join(installed, 'index.js'), "import 'a-package-that-is-not-installed';\n");
+      const damaged = spawnSync(shim, ['open'], { cwd: project, encoding: 'utf8', env });
+      expect(damaged.status, 'a daemon that failed to load did not stop the command').not.toBe(0);
+      expect(damaged.stderr, 'the failure a maintainer has to act on was swallowed')
+        .toContain('a-package-that-is-not-installed');
+    } finally {
+      fs.rmSync(installed, { recursive: true, force: true });
+      fs.renameSync(saved, installed);
+    }
+    expect(fs.existsSync(path.join(installed, EMIT, 'index.js')),
+      'the fixture did not put the installed daemon back, so every assertion after it is about a broken install').toBe(true);
 
     // **Q-0093 AC-5(d): the command that needs the assets is run from the packed install.**
     // Asserting that `files` contains `"templates"` proves a manifest key; this is the only
@@ -2502,6 +2757,112 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const shipped = filesUnder(path.join(PACKAGE, ASSETS, 'harness'));
     expect(filesUnder(path.join(scaffolded, 'harness')), 'the packed install scaffolded a different tree').toStrictEqual(shipped);
     expect(shipped.length, 'the shipped tree is empty — the comparison above is vacuous').toBeGreaterThan(10);
+
+    // **Q-0124 AC-10(b): `quorum open` SERVES from the packed install, which is the whole point of
+    // the ticket.** This asserted a refusal until now — the packed install had no daemon, so the
+    // command reported what had failed to resolve — and the assertion inverts rather than being
+    // deleted. **An exit code is not the claim**: what is claimed is that a browser pointed at the
+    // printed URL receives the shell, so the page is fetched over the real socket. An existence
+    // check on `node_modules/@quorum/web/dist` is explicitly not sufficient — it is the assertion
+    // that passes over a tarball shipping an empty directory, the failure Q-0093 AC-5(d) exists to
+    // prevent at the neighbouring site.
+    //
+    // It runs **last**, against the project `quorum init` has just scaffolded, because the temporary
+    // npm project above is not a Quorum project and `quorum open` would refuse it for the right
+    // reason at the wrong moment. `--no-open` because no test may open a browser on the machine it
+    // runs on, and a port asked for rather than `0` so the URL can be predicted.
+    const port = await freePort();
+    const serving = spawn(shim, ['open', '--no-open', '--project', scaffolded, '--port', String(port)],
+      { cwd: project, env });
+    try {
+      const printed = await firstLine(serving);
+      expect(printed, 'the packed daemon printed no URL').toContain(`:${String(port)}`);
+      const shell = await get(`http://127.0.0.1:${String(port)}/`, BROWSER_ACCEPT);
+      expect(shell.status, 'the packed install did not serve the shell').toBe(200);
+      expect(shell.contentType, 'the shell is not served as HTML').toContain('text/html');
+      expect(shell.body, 'what was served is not the built bundle').toContain('<script');
+      // And what it served is the tarball's own build rather than a placeholder: the entry names a
+      // hashed asset, and that asset is served too, as JavaScript. A `<script>` tag alone would be
+      // satisfied by an `index.html` whose bundle never shipped.
+      const asset = /src="([^"]+\.js)"/.exec(shell.body)?.[1] ?? '';
+      expect(asset, 'the served shell references no script, so the bundle it names may not be there').not.toBe('');
+      const script = await get(`http://127.0.0.1:${String(port)}${asset}`, BROWSER_ACCEPT);
+      expect(script.status, `the packed install served no ${asset}`).toBe(200);
+      expect(script.contentType, 'the bundle is not served as JavaScript').toContain('text/javascript');
+      // Clause 4, in the installation this ticket adds: a missing file is 404 even to a browser's
+      // own Accept, so a script tag never receives the shell with a 200.
+      const absent = await get(`http://127.0.0.1:${String(port)}/assets/not-there.js`, BROWSER_ACCEPT);
+      expect(absent.status, 'a missing asset was answered with the shell').toBe(404);
+      // **And it proves the artifacts came from the packed install rather than from the
+      // repository.** The resolver differs between the suites' `quorum-source` condition and a
+      // packed install's `default`, so this is the only place the claim can be made: both
+      // specifiers are resolved by a plain `node` process rooted inside the installation, and both
+      // must answer inside it.
+      const inInstall = (expression: string): string => execFileSync(
+        process.execPath, ['--input-type=module', '-e', `process.stdout.write(${expression})`],
+        { cwd: path.join(project, 'node_modules', '@quorum', 'cli', EMIT), encoding: 'utf8', env },
+      );
+      for (const [what, specifier] of [['daemon', '@quorum/server'], ['bundle', '@quorum/web/bundle']] as const) {
+        const resolved = inInstall(`import.meta.resolve(${JSON.stringify(specifier)})`);
+        expect(resolved.startsWith(`file://${fs.realpathSync(project)}`),
+          `the ${what} resolved to ${resolved}, outside the packed install`).toBe(true);
+      }
+    } finally {
+      await stop(serving);
+    }
+  }, 300_000);
+
+  test('Q-0124 AC-9 — the mirror walk finds a dependency that does not export its own manifest', () => {
+    // **(a) Both kinds, over a fixture, so the fix is established against the shape that breaks it
+    // rather than against the shape that already worked.** The resolver this replaced asked for
+    // `<name>/package.json`, which is a subpath a dependency chooses whether to publish — and all
+    // three of the daemon's decline to. Two packages are built here: one exporting its manifest and
+    // one not, otherwise identical, so what is demonstrated is that key and nothing else.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-mirrorwalk-'));
+    temporaries.push(root);
+    const plant = (name: string, exported: boolean): void => {
+      const directory = path.join(root, 'node_modules', name);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({
+        name, version: '1.0.0', type: 'module',
+        exports: exported ? { '.': './index.js', './package.json': './package.json' } : { '.': './index.js' },
+      }));
+      fs.writeFileSync(path.join(directory, 'index.js'), 'export const a = 1;\n');
+    };
+    plant('opens-its-manifest', true);
+    plant('keeps-its-manifest', false);
+
+    const askedForTheSubpath = (name: string): string => {
+      try {
+        createRequire(path.join(root, 'noop.js')).resolve(`${name}/package.json`);
+        return 'resolved';
+      } catch (error) {
+        return String((error as { code?: unknown }).code ?? 'threw');
+      }
+    };
+    // The old resolver: one answers, one refuses. This pair is what the real closure does at scale —
+    // `ajv`, `ajv-formats`, `yaml` and `zod` behave like the first and `hono`, `@hono/node-server`
+    // and `@hono/node-ws` like the second.
+    expect(askedForTheSubpath('opens-its-manifest'), 'the fixture that exports its manifest does not')
+      .toBe('resolved');
+    expect(askedForTheSubpath('keeps-its-manifest'), 'the fixture that withholds its manifest resolved anyway — this probe has no subject')
+      .toBe('ERR_PACKAGE_PATH_NOT_EXPORTED');
+    // The walk answers for both, which is the whole of the change.
+    for (const name of ['opens-its-manifest', 'keeps-its-manifest']) {
+      expect(packageDirOf(name, root), `the walk cannot find ${name}`)
+        .toBe(fs.realpathSync(path.join(root, 'node_modules', name)));
+    }
+    // And it walks UPWARD rather than looking in one place, which is how `ws` — nobody's direct
+    // dependency here — is reached at all. Asserted from a nested directory that has no
+    // `node_modules` of its own.
+    const nested = path.join(root, 'a', 'b');
+    fs.mkdirSync(nested, { recursive: true });
+    expect(packageDirOf('keeps-its-manifest', nested), 'the walk does not climb')
+      .toBe(fs.realpathSync(path.join(root, 'node_modules', 'keeps-its-manifest')));
+    // And a package that is installed nowhere is a named failure rather than an empty answer, so a
+    // mirror that quietly lost a member cannot read as a mirror that was complete.
+    expect(() => packageDirOf('installed-nowhere-at-all', nested))
+      .toThrow('the offline mirror cannot find installed-nowhere-at-all');
   }, 300_000);
 
   test('and the registry really is unreachable in that environment, so the install proved something', () => {
@@ -2521,7 +2882,8 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
   test('pnpm pack and npm pack agree on the file list, for every package in the distribution set', () => {
     // OQ-3, confirmed after `files` landed rather than assumed.
     //
-    // **Every package, not only the CLI.** AC-19 defines a three-package distribution set (R-2), and
+    // **Every package, not only the CLI.** AC-19 defined a three-package distribution set (R-2) and
+    // Q-0124 made it five, which only widens the argument below, and
     // checking one of the three is the fail-open shape this repository keeps finding — Q-0051 in
     // `q0050.source.test.ts`, Q-0097 in `test-discovery.test.ts`: a guard that reports agreement
     // while two thirds of its subject went unexamined. `@quorum/core` and `@quorum/shared` are packed
@@ -2531,7 +2893,7 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
     const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'quorum-cli-packers-'));
     temporaries.push(destination);
     for (const name of DISTRIBUTION) {
-      const directory = path.join(WORKSPACE, 'packages', name);
+      const directory = directoryOf(name);
       const byPnpm = pathsIn(packWith('pnpm', directory, destination));
       const byNpm = pathsIn(packWith('npm', directory, destination));
       expect(byPnpm.length, `@quorum/${name} packed nothing — the comparison is vacuous`).toBeGreaterThan(1);
@@ -2556,20 +2918,31 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
 
     // A register rather than a count, per Q-0073: a subject that quietly emptied would leave the
     // loop below reporting success over nothing. `@quorum/shared` depends on no workspace sibling,
-    // so it has nothing to rewrite and is deliberately absent.
+    // and `@quorum/web` declares its one under `devDependencies`, which a packer does not rewrite
+    // because npm never installs them — so both are deliberately absent.
     const dependents = DISTRIBUTION.filter((name) => workspaceDepsOf(name).length > 0);
-    expect(dependents, 'the set of packages declaring a workspace dependency moved').toStrictEqual(['cli', 'core']);
-    // **Q-0126 AC-7's third register.** The widening above has to CHANGE this derivation rather than
-    // leave it identical — a widening that changes nothing has not been established — so the edge it
-    // added is named here, and the reader that could not see it is shown still not seeing it.
-    expect(workspaceDepsOf('cli'), 'the optional daemon edge is invisible to the workspace-protocol check')
-      .toStrictEqual(['@quorum/core', '@quorum/server', '@quorum/shared']);
+    expect(dependents, 'the set of packages declaring a workspace dependency moved')
+      .toStrictEqual(['cli', 'core', 'server']);
+    // **Q-0126 AC-7's third register, re-aimed at Q-0124's shape.** The edges are the same four and
+    // they are all `dependencies` now, so `declaredDeps`'s widening — which reads both sections —
+    // sees exactly what a strict read of `dependencies` sees. That is a **loss of subject rather
+    // than a defect**, and it is asserted as one: the widening is kept because the next optional
+    // edge would otherwise be invisible again, and the clause that used to demonstrate it now says
+    // there is nothing for the two readers to disagree about.
+    expect(workspaceDepsOf('cli'), 'the CLI no longer declares the four edges a packed install needs')
+      .toStrictEqual(['@quorum/core', '@quorum/server', '@quorum/shared', '@quorum/web']);
     const dependenciesOnly = Object.keys(manifestOf('cli').dependencies ?? {}).sort();
-    expect(dependenciesOnly, 'the pre-Q-0126 reader now finds the optional edge too, so the widening proved nothing')
-      .toStrictEqual(['@quorum/core', '@quorum/shared']);
+    expect(dependenciesOnly, 'the two readers disagree, so an edge is declared where a packer will not rewrite it')
+      .toStrictEqual(workspaceDepsOf('cli'));
+    // And the widening still *works*, shown over a fixture rather than over a manifest that no
+    // longer exercises it — otherwise deleting `declaredDeps`'s second spread would change no
+    // assertion in this file.
+    const withOptional = { dependencies: { a: 'workspace:*' }, optionalDependencies: { b: 'workspace:*' } };
+    expect(Object.keys(declaredDeps(withOptional)).sort(), 'declaredDeps stopped reading the optional section')
+      .toStrictEqual(['a', 'b']);
 
     for (const name of dependents) {
-      const directory = path.join(WORKSPACE, 'packages', name);
+      const directory = directoryOf(name);
       const byPnpm = declaredDeps(manifestIn(packWith('pnpm', directory, destination)));
       const byNpm = declaredDeps(manifestIn(packWith('npm', directory, destination)));
       for (const dependency of workspaceDepsOf(name)) {
@@ -2581,14 +2954,17 @@ describe('Q-0098 AC-19 and AC-20 — the local distribution set is a declared co
           .toBe(declaredDeps(manifestOf(name))[dependency]);
         expect(byNpm[dependency]?.startsWith('workspace:'), `npm's packed manifest no longer carries the literal protocol for ${dependency}`).toBe(true);
       }
-      // And the optional edge stays in the section it was declared in: a packer that promoted it to
-      // `dependencies` would rewrite it correctly and still kill the install, which is the one
-      // failure the substitution assertions above cannot see.
+      // And the two edges this ticket added stay in the section they were declared in and are
+      // rewritten: a packer that DEMOTED either to `optionalDependencies` would leave npm free to
+      // skip it silently, which is the one failure the substitution assertions above cannot see —
+      // Q-0126's clause here, inverted with the key it guards.
       if (name === 'cli') {
         const packed = manifestIn(packWith('pnpm', directory, destination));
-        expect(packed.optionalDependencies?.['@quorum/server'], 'the packed manifest lost the optional daemon edge')
-          .toBe(versionOf('@quorum/server'));
-        expect(packed.dependencies?.['@quorum/server'], 'the packer promoted the optional edge to a required one')
+        for (const dependency of ['@quorum/server', '@quorum/web']) {
+          expect(packed.dependencies?.[dependency], `the packed manifest lost the required ${dependency} edge`)
+            .toBe(versionOf(dependency));
+        }
+        expect(packed.optionalDependencies, 'the packer demoted a required edge to an optional one')
           .toBe(undefined);
       }
     }

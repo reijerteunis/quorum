@@ -418,20 +418,32 @@ describe('Q-0126 AC-11 — every command the frame dispatches is documented, der
     expect(inUsage('Run `quorum init` first.\n'), 'prose naming a command is read as a section').toStrictEqual([]);
   });
 
-  test('the command this ticket added is in both, and each says what a packed install cannot do', () => {
-    // The clause that keeps the documents honest rather than merely complete. README's install
-    // section claims both paths work, so a table listing a command that works on one of them is a
-    // false claim by omission — `harness/product-context.md` quality pillar 7, narrowed precisely by
-    // *"An optional edge says the daemon may be absent, and never why"* (2026-09-14) clause 3 rather
-    // than weakened to "mostly works".
+  test('Q-0124 — the command Q-0126 added is in both, and each says it works on both install paths', () => {
+    // **The clause that keeps the documents honest rather than merely complete, inverted.** It
+    // required both documents to say what a packed install *could not do* and to route the question
+    // to Q-0124, because `quorum open` was the one command that worked on one of the two claimed
+    // paths — which README's install section makes a false claim by omission unless it is named
+    // (`harness/product-context.md` quality pillar 7). Q-0124 packs the daemon and the web app, so
+    // there is nothing left to except, and a document still carrying the exception would be telling
+    // a stranger their installation cannot do something it can. Why: *"The distribution set is five,
+    // and rejoins the emitting set"* (2026-09-15).
     const readme = document('README.md');
     const usage = document('docs/USAGE.md');
     expect(inReadme(readme)).toContain('open');
     expect(inUsage(usage)).toContain('open');
     for (const [where, text] of [['README.md', readme], ['docs/USAGE.md', usage]] as const) {
-      expect(text, `${where} does not say the packed path lacks the daemon`).toContain('packed install');
-      expect(text, `${where} does not route the question to the ticket that owns it`).toContain('Q-0124');
+      expect(text, `${where} still says the packed path lacks the daemon`)
+        .not.toMatch(/not one of the (three|five) tarballs|works from the workspace and not from a packed install/);
+      expect(text, `${where} still routes the installation question to a ticket that has answered it`)
+        .not.toContain('Q-0124');
+      expect(text, `${where} does not say the packed path carries this command too`)
+        .toMatch(/packed install|packed installation|five tarballs/);
     }
+    // The negatives have subjects: the same needles find the wording they refuse.
+    const asItWas = '**`quorum open` works from the workspace and not from a packed install.** The daemon it starts is `@quorum/server`, which is not one of the three tarballs a local `pnpm pack` produces';
+    expect(asItWas, 'the fixture no longer reproduces the sentence this clause refuses')
+      .toMatch(/not one of the (three|five) tarballs/);
+    expect(asItWas).toMatch(/works from the workspace and not from a packed install/);
   });
 });
 
