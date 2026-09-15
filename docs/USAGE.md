@@ -281,16 +281,17 @@ using refuses and names it** rather than quietly binding elsewhere, because a bo
 dev proxy both assume the one they were given. The bind address is loopback and no flag moves it:
 the daemon has no authentication and it starts agent runs.
 
-**It runs no build.** If `apps/web` has not been built the command refuses before binding anything,
+**It runs no build.** If the web app has not been built the command refuses before binding anything,
 naming the directory it looked in and the file it wanted. `pnpm turbo run build` builds every
-emitter; `--filter=@quorum/cli` does not build the web app, and this is the failure that looks like.
+emitter, and `--filter=@quorum/cli` now builds the web app too — `@quorum/cli` depends on
+`@quorum/web`, so turbo orders that build first. The filter that leaves you without a bundle is one
+that excludes it: `--filter=@quorum/cli --only` runs the CLI's own build and none of the builds it
+depends on, and the refusal above is what that looks like.
 
-**It works from the workspace and not from a packed install.** The daemon is `@quorum/server`, which
-is not one of the three tarballs a local `pnpm pack` produces — so on a packed installation every
-other command works and this one refuses, naming what did not resolve there and where the daemon is.
-It does not tell you *why* it did not resolve, because it cannot: an import that failed cannot tell
-an installation deliberately without the daemon from one that is damaged. How an installation
-outside this repository obtains the UI is an open question (Q-0124).
+**It works from a packed install as well as from the workspace.** The daemon is `@quorum/server` and
+the bundle is `@quorum/web`, and both are among the five tarballs a local `pnpm pack` produces — so
+a packed installation serves mission control exactly as the workspace does. Install all five
+together; `@quorum/cli` requires the other four.
 
 What you will see today is the shell: a rail, a theme, and placeholders naming the ticket that fills
 each screen. The screens themselves are Q-0015 to Q-0018, and answering a gate in the browser is

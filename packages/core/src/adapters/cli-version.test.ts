@@ -160,34 +160,32 @@ const ALLOWED_NAMERS = [...Object.keys(STATE_SITES), 'packages/core/src/index.ts
 /**
  * The production modules permitted to resolve a module from an expression, with why.
  *
- * **Clause D's first permitted entry, and there is exactly one.** Until Q-0126 the dynamic half of
- * that clause was `toStrictEqual([])` with no register anywhere in this file, which was the right
- * shape while nothing in either corpus needed one: a dynamic import is a route to a symbol that
- * spells none of its names, so every one of them has to be accounted for by identity or clauses A
- * to C stop being exhaustive.
+ * **Empty, which is the shape this clause had before Q-0126 and has again since Q-0124.** A dynamic
+ * import is a route to a symbol that spells none of its names, so every one of them has to be
+ * accounted for by identity or clauses A to C stop being exhaustive. For as long as nothing in
+ * either corpus needed one, the honest register was no register at all.
  *
- * `packages/cli/src/open.ts` needs one because `@quorum/server` is an **optional** dependency of
- * that package: `main.ts` imports every command module statically and dispatches from a table, so a
- * static specifier there would make `quorum help` die on an installation that could not resolve the
- * daemon. Both halves are required — the manifest key and the deferred specifier — and neither
- * rescues the other. Why: *"An optional edge says the daemon may be absent, and never why"*
- * (2026-09-14).
+ * `packages/cli/src/open.ts` held the one entry there has ever been, because `@quorum/server` was an
+ * **optional** dependency of that package and a static specifier would have made `quorum help` die
+ * on an installation that could not resolve the daemon. That edge is required now, so the deferral
+ * has no reason and the entry is **deleted rather than widened** — which the entry that authorised
+ * it said in its own words would be the remedy. Why: *"The distribution set is five, and rejoins the
+ * emitting set"* (2026-09-15), clause 4, superseding *"An optional edge says the daemon may be
+ * absent, and never why"* (2026-09-14).
  *
- * **It buys no bypass of this file's own subject**, which is what makes the entry admissible: the
- * module it reaches is `@quorum/server`, whose surface carries no version state, no `cliVersion` and
- * neither `--json` key — it is a run host and a transport. A register naming a module that *did*
- * would be a hole in clauses A to C, and the reason is recorded here rather than assumed.
+ * **The deletion is forced rather than chosen**, and it is {@link deferredOffenders} that forces it:
+ * that function reports in both directions, so an entry permitting a specifier its module no longer
+ * defers is a failure by name. The register cannot be emptied while the import stays dynamic, and
+ * the import cannot become static while the register holds the entry — the two move together or
+ * neither does.
  *
  * **Keyed by file, and this clause reads the file as written** — {@link namedAsWritten} passes
- * `(text) => text` where its sibling passes {@link scannable}, so comments count. A one-line
- * authority comment naming the mechanism belongs in the registered file; a sibling explaining the
- * deferral names it without spelling the literal, or it joins this register from a file that has no
- * business being in it.
+ * `(text) => text` where its sibling passes {@link scannable}, so comments count. That is why
+ * emptying it required `packages/cli/src/open.ts` to end with **zero** occurrences of the literal,
+ * prose included, and why a docblock explaining that the specifier *used to be* deferred would have
+ * re-armed the clause. A sibling explaining the history names the mechanism without spelling it.
  */
-const DEFERRED_SPECIFIER: Record<string, string> = {
-  'packages/cli/src/open.ts':
-    '`quorum open` reaches @quorum/server, an optional dependency a packed install may not carry, so the specifier is deferred and never the module — Q-0126 AC-8',
-};
+const DEFERRED_SPECIFIER: Record<string, string> = {};
 
 /**
  * Everything wrong with `sources` as a description of who may resolve a module from an expression,
@@ -359,14 +357,23 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
       'a namespace import of a workspace module reaches cliVersion without naming it',
     ).toStrictEqual([]);
     // **The namespace half is asserted unchanged and still empty**, which is what keeps the two
-    // halves apart: `await import('@quorum/server')` does not satisfy `NAMESPACE_IMPORT`, so the
-    // half Q-0126 needed an entry for is the dynamic one and the ticket body named the wrong one.
+    // halves apart: a deferred specifier does not satisfy `NAMESPACE_IMPORT`, so the half Q-0126
+    // needed an entry for was the dynamic one and the ticket body named the wrong one.
     expect(
       deferredOffenders(sources, DEFERRED_SPECIFIER),
       'a dynamic import or a require resolves a module from an expression, which no source scan can follow',
     ).toStrictEqual([]);
-    expect(Object.keys(DEFERRED_SPECIFIER), 'the register is empty — the clause below proves nothing')
-      .toStrictEqual(['packages/cli/src/open.ts']);
+    // **The register is empty again, and that is a stricter rule rather than a relaxed one.** An
+    // empty result here is worth nothing by itself — it is what a scan that matched nothing would
+    // also give — so the two clauses below are what say the corpus really holds no deferred
+    // specifier and that the register really excuses none. The demonstration that the predicate
+    // still fires is the next test, unchanged in substance from when it had a subject to permit.
+    expect(Object.keys(DEFERRED_SPECIFIER), 'the register gained an entry and no ticket said so')
+      .toStrictEqual([]);
+    expect(Object.keys(DEFERRED_SPECIFIER), 'the register still holds the entry it held before Q-0124')
+      .not.toStrictEqual(['packages/cli/src/open.ts']);
+    expect(sources.length, 'the production corpus is empty — every clause here proves nothing')
+      .toBeGreaterThan(10);
   });
 
   test('and clause D has a subject — a namespace import of this package is found', () => {
@@ -377,9 +384,11 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     expect(namedIn(planted, VOCABULARY), 'clause B fired, so this does not isolate clause D').toStrictEqual(ALLOWED_NAMERS);
   });
 
-  test('Q-0126 AC-8 — the deferred-specifier register fires in both directions, over mutated copies', () => {
-    // A SECOND dynamic import is reported by name, which is what makes the one entry a permission
-    // rather than a relaxation: the clause did not stop looking, it learned one identity.
+  test('Q-0126 AC-8 — the deferred-specifier clause fires in both directions, over mutated copies', () => {
+    // **Kept unchanged in substance when the register emptied, which is the point.** Deleting the
+    // entry is only a return to a stricter rule if the predicate goes on reporting; a clause that
+    // had quietly stopped looking would produce the same empty result above. So a planted dynamic
+    // import is still reported by name, with no entry to excuse it.
     const second = withPlanted('packages/cli/src/version-badge.ts', "const m = await import('@quorum/core');\n");
     expect(deferredOffenders(second, DEFERRED_SPECIFIER))
       .toStrictEqual(['packages/cli/src/version-badge.ts: it resolves a module from an expression and no entry says why it may']);
@@ -387,20 +396,23 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     const required = withPlanted('packages/cli/src/version-badge.ts', "const m = require('@quorum/core');\n");
     expect(deferredOffenders(required, DEFERRED_SPECIFIER))
       .toStrictEqual(['packages/cli/src/version-badge.ts: it resolves a module from an expression and no entry says why it may']);
-    // And the other direction: an entry outliving the mechanism it excuses fails, so the register
-    // cannot rot into a wish once `@quorum/server` becomes a required dependency at Q-0124 — at
-    // which point 094 clause 4 says this entry is DELETED rather than widened.
-    const plain = withPlanted('packages/cli/src/open.ts', "import { createDaemon } from '@quorum/server';\n");
-    expect(deferredOffenders(plain, DEFERRED_SPECIFIER))
+    // And the other direction, which is what Q-0124 had to obey rather than merely pass: an entry
+    // outliving the mechanism it excuses fails by name, so the register could not be left holding
+    // `open.ts` once that module's specifier became static. Shown over a copy, because the shipped
+    // register is empty and the shipped module defers nothing — the pair no longer exists on disk
+    // and the rule that removed it still has to be demonstrable.
+    const stale = withPlanted('packages/cli/src/open.ts', "import { createDaemon } from '@quorum/server';\n");
+    expect(deferredOffenders(stale, { 'packages/cli/src/open.ts': 'the entry Q-0124 deleted' }))
       .toStrictEqual(['packages/cli/src/open.ts: its entry permits a deferred specifier the module does not use']);
   });
 
   test('Q-0126 AC-8 — and it reads the file as written, so a comment spelling the literal is caught', () => {
     // §0.2's trap as a red test rather than a paragraph. `namedAsWritten` passes `(text) => text`
-    // and not `scannable`, so prose counts — and `.claude/rules/engineering.md` requires one line
-    // naming the authority wherever behaviour is deliberately counterintuitive, which a deferred
-    // specifier is. The authority line therefore lives in the REGISTERED file, and any sibling
-    // explaining the deferral names the mechanism without writing the literal.
+    // and not `scannable`, so prose counts. That was the constraint on where an authority line could
+    // live while one module was registered; since Q-0124 emptied the register it is the constraint
+    // on **every** module, this one included — which is what made deleting the entry an edit to
+    // `open.ts`'s prose as well as to its code, and why `main.ts` below still explains the history
+    // without writing the literal.
     //
     // The needle in this fixture is assembled so this test does not become its own subject.
     const inProse = withPlanted('packages/cli/src/main.ts', `// open.ts uses ${'import'}${'('}) and this file does not\n`);

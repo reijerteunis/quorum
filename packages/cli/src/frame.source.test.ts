@@ -266,18 +266,25 @@ const resolvesOwnLocation = (text: string): boolean =>
  * frame module resolving its own location is the mechanism Q-0090 AC-7 replaced, and a second
  * command module doing it would mean two places knew where the package is.
  *
- * **Q-0126 admits the second, and the sentence above is what it had to answer rather than an
- * obstacle it went round.** *Two places knew where the package is* is the objection, and it does not
- * reach here: `open.ts` is not locating the package, it is locating `apps/web/dist` — a directory
- * outside this package altogether, whose position relative to the running module is the only thing
- * that answers the same way from `src/` and from `dist/`. The two alternatives are worse and both
- * are refused by the same reasoning `static.ts`'s header gives the daemon: `process.cwd()` answers
- * the operator's directory, and an environment variable answers whatever was exported. The register
- * is two entries and remains a claim rather than a list, because both directions below still fire.
+ * **Q-0126 admitted a second entry and Q-0124 removed it again, which is the register working
+ * rather than churn.** `open.ts` located `apps/web/dist` relative to itself for as long as the
+ * bundle was in no tarball; once `@quorum/web` became one, the honest answer stopped being *beside
+ * the file that is running* and became *wherever that package resolves to*, which
+ * `import.meta.resolve` answers and {@link resolvesOwnLocation} deliberately does not match — it is
+ * a question about another package rather than about this one. The removal is **forced rather than
+ * tidy**: {@link locationOffenders} reports in both directions, so leaving the entry in place fails
+ * with *its entry permits a self-location the module does not perform*. Whether this predicate
+ * should widen to see `import.meta.resolve` is a question about every production module here rather
+ * than about this one, and is not answered in passing — Q-0124 OQ-3.
+ *
+ * So the register is back to one entry, and `init.ts` is again the only module that answers *where
+ * am I*: the shipped templates are the one thing whose position is genuinely relative to the running
+ * file. The two alternatives stay refused by the same reasoning `static.ts`'s header gives the
+ * daemon: `process.cwd()` answers the operator's directory, and an environment variable answers
+ * whatever was exported.
  */
 const SELF_LOCATING: Record<string, string> = {
   'init.ts': 'the shipped template tree is at <package>/templates/harness, which is knowable only relative to this module — 078(e)',
-  'open.ts': 'the built web app is at <workspace>/apps/web/dist, which answers the same from src/ and from dist/ only relative to this module — Q-0126 AC-3',
 };
 
 describe('the module scan has a subject', () => {
@@ -431,10 +438,12 @@ const COMMAND_DOMAIN: Record<string, readonly string[]> = {
   'run.ts': ['runFlow', 'loadFlowByName', 'lintDirectory', 'loadProject', 'overrideAdapters'],
   // Q-0126: one name, and the row is what says so. `quorum open` opens the project and hands it to
   // a daemon; everything else it needs — the host, the bind address, the retention capacity — is
-  // `@quorum/server`'s and reaches this module through a deferred specifier rather than through
-  // `core`. In particular it does NOT name `@quorum/server`'s own `openProject`, which lives in the
-  // package an installation may not carry: routing project resolution through it would make *no
-  // project here* unreportable on exactly the installation where the daemon is absent.
+  // `@quorum/server`'s and reaches this module from that package directly rather than through
+  // `core`. That import was deferred until Q-0124 made the daemon a required dependency and it is
+  // static now; what the row claims is unchanged, because this register is about `core`'s surface.
+  // In particular it does NOT name `@quorum/server`'s own `openProject`: the project is `core`'s to
+  // resolve, and a command reaching for it through the transport would make every other command's
+  // `loadProject` the odd one out.
   //
   // `openUrl` is the second, and it is the only name in this whole register that its module could
   // not have written for itself: the browser launch is a spawn, and `IO_MODULE` refuses
@@ -599,12 +608,16 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     // both are the kind a new command silently joins. Asserted here beside the rows that did move,
     // so the two that did not are a measurement rather than a silence.
     expect(Object.keys(TERMINAL_OWNER)).toStrictEqual(['gate.ts']);
-    // Q-0126 moved this one, and the value it replaced is refused rather than the assertion being
-    // widened to a `toContain` that would accept either — the shape every superseded register in
-    // this file already takes.
-    expect(Object.keys(SELF_LOCATING), 'the register still holds the one module it held before Q-0126')
-      .not.toStrictEqual(['init.ts']);
-    expect(Object.keys(SELF_LOCATING)).toStrictEqual(['init.ts', 'open.ts']);
+    // **Q-0126 moved this one and Q-0124 moved it back, so the refusal moves with it.** That ticket
+    // refused `['init.ts']` as a value the register could no longer hold; `open.ts` now finds the
+    // bundle through `@quorum/web`'s manifest rather than through its own location, so the entry it
+    // added is gone and the pre-Q-0126 value is correct again. The superseded value refused here is
+    // therefore Q-0126's rather than the one before it — the register is a claim about today and the
+    // `.not` clause exists to catch a silent return to yesterday, which is the direction that has
+    // actually happened both times.
+    expect(Object.keys(SELF_LOCATING), 'the register still holds the two modules it held before Q-0124')
+      .not.toStrictEqual(['init.ts', 'open.ts']);
+    expect(Object.keys(SELF_LOCATING)).toStrictEqual(['init.ts']);
     expect(terminalOffenders(production(), TERMINAL_OWNER)).toStrictEqual([]);
     expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
   });
@@ -792,23 +805,35 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
   test('the frame resolves no location, and the one command that does is the one with an entry', () => {
     expect(locationOffenders(frameModules(), commandModules(), SELF_LOCATING)).toStrictEqual([]);
     expect(Object.keys(SELF_LOCATING), 'the register is empty — this test proves nothing')
-      .toStrictEqual(['init.ts', 'open.ts']);
+      .toStrictEqual(['init.ts']);
   });
 
-  test('Q-0126 AC-3 — the second entry is a real self-location, and it answers the same from src/ and dist/', () => {
-    // Both halves of what the entry claims, measured rather than read. The first is that `open.ts`
-    // performs the mechanism its entry permits, which `locationOffenders` already refuses to assume;
-    // the second is the property 078(e) fixes the binary's depth for, and which is the whole reason a
-    // self-location is the honest answer here rather than a working directory.
-    const resolved = (from: string): string => new URL('../../../apps/web/dist/', `file://${from}`).pathname;
-    expect(resolved('/x/packages/cli/src/open.ts')).toBe('/x/apps/web/dist/');
-    expect(resolved('/x/packages/cli/dist/open.js')).toBe(resolved('/x/packages/cli/src/open.ts'));
-    // And the module really spells that expression, so the arithmetic above is about the shipped
-    // literal rather than about one written here.
+  test('Q-0124 AC-6 — the bundle is found through @quorum/web, and open.ts self-locates no longer', () => {
+    // **The mechanism moved and the register moved with it.** Q-0126 gave `open.ts` a
+    // module-relative bundle root and this register a second entry; that root answered
+    // `node_modules/apps/web/dist` on a packed install — a directory with no meaning there — which
+    // is the whole reason that ticket's refusal order checked it last. Now that `@quorum/web` is a
+    // tarball, the bundle is found through its manifest, which is a question about another package
+    // rather than about this one.
     const command = commandModules().find(([name]) => name === 'open.ts')?.[1] ?? '';
     expect(command, 'open.ts is not among the command modules').not.toBe('');
-    expect(command, 'the bundle root stopped being module-relative')
-      .toContain("new URL('../../../apps/web/dist/', import.meta.url)");
+    expect(codeOf(command), 'the bundle root no longer resolves through the web package\'s own manifest')
+      .toContain("import.meta.resolve('@quorum/web/bundle')");
+    // And the superseded expression is gone, asserted separately so that adding the new one beside
+    // the old one — two ways to find one bundle, which non-goal 6 refuses — fails here.
+    expect(command, 'the module-relative bundle root survived beside the resolved one')
+      .not.toContain("new URL('../../../apps/web/dist/', import.meta.url)");
+    // `resolvesOwnLocation` is what the register is keyed on, and it deliberately does not match
+    // `import.meta.resolve`: the three spellings it looks for answer *where am I*, and this one
+    // answers *where is that package*. Asserted rather than inferred from the empty result above,
+    // because that result would be identical if the predicate had simply stopped matching.
+    expect(resolvesOwnLocation(command), 'open.ts still answers where it is').toBe(false);
+    expect(resolvesOwnLocation("const here = new URL('.', import.meta.url);"),
+      'the predicate stopped recognising a real self-location').toBe(true);
+    // Whether it SHOULD widen to see `import.meta.resolve` is Q-0124 OQ-3 and is a question about
+    // every production module here rather than about this one; it is registered rather than answered.
+    expect(resolvesOwnLocation("const x = import.meta.resolve('@quorum/web/bundle');"),
+      'the predicate widened to see a resolution, which OQ-3 leaves open').toBe(false);
   });
 
   test('Q-0126 AC-3 — the root travels as a URL, because .pathname would not survive a space', () => {
@@ -819,7 +844,10 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
     // containing a space would therefore be handed a directory that does not exist, and
     // `bundleRefusal` would report *no built web app* on a machine where the build is present, which
     // is the worst shape the failure can take: the right condition for the wrong reason.
-    const spaced = new URL('../../../apps/web/dist/', 'file:///Users/me/My Project/packages/cli/dist/open.js');
+    // The base is what `import.meta.resolve` answers on such a machine, which is the shape Q-0124
+    // replaced the module-relative one with; the hazard is a property of `URL` and is unchanged by
+    // where the base came from.
+    const spaced = new URL('.', 'file:///Users/me/My Project/node_modules/@quorum/web/dist/index.html');
     expect(spaced.pathname, 'the encoding this package cannot decode').toContain('%20');
     expect(spaced.pathname, 'pathname answers a directory that is not there').not.toContain('My Project');
     // What ships instead: the URL crosses the boundary unconverted and `packages/server` — which may
@@ -846,24 +874,33 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
       .toContain('.pathname');
   });
 
-  test('Q-0126 AC-10 — the daemon catch looks at what it caught, and rethrows what it does not own', () => {
-    // Structural for the reason the `openOn` seam exists: in this workspace `@quorum/server` always
-    // resolves, so no fixture can drive that catch at all. The behavioural half is `build.test.ts`'s
-    // packed fixture, which damages a daemon that IS installed and requires the packaging refusal
-    // not to be what comes out; this is the cheap half that fails in the ordinary suite.
+  test('Q-0126 AC-10 — every catch in the open command looks at what it caught', () => {
+    // **Half of this clause lost its subject at Q-0124 and the other half did not.** It used to also
+    // require `if (!isDaemonUnresolved(error)) throw error;`, the narrowing Q-0126 spent a review
+    // round on; that predicate and the catch it guarded are gone, because the daemon is a required
+    // dependency and *did not resolve* stopped being a case (decision *"The distribution set is
+    // five, and rejoins the emitting set"*, 2026-09-15). Deleting the surviving half with it would
+    // throw away the rule the round actually established, so what remains is asserted over every
+    // catch the module still has — the project refusal, the start refusal and the shutdown one.
     //
     // Read through `codeOf`, which the clause above needed the hard way: the module's own docblock
-    // explains this distinction, so a scan of the raw text would be satisfied by the explanation
-    // rather than by the code.
+    // discusses catching, so a scan of the raw text would be satisfied by the prose rather than by
+    // the code.
     const command = codeOf(commandModules().find(([name]) => name === 'open.ts')?.[1] ?? '');
     expect(command, 'open.ts is not among the command modules').not.toBe('');
-    expect(command, 'the catch no longer asks whether it was this package that failed to resolve')
-      .toContain('if (!isDaemonUnresolved(error)) throw error;');
     // A bare `catch {` is the defect itself rather than a neighbouring smell: a catch with no
     // binding cannot have looked at what it caught, which is how every load failure became the one
-    // sentence that says the package is not here.
+    // sentence that said the package was not here.
     expect(/catch\s*\{/.test(command), 'open.ts catches something without looking at it').toBe(false);
     expect(/catch\s*\{/.test('try { load() } catch { refuse() }'), 'the needle matches nothing').toBe(true);
+    // And there is something for it to be true OF: a clause forbidding a shape is indistinguishable
+    // from one whose subject has gone, and this module's catches are now all in the second half.
+    expect((command.match(/catch\s*\(/g) ?? []).length,
+      'open.ts catches nothing at all — the clause above has no subject').toBeGreaterThan(1);
+    // The refusal that IS gone is asserted absent, so the deletion is a fact rather than an
+    // assumption: the predicate, the sentence and the module that composed it all went together.
+    expect(command, 'the daemon-absent narrowing survived a required dependency edge')
+      .not.toContain('isDaemonUnresolved');
   });
 
   test('a frame module doing it fails, and so does a second command module', () => {
@@ -881,20 +918,24 @@ describe('Q-0093 AC-10 — one module knows where the package is, and the guard 
   test('and an entry permitting a self-location its module does not perform fails, so the list cannot rot', () => {
     // The other direction, which is what stops the register outliving the mechanism it excuses —
     // the shape `domainOffenders` already refuses for the domain symbols.
-    // Both entries, one per direction, so neither row is shown red only by its neighbour (Q-0107):
-    // `init.ts` is present and has stopped self-locating, `open.ts` is absent from the corpus
-    // altogether, and the two produce different sentences.
-    const plain: [string, string][] = [
-      ['init.ts', "import path from 'node:path';"],
-      ['open.ts', "const BUNDLE = new URL('../../../apps/web/dist/', import.meta.url);"],
-    ];
+    // Both directions, so neither is shown red only by its neighbour (Q-0107): the register's one
+    // entry over a module that has stopped self-locating, and the same entry over a corpus that does
+    // not hold the module at all. The two produce different sentences.
+    //
+    // **This is the clause Q-0124 was forced by rather than one it chose to edit.** `open.ts` now
+    // finds the bundle through `@quorum/web`'s manifest, so leaving Q-0126's entry in place would
+    // have produced the first sentence below against the shipped tree — which is why the register
+    // returning to one entry is the mechanism working and not a tidy-up.
+    const plain: [string, string][] = [['init.ts', "import path from 'node:path';"]];
     expect(locationOffenders([], plain, SELF_LOCATING))
       .toStrictEqual(['init.ts: its entry permits a self-location the module does not perform']);
     expect(locationOffenders([], [], SELF_LOCATING))
-      .toStrictEqual([
-        "init.ts: an entry for a module that is no command's",
-        "open.ts: an entry for a module that is no command's",
-      ]);
+      .toStrictEqual(["init.ts: an entry for a module that is no command's"]);
+    // And the sentence the removed entry would have produced, shown over a copy: the register is a
+    // claim about what each module does, so an entry outliving its mechanism is a failure by name.
+    const stale: [string, string][] = [['open.ts', "const BUNDLE = new URL('.', import.meta.resolve('@quorum/web/bundle'));"]];
+    expect(locationOffenders([], stale, { 'open.ts': 'the entry Q-0124 removed' }))
+      .toStrictEqual(['open.ts: its entry permits a self-location the module does not perform']);
   });
 
   test('the clause reads what a module executes, not what its prose says — which is why IO_MODULE missed it', () => {

@@ -21,42 +21,34 @@
  * {@link launchWarning} says so and the exit code does not move. `--no-open` serves without
  * launching, and the URL line is byte-identical either way.
  *
- * **The daemon is reached through a dynamic import, and that is a packaging constraint rather than
- * a style.** `@quorum/cli` declares `@quorum/server` under `optionalDependencies`, so an
- * installation that could not resolve it still installs; `main.ts` imports every command module
- * statically and dispatches from a table, so the module is loaded whatever command was typed, and a
- * static specifier here would make `quorum help` die with `ERR_MODULE_NOT_FOUND` on that
- * installation. What must be deferred is therefore the **specifier**, not the module. Both halves
- * are required and neither rescues the other. Why: see *"An optional edge says the daemon may be
- * absent, and never why"* (2026-09-14).
+ * **The daemon and the bundle are both ordinary dependencies, and the specifier is static.**
+ * `@quorum/cli` declares `@quorum/server` and `@quorum/web` under `dependencies`, so an installation
+ * that has this package has both, and what used to be deferred is deferred no longer. A required
+ * edge removes the case the deferral was for — *absent* stops being reachable, and what remains is a
+ * corrupt install, which every command should fail loudly on rather than one command report
+ * politely. Why: see *"The distribution set is five, and rejoins the emitting set"* (2026-09-15),
+ * which supersedes *"An optional edge says the daemon may be absent, and never why"* (2026-09-14)
+ * rather than amending it: the exemption that entry authorised is deleted, not widened.
  *
- * **What the refusal may claim is the other half of that entry.** An import that did not resolve
- * cannot tell an installation deliberately without the daemon from one that is damaged, so
- * {@link NO_DAEMON_CONDITION} reports what failed to resolve *here* and names the workspace that
- * carries it, and says nothing about why. A failed probe is not a proven negative — *"A probe that
- * could not answer is not a negative"* (2026-09-10).
+ * **The bundle is found by package name, and that is the one expression both installations
+ * answer.** `@quorum/web` publishes a single locator subpath, so {@link BUNDLE} resolves through
+ * that package's own manifest — to `apps/web/dist/` in this workspace and to
+ * `node_modules/@quorum/web/dist/` in a packed install — where the module-relative path this
+ * replaced answered `node_modules/apps/web/dist` outside the workspace, a directory with no meaning
+ * there. `process.cwd()` would answer the operator's directory and an environment variable whatever
+ * was exported, which is the argument `static.ts`'s header already makes for the daemon. It travels
+ * as a `URL` because this package may import no `node:url` — see {@link BUNDLE}.
  *
- * **And it is reached only where that package is what failed to resolve.** A daemon that resolved
- * and then failed — a syntax error, a top-level throw, a dependency missing from inside it — is a
- * package that *is* here, so rendering one of those as *did not resolve from this installation*
- * would assert the absence that entry forbids asserting and bury an actionable failure behind a
- * packaging sentence. {@link isDaemonUnresolved} is that distinction, and everything it does not
- * recognise propagates as itself.
- *
- * **The bundle root is this module's own location and nothing else.** `process.cwd()` answers the
- * operator's directory and an environment variable answers whatever was exported, which is the
- * argument `static.ts`'s header already makes for the daemon and which reaches its caller unchanged.
- * It travels as a `URL` because this package may import no `node:url` — see {@link BUNDLE}.
- *
- * **The order of the three refusals is ruled** — daemon, then project, then bundle. On a packed
- * install this file sits at `node_modules/@quorum/cli/dist/`, so {@link BUNDLE} resolves to a path
- * with no meaning there, and checking it first would report *no build at `node_modules/apps/web/dist`*
- * instead of the true thing, which is that this installation did not resolve the daemon. The two
- * argv refusals sit ahead of all three and are not further members of that order: those three are
- * claims about an *installation*, and these are about what was typed, which is wrong on every
- * installation and costs nothing to establish.
+ * **The order of the two refusals is ruled** — project, then bundle. It was three, and the first of
+ * them named a daemon that had not resolved; the entry above removes that case and with it the
+ * reason the bundle check came last, which was that it could not name a real directory on a packed
+ * install. It can now, so what remains is ordered by cost: the project is the cheaper question and
+ * the one an operator is likelier to have got wrong. The two argv refusals sit ahead of both and are
+ * not further members of that order: these two are claims about an *installation*, and those are
+ * about what was typed, which is wrong on every installation and costs nothing to establish.
  */
 import { loadProject, openUrl, ProjectNotFoundError, type BrowserLaunch } from '@quorum/core';
+import { BIND_HOSTNAME, createDaemon } from '@quorum/server';
 import { DEFAULT_DAEMON_PORT, NO_BUNDLE_CODE } from '@quorum/shared';
 
 import { c } from './colour.js';
@@ -65,7 +57,21 @@ import { SIGNAL } from './exit.js';
 import type { CommandHandler } from './main.js';
 
 /**
- * The built web app, resolved relative to this module and to nothing else.
+ * The built web app, resolved through `@quorum/web`'s own manifest.
+ *
+ * **Found by package name rather than by this module's location, which is what makes one expression
+ * answer both installations.** `@quorum/web` publishes exactly one subpath — the bundle's entry
+ * document — and the directory that holds it is what `serve` wants, so the containing URL is derived
+ * from what the resolver answered. Under the workspace that is `apps/web/dist/`; under a packed
+ * install it is `node_modules/@quorum/web/dist/`. The register the package publishes is deliberately
+ * one key rather than a `./dist/*` pattern, on the refusal `package.test.ts` already makes for
+ * `@quorum/core`: a wildcard defers what a consumer may reach to whoever types one first, and the
+ * emitted asset filenames are hashed and nobody else's business.
+ *
+ * **It answers without the build existing**, which is what keeps `serve`'s own missing-build refusal
+ * reachable: resolution reads the manifest and does not open the target. Measured rather than
+ * assumed — with `dist/` removed this still resolves, and the refusal below is what reports it,
+ * naming a directory inside the installation the reader is standing in.
  *
  * **A `URL`, handed across the package boundary unconverted**, which is the shape `init.ts`'s
  * `TEMPLATES` already has and for the identical reason: `frame.source.test.ts`'s `IO_MODULE`
@@ -74,25 +80,8 @@ import type { CommandHandler } from './main.js';
  * in place, so an installation under a path containing a space would resolve to a directory that
  * does not exist and be refused for a build that is present. `ServeOptions.bundle` therefore takes
  * `string | URL` and `packages/server` converts at the one site that needs a path.
- *
- * Three levels up because this module sits at `<package>/src/` under the source condition and at
- * `<package>/dist/` under the emit, and 078(e) fixes that depth so both answer the same directory.
  */
-const BUNDLE = new URL('../../../apps/web/dist/', import.meta.url);
-
-/**
- * What this command says when `@quorum/server` did not resolve.
- *
- * Two constants rather than one sentence, on `refusal.ts`'s split: the **condition** is what was
- * observed and the **remedy** is what this surface offers for it. It names no cause, because the
- * import cannot establish one — it may not say the daemon is missing, broken or deliberately
- * omitted, all three of which are claims about an installation this process cannot inspect.
- */
-export const NO_DAEMON_CONDITION = '@quorum/server did not resolve from this installation';
-
-/** The remedy for {@link NO_DAEMON_CONDITION}: where the daemon is, and what is unaffected. */
-export const NO_DAEMON_REMEDY =
-  'the Quorum workspace carries it at packages/server; every other command works here';
+const BUNDLE = new URL('.', import.meta.resolve('@quorum/web/bundle'));
 
 /**
  * What this command takes, quoted at a refusal.
@@ -170,69 +159,23 @@ const isPortInUse = (error: unknown): boolean =>
 /**
  * Whether `error` is `serve`'s own refusal for a bundle root that carries no build.
  *
- * By `code` and never by message, which is what {@link isPortInUse} does and what
- * {@link isDaemonUnresolved} has to depart from for want of anything else to read. `serve` attaches
- * {@link NO_BUNDLE_CODE} at the throw site precisely so this caller need not read a sentence, and
- * the sentence it then renders is `packages/server`'s own, unaltered.
+ * By `code` and never by message, which is what {@link isPortInUse} does and what every predicate
+ * in this module now does — the one that had to read a sentence for want of anything else went with
+ * the case it was for, at Q-0124. `serve` attaches {@link NO_BUNDLE_CODE} at the throw site
+ * precisely so this caller need not read a sentence, and the sentence it then renders is
+ * `packages/server`'s own, unaltered.
  */
 const isMissingBundle = (error: unknown): boolean =>
   (error as { code?: unknown } | null)?.code === NO_BUNDLE_CODE;
 
 /**
- * Whether `error` is the daemon's own specifier failing to **resolve**, rather than a failure of
- * something inside a package that resolved perfectly well.
- *
- * **Two clauses, because the `code` alone cannot separate the four shapes — measured against Node
- * rather than reasoned about.** An installation carrying no daemon raises `ERR_MODULE_NOT_FOUND`
- * with `Cannot find package '@quorum/server' imported from …`; a dependency missing from *inside*
- * the daemon raises **the identical code** with `Cannot find package 'hono' imported from
- * …/@quorum/server/dist/index.js`. A module that will not parse is a `SyntaxError` and a top-level
- * throw is whatever was thrown, and neither carries a `code` at all. So the code separates two of
- * the shapes and the **quoted** specifier separates the other two: Node quotes the specifier it
- * could not find and leaves the importer's path beside it unquoted, which is what keeps this from
- * matching a path that merely contains the daemon's own directory.
- *
- * **Reading a message is what {@link isPortInUse} above refuses to do, and this exception is bounded
- * rather than an oversight.** There is nothing else to read — the error's own properties are
- * `stack`, `code` and `message` — so the specifier that failed is in the sentence or nowhere. What
- * makes it safe is the direction it fails in: a runtime that rewords that sentence stops matching,
- * and an error this does not recognise **propagates** to `main().catch(dieOnUnexpected)` as a stack
- * instead of being reported as an absence. A rewording costs the refusal, never the truth of it, and
- * `build.test.ts`'s packed fixture is what goes red the day one arrives.
- */
-export function isDaemonUnresolved(error: unknown): boolean {
-  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
-  if (code !== 'ERR_MODULE_NOT_FOUND' || typeof message !== 'string') return false;
-  return message.includes("'@quorum/server'");
-}
-
-/**
- * The daemon's module, or this command's one refusal.
- *
- * The specifier is deferred and nothing else is: the module must not be named anywhere `tsc` would
- * resolve it eagerly, which is why the return type is a `typeof import(...)` query — erased by the
- * compiler, so the only occurrence the emit *loads* anything for is inside this call.
- */
-async function daemon(): Promise<typeof import('@quorum/server')> {
-  try {
-    return await import('@quorum/server');
-  } catch (error) {
-    // Only this package failing to resolve becomes the refusal; a daemon that resolved and then
-    // failed is rethrown so `main().catch(dieOnUnexpected)` prints its stack, which is `run.ts`'s
-    // own shape for the same distinction. Why: see *"An optional edge says the daemon may be absent,
-    // and never why"* (2026-09-14), clause 2.
-    if (!isDaemonUnresolved(error)) throw error;
-    return die(`${NO_DAEMON_CONDITION} — ${NO_DAEMON_REMEDY}`);
-  }
-}
-
-/**
  * The project this daemon serves, or the sentence a stranger reads when there is none.
  *
  * `run.ts`'s `openProject` at a second site, and reached through `@quorum/core` rather than through
- * `@quorum/server`'s own `openProject` — which is measured rather than stylistic. That symbol lives
- * in the package that may not be installed, so routing project resolution through it would make
- * *no project here* unreportable on exactly the installation where the daemon is absent.
+ * `@quorum/server`'s own `openProject`. That was measured rather than stylistic while the daemon
+ * package might not be installed; it stays because the layering is right either way — the project is
+ * `core`'s to resolve, and a command reaching for it through the transport would make every other
+ * command's `loadProject` the odd one out.
  */
 function projectAt(where: unknown): ReturnType<typeof loadProject> {
   try {
@@ -302,7 +245,6 @@ export const openOn = (
     die(`--no-open takes no value, and was given ${JSON.stringify(noOpen)} — ${USAGE}`);
   }
 
-  const { BIND_HOSTNAME, createDaemon } = await daemon();
   const project = projectAt(flags.project);
   const port = portFrom(flags.port);
 
@@ -322,9 +264,9 @@ export const openOn = (
     // one sentence and dropped the stack — asserting a cause it had not established, and hiding the
     // one failure a maintainer could act on. AC-4 authorises catching the missing bundle; AC-5
     // authorises `EADDRINUSE`; nothing authorises the rest, so the rest reaches
-    // `main().catch(dieOnUnexpected)` as a stack. Same shape as {@link isDaemonUnresolved} above,
-    // and the same reason: *"An optional edge says the daemon may be absent, and never why"*
-    // (2026-09-14) clause 2.
+    // `main().catch(dieOnUnexpected)` as a stack. It is the same shape the daemon's own catch had
+    // until Q-0124 removed the case for one, and it outlives that removal because a start can still
+    // fail for reasons this command has not established.
     throw error;
   }
 
@@ -356,16 +298,17 @@ export const openOn = (
 };
 
 /**
- * `quorum open` against the bundle this module's own location names — the handler the frame
- * registers, and the only one an operator can reach.
+ * `quorum open` against the bundle `@quorum/web` names — the handler the frame registers, and the
+ * only one an operator can reach.
  *
  * **Both parameters above are `run.ts`'s `runOn({ … })` at a second site, and neither is a flag.**
  * Non-goal 6 refuses a `--bundle`, so there stays exactly one way for an operator to find the
  * bundle; what `bundle` buys is a test that can serve a fixture without writing into a sibling
  * package's emit directory — a write that would race `build.test.ts`'s own `runBuild()`.
- * `test/invoke.ts`'s `capture` documents the same shape for the gate reader's streams. What AC-3
- * claims is that the shipped root is module-relative rather than taken from the working directory or
- * the environment, and this default is that root.
+ * `test/invoke.ts`'s `capture` documents the same shape for the gate reader's streams. What Q-0126
+ * AC-3 claims is that the shipped root is derived rather than taken from the working directory or
+ * the environment, and this default is that root — resolved through `@quorum/web` since Q-0124,
+ * where it was resolved relative to this module before.
  *
  * **`launcher` is `openUrl`'s own options object and is deliberately not a stub of `openUrl`**: a
  * test that replaced the function would prove this module calls something, where one that supplies

@@ -1,8 +1,9 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, test } from 'vitest';
 
-import { decisionFiles, flowFiles, read, repoFile } from '../test/corpus.js';
+import { decisionFiles, flowFiles, read, repoFile, repoRoot } from '../test/corpus.js';
 import { gateAnswerSchema } from './events.js';
 
 // AC-4, AC-8 and AC-11 all require the documents to end up agreeing with what shipped. These check
@@ -442,7 +443,7 @@ describe('Q-0098 AC-21 — the documentation separates three installation claims
     for (const file of EDITED) {
       const text = flowed(file);
       expect(text, `${file} does not name the workspace-local path`).toMatch(/workspace-local/i);
-      expect(text, `${file} does not name the locally packed path`).toMatch(/locally packed|packed tarball|three tarballs/i);
+      expect(text, `${file} does not name the locally packed path`).toMatch(/locally packed|packed tarball|five tarballs/i);
       expect(text, `${file} does not say the registry path is refused`).toMatch(/refused rather than deferred|does not\b[\s\S]{0,200}private/i);
       expect(text, `${file} does not route the registry path to its owner`).toContain('Q-0029');
     }
@@ -1288,20 +1289,38 @@ describe('Q-0125 AC-10 and AC-11 — the architecture document says the daemon e
       .toContain('A fifth package emits, and `resolved` is not a synonym for `distributed`');
   });
 
-  test('AC-10 — and it says the two sets are different sizes, so "emits" is not read as "ships"', () => {
-    // The half that stops an export map being mistaken for a tarball. Both numbers are named, and
-    // the consequence is named with them: a packed CLI importing the daemon package would be
-    // broken, which is Q-0124's question rather than a silence. The reason the emit is owed at all
-    // is stated too, because no landed entry had it before this one — a workspace-internal consumer
-    // running outside the workspace's own conditions.
+  test('Q-0124 — and it says the two sets are the same size again, without saying they are one question', () => {
+    // **This clause asserted the opposite until Q-0124 and the inversion is the point.** It required
+    // *"the distribution set stays three"* and *"a packed CLI importing it would be broken"*, which
+    // were the two consequences of the split; that ticket packs the daemon, so both
+    // sentences are false and the section states what replaced them. The reason the emit is owed at
+    // all is unchanged and is still asserted, because no landed entry had it before Q-0125 — a
+    // workspace-internal consumer running outside the workspace's own conditions.
     const text = section();
     expect(text, 'the section does not say the emitting set is five').toMatch(/emitting set is five/);
-    expect(text, 'the section does not say the distribution set stays three').toMatch(/distribution set stays three/);
-    expect(text, 'the section does not say what a packed CLI importing it would do')
-      .toMatch(/a packed `@quorum\/cli` importing it would be broken/);
-    expect(text, 'the section does not route the distribution question to its owner').toContain('Q-0124');
+    expect(text, 'the section does not say the distribution set is five too')
+      .toMatch(/local distribution set is five/);
+    expect(text, 'the section still says the distribution set stays three')
+      .not.toMatch(/distribution set stays three/);
+    expect(text, 'the section still says a packed CLI importing it would be broken')
+      .not.toMatch(/a packed `@quorum\/cli` importing it would be broken/);
+    expect(text, 'the section does not say a tarball carries it').toMatch(/A tarball carries\s+this package now/);
+    // **And it keeps *distributed* apart from *published***, which is the clause most likely to be
+    // dropped as redundant and the one decision 096 gives its own paragraph: five tarballs move
+    // nothing about registry resolution, which 078(d) still refuses.
+    expect(text, 'the section does not say what distributed means here').toMatch(/never publication/);
+    expect(text, 'the section does not name where publication still stands').toContain('Q-0029');
     expect(text, 'the section does not say why the emit is owed when nothing outside consumes the package')
       .toMatch(/workspace-internal consumer running outside the workspace's own\s*\*\*? ?conditions|workspace-internal consumer running outside the workspace's own conditions/);
+    // The two negatives have subjects, in the shape this file's other blocks use: the same needles
+    // find the superseded wording where it is written.
+    // The scope is assembled rather than written, because `index.test.ts` forbids the workspace
+    // scope anywhere under `src/`, this file included — the same rule every needle here follows.
+    const asItWas = `the emitting set is five and the local distribution set stays three, so no tarball carries this package and a packed \`@${'quorum'}/cli\` importing it would be broken`;
+    expect(asItWas, 'the fixture no longer reproduces the first wording this clause refuses')
+      .toMatch(/distribution set stays three/);
+    expect(asItWas, 'the fixture no longer reproduces the second wording this clause refuses')
+      .toMatch(/a packed `@quorum\/cli` importing it would be broken/);
   });
 
   test('AC-11 — nothing gives "no exports map" as the reason a browser cannot import the daemon', () => {
@@ -1396,11 +1415,17 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
    * suite green.
    */
   const LIVE: [string, RegExp][] = [
-    ['docs/04-architecture.md', /five\npackages emit and three are packed|five packages emit and three are packed/],
+    // **Two count sentences in this document and each needs a needle only it can satisfy**, which
+    // the pair below is: the **Shape** paragraph breaks its line inside the claim and the cache-hit
+    // paragraph does not, so neither regex can be satisfied by the other's site. An alternation
+    // spanning both would have let one site go stale while the other kept the clause green.
+    ['docs/04-architecture.md', /`pnpm pack` in each of the five \*\*distribution\*\*/],
+    ['docs/04-architecture.md', /\*\*Five\npackages emit and five are packed\*\*/],
     ['docs/04-architecture.md', /The five packages that emit are named under/],
-    ['docs/04-architecture.md', /\*\*Five packages emit and three are packed\*\*/],
+    ['docs/04-architecture.md', /\*\*Five packages emit and five are packed\*\*/],
     ['docs/GLOSSARY.md', /five packages that emit/],
     ['docs/GLOSSARY.md', /The \*\*emitting set\*\* is five/],
+    ['docs/GLOSSARY.md', /the \*\*local distribution set\*\* is the same five/],
   ];
 
   /**
@@ -1419,6 +1444,18 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
     ['docs/GLOSSARY.md', /The \*\*emitting set\*\* is four/],
     ['docs/GLOSSARY.md', / is the difference: it emits and is not distributed/],
     ['docs/GLOSSARY.md', /none of the three is bundled/],
+    // Q-0124's own five. The counts that were true from 2026-09-12 to 2026-09-15, and the sentences
+    // that gave the split as a live fact rather than as a past one. They are the likeliest thing a
+    // careless edit leaves behind, precisely because they were right three days ago.
+    ['docs/04-architecture.md', /in each of the three \*\*distribution\*\*/],
+    ['docs/04-architecture.md', /five\npackages emit and three are packed/],
+    ['docs/04-architecture.md', /\*\*Five packages emit and three are packed\*\*/],
+    // Narrowed to the clause the section carried rather than to the words alone: the **status
+    // line**'s record of what Q-0125 did ends *"the local distribution set stays three."* and is
+    // HISTORICAL — a needle that matched it would demand the page rewrite its own account of a past
+    // ticket, which is the blanket replacement this pairing exists to refuse.
+    ['docs/04-architecture.md', /local distribution set stays three, so no tarball carries/],
+    ['docs/GLOSSARY.md', /the \*\*local distribution set\*\* is the first\s+three/],
   ];
 
   /**
@@ -1432,6 +1469,11 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
     ['docs/decisions/092-a-fourth-package-emits-and-what-it-emits-is-served.md', /the emitting set is four and the local distribution set/],
     ['docs/04-architecture.md', /2026-09-12 \(Q-0122\)/],
     ['docs/GLOSSARY.md', /which took it from three packages to four/],
+    // Q-0124's addition, and the one that makes the SUPERSEDED needle above narrow rather than
+    // careless: the status line's account of Q-0125 states the split as that ticket left it, which
+    // stays exactly as it is. A find-and-replace over "stays three" fails here.
+    ['docs/04-architecture.md', /the emitting set is five and the local distribution set stays three\./],
+    ['docs/decisions/093-a-fifth-package-emits-and-resolved-is-not-distributed.md', /resolved and not distributed/],
   ];
 
   /** The whitespace-flattened read this block's prose clauses use, as the blocks above define it. */
@@ -1466,6 +1508,16 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
       'The **emitting set** is four — the vocabulary package, the engine,',
       'The browser app is the difference: it emits and is not distributed, staying `private: true`',
       'A **resolved** emitted artifact is not a "bundle" — none of the three is bundled, each source',
+      // Q-0124's five, reproducing the text as it stood on `main` before this ticket — including the
+      // line break the **Shape** paragraph puts inside its own claim, which is what the needle for
+      // that site is anchored on.
+      'The **locally packed** path is supported and tested: `pnpm pack` in each of the three **distribution**',
+      'packages and an install of the three tarballs together into a project outside the repository. Three',
+      'rather than *"the three emitting packages"*, which is what this sentence said until 2026-09-12: **five',
+      'packages emit and three are packed**, so naming the packed set by the emitting set\'s name stopped',
+      '**Five packages emit and three are packed**, which since 2026-09-12 are two different sets',
+      'the emitting set is five and the local distribution set stays three, so no tarball carries',
+      'and the **local distribution set** is the first\nthree, what a `pnpm pack` of this repository produces',
     ].join('\n');
     for (const [, needle] of SUPERSEDED) {
       expect(asItWas, `the fixture no longer reproduces ${String(needle)}`).toMatch(needle);
@@ -1485,8 +1537,18 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
       .toMatch(/resolved\*\* emit is what Node resolves through a package's `default` condition/);
     expect(glossary, 'the glossary does not say the two axes are independent')
       .toMatch(/resolved and not distributed/);
-    expect(glossary, 'the glossary does not name both packages that are the difference')
-      .toMatch(/`@quorum\/web` and `@quorum\/server` are the difference/);
+    // **This clause named the two packages that were the difference, and Q-0124 leaves none.** It
+    // read *"the glossary does not name both packages that are the difference"*, which was a claim
+    // about a split that has closed; what survives it is the reason the vocabulary was defined by
+    // mechanism in the first place — so what is asserted now is that the entry says the two sets
+    // coincide **without** saying they are one question, which is the sentence that keeps 093 useful
+    // at the next emitter.
+    expect(glossary, 'the glossary does not say the distribution set is the same five')
+      .toMatch(/the \*\*local distribution set\*\* is the same five/);
+    expect(glossary, 'the glossary presents the sets coinciding as a rule rather than as a moment')
+      .toMatch(/a property\s+of this moment rather than a rule|a property of this moment rather than a rule/);
+    expect(glossary, 'the glossary still gives the two packages as a live difference')
+      .not.toMatch(/\*\*`@quorum\/web` and `@quorum\/server` are the difference\*\*/);
     expect(glossary, 'the glossary does not cite the entry that ruled it')
       .toContain('A fifth package emits, and `resolved` is not a synonym for `distributed`');
     // The negative has a subject, in the shape the block above uses.
@@ -1502,5 +1564,92 @@ describe('Q-0125 AC-12 — every count-bearing sentence in the documents is clas
       .toContain('A fifth package emits, and *resolved* is not a synonym for *distributed*');
     expect(repoFile('docs/decisions/093-a-fifth-package-emits-and-resolved-is-not-distributed.md'), 'the entry does not open with its title and date')
       .toMatch(/^# A fifth package emits, and \*resolved\* is not a synonym for \*distributed\* — 2026-09-12/);
+    // Q-0124's own, which supersedes 094 and is what the documents above now cite.
+    expect(repoFile('docs/DECISIONS.md'), 'the index does not carry the distribution-set entry')
+      .toContain('The distribution set is five, and rejoins the emitting set');
+    expect(repoFile('docs/decisions/096-the-distribution-set-is-five-and-rejoins-the-emitting-set.md'), 'the entry does not open with its title and date')
+      .toMatch(/^# The distribution set is five, and rejoins the emitting set — 2026-09-15/);
+  });
+});
+
+describe('Q-0124 AC-13 — the installation documents describe the install a stranger will perform', () => {
+  /**
+   * The packages a `pnpm pack` of this repository really produces, **derived from the manifests
+   * rather than written down**.
+   *
+   * A package is in the local distribution set exactly when it declares a `files` allow-list: that
+   * is what makes its tarball a decided set of paths rather than whatever the checkout happens to
+   * hold, and it is the key decision 096 clause 3 names. Keyed on the **behaviour** rather than on a
+   * list of names, which is the seventh recorded instance of that distinction in this repository and
+   * the reason a sixth distributed package fails the two clauses below rather than passing them.
+   *
+   * Both workspace roots, because two of the five are not under `packages/` — the assumption that
+   * broke `build.test.ts`'s own loops at this ticket, found here as well because `README.md`
+   * documents the same walk for a human to type.
+   */
+  const WORKSPACE_ROOTS = ['packages', 'apps'];
+  const MANIFEST = 'package.json';
+
+  const distributed = (): { name: string; directory: string; tarball: string }[] => {
+    const found: { name: string; directory: string; tarball: string }[] = [];
+    for (const root of WORKSPACE_ROOTS) {
+      for (const entry of fs.readdirSync(path.join(repoRoot, root), { withFileTypes: true })) {
+        const relative = `${root}/${entry.name}`;
+        if (!entry.isDirectory() || !fs.existsSync(path.join(repoRoot, relative, MANIFEST))) continue;
+        const manifest = JSON.parse(repoFile(`${relative}/${MANIFEST}`)) as { name?: string; files?: unknown; version?: string };
+        if (manifest.files === undefined || manifest.name === undefined) continue;
+        found.push({
+          name: manifest.name,
+          directory: relative,
+          // What `pnpm pack` writes: the scope's `@` goes, its slash becomes a dash, and the
+          // version is appended. Derived from the manifest so a version bump moves the README
+          // rather than this assertion.
+          tarball: `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version ?? '0.0.0'}.tgz`,
+        });
+      }
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  /** A count as a reader meets it in prose. Five entries, because the set has never been near ten. */
+  const IN_WORDS: Record<number, string> = { 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven' };
+
+  test('the derivation has a subject, and finds the two that are not under packages/', () => {
+    // Anti-vacuity first: a walk that found nothing would leave both clauses below true of nothing,
+    // and a walk that reached only `packages/` would leave the README's loop unchecked in exactly
+    // the place it is wrong.
+    const set = distributed();
+    expect(set.length, 'no package declares a files allow-list — the clauses below prove nothing').toBeGreaterThan(2);
+    expect(set.some((member) => member.directory.startsWith('apps/')),
+      'the walk reaches no package outside packages/, which is the assumption this clause exists to check').toBe(true);
+    expect(IN_WORDS[set.length], `${String(set.length)} distributed packages and no word for that count`).toBeDefined();
+  });
+
+  test('README names every tarball the pack loop produces, and a directory per package', () => {
+    const readme = repoFile('README.md');
+    for (const member of distributed()) {
+      expect(readme, `README does not install ${member.tarball}`).toContain(member.tarball);
+      expect(readme, `README's pack loop does not reach ${member.directory}`).toContain(member.directory);
+    }
+    // And the count it states in prose agrees, so a sixth member arriving fails here rather than
+    // being installed by a block whose own sentence says there are five.
+    // Compared case-insensitively because the count opens a sentence in the document and is mid
+    // sentence here; what is held is the number, not the capital.
+    expect(readme.toLowerCase(), 'the README states a tarball count that is not the set it installs')
+      .toContain(`${IN_WORDS[distributed().length]} tarballs, installed together`);
+  });
+
+  test('and pillar 7 states the same count, which is what every product-manager step is fed', () => {
+    // **Asserted before the README's own clause would matter most.** `harness/product-context.md` is
+    // read at run time by every product-manager step, so a false installation claim there is one
+    // every future requirement inherits — Q-0098's finding, and the reason this is a criterion
+    // rather than a tidy-up.
+    const pillar = repoFile('harness/product-context.md').replace(/\s+/g, ' ');
+    expect(pillar, 'pillar 7 states a distribution count that is not the set on disk')
+      .toContain(`the ${IN_WORDS[distributed().length]} **distribution** packages`);
+    // The negative has a subject: the same needle finds the superseded count where it is written.
+    const asItWas = 'and the locally packed path (the three **distribution** packages\' tarballs installed together';
+    expect(asItWas, 'the fixture no longer reproduces the wording this clause replaces')
+      .toContain('the three **distribution** packages');
   });
 });
