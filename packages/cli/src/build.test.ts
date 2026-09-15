@@ -2216,6 +2216,50 @@ describe('Q-0098 AC-18 and AC-20 — the workspace path works, and resolves loca
     ]);
   }, 300_000);
 
+  test('Q-0124 AC-13(d) — every turbo filter USAGE.md documents is one this turbo accepts, and selects what the prose claims', () => {
+    // The defect this closes was shipped by iteration 1 and found by review: the paragraph advising
+    // how to end up WITHOUT a bundle named `--filter=@quorum/cli --no-deps`, which turbo 2.10 refuses
+    // as an unexpected argument before planning anything — so the one command documented to produce
+    // the refusal it illustrates could not run at all, and nothing held the advice against the CLI it
+    // describes.
+    //
+    // EXECUTED rather than read, and the spans are taken OUT of the document rather than transcribed
+    // here, which is what makes this anti-drift in both directions: a flag table belongs to the
+    // installed tool, so a prose edit naming a flag this turbo rejects fails here, and a turbo upgrade
+    // that retires a documented flag fails here too. `--dry=json` plans and executes nothing.
+    const usage = read(WORKSPACE, 'docs', 'USAGE.md');
+    const FILTER = /`([^`\n]*--filter=[^`\n]*)`/g;
+    const documented = [...usage.matchAll(FILTER)].map((span) => span[1].trim());
+    expect(documented.length, 'USAGE.md documents no turbo filter at all — this check has lost its subject')
+      .toBeGreaterThan(0);
+
+    /** The task ids a documented fragment selects, having first required turbo to accept it. */
+    const selects = (fragment: string): string[] => {
+      const flags = fragment.split(/\s+/);
+      const planned = attempt(turboBin(), ['run', 'build', ...flags, '--dry=json'], turboEnv());
+      expect(planned.status, `turbo rejected \`${fragment}\`, which docs/USAGE.md documents: ${planned.stderr.trim()}`).toBe(0);
+      return (JSON.parse(planned.stdout) as { tasks: TurboTask[] }).tasks.map((task) => task.taskId);
+    };
+    const selected = documented.map(selects);
+
+    // The paragraph makes two claims and they are opposite ones, so both are asserted by OUTCOME
+    // rather than by naming either fragment — which is what keeps this from being the prose written
+    // twice. One documented filter must reach the bundle, or "builds the web app too" is false; one
+    // must exclude it, or the refusal the paragraph illustrates is unreachable and the advice is a
+    // description of nothing.
+    expect(selected.some((ids) => ids.includes('@quorum/web#build')),
+      'no documented filter reaches the bundle, so USAGE.md\'s "builds the web app too" has no example').toBe(true);
+    expect(selected.some((ids) => !ids.includes('@quorum/web#build')),
+      'no documented filter excludes the bundle, so the refusal USAGE.md illustrates cannot be produced').toBe(true);
+
+    // The runner discriminates, which is the whole of whether the acceptance clause above refused
+    // anything. An invented name rather than `--no-deps`: what is pinned is that this runner reports a
+    // flag turbo does not know, not turbo's flag table at one version — a later turbo restoring
+    // `--no-deps` must not turn this red.
+    const invented = attempt(turboBin(), ['run', 'build', '--filter=@quorum/cli', '--quorum-not-a-turbo-flag', '--dry=json'], turboEnv());
+    expect(invented.status, 'turbo accepted a flag it does not know, so the acceptance clause above cannot fail').not.toBe(0);
+  }, 300_000);
+
   test('and pnpm exec fails rather than falling back — it resolves locally or not at all', () => {
     // The guarantee the test above rests on, **shown to discriminate rather than assumed**. `pnpm
     // exec` is not `npx` and not `pnpm dlx`: it runs a binary already linked into `node_modules/.bin`

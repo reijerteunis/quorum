@@ -285,8 +285,8 @@ the daemon has no authentication and it starts agent runs.
 naming the directory it looked in and the file it wanted. `pnpm turbo run build` builds every
 emitter, and `--filter=@quorum/cli` now builds the web app too — `@quorum/cli` depends on
 `@quorum/web`, so turbo orders that build first. The filter that leaves you without a bundle is one
-that excludes it, `--filter=@quorum/cli --no-deps` among them, and the refusal above is what that
-looks like.
+that excludes it: `--filter=@quorum/cli --only` runs the CLI's own build and none of the builds it
+depends on, and the refusal above is what that looks like.
 
 **It works from a packed install as well as from the workspace.** The daemon is `@quorum/server` and
 the bundle is `@quorum/web`, and both are among the five tarballs a local `pnpm pack` produces — so
