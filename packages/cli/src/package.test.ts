@@ -85,11 +85,22 @@ describe('AC-1 — the manifest', () => {
     // derivation is least defensible to delete. A fourth section still cannot arrive unremarked.
     expect(Object.keys(own).filter((key) => key.toLowerCase().endsWith('dependencies')).sort())
       .toStrictEqual(['dependencies']);
-    // And the superseded shape is refused by name, so a revert to the optional edge fails here
-    // rather than passing over a section nothing asserts.
-    expect(Object.keys(own).filter((key) => key.toLowerCase().endsWith('dependencies')).sort(),
-      'the manifest still declares the two sections it declared before Q-0124')
-      .not.toStrictEqual(['dependencies', 'optionalDependencies']);
+    // **And the derivation can produce the superseded shape, which is what makes the clause above a
+    // check rather than a restatement.** This read `.not.toStrictEqual(['dependencies',
+    // 'optionalDependencies'])` over the same expression until a cross-vendor review of the code no
+    // in-flow reviewer saw pointed out that it cannot fail: the line above already pins the set to
+    // `['dependencies']`, so a second clause saying it is not something else is true by
+    // construction. A comment claiming it catches a revert was claiming what it could not back.
+    //
+    // The subject is the derivation, so the fixture is what a reverted manifest would look like and
+    // the assertion is that the same expression reports it.
+    const sectionsOf = (manifest: object): string[] =>
+      Object.keys(manifest).filter((key) => key.toLowerCase().endsWith('dependencies')).sort();
+    expect(sectionsOf({ dependencies: {}, optionalDependencies: {} }),
+      'the derivation cannot see an optional section, so the clause above discriminates nothing')
+      .toStrictEqual(['dependencies', 'optionalDependencies']);
+    expect(sectionsOf(own), 'the real manifest no longer matches what the derivation reports')
+      .toStrictEqual(['dependencies']);
   });
 
   test('names the binary `quorum`, and the package stays @quorum/cli', () => {

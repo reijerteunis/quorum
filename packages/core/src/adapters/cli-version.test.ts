@@ -370,8 +370,12 @@ describe('AC-1 — the vocabulary is declarations only, and lives in one place',
     // still fires is the next test, unchanged in substance from when it had a subject to permit.
     expect(Object.keys(DEFERRED_SPECIFIER), 'the register gained an entry and no ticket said so')
       .toStrictEqual([]);
-    expect(Object.keys(DEFERRED_SPECIFIER), 'the register still holds the entry it held before Q-0124')
-      .not.toStrictEqual(['packages/cli/src/open.ts']);
+    // **Deleted rather than kept, because it could not fail.** This read
+    // `.not.toStrictEqual(['packages/cli/src/open.ts'])` over the same expression the line above
+    // pins to `[]`, so it was true by construction while its message claimed it caught a revert — a
+    // guard asserting what it cannot back, found by a cross-vendor review of code no in-flow
+    // reviewer saw. What genuinely proves the predicate still reports in both directions is the
+    // mutated-copy test below, which is where that claim belongs and where it is made.
     expect(sources.length, 'the production corpus is empty — every clause here proves nothing')
       .toBeGreaterThan(10);
   });
