@@ -1,7 +1,7 @@
 ---
 id: Q-0124
 title: How an installation outside the workspace obtains the UI
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0124/integration
@@ -18,6 +18,14 @@ history:
     stage_after: draft
     at: 2026-09-15T06:09:02.859Z
     cost: 0
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-15T17:29:10.328Z
+    cost: 20.404
 ---
 After Q-0122 the bundle exists and is served from the workspace, and a locally packed install still has no web app: the local distribution set is three tarballs and apps/web is private:true with no files and no exports. Separately M3's done-when names quorum open and no ticket in this milestone builds it — packages/cli declares no dependency on @quorum/server, so nothing in the CLI can start a daemon at all.
 
@@ -238,4 +246,96 @@ A decision entry is owed before code and `developer-generalist` may not write on
   **inverts** rather than being deleted.
 - **The cold-clone cost**, since this is M6's path: +492 K emitted and +1.7 MB of `hono` closure,
   against Q-0014's measured +50 MB for the app's own dependencies. Re-derive rather than trust these.
+
+## The packaging cost, measured 2026-09-15 rather than estimated
+
+Taken in a throwaway worktree with `files: ["dist"]` declared on both new members and a forced build,
+by packing all five with `pnpm pack`:
+
+    @quorum/core    184 K        @quorum/web      100 K   (new)
+    @quorum/cli      72 K        @quorum/server    48 K   (new)
+    @quorum/shared   52 K
+    ------------------------------------------------------------
+    three today     308 K        five             456 K
+
+**So the ruling costs +148 K of tarball, a 48% increase on 308 K** — and not the +492 K the `dist`
+figures suggest, because those are uncompressed and a bundle compresses well. What each new tarball
+carries was read rather than assumed: `@quorum/web` is **5 entries** — `dist/index.html`, the hashed
+`.js` and `.css`, its manifest and the licence — and `@quorum/server` is **24**, its `dist` emit.
+
+**The install closure is where the real cost sits, and it is one-sided.** `@quorum/server` drags
+`hono`, `@hono/node-server` and `@hono/node-ws` — **1.7 MB installed** — because its emit imports
+them at run time. `@quorum/web` drags **nothing**, *provided* clause 3's demotion happens; left as
+`dependencies`, it would pull **8.2 MB of React the 100 K tarball already contains**.
+
+**Against M6's thirty minutes this is comfortable**, and the figure to watch is the 1.7 MB rather than
+the 148 K. For scale, Q-0014 measured the cold *store* at +50 MB for `apps/web`'s own dependencies,
+which is the number this ticket must not reproduce on the install path — and the demotion is what
+keeps it off.
+
+
+## The bundle locator works, and the narrow shape is the one precedent already chose
+
+Tested 2026-09-15 against Node on a throwaway package, because it is this ticket's one genuinely open
+technical element and the codex candidate specified it without running it.
+
+**`import.meta.resolve` resolves a non-module asset through an `exports` map.** It is path resolution
+rather than loading, so the target need not be importable JavaScript — an `.html` file resolves:
+
+    A.  exports { "./dist/index.html": "./dist/index.html" }
+        import.meta.resolve('@probe/web/dist/index.html')  ->  file:///…/dist/index.html   OK
+
+    B.  exports { "./dist/*": "./dist/*" }
+        '@probe/web/dist/index.html'      ->  file:///…/dist/index.html        OK
+        '@probe/web/dist/assets/app.js'   ->  file:///…/dist/assets/app.js     OK
+
+**Shape A is the one to take, and the reason is a landed refusal rather than taste.** B publishes the
+whole emit as a wildcard subpath, which is exactly what `packages/cli/src/package.test.ts` already
+refuses for `@quorum/core` — *"a `./*` key defers what a consumer may import to whoever types one
+first"* — and which Q-0125 re-asserted for `@quorum/server` (*"it publishes no subpath pattern, so no
+internal module is public by accident"*). The daemon does not need the assets exported: it serves them
+from the **directory**, which it derives from the entry's own resolved path, so exporting one file
+gives the CLI everything it needs and gives a stranger nothing else.
+
+**It returns a `file://` URL**, which is what `packages/cli` needs — that package may import no
+`node:url`, and Q-0126 already widened `ServeOptions.bundle` to `string | URL` for this exact class of
+reason. So the locator lands inside the seam that already exists rather than needing a new one.
+
+## Corrections to this operator's own measurements, 2026-09-15
+
+The requirements run's iteration 1 refuted four things in the *Measured 2026-09-15* block above. All
+four are confirmed and the block is wrong where they say it is; it is left in place rather than
+rewritten, because how the errors were made is the useful part.
+
+**1. The install closures were measured with a walk that could not see transitive dependencies.**
+Stated as `packages/server` **3 packages / 1.7 MB** and `apps/web` **2 / 8.2 MB**. Re-measured
+resolving each candidate through `realpath` — which is what the first walk did not do, so pnpm's
+`.pnpm` store was never entered and a dependency's own dependencies were invisible:
+
+    packages/server   4 packages   1.8 MB   hono, @hono/node-server, @hono/node-ws, ws
+    apps/web          3 packages   8.3 MB   react, react-dom, scheduler
+
+`ws` and `scheduler` are the two that were missing. **The sizes barely moved and the counts were
+wrong, which is the part that matters** — a closure stated as three packages when it is four is a
+measurement, not a rounding.
+
+**2. Two of the three distributed `dist` sizes were stale.** Stated as cli 220 K and core 680 K;
+measured now, **cli 256 K and core 696 K** — both grew with Q-0126, which landed between the two
+readings. `shared` 216 K was right. The **tarball** figures are unaffected, having been taken by
+actually packing: 308 K for three against 456 K for five.
+
+**3. `DISTRIBUTION` is not "the one list to move".** `build.test.ts` resolves a member as
+`path.join(WORKSPACE, 'packages', name)` at `:2270` and `:2302` among others, so `apps/web` — which
+is not under `packages/` — cannot join that list without those helpers changing too. The body's
+sentence would have sent an implementer to one constant for a change that is several.
+
+**4. Two line citations pointed at the wrong assertion.** The packed refusal is
+`build.test.ts:2461–2462`; `:2482` is the **damaged-daemon** case and the workspace assertion is
+`:2134`, inside the Q-0126 AC-8 block. An implementer following the body would have chased the wrong
+subject.
+
+**And one the run found that no measurement of mine looked for: neither `apps/web` nor
+`packages/server` declares a `license`,** while all three currently distributed packages carry
+`Apache-2.0` — verified. Latent exactly as the `react` division is latent: **distribution is what
+activates it**, and a tarball is where it would otherwise be noticed.
 
