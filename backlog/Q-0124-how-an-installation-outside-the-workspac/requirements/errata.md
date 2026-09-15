@@ -112,3 +112,48 @@ dead, and runs"* and its pnpm/npm packer-agreement sibling. They fail because th
 it.** Nothing else is red: everything the manifest moves mechanically inverted is already green, so a
 red suite during this run means the remaining work, and not an inherited breakage. Do not read the two
 failures as a defect on the branch — they are the subject.
+
+## E-3 — E-2 was false: the prep never landed, and the operator adopts the lockfile — 2026-09-15
+
+**Supersedes E-2 entirely.** Everything E-2 asserted about the state of
+`harness/Q-0124/integration` is wrong, and the implement round was right to say so.
+
+### What happened, plainly
+
+E-2 said the lockfile half was on the integration branch at commit `4ffa5d7` and instructed
+*"verify, do not redo"*. **It was not on any branch.** The operator created the preparation worktree
+with `git worktree add --detach`, which checks out a **detached HEAD** rather than the branch, so the
+commit was made on no branch and `harness/Q-0124/integration` never moved from `9582b0c`. The same
+prep for Q-0126 was done **without** `--detach` and did land, which is the difference.
+
+**The verification that should have caught it did not, and the reason is this repository's own most
+recorded defect class.** The operator ran `git log --oneline -1` *inside the detached worktree* and
+read its own commit back. That proves the commit **exists**; it says nothing about whether a branch
+points at it. `git branch --contains` is the check that answers the question that was actually being
+asked, and it was not run. *A check is not established by reading it* (2026-08-29), committed inside a
+gate obligation written to discharge a blocker.
+
+**The cost is $92.76**, the most expensive implement round in this project, spent re-deriving work
+that had already been done and then stopping on the one file the role may not write. E-2's second
+prediction — that the branch would start red on two failures — was false for the same reason: it
+started **green on the old rules**, because none of the guards had been inverted.
+
+### The resolution, and why it is `advance` rather than `retry`
+
+**Verified on `harness/Q-0124/implement` at `57ca37f` rather than taken from the report:**
+`pnpm install --frozen-lockfile` is clean, `pnpm turbo run test lint typecheck --force --continue` is
+**21/21 tasks, 0 cached**, and the packed fixture — the two tests E-2 predicted would be red — passes.
+`DISTRIBUTION` is five with the name-to-directory map spanning both workspace roots, and both new
+members carry `files: ["dist"]`, `license: "Apache-2.0"` and **retain `private: true`**, which is
+entry 096 clause 2 held.
+
+**The lockfile on that branch is correct and the operator adopts it.** The role's `paths:` do not
+reach `pnpm-lock.yaml` and the implement step said so; what it wrote is nonetheless right, and a
+generated file's correctness is mechanically checkable rather than a matter of authority — the frozen
+install is the check and it passes. **Ownership is taken here rather than left implicit**: the file is
+the human's, it has been verified, and no future round should read this as the role having gained that
+path.
+
+**So there is nothing for a `retry` to do.** Every criterion is implemented and the tree is green; the
+step stopped on a false statement in an erratum rather than on missing work. The gate answers
+`advance`, and `review` sees the change.
