@@ -94,11 +94,29 @@ describe('AC-1 — the manifest declares what it needs, each with a reason', () 
     }
   });
 
-  test('the two that ship to a browser are dependencies, and the build-time ones are not', () => {
-    // The division is the claim: what a bundle contains against what only builds or tests it.
+  test('Q-0124 AC-2 — nothing is a runtime dependency, because the bundle carries what it needs', () => {
+    // **This clause said the opposite until Q-0124, and the inversion is a ruling rather than a
+    // tidy-up.** It read *"the two that ship to a browser are dependencies, and the build-time ones
+    // are not"*, whose division was *what ends up in the bundle* — under which React is a dependency
+    // because it is in there. npm's division is *what must be installed beside the tarball*, and for
+    // a self-contained bundle the two select **opposite** sets: nothing has to be installed beside
+    // this one, because everything it needs is already inside it.
+    //
+    // It is latent until distribution and not before, which is what makes it this ticket's: nothing
+    // packed this package, so nothing ever acted on the declaration. Packed as it stood, a consumer
+    // would have installed **7.94 MB of React that the 100 K tarball already contains**. Why: *"The
+    // distribution set is five, and rejoins the emitting set"* (2026-09-15), clause 5.
+    //
+    // The evidence for it is the emitted bundle rather than this reasoning, and it is asserted where
+    // the emit is guaranteed to exist — `packages/cli/src/build.test.ts`, which runs the build. A
+    // clause here reading `dist/` would have a verdict that depended on whether anyone had built.
     const own = manifest();
-    expect(Object.keys(own.dependencies ?? {}).sort()).toStrictEqual(['@quorum/shared', 'react', 'react-dom']);
-    expect(Object.keys(own.devDependencies ?? {})).not.toContain('react');
+    expect(Object.keys(own.dependencies ?? {}), 'a runtime dependency arrived, so the tarball now obliges an install')
+      .toStrictEqual([]);
+    for (const name of ['react', 'react-dom', '@quorum/shared']) {
+      expect(Object.keys(own.devDependencies ?? {}), `${name} is not declared as a build-time dependency`)
+        .toContain(name);
+    }
   });
 
   test('no file in this package names a credential, and the scan has a subject', () => {
@@ -135,10 +153,12 @@ describe('Q-0120 AC-22 — browser source resolution', () => {
 
 });
 
-describe('Q-0122 — the app emits, and what it emits is served rather than shipped', () => {
-  // Why: "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12).
-  // This block replaces the two clauses that asserted the opposite — `the app remains non-emitting`
-  // here, and the `build` half of AC-3's task clause below — which were correct until that entry.
+describe('the app emits, what it emits is served, and since Q-0124 a tarball carries it', () => {
+  // Why: "A fourth package emits, and what it emits is served rather than shipped" (2026-09-12) for
+  // the emit, and "The distribution set is five, and rejoins the emitting set" (2026-09-15) for the
+  // tarball. The first replaced the two clauses that asserted the app emitted nothing; the second
+  // replaced the clause that asserted nothing packed it. *Served* is unchanged by either — it names
+  // the artifact's shape, and both shapes ship now.
 
   test('it declares a build script, and one that clears its emit first', () => {
     const build = manifest().scripts?.build;
@@ -154,16 +174,71 @@ describe('Q-0122 — the app emits, and what it emits is served rather than ship
     expect(build, 'the clean step went, leaving the property resting on a bundler default alone').toMatch(/^rm -rf dist &&/);
   });
 
-  test('and it emits without being distributed — no exports, files, main, types or bin', () => {
-    // The two sets came apart here, which is the entry's first clause: four packages emit and three
-    // are packed. Asserted on the manifest rather than left to prose, because every one of these
-    // five keys is a step towards a tarball and none of them is this ticket's to add. How an
-    // installation outside this workspace obtains the UI is Q-0124's, and nothing here answers it.
+  test('Q-0124 AC-1 — it emits AND is distributed, and declares exactly what a tarball needs', () => {
+    // **The two sets came apart here at Q-0122 and are joined again here.** That ticket asserted no
+    // `exports`, no `files`, and routed the question to Q-0124; this is the answer. Only two of the
+    // five keys move: `files`, without which a tarball ships the working tree — Q-0098 measured 40
+    // files against 17 — and one `exports` entry, without which `packages/cli` cannot find the
+    // bundle by package name. `main`, `types` and `bin` stay absent, because nothing imports this
+    // package as a module and it carries no executable.
+    //
+    // `private: true` **stays**, and that is the clause most likely to be misread: `pnpm pack` does
+    // not refuse a private package and only `npm publish` does, so five tarballs move nothing about
+    // registry-resolved `npx quorum`, which 078(d) still refuses until Q-0029. A `license` joins
+    // them because the three packed before this carried one and neither new member did — latent
+    // exactly while nothing packed it. Why: *"The distribution set is five, and rejoins the emitting
+    // set"* (2026-09-15), clauses 2 and 3.
     const own = JSON.parse(readPackageFile('package.json')) as Record<string, unknown>;
     expect(own.private, 'the app stopped being private, which is a publishing decision 078(d) refuses').toBe(true);
-    for (const key of ['exports', 'files', 'main', 'types', 'bin']) {
-      expect(own[key], `the app declares ${key}, so something now resolves or packs it`).toBeUndefined();
+    expect(own.files, 'the app declares no files allow-list, so the checkout decides the tarball')
+      .toStrictEqual(['dist']);
+    expect(own.license, 'a distributed package carries no licence').toBe('Apache-2.0');
+    // One named locator and no `"."`, which is the refusal `packages/cli/src/package.test.ts`
+    // already makes for `@quorum/core`: a `./*` key defers what a consumer may reach to whoever
+    // types one first, and a `"."` would make a 317 KB bundle importable as JavaScript.
+    expect(own.exports, 'the bundle locator is not the one documented entry')
+      .toStrictEqual({ './bundle': './dist/index.html' });
+    for (const key of ['main', 'types', 'bin', 'engines']) {
+      expect(own[key], `the app declares ${key}, which a distributed-but-unpublished package does not owe`)
+        .toBeUndefined();
     }
+  });
+
+  test('Q-0124 AC-1 — and the block discriminates in both directions, so deleting a clause is not satisfying it', () => {
+    // **The cheapest wrong implementation of AC-1 is deleting the two clauses that now fail**, and
+    // that is indistinguishable from the right one unless the pair below is asserted: the manifest
+    // as it stood before this ticket must fail the NEW rule, and the manifest as it stands must fail
+    // the OLD one. One predicate over three subjects, which is the shape `packages/server`'s own
+    // AC-3 block adopted after its review found a fixture asserted against itself.
+    const distributed = (candidate: Record<string, unknown>): string[] => [
+      candidate.private !== true ? 'the package stopped being private' : '',
+      candidate.files === undefined ? 'no files allow-list, so the checkout decides the tarball' : '',
+      candidate.license === undefined ? 'no licence on a package a tarball carries' : '',
+      candidate.exports === undefined ? 'no locator, so nothing can find the bundle by package name' : '',
+      candidate.bin !== undefined ? 'a bin entry on a package that carries no executable' : '',
+    ].filter((problem) => problem !== '');
+
+    const own = JSON.parse(readPackageFile('package.json')) as Record<string, unknown>;
+    expect(distributed(own), 'the shipped manifest does not satisfy the rule this block states').toStrictEqual([]);
+
+    // The manifest as Q-0122 left it: emitting, and claiming no tarball.
+    const asItWas: Record<string, unknown> = { ...own };
+    delete asItWas.files;
+    delete asItWas.license;
+    delete asItWas.exports;
+    expect(distributed(asItWas), 'the pre-Q-0124 manifest passes the rule that replaced it')
+      .toStrictEqual([
+        'no files allow-list, so the checkout decides the tarball',
+        'no licence on a package a tarball carries',
+        'no locator, so nothing can find the bundle by package name',
+      ]);
+    // And the other direction, over the same predicate: the old rule refused exactly the keys the
+    // new one requires, so a reader cannot take the inversion for a relaxation.
+    const undistributed = (candidate: Record<string, unknown>): string[] =>
+      ['exports', 'files'].filter((key) => candidate[key] !== undefined);
+    expect(undistributed(own), 'the shipped manifest still satisfies the rule Q-0122 landed')
+      .toStrictEqual(['exports', 'files']);
+    expect(undistributed(asItWas), 'the fixture no longer reproduces what Q-0122 asserted').toStrictEqual([]);
   });
 });
 

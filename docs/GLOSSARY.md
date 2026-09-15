@@ -202,22 +202,26 @@ rather than shipped"* (2026-09-12), which took it from three packages to four, a
 emits, and `resolved` is not a synonym for `distributed`"* (2026-09-12), which took it to five.
 
 **Emitted artifact**: Whatever a **build task** writes under a package's `dist/`, gitignored and
-reproducible from the commit. **What emits and what ships are two facts, and since 2026-09-12 they
-are two different sets.** The **emitting set** is five — `@quorum/shared`, `@quorum/core`,
-`@quorum/cli`, `@quorum/server` and `@quorum/web` — and the **local distribution set** is the first
-three, what a `pnpm pack` of this repository produces and what an installation outside the workspace
-consumes. **`@quorum/web` and `@quorum/server` are the difference**, and they are not the same kind:
-each emits and is not distributed, staying `private: true` with no `files` and no `bin`, so how an
-installation outside this workspace obtains the UI **or the daemon** is an open question rather than
-something this term answers. Emitted artifacts come in exactly **two
+reproducible from the commit. **What emits and what ships are two facts asked of two registers, and
+between 2026-09-12 and 2026-09-15 they were two different sets.** The **emitting set** is five —
+`@quorum/shared`, `@quorum/core`, `@quorum/cli`, `@quorum/server` and `@quorum/web` — and since
+2026-09-15 the **local distribution set** is the same five: what a `pnpm pack` of this repository
+produces and what an installation outside the workspace consumes. **That they coincide is a property
+of this moment rather than a rule**, which is why the two stay separate registers — `@quorum/web`
+and `@quorum/server` were the difference for three days, and a sixth emitter could part them again.
+A distributed package here declares `files` and a `license` and keeps `private: true`: *distributed*
+means **a tarball this repository packs and installs**, never publication, which is still refused
+(see *"The emit serves the binary"*, 2026-09-02, clause (d)). Emitted artifacts come in exactly **two
 shapes**, and the words for them are *resolved* and *served*. **Each names a mechanism and neither
 names a set**: the **resolved** emit is what Node resolves through a package's `default` condition —
 the JavaScript and declaration files an import receives, which is `@quorum/shared`, `@quorum/core`,
 `@quorum/cli` and `@quorum/server`; the **served** bundle is `@quorum/web`'s, which a browser is
 handed over HTTP and which nothing imports. *Resolved* named *"the emit of the three distribution
 packages"* until 2026-09-12, which was exact only while those two partitions coincided —
-`@quorum/server` is the first artifact that is **resolved and not distributed**, so the two axes are
-independent and neither word may be used for the other. Distinguished from the **binary**, which is
+`@quorum/server` was then the first artifact that was **resolved and not distributed**, so the two
+axes are independent and neither word may be used for the other. **That independence survives the
+sets coinciding again**: it is a fact about the axes rather than about which packages happen to sit
+where, and defining each shape by its mechanism is what makes it survive. Distinguished from the **binary**, which is
 the single file `packages/cli`'s `bin.quorum`
 names: the binary is one emitted artifact among many and the two words are not interchangeable. A
 **resolved** emitted artifact is not a "bundle" — none of the four is bundled, each source file
@@ -231,7 +235,9 @@ is looking at any more, which is why the term widened to cover it rather than a 
 coined outside the warning. See *"A fourth package emits, and what it emits is served rather than
 shipped"* (2026-09-12) and *"A fifth package emits, and `resolved` is not a synonym for
 `distributed`"* (2026-09-12), which separated *resolved* from *distributed* the way the first
-separated *emitting* from *shipping*.
+separated *emitting* from *shipping*, and *"The distribution set is five, and rejoins the emitting
+set"* (2026-09-15), which closes the question both of them left open — how an installation outside
+this workspace obtains the UI and the daemon — by packing them, and which reverses neither.
 
 **Verified version**: The CLI version one **adapter** was last verified against, recorded as one
 string in that adapter's `capabilities.ts` (`verifiedVersion`) and compared on every

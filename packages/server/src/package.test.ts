@@ -48,6 +48,8 @@ interface Manifest {
   main?: unknown;
   types?: unknown;
   files?: unknown;
+  /** Declared at Q-0124, when this package became one a tarball carries. */
+  license?: unknown;
   bin?: unknown;
 }
 
@@ -55,8 +57,15 @@ const read = (...parts: string[]): string => fs.readFileSync(path.join(...parts)
 const manifest = (dir: string): Manifest => JSON.parse(read(dir, 'package.json')) as Manifest;
 
 /**
- * Q-0125 AC-3's invariant — *it emits and it is not distributed* — as one predicate, applied to the
- * real manifest and to both hostile fixtures.
+ * Q-0125 AC-3's invariant, **inverted by Q-0124** — *it emits and it is distributed* — as one
+ * predicate, applied to the real manifest and to both hostile fixtures.
+ *
+ * **The name moved with the rule**, which is the half that is easy to skip: a function still called
+ * `emitsAndIsNotDistributed` returning `[]` for a package five tarballs carry would be a name that
+ * lies, and this file's own register would then read as evidence for the opposite of what it checks.
+ * The emission half is untouched; only the three distribution clauses turned over, and `files` and
+ * `license` became owed where they were forbidden. Why: *"The distribution set is five, and rejoins
+ * the emitting set"* (2026-09-15), clause 3.
  *
  * **Why a function rather than two lists of assertions.** The criterion asks for the block to be
  * shown red in both directions (R-7), and a demonstration written as a second set of expectations
@@ -68,13 +77,14 @@ const manifest = (dir: string): Manifest => JSON.parse(read(dir, 'package.json')
  * criterion turns on telling them apart: `emission:` is about producing an artifact and publishing
  * it, `distribution:` is about a tarball that does not exist. An empty list is the invariant holding.
  */
-const emitsAndIsNotDistributed = (candidate: Manifest): string[] => [
+const emitsAndIsDistributed = (candidate: Manifest): string[] => [
   candidate.scripts?.build === undefined ? 'emission: it declares no build script' : '',
   candidate.exports === undefined ? 'emission: it publishes no exports map' : '',
   candidate.main !== undefined ? 'emission: a top-level main is declared beside the map' : '',
   candidate.types !== undefined ? 'emission: a top-level types is declared beside the map' : '',
-  candidate.files !== undefined ? 'distribution: a files allow-list claims a tarball that does not exist' : '',
-  candidate.bin !== undefined ? 'distribution: a bin entry ships an executable nothing packs' : '',
+  candidate.files === undefined ? 'distribution: no files allow-list, so the checkout decides the tarball' : '',
+  candidate.license === undefined ? 'distribution: no licence on a package a tarball carries' : '',
+  candidate.bin !== undefined ? 'distribution: a bin entry ships an executable nothing runs' : '',
   candidate.private !== true ? 'distribution: the package stopped being private' : '',
 ].filter((problem) => problem !== '');
 
@@ -159,65 +169,77 @@ describe('AC-1 — the manifest declares what it depends on and nothing more', (
     expect(lock.slice(lock.indexOf('packages/server:'))).toContain('@quorum/core');
   });
 
-  test('Q-0125 AC-3 — it emits and is not distributed, which is a combination no package had before', () => {
-    // **Two registers, not one, and since Q-0125 this package is in the first and not the second.**
-    // The **emitting** set is `test-discovery.test.ts`'s and is five; the local **distribution** set
-    // is `build.test.ts`'s `DISTRIBUTION` and stays three. This block asserted that the package was
-    // out of both until Q-0125, under a comment whose closing sentence — *"a package that emits
-    // nothing and ships nothing is out of both"* — is what had to move: two of its nine clauses
-    // invert and seven survive, because `@quorum/core` and `@quorum/shared` put `types` and
-    // `default` INSIDE the conditional map and declare no top-level `main` or `types` either.
+  test('Q-0124 AC-3 — it emits and is distributed, which is the combination Q-0125 deliberately left open', () => {
+    // **Two registers, not one, and since Q-0124 this package is in both.** The **emitting** set is
+    // `test-discovery.test.ts`'s and is five; the local **distribution** set is `build.test.ts`'s
+    // `DISTRIBUTION` and is five as well. The two staying separate registers is the point rather
+    // than an oversight: they coincide today and a sixth emitter could part them again, which is
+    // exactly what 093 defined *resolved* by mechanism to make cheap.
     //
-    // No `files`, and that is a rule rather than this package's exemption: a package that emits and
-    // is not distributed declares no `files`, no `bin` and keeps `private: true`, because `files` on
-    // a package nothing packs is a claim about a tarball that does not exist. Why: "A fifth package
-    // emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), clause 3, which
-    // promotes 092's by-name exemption for `apps/web` into a class.
+    // `files` is now owed rather than forbidden, and the reason is the mirror of Q-0125's: an
+    // allow-list on a package nothing packs claims a tarball that does not exist, and its **absence**
+    // on one that is packed ships the working tree — Q-0098 measured 40 files against 17. `license`
+    // joins it because the three packed before this carried `Apache-2.0` and this package declared
+    // none, latent exactly while nothing packed it. `bin` stays forbidden: a tarball that carries
+    // this package still carries no executable of its own. And `private: true` stays, because
+    // `pnpm pack` does not refuse a private package — only `npm publish` does, which 078(d) still
+    // refuses until Q-0029. Why: *"The distribution set is five, and rejoins the emitting set"*
+    // (2026-09-15), clauses 2 and 3.
+    //
     // The invariant first, so what the clauses below assert by name is the same rule the fixtures in
     // the next test are judged by rather than a parallel description of it.
-    expect(emitsAndIsNotDistributed(own), 'the manifest stopped emitting, or started claiming to be distributed')
+    expect(emitsAndIsDistributed(own), 'the manifest stopped emitting, or stopped declaring what a tarball needs')
       .toStrictEqual([]);
     expect(own.scripts?.build, 'the package emits nothing').not.toBe(undefined);
     expect(own.exports, 'the package publishes nothing').not.toBe(undefined);
     expect(own.main, 'a top-level main is declared beside the map').toBe(undefined);
     expect(own.types, 'a top-level types is declared beside the map').toBe(undefined);
-    expect(own.files, 'a files allow-list claims a tarball that does not exist').toBe(undefined);
+    expect(own.files, 'no files allow-list, so the checkout decides the tarball').toStrictEqual(['dist']);
+    expect(own.license, 'a distributed package carries no licence').toBe('Apache-2.0');
     expect(own.bin, 'the package declares a binary').toBe(undefined);
     expect(own.name).toBe('@quorum/server');
-    expect(own.private, 'the package stopped being private, which is Q-0124\'s to decide').toBe(true);
+    expect(own.private, 'the package stopped being private, which 078(d) still refuses').toBe(true);
     expect(own.type).toBe('module');
   });
 
-  test('AC-3 — and the two halves discriminate: emitting is not distributing', () => {
+  test('AC-3 — and the two halves discriminate: emitting is still not distributing', () => {
     // **Shown red in BOTH directions, which is what stops this being read as "delete the clauses
-    // that now fail"** (R-7). The inversion above passes today by the manifest having changed, so a
-    // wrong implementation of AC-3 — dropping the two assertions rather than inverting them — would
-    // look identical.
+    // that now fail"** (R-7) — the same demand Q-0125 made of itself, re-aimed rather than dropped
+    // when the rule turned over. The inversion above passes today by the manifest having changed, so
+    // a wrong implementation of AC-3 — dropping the two assertions rather than inverting them —
+    // would look identical.
     //
-    // **The two fixtures are run through the production invariant rather than re-described here**,
-    // which is the correction the review of iteration 1 asked for: a fixture asserted against its own
-    // freshly written fields confirms only that the fixture was written as intended, and stays green
-    // over a manifest nothing examines. Each is handed to {@link emitsAndIsNotDistributed}, and what
-    // is asserted is the exact list of problems it reports — so the before fixture must fail the
-    // EMISSION half and nothing else, and the packed fixture must fail the DISTRIBUTION half and say
-    // so in those words.
+    // **The fixtures are run through the production invariant rather than re-described here**, which
+    // is the correction the review of Q-0125 iteration 1 asked for: a fixture asserted against its
+    // own freshly written fields confirms only that the fixture was written as intended, and stays
+    // green over a manifest nothing examines. Each is handed to {@link emitsAndIsDistributed}, and
+    // what is asserted is the exact list of problems it reports.
     const asItWas: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined };
     delete asItWas.scripts?.build;
-    expect(emitsAndIsNotDistributed(asItWas), 'the manifest as it stood before Q-0125 passes the emission half')
+    expect(emitsAndIsDistributed(asItWas), 'the manifest as it stood before Q-0125 passes the emission half')
       .toStrictEqual(['emission: it declares no build script', 'emission: it publishes no exports map']);
 
-    const asIfPacked: Manifest = { ...own, files: ['dist'] };
-    expect(emitsAndIsNotDistributed(asIfPacked), 'a files allow-list is not reported as a distribution claim')
-      .toStrictEqual(['distribution: a files allow-list claims a tarball that does not exist']);
+    // The manifest as Q-0125 left it: emitting, and claiming no tarball. It must fail the
+    // distribution half by name, which is what says the rule turned over rather than being deleted.
+    const asQ0125Left: Manifest = { ...own, files: undefined, license: undefined };
+    expect(emitsAndIsDistributed(asQ0125Left), 'the pre-Q-0124 manifest passes the rule that replaced it')
+      .toStrictEqual([
+        'distribution: no files allow-list, so the checkout decides the tarball',
+        'distribution: no licence on a package a tarball carries',
+      ]);
 
     // And the invariant is not satisfied by every input, which is what stops the two clauses above
     // being read as "the function returns whatever was put in": a manifest that emits nothing AND
-    // claims a tarball fails both halves at once, and the halves are named separately.
-    const neither: Manifest = { ...own, scripts: { ...own.scripts }, exports: undefined, files: ['dist'], bin: 'x.js', private: false };
+    // declares nothing a tarball needs fails both halves at once, and the halves are named
+    // separately.
+    const neither: Manifest = {
+      ...own, scripts: { ...own.scripts }, exports: undefined, files: undefined, license: undefined,
+      bin: 'x.js', private: false,
+    };
     delete neither.scripts?.build;
-    const both = emitsAndIsNotDistributed(neither);
+    const both = emitsAndIsDistributed(neither);
     expect(both.filter((problem) => problem.startsWith('emission:')).length).toBe(2);
-    expect(both.filter((problem) => problem.startsWith('distribution:')).length).toBe(3);
+    expect(both.filter((problem) => problem.startsWith('distribution:')).length).toBe(4);
   });
 
   test('Q-0125 AC-1 — the exports map is the shape its two siblings declare, publishing "." alone', () => {

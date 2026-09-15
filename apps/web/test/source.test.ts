@@ -378,14 +378,58 @@ describe('AC-10 — loading the shell fetches nothing from a network', () => {
    */
   const NETWORK_LITERALS = [`http:${'//'}`, `https:${'//'}`, `${'//'}fonts.`];
 
+  /**
+   * The licence text, whose two URLs are a citation rather than a fetch.
+   *
+   * **Arrived at Q-0124, when this package became one a tarball carries** — `pnpm pack` copies the
+   * workspace root's licence into a package that has none and `npm pack` does not, so the two packers
+   * disagreed on the file list until this package carried its own, which is the arrangement the three
+   * packages distributed before it already had.
+   *
+   * **Not an exclusion, and the distinction is the whole of why this is admissible.** The file stays
+   * in the corpus and every needle is still counted over it; what is subtracted is the number of
+   * occurrences that sit inside {@link APACHE_LICENCE_URL}, so a URL this file gained that was *not*
+   * that one fails exactly as it would in any other file. A scan narrowed by excluding a path is how
+   * a defect ends up outside the thing that forbids it, which this repository has recorded more than
+   * once; this one cannot hide anything, because the only thing it forgives is a byte sequence
+   * spelled out here.
+   */
+  const LICENCE_FILE = 'LICENSE';
+  const APACHE_LICENCE_URL = `http:${'//'}www.apache.org/licenses/`;
+
+  /** How many times `literal` appears in `text` that is not part of the permitted citation. */
+  const fetchesIn = (name: string, text: string, literal: string): number => {
+    const all = text.split(literal).length - 1;
+    if (name !== LICENCE_FILE) return all;
+    const cited = text.split(APACHE_LICENCE_URL).length - 1;
+    return all - (APACHE_LICENCE_URL.includes(literal) ? cited : 0);
+  };
+
   test('no file in this package carries a URL or a font host', () => {
     const files = filesBelow(PACKAGE);
     expect(files.length, 'the walk found nothing').toBeGreaterThan(1);
     for (const [name, text] of files) {
       for (const literal of NETWORK_LITERALS) {
-        expect(text.includes(literal), `${name} names ${literal}`).toBe(false);
+        expect(fetchesIn(name, text, literal), `${name} names ${literal}`).toBe(0);
       }
     }
+  });
+
+  test('and the licence subtraction forgives that citation and nothing else', () => {
+    // Both directions over the real file, so the clause above is a subtraction rather than a hole.
+    const licence = filesBelow(PACKAGE).find(([name]) => name === LICENCE_FILE);
+    expect(licence, 'the package carries no licence, so a packer will disagree about its tarball').toBeDefined();
+    const text = licence?.[1] ?? '';
+    expect(text, 'the licence is not the Apache one this subtraction is written for').toContain('Apache License');
+    // It really does carry the needle, so the subtraction has something to subtract.
+    expect(text.includes(NETWORK_LITERALS[0]), 'the licence names no URL — this subtraction has no subject').toBe(true);
+    // And a URL that is not the citation is still reported, from the same file.
+    const tampered = `${text}\nSee ${NETWORK_LITERALS[1]}fonts.googleapis.com/css2 for faces.\n`;
+    expect(fetchesIn(LICENCE_FILE, tampered, NETWORK_LITERALS[1]), 'a second URL in the licence is forgiven').toBe(1);
+    expect(fetchesIn(LICENCE_FILE, tampered, NETWORK_LITERALS[2]), 'a font host in the licence is forgiven').toBe(1);
+    // The subtraction is keyed on the file name, so the same text anywhere else is reported in full.
+    expect(fetchesIn('index.html', text, NETWORK_LITERALS[0]), 'the citation is forgiven outside the licence')
+      .toBeGreaterThan(0);
   });
 
   test('the walk really covers the package rather than only its source', () => {

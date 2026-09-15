@@ -281,15 +281,19 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     // a package emits while its manifest says otherwise. This clause predicted a fifth emitter at
     // Q-0122 and Q-0125 is it, which is the register doing exactly what it was built to do.
     //
-    // **The emitting set is five and the local distribution set is three, and TWO packages are now
-    // the difference rather than one.** This comment named `apps/web` as *"the one that is NOT
-    // distributed"*, which was exact while the two partitions coincided for everything else and is
-    // false now: `@quorum/server` emits and is not distributed either. The two axes are independent
-    // — `apps/web` is *served* and not distributed, `@quorum/server` is *resolved* and not
-    // distributed — which is the whole of what this register may be read as claiming. Why: see "A
-    // fifth package emits, and `resolved` is not a synonym for `distributed`" (2026-09-12), which
-    // extends "A fourth package emits, and what it emits is served rather than shipped"
-    // (2026-09-12). The packed set is `build.test.ts`'s `DISTRIBUTION`, not this list.
+    // **The emitting set is five and the local distribution set is five, and since Q-0124 they are
+    // the same five.** This comment tracked the split through both of its widenings — `apps/web` as
+    // *"the one that is NOT distributed"* at Q-0122, then two packages rather than one at Q-0125 —
+    // and the split is now closed. **What is NOT withdrawn is the vocabulary**: *resolved* and
+    // *served* are shapes and stay two, `apps/web` is served and the other four are resolved, and
+    // 093 defines each by its mechanism precisely so that a sixth emitter can part the two sets
+    // again cheaply. That they coincide today is a property of the moment rather than a rule
+    // restored. Why: see "The distribution set is five, and rejoins the emitting set" (2026-09-15),
+    // which closes the question "A fourth package emits, and what it emits is served rather than
+    // shipped" (2026-09-12) opened and "A fifth package emits, and `resolved` is not a synonym for
+    // `distributed`" (2026-09-12) widened; neither is edited. **The packed set is still
+    // `build.test.ts`'s `DISTRIBUTION` and not this list** — two registers with two owners, which is
+    // what keeps the next divergence visible instead of one list quietly meaning both.
     expect(emittingPackages()).toStrictEqual(['apps/web', 'packages/cli', 'packages/core', 'packages/server', 'packages/shared']);
     for (const pkg of emittingPackages()) {
       const scripts = (JSON.parse(packageFile(pkg, 'package.json')) as Manifest).scripts ?? {};
@@ -327,20 +331,27 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
   });
 
   /**
-   * Q-0125 AC-13's rule, widened by Q-0126 — *no manifest names the daemon, except the daemon's own
-   * as its `name`, and `packages/cli`'s under `optionalDependencies`*.
+   * Q-0125 AC-13's rule, widened by Q-0126 and **inverted by Q-0124** — *no manifest names the
+   * daemon, except the daemon's own as its `name`, and `packages/cli`'s under `dependencies`*.
    *
    * Returns the problem, or `null` where the rule holds, so a demonstration asserts the exact
    * sentence rather than merely that something failed. One predicate, every subject — the real
    * manifests and the fixtures below — which is the shape Q-0125 iteration 2 adopted after its
    * review reported the opposite as a nit.
    *
-   * **Keyed on the KEY and never on the count, which is the whole of Q-0126 AC-9.** An
-   * `optionalDependencies` edge and a `dependencies` edge are both exactly one occurrence of the
-   * same string, so a count cannot tell the permitted edge from the one that kills the packed
-   * install — measured: with `dependencies`, `npm install` of the three tarballs dies
-   * `ECONNREFUSED` reaching a registry for a fourth package, before any module loads. Why: *"An
-   * optional edge says the daemon may be absent, and never why"* (2026-09-14).
+   * **Keyed on the KEY and never on the count, and that survives the inversion unchanged — which is
+   * the strongest evidence the key was the right thing to key on.** An `optionalDependencies` edge
+   * and a `dependencies` edge are both exactly one occurrence of the same string, so a count cannot
+   * tell one from the other in either direction; only which section declares it can. What moved is
+   * which of the two is permitted, and the sentences moved with it.
+   *
+   * **Why the permitted one moved.** Q-0126 measured that with `dependencies`, `npm install` of the
+   * **three** tarballs died `ECONNREFUSED` reaching a registry for a fourth package. Q-0124 packs
+   * five, so the fourth package is in the install and the measurement no longer describes it; an
+   * optional edge is now the defect, because `quorum open` would skip silently on an installation
+   * that carries the daemon. Why: *"The distribution set is five, and rejoins the emitting set"*
+   * (2026-09-15), superseding *"An optional edge says the daemon may be absent, and never why"*
+   * (2026-09-14).
    */
   const DAEMON = '@quorum/server';
 
@@ -351,8 +362,8 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     const optional = manifest.optionalDependencies?.[DAEMON] !== undefined;
 
     if (name === 'packages/cli/package.json') {
-      if (required) return `${name} requires @quorum/server, which kills the packed install`;
-      if (!optional) return `${name} declares no optional @quorum/server, so quorum open cannot reach it`;
+      if (optional) return `${name} declares @quorum/server optional, so quorum open may skip an installed daemon`;
+      if (!required) return `${name} does not require @quorum/server, so quorum open cannot reach it`;
       return occurrences === 1 ? null : `${name} names @quorum/server ${occurrences} times, and may name it once`;
     }
 
@@ -363,13 +374,15 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     return `${name} names @quorum/server ${occurrences} ${plural}, and may name it ${allowed === 0 ? 'none' : allowed}`;
   };
 
-  test('Q-0125 AC-13 — nothing depends on @quorum/server, which is what holds this ticket inside its own boundary', () => {
-    // **The criterion that makes a non-goal checkable rather than a promise.** Q-0125 gives this
-    // package an export surface and an emit and adds NO consumer: `quorum open` is Q-0126's, and
-    // whether the package is distributed is Q-0124's. A dependency edge is also the only thing that
-    // creates a `node_modules` link, so adding one here would change what every resolution proof in
-    // the workspace is measuring — and it would break a packed `@quorum/cli`, which carries three
-    // tarballs and not four, for the `workspace:*` reason Q-0098's M-8 measured.
+  test('Q-0125 AC-13 — only packages/cli depends on @quorum/server, and it requires it', () => {
+    // **The criterion that makes a non-goal checkable rather than a promise.** Q-0125 gave this
+    // package an export surface and an emit and added NO consumer; Q-0126 added the one, under
+    // `optionalDependencies` because a packed install then carried three tarballs and not four and
+    // a required edge died at `npm install`. Q-0124 packs five, so the reason for the optional key
+    // has gone and the edge is required — which is what makes `quorum open` reach a daemon that is
+    // there rather than skip one. A dependency edge is still the only thing that creates a
+    // `node_modules` link, so which packages hold one is still what every resolution proof in the
+    // workspace is measured against, and it is still exactly one.
     //
     // Read over every manifest the workspace holds plus the root's, which `packages/core/turbo.json`
     // already declares as `../../packages/*/package.json`, `../../apps/*/package.json` and
@@ -401,27 +414,31 @@ describe('Q-0054 AC-7 — turbo run reaches every workspace package', () => {
     // about the rule — so deleting or inverting the rule left this green. One predicate, three
     // subjects, is the shape iteration 2 had already adopted for AC-3 twelve files away, applied
     // here to the clause that reported it.
-    // **Q-0126 widened this by KEY, and these two fixtures are why a count could not do it.** Both
-    // carry exactly ONE occurrence of the same string and only one of them is permitted: the
-    // required edge kills the packed install (`npm install` of the three tarballs dies
-    // `ECONNREFUSED` reaching a registry for a fourth package), the optional one does not.
-    const hostile = JSON.stringify({ name: '@quorum/cli', dependencies: { '@quorum/server': 'workspace:*' } });
-    expect(namesTheDaemon('packages/cli/package.json', hostile), 'a required dependency on the daemon is not reported')
-      .toBe('packages/cli/package.json requires @quorum/server, which kills the packed install');
+    // **Q-0126 widened this by KEY and Q-0124 swapped which key is permitted, and these two fixtures
+    // are why a count could do neither.** Both carry exactly ONE occurrence of the same string and
+    // only one of them is permitted; the pair is unchanged and the two verdicts have traded places.
+    // The optional edge is now the defect, because a packed install carries the daemon and an
+    // optional edge npm could not satisfy would be skipped in silence.
+    const hostile = JSON.stringify({ name: '@quorum/cli', optionalDependencies: { '@quorum/server': 'workspace:*' } });
+    expect(namesTheDaemon('packages/cli/package.json', hostile), 'an optional dependency on the daemon is not reported')
+      .toBe('packages/cli/package.json declares @quorum/server optional, so quorum open may skip an installed daemon');
 
-    const permitted = JSON.stringify({ name: '@quorum/cli', optionalDependencies: { '@quorum/server': 'workspace:*' } });
-    expect(namesTheDaemon('packages/cli/package.json', permitted), 'the optional edge Q-0126 landed is refused').toBe(null);
+    const permitted = JSON.stringify({ name: '@quorum/cli', dependencies: { '@quorum/server': 'workspace:*' } });
+    expect(namesTheDaemon('packages/cli/package.json', permitted), 'the required edge Q-0124 landed is refused').toBe(null);
 
     // The two differ in the key alone — asserted rather than described, so a later predicate that
     // went back to counting fails here rather than passing over two inputs it cannot tell apart.
+    // This clause is byte-identical to Q-0126's and is what says the inversion above moved the
+    // verdicts and nothing else.
     const occurrencesIn = (text: string): number => [...text.matchAll(/@quorum\/server/g)].length;
     expect(occurrencesIn(hostile), 'the fixtures differ in more than the key, so this pair proves nothing')
       .toBe(occurrencesIn(permitted));
 
-    // And `packages/cli` with NO edge at all is refused too, in the other direction: after Q-0126 the
-    // command needs the optional one to exist, so its absence is a defect rather than the old clean state.
-    expect(namesTheDaemon('packages/cli/package.json', JSON.stringify({ name: '@quorum/cli' })), 'a missing optional edge passes')
-      .toBe('packages/cli/package.json declares no optional @quorum/server, so quorum open cannot reach it');
+    // And `packages/cli` with NO edge at all is refused too, in the other direction: the command
+    // needs an edge to exist whichever key it is under, so its absence is a defect rather than the
+    // pre-Q-0126 clean state.
+    expect(namesTheDaemon('packages/cli/package.json', JSON.stringify({ name: '@quorum/cli' })), 'a missing edge passes')
+      .toBe('packages/cli/package.json does not require @quorum/server, so quorum open cannot reach it');
 
     // And the permission is a property of the path rather than of the text: the identical body under
     // `packages/server`'s own name is the one occurrence that is allowed, so the predicate

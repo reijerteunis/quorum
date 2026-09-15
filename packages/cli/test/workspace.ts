@@ -87,6 +87,13 @@ export interface TurboTask {
   readonly directory: string;
   readonly command: string;
   readonly cache?: { status?: string };
+  /**
+   * The task ids this one waits for — turbo's own expansion of `^build` against the **package**
+   * graph, which is the only place the topological edge is visible. `resolvedTaskDefinition.dependsOn`
+   * says `["^build"]` for every emitter and says nothing about which packages that reaches.
+   * Declared at Q-0124, where a manifest gained two edges and the question was whether they arrived.
+   */
+  readonly dependencies?: string[];
   readonly resolvedTaskDefinition: { outputs?: string[]; dependsOn?: string[]; env?: string[] };
 }
 

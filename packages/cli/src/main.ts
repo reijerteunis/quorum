@@ -24,10 +24,12 @@
  * the whole of the spike's set and `open` is the first that was never in it; the frame dispatches
  * every command the help lists and lists every command it dispatches.
  *
- * **The dispatch table stays static and `open` is loaded with it**, which is why that module defers
- * its own specifier rather than being reached lazily from here. A lazy dispatch would make every
- * command's load asynchronous to solve one command's packaging problem, and the problem is not that
- * `open.ts` is loaded — it is that resolving `@quorum/server` must not be what loading it costs.
+ * **The dispatch table stays static and `open` is loaded with it.** That used to cost that module a
+ * deferred specifier, because the daemon was an optional dependency a packed install might not
+ * carry; since Q-0124 it is a required one, so loading `open.js` resolves an ordinary dependency and
+ * the table needs no lazy arm. A lazy dispatch was refused then and is refused now for the same
+ * reason: it would make every command's load asynchronous to solve one command's packaging problem.
+ * Why: see *"The distribution set is five, and rejoins the emitting set"* (2026-09-15).
  */
 import { adapters } from './adapters.js';
 import { parseArgv, type ParsedArgv } from './argv.js';

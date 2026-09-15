@@ -22,9 +22,8 @@
   },
   "dependencies": {
     "@quorum/core": "workspace:*",
-    "@quorum/shared": "workspace:*"
-  },
-  "optionalDependencies": {
-    "@quorum/server": "workspace:*"
+    "@quorum/server": "workspace:*",
+    "@quorum/shared": "workspace:*",
+    "@quorum/web": "workspace:*"
   }
 }
