@@ -8,22 +8,23 @@ union, daemon routes and wire schemas are existing contracts and are not changed
 - `/runs` performs one `GET /runs` read at mount through `requestJson` and `wireRunListSchema`.
   Refresh is the only repeat read; no timer performs one.
 - Listing rows preserve response order and show handle, flow, state, pending-gate count and either
-  the supplied ticket id or the sentence `The daemon supplied no ticket id for this run.` Each row
-  links to the registered `/runs/:handle` route.
+  the supplied ticket id or `NO_TICKET_ID_TEXT` from `mission-control-text.ts`. Each row links to
+  the registered `/runs/:handle` route.
 - `/runs/:handle` uses the existing socket snapshot and a `GET /runs/:handle` metadata read. The
   gate link is present exactly when the loaded run has `pendingGates > 0`, and its path is produced
   by substituting the handle into `GATE_ROUTE`, never by observing a gate event.
 - The five existing request-state kinds remain closed. A loaded empty list says that the daemon is
   driving no runs, that this app cannot start one, and that `quorum run` is a different process the
   daemon cannot see.
-- `mission-control-text.ts` is the single copy contract for the empty-list sentence, timeline
-  labels, loss sentences and five absent-capability sentences. Renderers and tests import those
+- `mission-control-text.ts` is the single copy contract for the ticket-absence and empty-list
+  sentences, timeline labels, loss sentences and five absent-capability sentences. Renderers and tests import those
   exports rather than restating their wording. Mission control marks its main state region with
   `data-mission-control-state`, its disclosures with `data-mission-control-disclosures`, and each
   timeline row with `data-step-disposition`. Its complete header region is
   `data-mission-control-header`, and the nested handle-or-run-number region is
   `data-run-identity`. The runs landing marks its request state with the existing
-  `data-request-state` idiom.
+  `data-request-state` idiom. Each trace column is marked with `data-trace-step-id` whose value is
+  its exact `stepId`; the run-activity lane is marked with `data-run-activity`.
 
 ## Trace and timeline
 
@@ -58,7 +59,8 @@ union, daemon routes and wire schemas are existing contracts and are not changed
 - Mission control names the five absent capabilities and their causes: live run number, elapsed
   time, structured cost/token totals, the next flow step, and structured tool/reasoning events. It
   renders no placeholder value for them. The handle identifies a live run; a terminal-provided run
-  number replaces that explanation only after it exists.
+  number replaces that explanation only after it exists. The run number is read from the terminal
+  event in the socket snapshot, never from a second metadata read.
 - Every connection state has non-empty main-region prose. A no-such-run state creates no columns.
   Raw vendor output may be asymmetric and is not presented as a complete run history.
 

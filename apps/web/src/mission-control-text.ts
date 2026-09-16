@@ -4,6 +4,9 @@
 export const EMPTY_RUNS_TEXT =
   'The daemon is driving no runs. This app cannot start one, and quorum run uses a different process that this daemon cannot see.';
 
+/** Honest explanation when the daemon supplied no ticket identity for a run. */
+export const NO_TICKET_ID_TEXT = 'The daemon supplied no ticket id for this run.';
+
 /** Exact labels for the three timeline facts the event stream can establish. */
 export const STEP_DISPOSITION_TEXT = {
   started: 'Started; no end has been reported yet.',
