@@ -6,9 +6,6 @@
  */
 import type { Event } from '@quorum/shared';
 
-/** The browser keeps the same number of events as the daemon can replay. */
-export const RUN_EVENT_RETENTION = 500;
-
 /** One step-scoped trace column, in first-appearance order. */
 export interface TraceColumn {
   readonly stepId: string;

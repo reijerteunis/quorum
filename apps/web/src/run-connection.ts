@@ -18,6 +18,15 @@ import { reduceConnection, type ConnectionAction, type ConnectionMachine, type C
 import { runEventsUrl } from './daemon-endpoints.js';
 import { parseFrame } from './frame-parser.js';
 
+/**
+ * The newest accepted events retained by this browser.
+ *
+ * The daemon already retains and discloses a tail of 500. Reusing that measured product value
+ * bounds immutable-array copying, keeps early and late readers on the same visible extent, and
+ * avoids inventing a different limit before Q-0015's demonstration supplies a per-run count.
+ */
+export const RUN_EVENT_RETENTION = 500;
+
 /** The browser socket subset used by the run connection. */
 export interface SocketTransport {
   onopen: (() => void) | null;
