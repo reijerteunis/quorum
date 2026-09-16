@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-16
 iterations:
   requirements.head-of-product: 1
+  solutioning.architecture-review: 3
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-09-16T20:20:30.961Z
     cost: 19.759
+  - stage: requirements
+    run: 2
+    flow: solutioning
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-16T21:28:31.625Z
+    cost: 0
 ---
 The hero screen: a run in flight, one trace column per concurrent step, a step timeline beneath, and what the run is doing said in a sentence rather than left to a spinner.
 

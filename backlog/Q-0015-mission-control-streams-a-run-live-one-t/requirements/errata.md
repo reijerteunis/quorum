@@ -162,3 +162,37 @@ is **not** re-derived here because nothing has walked the route since. This is t
 the split stays as E-1 ruled it, and `solutioning` may not widen the scope the gate just narrowed —
 a contract for a fifteenth criterion is scope this gate refused, and `verdict=blocked` is the channel
 for saying a criterion cannot be met rather than for adding one.
+
+## E-10 — the errata channel is missing from three flows, and this operator mis-measured it twice
+
+Found at the solutioning exhaustion gate, when the AC-6 ruling had to be delivered and there was
+nowhere in this flow to put it.
+
+**Measured, by what each flow reads rather than by a filename**: `chore.yaml` reads
+`requirements/errata.md`; `qa-red.yaml` reads `solution/errata.md`; **`solutioning.yaml`,
+`development.yaml` and `review.yaml` read none.** The pattern in the two that have one is that a
+stage reads the errata of the stage whose artifact it consumes — so **`solutioning` consumes
+`requirements` and should read `requirements/errata.md`, exactly as `chore` does, and does not.**
+
+**The consequence, which this run demonstrated rather than predicted.** Nine errata were written at
+this ticket's requirements gate, on the ordinary assumption that a gate ruling reaches the next step.
+Not one of them was readable by the architect or the architecture reviewer. Q-0120 is the corroborating
+instance: the only other recent full-route ticket, whose plan entry records that **half its repair work
+was done by hand** and which needed errata E-4, E-5 and E-6 to say so.
+
+**This operator got the measurement wrong twice, in opposite directions, and the cause is the same
+one this session keeps recording.** The first grep counted the literal `requirements/errata.md` and
+concluded *"only chore reads errata"* — **a search keyed on a name rather than on the behaviour**,
+which is Q-0051's, Q-0067's, Q-0073's, Q-0107's, Q-0108's, Q-0115's, Q-0122's and Q-0125's class,
+committed inside a session that has cited it four times today. Re-derived on `[a-z]*/errata\.md` it
+is three flows, not five, and the gap is specific rather than general.
+
+**It is not fixed here, for the reason Q-0057 records**: `runFlow` loads the flow at run start, so a
+run cannot benefit from a change to the flow it is running, and editing `solutioning.yaml` mid-run
+would change nothing for this ticket while risking the one that follows. **It owes a ticket**, and
+the ticket owes a measurement this erratum does not have: whether `development` and `review` want the
+same edge, or whether the right shape is one errata path per *consumed stage* derived rather than
+listed per flow.
+
+**What was done instead**: the AC-6 ruling is in `solution/errata.md`, which `qa-red` reads, and
+which is where a test-guard spelling belongs anyway.
