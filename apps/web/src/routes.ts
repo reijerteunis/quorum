@@ -134,7 +134,8 @@ export const RAIL: readonly RailEntry[] = [
   { id: 'backlog', label: 'Backlog', path: BOARD_PATH, screenExists: true },
   { id: 'harness', label: 'Harness', path: '/harness', screenExists: false },
   { id: 'flows', label: 'Flows', path: '/flows', screenExists: false },
-  { id: 'runs', label: 'Runs', path: '/runs', screenExists: false },
+  // The second entry to flip, at Q-0015: the runs landing this rail entry points to is built.
+  { id: 'runs', label: 'Runs', path: RUNS_PATH, screenExists: true },
   { id: 'history', label: 'History', path: '/history', screenExists: false },
   { id: 'settings', label: 'Settings', path: '/settings', screenExists: false },
 ];
@@ -142,9 +143,9 @@ export const RAIL: readonly RailEntry[] = [
 /**
  * Every path the shell recognises. Twelve, of which one is a redirect.
  *
- * The three rows carrying `ticket: null` say so in their own sentence rather than borrowing a
- * neighbour's id: no screen ticket exists for the projects home, the runs landing or settings, and
- * a placeholder that named one would be attaching a ticket to work it does not cover.
+ * The two rows carrying `ticket: null` say so in their own sentence rather than borrowing a
+ * neighbour's id: no screen ticket exists for the projects home or settings, and a placeholder
+ * that named one would be attaching a ticket to work it does not cover.
  */
 export const ROUTES: readonly Route[] = [
   { path: '/', redirectTo: HOME_PATH },
@@ -192,19 +193,20 @@ export const ROUTES: readonly Route[] = [
     waitingFor: 'The flow editor is M4 work, after the screens this milestone builds.',
   },
   {
-    path: '/runs',
+    path: RUNS_PATH,
     screen: 'Runs landing',
-    ticket: null,
-    screenExists: false,
+    ticket: 'Q-0015',
+    screenExists: true,
     waitingFor:
-      'No ticket builds this screen yet. The daemon lists the runs it is driving, so what this route waits for is a screen that reads that listing.',
+      'The runs landing lists the runs the daemon is driving, with each row linking to mission control.',
   },
   {
-    path: '/runs/:handle',
+    path: RUN_ROUTE,
     screen: 'Mission control',
     ticket: 'Q-0015',
-    screenExists: false,
-    waitingFor: 'Mission control streams a run live, one trace column per parallel step.',
+    screenExists: true,
+    waitingFor:
+      "Mission control streams a run live: a run-activity lane, one trace column per parallel step, and an observed-only timeline. The header's run number, elapsed time and per-vendor cost are Q-0131's; starting or stopping a run is Q-0130's.",
   },
   // Built by Q-0016, which was cut in two at its own requirements gate: this screen is the half
   // over channels that already existed, and what the step it follows decided — with the change it
