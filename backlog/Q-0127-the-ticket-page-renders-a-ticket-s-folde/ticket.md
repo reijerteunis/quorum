@@ -1,14 +1,22 @@
 ---
 id: Q-0127
 title: The ticket page renders a ticket's folder
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0127/integration
 priority: p2
 created: 2026-09-16
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-16T11:48:54.347Z
+    cost: 12.038
 ---
 GET /tickets/:id serves one ticket's folder and apps/web renders it as tabs with runs.log down the side. Split from Q-0017 at its requirements gate: the board is a screen over endpoints that exist, this is a new route plus a screen, with its own confinement surface and a payload design forced by a measured 3.0 MB largest folder.
 
