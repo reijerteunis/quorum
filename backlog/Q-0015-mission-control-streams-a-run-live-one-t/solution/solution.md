@@ -315,12 +315,13 @@ QA owns the red-suite changes in existing and new focused web tests, including `
     - contracts/Q-0015/mission-control.contract.md#write-boundary
   depends_on: []
   description: >-
-    Own only docs/04-architecture.md and docs/06-development-plan.md; update the M3
-    apps/web account and Q-0015 plan entry to record the runs landing, bounded live
-    trace, run-level lane, observed-only timeline, gate link, and missing-data
-    disclosures, while retaining browser start/stop and structured header values as
-    successors. Do not touch apps, packages, tests, contracts, the decisions index,
-    or decision entries.
+    Own only docs/04-architecture.md; update the M3 apps/web account to record the runs
+    landing, bounded live trace, run-level lane, observed-only timeline, gate link, and
+    missing-data disclosures, while retaining browser start/stop and structured header
+    values as successors. Do not touch apps, packages, tests, contracts, the decisions
+    index, decision entries, or docs/06-development-plan.md — that page's ticket entries
+    are rewritten by hand at each plan pass and carry facts (cost, rounds, findings) that
+    do not exist until a run has ended. See solution/errata.md SE-3.
 ```
 
 All ten development tasks own disjoint file sets and can run in one wave, so every task declares `depends_on: []`.

@@ -61,3 +61,25 @@ Three reasons it must not:
 
 **`docs/04-architecture.md` stays T10's**, and legitimately: it is a living design document describing
 the code, which is exactly what a development task changes. Nothing else in the task moves.
+
+### SE-3, corrected 2026-09-17 — the narrowing had to land in **two** registers, not one
+
+SE-3 edited `solution/tasks.yaml` and stopped there. That file decides **which** tasks fan out, with
+what id and role — and the implementer does not read it. `development.yaml`'s fan-out step takes
+`input.backlog: [solution/solution.md, review/verdict.md]`, so **the task description an implementer
+obeys comes from `solution.md`**, which still carried *"Own only docs/04-architecture.md and
+docs/06-development-plan.md"*.
+
+So the ruling would have had no effect on the thing it was written to prevent: T10's implementer
+would have read the un-narrowed description and rewritten the development plan, exactly as if the
+erratum had never been written.
+
+`solution/solution.md` now carries the same narrowed description, word for word. The scoped copies at
+`solution/run-2/solution.md` and `solution/run-2/tasks.yaml` are the architect's output and are
+deliberately left as written.
+
+**Recorded rather than quietly fixed, because the failure is this repository's most-recorded one and
+it is the operator's here**: fixing the instance a finding names rather than the class it belongs to
+— Q-0112's five review rounds, three of them on that one failure. A ruling that changes a register
+must name **every** register that carries the claim, and *which register a step actually reads* is
+the question that decides it.
