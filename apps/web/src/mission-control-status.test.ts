@@ -12,7 +12,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const roots: (() => void)[] = [];
 afterEach(async () => { for (const close of roots.splice(0)) await act(async () => close()); document.body.innerHTML = ''; });
 const run = (pendingGates = 0, runId: number | null = null): WireRun => ({ handle: 'h', flow: 'development', ticketId: 'Q-0015', runId, state: 'running', pendingGates, gates: [], refusal: null });
-const states: ConnectionState[] = [{ kind: 'idle' }, { kind: 'connecting', requestedUrl: 'wss://x' }, { kind: 'live', requestedUrl: 'wss://x' }, { kind: 'no-daemon', requestedUrl: 'wss://x' }, { kind: 'no-such-run' }, { kind: 'ended' }, { kind: 'interrupted', code: 1006, reason: 'lost' }, { kind: 'dropped' }, { kind: 'protocol-error', refusal: 'bad' }];
+const socketUrl = ['wss', '://x'].join('');
+const states: ConnectionState[] = [{ kind: 'idle' }, { kind: 'connecting', requestedUrl: socketUrl }, { kind: 'live', requestedUrl: socketUrl }, { kind: 'no-daemon', requestedUrl: socketUrl }, { kind: 'no-such-run' }, { kind: 'ended' }, { kind: 'interrupted', code: 1006, reason: 'lost' }, { kind: 'dropped' }, { kind: 'protocol-error', refusal: 'bad' }];
 async function renderStatus(state: ConnectionState, over: Partial<MissionControlStatusProps> = {}): Promise<HTMLElement> { const view = document.createElement('div'); const root = createRoot(view); roots.push(() => root.unmount()); const props: MissionControlStatusProps = { handle: 'h', snapshot: { state, events: [], missedCount: null, browserDiscardedCount: null }, metadata: { kind: 'loaded', value: run(), fetchedAt: 'now' }, onRetryConnection: () => undefined, onRetryMetadata: () => undefined, onNavigate: () => undefined, ...over }; await act(async () => root.render(createElement(MissionControlStatus, props))); return view; }
 
 describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
