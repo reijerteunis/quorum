@@ -28,11 +28,18 @@ const source = (name: string): string => {
 };
 
 describe('AC-1 — two modules, exactly this surface, and packages/core/src/index.ts untouched', () => {
-  test('backlog.ts exports the two functions and the class, and nothing else', () => {
-    expect(Object.keys(backlogModule).sort()).toStrictEqual(['Backlog', 'parseFrontmatter', 'renderFrontmatter']);
-    expect(typeof backlogModule.Backlog).toBe('function');
-    expect(typeof backlogModule.parseFrontmatter).toBe('function');
-    expect(typeof backlogModule.renderFrontmatter).toBe('function');
+  test('backlog.ts exports the class, the two frontmatter functions and Q-0127\'s two reads', () => {
+    // A register of identities rather than a count, so a sixth name is a visible act — which is what
+    // this clause is for and what it just did: Q-0127 added `listTicketFiles` and
+    // `readTicketFileBytes` beside `readFiles`, and they are here rather than as methods because
+    // `packages/server` reaches them by name through `@quorum/core`'s barrel, which a method is not
+    // on. Q-0043's three are unmoved.
+    expect(Object.keys(backlogModule).sort()).toStrictEqual([
+      'Backlog', 'listTicketFiles', 'parseFrontmatter', 'readTicketFileBytes', 'renderFrontmatter',
+    ]);
+    for (const name of ['Backlog', 'parseFrontmatter', 'renderFrontmatter', 'listTicketFiles', 'readTicketFileBytes'] as const) {
+      expect(typeof backlogModule[name], `${name} is not callable`).toBe('function');
+    }
   });
 
   test('project.ts exports the two functions and the error class, and nothing else', () => {
@@ -77,9 +84,17 @@ describe('AC-1 — two modules, exactly this surface, and packages/core/src/inde
     // command that cannot name the class it threw prints a Node stack where the spike prints one
     // sentence — which makes `ProjectNotFoundError` part of this folder's public contribution
     // rather than an implementation detail of it.
+    //
+    // Q-0127 adds the fifth and sixth, and they are the first two here whose consumer is not a
+    // command: a route answering for one ticket names a folder's files and reads one of them, and
+    // neither is composable from `readFiles`. `parseFrontmatter` and `renderFrontmatter` stay off
+    // the barrel, which is the half this clause checks in the other direction.
     expect([...Object.keys(backlogModule), ...Object.keys(projectModule)]
       .filter((symbol) => symbol in barrel).sort())
-      .toStrictEqual(['Backlog', 'ProjectNotFoundError', 'findProject', 'loadProject']);
+      .toStrictEqual([
+        'Backlog', 'ProjectNotFoundError', 'findProject', 'listTicketFiles', 'loadProject',
+        'readTicketFileBytes',
+      ]);
   });
 });
 

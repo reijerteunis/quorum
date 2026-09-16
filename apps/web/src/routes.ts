@@ -44,6 +44,16 @@ export interface ScreenRoute {
   /** The ticket that builds it, or `null` where no ticket does. Never guessed. */
   readonly ticket: string | null;
   /**
+   * Whether the screen behind this route has been built — {@link RailEntry.screenExists} for the
+   * rows the rail does not reach.
+   *
+   * It arrived at Q-0127 because that ticket's screen is the first with no rail entry to say so:
+   * the board's row is marked by `RAIL`, and `/backlog/:ticketId` is in neither table the rail
+   * draws from. A row saying `false` is what makes a placeholder's sentence live rather than
+   * describing work that is finished.
+   */
+  readonly screenExists: boolean;
+  /**
    * What this route is waiting for, in a sentence the placeholder shows verbatim. It lives here
    * rather than in the component so that what a user reads and what the register claims cannot
    * come apart, and so that a screen's explanation cannot be attached to another screen's route.
@@ -73,15 +83,17 @@ export const HOME_PATH = '/projects';
 export const BOARD_PATH = '/backlog';
 
 /**
- * The ticket page's pattern, named once because two things need it: the register row below, and
- * {@link ticketPath}, which the board's cards link with.
+ * The ticket page's pattern, named once because three things need it: the register row below,
+ * {@link ticketPath}, which the board's cards link with, and `app.tsx`, which has to know which
+ * resolved route draws the ticket page rather than a placeholder.
  *
  * Declared as a constant rather than written twice for the reason this whole file exists — and for
  * a mechanical one beside it: `test/routes.test.ts` refuses any route-path literal the register does
  * not hold, so a card assembling the ticket path out of its own template would be a second path
- * register that the scan would have to be told to excuse.
+ * register that the scan would have to be told to excuse. Exported at Q-0127 on {@link BOARD_PATH}'s
+ * own precedent, when the screen behind it arrived.
  */
-const TICKET_ROUTE = '/backlog/:ticketId';
+export const TICKET_ROUTE = '/backlog/:ticketId';
 
 /**
  * Where one ticket's page lives, with the id confined to a single path segment.
@@ -118,6 +130,7 @@ export const ROUTES: readonly Route[] = [
     path: HOME_PATH,
     screen: 'Projects home',
     ticket: null,
+    screenExists: false,
     waitingFor:
       'No ticket builds this screen yet. The daemon this app talks to holds one project and answers for that one, so there is no grid of projects for it to feed.',
   },
@@ -127,34 +140,40 @@ export const ROUTES: readonly Route[] = [
     path: BOARD_PATH,
     screen: 'Backlog board',
     ticket: 'Q-0017',
+    screenExists: true,
     waitingFor: 'The board renders the backlog as one column per stage.',
   },
-  // Re-aimed at Q-0127 by Q-0017's AC-14. Both rows named Q-0017 while it owned the whole of this
-  // work; the gate split it at the seam between a screen over endpoints that exist and a screen
-  // that needs a route built for it, so leaving this row naming a closed ticket would tell a reader
-  // the screen is somebody's when it is nobody's.
+  // Re-aimed at Q-0127 by Q-0017's AC-14 and built by it. Both rows named Q-0017 while it owned the
+  // whole of this work; the gate split it at the seam between a screen over endpoints that exist and
+  // a screen that needs a route built for it. The sentence is kept for the reason the board's is:
+  // `screenExists` is what says the screen is built, and a row whose sentence had been emptied would
+  // make a later `false` silent.
   {
     path: TICKET_ROUTE,
     screen: 'Ticket page',
     ticket: 'Q-0127',
-    waitingFor: "The ticket page renders a ticket's folder as tabs, with its run log down the side. It needs a route that answers for one ticket, which the daemon does not have yet.",
+    screenExists: true,
+    waitingFor: "The ticket page renders a ticket's folder as tabs, with its run log down the side.",
   },
   {
     path: '/harness',
     screen: 'Harness editor',
     ticket: 'Q-0021',
+    screenExists: false,
     waitingFor: 'The harness editor is M4 work, after the screens this milestone builds.',
   },
   {
     path: '/flows',
     screen: 'Flow editor',
     ticket: 'Q-0020',
+    screenExists: false,
     waitingFor: 'The flow editor is M4 work, after the screens this milestone builds.',
   },
   {
     path: '/runs',
     screen: 'Runs landing',
     ticket: null,
+    screenExists: false,
     waitingFor:
       'No ticket builds this screen yet. The daemon lists the runs it is driving, so what this route waits for is a screen that reads that listing.',
   },
@@ -162,30 +181,35 @@ export const ROUTES: readonly Route[] = [
     path: '/runs/:handle',
     screen: 'Mission control',
     ticket: 'Q-0015',
+    screenExists: false,
     waitingFor: 'Mission control streams a run live, one trace column per parallel step.',
   },
   {
     path: '/runs/:handle/gate',
     screen: 'Gate screen',
     ticket: 'Q-0016',
+    screenExists: false,
     waitingFor: "The gate screen shows a step's verdict and diffs, and takes the answer.",
   },
   {
     path: '/runs/:handle/steps/:stepId',
     screen: 'Step chat',
     ticket: 'Q-0022',
+    screenExists: false,
     waitingFor: 'Step chat is M4 work, for the steps that ask the human a question mid-run.',
   },
   {
     path: '/history',
     screen: 'Run history',
     ticket: 'Q-0018',
+    screenExists: false,
     waitingFor: 'Run history lists the runs that finished, and drills into one of them.',
   },
   {
     path: '/settings',
     screen: 'Settings',
     ticket: null,
+    screenExists: false,
     waitingFor: 'No ticket builds this screen yet, and nothing in this app has a setting to hold.',
   },
 ];

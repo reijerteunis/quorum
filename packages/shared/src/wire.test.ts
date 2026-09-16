@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 
 import { repoFile, sharedSourceFiles } from '../test/corpus.js';
 import {
-  WIRE_RUN_STATES, wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema,
-  wireRunListSchema, wireRunSchema, wireRunStateSchema, wireTicketListSchema, wireTicketSchema,
+  containmentResultSchema, pushLagResultSchema, WIRE_RUN_STATES, wireExcludedFilesSchema,
+  wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunListSchema,
+  wireRunSchema, wireRunStateSchema, wireTicketDetailSchema, wireTicketFileEntrySchema,
+  wireTicketFileSchema, wireTicketListSchema, wireTicketSchema,
 } from './wire.js';
 import { ticketSchema } from './ticket.js';
 import * as shared from './index.js';
@@ -230,5 +232,124 @@ describe('Q-0017 AC-2 — what a ticket row may carry, and what it may not', () 
     ]);
     // …and the needle finds one when it is there, so the emptiness above is an absence.
     expect(/unpriced/i.test('  readonly unpricedRuns: number;')).toBe(true);
+  });
+});
+
+describe('Q-0127 AC-7 — the two shapes a ticket page reads, each with a schema', () => {
+  /** One detail body, so a refusal below is the one thing it changed. */
+  const DETAIL = {
+    ticket: TICKET,
+    files: [
+      { rel: 'dev/chore/run-2/implement-iter-1.md', bytes: 4096 },
+      { rel: 'ticket.md', bytes: 812 },
+    ],
+    excluded: { count: 4, bytes: 9001 },
+  };
+
+  /** One file body. */
+  const FILE = { rel: 'ticket.md', bytes: 6, text: 'body\n\n' };
+
+  test('the barrel publishes both schemas, executable by a browser', () => {
+    const published = shared as unknown as Record<string, unknown>;
+    for (const name of [
+      'wireTicketDetailSchema', 'wireTicketFileSchema', 'wireTicketFileEntrySchema',
+      'wireExcludedFilesSchema',
+    ]) {
+      expect(typeof published[name], `${name} is not on the barrel`).toBe('object');
+    }
+  });
+
+  test('a live-shaped detail is accepted, a folder holding nothing else included', () => {
+    expect(wireTicketDetailSchema.safeParse(DETAIL).success).toBe(true);
+    expect(wireTicketDetailSchema.safeParse({ ...DETAIL, files: [], excluded: { count: 0, bytes: 0 } }).success,
+      'a ticket whose folder the route could name nothing in is not a malformed answer').toBe(true);
+    expect(wireTicketFileSchema.safeParse(FILE).success).toBe(true);
+    expect(wireTicketFileSchema.safeParse({ ...FILE, bytes: 0, text: '' }).success, 'an empty file was refused').toBe(true);
+  });
+
+  test('each refuses an unknown key, a missing field and a wrong type, distinguishably', () => {
+    // Three refusals rather than one, because a client that cannot tell them apart cannot tell
+    // "this daemon is newer than this page" from "that answer is not the shape it claims".
+    expect(codesOf(wireTicketDetailSchema.safeParse({ ...DETAIL, pushLag: null })))
+      .toStrictEqual(['unrecognized_keys']);
+    const { excluded: _excluded, ...withoutExcluded } = DETAIL;
+    expect(codesOf(wireTicketDetailSchema.safeParse(withoutExcluded))).toContain('invalid_type');
+    expect(codesOf(wireTicketDetailSchema.safeParse({ ...DETAIL, files: 'two' }))).toContain('invalid_type');
+
+    expect(codesOf(wireTicketFileSchema.safeParse({ ...FILE, encoding: 'utf8' })))
+      .toStrictEqual(['unrecognized_keys']);
+    const { text: _text, ...withoutText } = FILE;
+    expect(codesOf(wireTicketFileSchema.safeParse(withoutText))).toContain('invalid_type');
+    expect(codesOf(wireTicketFileSchema.safeParse({ ...FILE, bytes: '6' }))).toContain('invalid_type');
+  });
+
+  test('a byte count is a non-negative integer, and a listed file carries no text', () => {
+    // The entry is where a cap would otherwise live: a size a reader is shown before asking for the
+    // file. A negative or fractional one is not a size any `stat` produced.
+    for (const bytes of [-1, 1.5, '4096']) {
+      expect(wireTicketFileEntrySchema.safeParse({ rel: 'ticket.md', bytes }).success,
+        `a size of ${JSON.stringify(bytes)} was accepted`).toBe(false);
+    }
+    expect(codesOf(wireTicketFileEntrySchema.safeParse({ rel: 'ticket.md', bytes: 1, text: 'x' })),
+      'a listed file carried its own text, which is the payload this shape exists to keep off the wire')
+      .toStrictEqual(['unrecognized_keys']);
+    for (const count of [-1, 2.5]) {
+      expect(wireExcludedFilesSchema.safeParse({ count, bytes: 0 }).success,
+        `an excluded count of ${String(count)} was accepted`).toBe(false);
+    }
+  });
+
+  test('the detail carries the listing\'s ticket shape rather than a second one', () => {
+    // The whole point of the field: one projection, so a board row and a page header cannot report
+    // one ticket two ways. A row the LISTING schema refuses is refused here too.
+    expect(wireTicketDetailSchema.safeParse({ ...DETAIL, ticket: { ...TICKET, cost: 1 } }).success,
+      'the nested ticket is not the listing\'s own shape').toBe(false);
+    expect(wireTicketDetailSchema.safeParse({
+      ...DETAIL, ticket: { ...TICKET, containment: { state: 'contained', ahead: 3 } },
+    }).success, 'a containment answer git cannot produce was accepted inside a detail').toBe(false);
+  });
+
+  test('and both are declared here, which is the half a re-export alone does not say', () => {
+    // The other direction — that no consumer declares one of its own — is asserted in each consumer
+    // over its own corpus: `packages/server/src/package.test.ts` and `apps/web/test/source.test.ts`.
+    // It sits there rather than here because a scan reaching into another package would earn this
+    // task two turbo inputs for one assertion each of those suites can make from files it already
+    // reads.
+    const declaration = sharedSourceFiles().find(([name]) => name === 'wire.ts')?.[1] ?? '';
+    expect(declaration, 'wire.ts is not in the corpus — this check has lost its subject').not.toBe('');
+    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles']) {
+      expect(declaration, `${shape} is not declared here`).toMatch(new RegExp(`export interface ${shape} \\{`));
+    }
+  });
+});
+
+describe('Q-0127 AC-14(a) — a commit count on the wire cannot be negative', () => {
+  test('both ahead counts refuse -1 and accept 0, as their two siblings in this file already did', () => {
+    // `rev-list --count` answers a count of commits, and this schema is the only thing between a
+    // misread probe and a rendered figure. `count` and `pendingGates` carried `.nonnegative()` and
+    // these two did not, so a reader comparing the four learnt the wrong rule about which of them
+    // are constrained.
+    expect(containmentResultSchema.safeParse({ state: 'not-contained', ahead: 0 }).success).toBe(true);
+    expect(containmentResultSchema.safeParse({ state: 'not-contained', ahead: -1 }).success,
+      'a containment answer claiming a negative count of commits was accepted').toBe(false);
+    expect(pushLagResultSchema.safeParse({ state: 'unpushed', ahead: 0, upstream: 'origin/main' }).success).toBe(true);
+    expect(pushLagResultSchema.safeParse({ state: 'unpushed', ahead: -1, upstream: 'origin/main' }).success,
+      'a push-lag answer claiming a negative count of commits was accepted').toBe(false);
+    // …and the refusal names the field, so the two are told apart in a message rather than by
+    // position.
+    const refusal = containmentResultSchema.safeParse({ state: 'not-contained', ahead: -1 });
+    expect((refusal.error?.issues ?? []).flatMap((issue) => issue.path)).toContain('ahead');
+  });
+
+  test('the annotations still hold, which is what makes this a narrowing rather than a rewrite', () => {
+    // The two schemas are annotated `z.ZodType<ContainmentResult>` and `z.ZodType<PushLagResult>`,
+    // so a narrowing that changed the SHAPE would fail to compile at its own declaration. This is
+    // the runtime half: every state either union can produce is still accepted.
+    for (const answer of [{ state: 'contained' }, { state: 'indeterminate', reason: 'no branch' }]) {
+      expect(containmentResultSchema.safeParse(answer).success, `${JSON.stringify(answer)} was refused`).toBe(true);
+    }
+    for (const answer of [{ state: 'pushed' }, { state: 'indeterminate', reason: 'no remote' }]) {
+      expect(pushLagResultSchema.safeParse(answer).success, `${JSON.stringify(answer)} was refused`).toBe(true);
+    }
   });
 });

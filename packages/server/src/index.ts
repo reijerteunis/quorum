@@ -57,9 +57,15 @@ export {
 } from './wire.js';
 export type { StartRefusalCode, WireMessage, WireRefusal, WireRun } from './wire.js';
 
-/** Q-0119's read-only surface: project, tickets, flows and run history, mounted on an app. */
+/**
+ * Q-0119's read-only surface: project, tickets, flows and run history, mounted on an app.
+ *
+ * Q-0127 added the two routes answering for one ticket, and their shapes are re-exported here as
+ * types beside {@link WireTicket} — `@quorum/shared`'s, each with a schema, so this barrel's runtime
+ * register is unchanged and a browser parses rather than casts.
+ */
 export { mountRead } from './read.js';
-export type { WireTicket } from './read.js';
+export type { WireTicket, WireTicketDetail, WireTicketFile } from './read.js';
 
 /**
  * Q-0122's static route: the built web app, served from a root the caller supplies.

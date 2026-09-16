@@ -18,7 +18,7 @@ import YAML, { YAMLParseError } from 'yaml';
 
 import { parseTicketId } from '@quorum/shared';
 
-import { Backlog, parseFrontmatter, renderFrontmatter } from './backlog.js';
+import { Backlog, listTicketFiles, parseFrontmatter, readTicketFileBytes, renderFrontmatter } from './backlog.js';
 import type { TicketRecord } from './backlog.js';
 import { TICKET_ID_PATTERN } from '../run-history/reader.js';
 import { removeTempDirs, tempDir, walk, write } from '../../test/repo.js';
@@ -677,6 +677,130 @@ describe('AC-9 — readFiles keeps its glob semantics exactly', () => {
     expect(backlog.readFiles(ticket, 'requirements/nothing-*.md')).toStrictEqual([]);
     expect(backlog.readFiles(ticket, 'solution/contracts.md')).toStrictEqual([]);
     expect(backlog.readFiles(ticket, 'solution/')).toStrictEqual([]);
+  });
+});
+
+describe('Q-0127 AC-2 — a ticket folder is named and measured without being opened', () => {
+  /** Whether this process can actually read `file` — the premise the mode-0 case rests on. */
+  function readable(file: string): boolean {
+    try {
+      fs.readFileSync(file);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** A ticket folder holding a nested artifact, a hidden one, and a file worth not reading. */
+  function withFolder(): { backlog: Backlog; ticket: TicketRecord } {
+    const backlog = emptyBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    write(path.join(ticket.dir, 'runs.log'), 'one line\n');
+    write(path.join(ticket.dir, 'dev', 'chore', 'run-2', 'implement-iter-1.md'), 'implement\n');
+    write(path.join(ticket.dir, 'review', 'chore', 'run-2', 'chore-iter-1.md'), 'review\n');
+    return { backlog, ticket };
+  }
+
+  test('every file is named with its size, sorted, and the folder is never read', () => {
+    const { backlog, ticket } = withFolder();
+    // Large enough that reading it would be the difference a `readFiles`-shaped listing pays.
+    write(path.join(ticket.dir, 'review', 'hand-review.txt'), 'x'.repeat(1_048_576));
+    const opened = vi.spyOn(fs, 'readFileSync');
+    try {
+      const listing = listTicketFiles(backlog.root, ticket);
+      expect(listing.files.map((file) => file.rel)).toStrictEqual([
+        'dev/chore/run-2/implement-iter-1.md',
+        'review/chore/run-2/chore-iter-1.md',
+        'review/hand-review.txt',
+        'runs.log',
+        'ticket.md',
+      ]);
+      expect(listing.files.find((file) => file.rel === 'review/hand-review.txt')?.bytes).toBe(1_048_576);
+      expect(listing.files.find((file) => file.rel === 'runs.log')?.bytes).toBe('one line\n'.length);
+      // The claim is about this folder rather than about the process: a read of some other file is
+      // not this listing's, and a read of one of these is.
+      const read = opened.mock.calls.map((call) => String(call[0])).filter((file) => file.startsWith(ticket.dir));
+      expect(read, 'the listing opened a file in the folder it was only asked to name').toStrictEqual([]);
+    } finally {
+      opened.mockRestore();
+    }
+  });
+
+  test('and it answers for a file this process can stat and cannot read', (ctx) => {
+    // The clause a reading implementation could not satisfy at all. Its premise is a capability of
+    // the environment rather than of the commit, so it is PROBED and the case reports a skip where
+    // the probe fails — running as root, where a mode of 0 stops nothing. *"A test's verdict is a
+    // property of the commit, not of the checkout or the account"* (2026-08-30): a machine property
+    // may shape a fixture or refuse a run, and may never be the oracle. The shape `git.test.ts`'s
+    // ownership case already uses, for the same reason.
+    const { backlog, ticket } = withFolder();
+    const unreadable = path.join(ticket.dir, 'review', 'sealed.md');
+    write(unreadable, 'sealed\n');
+    fs.chmodSync(unreadable, 0o000);
+    ctx.skip(readable(unreadable),
+      'this process reads a file whose mode is 0 — running as root, most likely — so a file that '
+      + 'can be stated and not read cannot be staged here');
+
+    const listing = listTicketFiles(backlog.root, ticket);
+    expect(listing.files.map((file) => file.rel), 'a file that cannot be read was not named')
+      .toContain('review/sealed.md');
+    expect(listing.files.find((file) => file.rel === 'review/sealed.md')?.bytes).toBe('sealed\n'.length);
+    expect(() => readTicketFileBytes(backlog.root, ticket, 'review/sealed.md'),
+      'an unreadable file answered as an absent one').toThrow();
+    fs.chmodSync(unreadable, 0o600);
+  });
+
+  test('a path whose first segment begins with a dot is counted and never named', () => {
+    const { backlog, ticket } = withFolder();
+    write(path.join(ticket.dir, '.harness', 'run-3', 'verdict.json'), '{"verdict":"approve"}\n');
+    write(path.join(ticket.dir, '.scratch', 'notes.md'), 'notes\n');
+    const listing = listTicketFiles(backlog.root, ticket);
+    const named = JSON.stringify(listing.files);
+    expect(named, 'a hidden path was named').not.toContain('.harness');
+    expect(named, 'a second hidden directory leaked, so the rule is the name rather than the dot')
+      .not.toContain('.scratch');
+    expect(listing.excluded.count).toBe(2);
+    expect(listing.excluded.bytes).toBe('{"verdict":"approve"}\n'.length + 'notes\n'.length);
+  });
+
+  test('one file is read as bytes, and absence is null rather than a throw', () => {
+    const { backlog, ticket } = withFolder();
+    const bytes = readTicketFileBytes(backlog.root, ticket, 'runs.log');
+    expect(bytes, 'the read answered nothing for a file that is there').not.toBeNull();
+    expect(Buffer.isBuffer(bytes), 'the read decoded rather than answering bytes').toBe(true);
+    expect(bytes?.toString('utf8')).toBe('one line\n');
+    expect(readTicketFileBytes(backlog.root, ticket, 'review/absent.md'), 'an absent file threw').toBeNull();
+    expect(readTicketFileBytes(backlog.root, ticket, 'review/chore/run-2'), 'a directory was read as a file').toBeNull();
+    // What `readFiles` cannot answer: the bytes as they are, undecoded. A lone 0xFF is not UTF-8.
+    fs.writeFileSync(path.join(ticket.dir, 'review', 'raw.bin'), Buffer.from([0x68, 0xff, 0x69]));
+    expect([...(readTicketFileBytes(backlog.root, ticket, 'review/raw.bin') ?? [])])
+      .toStrictEqual([0x68, 0xff, 0x69]);
+  });
+
+  test('both sit on the same confinement as readFiles, and a benign twin is still accepted', () => {
+    const { backlog, ticket } = withFolder();
+    for (const rel of ['../ticket.md', '/etc/passwd', 'dev/../../escape.md']) {
+      expect(() => readTicketFileBytes(backlog.root, ticket, rel), `${rel} was not refused`)
+        .toThrow(/not a path inside the ticket folder/);
+    }
+    expect(() => listTicketFiles(backlog.root, { ...ticket, dir: path.join(backlog.root, '..') }),
+      'a record naming a folder outside this backlog was accepted').toThrow(/not a ticket folder/);
+    // The twin: a real nested path is still read, so the refusals above are a boundary rather than
+    // a guard that refuses everything.
+    expect(readTicketFileBytes(backlog.root, ticket, 'dev/chore/run-2/implement-iter-1.md')?.toString('utf8'))
+      .toBe('implement\n');
+  });
+
+  test('an enumerated name that resolves outside the folder is refused rather than skipped', () => {
+    // `readFiles`'s own rule: the walk supplies the names, so a link at one of them is a path no
+    // caller asked for, and answering a shorter list would shrink an answer with nothing going red.
+    const backlog = nestedBacklog();
+    const ticket = ticketAt(backlog, 'Q-0001-a-ticket', FIXTURE);
+    const outside = path.join(backlog.root, '..', 'outside.md');
+    write(outside, 'outside\n');
+    fs.symlinkSync(outside, path.join(ticket.dir, 'linked.md'));
+    expect(() => listTicketFiles(backlog.root, ticket), 'a link out of the folder was listed or skipped')
+      .toThrow(/not a path inside the ticket folder/);
   });
 });
 

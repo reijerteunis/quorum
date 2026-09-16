@@ -368,6 +368,59 @@ describe('AC-2 — what this package names from core is on core\'s barrel', () =
     expect(production().length, 'the production scan found nothing').toBeGreaterThan(3);
     expect(coreImports().length, 'nothing in this package imports from @quorum/core at all').toBeGreaterThan(1);
   });
+
+  test('Q-0127 AC-2 — the ticket routes open no file of their own', () => {
+    // Both reads a ticket page makes are `core`'s, which is *"Enforced in `core`, so the CLI and
+    // M3's server inherit one rule instead of each writing a weaker one"* — `docs/GLOSSARY.md`,
+    // **Confinement** — executed rather than restated. A route module that opened a file itself
+    // would be a second boundary around the same folder, and a weaker one: it is `pathInside` that
+    // resolves a leaf through `realpathSync`, and a `readFileSync` on a joined path does not.
+    //
+    // Scoped to `read.ts` deliberately. `static.ts` opens files and must: it serves a built bundle
+    // out of a root the operator supplied, a different declared root with its own confinement. What
+    // this clause claims is about the module that answers for a ticket folder.
+    // Over the CODE and not over the prose, which is the distinction this file already draws where
+    // it removed a clause for firing on a docblock explaining the decision it was checking: the
+    // module's own JSDoc has to name `readFileSync` to say why it does not call one.
+    const module = read(SRC, 'read.ts');
+    const code = module.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code, 'read.ts imports node:fs').not.toMatch(/from '\s*node:fs'/);
+    for (const opener of ['readFileSync', 'readFile(', 'openSync', 'createReadStream', 'readdirSync']) {
+      expect(code.includes(opener), `read.ts opens a file itself: ${opener}`).toBe(false);
+    }
+    // The comment-stripping has a subject and does not eat the file: the module's own code is still
+    // there to scan, and a needle inside a comment is what it removes.
+    expect(code, 'the strip removed the module itself').toContain('app.get(');
+    expect(code.length, 'the strip removed most of the module').toBeGreaterThan(module.length / 4);
+    expect("const x = 1; /* readFileSync */".replace(/\/\*[\s\S]*?\*\//g, '').includes('readFileSync')).toBe(false);
+    // …and it really does reach `core` for both of them, so the emptiness above is a delegation
+    // rather than a module that reads nothing at all.
+    for (const symbol of ['listTicketFiles', 'readTicketFileBytes']) {
+      expect(module, `read.ts does not reach core's ${symbol}`).toContain(symbol);
+    }
+    // The needles discriminate, over a fixture rather than over an empty corpus.
+    const hostile = "import fs from 'node:fs';\nconst text = fs.readFileSync(path.join(dir, rel), 'utf8');";
+    expect(/from '\s*node:fs'/.test(hostile)).toBe(true);
+    expect(hostile.includes('readFileSync')).toBe(true);
+  });
+
+  test('Q-0127 AC-7 — this package declares neither new wire shape of its own', () => {
+    // A moved type with no schema is the half-measure Q-0120 had to repair, and a second
+    // declaration beside a re-export is free to drift from the one a browser executes. Both shapes
+    // are `@quorum/shared`'s, and this package re-exports the names.
+    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles']) {
+      const offenders = packageFiles()
+        .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
+        .map(([file]) => file);
+      expect(offenders, `${shape} is declared in this package`).toStrictEqual([]);
+    }
+    // It re-exports two of them, so the absence above is a delegation rather than four names this
+    // package never heard of.
+    expect(read(SRC, 'read.ts'), 'read.ts does not re-export the detail shape').toContain('WireTicketDetail');
+    expect(read(SRC, 'index.ts'), 'the barrel does not re-export the detail shape').toContain('WireTicketDetail');
+    // And the needle finds a declaration when there is one.
+    expect(/\b(?:interface|type)\s+WireTicketFile\s*[={]/.test('export interface WireTicketFile { rel: string }')).toBe(true);
+  });
 });
 
 describe('AC-3 — run identity has one authority, and it is not an event\'s prose', () => {
@@ -671,15 +724,17 @@ const architectureSection = (): string => {
 };
 
 describe('Q-0121 AC-13 — every route this package registers is named in the architecture document', () => {
-  test('the derived set is the twelve routes, so the register cannot silently shrink', () => {
+  test('the derived set is the fourteen routes, so the register cannot silently shrink', () => {
     // An identity rather than a count (Q-0073): a count is satisfied by a route swapped for
-    // another. `GET /*` is Q-0122's static route and sorts first; two are Q-0121's; the rest are
-    // Q-0118's and Q-0119's, and the document named Q-0119's five as a noun list and never as
-    // routes until Q-0121 — which this guard is what found, a paragraph behind the code.
+    // another. `GET /*` is Q-0122's static route and sorts first; two are Q-0121's; two are
+    // Q-0127's; the rest are Q-0118's and Q-0119's, and the document named Q-0119's five as a noun
+    // list and never as routes until Q-0121 — which this guard is what found, a paragraph behind
+    // the code.
     expect(registeredRoutes()).toStrictEqual([
       'GET /*',
       'GET /flows', 'GET /history', 'GET /history/:id', 'GET /project', 'GET /runs',
-      'GET /runs/:id', 'GET /runs/:id/events', 'GET /tickets',
+      'GET /runs/:id', 'GET /runs/:id/events', 'GET /tickets', 'GET /tickets/:id',
+      'GET /tickets/:id/file',
       'POST /runs', 'POST /runs/:id/gate', 'POST /runs/:id/stop',
     ]);
   });

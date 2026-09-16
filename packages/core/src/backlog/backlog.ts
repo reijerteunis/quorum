@@ -56,6 +56,26 @@ export interface TicketFile {
   text: string;
 }
 
+/** One file of a ticket folder as {@link listTicketFiles} names it: where it is, and how large. */
+export interface TicketFileEntry {
+  /** Path relative to the ticket folder, separated by `/` — what a reader cites and asks for. */
+  rel: string;
+  /** The file's size in bytes, from `stat`. Nothing in this listing opens a file. */
+  bytes: number;
+}
+
+/**
+ * What a ticket folder holds, and how much of it the listing declined to name.
+ *
+ * `excluded` carries a count and a total and **no paths**: it says the listing is not everything,
+ * which is what stops a reader taking it for the whole folder, and stops short of being a second
+ * listing of the engine's own state.
+ */
+export interface TicketFolderListing {
+  files: TicketFileEntry[];
+  excluded: { count: number; bytes: number };
+}
+
 /** What {@link Backlog.create} needs to allocate a ticket. */
 export interface NewTicket {
   title: string;
@@ -303,6 +323,104 @@ export class Backlog {
   log(ticket: TicketRecord, line: string): void {
     fs.appendFileSync(fileInside(this.root, ticket, RUNS_LOG_FILE), `${new Date().toISOString()} ${line}\n`);
   }
+}
+
+/**
+ * Whether `rel`'s first segment is a dot name.
+ *
+ * The rule is the leading dot and not the name `.harness`, so a second hidden directory is covered
+ * the day it appears rather than the day somebody remembers it.
+ */
+const isHiddenPath = (rel: string): boolean => (rel.split(/[\\/]/)[0] ?? '').startsWith('.');
+
+/** A relative path with `/` between its names, whatever separator this platform builds one from. */
+const posix = (rel: string): string => rel.split(path.sep).join('/');
+
+/**
+ * Every file in a ticket folder, named and measured, without opening one of them.
+ *
+ * Beside {@link Backlog.readFiles} because it shares that method's boundary and answers the question
+ * it cannot: `readFiles` decodes every match as UTF-8 and returns the text, so enumerating a folder
+ * through it costs whatever the folder weighs — 3.1 MB at this backlog's largest — and a caller that
+ * wanted the names would pay for the bytes and throw them away. No pattern reaches the folder itself
+ * in any case: `pathInside` refuses the empty pattern, `'.'` and `'./'` alike, a bare `*` hands the
+ * first subdirectory to `readFileSync`, and a bare `*` with a trailing slash walks a path that does
+ * not exist.
+ *
+ * **Why: a path whose first segment begins with `.` is counted and never named.** Those are the
+ * engine's own run state — gitignored, so not in the database this product keeps — and a surface
+ * answering for a ticket's record is not where they belong. Excluded here rather than at a caller so
+ * that one rule serves every caller (`docs/GLOSSARY.md`, **Confinement**); what makes such a path
+ * unreadable is the caller reading only what this named, and {@link readTicketFileBytes} deliberately
+ * does not repeat the rule, a second copy being free to drift from this one.
+ *
+ * Confined exactly as `readFiles` is, leaf by leaf: an enumerated name that resolves outside the
+ * folder is REFUSED rather than skipped, because a link the filesystem supplied is a path no caller
+ * asked for. Sorted by `rel`, so the answer is the folder's contents rather than a `readdir` order.
+ *
+ * @throws {Error} when the record is not this backlog's, or when an enumerated name leaves the
+ *   folder.
+ */
+export function listTicketFiles(root: string, ticket: TicketRecord): TicketFolderListing {
+  const folder = folderOf(root, ticket);
+  const files: TicketFileEntry[] = [];
+  const excluded = { count: 0, bytes: 0 };
+  for (const file of walk(folder)) {
+    const rel = path.relative(folder, file);
+    if (pathInside(folder, rel) === null) throw new Error(notInsideTicket(rel));
+    const found = fs.statSync(file, { throwIfNoEntry: false });
+    // A name that stands there and is not a regular file has no size to report and no bytes to
+    // serve, so it is not a file this listing can name.
+    if (found === undefined || !found.isFile()) continue;
+    if (isHiddenPath(rel)) {
+      excluded.count += 1;
+      excluded.bytes += found.size;
+      continue;
+    }
+    files.push({ rel: posix(rel), bytes: found.size });
+  }
+  files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  return { files, excluded };
+}
+
+/**
+ * One file of a ticket folder, as the bytes on disk.
+ *
+ * Bytes rather than text, which is the whole reason it is not `readFiles` with a narrower pattern:
+ * `readFileSync(file, 'utf8')` substitutes U+FFFD for a sequence it cannot decode and does not
+ * throw, so a caller that must tell a text file from something else has to be handed what was
+ * actually read. The verdict is then taken once, over one read, rather than against a second `stat`
+ * that answers about a later moment.
+ *
+ * `null` where nothing stands at the path and where what stands there is not a regular file — the
+ * two answers `ENOENT` and `ENOTDIR` are, and a directory, which opens and fstats as one. Every
+ * other failure propagates: a file this process may not open is not a file that is not there.
+ *
+ * @throws {Error} when the record is not this backlog's, or when `rel` leaves the ticket folder —
+ *   lexically, or through a link, which is {@link pathInside}'s second clause.
+ */
+export function readTicketFileBytes(root: string, ticket: TicketRecord, rel: string): Buffer | null {
+  const abs = fileInside(root, ticket, rel);
+  let handle: number;
+  try {
+    handle = fs.openSync(abs, 'r');
+  } catch (error) {
+    if (absent(error)) return null;
+    throw error;
+  }
+  try {
+    // `fstat` and the read are one moment on one descriptor, so what is measured is what is served
+    // — the window a stat-then-open-by-name leaves is what Q-0122's static route closed the same way.
+    return fs.fstatSync(handle).isFile() ? fs.readFileSync(handle) : null;
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+/** Whether an open failed because nothing is there, rather than for a reason a caller could act on. */
+function absent(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 /**
