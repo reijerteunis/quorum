@@ -107,6 +107,42 @@ function daemon(answers: Answers): { fetch: (path: string) => Promise<DaemonResp
   };
 }
 
+/**
+ * A daemon that answers nothing until a test says so, which is what lets an ORDER be staged.
+ *
+ * {@link daemon} answers every request before the next one can be made, so it cannot reach the case
+ * two requests being in flight at once creates — and that case is the whole of what the two clauses
+ * below are about. Each request parks its resolver under the path it asked for, so a test settles
+ * them in whatever order it wants and asserts what the page did with the answers.
+ */
+function deferring(): {
+  fetch: (path: string) => Promise<DaemonResponse>;
+  settle: (path: string, body: unknown) => Promise<void>;
+  waiting: (path: string) => number;
+} {
+  const held = new Map<string, ((answer: DaemonResponse) => void)[]>();
+  return {
+    fetch: (path: string) => new Promise<DaemonResponse>((resolve) => {
+      held.set(path, [...(held.get(path) ?? []), resolve]);
+    }),
+    settle: async (path: string, body: unknown) => {
+      const resolve = held.get(path)?.shift();
+      // A settle naming a path nobody asked for would pass silently and prove nothing, so it stops
+      // here instead: the staging is half the assertion in every case below.
+      if (resolve === undefined) throw new Error(`no request is waiting on ${path}`);
+      await act(async () => { resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }); });
+    },
+    waiting: (path: string) => held.get(path)?.length ?? 0,
+  };
+}
+
+/** One file body, as the daemon answers it. */
+const fileBody = (rel: string, text: string): Record<string, unknown> => ({ rel, bytes: text.length, text });
+
+/** Every `pre` on the page, joined — which is where a file's text and the run log are rendered. */
+const preformatted = (view: HTMLElement): string =>
+  [...view.querySelectorAll('pre')].map((node) => node.textContent ?? '').join('\n');
+
 /** Render `element` into a real document and answer the element it was mounted into. */
 async function render(element: ReactElement): Promise<HTMLElement> {
   const container = document.createElement('div');
@@ -296,6 +332,105 @@ describe('AC-10 — the tabs are derived from the listing, never from a list', (
   test('a folder with nothing to show says so rather than drawing an empty panel', async () => {
     const { view } = await page({ detail: detail([]) });
     expect(view.textContent).toContain(NO_FILES);
+  });
+});
+
+describe('AC-9 and AC-10 — a superseded file answer lands nowhere, and a tab takes its file with it', () => {
+  // Chore run 2 iteration 1's two findings, each with the case that stages it. Both are about a
+  // file request outliving the thing that asked for it: one answer arriving after a newer one, and
+  // one arriving after the tab it belongs to has been left. Neither is reachable through the
+  // immediate daemon above, which is why `deferring` exists.
+  const FOLDER = [entry(TICKET_FILE, 812), entry('dev/a.md'), entry('dev/b.md'), entry('review/r.md')];
+
+  /** The page over a daemon that holds its answers, with the listing already settled. */
+  async function staged(files = FOLDER): Promise<{ view: HTMLElement; server: ReturnType<typeof deferring> }> {
+    const server = deferring();
+    const view = await render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK }));
+    await server.settle(ticketDetailPath(TICKET), detail(files));
+    return { view, server };
+  }
+
+  test('two files opened in a row, answered in reverse order, leave the newer one on the page', async () => {
+    const { view, server } = await staged();
+    await click(view, 'nav button', 'dev');
+    await click(view, 'button', 'dev/a.md');
+    await click(view, 'button', 'dev/b.md');
+    expect(server.waiting(ticketFilePath(TICKET, 'dev/a.md')), 'the first request is not in flight, so nothing is staged')
+      .toBe(1);
+
+    // b was asked for second and answers first, which is what a small file opened after a large one
+    // does. a then answers into a page that has moved on.
+    await server.settle(ticketFilePath(TICKET, 'dev/b.md'), fileBody('dev/b.md', 'THE-B-FILE'));
+    await server.settle(ticketFilePath(TICKET, 'dev/a.md'), fileBody('dev/a.md', 'THE-A-FILE'));
+
+    expect(preformatted(view), 'a superseded answer arrived on top of the newer one').not.toContain('THE-A-FILE');
+    expect(preformatted(view), 'the file the reader last chose is not on the page').toContain('THE-B-FILE');
+    // …and the heading over it still names the file that is shown, which is the half that makes the
+    // defect visible rather than merely wrong: the text and the name must not come from two requests.
+    expect(view.textContent, 'the region names a file whose text it is not showing').toContain('dev/b.md · 10 bytes');
+  });
+
+  test('and the mount\'s own ticket.md answer does not land on a file chosen after it', async () => {
+    // The second half of the same finding: `ticket.md` is requested by the mount rather than by a
+    // reader, so it is the one request that is always in flight while the first choice is made.
+    const { view, server } = await staged();
+    await click(view, 'nav button', 'dev');
+    await click(view, 'button', 'dev/a.md');
+    await server.settle(ticketFilePath(TICKET, 'dev/a.md'), fileBody('dev/a.md', 'THE-CHOSEN-FILE'));
+    await server.settle(ticketFilePath(TICKET, TICKET_FILE), fileBody(TICKET_FILE, 'THE-MOUNTED-FILE'));
+
+    expect(preformatted(view), 'the mount\'s own request overwrote the file a reader asked for')
+      .not.toContain('THE-MOUNTED-FILE');
+    expect(preformatted(view)).toContain('THE-CHOSEN-FILE');
+  });
+
+  test('changing tabs leaves no file from the tab before it on the page', async () => {
+    const { view } = await page({
+      detail: detail(FOLDER),
+      texts: { [TICKET_FILE]: 'x', 'dev/a.md': 'THE-DEV-FILE', 'review/r.md': 'the review\n' },
+    });
+    await click(view, 'nav button', 'dev');
+    await click(view, 'button', 'dev/a.md');
+    expect(preformatted(view), 'the file a reader opened is not on the page — nothing is staged')
+      .toContain('THE-DEV-FILE');
+
+    await click(view, 'nav button', 'review');
+
+    expect(preformatted(view), 'the previous tab\'s file is still rendered under this tab\'s list')
+      .not.toContain('THE-DEV-FILE');
+    expect(view.textContent, 'a file this tab does not hold is still named on it').not.toContain('dev/a.md');
+    expect(view.querySelectorAll('[aria-current="true"]').length,
+      'a file the list no longer holds is still marked as the selected one').toBe(0);
+    expect(view.textContent, 'the file region is a blank panel rather than a sentence').toContain(CHOOSE_FILE);
+    // The tab that was asked for is the one that is shown, so the clearing did not cost the change.
+    expect(view.textContent, 'the tab a reader asked for does not hold its own files').toContain('review/r.md');
+  });
+
+  test('and a file request the leaving tab started lands nowhere', async () => {
+    // The discriminator for the counter rather than for the clearing: clearing alone empties the
+    // region and an answer already in flight fills it again a moment later, under a tab that does
+    // not hold it.
+    const { view, server } = await staged();
+    await click(view, 'nav button', 'dev');
+    await click(view, 'button', 'dev/a.md');
+    await click(view, 'nav button', 'review');
+    await server.settle(ticketFilePath(TICKET, 'dev/a.md'), fileBody('dev/a.md', 'THE-DEV-FILE'));
+
+    expect(preformatted(view), 'a request from the tab that was left answered into the tab that replaced it')
+      .not.toContain('THE-DEV-FILE');
+    expect(view.textContent).toContain(CHOOSE_FILE);
+  });
+
+  test('and clicking the tab already shown is not a way to close the file being read', async () => {
+    const { view } = await page({
+      detail: detail(FOLDER),
+      texts: { [TICKET_FILE]: 'x', 'dev/a.md': 'THE-DEV-FILE' },
+    });
+    await click(view, 'nav button', 'dev');
+    await click(view, 'button', 'dev/a.md');
+    await click(view, 'nav button', 'dev');
+    expect(preformatted(view), 'clicking the current tab discarded the file open under it')
+      .toContain('THE-DEV-FILE');
   });
 });
 

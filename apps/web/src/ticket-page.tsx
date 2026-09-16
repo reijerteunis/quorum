@@ -210,16 +210,29 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
   // answer would render one ticket's file under another ticket's name.
   const generation = useRef(0);
 
+  // And a second counter for every FILE request, because the page counter cannot tell one from the
+  // next: two files opened within one load both match it, so whichever answers last is what the
+  // region shows — which is the older one whenever a big file is opened before a small one, under a
+  // heading naming the newer. The mount's own `ticket.md` request races a file chosen immediately
+  // after it the same way. `load` and the unmount bump this one as well, so every act that
+  // invalidates the page invalidates a file request with it and the one comparison below is the
+  // whole test rather than half of one.
+  const fileRequest = useRef(0);
+
   const open = useCallback((rel: string) => {
-    const mine = generation.current;
+    const mine = (fileRequest.current += 1);
     setSelected(rel);
     setFile(ticketFileInFlight<WireTicketFile>(ticketId, rel));
     void (async () => {
       const answered = await fetchTicketFile(request, ticketId, rel, clock);
-      if (generation.current === mine) setFile(answered);
+      if (fileRequest.current === mine) setFile(answered);
     })();
   }, [request, clock, ticketId]);
 
+  // The run log is settled against the page counter and needs none of its own, because it cannot
+  // race itself: `openLog` is reached from `load`, which supersedes what came before it, and from a
+  // Retry the rail offers only once the request it repeats has settled. Two log requests are never
+  // in flight together, so a counter here would be a guard nothing could turn red.
   const openLog = useCallback(() => {
     const mine = generation.current;
     setLog(ticketFileInFlight<WireTicketFile>(ticketId, RUN_LOG));
@@ -231,6 +244,9 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
 
   const load = useCallback(() => {
     const mine = (generation.current += 1);
+    // Both counters, because this clears the file region: a request the load before it started
+    // would otherwise answer into the region this one has just emptied.
+    fileRequest.current += 1;
     setDetail(ticketInFlight<WireTicketDetail>(ticketId));
     setTab(null);
     setSelected(null);
@@ -254,7 +270,7 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
 
   useEffect(() => {
     load();
-    return () => { generation.current += 1; };
+    return () => { generation.current += 1; fileRequest.current += 1; };
   }, [load]);
 
   if (detail.kind !== 'loaded') {
@@ -271,6 +287,23 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
   const { ticket, files, excluded } = detail.value;
   const tabs = tabsOf(files);
   const shown = tabs.find((each) => each.name === tab) ?? tabs[0] ?? null;
+
+  /**
+   * Show another tab, discarding what was open under the one being left.
+   *
+   * The file region sits below the list, so a selection kept across a change would render one tab's
+   * file beneath another tab's files, named by a path the list no longer holds — and the counter is
+   * bumped with it, so a request the leaving tab started answers nowhere rather than filling the
+   * region a moment after it was cleared. The tab already shown is left alone: clicking it is not a
+   * way to close the file being read.
+   */
+  const showTab = (name: string): void => {
+    if (shown !== null && name === shown.name) return;
+    fileRequest.current += 1;
+    setTab(name);
+    setSelected(null);
+    setFile(null);
+  };
 
   return (
     <section className="flex flex-col gap-4">
@@ -298,7 +331,7 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
                   <button
                     key={each.name}
                     type="button"
-                    onClick={() => setTab(each.name)}
+                    onClick={() => showTab(each.name)}
                     aria-current={shown !== null && each.name === shown.name ? 'page' : undefined}
                     className={`rounded border px-2 py-1 font-mono text-xs hover:border-accent ${
                       shown !== null && each.name === shown.name ? 'border-accent text-accent' : 'border-border text-muted'
