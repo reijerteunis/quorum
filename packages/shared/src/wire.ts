@@ -26,6 +26,9 @@
  */
 import { z } from 'zod';
 
+import { CONTAINMENT_REASONS, type ContainmentResult } from './containment.js';
+import { PUSH_LAG_REASONS, type PushLagResult } from './push-lag.js';
+
 /** The transport envelope; event payloads require a second pass through `eventSchema`. */
 export type WireMessage =
   | { readonly type: 'event'; readonly event: unknown }
@@ -136,4 +139,152 @@ export interface WireRunList {
 /** Runtime validation for a run listing. */
 export const wireRunListSchema: z.ZodType<WireRunList> = z.object({
   runs: z.array(wireRunSchema),
+}).strict();
+
+/**
+ * Runtime validation for one containment answer.
+ *
+ * The state strings are written as literals here and nowhere else in this file, and the annotation
+ * is what checks them: a typo makes the inferred union unassignable to {@link ContainmentResult} and
+ * fails at this line rather than at a renderer with no token for it. The reasons come from the
+ * tuple, because that one is open-ended enough to be worth deriving.
+ *
+ * A proven state carries no reason and a contained result carries no ahead count, which `.strict()`
+ * is what enforces on the wire: an answer carrying both would be a shape git cannot produce.
+ */
+export const containmentResultSchema: z.ZodType<ContainmentResult> = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('contained') }).strict(),
+  z.object({ state: z.literal('not-contained'), ahead: z.number().int() }).strict(),
+  z.object({ state: z.literal('indeterminate'), reason: z.enum(CONTAINMENT_REASONS) }).strict(),
+]);
+
+/** Runtime validation for push lag, on the same terms as {@link containmentResultSchema}. */
+export const pushLagResultSchema: z.ZodType<PushLagResult> = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('pushed') }).strict(),
+  z.object({ state: z.literal('unpushed'), ahead: z.number().int(), upstream: z.string() }).strict(),
+  z.object({ state: z.literal('indeterminate'), reason: z.enum(PUSH_LAG_REASONS) }).strict(),
+]);
+
+/**
+ * One ticket, as the read-only surface reports it — frontmatter, one git fact, and one figure.
+ *
+ * **No field here is stricter than `ticketSchema`, and that is the load-bearing property rather than
+ * an omission.** `stage` is a plain string and not `stageSchema`, because the daemon sends
+ * `String(ticket.meta.stage)` and a `ticket.md` `parseFrontmatter` fell open on yields the literal
+ * `"undefined"`; `iterations` is the same bare number record the disk schema declares, which permits
+ * a float and a negative. A wire schema that refused either would turn a ticket this product accepts
+ * into a board that does not render, which is the opposite of what a board is for — naming a stage
+ * the vocabulary cannot place is the *screen's* job, not the parser's. See Q-0060, which this does
+ * not fix and must not hide.
+ *
+ * `containment` was declared `unknown` until Q-0017 and is the closed union now, so a browser can
+ * switch on it; `null` means git was asked nothing about this branch, which is not an indeterminate
+ * answer and is carried through rather than flattened.
+ *
+ * **`id` is what the file said and `folder` is where the file is, which is why both are here.** A
+ * `ticket.md` `parseFrontmatter` fell open on supplies no id, and `id` is then the empty string —
+ * the same answer `title`, `owner` and `branch` already give for a value nobody wrote, rather than
+ * the literal `"undefined"`, which is a fabricated id a reader cannot tell from a real one.
+ * `folder` is the ticket directory's basename: it comes from `readdir` rather than from the damaged
+ * file, it is unique under one backlog root by construction, and it is therefore the identity that
+ * survives exactly the case where the other one does not. Two damaged tickets are two rows here and
+ * not one.
+ *
+ * **`billedCostUsd` is `null` where nothing has run, and never `0`.** Nothing has run is not the
+ * claim that it cost nothing, which is the `n/a`-never-`0` rule every other measure here is under.
+ * It carries no vendor breakdown and no count of unpriced runs: a ticket file records one figure and
+ * cannot see its own incompleteness, so what names that is `COST_LEGEND` in `board.ts` beside it.
+ */
+export interface WireTicket {
+  /** The id the ticket's own frontmatter carries, or `''` where it carries none. Never invented. */
+  readonly id: string;
+  /** The ticket directory's basename — read from the backlog root, so a damaged file cannot lose it. */
+  readonly folder: string;
+  readonly title: string;
+  readonly stage: string;
+  readonly owner: string;
+  readonly branch: string;
+  /** Never stored: derived from git on this request, or `null` where git was asked nothing. */
+  readonly containment: ContainmentResult | null;
+  /** Loop counters by name, exactly as the ticket holds them — no denominator, which nothing has. */
+  readonly iterations: Record<string, number>;
+  /** The sum of the ticket's own history costs, or `null` where it has no history at all. */
+  readonly billedCostUsd: number | null;
+}
+
+/** Runtime validation for one ticket row. */
+export const wireTicketSchema: z.ZodType<WireTicket> = z.object({
+  id: z.string(),
+  folder: z.string(),
+  title: z.string(),
+  stage: z.string(),
+  owner: z.string(),
+  branch: z.string(),
+  containment: containmentResultSchema.nullable(),
+  iterations: z.record(z.string(), z.number()),
+  billedCostUsd: z.number().nullable(),
+}).strict();
+
+/**
+ * What a listing of the backlog answers with: the rows, the one repository-level git fact, and the
+ * ref both git facts are *relative to*.
+ *
+ * `pushLag` sits on the envelope rather than on a row because it is a property of the repository and
+ * not of any ticket — containment's sibling under the same rules, and `null` where git was not asked
+ * at all.
+ *
+ * **`baseBranch` is on the envelope for the same reason, and it is what makes the other two
+ * renderable.** A containment answer is spelled `<base>:contained` and a push-lag sentence names the
+ * base in as many words, so a surface holding the states without the ref they were computed against
+ * can render neither. `packages/cli` reads it out of the configuration it has already loaded; a
+ * browser has no configuration, and a second request for one field would be a third round trip for a
+ * value the answer it already has was computed with.
+ */
+export interface WireTicketList {
+  readonly tickets: readonly WireTicket[];
+  readonly pushLag: PushLagResult | null;
+  /** The configured base branch these containment and push-lag answers were computed against. */
+  readonly baseBranch: string;
+}
+
+/** Runtime validation for a backlog listing. */
+export const wireTicketListSchema: z.ZodType<WireTicketList> = z.object({
+  tickets: z.array(wireTicketSchema),
+  pushLag: pushLagResultSchema.nullable(),
+  baseBranch: z.string(),
+}).strict();
+
+/**
+ * One flow file, as the read-only surface reports it.
+ *
+ * **A flow the linter refuses is named rather than hidden** (Q-0055 AC-16), which is why `runnable`
+ * and `problems` are both here and why `consumes` and `produces` are nullable: a refused record may
+ * never have parsed at all. `consumes` is a plain string for {@link WireTicket}'s reason — a flow
+ * naming a stage this product does not know is a flow to report, not one to drop.
+ */
+export interface WireFlow {
+  readonly name: string;
+  readonly runnable: boolean;
+  readonly consumes: string | null;
+  readonly produces: string | null;
+  readonly problems: readonly string[];
+}
+
+/** Runtime validation for one flow row. */
+export const wireFlowSchema: z.ZodType<WireFlow> = z.object({
+  name: z.string(),
+  runnable: z.boolean(),
+  consumes: z.string().nullable(),
+  produces: z.string().nullable(),
+  problems: z.array(z.string()),
+}).strict();
+
+/** What a listing of the flow directory answers with. */
+export interface WireFlowList {
+  readonly flows: readonly WireFlow[];
+}
+
+/** Runtime validation for a flow listing. */
+export const wireFlowListSchema: z.ZodType<WireFlowList> = z.object({
+  flows: z.array(wireFlowSchema),
 }).strict();

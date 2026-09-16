@@ -62,10 +62,42 @@ export const isRedirect = (route: Route): route is RedirectRoute => 'redirectTo'
  */
 export const HOME_PATH = '/projects';
 
+/**
+ * Where the backlog board lives — the second path a component may reach for by name, and the first
+ * one that has a screen behind it.
+ *
+ * Declared here for {@link HOME_PATH}'s reason: `app.tsx` has to know which resolved route draws a
+ * real screen rather than a placeholder, and a path written there would be a second register. It is
+ * the path both tables below use, so the rail entry and the route row cannot come apart.
+ */
+export const BOARD_PATH = '/backlog';
+
+/**
+ * The ticket page's pattern, named once because two things need it: the register row below, and
+ * {@link ticketPath}, which the board's cards link with.
+ *
+ * Declared as a constant rather than written twice for the reason this whole file exists — and for
+ * a mechanical one beside it: `test/routes.test.ts` refuses any route-path literal the register does
+ * not hold, so a card assembling the ticket path out of its own template would be a second path
+ * register that the scan would have to be told to excuse.
+ */
+const TICKET_ROUTE = '/backlog/:ticketId';
+
+/**
+ * Where one ticket's page lives, with the id confined to a single path segment.
+ *
+ * Built by substitution into the registered pattern, so the path a card links to and the path the
+ * router matches are the same string with one hole filled. A ticket id is agent-written frontmatter
+ * — `Backlog.read` asserts rather than parses — so it is percent-encoded rather than trusted to be
+ * the `<PREFIX>-nnnn` grammar the glossary describes.
+ */
+export const ticketPath = (id: string): string => TICKET_ROUTE.replace(':ticketId', encodeURIComponent(id));
+
 /** The left rail: seven entries, in `docs/05-design-prompt.md:21`'s order. */
 export const RAIL: readonly RailEntry[] = [
   { id: 'projects', label: 'Projects', path: HOME_PATH, screenExists: false },
-  { id: 'backlog', label: 'Backlog', path: '/backlog', screenExists: false },
+  // The one entry Q-0017 flipped, and the first `true` this table has ever held.
+  { id: 'backlog', label: 'Backlog', path: BOARD_PATH, screenExists: true },
   { id: 'harness', label: 'Harness', path: '/harness', screenExists: false },
   { id: 'flows', label: 'Flows', path: '/flows', screenExists: false },
   { id: 'runs', label: 'Runs', path: '/runs', screenExists: false },
@@ -89,17 +121,23 @@ export const ROUTES: readonly Route[] = [
     waitingFor:
       'No ticket builds this screen yet. The daemon this app talks to holds one project and answers for that one, so there is no grid of projects for it to feed.',
   },
+  // Its `waitingFor` is kept although nothing renders it any more: `screenExists` is what says the
+  // screen is built, and a row whose sentence had been emptied would make a later `false` silent.
   {
-    path: '/backlog',
+    path: BOARD_PATH,
     screen: 'Backlog board',
     ticket: 'Q-0017',
     waitingFor: 'The board renders the backlog as one column per stage.',
   },
+  // Re-aimed at Q-0127 by Q-0017's AC-14. Both rows named Q-0017 while it owned the whole of this
+  // work; the gate split it at the seam between a screen over endpoints that exist and a screen
+  // that needs a route built for it, so leaving this row naming a closed ticket would tell a reader
+  // the screen is somebody's when it is nobody's.
   {
-    path: '/backlog/:ticketId',
+    path: TICKET_ROUTE,
     screen: 'Ticket page',
-    ticket: 'Q-0017',
-    waitingFor: "The ticket page renders a ticket's folder as tabs, with its run log down the side.",
+    ticket: 'Q-0127',
+    waitingFor: "The ticket page renders a ticket's folder as tabs, with its run log down the side. It needs a route that answers for one ticket, which the daemon does not have yet.",
   },
   {
     path: '/harness',

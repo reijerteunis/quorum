@@ -12,8 +12,11 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
+import type { Clock, FetchLike } from './daemon-client.js';
 import { resolveFinal } from './router.js';
+import { BOARD_PATH } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -47,6 +50,10 @@ export interface AppProps {
   readonly initialPath?: string;
   readonly socketFactory?: SocketFactory;
   readonly pageUrl?: URL;
+  /** How a screen asks the daemon for something. Left out, the browser's own `fetch` is used. */
+  readonly fetcher?: FetchLike;
+  /** Where a fetched-at instant comes from. Left out, the wall clock is used. */
+  readonly clock?: Clock;
 }
 
 /**
@@ -55,7 +62,7 @@ export interface AppProps {
  * `initialPath` exists so the resolution can be driven directly; left out, the app reads the
  * browser's location and keeps in step with the back and forward buttons.
  */
-export function App({ initialPath, socketFactory, pageUrl }: AppProps): ReactNode {
+export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: AppProps): ReactNode {
   const [path, setPath] = useState(initialPath ?? currentPath());
 
   const navigate = useCallback((to: string) => {
@@ -134,10 +141,16 @@ export function App({ initialPath, socketFactory, pageUrl }: AppProps): ReactNod
 
   return (
     <Shell path={redirectedTo ?? path} onNavigate={navigate} connection={connection}>
-      {rendered.kind === 'screen' ? (
-        <Placeholder route={rendered.route} params={rendered.params} />
-      ) : (
+      {rendered.kind !== 'screen' ? (
         <NotFound path={rendered.path} onNavigate={navigate} />
+      ) : rendered.route.path === BOARD_PATH ? (
+        // The one route whose screen exists. `BOARD_PATH` is the register's own constant, which
+        // both tables in `routes.ts` are built from — so this is a register lookup rather than a
+        // path written here, on `HOME_PATH`'s precedent. Every other route still draws the
+        // placeholder, which takes its sentence from the same register.
+        <BacklogBoard fetcher={fetcher} now={clock} onNavigate={navigate} />
+      ) : (
+        <Placeholder route={rendered.route} params={rendered.params} />
       )}
     </Shell>
   );
