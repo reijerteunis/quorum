@@ -3777,7 +3777,7 @@ parked at p2 with its three written reopening thresholds.
 - Q-0015 Mission control screen.
 - Q-0016 The gate screen shows a step's verdict and takes the answer. *(`reviewed` and
   `main:contained` 2026-09-16 — **M3's second screen**, and the first surface in this product a
-  human can act through.)* **$126.64** — $16.37 requirements across two head-of-product iterations,
+  human can act through.)* **$126.68** — $16.37 requirements across two head-of-product iterations,
   $110.31 chore across three implement rounds ($59.08 / $33.53 / $17.70), three reviews and a green
   `integrate`. 2,226 insertions across 17 files. A run parked at a gate is now answered in the
   browser: the question read from `GET /runs/:id`, exactly the answers that gate will honour, and
