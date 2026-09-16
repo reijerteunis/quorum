@@ -129,7 +129,7 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
     // screens exist. An identity rather than a count, because a count is satisfied by a row swapped
     // for another. Two until Q-0016, which built the third.
     expect(SCREEN_ROUTES.filter((route) => route.screenExists).map((route) => route.path))
-      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, GATE_ROUTE, RUNS_PATH, RUN_ROUTE]);
+      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, RUNS_PATH, RUN_ROUTE, GATE_ROUTE]);
     // The two registers agree where they overlap: the rail's board entry and the route row.
     expect(RAIL.find((entry) => entry.id === 'backlog')?.screenExists).toBe(true);
     // …and the field is load-bearing rather than decorative: every row claiming a screen is one
