@@ -94,3 +94,23 @@ which is the same failure as (a), one document over.
 
 **The ticket body is not edited.** It is the record of what was assumed before the run, the merged
 document is the specification, and this file is where the two are reconciled.
+
+## E-5 — GO-7 ruled: the chore route
+
+`requirements` → `chore`, not the full seven-stage route. Ruled by the operator at this gate.
+
+**Why.** §8's OQ-4 weighs it: fourteen criteria across three packages with one genuinely behavioural
+criterion is chore-shaped, and `solutioning` would be asked to emit contracts for a React screen whose
+only new shape is one additive field on a schema that already exists.
+
+**And the argument on the other side is weaker than the plan text reads.** M2's closing entry says the
+feature flows were *"exercised by four tickets, three of them M1's, all from August"*, and
+`docs/06-development-plan.md` still carries that sentence as the case for routing feature work the
+long way. Re-derived at this gate: **five tickets have walked it, and the most recent run was
+2026-09-12** — Q-0120, four days ago, against this tree rather than August's. The exercise argument
+was largely discharged by that ticket; it is not nothing, and it is not what it was when written.
+
+**What the route does not change.** AC-8 stays the criterion that is not eligible for trimming. A
+chore route means it is proven by the implementer's own test and the cross-vendor review rather than
+by a red phase — so the *"shown red before green"* obligation lands on the implement step, and a
+criterion whose guard cannot fail is the failure this repository records most.
