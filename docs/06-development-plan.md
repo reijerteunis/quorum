@@ -3787,7 +3787,14 @@ parked at p2 with its three written reopening thresholds.
   **Two measured gaps between the design brief and the wire.** `05-design-prompt.md:27` specifies a
   card carrying *"iteration counters (review 1/3), cost to date per vendor"*, and `WireTicket` carries
   **neither** — `iterations` is a widening of a field `TicketRecord.meta` already holds, while
-  per-vendor cost is a roll-up nothing answers per ticket (`GET /runs/:id/cost` answers per run). With
+  per-vendor cost is a roll-up **nothing answers at all**. *(Corrected 2026-09-16 at that ticket's own
+  requirements gate: this line said `GET /runs/:id/cost` answers per run, and **that route does not
+  exist**. The daemon registers **twelve**. The string occurs once in the package, inside
+  `package.test.ts:726`'s fixture named `hostile` — written to prove the route-deriving guard collects
+  a route it has never seen — so an enumeration that grepped `src/*.ts` including tests read a guard's
+  own counter-example as a real route. The ticket body took the error from this page. What does exist
+  is `GET /history/:id`, which answers `tokensByVendor`: per-vendor **tokens**, per run, deliberately
+  not cost.)* With
   `04-architecture.md:200` forbidding a placeholder that shows a fabricated cost, scoping the card or
   widening the wire is the ticket's first real decision.
   **And the design prompt still promises the override the engine refuses, at three sites** — `:11`,
