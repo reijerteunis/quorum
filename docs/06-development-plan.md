@@ -3775,7 +3775,60 @@ parked at p2 with its three written reopening thresholds.
   bundle refusal and `EADDRINUSE` die with their own sentences, `EACCES` and a `TypeError` both reach
   `dieOnUnexpected` with stacks intact.
 - Q-0015 Mission control screen.
-- Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
+- Q-0016 The gate screen shows a step's verdict and takes the answer. *(`requirements` 2026-09-16,
+  ready at the gate on iteration 2 and answered `advance`; **cut in two there**.)* **$16.37** across
+  two head-of-product iterations. The bullet read *"Gate screen with diffs (git diff rendered;
+  `diff2html` or similar)"* until this run measured that the diff is a different ticket's problem;
+  **Q-0129** takes the verdict evidence and the diff, opened at that gate with §7's body transcribed
+  in full.
+  **Its run refuted the ticket body in three places and the third is the one to read.** OQ-5 reasoned
+  that offering `retry` at a gate whose question carries no target *"would be a control that does
+  nothing"*. `routing.ts:97` is `return { abort: true }` — it **ends the run**. The census behind that
+  is the run's product: **219 engine-recorded gate answers across 108 ticket folders, 147 of them at
+  author-declared gates, where `retry` was chosen zero times** — structural rather than a sample
+  artefact, because `retryTarget` has one production reader, one fixture and **no occurrence in any
+  shipped flow**. So an unconditional retry control would have aborted the run at two-thirds of the
+  real gates this repository has ever answered, and `docs/05-design-prompt.md` screen 6 makes exactly
+  that the **primary** action. The CLI already guards it — the gate this run stopped at offered
+  `advance / abort` — and the browser screen is what would have got it wrong.
+  **The decisive measurement made the ticket smaller.** `RunView.gates` already holds the pending
+  `GateQuestionEvent`s whole and derives them per request; `wireRunOf` deliberately projects them to
+  `pendingGates: view.gates.length`. So the screen half needs **one additive wire field** — no new
+  route, no event-union change, no `.harness/` ruling and no new dependency — and every expensive
+  option the body listed is a cost the *evidence* half pays. The channel was ruled the wire rather
+  than the replay on candidate-codex's own AC-18, which concedes a state where replay has not supplied
+  the question and the screen *"renders no answer controls"* — the screen unable to do its one job.
+  **Iteration 2 opened on an unchanged tree and moved the verdict anyway**, the fifth recorded
+  instance and the third where the second pass found something: it re-verified every measurement,
+  **corrected seven**, and carried all three of iteration 1's findings unchanged on the merits — what
+  moved is where they sit, which is Q-0105's shape. Three of the seven were the same failure in three
+  documents: a figure keyed on a **name** rather than on the thing. The ticket body's verdict-artifact
+  count required `-verdict-iter-`, the shape Q-0089 introduced on 2026-09-01, so every flat
+  `<stepId>-verdict.json` written before that was silently excluded — 199 across 35 folders against
+  **275 across 71**. Iteration 1's own census evidence was a lowercase-only regex reporting an
+  *"empty"* answer where the line reads `gate=erratum answer=E-1`; this operator reproduced that
+  identical error independently, from the identical cause, while verifying it. And the body cited
+  `04-architecture.md:200` for the placeholder rule, which is at **`:317`**.
+  **Four gate obligations ratified as ruled, one discharged by the split, and no decision entry is
+  owed** — five ways, each re-verified: the event union is unchanged, nothing serves `.harness/`, the
+  route list is executed rather than changed, no dependency is added, and Q-0121 GO-3's naming rule is
+  satisfied because carrying `RunView.gates` unchanged narrows nothing. Q-0108's precedent puts that
+  ruling in the code's own authority comment. The one change that **would** owe an entry is widening
+  the gate answer set, which this ticket may not do.
+- Q-0129 The gate screen shows the verdict that reached it, and the diff. *(Opened 2026-09-16 at
+  Q-0016's requirements gate, `draft`, p2.)* The half Q-0016 does not build, split on **disjoint
+  blockers** rather than on size: Q-0016 needs no decision entry, no new route, no dependency and no
+  `.harness/` ruling, and this needs at least one entry by **Q-0127 erratum E-1's own words** — the
+  verdict artifact is `{verdict, findings, summary}` under the ticket's `.harness/`, which that
+  erratum ruled unreadable as well as unnamed, having ruled that no entry was owed *for excluding it*
+  precisely because the opposite answer would owe one. Its three alternatives are each measured, and
+  one is **struck and not to be reconsidered without new evidence**: a run parked at a gate has
+  `runId: null`, history being keyed `<TICKET>-<n>` and `record.runId` set only when the terminal
+  event arrives, so `GET /history/:id` is unreachable for the live case and matching the newest row
+  for the ticket is inference rather than identity. The diff half needs a range the wire does not
+  carry and this workspace's **first** diff dependency, with **Q-0128** as its neighbour: a diff
+  served to a browser has the same truncation question a diff handed to a reviewer has, and answering
+  it twice in two places is how the two drift.
 - Q-0017 The web app has a backlog board. *(`reviewed` and `main:contained` 2026-09-16 — **M3's
   first screen**, and the first ticket of this milestone whose deliverable a user can look at.)*
   **$123.34** — $19.75 requirements, **cut in two at its gate**, and $103.59 chore across three
