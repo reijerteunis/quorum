@@ -57,6 +57,26 @@ const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
 
 const forbiddenPersistence = ['localStorage', 'sessionStorage', 'indexedDB', `document.${'cookie'}`, 'caches'];
 
+const MESSAGE_PARSE_NEEDLES = ["'", '"', '`', '/'].flatMap((prefix) =>
+  ['cost', 'role', 'verdict'].map((field) => `${prefix}${field}${'='}`));
+
+describe('Q-0015 AC-6 — browser source never parses values out of human event prose', () => {
+  const offenders = (files: [string, string][]): string[] => files.flatMap(([name, text]) =>
+    MESSAGE_PARSE_NEEDLES.filter((needle) => text.includes(needle)).map((needle) => `${name}:${needle}`));
+
+  test('the complete source corpus contains none of the twelve parsing forms', () => {
+    expect(MESSAGE_PARSE_NEEDLES).toHaveLength(12);
+    expect(offenders(sourceFiles())).toStrictEqual([]);
+  });
+
+  test('the scan rejects a template parse but accepts the shipped accessibility selector', () => {
+    const parsing = ['`', 'cost', '=', '$0.123', '`'].join('');
+    expect(offenders([['bad.ts', parsing]])).toHaveLength(1);
+    const selector = ['[', 'role', '=', '"progressbar"]'].join('');
+    expect(offenders([['ok.ts', selector]])).toStrictEqual([]);
+  });
+});
+
 // Every top-level object body of a declaration, union members INCLUDED.
   //
   // The first version of this matched a head ending in `{` and stopped at the first balanced body,
