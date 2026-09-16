@@ -3811,10 +3811,20 @@ parked at p2 with its three written reopening thresholds.
   counts carry no `.nonnegative()` while two sibling fields in the same file do, and a test named
   *"so they cannot drift apart"* never compares the two strings its own comment says it holds against
   each other.
+  **It also discharged the obligation its own opening paragraph had recorded as owed**, which the
+  historical block below still states in the present tense: `docs/05-design-prompt.md` promised
+  *"override with reason"* at three sites, against a `gateAnswerSchema` that is
+  `z.enum(['advance','retry','abort'])`. **Zero live occurrences remain** — the brief now carries the
+  correction in its own status line, naming Q-0016 as the ticket that may widen the answer set with a
+  decision entry of its own. That closes the third and last document, after Q-0013 and Q-0118
+  corrected the other two and recorded the discharge as complete while this file — the one **every**
+  screen ticket is built from — had never been looked at.
   Verified forced in both environment rows — the detached verification worktree, which has neither
   `.harness/worktrees` nor `.quorum/runs`, and `main` after the merge — **7/7 tasks 0 cached** in
   each, `quorum lint` 6/6 and the git-identity sweep green.
-  *(The original scope follows, as it stood when the ticket was opened 2026-09-16.)* **The board's data is served and the ticket page's is not**: the daemon registers thirteen
+  *(The original scope follows, as it stood when the ticket was opened 2026-09-16. Its closing
+  paragraph says the brief is "still uncorrected"; that was true when written and was closed by this
+  ticket, per the paragraph above.)* **The board's data is served and the ticket page's is not**: the daemon registers thirteen
   routes and **`GET /tickets/:id` is not among them**, nor does anything in `read.ts` read a ticket's
   folder — while `apps/web` already declares both routes and both placeholders, naming this ticket.
   `Backlog.readFiles` exists in `core` and is on the barrel, confined to the ticket's own folder by

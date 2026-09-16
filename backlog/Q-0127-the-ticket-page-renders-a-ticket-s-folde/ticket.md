@@ -157,3 +157,53 @@ and names the omitted files, which is how the six were identified at all — tha
 pass possible. What it does not do is give the reviewer the bytes. Across Q-0017's three rounds the
 reviewer was handed 77–84% of the change and reported no findings in the remainder three times.
 **A ticket for the cap itself is owed and is not this one**, which must not grow a second subject.
+
+## Re-measured against the merged tree, 2026-09-16, before the run
+
+Every figure below was taken again after Q-0017 merged. **Do not re-derive from the sections above
+where the two disagree** — that is this repository's most-recorded failure, and it is why this
+section exists rather than the numbers being quietly edited in place.
+
+**Confirmed.** Twelve production routes, and `GET /tickets/:id` is genuinely absent — `http.ts` five,
+`read.ts` five, `serve.ts` one, `static.ts` one. Largest ticket folder **Q-0083 at 3,108,985 B
+(3.11 MB) across just 6 files**; largest single file **1,460,837 B (1.46 MB)**, with a 1.4 MB
+sibling; **61 files** in `Q-0120`. `Backlog.readFiles` is on the barrel and Q-0059 confines it.
+
+**Corrected.** The backlog is **23,094,468 B (23.1 MB) across 1,266 files and 107 tickets**, not the
+"25 MB" and 105 above — two tickets were added at Q-0017's close.
+
+**The `hostile` fixture trap is live, and it caught this operator a second time.** The first
+enumeration run for this section used `grep -rhoE … packages/server/src/*.ts | grep -v test`, which
+reports `/runs/:id/cost` and `DELETE /runs/:id` as real: **`-h` suppresses filenames, so `grep -v
+test` filters nothing**. Exclude test files **by filename** — the count is twelve only then. The
+correction recorded above was right; the method that first found it wrong is the method to avoid.
+
+### The `.harness/` exposure, measured rather than estimated
+
+**69 ticket folders contain a `.harness/` directory: 267 files, 833,401 B, and git tracks zero of
+them** (`.gitignore:3`). They hold engine scenario-verdict JSON —
+`.harness/run-3/scenario-review-verdict-iter-2.json` and siblings — which is run state rather than
+any part of the ticket's record. The body above said 259; it grows with every run, so **no criterion
+may depend on the count**.
+
+**It is reachable by the obvious pattern, which is what makes it a design question rather than a
+note.** `readFiles`'s pattern syntax treats a trailing `/` as *walk that subtree*
+(`backlog.ts:277`), so the natural "serve the folder" call walks `.harness/` with everything else.
+Confinement does not help here: these files **are** inside the ticket folder, so Q-0059's guard
+correctly permits them. The ruling wanted is about what the route *chooses* to serve, not about what
+it is *allowed* to reach — and those are different questions that read the same on a first pass.
+
+### The binary hazard is latent, not live — and the first measurement of it was wrong
+
+**Exactly one non-UTF-8 file exists under `backlog/`: `backlog/.DS_Store`, and it is outside every
+ticket folder**, so no per-ticket route reaches it today.
+
+An earlier pass reported **three**, including two `.md` files inside ticket folders. That was an
+artifact of the method: it decoded a **4096-byte prefix**, which cuts a multi-byte character
+mid-sequence — the precise hazard `trimIncompleteUtf8Suffix` exists for, reproduced by the
+measurement taken to find hazards. Both files decode clean in full. **Scan whole files.**
+
+It stays worth designing for, because the failure is silent rather than loud: `readFileSync(p,
+'utf8')` substitutes U+FFFD and does **not** throw, so a `.DS_Store` appearing inside a ticket folder
+— which macOS creates unbidden — corrupts a response instead of refusing it. A route that serves
+bytes it cannot characterise should say so, on the same principle as every other closed state here.
