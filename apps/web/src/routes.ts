@@ -96,6 +96,16 @@ export const BOARD_PATH = '/backlog';
 export const TICKET_ROUTE = '/backlog/:ticketId';
 
 /**
+ * The gate screen's pattern, named once for {@link TICKET_ROUTE}'s reason: `app.tsx` has to know
+ * which resolved route draws it rather than a placeholder, and a path written there would be a
+ * second register the component scan would then have to be told to excuse.
+ *
+ * It has no rail entry — it is reached from a run rather than from the rail — which is why its row
+ * below carries `screenExists` and why that field exists at all.
+ */
+export const GATE_ROUTE = '/runs/:handle/gate';
+
+/**
  * Where one ticket's page lives, with the id confined to a single path segment.
  *
  * Built by substitution into the registered pattern, so the path a card links to and the path the
@@ -184,12 +194,17 @@ export const ROUTES: readonly Route[] = [
     screenExists: false,
     waitingFor: 'Mission control streams a run live, one trace column per parallel step.',
   },
+  // Built by Q-0016, which was cut in two at its own requirements gate: this screen is the half
+  // over channels that already existed, and what the step it follows decided — with the change it
+  // is about — is Q-0129's, needing a payload no route on this transport carries. The sentence is
+  // kept for the board's and the ticket page's reason: `screenExists` is what says the screen is
+  // built, and a row whose sentence had been emptied would make a later `false` silent.
   {
-    path: '/runs/:handle/gate',
+    path: GATE_ROUTE,
     screen: 'Gate screen',
     ticket: 'Q-0016',
-    screenExists: false,
-    waitingFor: "The gate screen shows a step's verdict and diffs, and takes the answer.",
+    screenExists: true,
+    waitingFor: 'The gate screen shows what a parked run is being asked and takes the answer; what the step before it decided is what Q-0129 adds.',
   },
   {
     path: '/runs/:handle/steps/:stepId',
