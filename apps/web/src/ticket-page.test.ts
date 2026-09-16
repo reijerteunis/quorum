@@ -12,6 +12,7 @@
  * and the app's own modules. Every request is injected, so nothing here opens a socket.
  */
 import { act, createElement, type ReactElement } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -253,6 +254,57 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
     expect(container.textContent).toContain('FIRST-TICKET-TEXT');
     await act(async () => root.render(createElement(TicketPage, { ticketId: 'Q-0002', fetcher: server.fetch, now: CLOCK })));
     expect(container.textContent, 'one ticket\'s file is rendered under another ticket\'s id')
+      .not.toContain('FIRST-TICKET-TEXT');
+  });
+
+  test('and the commit that navigation makes renders nothing from it either', async () => {
+    // The clause above settles the replacement request inside `act`, so the earliest page it can
+    // read is the one after the effect that reloads has already run — and the defect is one commit
+    // before that. A prop reaches a component before any effect reacting to it, so state cleared in
+    // an effect is cleared one commit too late, and what has to be inspected is the commit itself:
+    // `flushSync` renders and commits synchronously while a `useEffect` stays a passive effect
+    // React schedules after it, and this daemon holds the replacement's answer so nothing else
+    // settles in between. Measured against a version that cleared in the effect, this commit was
+    // the previous ticket's WHOLE page — its id, its title, its listing and its open file — under
+    // the id the URL had just changed to. Chore run 2, review iteration 2.
+    const OTHER = 'Q-0002';
+    const server = deferring();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK })));
+    mounted.push(() => root.unmount());
+    await server.settle(ticketDetailPath(TICKET), detail([entry(TICKET_FILE, 812)]));
+    await server.settle(ticketFilePath(TICKET, TICKET_FILE), fileBody(TICKET_FILE, 'FIRST-TICKET-TEXT'));
+    expect(container.textContent, 'the first ticket never rendered at all — nothing is staged')
+      .toContain('FIRST-TICKET-TEXT');
+
+    let committed = '';
+    await act(async () => {
+      flushSync(() => root.render(createElement(TicketPage, { ticketId: OTHER, fetcher: server.fetch, now: CLOCK })));
+      committed = container.textContent ?? '';
+    });
+
+    expect(committed, 'one ticket\'s file was committed under another ticket\'s id')
+      .not.toContain('FIRST-TICKET-TEXT');
+    expect(committed, 'one ticket\'s own id and frontmatter were committed under another\'s')
+      .not.toContain(TICKET);
+    expect(committed, 'the commit names neither ticket').toContain(OTHER);
+    // …and it is not a blank panel either: what a reader sees in the gap is what a mount shows,
+    // which is the request being waited for, naming the id the URL now carries.
+    expect(committed, 'the commit says nothing about what it is waiting for')
+      .toContain(ticketDetailPath(OTHER));
+
+    // The other direction, and it is what stops the gate being a page that never opens again: the
+    // replacement request was issued by the effect that followed this commit, and answering it
+    // renders the ticket that was navigated to. Without it a gate that simply refused to render
+    // would satisfy every assertion above.
+    await server.settle(ticketDetailPath(OTHER), detail([entry('dev/notes.md')], {
+      ticket: row({ id: OTHER, folder: `${OTHER}-another-ticket`, title: 'the other ticket' }),
+    }));
+    expect(container.textContent, 'the ticket that was navigated to never rendered')
+      .toContain('the other ticket');
+    expect(container.textContent, 'the replacement page still holds the previous ticket\'s file')
       .not.toContain('FIRST-TICKET-TEXT');
   });
 });

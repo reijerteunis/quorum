@@ -203,6 +203,15 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
   const [file, setFile] = useState<RequestState<WireTicketFile> | null>(null);
   const [log, setLog] = useState<RequestState<WireTicketFile> | null>(null);
 
+  // Which ticket everything above is an answer about, stamped by `load` and compared in the render
+  // body. A prop is committed BEFORE the effect that reacts to it runs, so state cleared in an
+  // effect is cleared one commit too late: navigating from one ticket to another painted the
+  // previous ticket's whole page — header, listing, open file and run log — under the new id, for as
+  // long as it takes React to flush a passive effect. Nothing here clears that state, which a render
+  // may not do; it stops rendering it, which is the same guarantee one commit earlier and is a
+  // property of this component rather than of whoever mounts it.
+  const [loadedFor, setLoadedFor] = useState(ticketId);
+
   // One counter for every load this screen starts, the board's own mechanism and for its reason: a
   // superseded request's answer is dropped rather than landing on top of a newer one, and an
   // unmount bumps the same counter so a late answer never reaches a screen that is gone. It also
@@ -247,6 +256,7 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
     // Both counters, because this clears the file region: a request the load before it started
     // would otherwise answer into the region this one has just emptied.
     fileRequest.current += 1;
+    setLoadedFor(ticketId);
     setDetail(ticketInFlight<WireTicketDetail>(ticketId));
     setTab(null);
     setSelected(null);
@@ -273,18 +283,24 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
     return () => { generation.current += 1; fileRequest.current += 1; };
   }, [load]);
 
-  if (detail.kind !== 'loaded') {
+  // The gate, and it is one comparison because everything else this page draws is drawn inside the
+  // branch below it: a state that did not come from this ticket never reaches a tab, a file or the
+  // rail, because they are only rendered where the detail loaded. What a reader sees in the gap is
+  // what a mount shows — the request being waited for, naming the id the URL now carries.
+  const shownDetail = loadedFor === ticketId ? detail : ticketInFlight<WireTicketDetail>(ticketId);
+
+  if (shownDetail.kind !== 'loaded') {
     return (
       <section className="max-w-3xl">
         <h1 className="font-mono text-lg text-text">{ticketId}</h1>
         <div className="mt-4">
-          <RequestRegion state={detail} onRetry={load} />
+          <RequestRegion state={shownDetail} onRetry={load} />
         </div>
       </section>
     );
   }
 
-  const { ticket, files, excluded } = detail.value;
+  const { ticket, files, excluded } = shownDetail.value;
   const tabs = tabsOf(files);
   const shown = tabs.find((each) => each.name === tab) ?? tabs[0] ?? null;
 
@@ -318,7 +334,7 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
         stage {ticket.stage} · owner {ticket.owner === '' ? NOT_SET : ticket.owner}
         {' · '}cost {ticket.billedCostUsd === null ? 'n/a' : `$${ticket.billedCostUsd.toFixed(2)}`}
       </p>
-      <RequestRegion state={detail} onRetry={load} />
+      <RequestRegion state={shownDetail} onRetry={load} />
 
       <div className="flex gap-6">
         <div className="min-w-0 flex-1">
