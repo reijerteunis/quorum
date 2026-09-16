@@ -8,15 +8,13 @@ import type { RunConnectionSnapshot } from './run-connection.js';
 export interface MissionControlScreenProps {
   readonly handle: string;
   readonly snapshot: RunConnectionSnapshot;
-  readonly connectionText: string;
-  readonly retryable: boolean;
   readonly onRetryConnection: () => void;
   readonly fetcher?: FetchLike;
   readonly now?: Clock;
   readonly onNavigate: (to: string) => void;
 }
 
-/** The live trace, timeline, disclosures and metadata for one handle. */
+/** Compose the trace and status regions and render the observed-only step timeline. */
 export function MissionControlScreen(_props: MissionControlScreenProps): ReactNode {
   throw new Error('not implemented');
 }

@@ -20,8 +20,10 @@ union, daemon routes and wire schemas are existing contracts and are not changed
   labels, loss sentences and five absent-capability sentences. Renderers and tests import those
   exports rather than restating their wording. Mission control marks its main state region with
   `data-mission-control-state`, its disclosures with `data-mission-control-disclosures`, and each
-  timeline row with `data-step-disposition`; the runs landing marks its request state with the
-  existing `data-request-state` idiom.
+  timeline row with `data-step-disposition`. Its complete header region is
+  `data-mission-control-header`, and the nested handle-or-run-number region is
+  `data-run-identity`. The runs landing marks its request state with the existing
+  `data-request-state` idiom.
 
 ## Trace and timeline
 
@@ -32,11 +34,11 @@ union, daemon routes and wire schemas are existing contracts and are not changed
 - A column's vendor is the latest vendor observed on that step's `spawn` or `retry`, or `null` when
   neither supplied one. All event messages and stdout lines render as React text.
 - Source protection against parsing human prose scans the complete `apps/web/src` corpus for
-  quoted or regex-delimited parse needles (`'cost=`, `"cost=`, `/cost=`, and the corresponding
-  `role=` and `verdict=` forms). Bare `role=` is deliberately not a needle: it falsely matches the
+  twelve parse needles: each of `cost=`, `role=` and `verdict=` prefixed by a single quote, double
+  quote, backtick or slash. Bare `role=` is deliberately not a needle: it falsely matches the
   existing accessibility selector `[role="progressbar"]`. The guard proves both directions with a
-  parse fixture that is rejected and that selector fixture that is accepted; it never narrows the
-  corpus.
+  template-literal parse fixture that is rejected and that selector fixture that is accepted; it
+  never narrows the corpus.
 - `buildStepTimeline` creates one row per step id observed on `step` or `done`, in first-observed
   order. A start alone is `started`; a done is `ended` and retains its message; after a terminal,
   an unmatched start is `started-with-no-end-reported`. A done retained without its start still
@@ -73,3 +75,8 @@ union, daemon routes and wire schemas are existing contracts and are not changed
 Q-0015 adds no mutation. The source guard remains unchanged, including the forbidden stop path and
 the exact two existing write-capable modules. Mission control links to the gate screen but never
 answers a gate. Starting and stopping a run belong to the allocated successor.
+
+The M3 account in `docs/04-architecture.md` and the Q-0015 entry in
+`docs/06-development-plan.md` record the runs landing, bounded live trace, run-level lane,
+observed-only timeline, gate link and missing-data disclosures. They continue to identify browser
+start/stop and structured header values as successor work.
