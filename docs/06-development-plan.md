@@ -3774,10 +3774,78 @@ parked at p2 with its three written reopening thresholds.
   the git-identity sweep green, and the four-shape catch discrimination proven by execution: the
   bundle refusal and `EADDRINUSE` die with their own sentences, `EACCES` and a `TypeError` both reach
   `dieOnUnexpected` with stacks intact.
-- Q-0015 Mission control screen.
+- Q-0015 Mission control streams a run live, one trace column per step. *(`requirements`
+  2026-09-16, ready at the gate on iteration 2 and answered `advance`; **cut in three there**.)*
+  **$19.76** across two head-of-product iterations. **Q-0130** takes start and stop, **Q-0131** the
+  header's measured values, both opened at that gate with Appendix A transcribed in full.
+  **Its headline finding is about the product rather than the screen: mission control has no
+  producer.** `host.start` has exactly one production caller — `POST /runs` at `http.ts:178` — and
+  **nothing issues it**: `apps/web`'s only non-GET is Q-0016's gate answer, `quorum run` imports
+  `runFlow` from `@quorum/core` and runs in-process without touching `@quorum/server`, and `quorum
+  open` imports `createDaemon` alone. Verified four ways at the gate. **So on a real machine the
+  daemon's run registry is empty and stays empty**, `GET /runs` answers `{"runs": []}` for ever, and
+  `/runs/:handle` is reachable only with a handle nothing mints. It does not weaken the ticket — the
+  screen is buildable and testable against a driven socket and fetcher, which is how every screen
+  here is tested — and it changes three things: the empty state is the **honest** state of a real
+  machine and names its cause, the acceptance demonstration is a hand `POST /runs` and must say so,
+  and it is what decides the seam.
+  **The seam is the stop button, and the gate adopted the document's over the ticket body's.** The
+  body proposed splitting the header values and keeping stop; §5.6 measured the opposite and is
+  right — start and stop widen the same write boundary, need the same discipline, sit on the same
+  control surface and raise the same routing question, and **whoever can hand-`POST` a start can
+  hand-`POST` a stop**, so a stop control has no user until the browser can start a run. Removing it
+  also removes the `WRITE_RULES` re-aim, a second act on a boundary Q-0016 widened *"by one act
+  rather than by a family of them"*, the stop-versus-completion race, and the irreversible-action
+  discipline that was **Q-0016's own blocker**. The header values are still split out, so the body's
+  seam is taken too and what moved is which half goes first.
+  **The decisive enabling fact, and it is Q-0050 round 6's Major 1 fixed and never exercised.** Each
+  parallel member and each fan-out child stamps its **own** `stepId` on every adapter event
+  (`steps.ts:289`), and the run loop's single slot fills one in only where the emitter supplied none
+  — `engine.ts:87`, *"An id the emitter already carries WINS"*. That review found the opposite, one
+  mutable slot stamping the literal `"undefined"` with concurrent members sharing it; it was fixed
+  against a stubbed `runAgentStep`, so **no consumer has ever read those ids** and this screen is the
+  first.
+  **Three of the four things the brief's header names are not on the wire**: `runId` is `null` for a
+  live run's whole life (`host.ts:304` assigns it in the terminal branch alone — Q-0016's M-6 struck
+  a design on the same measurement), no event carries a timestamp and `events.ts:143` says none may
+  gain one, and the cost crosses only inside `done`'s free-text message composed by `formatCost` —
+  **Q-0129's problem in a second place**, which is why Q-0131 is to weigh them together. The fourth,
+  the stop button, is real and is Q-0130's.
+  **AC-9 bounds the browser's event list at 500 and narrowed its own justification**: this is the
+  first consumer of that list, `run-connection.ts:151` appends with a fresh array per event and
+  nothing capped it. Iteration 1's fourth reason — *"a browser may not hold what the daemon cannot
+  replay"* — was **withdrawn by iteration 2**, correctly: a browser present from the start genuinely
+  observed those events, so its longer history is real rather than fabricated.
+  **Two defects were found in a run-time input while reading the run's own output**, both in
+  `harness/product-context.md`, which every product-manager step reads before writing a requirement.
+  The retired name *"the Studio"* — `docs/GLOSSARY.md:5` says it *"is not current vocabulary"* —
+  which the codex candidate used six times here and seven on Q-0016 while the claude candidate used
+  it zero times on both, pointing at the shared input rather than at either model. And a **Current
+  priorities** section naming **M0 and M1** as current, **25 days after M0 closed** and six after
+  M2, so every requirement in that window was told the priority was proving the adapters work. The
+  second is fixed by deleting the copy rather than updating it, the plan being the authority. Both
+  are Q-0098's class — a claim in a harness context file is one every future requirement inherits —
+  and two in one file in one sitting is an argument that a check may be owed.
+- Q-0130 The browser starts and stops a run. *(Opened 2026-09-16 at Q-0015's requirements gate,
+  `draft`, p2.)* The app's two run-lifecycle mutations, answered once rather than twice. It is also
+  **the ticket that gives the daemon a producer**: until it lands, `GET /runs` answers `{"runs": []}`
+  on any real machine and neither mission control nor Q-0016's gate screen has anything to show.
+- Q-0131 The mission control header's measured values. *(Opened 2026-09-16 at Q-0015's requirements
+  gate, `draft`, p3.)* The run number, the elapsed time and the per-vendor cost ticker — three values
+  `docs/05-design-prompt.md` screen 5 names and the wire does not carry, each needing a different
+  answer. **To be weighed with Q-0129**, whose verdict card is the same problem on a different field:
+  a structured value that crosses only inside a sentence composed for a human.
 - Q-0016 The gate screen shows a step's verdict and takes the answer. *(`reviewed` and
-  `main:contained` 2026-09-16 — **M3's second screen**, and the first surface in this product a
-  human can act through.)* **$126.68** — $16.37 requirements across two head-of-product iterations,
+  `main:contained` 2026-09-16 — **M3's second screen**.)* *(Corrected 2026-09-16 at Q-0015's gate:
+  this line said **"the first surface in this product a human can act through"**, which is true of
+  the code and false of the running product. Q-0015 measured that `host.start` has one production
+  caller and **nothing issues it**, so on a real machine the daemon holds no run for this screen to
+  show. **And that is what this ticket's own GO-6 existed to catch**: it required "the product run by
+  hand: a real run parked at a real gate, answered from the browser … the one no unit test can stand
+  in for". The forced-suite half was performed in both rows; **the by-hand half was not, and was
+  reported as discharged.** Attempting it would have failed and found the gap a day earlier. The code
+  is unaffected and every criterion is met; what was wrong is the claim about the product and the
+  report of the obligation. **Q-0130** is the ticket that makes the sentence true.)* **$126.68** — $16.37 requirements across two head-of-product iterations,
   $110.31 chore across three implement rounds ($59.08 / $33.53 / $17.70), three reviews and a green
   `integrate`. 2,226 insertions across 17 files. A run parked at a gate is now answered in the
   browser: the question read from `GET /runs/:id`, exactly the answers that gate will honour, and
