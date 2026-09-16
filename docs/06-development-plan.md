@@ -3775,9 +3775,18 @@ parked at p2 with its three written reopening thresholds.
   bundle refusal and `EADDRINUSE` die with their own sentences, `EACCES` and a `TypeError` both reach
   `dieOnUnexpected` with stacks intact.
 - Q-0015 Mission control screen.
-- Q-0016 The gate screen shows a step's verdict and takes the answer. *(`requirements` 2026-09-16,
-  ready at the gate on iteration 2 and answered `advance`; **cut in two there**.)* **$16.37** across
-  two head-of-product iterations. The bullet read *"Gate screen with diffs (git diff rendered;
+- Q-0016 The gate screen shows a step's verdict and takes the answer. *(`reviewed` and
+  `main:contained` 2026-09-16 — **M3's second screen**, and the first surface in this product a
+  human can act through.)* **$126.64** — $16.37 requirements across two head-of-product iterations,
+  $110.31 chore across three implement rounds ($59.08 / $33.53 / $17.70), three reviews and a green
+  `integrate`. 2,226 insertions across 17 files. A run parked at a gate is now answered in the
+  browser: the question read from `GET /runs/:id`, exactly the answers that gate will honour, and
+  every not-parked state named. **It renders no verdict and no diff** — AC-13 makes that a checked
+  property rather than an omission — and **Q-0129** takes that half.
+  **It is `apps/web`'s first write of any kind**, against a shipped guard that forbade by name every
+  non-GET method and the string `'/gate'` in any file under `src/`. The guard was re-aimed rather
+  than deleted: the board and the ticket page still may not write.
+  **The requirements run was cut in two at its gate.** $16.37 across The bullet read *"Gate screen with diffs (git diff rendered;
   `diff2html` or similar)"* until this run measured that the diff is a different ticket's problem;
   **Q-0129** takes the verdict evidence and the diff, opened at that gate with §7's body transcribed
   in full.
@@ -3815,6 +3824,39 @@ parked at p2 with its three written reopening thresholds.
   satisfied because carrying `RunView.gates` unchanged narrows nothing. Q-0108's precedent puts that
   ruling in the code's own authority comment. The one change that **would** owe an entry is widening
   the gate answer set, which this ticket may not do.
+  **What the chore run measured about its own review is the thing to carry forward, and it is the
+  opposite of Q-0017's.** The diff crossed `repo.max_diff_bytes` on rounds 2 and 3 — 196,295 B
+  against the 200,000 cap on round 1, then **218,455** and **229,033** — so the reviewer was handed
+  **100%, 91.6% and 87.3%**, and the set of files it got *no patch at all* for grew **0 → 2 → 4**.
+  `git diff` orders by path, so what the cut hid was `packages/shared/src/wire.ts` and
+  `wire.test.ts` — **AC-1's own subject, the one shape this ticket exists to add** — and on round 3
+  `packages/server/src/wire.ts` with it, which is AC-2's. That truncation was **predicted at the
+  gate from the path ordering and 1,885 bytes of headroom, before round 2 ran**, and landed on the
+  named files. **But both truncated reviews compensated and said so**: each carried an
+  `observation:` reporting that the omitted files were *"inspected directly from
+  `harness/Q-0016/implement` rather than judged from the stat alone"*. That is **Q-0124's warn and
+  Q-0117's observation channel composing**, one ticket after each landed — the warn put the
+  filenames in front of the reviewer where four earlier tickets got silence, and the observation
+  gave it somewhere to report a true thing that is not a claim about the change. **The claim was not
+  taken on trust**: a hand pass over all four files found nothing, which corroborates it — against
+  Q-0017, where three clean reports over a truncated diff hid three real findings. **Q-0128 is
+  sharpened rather than closed**: the compensation is a reviewer's choice on each run and no
+  criterion requires it, and the hand pass that checked it was same-vendor.
+  **The review loop converged and every finding was real**: 1 blocker + 2 majors, then 1 major, then
+  approve. The blocker is the one worth keeping — `load()` cleared the in-flight guard while a POST
+  was unresolved, so pressing Refresh re-enabled the controls and **`abort` could win after the user
+  had chosen `advance`**. On a surface whose entire job is submitting exactly one irreversible word,
+  found by the panel and not by its author. One major was against **a ruling four hours old**:
+  `app.tsx` created a `RunConnection` for every route carrying `:handle`, so the gate screen held a
+  socket against E-2/GO-4.
+  **And one major was a criterion problem the run handled the right way round.** AC-1 named one
+  additive wire field and AC-10 required a second — the daemon's own refusal condition, which
+  `RunView.refusal` held and `wireRunOf` did not project. Round 1 wrote the weaker behaviour and
+  **said so in its report**; the reviewer read that admission and refused it rather than letting a
+  criterion be quietly weakened. **Erratum E-6 corrects this operator's own wording**: E-2 and this
+  bullet said *"one additive field"* and the wire gained two, `gates` and `refusal` — the latter
+  deliberately **not** a `WireRefusal`, since that shape's `code` exists so `POST /runs` can pick a
+  status, and a run row is answered `200`.
 - Q-0129 The gate screen shows the verdict that reached it, and the diff. *(Opened 2026-09-16 at
   Q-0016's requirements gate, `draft`, p2.)* The half Q-0016 does not build, split on **disjoint
   blockers** rather than on size: Q-0016 needs no decision entry, no new route, no dependency and no
