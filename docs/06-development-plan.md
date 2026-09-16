@@ -3850,6 +3850,24 @@ parked at p2 with its three written reopening thresholds.
   flow arriving without one. `requirements` reads none and is right not to, nothing gating a
   `draft`. **By hand**, for Q-0057's reason: a run cannot benefit from a change to the flow it is
   running.
+- Q-0133 The test report's roster matches nothing this repository runs. *(Opened 2026-09-17 from
+  Q-0015's `qa-red` run, `draft`, p2.)* `suite-output.ts` trims a suite's output head-and-tail and its
+  own JSDoc says why that is safe — *"The roster is the point and the byte count is not … Every line
+  matching `RESULT_LINE` is therefore collected from the **full** output, whatever the body loses."*
+  **The roster is what makes the trim acceptable, and it is empty.** `RESULT_LINE` allows leading
+  colour codes and then requires a tick; this repository runs its suites **through turbo**, which
+  prefixes every line with `@quorum/web:test: `, so the prefix sits between the two and nothing
+  matches. Measured on Q-0015: 110,804 bytes of output, 24,496 kept, **86,308 omitted**, and of 231
+  report lines **138 are results while the matcher finds one** — the report's own markdown heading.
+  Zero `FAIL` lines, zero `Tests N failed` summaries and zero stub errors survive, so **the artifact a
+  qa-red gate reads cannot answer the question that gate exists to ask.** Across every `testReport`
+  artifact in `backlog/`, keyed on its own heading rather than a filename: **8 of 8 populated** under
+  the spike's bare runner (Q-0006, Q-0011, Q-0033, Q-0050) and **7 of 7 empty** since `commands.test`
+  became a turbo invocation at Q-0065 (Q-0120, Q-0015). It has never been visible because it presents
+  as the italic sentence *"No lines in the output looked like test results"*, which reads as a fact
+  about the output. **Q-0120's entry recorded the consequence and not the cause.** The one-line fix is
+  not sufficient alone: an empty roster must be distinguishable from a run that printed no results,
+  which is *"A probe that could not answer is not a negative"* (2026-09-10) at a new site.
 - Q-0016 The gate screen shows a step's verdict and takes the answer. *(`reviewed` and
   `main:contained` 2026-09-16 — **M3's second screen**.)* *(Corrected 2026-09-16 at Q-0015's gate:
   this line said **"the first surface in this product a human can act through"**, which is true of
