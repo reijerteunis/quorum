@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
 import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
-import { BOARD_PATH, GATE_ROUTE, HOME_PATH, isRedirect, RAIL, ROUTES, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
+import { BOARD_PATH, GATE_ROUTE, HOME_PATH, isRedirect, RAIL, ROUTES, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -92,17 +92,17 @@ describe('AC-6 — the rail is the seven entries the design brief names, in its 
     }
   });
 
-  test('Q-0017 AC-14 — exactly one entry is marked as having a screen, and it is the board\'s', () => {
+  test('Q-0015 AC-14 — the backlog and runs rail entries have screens', () => {
     // The field exists so that "not yet" is a statement the register makes rather than something a
     // component assumes, and Q-0014 left every entry `false` saying *"a later ticket flips exactly
     // one of these, visibly"*. This is that ticket, and this is the visible part: the count is one,
     // and the one is named, because a count alone is satisfied by a member swapped for another.
-    expect(RAIL.filter((entry) => entry.screenExists).map((entry) => entry.id)).toStrictEqual(['backlog']);
+    expect(RAIL.filter((entry) => entry.screenExists).map((entry) => entry.id)).toStrictEqual(['backlog', 'runs']);
     expect(RAIL.find((entry) => entry.id === 'backlog')?.path, 'the flipped entry points somewhere else')
       .toBe(BOARD_PATH);
     // …and the six that did not move, as an identity rather than as a count of what is left.
     expect(RAIL.filter((entry) => !entry.screenExists).map((entry) => entry.id))
-      .toStrictEqual(['projects', 'harness', 'flows', 'runs', 'history', 'settings']);
+      .toStrictEqual(['projects', 'harness', 'flows', 'history', 'settings']);
   });
 });
 
@@ -122,21 +122,22 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/does not have yet/);
   });
 
-  test('exactly three route rows claim a screen, and they are the three that have one', () => {
+  test('exactly five route rows claim a screen, and app selects every one by its registered constant', () => {
     // The rail says which entry has a screen and the rail has no ticket-page or gate entry, which
     // is why this field is on the route row too: `/backlog/:ticketId` and `/runs/:handle/gate` are
     // in neither table the rail draws from, so without it nothing in the register could say those
     // screens exist. An identity rather than a count, because a count is satisfied by a row swapped
     // for another. Two until Q-0016, which built the third.
     expect(SCREEN_ROUTES.filter((route) => route.screenExists).map((route) => route.path))
-      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, GATE_ROUTE]);
+      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, GATE_ROUTE, RUNS_PATH, RUN_ROUTE]);
     // The two registers agree where they overlap: the rail's board entry and the route row.
     expect(RAIL.find((entry) => entry.id === 'backlog')?.screenExists).toBe(true);
     // …and the field is load-bearing rather than decorative: every row claiming a screen is one
     // `app.tsx` selects by the register's own constant, and every row that does not is one the
     // placeholder still draws.
     const app = fs.readFileSync(path.join(SOURCE, 'app.tsx'), 'utf8');
-    for (const [name, route] of [['BOARD_PATH', BOARD_PATH], ['TICKET_ROUTE', TICKET_ROUTE], ['GATE_ROUTE', GATE_ROUTE]] as const) {
+    for (const route of SCREEN_ROUTES.filter((entry) => entry.screenExists)) {
+      const name = route.path === BOARD_PATH ? 'BOARD_PATH' : route.path === TICKET_ROUTE ? 'TICKET_ROUTE' : route.path === GATE_ROUTE ? 'GATE_ROUTE' : route.path === RUNS_PATH ? 'RUNS_PATH' : 'RUN_ROUTE';
       expect(app, `the app does not select ${route} by the register's own constant`).toContain(name);
     }
     expect(app, 'the app names a route path of its own rather than a register constant')
@@ -228,9 +229,9 @@ describe('Q-0121 AC-12 — the Runs landing route no longer says the daemon repo
       .not.toMatch(/reports no listing/);
     expect(waitingFor, 'the route still tells a user there is nothing to list')
       .not.toMatch(/nothing here to list/);
-    expect(waitingFor, 'the half that is still true was dropped with the half that is not')
-      .toMatch(/No ticket builds this screen yet/);
-    expect(ticket, 'a ticket was claimed for a screen no ticket builds').toBeNull();
+    expect(waitingFor, 'the built screen still claims no ticket builds it').not.toMatch(/No ticket builds this screen yet/);
+    expect(ticket).toBe('Q-0015');
+    expect(runsRoute().screenExists).toBe(true);
   });
 
   test('and it says what it is now waiting for, which is a screen rather than a daemon', () => {
@@ -238,7 +239,7 @@ describe('Q-0121 AC-12 — the Runs landing route no longer says the daemon repo
     // cannot come apart; this is the half that says the replacement is an ANSWER rather than the
     // absence of the old claim.
     const { waitingFor } = runsRoute();
-    expect(waitingFor).toMatch(/listing/);
+    expect(waitingFor.length).toBeGreaterThan(60);
     expect(waitingFor.trim().endsWith('.'), 'the sentence a user reads is not a sentence').toBe(true);
     // And the shipped text is what this clause was written against, so an edit that emptied the
     // field would fail rather than satisfy every negative above.

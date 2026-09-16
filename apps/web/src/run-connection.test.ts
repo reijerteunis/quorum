@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { createRunConnection, type SocketTransport } from './run-connection.js';
+import { createRunConnection, RUN_EVENT_RETENTION, type SocketTransport } from './run-connection.js';
 
 class FakeSocket implements SocketTransport {
   onopen: (() => void) | null = null;
@@ -153,5 +153,27 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     connection.dispose();
     expect(sockets[0]!.closes).toBe(1);
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('Q-0015 AC-9/10 — bounded immutable event retention', () => {
+  test('retains exactly the newest 500 and counts every browser eviction', () => {
+    const { connection, sockets } = setup(); connection.connect('A', page);
+    for (let i = 0; i < 700; i += 1) sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event: { type: 'step', stepId: String(i), message: String(i) } }) });
+    expect(connection.snapshot.events).toHaveLength(RUN_EVENT_RETENTION);
+    expect(connection.snapshot.events[0]).toMatchObject({ stepId: '200' });
+    expect(connection.snapshot.browserDiscardedCount).toBe(200);
+  });
+
+  test('does not mutate an earlier snapshot and resets both counters on retarget', () => {
+    const { connection, sockets } = setup(); connection.connect('A', page);
+    for (let i = 0; i < RUN_EVENT_RETENTION; i += 1) sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
+    const before = connection.snapshot; const copy = [...before.events];
+    sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
+    sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 7 }) });
+    expect(before.events).toStrictEqual(copy);
+    expect(connection.snapshot).toMatchObject({ missedCount: 7, browserDiscardedCount: 1 });
+    connection.connect('B', page);
+    expect(connection.snapshot).toMatchObject({ missedCount: null, browserDiscardedCount: null });
   });
 });
