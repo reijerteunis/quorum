@@ -153,14 +153,23 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
         return;
       }
       // COPIED, deliberately, and this is the note round 2's N-2 asked for rather than an
-      // oversight. `[...events, event]` is O(n) per event and so quadratic over a long stream, which
-      // is real. What it buys is that a snapshot's `events` never changes after it is handed out:
-      // `snapshotOf` returns the array by reference, so pushing in place would make every snapshot
-      // a live view that grows under its holder — and Q-0015 renders mission control from this same
-      // snapshot while Q-0121 will hold several controllers at once. Trading an immutability every
-      // consumer can rely on for a constant factor is not a nit's worth of risk; the cap question
-      // AC-19 deliberately leaves open is where this belongs, with a measurement behind it.
+      // oversight. `[...events, event]` is what keeps a returned snapshot's `events` immutable after
+      // it is handed out: `snapshotOf` returns the array by reference, so pushing in place would
+      // make every snapshot a live view that grows under its holder. The retention bound below is
+      // where the growth this note originally flagged as unbounded is closed, at Q-0015's measured
+      // value rather than an invented one — see `RUN_EVENT_RETENTION`.
+      //
+      // Correction to the deferral this comment used to make: it predicted Q-0121 would hold several
+      // controllers at once and routed the cap question there. Q-0121's deliverable is the `/runs`
+      // listing, not multiple browser connections, and `App` still owns exactly one `RunConnection`
+      // at a time (app.tsx). The cap lands here instead because Q-0015 is the first screen to render
+      // the retained list rather than only its tail.
       events = [...events, result.frame.event];
+      if (events.length > RUN_EVENT_RETENTION) {
+        const overflow = events.length - RUN_EVENT_RETENTION;
+        events = events.slice(overflow);
+        browserDiscardedCount = (browserDiscardedCount ?? 0) + overflow;
+      }
       dispatch({ type: 'event', event: result.frame.event });
       notify();
     };
