@@ -29,7 +29,7 @@ Name the persona in every user story. "The user" is not a persona.
 ## Surfaces
 
 - **CLI** (`quorum`) — the only surface until M3, and the one the cold-clone test measures.
-- **Local daemon + web UI** ("the Studio") — projects home, backlog board, mission control,
+- **Local daemon + web UI** — projects home, backlog board, mission control,
   gate screen, run history. From M3.
 - **`harness/`** — flows, roles, rules and context files in the target repository. Files are
   the truth; the UI edits them and never holds state the files don't.
@@ -103,6 +103,11 @@ desktop shell.
 
 ## Current priorities
 
-M0 — prove the two real CLI adapters on a real repository; the open question is whether
-subscription-authed CLIs return structured output reliably enough to chain stages. M1 — prove
-contracts → red tests → fan-out development → green. Everything else waits.
+**`docs/06-development-plan.md` is the authority and this section does not restate it** — it names
+the current milestone, its definition of done and its open tickets, and a copy here is a second
+register free to rot. It rotted: this section named M0 and M1 as current until 2026-09-16, when
+Q-0015's gate found it, and by then M0 had been closed for 25 days, M1 for 23 and M2 for 6. Every
+requirement written in that window was told the priority was proving the adapters work.
+
+Read the plan's last unclosed `## M<n>` heading. What does not change with the milestone: the
+quality pillars above are not negotiable, and anything on the v1 exclusion list stays a non-goal.
