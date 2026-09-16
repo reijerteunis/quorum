@@ -1,18 +1,27 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 
 import { repoFile, sharedSourceFiles } from '../test/corpus.js';
+import { gateQuestionEventSchema } from './events.js';
 import {
   containmentResultSchema, pushLagResultSchema, WIRE_RUN_STATES, wireExcludedFilesSchema,
   wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunListSchema,
   wireRunSchema, wireRunStateSchema, wireTicketDetailSchema, wireTicketFileEntrySchema,
-  wireTicketFileSchema, wireTicketListSchema, wireTicketSchema,
+  wireTicketFileSchema, wireTicketListSchema, wireTicketSchema, type WireRun,
 } from './wire.js';
 import { ticketSchema } from './ticket.js';
 import * as shared from './index.js';
 
+/** One gate question, in the shape `askGate` emits — the element `WireRun.gates` carries. */
+const QUESTION = {
+  type: 'gate', gateId: '3:1', kind: 'human', reason: 'chore: approve to advance ticket to "reviewed"',
+  ticketDir: '/repo/backlog/Q-0016-a-ticket',
+} as const;
+
 /** One run row that every clause below starts from, so a refusal is the one field it changed. */
 const RUN = {
   handle: 'run-7', flow: 'probe', ticketId: 'T-0001', runId: null, state: 'running', pendingGates: 1,
+  gates: [QUESTION],
 } as const;
 
 /** The issue codes one refusal carried, which is what "distinguishably" is asserted over. */
@@ -61,7 +70,7 @@ describe('Q-0121 AC-10 — the run and refusal shapes are here, each with a sche
 
   test('a run row is accepted, and its three refusal classes are told apart', () => {
     expect(wireRunSchema.safeParse(RUN).success).toBe(true);
-    expect(wireRunSchema.safeParse({ ...RUN, ticketId: null, runId: 3, state: 'ended', pendingGates: 0 }).success).toBe(true);
+    expect(wireRunSchema.safeParse({ ...RUN, ticketId: null, runId: 3, state: 'ended', pendingGates: 0, gates: [] }).success).toBe(true);
     // One message per class: an unknown key, a missing required field and a state outside the
     // closed three each report a DIFFERENT code, so a client — and a reviewer reading a failure —
     // can tell which contract was broken rather than only that one was.
@@ -93,6 +102,85 @@ describe('Q-0121 AC-10 — the run and refusal shapes are here, each with a sche
     // And the rows are checked rather than the container, which is the distinction Q-0119's review
     // round 2 found the other way round: `Array.isArray` alone moves a throw rather than removing it.
     expect(wireRunListSchema.safeParse({ runs: [{ ...RUN, state: 'paused' }] }).success).toBe(false);
+  });
+});
+
+describe('Q-0016 AC-1 — a run row carries the questions its gates are asking', () => {
+  test('one question crosses whole, and two cross in the order they were asked', () => {
+    // The field is what makes a gate ANSWERABLE from a browser: `gateId` is the token an answer has
+    // to echo, and `retry` is what says whether the third answer is one this gate will honour.
+    const parsed = wireRunSchema.safeParse(RUN);
+    expect(parsed.error?.issues, 'a row carrying a gate question was refused').toBeUndefined();
+    if (!parsed.success) return;
+    expect(parsed.data.gates).toStrictEqual([QUESTION]);
+
+    const second = { ...QUESTION, gateId: '3:2', kind: 'human-locked', retry: 'implement' };
+    const two = wireRunSchema.safeParse({ ...RUN, pendingGates: 2, gates: [QUESTION, second] });
+    expect(two.error?.issues).toBeUndefined();
+    if (!two.success) return;
+    expect(two.data.gates.map((gate) => gate.gateId), 'the questions did not keep their order')
+      .toStrictEqual(['3:1', '3:2']);
+    expect(two.data.gates[1]?.retry, 'the retry target did not cross').toBe('implement');
+    // …and a run with nothing waiting carries the empty array rather than omitting the field, which
+    // is what lets a screen switch on it without asking whether it is there.
+    expect(wireRunSchema.safeParse({ ...RUN, pendingGates: 0, gates: [] }).success).toBe(true);
+    expect(wireRunSchema.safeParse({ handle: 'r', flow: 'f', ticketId: null, runId: null, state: 'ended', pendingGates: 0 }).success,
+      'a row omitting the field entirely was accepted').toBe(false);
+  });
+
+  test('the element is the event union\'s own schema, not a second declaration of those six fields', () => {
+    // A re-declaration is free to drift the moment either end gains a field, and the question a
+    // browser echoes back has to be the question `askGate` emitted. Asserted two ways: the same
+    // schema refuses what the element refuses, and this file declares no gate shape of its own.
+    const notAQuestion = { ...QUESTION, type: 'info' };
+    expect(gateQuestionEventSchema.safeParse(notAQuestion).success, 'the element schema accepts a non-gate').toBe(false);
+    expect(wireRunSchema.safeParse({ ...RUN, gates: [notAQuestion] }).success,
+      'a row carried an event that is not a gate question').toBe(false);
+    expect(wireRunSchema.safeParse({ ...RUN, gates: [{ ...QUESTION, surprise: true }] }).success,
+      'a question carrying a field the union does not declare was accepted').toBe(false);
+    const source = sharedSourceFiles().find(([name]) => name === 'wire.ts')?.[1] ?? '';
+    expect(source, 'wire.ts is not in the corpus — this clause has lost its subject').not.toBe('');
+    // The needle is a DECLARATION rather than the name, in the shape `apps/web`'s own scan uses:
+    // `type GateQuestionEvent }` in an import list is a reference, and reporting it would make this
+    // clause fail on the very line that proves the shape is imported rather than re-declared.
+    const declares = /\b(?:interface|type)\s+GateQuestion\w*\s*[={]/;
+    expect(declares.test(source), 'wire.ts declares a gate shape of its own').toBe(false);
+    expect(declares.test(`export interface ${'GateQuestion'}Event { gateId: string }`),
+      'the needle matches no declaration at all').toBe(true);
+    expect(source, 'wire.ts builds a gate shape rather than reusing the event union\'s')
+      .toContain('gateQuestionEventSchema');
+  });
+
+  test('the annotation is load-bearing in the direction it can be, and this says which', () => {
+    // `wireRunSchema` is declared `z.ZodType<WireRun>` rather than inferred, so an interface field
+    // with no schema field fails AT THE DECLARATION and not at whichever consumer reads it first.
+    //
+    // **What it does NOT catch is a schema field with no interface field**, and the first draft of
+    // this clause asserted that it did — `tsc` refused the `@ts-expect-error` as unused, which is
+    // the whole reason the claim is written out here rather than left as an impression: `ZodType`
+    // is covariant in its output, so an object schema carrying an extra key is still assignable.
+    // The half that refuses an undeclared key is `.strict()`, at run time, which the clause above
+    // exercises over a real body. Two mechanisms, and neither is the other.
+    const dropped = z.object({
+      handle: z.string(), flow: z.string(), ticketId: z.string().nullable(),
+      runId: z.number().int().nullable(), state: wireRunStateSchema,
+      pendingGates: z.number().int().nonnegative(),
+    }).strict();
+    // @ts-expect-error a schema omitting `gates` does not produce a WireRun, and fails at this line
+    const refused: z.ZodType<WireRun> = dropped;
+    expect(refused, 'the narrowed schema was not built — this demonstration has no subject').toBeDefined();
+    const mistyped = z.object({
+      handle: z.string(), flow: z.string(), ticketId: z.string().nullable(),
+      runId: z.number().int().nullable(), state: wireRunStateSchema,
+      pendingGates: z.number().int().nonnegative(), gates: z.array(z.string()),
+    }).strict();
+    // @ts-expect-error and one whose `gates` is not the event union's own shape fails at it too
+    const wrongElement: z.ZodType<WireRun> = mistyped;
+    expect(wrongElement).toBeDefined();
+    // And the shipped pair really does agree, which is what makes the two lines above refusals
+    // rather than a claim that no schema is assignable at all.
+    const accepted: z.ZodType<WireRun> = wireRunSchema;
+    expect(accepted.safeParse(RUN).success).toBe(true);
   });
 });
 

@@ -11,9 +11,9 @@ import { WIRE_RUN_STATES, wireRunListSchema, wireRunSchema } from '@quorum/share
 import type { GateQuestionEvent, WireRun } from '@quorum/shared';
 
 import { createRunHost } from './host.js';
-import type { RunHost } from './host.js';
+import type { RunHost, RunView } from './host.js';
 import { createApp, eventMessage, missedMessage, startRefusalCode, startRequestOf } from './http.js';
-import { ANSWER_REFUSAL_STATUS, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS } from './wire.js';
+import { ANSWER_REFUSAL_STATUS, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS, wireRunOf } from './wire.js';
 import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
@@ -412,7 +412,7 @@ describe('Q-0121 AC-8 — one projection, and a row says which ticket and how ma
     const looked = await (await app.request(`/runs/${handle}`)).json() as Record<string, unknown>;
     expect(Object.keys(looked).sort()).toStrictEqual(Object.keys(created).sort());
     expect(Object.keys(created).sort())
-      .toStrictEqual(['flow', 'handle', 'pendingGates', 'runId', 'state', 'ticketId']);
+      .toStrictEqual(['flow', 'gates', 'handle', 'pendingGates', 'runId', 'state', 'ticketId']);
     // `state` is the host's closed three rather than the string it was declared as until this ticket.
     expect([...WIRE_RUN_STATES], 'the wire state vocabulary widened').toContain(String(created.state));
 
@@ -420,8 +420,23 @@ describe('Q-0121 AC-8 — one projection, and a row says which ticket and how ma
   });
 });
 
-describe('Q-0121 AC-9 — no ticket record, event or gate question crosses the wire', () => {
-  test('a marker in the ticket body and the gate\'s own reason appear in neither response', async () => {
+describe('Q-0121 AC-9 — no ticket record crosses the wire, and since Q-0016 the gate question does', () => {
+  /**
+   * **Re-aimed rather than dropped, and one of its three clauses is now deliberately false.**
+   *
+   * Q-0121 asserted that no ticket record, event OR gate question crossed, on a projection that
+   * narrowed the gates to a count. Q-0016 widens `WireRun` by `gates`, so the question crosses
+   * whole — which is what makes a gate answerable from a browser at all, the `gateId` an answer
+   * echoes living in the question and nowhere else. What that ticket's clause was actually about is
+   * the TICKET RECORD, and that half is unchanged and still checked here: `ticketId` is the whole
+   * of what a ticket contributes to a row, and a ticket's prose reaches no client.
+   *
+   * The folder half moved with the question rather than being abandoned: `ticketDir` is a field of
+   * `GateQuestionEvent`, so a gate's own answer carries the ticket folder's absolute path and the
+   * listing still does not. Asserted that way round below, so the narrowing is pinned where it
+   * still holds instead of being deleted because one route stopped obeying it.
+   */
+  test('a marker in the ticket body reaches no client, and the gate\'s question reaches one whole', async () => {
     // Asserted over SERIALISED BYTES rather than over the type, because the type is what gets got
     // right and the bytes are what ships: a field added to the projection later, or a `RunView`
     // handed to `c.json` by mistake, is caught here and by nothing a compiler does.
@@ -440,13 +455,94 @@ describe('Q-0121 AC-9 — no ticket record, event or gate question crosses the w
     for (const route of ['/runs', `/runs/${handle}`]) {
       const body = await (await app.request(route)).text();
       expect(body, `${route} carried the ticket's prose`).not.toContain(marker);
-      expect(body, `${route} carried the gate's question`).not.toContain('approve to advance');
-      expect(body, `${route} carried the ticket's folder`).not.toContain('the-server-runs-a-flow');
+      expect(body, `${route} did not carry the gate's question`).toContain('approve to advance');
       expect(body, `${route} said nothing at all`).toContain(handle);
     }
+    // The ticket folder reaches a client through the QUESTION and through nothing else: `ticketDir`
+    // is a field of the event, and the row's own ticket narrowing is still an id.
+    const parked = await (await app.request(`/runs/${handle}`)).json() as { ticketId: string; gates: { ticketDir: string }[] };
+    expect(parked.ticketId, 'the row stopped narrowing the ticket to its id').toBe(TICKET_ID);
+    expect(parked.gates[0]?.ticketDir, 'the question did not carry the folder a human is sent to look at')
+      .toContain('the-server-runs-a-flow');
+    expect(JSON.stringify({ ...parked, gates: [] }), 'the row itself carried the ticket\'s folder')
+      .not.toContain('the-server-runs-a-flow');
     // …and the narrowings are present rather than the fields merely being absent.
     expect((await listRuns(app))[0]?.pendingGates).toBe(1);
     expect((await listRuns(app))[0]?.ticketId).toBe(TICKET_ID);
+
+    await host.shutdown();
+  });
+});
+
+describe('Q-0016 AC-2 — the projection carries the questions, derived per request', () => {
+  test('a parked run answers its question, and answering it empties both fields without a restart', async () => {
+    // The whole of what a browser needs to answer a gate, over the route it would read: the
+    // correlation token, the kind, the sentence and — where the gate offers one — the step a
+    // `retry` returns to. And then the half that says it is DERIVED rather than captured: the same
+    // process, the same host, the same handle, answered and read again.
+    const project = fixture({ flow: GATED_FLOW });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const handle = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    await until(() => (host.view(handle)?.gates.length ?? 0) > 0, 'the run to reach its gate');
+
+    const parsed = wireRunSchema.safeParse(await (await app.request(`/runs/${handle}`)).json());
+    expect(parsed.error?.issues, 'the lookup does not satisfy the schema a browser parses it with').toBeUndefined();
+    if (!parsed.success) throw new Error('unreachable');
+    expect(parsed.data.pendingGates).toBe(1);
+    expect(parsed.data.gates).toHaveLength(1);
+    const [question] = parsed.data.gates;
+    expect(question?.type).toBe('gate');
+    expect(question?.gateId, 'the correlation token an answer has to echo did not cross').toBe(host.view(handle)?.gates[0]?.gateId);
+    expect(question?.kind).toBe('human');
+    expect(question?.reason).toBe('approve to advance');
+    expect(question?.ticketDir).toBe(host.view(handle)?.gates[0]?.ticketDir);
+    // This flow's gate is author-declared and names no `retryTarget`, so it offers no retry — which
+    // is the field a screen must read before offering that answer, `routing.ts:97` ending the run
+    // for a `retry` at a gate carrying none.
+    expect(question?.retry, 'an author-declared gate offered a retry target').toBeUndefined();
+
+    const answered = await post(app, `/runs/${handle}/gate`, { gateId: question?.gateId, answer: 'advance' });
+    expect(answered.status, 'the gate this run was parked on refused the answer it advertised').toBe(204);
+    await until(() => (host.view(handle)?.gates.length ?? 0) === 0, 'the gate to be settled');
+
+    const after = wireRunSchema.safeParse(await (await app.request(`/runs/${handle}`)).json());
+    if (!after.success) throw new Error('the lookup stopped satisfying its own schema');
+    expect(after.data.gates, 'an answered gate was still reported as waiting').toStrictEqual([]);
+    expect(after.data.pendingGates, 'the count and the array disagreed').toBe(0);
+
+    await drainRun(host, handle);
+    await host.shutdown();
+  });
+
+  test('the count is the array\'s length on every run the host can hold, a refused start included', async () => {
+    // `pendingGates === gates.length` structurally rather than by inspection: `wireRunOf` computes
+    // one from the other, so the two cannot disagree. Driven over the projection itself for the
+    // two-gate row, which no shipped flow produces — `runStep`'s `parallel:` branch dispatches only
+    // `runAgentStep`, so one run is parked on at most one question — and over the real host for the
+    // refused start, whose `viewOf` builds the field too.
+    const question = (gateId: string): GateQuestionEvent =>
+      ({ type: 'gate', gateId, kind: 'human', reason: 'approve', ticketDir: '/repo/backlog/T-0001-a' });
+    const view = (gates: GateQuestionEvent[]): RunView => ({
+      handle: 'run-1', flow: 'probe', runId: null, ticket: null, state: 'running',
+      terminal: null, failure: null, refusal: null, gates, watchers: 0,
+    });
+    for (const gates of [[], [question('1:1')], [question('1:1'), question('1:2')]]) {
+      const row = wireRunOf(view(gates));
+      expect(row.pendingGates, `a row carrying ${String(gates.length)} questions reported a different count`)
+        .toBe(row.gates.length);
+      expect(row.gates, 'the questions were rebuilt rather than carried').toStrictEqual(gates);
+    }
+
+    const project = fixture();
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const outcome = await host.start({ flow: 'probe', ticket: 'T-0404' });
+    expect(outcome.started, 'the start this clause rests on was not refused').toBe(false);
+    const refused = await (await app.request(`/runs/${outcome.run.handle}`)).json() as { state: string; gates: unknown[]; pendingGates: number };
+    expect(refused.state, 'the refused run is not reported as refused').toBe('refused');
+    expect(refused.gates, 'a refused start carried a gate').toStrictEqual([]);
+    expect(refused.pendingGates).toBe(0);
 
     await host.shutdown();
   });

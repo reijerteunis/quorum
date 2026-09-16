@@ -15,8 +15,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
+import { GateScreen } from './gate-screen.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH, TICKET_ROUTE } from './routes.js';
+import { BOARD_PATH, GATE_ROUTE, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -155,6 +156,11 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
         // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
         // name is the daemon's own first predicate, and this page renders that refusal.
         <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
+      ) : rendered.route.path === GATE_ROUTE ? (
+        // The handle likewise: whatever the URL carried, decoded out of one segment and not trusted
+        // to be one this daemon minted. A handle it never minted is the route's own 404, which the
+        // screen renders as the refusal it is rather than as an empty page.
+        <GateScreen handle={rendered.params.handle ?? ''} fetcher={fetcher} now={clock} />
       ) : (
         <Placeholder route={rendered.route} params={rendered.params} />
       )}

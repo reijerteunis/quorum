@@ -8,11 +8,11 @@
  */
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, runDetailPath, runGatePath, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import {
-  fetchFlows, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight, requestJson,
-  ticketFileInFlight, ticketInFlight, ticketsInFlight,
-  type DaemonResponse, type FetchLike,
+  answerGate, fetchFlows, fetchRun, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight,
+  gateAnswerInFlight, requestJson, runInFlight, ticketFileInFlight, ticketInFlight, ticketsInFlight,
+  type DaemonRequest, type DaemonResponse, type FetchLike,
 } from './daemon-client.js';
 import { canRetryRequest, type RequestState } from './request-state.js';
 
@@ -319,5 +319,187 @@ describe('AC-8 — fetchTicket and fetchTicketFile, over every answer their rout
     expect(asked[0], 'the detail reader asked for a file').not.toContain('file?path=');
     expect(asked[1], 'the file reader did not name the file it was asked for')
       .toContain(encodeURIComponent(REL));
+  });
+});
+
+/**
+ * Q-0016 AC-4 — the one request this app makes that is not a GET, over every answer its route gives.
+ *
+ * Driven here rather than through the screen for the reason Q-0127's block above gives: a component
+ * test cannot say whether a success was recognised from its STATUS or fell through a body parser,
+ * and both render identically until the day the daemon answers a gate differently.
+ *
+ * **Six answers and a shape, because the route's success carries no body.**
+ * `POST /runs/:id/gate` answers `204` with nothing at all, and two of its four refusals share a
+ * status — `no-such-run` and `no-such-gate` are both `404`, saying opposite things to a reader — so
+ * what tells one answer from another is the code and never the status alone.
+ */
+describe('AC-4 — answerGate, and what it does with each answer the daemon gives', () => {
+  const HANDLE = 'run-7';
+  const GATE = '3:1';
+
+  /** Everything one request carried, so *what was sent* is asserted rather than assumed. */
+  interface Sent {
+    readonly path: string;
+    readonly request?: DaemonRequest;
+    /** Whether the body was read at all — the half a status-only success has to be checked on. */
+    read: boolean;
+  }
+
+  /** A daemon answering one status, recording the request and whether anything read its body. */
+  const daemon = (status: number, body: unknown = null): { fetch: FetchLike; sent: Sent[] } => {
+    const sent: Sent[] = [];
+    return {
+      sent,
+      fetch: (path: string, request?: DaemonRequest) => {
+        const record: Sent = { path, request, read: false };
+        sent.push(record);
+        return Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => { record.read = true; return Promise.resolve(body); },
+        });
+      },
+    };
+  };
+
+  test('a 204 is accepted from its status, with no body read at all', async () => {
+    const { fetch, sent } = daemon(204);
+    const state = await answerGate(fetch, HANDLE, GATE, 'advance', CLOCK);
+    expect(state.kind, 'a settled gate was not reported as accepted').toBe('loaded');
+    if (state.kind !== 'loaded') return;
+    // The value is the answer that was ACCEPTED and nothing beyond it: what the run does next is a
+    // read rather than an inference from a status.
+    expect(state.value).toBe('advance');
+    expect(state.fetchedAt).toBe(CLOCK());
+    expect(sent[0]?.read, 'the success path read a body the route does not send').toBe(false);
+    expect(canRetryRequest(state), 'an accepted answer offered a retry').toBe(false);
+  });
+
+  test('and it sends one POST, to its own path, carrying the envelope the contract declares', async () => {
+    const { fetch, sent } = daemon(204);
+    await answerGate(fetch, HANDLE, GATE, 'abort', CLOCK);
+    expect(sent.map((each) => each.path), 'the answer went somewhere other than the gate route')
+      .toStrictEqual([runGatePath(HANDLE)]);
+    expect(sent[0]?.request?.method).toBe('POST');
+    expect(JSON.parse(sent[0]?.request?.body ?? '{}'), 'the envelope is not the two fields the schema declares')
+      .toStrictEqual({ gateId: GATE, answer: 'abort' });
+    // And the in-flight state names the same path the request will ask for, which is what lets a
+    // screen say what it is waiting for without composing a path of its own.
+    expect(gateAnswerInFlight(HANDLE)).toStrictEqual({ kind: 'in-flight', path: runGatePath(HANDLE) });
+  });
+
+  test('the two 404s are told apart by code rather than by status', async () => {
+    // The trap this clause exists for: a client branching on the status alone reports *that handle
+    // names no run* for a gate that was simply already answered, which is a wrong sentence rather
+    // than a crash — the kind that survives a review.
+    const outcomes: string[] = [];
+    for (const code of ['no-such-run', 'no-such-gate']) {
+      const state = await answerGate(daemon(404, { code, condition: `${code} happened`, remedy: null }).fetch,
+        HANDLE, GATE, 'advance', CLOCK);
+      expect(state.kind).toBe('refused');
+      if (state.kind === 'refused') outcomes.push(state.refusal.code);
+    }
+    expect(outcomes, 'two refusals sharing a status collapsed into one').toStrictEqual(['no-such-run', 'no-such-gate']);
+  });
+
+  test.each([
+    ['no-such-gate', 404],
+    ['not-this-run', 409],
+    ['not-an-answer', 400],
+    ['no-such-run', 404],
+    ['malformed-json', 400],
+  ] as const)('%s reaches the caller with the daemon\'s own words', async (code, status) => {
+    const refusal = { code, condition: `the daemon says ${code}`, remedy: null };
+    const state = await answerGate(daemon(status, refusal).fetch, HANDLE, GATE, 'retry', CLOCK);
+    expect(state.kind).toBe('refused');
+    if (state.kind !== 'refused') return;
+    expect(state.refusal, 'the refusal was rewritten on the way through').toStrictEqual(refusal);
+    expect(state.path).toBe(runGatePath(HANDLE));
+    expect(canRetryRequest(state), 'a refusal offered no action at all').toBe(true);
+  });
+
+  test('a fetcher that throws is unreachable, and is not a refusal', async () => {
+    const state = await answerGate(() => Promise.reject(new Error('connection refused')), HANDLE, GATE, 'advance', CLOCK);
+    expect(state.kind).toBe('unreachable');
+    if (state.kind === 'unreachable') expect(state.path).toBe(runGatePath(HANDLE));
+  });
+
+  test('a 2xx that is not the one this route answers with is reported, not taken for a success', async () => {
+    // This page and the daemon disagreeing about what answering a gate looks like is a thing to
+    // say. Two shapes: a 200 carrying something, and a 200 carrying nothing readable.
+    const carrying = await answerGate(daemon(200, { ok: true }).fetch, HANDLE, GATE, 'advance', CLOCK);
+    expect(carrying.kind).toBe('unparseable');
+    if (carrying.kind === 'unparseable') expect(carrying.problem, 'the problem says nothing about the status').toContain('204');
+
+    const broken = await answerGate(
+      () => Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new Error('Unexpected token <')) }),
+      HANDLE, GATE, 'advance', CLOCK,
+    );
+    expect(broken.kind).toBe('unparseable');
+    if (broken.kind === 'unparseable') expect(broken.problem).toContain('not JSON');
+  });
+
+  test('a non-2xx whose body is not a refusal is still reported as the daemon having answered', async () => {
+    // Reporting a request that WAS answered as one that was not would send a reader to restart a
+    // process that is running — the same reasoning `requestJson` gives, through the one function
+    // both now share.
+    const state = await answerGate(daemon(500, '<html>').fetch, HANDLE, GATE, 'advance', CLOCK);
+    expect(state.kind).toBe('refused');
+    if (state.kind === 'refused') expect(state.refusal.code).toContain('500');
+  });
+
+  test('and the six answers are six outcomes, no two of which collapse', async () => {
+    const seenOf = (state: RequestState<unknown>): string => {
+      switch (state.kind) {
+        case 'refused': return `refused:${state.refusal.code}`;
+        case 'unparseable': return `unparseable:${state.problem.slice(0, 20)}`;
+        default: return state.kind;
+      }
+    };
+    const seen = [
+      await answerGate(daemon(204).fetch, HANDLE, GATE, 'advance', CLOCK),
+      await answerGate(daemon(404, { code: 'no-such-gate', condition: 'x', remedy: null }).fetch, HANDLE, GATE, 'advance', CLOCK),
+      await answerGate(daemon(409, { code: 'not-this-run', condition: 'x', remedy: null }).fetch, HANDLE, GATE, 'advance', CLOCK),
+      await answerGate(daemon(400, { code: 'not-an-answer', condition: 'x', remedy: null }).fetch, HANDLE, GATE, 'advance', CLOCK),
+      await answerGate(daemon(200, { ok: true }).fetch, HANDLE, GATE, 'advance', CLOCK),
+      await answerGate(() => Promise.reject(new Error('down')), HANDLE, GATE, 'advance', CLOCK),
+    ].map(seenOf);
+    expect(new Set(seen).size, `two of ${JSON.stringify(seen)} render as one`).toBe(6);
+  });
+});
+
+describe('AC-4 — fetchRun reads one run, over the route that answers for one handle', () => {
+  const HANDLE = 'run-7';
+
+  /** One run row in the shape `wireRunSchema` accepts, with one gate waiting. */
+  const RUN = {
+    handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, state: 'running', pendingGates: 1,
+    gates: [{ type: 'gate', gateId: '3:1', kind: 'human', reason: 'approve to advance', ticketDir: '/repo/backlog/Q-0016-a' }],
+  };
+
+  test('a well-formed run loads, with its question carried whole', async () => {
+    const seen: string[] = [];
+    const state = await fetchRun((path: string) => {
+      seen.push(path);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(RUN) });
+    }, HANDLE, CLOCK);
+    expect(seen, 'the reader asked for a path the endpoint register did not build').toStrictEqual([runDetailPath(HANDLE)]);
+    expect(state.kind).toBe('loaded');
+    if (state.kind !== 'loaded') return;
+    expect(state.value.gates[0]?.gateId, 'the correlation token did not survive the parse').toBe('3:1');
+    expect(runInFlight(HANDLE)).toStrictEqual({ kind: 'in-flight', path: runDetailPath(HANDLE) });
+  });
+
+  test('and a body carrying a field the wire does not declare is refused rather than passed on', async () => {
+    const state = await fetchRun(answering({ ...RUN, surprise: true }).fetch, HANDLE, CLOCK);
+    expect(state.kind, 'an undeclared field was accepted').toBe('unparseable');
+  });
+
+  test('a handle the host never minted is the route\'s own refusal, carried through', async () => {
+    const refusal = { code: 'no-such-run', condition: 'no run is registered under that handle', remedy: null };
+    const state = await fetchRun(answering(refusal, 404).fetch, HANDLE, CLOCK);
+    expect(state.kind).toBe('refused');
+    if (state.kind === 'refused') expect(state.refusal).toStrictEqual(refusal);
   });
 });

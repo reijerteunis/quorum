@@ -1830,4 +1830,40 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
       expect(needle.test(board), `the board paragraph does not record ${what}`).toBe(true);
     }
   });
+
+  test('Q-0016 AC-14 — and the gate paragraph records the three the gate screen has', () => {
+    const text = brief();
+    const gate = text.slice(text.indexOf('**6. Gate screen (second hero).**'), text.indexOf('**7. Step chat'));
+    expect(gate.length, 'the gate paragraph was not found — this check has lost its subject').toBeGreaterThan(500);
+    for (const [what, needle] of [
+      ['that the third answer is not primary and is often not offered', /not the primary action/],
+      ['when the screen is actually reached', /Reached when a run parks/],
+      ['what it does not render, and whose the rest is', /Q-0129/],
+    ] as [string, RegExp][]) {
+      expect(needle.test(gate), `the gate paragraph does not record ${what}`).toBe(true);
+    }
+  });
+
+  test('and the count in it is re-derived, with the grep that produces it and the one that does not', () => {
+    // **The rule this clause exists for**: a measurement copied from a document is not a
+    // measurement, and this repository has recorded a correction travelling one document further by
+    // being copied. So the paragraph carries the command that produces its figure, and says which
+    // near-miss command does not — `grep -c 'gate='` also collects the retry-grant lines and one
+    // hand-written note, which is how a plausible wrong number gets into a document.
+    const text = brief();
+    const gate = text.slice(text.indexOf('**6. Gate screen (second hero).**'), text.indexOf('**7. Step chat'));
+    expect(gate, 'the paragraph states a figure without the command that produces it')
+      .toContain("grep -hE 'gate=[a-z-]+ answer=(advance|retry|abort)' backlog/*/runs.log | wc -l");
+    expect(gate, 'the paragraph does not warn off the count that over-collects').toMatch(/is not the figure/);
+    // The two figures and their difference are all stated, so a reader can check the arithmetic
+    // without re-running anything: the wider count, the narrower one, and what the gap is made of.
+    for (const [what, needle] of [
+      ['the engine-answer count', /\*\*220\*\*/],
+      ['how many of them carry no target', /\*\*148\*\*/],
+      ['the over-collecting count', /returns 255/],
+      ['what the gap is made of', /34 retry-grant lines and one hand-written erratum note/],
+    ] as [string, RegExp][]) {
+      expect(needle.test(gate), `the paragraph does not state ${what}`).toBe(true);
+    }
+  });
 });

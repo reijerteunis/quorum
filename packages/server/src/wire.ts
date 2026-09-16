@@ -105,6 +105,13 @@ export const STOP_REFUSAL_STATUS = {
  * `String()` on the id for the reason `read.ts` gives at its own ticket row: `Backlog.read` asserts
  * rather than parses, so `meta.id` is a string by type and not by proof, and reporting what is
  * actually on disk is preferred to trusting the declaration.
+ *
+ * **`gates` crosses whole since Q-0016, and `pendingGates` is computed from it here.** A count
+ * alone can say a run is waiting and cannot say what it asked, so a browser holding only that could
+ * not answer the gate — and the `gateId` an answer must echo is in the question and nowhere else.
+ * The two fields cannot disagree because one is the other's length, which is what makes the
+ * redundancy safe rather than a second authority. `RunView.gates` is derived per call from the
+ * registry `askGate` parks on, so both are answers about this request and nothing is cached.
  */
 export function wireRunOf(view: RunView): WireRun {
   return {
@@ -114,5 +121,6 @@ export function wireRunOf(view: RunView): WireRun {
     runId: view.runId,
     state: view.state,
     pendingGates: view.gates.length,
+    gates: view.gates,
   };
 }

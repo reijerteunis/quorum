@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS, runEventsPath, runEventsUrl } from '../src/daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, runDetailPath, runEventsPath, runEventsUrl, runGatePath } from '../src/daemon-endpoints.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -27,6 +27,35 @@ describe('AC-13 — same-origin daemon endpoints', () => {
     expect(url.pathname).toBe(pathName);
     expect(url.search).toBe('');
     expect(url.hash).toBe('');
+  });
+
+  test.each(['a/b', 'a?b', 'a#b', 'a b', '../project'])(
+    'Q-0016 AC-6 — the two run paths confine hostile handle %s to one segment', (handle) => {
+      // A handle is whatever a URL carried, decoded out of one segment by the router and not
+      // trusted to be one this daemon minted: a token holding a separator is not one name, and a
+      // traversing one must not become a path this app POSTs to. Both are asserted over a real
+      // `URL`, so the claim is about what a browser would send rather than about the string.
+      for (const [named, built] of [['detail', runDetailPath(handle)], ['gate', runGatePath(handle)]] as const) {
+        const url = new URL(built, `https:${'//'}example.test/runs/x/gate`);
+        expect(url.pathname, `the ${named} path escaped its own segment`)
+          .toBe(`${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}${named === 'gate' ? '/gate' : ''}`);
+        expect(url.search, `the ${named} path carried a query`).toBe('');
+        expect(url.hash, `the ${named} path carried a fragment`).toBe('');
+        expect(built.startsWith(DAEMON_ENDPOINTS.runs), `the ${named} path is not page-relative`).toBe(true);
+      }
+      // …and the two are one segment apart rather than the same path, which is the near-homograph
+      // worth pinning: a gate answer sent to the detail path is a POST the daemon does not route.
+      expect(runGatePath(handle).startsWith(runDetailPath(handle))).toBe(true);
+      expect(runGatePath(handle)).not.toBe(runDetailPath(handle));
+    });
+
+  test('Q-0016 AC-6 — the gate path is not a proxy prefix, and is built from the one that is', () => {
+    // The register is the set of prefixes the dev server forwards, and `/runs` already forwards
+    // everything below it — so a sixth entry here would claim a prefix nothing forwards, and
+    // `daemon-endpoints.test.ts`'s own identity clause below would have to move to accept it.
+    expect(runGatePath('run-3')).toBe(`${DAEMON_ENDPOINTS.runs}/run-3/gate`);
+    expect(Object.values(DAEMON_ENDPOINTS), 'the gate segment became a forwarded prefix of its own')
+      .not.toContain('/gate');
   });
 
   test('the proxy and path builder consume the complete endpoint register', () => {

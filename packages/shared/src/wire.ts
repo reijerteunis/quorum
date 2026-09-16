@@ -32,6 +32,7 @@
 import { z } from 'zod';
 
 import { CONTAINMENT_REASONS, type ContainmentResult } from './containment.js';
+import { gateQuestionEventSchema, type GateQuestionEvent } from './events.js';
 import { PUSH_LAG_REASONS, type PushLagResult } from './push-lag.js';
 
 /** The transport envelope; event payloads require a second pass through `eventSchema`. */
@@ -102,13 +103,23 @@ export const wireRunStateSchema: z.ZodType<WireRunState> = z.enum(WIRE_RUN_STATE
  * takes one. `runId` is `core`'s own number and is `null` until the terminal event carries it,
  * which is a fact about the engine rather than about the transport.
  *
- * **Two fields are deliberately not named after the fields they narrow** (Q-0121 GO-3). The
- * daemon's own view of a run carries a whole ticket record and an array of gate questions; a wire
- * field that narrows one of those to an id or to a count may not keep that field's name, because
- * the name would then promise what the wire does not carry. Hence `ticketId` and `pendingGates`.
+ * **`ticketId` is deliberately not named after the field it narrows** (Q-0121 GO-3). The daemon's
+ * own view of a run carries a whole ticket record; a wire field that narrows one to an id may not
+ * keep that field's name, because the name would then promise what the wire does not carry.
  *
- * `pendingGates` is a count and is what makes a row actionable: a run waiting on a human that
- * nobody can find is the case this shape exists to remove.
+ * **`gates` may keep its name, and the reason is that rule rather than an exception to it** — it
+ * narrows nothing. `RunView.gates` is an array of {@link GateQuestionEvent} and so is this: the
+ * same values, by the same element schema, reused rather than re-declared. `pendingGates` stayed a
+ * count when it was the only thing carried, and it stays beside the array now: a listing of many
+ * runs wants a number, the two are structurally unable to disagree because the projection computes
+ * one from the other, and removing a shipped field from a `.strict()` shape for a redundancy that
+ * costs nothing would be a breaking change bought with nothing.
+ *
+ * `pendingGates` is what makes a row actionable: a run waiting on a human that nobody can find is
+ * the case this shape exists to remove. `gates` is what makes it ANSWERABLE, which is Q-0016's:
+ * `gateId` is the correlation token an answer has to echo, and `kind`, `reason` and `retry` are the
+ * whole of what a gate screen can honestly render — a browser that had only the count could say a
+ * gate was waiting and could not say what it asked or offer an answer to it.
  */
 export interface WireRun {
   readonly handle: string;
@@ -117,8 +128,10 @@ export interface WireRun {
   readonly ticketId: string | null;
   readonly runId: number | null;
   readonly state: WireRunState;
-  /** How many of this run's gates are waiting on an answer. */
+  /** How many of this run's gates are waiting on an answer. Always `gates.length`. */
   readonly pendingGates: number;
+  /** Those gates' questions, whole and in the order they were asked. Empty for every other run. */
+  readonly gates: readonly GateQuestionEvent[];
 }
 
 /** Runtime validation for one run row. */
@@ -129,6 +142,10 @@ export const wireRunSchema: z.ZodType<WireRun> = z.object({
   runId: z.number().int().nullable(),
   state: wireRunStateSchema,
   pendingGates: z.number().int().nonnegative(),
+  // The event union's own schema as the element, never a second declaration of those six fields:
+  // the question a browser echoes back has to be the question `askGate` emitted, and two
+  // declarations of one shape are free to drift the moment either end gains a field.
+  gates: z.array(gateQuestionEventSchema),
 }).strict();
 
 /**
