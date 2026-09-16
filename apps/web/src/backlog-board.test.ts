@@ -18,6 +18,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { BacklogBoard, COST_LEGEND, NOT_SET, REFRESH_LABEL, RETRY_LABEL, UNPLACEABLE_HEADING, UNREADABLE_FLOWS_HEADING } from './backlog-board.js';
 import type { DaemonResponse } from './daemon-client.js';
 import { DAEMON_ENDPOINTS } from './daemon-endpoints.js';
+import { resolve } from './router.js';
+import { BOARD_PATH, ticketPath } from './routes.js';
 
 declare global {
   // React refuses to run `act` outside an environment that declares itself one, and says so rather
@@ -128,6 +130,20 @@ const isKeyComplaint = (line: string): boolean => /same key|unique "?key/i.test(
 /** Every column heading the board rendered, in order. */
 const columns = (root: HTMLElement): string[] =>
   [...root.querySelectorAll('section[aria-label]')].map((node) => node.getAttribute('aria-label') ?? '');
+
+/**
+ * Which registered route `path` resolves to, or `null` where the shell does not recognise it.
+ *
+ * The pattern rather than the path, because that is what says WHICH screen a link reaches — the one
+ * thing a card asserting "this navigates to a ticket" is actually claiming.
+ */
+const routeOf = (path: string): string | null => {
+  const resolved = resolve(path);
+  return resolved.kind === 'screen' ? resolved.route.path : null;
+};
+
+/** The pattern a ticket page lives at, taken from the register by resolving a path built for one. */
+const TICKET_ROUTE = routeOf(ticketPath('Q-0001'));
 
 describe('AC-7 — the columns are STAGES, and which empty ones render is the shared register', () => {
   test('a column holding an abandoned ticket renders, an empty red does not, an empty draft does', async () => {
@@ -270,6 +286,57 @@ describe('AC-9 — a card carries what it has, says so where it has nothing, and
     expect(card.querySelectorAll('a, button, input, select, textarea'), 'the card nests a second control').toHaveLength(0);
     await act(async () => card.click());
     expect(went, 'activating the card navigated nowhere').toBe('/backlog/Q-00%2042');
+  });
+
+  test('the premise: an id nobody wrote has no ticket path, because that path is the board', () => {
+    // Why an id-less row cannot be a card, pinned rather than assumed — this is the fact the
+    // partition below rests on. `ticketPath('')` leaves the segment empty, and `router.ts` treats a
+    // trailing slash as absent, so it matches the BOARD's own row, which sits above the ticket
+    // page's in the register. If a later router gave that path a ticket route of its own this goes
+    // red, which is the moment to revisit the partition deliberately rather than to discover it
+    // from a card that navigates a reader back to the screen they were already on.
+    expect(ticketPath(''), 'an empty id no longer builds the board\'s own path').toBe(`${BOARD_PATH}/`);
+    expect(routeOf(ticketPath('')), 'an empty id no longer resolves to the board, so the reason a card refuses one has moved')
+      .toBe(BOARD_PATH);
+    // …and a real id does reach the ticket page, so the comparison discriminates rather than
+    // holding because everything under /backlog resolves to one row.
+    expect(TICKET_ROUTE, 'the register holds no ticket-page route — this check has lost its subject').not.toBeNull();
+    expect(TICKET_ROUTE, 'a real id resolves to the board too').not.toBe(BOARD_PATH);
+  });
+
+  test('every card links to the ticket page, and a row with no id is not a card at all', async () => {
+    // The review's finding, asserted against the router rather than against a string. A card CLAIMS
+    // to navigate to a ticket, and the only thing that makes the claim true is that the path it
+    // carries resolves to the ticket route. A ticket whose file supplied no id has no such path, so
+    // it is named in the region below rather than rendered as a link that returns to the board.
+    const root = await board({
+      tickets: {
+        tickets: [
+          ticket({ id: 'Q-0042', stage: 'draft' }),
+          ticket({ id: '', folder: 'T-0109-no-id', stage: 'draft', title: 'a ticket whose file supplied no id' }),
+        ],
+        pushLag: null,
+        baseBranch: 'main',
+      },
+    });
+    const hrefs = [...root.querySelectorAll('li a')].map((node) => node.getAttribute('href') ?? '');
+    expect(hrefs, 'the readable ticket and the id-less one were both rendered as cards').toHaveLength(1);
+    for (const href of hrefs) {
+      expect(routeOf(href), `a card links to ${href}, which is not the ticket page`).toBe(TICKET_ROUTE);
+    }
+    // Not a card, and not dropped either: named by its folder, under the region, with the reason.
+    expect(root.textContent, 'the id-less ticket was rendered nowhere at all').toContain('T-0109-no-id');
+    const draft = [...root.querySelectorAll('section[aria-label]')]
+      .find((node) => node.getAttribute('aria-label') === 'draft');
+    expect(draft?.textContent ?? '', 'the id-less ticket was filed in a column it cannot be opened from')
+      .not.toContain('T-0109-no-id');
+
+    const row = [...root.querySelectorAll('li')].map((node) => node.textContent ?? '')
+      .find((text) => text.includes('T-0109-no-id')) ?? '';
+    expect(row, 'the row does not say why it could not be placed').toContain('no id');
+    // …and it does NOT say the other thing, which is the half that makes the reason a reason rather
+    // than one sentence for every row: `draft` is a stage this board knows perfectly well.
+    expect(row, 'a row kept out for its id was told its stage is unreadable').not.toContain('stage reads');
   });
 });
 

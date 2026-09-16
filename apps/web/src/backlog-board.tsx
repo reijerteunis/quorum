@@ -2,12 +2,19 @@
  * The backlog board: one column per stage, and where each ticket's code actually is.
  *
  * **It is `quorum board` in a browser, and every rule it renders by is that command's, read from one
- * register.** Which empty columns render, when a branch that does not exist is worth saying, how a
- * containment answer is spelled, what `indeterminate` may not be read as, that push lag may warn and
- * may never reassure, and that a cost figure never travels without the sentence naming what it
- * cannot see — all six are `@quorum/shared`'s since Q-0017, imported by this file and by
- * `packages/cli/src/board.ts`. Re-deriving one here would be a second register free to drift, and
- * two surfaces disagreeing about one repository is the failure a board exists to prevent.
+ * register.** Six of them: which empty columns render, when a branch that does not exist is worth
+ * saying, how a containment answer is spelled, what `indeterminate` may not be read as, that push
+ * lag may warn and may never reassure, and that a cost figure never travels without the sentence
+ * naming what it cannot see. Re-deriving any of them here would be a second register free to drift,
+ * and two surfaces disagreeing about one repository is the failure a board exists to prevent.
+ *
+ * **Five are shared by import and the sixth by a guard, which is a difference worth stating rather
+ * than smoothing over.** The first five are `@quorum/shared`'s since Q-0017 and are imported below,
+ * by this file and by `packages/cli/src/board.ts`. The sixth — {@link COST_LEGEND} — could not
+ * follow them: it names a vendor by design and that package may name none, so it is DECLARED here,
+ * declared again there, and held byte-identical by `packages/cli/src/board.test.ts`. Its own
+ * docblock carries the whole of that reasoning. One register either way; two mechanisms, because an
+ * import is the thing `@quorum/shared` may not offer for this one sentence.
  *
  * **Nothing on this screen writes.** Every request it makes is a GET, it starts no run, answers no
  * gate, moves no stage and takes no run lock. The design brief's *"Run next flow ▸"* button is
@@ -69,8 +76,8 @@ export const FLOWS_UNREAD = 'the flow list could not be read, so this column can
 /** What a column says where the listing WAS read and no flow consumes the stage. */
 export const NO_CONSUMING_FLOW = 'no flow consumes this stage';
 
-/** How the region naming tickets whose stage is not a member of `STAGES` opens. */
-export const UNPLACEABLE_HEADING = 'Tickets whose stage this board cannot place';
+/** How the region naming the tickets this board cannot render as cards opens. */
+export const UNPLACEABLE_HEADING = 'Tickets this board cannot place';
 
 /** How the region naming flow files the linter refused opens. */
 export const UNREADABLE_FLOWS_HEADING = 'Flow files that could not be read';
@@ -103,6 +110,45 @@ function ticketName(ticket: WireTicket): string {
 }
 
 /**
+ * The stages a ticket can be filed under, which is `STAGES` as a membership question.
+ *
+ * Built once at module scope rather than per row: {@link unplaceableReason} is asked of every
+ * ticket the daemon answered with, and this repository's backlog is already past a hundred.
+ */
+const PLACEABLE_STAGES: ReadonlySet<string> = new Set<string>(STAGES);
+
+/**
+ * Why this board cannot render `ticket` as a card in a column, or `null` where it can.
+ *
+ * **Two reasons, and a row can carry both**, which is why this answers one sentence rather than a
+ * flag: a `ticket.md` `parseFrontmatter` fell open on supplies neither an id nor a stage, and
+ * naming such a row twice under two headings would be one ticket reported as two.
+ *
+ * *The stage is not one `STAGES` holds*, so there is no column it belongs in — AC-8's case, and the
+ * reason this region exists at all.
+ *
+ * *The file supplied no id*, so there is no ticket token to link a card to. `ticketPath('')` is the
+ * board's own path with a trailing slash, which `router.ts` treats as absent — so a card built for
+ * such a row would look like a link to a ticket and return the reader to the screen they were
+ * already on. Using the folder as the token instead would be deciding what a ticket page does with
+ * a token that is not an id, which is **Q-0127's** to decide and not a default to take here.
+ *
+ * Either way the row is NAMED and never dropped, defaulted or filed under a stage nobody claimed.
+ * This repairs nothing: no frontmatter is parsed, validated or rewritten anywhere in this app, and
+ * Q-0060 — which is what makes a damaged ticket possible — stays open and untouched.
+ */
+function unplaceableReason(ticket: WireTicket): string | null {
+  const said: string[] = [];
+  if (!PLACEABLE_STAGES.has(ticket.stage)) {
+    said.push(`its stage reads ${JSON.stringify(ticket.stage)}, which is not one this board knows`);
+  }
+  if (ticket.id === '') {
+    said.push('its file supplied no id, so there is no ticket page to open it at');
+  }
+  return said.length === 0 ? null : said.join(', and ');
+}
+
+/**
  * Which containment answer is worth rendering for a ticket, or `null` for none.
  *
  * The suppression rule is `BRANCH_EXPECTED`'s and is applied here rather than copied: every ticket
@@ -119,7 +165,14 @@ function shownContainment(ticket: WireTicket): WireTicket['containment'] {
   return found;
 }
 
-/** One ticket's card: the whole of it is one link, with nothing clickable inside it. */
+/**
+ * One ticket's card: the whole of it is one link, with nothing clickable inside it.
+ *
+ * **Only ever handed a ticket {@link unplaceableReason} cleared**, so `ticket.id` is not empty and
+ * the path below really does resolve to the ticket page. The invariant is held by the partition at
+ * the one call site rather than by a branch here, because a branch this could not reach is a check
+ * nothing can show red.
+ */
 function Card({ ticket, base, onNavigate }: {
   ticket: WireTicket;
   base: string;
@@ -272,8 +325,16 @@ export function BacklogBoard({ fetcher, now, onNavigate }: BacklogBoardProps): R
 
   const { tickets: rows, pushLag, baseBranch } = tickets.value;
   const flowRows = flows.kind === 'loaded' ? flows.value.flows : null;
-  const placeable = new Set<string>(STAGES);
-  const unplaceable = rows.filter((ticket) => !placeable.has(ticket.stage));
+  // Partitioned once rather than filtered twice, so a row is in a column or in the region below and
+  // never in both or in neither — which is the property "named, never dropped" actually needs, and
+  // one two independent filters could drift apart on.
+  const placeable: WireTicket[] = [];
+  const unplaceable: { readonly ticket: WireTicket; readonly reason: string }[] = [];
+  for (const ticket of rows) {
+    const reason = unplaceableReason(ticket);
+    if (reason === null) placeable.push(ticket);
+    else unplaceable.push({ ticket, reason });
+  }
   const anyIndeterminate = rows.some((ticket) => shownContainment(ticket)?.state === 'indeterminate');
   // The legend travels with the figure or neither renders. `n/a` is not a figure — a board on which
   // nothing has run says `n/a` on every card and carries no legend, because there is no total there
@@ -300,7 +361,7 @@ export function BacklogBoard({ fetcher, now, onNavigate }: BacklogBoardProps): R
 
       <div className="mt-4 flex gap-4 overflow-x-auto">
         {STAGES.map((stage) => {
-          const column = rows.filter((ticket) => ticket.stage === stage);
+          const column = placeable.filter((ticket) => ticket.stage === stage);
           if (column.length === 0 && !ALWAYS_RENDERED.includes(stage)) return null;
           return (
             <Column
@@ -321,12 +382,15 @@ export function BacklogBoard({ fetcher, now, onNavigate }: BacklogBoardProps): R
               filters a ticket whose stage is not a member out of every column, so a damaged
               `ticket.md` is rendered NOWHERE on the one surface whose job is to answer what is
               open. This repairs nothing — no frontmatter is parsed, validated or rewritten here,
-              and Q-0060 stays open — it only stops this becoming the second surface that hides it. */}
+              and Q-0060 stays open — it only stops this becoming the second surface that hides it.
+              Each row carries WHY it is here, because the two reasons want different things of a
+              reader: a stage nobody can place is a file to look at, and an id nobody wrote is a
+              folder to open by name. */}
           <h2 className="text-sm text-text">{UNPLACEABLE_HEADING}</h2>
           <ul className="mt-1">
-            {unplaceable.map((ticket) => (
+            {unplaceable.map(({ ticket, reason }) => (
               <li key={ticket.folder} className="font-mono text-xs text-muted">
-                {ticketName(ticket)} — its stage reads {JSON.stringify(ticket.stage)}, which is not one this board knows
+                {ticketName(ticket)} — {reason}
               </li>
             ))}
           </ul>
