@@ -89,13 +89,15 @@ function MetadataRegion({ metadata, onRetry }: {
 
 /** The two loss counters, each rendered only where it is non-zero, from its own sentence. */
 function LossRegion({ snapshot }: { snapshot: RunConnectionSnapshot }): ReactNode {
-  const daemon = snapshot.missedCount !== null && snapshot.missedCount > 0;
-  const browser = snapshot.browserDiscardedCount !== null && snapshot.browserDiscardedCount > 0;
-  if (!daemon && !browser) return null;
+  const { missedCount, browserDiscardedCount } = snapshot;
+  const daemonLoss = missedCount !== null && missedCount > 0 ? daemonMissedText(missedCount) : null;
+  const browserLoss =
+    browserDiscardedCount !== null && browserDiscardedCount > 0 ? browserDiscardedText(browserDiscardedCount) : null;
+  if (daemonLoss === null && browserLoss === null) return null;
   return (
     <div className="flex flex-col gap-1 text-xs text-muted">
-      {daemon ? <p>{daemonMissedText(snapshot.missedCount as number)}</p> : null}
-      {browser ? <p>{browserDiscardedText(snapshot.browserDiscardedCount as number)}</p> : null}
+      {daemonLoss === null ? null : <p>{daemonLoss}</p>}
+      {browserLoss === null ? null : <p>{browserLoss}</p>}
     </div>
   );
 }
