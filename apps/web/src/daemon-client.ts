@@ -194,10 +194,8 @@ export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promis
   requestJson(fetcher, runDetailPath(handle), wireRunSchema, now);
 
 /** Read the daemon's ordered run listing once; callers decide when an explicit refresh repeats it. */
-export const fetchRuns = (_fetcher: FetchLike, _now: Clock): Promise<RequestState<WireRunList>> => {
-  void wireRunListSchema;
-  throw new Error('not implemented');
-};
+export const fetchRuns = (fetcher: FetchLike, now: Clock): Promise<RequestState<WireRunList>> =>
+  requestJson(fetcher, DAEMON_ENDPOINTS.runs, wireRunListSchema, now);
 
 /** The status the gate route answers a settled gate with. There is no body, and none is read. */
 const ACCEPTED = 204;
