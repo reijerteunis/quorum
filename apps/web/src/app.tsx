@@ -17,8 +17,9 @@ import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
 import { GateScreen } from './gate-screen.js';
+import { MissionControlScreen } from './mission-control-screen.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH, GATE_ROUTE, TICKET_ROUTE } from './routes.js';
+import { BOARD_PATH, GATE_ROUTE, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -26,6 +27,7 @@ import {
   type SocketFactory,
   type SocketTransport,
 } from './run-connection.js';
+import { RunsScreen } from './runs-screen.js';
 import { Shell, type ShellConnectionProps } from './shell.js';
 import { TicketPage } from './ticket-page.js';
 import { NotFound, Placeholder } from './views.js';
@@ -168,6 +170,24 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
         // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
         // name is the daemon's own first predicate, and this page renders that refusal.
         <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
+      ) : rendered.route.path === RUNS_PATH ? (
+        // The read-only landing: one GET /runs at mount, daemon order preserved, each row linking to
+        // this same RUN_ROUTE via `runPath`.
+        <RunsScreen fetcher={fetcher} now={clock} onNavigate={navigate} />
+      ) : rendered.route.path === RUN_ROUTE ? (
+        // The handle is decoded the same way the ticket id and the gate handle are: whatever the URL
+        // carried, not trusted to be one this daemon minted — the screen's own metadata read renders
+        // that refusal. `connection` already resolves to the live snapshot for this route (`handle`
+        // is computed above from the same `'handle' in rendered.params` check, GATE_ROUTE excluded),
+        // so mission control reads the one controller this component owns rather than a second one.
+        <MissionControlScreen
+          handle={rendered.params.handle ?? ''}
+          snapshot={connection.snapshot}
+          onRetryConnection={onRetry}
+          fetcher={fetcher}
+          now={clock}
+          onNavigate={navigate}
+        />
       ) : rendered.route.path === GATE_ROUTE ? (
         // The handle likewise: whatever the URL carried, decoded out of one segment and not trusted
         // to be one this daemon minted. A handle it never minted is the route's own 404, which the
