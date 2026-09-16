@@ -1,7 +1,7 @@
 ---
 id: Q-0015
 title: Mission control streams a run live, one trace column per step
-stage: green
+stage: red
 owner: ruud
 repos: []
 branch: harness/Q-0015/integration
@@ -12,6 +12,7 @@ iterations:
   solutioning.architecture-review: 2
   qa-red.scenario-review: 1
   development.integrate: 3
+  review: 1
 history:
   - stage: requirements
     run: 1
@@ -61,6 +62,14 @@ history:
     stage_after: green
     at: 2026-09-16T23:18:49.174Z
     cost: 140.232
+  - stage: red
+    run: 5
+    flow: review
+    status: regressed
+    stage_before: green
+    stage_after: red
+    at: 2026-09-16T23:36:05.964Z
+    cost: 11.99
 ---
 The hero screen: a run in flight, one trace column per concurrent step, a step timeline beneath, and what the run is doing said in a sentence rather than left to a spinner.
 
