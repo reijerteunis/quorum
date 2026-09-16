@@ -16,7 +16,7 @@ import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH } from './routes.js';
+import { BOARD_PATH, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -25,6 +25,7 @@ import {
   type SocketTransport,
 } from './run-connection.js';
 import { Shell, type ShellConnectionProps } from './shell.js';
+import { TicketPage } from './ticket-page.js';
 import { NotFound, Placeholder } from './views.js';
 
 /** Where the app starts when nothing tells it otherwise — the browser's own location. */
@@ -144,11 +145,16 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
       {rendered.kind !== 'screen' ? (
         <NotFound path={rendered.path} onNavigate={navigate} />
       ) : rendered.route.path === BOARD_PATH ? (
-        // The one route whose screen exists. `BOARD_PATH` is the register's own constant, which
-        // both tables in `routes.ts` are built from — so this is a register lookup rather than a
-        // path written here, on `HOME_PATH`'s precedent. Every other route still draws the
-        // placeholder, which takes its sentence from the same register.
+        // The two routes whose screens exist, each selected by the register's OWN constant — which
+        // both tables in `routes.ts` are built from, so this is a register lookup rather than a path
+        // written here, on `HOME_PATH`'s precedent. Every other route still draws the placeholder,
+        // which takes its sentence from the same register.
         <BacklogBoard fetcher={fetcher} now={clock} onNavigate={navigate} />
+      ) : rendered.route.path === TICKET_ROUTE ? (
+        // The id comes from the router, which decoded it out of one path segment. It is whatever a
+        // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
+        // name is the daemon's own first predicate, and this page renders that refusal.
+        <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
       ) : (
         <Placeholder route={rendered.route} params={rendered.params} />
       )}

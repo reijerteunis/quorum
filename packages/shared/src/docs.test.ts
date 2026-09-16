@@ -1699,16 +1699,44 @@ describe('Q-0017 AC-4 — the two artifacts claiming this app fetches nothing sa
     expect(stale.test('and **nothing is fetched from a network** — a deliberate divergence')).toBe(true);
   });
 
-  test('and both state the property the scan actually enforces, so they cannot drift apart', () => {
+  test('and each states the property the scan actually enforces, on the same three axes', () => {
     // What was always true, and still is: no absolute URL, no third-party host, no font host —
-    // every request the app makes is same-origin and page-relative. Held against each other rather
-    // than each against a paraphrase, because two sentences edited by two tickets is how one of
-    // them goes quiet. Nothing in the scan itself was weakened: the three needles, the licence
-    // subtraction and its both-directions test are untouched.
+    // every request the app makes is same-origin and page-relative. Nothing in the scan itself was
+    // weakened: the three needles, the licence subtraction and its both-directions test are
+    // untouched.
+    //
+    // **What this enforces is each sentence against three needles, and NOT the two against each
+    // other.** It was titled *"so they cannot drift apart"* and commented as holding them *"against
+    // each other rather than each against a paraphrase"* until Q-0127, and it does neither: the two
+    // strings are never compared. The needles are real, so the clause was not vacuous — what was
+    // false is its own account of the mechanism, which is the class this repository records most.
+    // Corrected rather than strengthened: comparing two prose sentences written for two audiences
+    // for equality is a check that fails on a legitimate edit to either. What it does hold is that
+    // neither sentence can drop one of the three axes without failing here, and the case below is
+    // what shows each needle firing.
     for (const [what, text] of [['the scan title', scanTitle()], ['the architecture clause', architectureClause()]] as const) {
       expect(text, `${what} does not state the same-origin property`).toMatch(/same-origin/i);
       expect(text, `${what} no longer names the absolute URL it forbids`).toMatch(/absolute URL/i);
       expect(text, `${what} no longer names the font host it forbids`).toMatch(/font host/i);
+    }
+  });
+
+  test('and each of the three needles is what fails when a sentence drops that axis (Q-0127)', () => {
+    // The anti-vacuity half the clause above never had: three needles that matched everything would
+    // satisfy it over any pair of sentences at all. Each is shown red against the REAL sentence with
+    // that one phrase removed, so what is demonstrated is this check firing rather than a fixture
+    // agreeing with itself.
+    const AXES: [RegExp, RegExp][] = [
+      [/same-origin/i, /same-origin/gi],
+      [/absolute URL/i, /absolute URLs?/gi],
+      [/font host/i, /font hosts?/gi],
+    ];
+    for (const [what, text] of [['the scan title', scanTitle()], ['the architecture clause', architectureClause()]] as const) {
+      for (const [needle, strip] of AXES) {
+        expect(needle.test(text), `${what} does not satisfy ${String(needle)} as it stands`).toBe(true);
+        expect(needle.test(text.replace(strip, 'something else')),
+          `${what} still satisfies ${String(needle)} with that phrase removed`).toBe(false);
+      }
     }
   });
 

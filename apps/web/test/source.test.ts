@@ -256,6 +256,73 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
   });
 });
 
+describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare, name or render', () => {
+  test('this package declares neither new wire shape of its own', () => {
+    // A browser needs an executable parser, and a second declaration beside an import is free to
+    // drift from the one `@quorum/shared` owns — the half-measure Q-0120 had to repair. The other
+    // direction, that the shapes really are declared there, is asserted in that package.
+    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles']) {
+      const offenders = filesBelow(PACKAGE)
+        .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
+        .map(([name]) => name);
+      expect(offenders, `${shape} is declared in this package`).toStrictEqual([]);
+    }
+    // It imports two of them, so the absence above is a delegation rather than four names this app
+    // never heard of — and the needle finds a declaration when there is one. The fixture's own name
+    // is assembled, under this file's one rule: the scan above walks the whole package, so a
+    // written-out declaration here would make this file its own subject.
+    const client = filesBelow(PACKAGE).find(([name]) => name === 'src/daemon-client.ts')?.[1] ?? '';
+    expect(client, 'the client does not import the detail shape').toContain('WireTicketDetail');
+    const fixture = `export interface ${'Wire'}${'TicketFile'} { rel: string }`;
+    expect(/\b(?:interface|type)\s+WireTicketFile\s*[={]/.test(fixture)).toBe(true);
+  });
+
+  test('the ticket page holds no list of artifact folder names', () => {
+    // AC-10's structural half. `docs/05-design-prompt.md:27` names six artifact folders and this
+    // backlog already holds a seventh top-level entry on one ticket, so a set written down in the
+    // component loses a file on the day it is written. The tabs are derived from the listing, and
+    // this is the other side of that claim: the component names no artifact folder at all.
+    //
+    // **Scoped to the component rather than to every file under `src`**, and the reason is that
+    // four of these six are also STAGE names — `@quorum/shared`'s `STAGES`, which the board renders
+    // a column per and whose fixtures name them legitimately. A scan over the whole tree would be
+    // keyed on a string rather than on the behaviour it is about, which is the family this
+    // repository records most.
+    const FOLDERS = ['requirements', 'solution', 'qa', 'dev', 'review', 'deploy'];
+    const component = sourceFiles().find(([name]) => name === 'ticket-page.tsx')?.[1] ?? '';
+    expect(component, 'the ticket page is not in the corpus — this clause has lost its subject').not.toBe('');
+    for (const folder of FOLDERS) {
+      expect(component.includes(`'${folder}'`), `the ticket page names the artifact folder ${folder}`).toBe(false);
+    }
+    // The needle discriminates, over a fixture assembled so this file is not its own subject.
+    const fixture = `const TABS = ['${FOLDERS[0]}', '${FOLDERS[3]}'];`;
+    expect(FOLDERS.filter((folder) => fixture.includes(`'${folder}'`))).toStrictEqual(['requirements', 'dev']);
+  });
+
+  test('nothing turns a run-log line into a link, and no renderer or sanitiser is imported', () => {
+    // What a run id in a run-log line links to is a decision about a screen that does not exist,
+    // which is Q-0018's; and a Markdown renderer needs a sanitiser, which needs a dependency and a
+    // justification — a separate decision with its own subject rather than one arrived at while
+    // building a page. `test/package.test.ts` pins the declared dependency set in both directions;
+    // this is the import side of the same claim.
+    const RENDERERS = ['marked', 'markdown-it', 'react-markdown', 'dompurify', 'sanitize-html', 'remark'];
+    for (const [name, text] of sourceFiles()) {
+      for (const specifier of importSpecifiers(text)) {
+        expect(RENDERERS.includes(specifier), `${name} imports ${specifier}`).toBe(false);
+      }
+      expect(/dangerouslySetInnerHTML/.test(text), `${name} sets markup from a value`).toBe(false);
+    }
+    // The run log is rendered as text: the module that renders it builds no anchor from a line.
+    const rail = sourceFiles().find(([name]) => name === 'ticket-page.tsx')?.[1] ?? '';
+    expect(rail, 'the ticket page is not in the corpus — this clause has lost its subject').not.toBe('');
+    expect(/runs\.log[\s\S]{0,400}<a\b/.test(rail), 'a run-log line was turned into a link').toBe(false);
+    // Both needles discriminate.
+    expect(RENDERERS.filter((each) => importSpecifiers(`import DOMPurify from '${'dompurify'}';`).includes(each)))
+      .toStrictEqual(['dompurify']);
+    expect(/dangerouslySetInnerHTML/.test('<pre dangerouslySetInnerHTML={{ __html: text }} />')).toBe(true);
+  });
+});
+
 /**
  * Every module specifier `text` imports or re-exports.
  *

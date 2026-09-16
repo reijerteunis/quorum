@@ -1,7 +1,7 @@
 /**
  * The public API of `@quorum/core`.
  *
- * Thirty-one value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
+ * Thirty-four value symbols, and the list is a decision rather than a consequence: `packages/cli`'s
  * command children (Q-0091 to Q-0094) import from here, and what they may reach is settled by
  * whoever adds a name to this file rather than by whoever types an import first. That is why
  * `package.json` publishes `"."` alone and no `./*` subpath — a wildcard would defer the decision
@@ -14,7 +14,7 @@
  * number written here. Corrected to what the file exports rather than to what the last edit
  * implied, which is this repository's own rule about a measurement copied from a document.
  *
- * Twenty-six of the thirty-one are the domain helpers `packages/cli/src/frame.source.test.ts` names
+ * Twenty-nine of the thirty-four are the domain helpers `packages/cli/src/frame.source.test.ts` names
  * in its `DOMAIN` register — the symbols the CLI *frame* is forbidden to reimplement, and which each
  * command module may name only where its own command needs them — and the other five are the error
  * classes a caller has to catch. `packages/cli/src/package.test.ts` derives the surface from that
@@ -83,16 +83,28 @@
  * applied to `manifestShapeError` and Q-0093 to `currentBranch`. Why: see *"`core` opens a URL, and
  * the ninth folder is named for what it is about"* (2026-09-14).
  *
+ * **Q-0127 added three, and they are what a route answering for ONE ticket needs.**
+ * `listTicketFiles` names and measures a ticket folder without opening a file in it, and
+ * `readTicketFileBytes` reads one of those files as bytes — neither is composable from `readFiles`,
+ * which decodes every match as UTF-8 and can name no folder at all. `isOneName` is the third and is
+ * the one a *status* depends on: `Backlog.dirOf` raises a plain `Error` for *this token is not one
+ * name* and another for *no such ticket*, so a surface without the predicate would be choosing
+ * between 400 and 404 by matching an error's prose. They are here by the clause every name above
+ * arrived under — a consumer needs them — and the consumer is `packages/server`, as it was for
+ * `pathInside`: no command reaches any of the three.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
- * value list above and nothing else.
+ * value list above and nothing else. `TicketFile`, `TicketFileEntry` and `TicketFolderListing`
+ * arrive that way at Q-0127: a caller of the two functions can name what they answer from the
+ * package it called, which is `CliVersionResult`'s and `BrowserLaunch`'s rule at a third site.
  */
 export { cliVersion, getAdapter, probeAdapter } from './adapters/adapters.js';
 export type { CliVersionResult } from '@quorum/shared';
 export { overrideAdapters } from './adapters/override.js';
-export { Backlog } from './backlog/backlog.js';
-export type { TicketRecord } from './backlog/backlog.js';
-export { pathInside } from './backlog/confine.js';
+export { Backlog, listTicketFiles, readTicketFileBytes } from './backlog/backlog.js';
+export type { TicketFile, TicketFileEntry, TicketFolderListing, TicketRecord } from './backlog/backlog.js';
+export { isOneName, pathInside } from './backlog/confine.js';
 export { findProject, loadProject, ProjectNotFoundError } from './backlog/project.js';
 export type { Project } from './backlog/project.js';
 export { initProject, ProjectExistsError } from './backlog/scaffold.js';

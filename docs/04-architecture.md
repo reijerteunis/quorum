@@ -130,6 +130,34 @@ string. **Host records are never pruned**, which a listing is the first thing to
 is registered as **Q-0123** and deliberately not fixed here, because evicting an ended run would
 remove the replayable buffer this listing exists to reach.
 
+**The two routes answering for ONE ticket are Q-0127's, and they are two rather than one because of
+a measurement.** `GET /tickets/:id` carries the same row `GET /tickets` holds for that ticket —
+through one projection, so a board card and a page header cannot report one ticket two ways — beside
+the **names and sizes** of every file in its folder and nothing of their contents.
+`GET /tickets/:id/file` then reads exactly one of those files, named by a `?path=` query value rather
+than by a path segment, a relative path holding `/` and a segment meaning the client encodes and the
+route decodes, which is where a confinement bypass hides. The largest ticket folder here is 3.1 MB
+across six files, one of them 1.46 MB, so a single route answering *the folder* would put an
+unbounded body on a wire; and no pattern `Backlog.readFiles` accepts can enumerate a folder at all —
+it refuses the empty pattern and hands the first subdirectory to `readFileSync` — so the listing is
+a `core` primitive rather than a narrower glob. **There is no cap anywhere and that is the design**:
+nothing large is fetched until a reader names that file with its size in front of them, which is
+what stands in for one rather than a limit nobody is told about. **A path whose first segment begins
+with a dot is counted and never named**: those are the engine's own verdict files, gitignored and
+therefore not in the database this product keeps, and the answer carries how many were excluded and
+how many bytes without carrying one of their paths — enough to say the listing is not the whole
+folder, and short of being a second run-history surface. Six refusals, each with its own code: a
+token that is not one name is **400**, a token naming no folder **404**, a `ticket.md` that yielded
+no id, title, stage or owner — or one whose id is not the ticket that was asked for — **422**, a
+path this request's own listing does not hold **400**, a listed path that has stopped being a file
+**404**, and a file whose bytes are not well-formed UTF-8 **422**. That last one is a whole-file
+fatal decode of the bytes that were read, because `readFileSync(file, 'utf8')` substitutes U+FFFD
+rather than throwing — and it is not a test for that character, three files under this repository's
+own backlog carrying one legitimately. **The listing and the detail are deliberately asymmetric
+about a damaged ticket**: `GET /tickets` renders it, named by its folder, because a board that hides
+one is wrong about the one question a board answers; the page refuses it, because a page of blanks
+is not a ticket. That surfaces Q-0060 at this boundary and changes no parser.
+
 **A body is validated before the host is reached, and a refused request starts nothing.** Unknown
 fields are refused rather than ignored, and the offender is quoted. A refusal carries three fields
 with three different authorities: a `code` a client switches on, the `condition` in `core`'s own

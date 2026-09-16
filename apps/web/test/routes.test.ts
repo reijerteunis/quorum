@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
 import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
-import { BOARD_PATH, HOME_PATH, isRedirect, RAIL, ROUTES, ticketPath, type ScreenRoute } from '../src/routes.js';
+import { BOARD_PATH, HOME_PATH, isRedirect, RAIL, ROUTES, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -103,16 +103,40 @@ describe('AC-6 — the rail is the seven entries the design brief names, in its 
   });
 });
 
-describe('Q-0017 AC-14 — the register gains no path, and the ticket page names the ticket that builds it', () => {
-  test('the ticket route still carries a placeholder sentence, and names Q-0127 rather than Q-0017', () => {
-    // The board ships and the ticket page does not, so leaving this row naming the ticket that
-    // shipped would tell a reader the screen is somebody's when it is nobody's. The row that names
-    // the successor is what stops a sentence describing work nothing is doing.
+describe('Q-0127 AC-13 — the register gains no path, and says which screens exist', () => {
+  test('the ticket route names Q-0127 and no longer says it is waiting for a route', () => {
+    // **This clause moved because its subject did.** Q-0017 wrote it to assert that the row still
+    // carried a placeholder sentence naming the route the daemon did not have — and this ticket
+    // built that route, so the assertion that the sentence says *route* became a check that could
+    // only fail if the work had been done. *"A check outlives its subject only if it can still
+    // fail"* (2026-09-05): what survives is the half that is still about something — the row names
+    // the ticket that built it, and its sentence describes the screen rather than a wait.
     const route = SCREEN_ROUTES.find((entry) => entry.path === '/backlog/:ticketId');
     if (!route) throw new Error('no ticket-page route — this check has lost its subject');
-    expect(route.ticket, 'the ticket page still names the ticket that stopped building it').toBe('Q-0127');
+    expect(route.ticket, 'the ticket page no longer names the ticket that built it').toBe('Q-0127');
     expect(route.waitingFor.length, 'the sentence a user reads was emptied').toBeGreaterThan(60);
-    expect(route.waitingFor, 'the sentence no longer says what it is waiting for').toMatch(/route/);
+    expect(route.waitingFor, 'the row still tells a reader the daemon cannot answer for one ticket')
+      .not.toMatch(/does not have yet/);
+  });
+
+  test('exactly two route rows claim a screen, and they are the two that have one', () => {
+    // The rail says which entry has a screen and the rail has no ticket-page entry, which is why
+    // this field is on the route row too: `/backlog/:ticketId` is in neither table the rail draws
+    // from, so without it nothing in the register could say the screen exists. An identity rather
+    // than a count, because a count is satisfied by a row swapped for another.
+    expect(SCREEN_ROUTES.filter((route) => route.screenExists).map((route) => route.path))
+      .toStrictEqual([BOARD_PATH, TICKET_ROUTE]);
+    // The two registers agree where they overlap: the rail's board entry and the route row.
+    expect(RAIL.find((entry) => entry.id === 'backlog')?.screenExists).toBe(true);
+    // …and the field is load-bearing rather than decorative: every row claiming a screen is one
+    // `app.tsx` selects by the register's own constant, and every row that does not is one the
+    // placeholder still draws.
+    const app = fs.readFileSync(path.join(SOURCE, 'app.tsx'), 'utf8');
+    for (const [name, route] of [['BOARD_PATH', BOARD_PATH], ['TICKET_ROUTE', TICKET_ROUTE]] as const) {
+      expect(app, `the app does not select ${route} by the register's own constant`).toContain(name);
+    }
+    expect(app, 'the app names a route path of its own rather than a register constant')
+      .not.toMatch(/['"`]\/backlog/);
   });
 
   test('and the board\'s own path is a register constant both tables are built from', () => {

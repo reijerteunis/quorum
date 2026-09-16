@@ -8,10 +8,13 @@
  */
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS } from './daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import {
-  fetchFlows, fetchTickets, flowsInFlight, requestJson, ticketsInFlight, type DaemonResponse,
+  fetchFlows, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight, requestJson,
+  ticketFileInFlight, ticketInFlight, ticketsInFlight,
+  type DaemonResponse, type FetchLike,
 } from './daemon-client.js';
+import { canRetryRequest, type RequestState } from './request-state.js';
 
 /** A clock a test owns, so a fetched-at instant is a value rather than a property of the machine. */
 const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
@@ -126,5 +129,195 @@ describe('AC-3 — a body is parsed before anything reads it, and a bad one is a
     // a refusal, and a refusal answered with 200 would be rendered as a board.
     const state = await fetchTickets(answering({ code: 'c', condition: 'x', remedy: null }).fetch, CLOCK);
     expect(state.kind).toBe('unparseable');
+  });
+});
+
+/**
+ * Q-0127 AC-8 — the two readers this ticket adds, each over every answer its route can give.
+ *
+ * The clauses above cover `fetchTickets` and `fetchFlows` and cover neither of these, which is what
+ * chore run 2's second review found: the component suite drives the detail request through the
+ * page's broad states and one file refusal, and a screen test cannot say whether a body was
+ * **validated** — a client that assigned `JSON.parse`'s result to an interface renders identically
+ * until the day the daemon's shape moves. So both are driven here, at the layer where the schema is
+ * executed, over the same five answers and against their own generated paths.
+ *
+ * **Five answers rather than three states**, because three of the five share a kind: two refusals
+ * and two unparseable bodies. What tells each from its sibling is the code or the problem, so the
+ * table asserts the pair and the block below asserts that the five pairs really are five.
+ */
+describe('AC-8 — fetchTicket and fetchTicketFile, over every answer their routes give', () => {
+  const TICKET = 'Q-0127';
+  const REL = 'dev/chore/run-2/implement-iter-1.md';
+
+  /** One ticket row, in the shape `wireTicketSchema` accepts. */
+  const ROW = {
+    id: TICKET, folder: `${TICKET}-the-ticket-page`, title: 'The ticket page', stage: 'requirements',
+    owner: 'ruud', branch: `harness/${TICKET}/integration`,
+    containment: { state: 'not-contained', ahead: 3 }, iterations: { implement: 2 }, billedCostUsd: 12.5,
+  };
+
+  /** A detail body, and a file body — each what its route answers on the happy path. */
+  const DETAIL = { ticket: ROW, files: [{ rel: REL, bytes: 4096 }], excluded: { count: 6, bytes: 8192 } };
+  const FILE = { rel: REL, bytes: 11, text: 'a report\nx\n' };
+
+  /** What one answer came to, reduced to the pair a reader acts on. */
+  const signature = (state: RequestState<unknown>): string => {
+    switch (state.kind) {
+      case 'refused':
+        return `refused:${state.refusal.code}`;
+      case 'unparseable':
+        return `unparseable:${state.problem.slice(0, 40)}`;
+      default:
+        return state.kind;
+    }
+  };
+
+  /** A fetch answering `body` with `status`, or one whose body cannot be parsed at all. */
+  const gives = (body: unknown, status = 200): FetchLike => (path: string) => {
+    asked.push(path);
+    return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+  };
+  const givesNotJson = (): FetchLike => (path: string) => {
+    asked.push(path);
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new Error('Unexpected token <')) });
+  };
+
+  let asked: string[] = [];
+
+  /**
+   * The two readers, each with its path, the body its schema accepts, a body that is well formed
+   * JSON and the wrong shape, and the two refusals its own route raises.
+   *
+   * The refusal codes are the daemon's, not invented here: `read.ts` answers `no-such-ticket` and
+   * `malformed-ticket` for one route and `no-such-file` and `unsupported-file-encoding` for the
+   * other, which is what makes the 404 and the 422 two answers rather than one status apart.
+   */
+  const READERS = [
+    {
+      named: 'fetchTicket',
+      path: ticketDetailPath(TICKET),
+      read: (fetcher: FetchLike): Promise<RequestState<unknown>> => fetchTicket(fetcher, TICKET, CLOCK),
+      good: DETAIL,
+      // Well-formed JSON, and not the shape: a listed file with no `bytes`, which is the one field
+      // that tells a reader what a file costs before asking for it.
+      wrongShape: { ...DETAIL, files: [{ rel: REL }] },
+      notFound: 'no-such-ticket',
+      unprocessable: 'malformed-ticket',
+    },
+    {
+      named: 'fetchTicketFile',
+      path: ticketFilePath(TICKET, REL),
+      read: (fetcher: FetchLike): Promise<RequestState<unknown>> => fetchTicketFile(fetcher, TICKET, REL, CLOCK),
+      good: FILE,
+      // The file's own text missing, which is the whole of what this route exists to carry.
+      wrongShape: { rel: REL, bytes: 11 },
+      notFound: 'no-such-file',
+      unprocessable: 'unsupported-file-encoding',
+    },
+  ] as const;
+
+  for (const reader of READERS) {
+    describe(reader.named, () => {
+      /** The five answers, each named for what the daemon did rather than for what it returned. */
+      const cases = (): { named: string; fetcher: FetchLike; kind: string; signature: string }[] => [
+        {
+          named: 'a body its schema accepts',
+          fetcher: gives(reader.good),
+          kind: 'loaded',
+          signature: 'loaded',
+        },
+        {
+          named: 'a 404 refusal',
+          fetcher: gives({ code: reader.notFound, condition: 'not there', remedy: null }, 404),
+          kind: 'refused',
+          signature: `refused:${reader.notFound}`,
+        },
+        {
+          named: 'a 422 refusal',
+          fetcher: gives({ code: reader.unprocessable, condition: 'unreadable', remedy: null }, 422),
+          kind: 'refused',
+          signature: `refused:${reader.unprocessable}`,
+        },
+        {
+          named: 'an answer that is not JSON',
+          fetcher: givesNotJson(),
+          kind: 'unparseable',
+          signature: 'unparseable:the response body was not JSON',
+        },
+        {
+          named: 'a well-formed body of the wrong shape',
+          fetcher: gives(reader.wrongShape),
+          kind: 'unparseable',
+          signature: '',
+        },
+      ];
+
+      test('asks for its own generated path and no other', async () => {
+        asked = [];
+        await reader.read(gives(reader.good));
+        expect(asked, 'the reader asked for a path the endpoint register did not build')
+          .toStrictEqual([reader.path]);
+      });
+
+      test('and its in-flight state names that same path', async () => {
+        // A screen says what it is waiting for, and what it says has to be what is being fetched.
+        const inFlight = reader.named === 'fetchTicket'
+          ? ticketInFlight(TICKET)
+          : ticketFileInFlight(TICKET, REL);
+        expect(inFlight).toStrictEqual({ kind: 'in-flight', path: reader.path });
+      });
+
+      for (const each of cases()) {
+        test(`${each.named} answers ${each.kind}, and offers what can be done about it`, async () => {
+          asked = [];
+          const state = await reader.read(each.fetcher);
+          expect(state.kind, `${each.named} did not answer ${each.kind}`).toBe(each.kind);
+          if (each.signature !== '') {
+            expect(signature(state), `${each.named} did not answer with its own code or problem`)
+              .toBe(each.signature);
+          }
+          // Every failure offers the one action that could help; a settled success does not.
+          expect(canRetryRequest(state), `${each.named} offers the wrong retry`).toBe(each.kind !== 'loaded');
+        });
+      }
+
+      test('a validated body is the parsed value, and not whatever JSON carried', async () => {
+        // The half a screen test cannot make: the loaded value came through the schema, so a field
+        // the wire does not declare is not on it. `.strict()` is what refuses one, which is the
+        // clause below; this is that the accepted body survives unchanged.
+        const state = await reader.read(gives(reader.good));
+        expect(state.kind).toBe('loaded');
+        if (state.kind !== 'loaded') return;
+        expect(state.value, 'the reader changed the body it was given').toStrictEqual(reader.good);
+        expect(state.fetchedAt).toBe(CLOCK());
+      });
+
+      test('a body carrying a field the wire does not declare is refused rather than passed on', async () => {
+        // `.strict()`, from the browser's side. A field this page has never heard of means the
+        // daemon and this bundle are different versions, which is a thing to report and not a thing
+        // to drop silently on the way through.
+        const state = await reader.read(gives({ ...reader.good, surprise: true }));
+        expect(state.kind, 'an undeclared field was accepted').toBe('unparseable');
+      });
+
+      test('the five answers are five outcomes, and no two of them collapse', async () => {
+        const seen: string[] = [];
+        for (const each of cases()) seen.push(signature(await reader.read(each.fetcher)));
+        expect(new Set(seen).size, `two of ${JSON.stringify(seen)} render as one`).toBe(5);
+      });
+    });
+  }
+
+  test('and the two readers do not answer each other\'s paths', async () => {
+    // The near-homograph worth pinning: one path is a prefix of the other, so a reader that built
+    // the wrong one would still be answered by a daemon and would still parse.
+    expect(ticketFilePath(TICKET, REL).startsWith(ticketDetailPath(TICKET))).toBe(true);
+    asked = [];
+    await fetchTicket(gives(DETAIL), TICKET, CLOCK);
+    await fetchTicketFile(gives(FILE), TICKET, REL, CLOCK);
+    expect(asked[0], 'the detail reader asked for a file').not.toContain('file?path=');
+    expect(asked[1], 'the file reader did not name the file it was asked for')
+      .toContain(encodeURIComponent(REL));
   });
 });

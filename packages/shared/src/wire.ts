@@ -17,6 +17,11 @@
  * into one schema would make a malformed event indistinguishable from a malformed envelope, and
  * AC-14 requires each refusal to be distinguishable.
  *
+ * **{@link WireTicketDetail} and {@link WireTicketFile} joined them at Q-0127**, under the rule the
+ * paragraph below states rather than as an exception to it: a browser executes both, one to render
+ * a ticket page's tabs and one to render a file it opened, and neither `packages/server` nor
+ * `apps/web` declares either shape of its own.
+ *
  * **{@link WireRefusal} and {@link WireRun} joined it at Q-0121, and each arrives WITH a schema.**
  * The server's own `wire.ts` carried both as bare interfaces and its header named this ticket as one
  * of the two that would move them — *"the same way rather than copying them"*, the way being this
@@ -151,17 +156,22 @@ export const wireRunListSchema: z.ZodType<WireRunList> = z.object({
  *
  * A proven state carries no reason and a contained result carries no ahead count, which `.strict()`
  * is what enforces on the wire: an answer carrying both would be a shape git cannot produce.
+ *
+ * **`ahead` is `.nonnegative()` since Q-0127**, as `count` and `pendingGates` already were in this
+ * file. It is `rev-list --count`'s answer and a count of commits cannot be negative, so a schema
+ * permitting one teaches a reader the wrong rule about which counts here are constrained — and this
+ * schema is the only thing between a misread probe and a rendered figure.
  */
 export const containmentResultSchema: z.ZodType<ContainmentResult> = z.discriminatedUnion('state', [
   z.object({ state: z.literal('contained') }).strict(),
-  z.object({ state: z.literal('not-contained'), ahead: z.number().int() }).strict(),
+  z.object({ state: z.literal('not-contained'), ahead: z.number().int().nonnegative() }).strict(),
   z.object({ state: z.literal('indeterminate'), reason: z.enum(CONTAINMENT_REASONS) }).strict(),
 ]);
 
 /** Runtime validation for push lag, on the same terms as {@link containmentResultSchema}. */
 export const pushLagResultSchema: z.ZodType<PushLagResult> = z.discriminatedUnion('state', [
   z.object({ state: z.literal('pushed') }).strict(),
-  z.object({ state: z.literal('unpushed'), ahead: z.number().int(), upstream: z.string() }).strict(),
+  z.object({ state: z.literal('unpushed'), ahead: z.number().int().nonnegative(), upstream: z.string() }).strict(),
   z.object({ state: z.literal('indeterminate'), reason: z.enum(PUSH_LAG_REASONS) }).strict(),
 ]);
 
@@ -252,6 +262,93 @@ export const wireTicketListSchema: z.ZodType<WireTicketList> = z.object({
   tickets: z.array(wireTicketSchema),
   pushLag: pushLagResultSchema.nullable(),
   baseBranch: z.string(),
+}).strict();
+
+/**
+ * One file of a ticket folder, as a detail response names it: where it is, and how large.
+ *
+ * **No text.** A ticket folder is 3.1 MB at this backlog's largest and holds a single 1.46 MB file,
+ * so a response carrying every file's contents would hand a browser a megabyte for a tab nobody
+ * opened. `rel` is what a reader asks for afterwards, one file at a time, and `bytes` is what tells
+ * them what they are about to ask for — which is what stands in for a cap here rather than a cap
+ * nobody is told about.
+ */
+export interface WireTicketFileEntry {
+  /** Path relative to the ticket folder, separated by `/`. Never absolute, never traversing. */
+  readonly rel: string;
+  readonly bytes: number;
+}
+
+/** Runtime validation for one listed file. */
+export const wireTicketFileEntrySchema: z.ZodType<WireTicketFileEntry> = z.object({
+  rel: z.string(),
+  bytes: z.number().int().nonnegative(),
+}).strict();
+
+/**
+ * What a detail response says it did not name: how many files, and how many bytes.
+ *
+ * **A count and a total, and no paths.** The subject is the engine's own run state — every path
+ * under a ticket folder whose first segment begins with a dot — which is gitignored and therefore
+ * not in the database this product keeps. Saying nothing would be a listing that reads as the whole
+ * folder; naming the paths would make a backlog route a second run-history surface, which is
+ * Q-0018's. So it says the listing is not everything and stops there.
+ */
+export interface WireExcludedFiles {
+  readonly count: number;
+  readonly bytes: number;
+}
+
+/** Runtime validation for the exclusion disclosure. */
+export const wireExcludedFilesSchema: z.ZodType<WireExcludedFiles> = z.object({
+  count: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+}).strict();
+
+/**
+ * One ticket in full: the row a listing carries, and the names of the files beside it.
+ *
+ * `ticket` is the same {@link WireTicket} `GET /tickets` answers with for this ticket and is built
+ * by the same projection, so the board and the page cannot disagree about one ticket.
+ *
+ * **It carries no push lag and no base branch.** Push lag is a repository-level fact and belongs on
+ * the listing that renders it; a second claim of it here would be a second place to be wrong. The
+ * base branch travels with the answers it was computed against, which is the listing's envelope —
+ * so a page holding this shape renders no containment token, having no ref to spell one against.
+ */
+export interface WireTicketDetail {
+  readonly ticket: WireTicket;
+  readonly files: readonly WireTicketFileEntry[];
+  readonly excluded: WireExcludedFiles;
+}
+
+/** Runtime validation for one ticket's detail. */
+export const wireTicketDetailSchema: z.ZodType<WireTicketDetail> = z.object({
+  ticket: wireTicketSchema,
+  files: z.array(wireTicketFileEntrySchema),
+  excluded: wireExcludedFilesSchema,
+}).strict();
+
+/**
+ * One file of a ticket folder, with its text.
+ *
+ * `bytes` is the size of the bytes that were **actually read**, not the size the listing reported:
+ * a file can change between the moment it was named and the moment it was asked for, so the listing
+ * is what a reader chooses by and never a guarantee about what arrives. `text` is that file decoded
+ * as UTF-8, which is a claim the route has to be able to make — a file whose bytes are not
+ * well-formed UTF-8 is refused under its own code rather than served with substitutions in it.
+ */
+export interface WireTicketFile {
+  readonly rel: string;
+  readonly bytes: number;
+  readonly text: string;
+}
+
+/** Runtime validation for one file's contents. */
+export const wireTicketFileSchema: z.ZodType<WireTicketFile> = z.object({
+  rel: z.string(),
+  bytes: z.number().int().nonnegative(),
+  text: z.string(),
 }).strict();
 
 /**
