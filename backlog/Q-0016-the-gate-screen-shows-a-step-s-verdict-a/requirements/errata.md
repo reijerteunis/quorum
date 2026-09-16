@@ -114,3 +114,34 @@ was largely discharged by that ticket; it is not nothing, and it is not what it 
 chore route means it is proven by the implementer's own test and the cross-vendor review rather than
 by a red phase — so the *"shown red before green"* obligation lands on the implement step, and a
 criterion whose guard cannot fail is the failure this repository records most.
+
+---
+
+## E-6 — correction to E-2, written at the close: the wire gained **two** fields, not one
+
+E-2 ratified GO-2 as *"`WireRun` gains `gates`"*, and §3.1 and the development-plan bullet both call
+it **one additive field**. What shipped is two: `gates`, and `refusal`.
+
+**The second is authorised, and the inconsistency was between two criteria rather than in the
+implementation.** AC-1 names `gates` alone; AC-10 requires a `refused` start to report *"the daemon's
+own condition"*, and no condition was on the wire — `WireRun` carried none and `WireRefusal`, which
+does, is a different shape answered with a different status. `RunView.refusal` held it all along
+(`host.ts:284`), one projection away. So the two criteria could not both be met by one field, and
+nothing said so.
+
+**The run handled it the right way round, which is why this is a correction and not a finding.**
+Implement round 1 wrote the weaker behaviour — a screen saying the route carries no reason — and
+**said so in its own report**. The reviewer read that admission and refused it: *"the implementation
+report acknowledges this weaker behavior, yet no erratum relaxes the criterion. Carry the refusal
+condition through the run response and render it, or obtain an explicit requirements ruling."* Round 2
+carried it. A criterion was neither quietly weakened nor silently exceeded, and the disclosure is what
+made the review able to act.
+
+**`refusal` is not a `WireRefusal`, and the distinction is load-bearing**: a `WireRefusal` carries a
+`code`, which `startRefusalCode` computes so `POST /runs` can pick a **status** for a request it is
+refusing. A run row is answered `200`, so a code there would attach a status classification to a
+response that never made one. `.strict()` refuses it and a test pins the refusal.
+
+**What is corrected is this operator's wording in E-2 and in the plan, not the ticket's work.** The
+ruling stands as ratified; *"one additive field"* was inexact when written, and the development-plan
+entry says two.

@@ -1,7 +1,7 @@
 ---
 id: Q-0016
 title: The gate screen shows a step's verdict and takes the answer
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0016/integration
@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-16
 iterations:
   requirements.head-of-product: 1
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-09-16T15:32:34.955Z
     cost: 16.373
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-16T19:24:52.852Z
+    cost: 110.308
 ---
 A run parked at a gate is answered in the browser: the screen shows what the gate is asking, what the step it follows decided, and offers exactly the three answers a gate takes.
 
