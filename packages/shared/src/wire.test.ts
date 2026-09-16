@@ -21,7 +21,7 @@ const QUESTION = {
 /** One run row that every clause below starts from, so a refusal is the one field it changed. */
 const RUN = {
   handle: 'run-7', flow: 'probe', ticketId: 'T-0001', runId: null, state: 'running', pendingGates: 1,
-  gates: [QUESTION],
+  gates: [QUESTION], refusal: null,
 } as const;
 
 /** The issue codes one refusal carried, which is what "distinguishably" is asserted over. */
@@ -151,6 +151,35 @@ describe('Q-0016 AC-1 — a run row carries the questions its gates are asking',
       .toContain('gateQuestionEventSchema');
   });
 
+  test('a refused row carries the daemon\'s own reason, and it is not a WireRefusal', () => {
+    // AC-10's `refused` state has to report the daemon's own condition, and until this field a row
+    // carried none — so the screen said it carried none, which is a surface admitting a gap with
+    // the sentence one field away. What crosses is the host's `refusal` WHOLE: the condition in the
+    // failing library's words and the remedy this transport composed.
+    const refused = {
+      ...RUN, state: 'refused', pendingGates: 0, gates: [],
+      refusal: { condition: 'no ticket T-0404 in this backlog', remedy: 'point the server at a directory holding harness/harness.yaml' },
+    };
+    const parsed = wireRunSchema.safeParse(refused);
+    expect(parsed.error?.issues, 'a refused row carrying its reason was refused').toBeUndefined();
+    if (!parsed.success) return;
+    expect(parsed.data.refusal?.condition).toBe('no ticket T-0404 in this backlog');
+    expect(parsed.data.refusal?.remedy, 'the remedy the daemon composed did not cross').toContain('harness/harness.yaml');
+    // A remedy of `null` is the ordinary case — this surface has nothing to add to the condition —
+    // and it is nullable rather than optional for `wireRefusalSchema`'s own reason one level down.
+    expect(wireRunSchema.safeParse({ ...refused, refusal: { condition: 'x', remedy: null } }).success).toBe(true);
+    expect(wireRunSchema.safeParse({ ...refused, refusal: { condition: 'x' } }).success,
+      'a refusal omitting the remedy was accepted').toBe(false);
+    // And it is NOT a `WireRefusal`: that shape carries a `code` the transport picks a STATUS from,
+    // and a run row is answered 200 — so a code here would attach a classification to a response
+    // that never made one. Refused by `.strict()` rather than left to be added later by habit.
+    expect(codesOf(wireRunSchema.safeParse({ ...refused, refusal: { code: 'no-such-ticket', condition: 'x', remedy: null } })))
+      .toStrictEqual(['unrecognized_keys']);
+    // The field is required and nullable, so *absent* is not a third answer beside *no refusal*.
+    const { refusal: _dropped, ...withoutRefusal } = refused;
+    expect(wireRunSchema.safeParse(withoutRefusal).success, 'a row omitting the field entirely was accepted').toBe(false);
+  });
+
   test('the annotation is load-bearing in the direction it can be, and this says which', () => {
     // `wireRunSchema` is declared `z.ZodType<WireRun>` rather than inferred, so an interface field
     // with no schema field fails AT THE DECLARATION and not at whichever consumer reads it first.
@@ -161,17 +190,18 @@ describe('Q-0016 AC-1 — a run row carries the questions its gates are asking',
     // is covariant in its output, so an object schema carrying an extra key is still assignable.
     // The half that refuses an undeclared key is `.strict()`, at run time, which the clause above
     // exercises over a real body. Two mechanisms, and neither is the other.
+    const refusalField = z.object({ condition: z.string(), remedy: z.string().nullable() }).strict().nullable();
     const dropped = z.object({
       handle: z.string(), flow: z.string(), ticketId: z.string().nullable(),
       runId: z.number().int().nullable(), state: wireRunStateSchema,
-      pendingGates: z.number().int().nonnegative(),
+      pendingGates: z.number().int().nonnegative(), refusal: refusalField,
     }).strict();
     // @ts-expect-error a schema omitting `gates` does not produce a WireRun, and fails at this line
     const refused: z.ZodType<WireRun> = dropped;
     expect(refused, 'the narrowed schema was not built — this demonstration has no subject').toBeDefined();
     const mistyped = z.object({
       handle: z.string(), flow: z.string(), ticketId: z.string().nullable(),
-      runId: z.number().int().nullable(), state: wireRunStateSchema,
+      runId: z.number().int().nullable(), state: wireRunStateSchema, refusal: refusalField,
       pendingGates: z.number().int().nonnegative(), gates: z.array(z.string()),
     }).strict();
     // @ts-expect-error and one whose `gates` is not the event union's own shape fails at it too

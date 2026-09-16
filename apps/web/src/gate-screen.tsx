@@ -13,11 +13,13 @@
  * waiting whose question the replay did not supply, and a replay it must disclose as incomplete and
  * cannot repair. Widening the wire removes those rather than mitigating them.
  *
- * **It holds no socket, and the cost of that is stated rather than smoothed over.** A gate asked
- * while this screen is open is not shown until the reader asks again, and what the run does next is
- * shown by reading again rather than live. Rendering a run's event stream is mission control's
- * subject (Q-0015), and coupling this screen to that controller before that ticket has decided how
- * it is held is a design no ticket has done.
+ * **It holds no socket, and neither does the route it is drawn at.** `app.tsx` opens a live
+ * connection for a run route and this one is excluded there by name, because a shell streaming a run
+ * behind a screen that is deliberately not live is the same socket by another door. The cost is
+ * stated rather than smoothed over: a gate asked while this screen is open is not shown until the
+ * reader asks again, and what the run does next is shown by reading again rather than live.
+ * Rendering a run's event stream is mission control's subject (Q-0015), and coupling this screen to
+ * that controller before that ticket has decided how it is held is a design no ticket has done.
  *
  * **Three answers at most, and fewer where the gate offers fewer.** `gateAnswerSchema` is the
  * closed three and the envelope is `.strict()` over it, so there is no fourth control and no reason
@@ -104,7 +106,7 @@ export type GateSubject =
   | { readonly kind: 'parked'; readonly question: GateQuestionEvent }
   | { readonly kind: 'no-gate' }
   | { readonly kind: 'ended' }
-  | { readonly kind: 'refused' };
+  | { readonly kind: 'refused'; readonly refusal: WireRun['refusal'] };
 
 /**
  * A sentence for every subject, and no member of the set is silence.
@@ -112,16 +114,29 @@ export type GateSubject =
  * Total over {@link GateSubjectKind}, so a fifth subject cannot be added without one being written
  * for it — which is what stops a later state rendering an empty region.
  *
- * The `refused` sentence says what it cannot say. A refused start's own condition is not a field of
- * a run row, so this route does not carry it, and composing a likely reason here would be a screen
- * inventing the answer the wire withheld.
+ * The `refused` sentence is what this screen can say about every refused start; the daemon's own
+ * reason for one is rendered beside it, from the row's own `refusal` field, and never composed here.
  */
 export const GATE_SUBJECT_TEXT: Record<GateSubjectKind, string> = {
   parked: 'This run is waiting to be told what to do next.',
   'no-gate': 'This run is under way and is not waiting on anybody: no gate has been asked yet, or the last one has been answered.',
   ended: 'This run is over, so there is nothing here to answer.',
-  refused: 'The daemon refused this start, so no run happened and there is nothing to answer. This route carries no reason for the refusal; the terminal that asked for the run was told one.',
+  refused: 'The daemon refused this start, so no run happened and there is nothing to answer.',
 };
+
+/** How the screen introduces the daemon's own words for a refusal, which it renders unaltered. */
+export const REFUSAL_PREFIX = 'The daemon gave this reason:';
+
+/**
+ * What the screen says where a refused row carries no reason at all.
+ *
+ * Not the ordinary case and not a gap either: a run is minted `refused` and stays so until its start
+ * resolves, so a row read inside that window is a refusal the daemon has not written yet. Saying
+ * that is the honest answer, and inventing a likely condition would be this screen answering a
+ * question the daemon has not.
+ */
+export const REFUSAL_UNSTATED =
+  'This row carries no reason for it, which means the start had not finished resolving when the run was read. Reading again is what would answer it.';
 
 /**
  * What one run means for this screen.
@@ -132,7 +147,7 @@ export const GATE_SUBJECT_TEXT: Record<GateSubjectKind, string> = {
 export function gateSubjectOf(run: WireRun): GateSubject {
   switch (run.state) {
     case 'refused':
-      return { kind: 'refused' };
+      return { kind: 'refused', refusal: run.refusal };
     case 'ended':
       return { kind: 'ended' };
     case 'running': {
@@ -228,6 +243,21 @@ function Question({ question, busy, onAnswer }: {
   );
 }
 
+/** Why a refused start never happened, in the daemon's own words — or that the row carries none. */
+function RefusalRegion({ refusal }: { refusal: WireRun['refusal'] }): ReactNode {
+  if (refusal === null) return <p className="text-sm text-muted" data-refusal="unstated">{REFUSAL_UNSTATED}</p>;
+  return (
+    <div className="flex flex-col gap-1 rounded border border-border bg-surface p-3 text-sm" data-refusal="stated">
+      {/* The condition is the failing library's own sentence and the remedy is the daemon's, both
+          rendered unaltered: *"A `core` error names the condition; the remedy belongs to the
+          surface"* (2026-09-07) is what wrote them, and paraphrasing either here would be a third
+          surface describing one failure a third way. */}
+      <p className="text-text">{REFUSAL_PREFIX} {refusal.condition}</p>
+      {refusal.remedy === null ? null : <p className="text-muted">{refusal.remedy}</p>}
+    </div>
+  );
+}
+
 /** What became of an answer this screen sent, in a sentence that claims only what was observed. */
 function AnswerRegion({ state, onLookAgain }: {
   state: RequestState<GateAnswer>;
@@ -266,15 +296,38 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   // reason — and it matters more here, where what would be painted is an answerable control.
   const [loadedFor, setLoadedFor] = useState(handle);
 
-  // One counter for every read this screen starts, whoever starts it, so a superseded answer is
-  // dropped rather than landing on top of a newer one — and an unmount bumps it, so a late answer
-  // never reaches a screen that is gone.
+  // One counter for every READ this screen starts, whoever starts it, so a superseded read is
+  // dropped rather than landing on top of a newer one, and an unmount bumps it so a late one reaches
+  // no screen at all. **It governs reads and nothing else**, which is the correction the run-2
+  // review forced: an answer was governed by it too, and a Refresh bumps it — so a settled answer
+  // arriving after one was dropped, leaving the region that draws the controls inert stuck at *on
+  // its way* with nothing on its way. {@link alive} is what an answer is guarded by instead.
   const generation = useRef(0);
 
   // And the one that makes "at most one answer in flight" a property rather than a hope. State
   // cannot do it: two activations in one turn both read the state as it was before either of them,
   // so the guard has to be a value that changes when it is set.
+  //
+  // **It is released by the answer's own resolution and by nothing else.** That is what makes the
+  // release in `send` unconditional AND correct — no second answer can begin while this holds, so
+  // the request that clears it is always the request that set it. A READ used to clear it too, and
+  // that was the defect the run-2 review found: a fresh look re-enabled the controls while an answer
+  // was still on its way, so a reader could send a second that is not the first, and an `abort` sent
+  // after an `advance` can arrive before it. *Exactly one answer wins* is the daemon's property, and it is
+  // not a licence to send two — which of them wins would be a race rather than a choice.
   const sending = useRef(false);
+
+  // Cleared once, when this screen goes away, so a late answer settles nothing and starts no read on
+  // a component that is gone. Set on mount as well, because React's development double-invoke runs
+  // the cleanup between two mounts of one component.
+  const alive = useRef(true);
+
+  // The handle this screen is showing NOW, readable by a continuation that captured another one: a
+  // closure holds the handle its request was about, which is the right one for the request and the
+  // wrong one for deciding what to do to the screen afterwards. `loadedFor` is the same guard for
+  // the run region, and this is the half an async callback can reach.
+  const showing = useRef(handle);
+  showing.current = handle;
 
   const read = useCallback(() => {
     const mine = (generation.current += 1);
@@ -287,19 +340,17 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   }, [request, clock, handle]);
 
   /**
-   * Read the run again and forget what was said about the last answer — a fresh look at the run.
+   * Read the run again — a fresh look, which forgets a settled answer and withdraws no live one.
    *
-   * It releases {@link sending} as well, and the reason is that the two would otherwise disagree:
-   * the controls are drawn inert from the answer STATE, which this clears, so a reader who asked
-   * for a fresh look while an answer was outstanding would be shown live controls that the ref
-   * silently swallowed. Releasing it keeps what is drawn and what is guarded in step. The answer
-   * still out is dropped when it returns, its generation having moved — and *exactly one answer
-   * wins* is the daemon's property rather than this screen's: the registry deletes a gate before it
-   * settles it, so a second answer to one gate is refused rather than taken twice.
+   * **It neither releases {@link sending} nor clears an answer that is still on its way**, and the
+   * two halves are one rule: the controls are drawn inert from the answer state, so clearing that
+   * state would show a reader live controls the guard then swallowed, and releasing the guard as
+   * well would be worse — a second answer racing the one already sent. A read is not a withdrawal.
+   * What a reader gets instead is the run read again with the outstanding answer's own sentence
+   * still beside it, naming the request it is waiting for.
    */
   const load = useCallback(() => {
-    sending.current = false;
-    setAnswer(null);
+    if (!sending.current) setAnswer(null);
     read();
   }, [read]);
 
@@ -308,19 +359,25 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
     return () => { generation.current += 1; };
   }, [load]);
 
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+
   const send = useCallback((question: GateQuestionEvent, chosen: GateAnswer) => {
     if (sending.current) return;
     sending.current = true;
-    const mine = generation.current;
     setAnswer(gateAnswerInFlight<GateAnswer>(handle));
     void (async () => {
       // The correlation token is echoed and never read: it is opaque by contract, and the daemon's
       // own host refuses to take a run's identity out of one.
       const outcome = await answerGate(request, handle, question.gateId, chosen, clock);
       sending.current = false;
-      // Dropped where the screen has moved on, for the reason a superseded read is dropped: what
-      // it would otherwise settle is a region about a run this screen is no longer showing.
-      if (generation.current !== mine) return;
+      if (!alive.current) return;
+      // An answer about a run this screen has moved off settles nothing and is cleared instead: its
+      // outcome is a sentence about another run, and leaving the in-flight region standing would
+      // hold the controls inert on a gate that has nothing outstanding.
+      if (showing.current !== handle) { setAnswer(null); return; }
       setAnswer(outcome);
       // Accepted, or aimed at a gate that is not waiting: either way what is true now is a question
       // for the daemon rather than something to infer from a status. Nothing is re-sent.
@@ -363,6 +420,7 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
       </div>
       <RequestRegion state={shown} onRetry={load} label={RETRY_LABEL} />
       <p className="text-text" data-gate-subject={subject.kind}>{GATE_SUBJECT_TEXT[subject.kind]}</p>
+      {subject.kind === 'refused' ? <RefusalRegion refusal={subject.refusal} /> : null}
       {subject.kind === 'parked' ? <Question question={subject.question} busy={busy} onAnswer={(chosen) => send(subject.question, chosen)} /> : null}
       {answer === null ? null : <AnswerRegion state={answer} onLookAgain={load} />}
     </section>

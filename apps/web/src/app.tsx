@@ -8,7 +8,8 @@
  *
  * The one exception is the live connection a run route opens: `apps/web/src/run-connection.ts`
  * owns the socket, and this component owns only the one controller a run route needs, when the
- * path resolves to one.
+ * path resolves to one — with the gate screen's route excluded by name, that screen being ruled to
+ * hold no socket and a shell opening one for it being the same socket by another door.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
@@ -89,10 +90,19 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
     }
   }, [redirectedTo]);
 
-  // Present on every route the register gives a `:handle` segment — today `/runs/:handle` and its
-  // two children — and absent everywhere else, which is what tells this component a live
-  // connection belongs on the current screen at all.
-  const handle = rendered.kind === 'screen' && 'handle' in rendered.params ? rendered.params.handle : undefined;
+  // Present on a route the register gives a `:handle` segment, and absent everywhere else, which is
+  // what tells this component a live connection belongs on the current screen at all.
+  //
+  // **The gate screen is excluded by name, and it is the one exclusion here.** That screen holds no
+  // socket by a ruling of its own (Q-0016 erratum E-2): it reads `GET /runs/:id` on mount and when
+  // the reader asks again, and rendering a run's event stream is mission control's subject. Opening
+  // one from the shell anyway would be that socket by another door — and it would answer a second
+  // way about a handle the screen is already reporting on, since a handle this host never minted is
+  // a 1008 close here and a route refusal there. `/runs/:handle` and `/runs/:handle/steps/:stepId`
+  // are unchanged; this is a name, not a rule about children.
+  const handle = rendered.kind === 'screen' && rendered.route.path !== GATE_ROUTE && 'handle' in rendered.params
+    ? rendered.params.handle
+    : undefined;
   const page = pageUrl ?? currentPageUrl();
   const pageHref = page?.href;
   const pageOrigin = page?.origin;

@@ -476,6 +476,7 @@ describe('AC-4 — fetchRun reads one run, over the route that answers for one h
   const RUN = {
     handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, state: 'running', pendingGates: 1,
     gates: [{ type: 'gate', gateId: '3:1', kind: 'human', reason: 'approve to advance', ticketDir: '/repo/backlog/Q-0016-a' }],
+    refusal: null,
   };
 
   test('a well-formed run loads, with its question carried whole', async () => {

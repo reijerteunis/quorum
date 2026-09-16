@@ -412,7 +412,7 @@ describe('Q-0121 AC-8 — one projection, and a row says which ticket and how ma
     const looked = await (await app.request(`/runs/${handle}`)).json() as Record<string, unknown>;
     expect(Object.keys(looked).sort()).toStrictEqual(Object.keys(created).sort());
     expect(Object.keys(created).sort())
-      .toStrictEqual(['flow', 'gates', 'handle', 'pendingGates', 'runId', 'state', 'ticketId']);
+      .toStrictEqual(['flow', 'gates', 'handle', 'pendingGates', 'refusal', 'runId', 'state', 'ticketId']);
     // `state` is the host's closed three rather than the string it was declared as until this ticket.
     expect([...WIRE_RUN_STATES], 'the wire state vocabulary widened').toContain(String(created.state));
 
@@ -544,6 +544,42 @@ describe('Q-0016 AC-2 — the projection carries the questions, derived per requ
     expect(refused.gates, 'a refused start carried a gate').toStrictEqual([]);
     expect(refused.pendingGates).toBe(0);
 
+    await host.shutdown();
+  });
+
+  test('and a refused row carries the daemon\'s own reason, without the code a status was picked from', async () => {
+    // AC-10 requires the `refused` state report the daemon's own condition, and the row is where a
+    // browser reads one: `POST /runs` answers a refusal to the caller that asked for the start and
+    // discloses no handle, so a client reaching this route by any other means had the state and no
+    // reason for it until this field.
+    const project = fixture();
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const app = createApp({ host });
+    const outcome = await host.start({ flow: 'probe', ticket: 'T-0404' });
+    expect(outcome.started, 'the start this clause rests on was not refused').toBe(false);
+    if (outcome.started) throw new Error('unreachable');
+
+    const parsed = wireRunSchema.safeParse(await (await app.request(`/runs/${outcome.run.handle}`)).json());
+    expect(parsed.error?.issues, 'the refused row does not satisfy the schema a browser parses it with').toBeUndefined();
+    if (!parsed.success) throw new Error('unreachable');
+    // The host's own sentence, unaltered — not paraphrased here and not composed by the route.
+    expect(parsed.data.refusal?.condition, 'the row carries a reason the host did not give')
+      .toBe(outcome.refusal.condition);
+    expect(parsed.data.refusal?.remedy).toBe(outcome.refusal.remedy);
+    expect(parsed.data.refusal?.condition.length, 'the host gave no condition, so this proves nothing')
+      .toBeGreaterThan(0);
+    // And no `code`: that is the classification `startRefusalCode` makes so `POST /runs` can pick a
+    // status, and this route answers 200. `.strict()` is what refuses one, so adding it later is an
+    // edit to the schema rather than a field that arrives by habit.
+    expect(Object.keys(parsed.data.refusal ?? {}).sort()).toStrictEqual(['condition', 'remedy']);
+    // A run that started carries `null` rather than an empty object, which is the difference between
+    // *this run was not refused* and *it was refused and nobody said why*.
+    const started = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+    const running = wireRunSchema.safeParse(await (await app.request(`/runs/${started}`)).json());
+    if (!running.success) throw new Error('unreachable');
+    expect(running.data.refusal, 'a run that started carried a refusal').toBeNull();
+
+    await drainRun(host, started);
     await host.shutdown();
   });
 });

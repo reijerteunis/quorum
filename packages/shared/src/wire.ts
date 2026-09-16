@@ -120,6 +120,15 @@ export const wireRunStateSchema: z.ZodType<WireRunState> = z.enum(WIRE_RUN_STATE
  * `gateId` is the correlation token an answer has to echo, and `kind`, `reason` and `retry` are the
  * whole of what a gate screen can honestly render — a browser that had only the count could say a
  * gate was waiting and could not say what it asked or offer an answer to it.
+ *
+ * **`refusal` narrows nothing either, and it is NOT a {@link WireRefusal}.** A `refused` row said
+ * only that the start never happened until Q-0016, so a screen reporting one could name no reason
+ * and had to say it carried none — which is a surface admitting a gap where the daemon's own words
+ * were one field away. What crosses is the host's `refusal` whole: the condition in the failing
+ * library's own words and the remedy this transport composed for a caller that may have no shell.
+ * The `code` a {@link WireRefusal} carries is deliberately absent — that is a classification the
+ * transport makes to pick a **status** for a request it is refusing, and a run row is answered
+ * `200`, so carrying one would attach a status nobody sent to a refusal nobody asked for.
  */
 export interface WireRun {
   readonly handle: string;
@@ -132,6 +141,11 @@ export interface WireRun {
   readonly pendingGates: number;
   /** Those gates' questions, whole and in the order they were asked. Empty for every other run. */
   readonly gates: readonly GateQuestionEvent[];
+  /**
+   * Why this run never started, or `null` where it did — and `null` on a `refused` row too, for the
+   * window before a start has resolved, which is the honest answer rather than a gap.
+   */
+  readonly refusal: { readonly condition: string; readonly remedy: string | null } | null;
 }
 
 /** Runtime validation for one run row. */
@@ -146,6 +160,9 @@ export const wireRunSchema: z.ZodType<WireRun> = z.object({
   // the question a browser echoes back has to be the question `askGate` emitted, and two
   // declarations of one shape are free to drift the moment either end gains a field.
   gates: z.array(gateQuestionEventSchema),
+  // Nullable rather than optional, which is `remedy`'s own rule one level down: absent and `null`
+  // are different answers, and only one of them says "this run has no refusal to report".
+  refusal: z.object({ condition: z.string(), remedy: z.string().nullable() }).strict().nullable(),
 }).strict();
 
 /**

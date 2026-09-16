@@ -24,7 +24,7 @@ import { runDetailPath, runGatePath } from './daemon-endpoints.js';
 import {
   ANSWER_LABEL, ANSWERED_PREFIX, answersOffered, GATE_GONE, GATE_GONE_CODE, GATE_HEADING,
   GATE_SUBJECT_TEXT, GATE_SUBJECTS, gateSubjectOf, GateScreen, LOOK_AGAIN_LABEL, NO_RETRY_TARGET,
-  REFRESH_LABEL, RETURNS_TO, RETRY_LABEL,
+  REFRESH_LABEL, REFUSAL_PREFIX, REFUSAL_UNSTATED, RETURNS_TO, RETRY_LABEL,
 } from './gate-screen.js';
 import { GATE_ROUTE } from './routes.js';
 import type { SocketTransport } from './run-connection.js';
@@ -67,7 +67,7 @@ const question = (over: Record<string, unknown> = {}): Record<string, unknown> =
 /** One run row, parked on that question unless a fixture says otherwise. */
 const run = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, state: 'running',
-  pendingGates: 1, gates: [question()], ...over,
+  pendingGates: 1, gates: [question()], refusal: null, ...over,
 });
 
 /** What one request carried, so *what was sent* is asserted rather than assumed. */
@@ -323,6 +323,35 @@ describe('AC-10 — every state that is not "parked at a gate" says which one it
     expect(SUBJECTS.map(([, body]) => gateSubjectOf(body as never).kind)).toStrictEqual([...GATE_SUBJECTS]);
   });
 
+  test('a refused start reports the daemon\'s own condition, and its remedy where there is one', async () => {
+    // AC-10's `refused` clause in full. The row carried the STATE and no reason until this ticket
+    // widened the projection, so the screen said it carried none — a surface admitting a gap with
+    // the daemon's own sentence one field away, which is what a criterion asking for the condition
+    // is not satisfied by. The condition is `core`'s own words and the remedy is the daemon's, both
+    // rendered unaltered.
+    const condition = 'no ticket T-0404 in this backlog';
+    const remedy = 'point the server at a directory holding harness/harness.yaml';
+    const { container } = await screen({
+      runs: [run({ state: 'refused', pendingGates: 0, gates: [], refusal: { condition, remedy } })],
+    });
+    const text = textOf(container);
+    expect(text, 'the refused state stopped saying what it is').toContain(GATE_SUBJECT_TEXT.refused);
+    expect(text, 'the daemon\'s own condition for the refusal is not rendered').toContain(condition);
+    expect(text, 'the remedy the daemon composed is not rendered').toContain(remedy);
+    expect(text, 'the screen still claims the row carries no reason').not.toContain(REFUSAL_UNSTATED);
+    expect(controls(container).length, 'a refused start offered an answer').toBe(0);
+  });
+
+  test('and a refused row that carries no reason says that, rather than rendering an empty region', async () => {
+    // Reachable rather than defensive: a record is minted `refused` and stays so until its start
+    // resolves, so a row read inside that window is a refusal nobody has written yet. It is the one
+    // case where this screen has a state and no sentence from the daemon, and it says so.
+    const { container } = await screen({ runs: [run({ state: 'refused', pendingGates: 0, gates: [], refusal: null })] });
+    const text = textOf(container);
+    expect(text, 'a refused row with no reason rendered nothing about it').toContain(REFUSAL_UNSTATED);
+    expect(text, 'the screen introduced a reason it does not have').not.toContain(REFUSAL_PREFIX);
+  });
+
   test('a handle the daemon never minted is its own refusal, and is not silence', async () => {
     const { container } = await screen({
       runs: [{ code: 'no-such-run', condition: 'no run is registered under that handle', remedy: null }],
@@ -415,17 +444,23 @@ describe('AC-11 — one answer in flight, and nothing claimed that was not obser
     expect(textOf(container), 'the screen does not say what it is waiting for').toContain(runGatePath(HANDLE));
   });
 
-  test('and a fresh look releases them, so no control looks live and does nothing', async () => {
-    // The two halves of *inert* have to agree: the controls are drawn from the answer state and
-    // guarded by a ref, and a Refresh clears the first. Left alone, the second would go on
-    // swallowing clicks against controls a reader can see are enabled — which is worse than either
-    // behaviour on its own, because nothing on the page says why the press did nothing.
+  test('and a fresh look withdraws nothing: the controls stay inert while the answer is on its way', async () => {
+    // **INVERTED RATHER THAN DELETED** (Q-0116's shape). This clause asserted the opposite until the
+    // run-2 review: a Refresh released the guard, so the controls came back live while the first
+    // answer was still out and a reader could send a second, DIFFERENT one. The two race, and an
+    // `abort` sent after an `advance` can arrive first — so the screen would have offered a way to
+    // end a run the reader had just chosen to advance.
+    //
+    // The two halves of *inert* still have to agree, which is what the earlier version was right
+    // about and fixed the wrong way round: a read does not clear the answer region either, so what a
+    // reader sees is the run read again with the outstanding answer's own sentence beside it.
     const sent: Sent[] = [];
+    const pending: ((response: DaemonResponse) => void)[] = [];
     const container = await render(createElement(GateScreen, {
       handle: HANDLE,
       fetcher: (path: string, request?: DaemonRequest) => {
         sent.push({ path, request });
-        if (request?.method === 'POST') return new Promise<DaemonResponse>(() => { /* never answers */ });
+        if (request?.method === 'POST') return new Promise<DaemonResponse>((resolve) => { pending.push(resolve); });
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
       },
       now: CLOCK,
@@ -435,7 +470,29 @@ describe('AC-11 — one answer in flight, and nothing claimed that was not obser
     const refresh = [...container.querySelectorAll('button')].find((button) => button.textContent === REFRESH_LABEL);
     expect(refresh, 'there is no way to ask again — this clause has lost its subject').toBeDefined();
     await click(refresh as HTMLButtonElement);
-    expect(controls(container).some((button) => button.disabled), 'a fresh look left the controls inert').toBe(false);
+
+    // The read happened — a fresh look is still a fresh look…
+    expect(sent.filter((each) => each.path === runDetailPath(HANDLE)).length,
+      'the fresh look did not read the run again').toBe(2);
+    // …and it withdrew nothing: the controls are still inert, the region still names the request it
+    // is waiting for, and a press produces no second envelope.
+    expect(controls(container).every((button) => button.disabled), 'a fresh look re-enabled the controls while an answer was outstanding').toBe(true);
+    expect(textOf(container), 'the fresh look erased the sentence saying an answer is on its way').toContain(runGatePath(HANDLE));
+    // Pressed on a DIFFERENT control from the one already in flight, which is the shape that made
+    // this a blocker rather than a redundancy: what a released guard permits is not a repeat of the
+    // answer already sent but an abort overtaking an advance.
+    await click(controls(container)[1]);
+    expect(envelopes(sent).length, 'a second answer was sent while the first was still in flight').toBe(1);
+
+    // And it is not a deadlock: once the answer settles, the screen is answerable again.
+    expect(pending.length, 'the answer was never dispatched — this clause has lost its subject').toBe(1);
+    await act(async () => {
+      pending[0]({
+        ok: false, status: 400,
+        json: () => Promise.resolve({ code: 'not-an-answer', condition: 'the envelope is not an answer', remedy: null }),
+      });
+    });
+    expect(controls(container).some((button) => button.disabled), 'a settled answer left the controls inert').toBe(false);
     await click(controls(container)[0]);
     expect(envelopes(sent).length, 'a control a reader can press did nothing').toBe(2);
   });
@@ -535,7 +592,13 @@ describe('AC-13 — the screen renders nothing about what the step before it dec
 });
 
 describe('AC-14 — the register says the screen exists, and the placeholder no longer draws it', () => {
-  /** A socket that opens nothing: this route carries a `:handle`, so the shell builds a connection. */
+  /**
+   * A socket nothing should reach for at this route, supplied so that reaching for one is VISIBLE.
+   *
+   * Passed rather than omitted for the reason `apps/web/test/source.test.ts` enforces: a run route
+   * rendered with no factory reaches `defaultSocketFactory` and opens a real connection to jsdom's
+   * origin, so leaving it out would turn a regression here into a network error somewhere else.
+   */
   class FakeSocket implements SocketTransport {
     onopen: (() => void) | null = null;
     onmessage: ((event: { readonly data: unknown }) => void) | null = null;
@@ -543,6 +606,39 @@ describe('AC-14 — the register says the screen exists, and the placeholder no 
     onclose: ((event: { readonly code: number; readonly reason: string }) => void) | null = null;
     close(): void { /* nothing to close */ }
   }
+
+  test('and the route opens no socket, the screen holding none by a ruling of its own', async () => {
+    // Erratum E-2/GO-4: this screen reads and does not subscribe. `app.tsx` builds a live connection
+    // for a route the register gives a `:handle`, which this route has — so without the exclusion
+    // there, visiting the gate screen opens a WebSocket that the screen does not read and cannot
+    // use, and that answers a second way about a handle the screen is already reporting on.
+    // Asserted over the FACTORY, which is what says a socket was constructed at all.
+    const reached: URL[] = [];
+    const factory = (url: URL): SocketTransport => { reached.push(url); return new FakeSocket(); };
+    const fake = daemon({ runs: [run()] });
+    await render(createElement(App, {
+      initialPath: GATE_ROUTE.replace(':handle', HANDLE),
+      socketFactory: factory,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+      fetcher: fake.fetch,
+      clock: CLOCK,
+    }));
+    expect(reached, 'the gate route opened a socket').toStrictEqual([]);
+    // …and the exclusion is by NAME rather than a rule about every route carrying a handle: mission
+    // control's own route still opens exactly one, so this clause discriminates instead of reporting
+    // that nothing anywhere connects. Its path is built by removing the gate segment from the
+    // register's own pattern rather than written out — `test/routes.test.ts` collects every quoted
+    // literal beginning with a slash and refuses one no route holds, which is what keeps a fixture
+    // from becoming a second place a path is written down.
+    await render(createElement(App, {
+      initialPath: GATE_ROUTE.replace(':handle', HANDLE).replace(/\/gate$/u, ''),
+      socketFactory: factory,
+      pageUrl: new URL(`https:${'/' + '/'}page.test`),
+      fetcher: fake.fetch,
+      clock: CLOCK,
+    }));
+    expect(reached, 'the run route stopped opening a connection').toHaveLength(1);
+  });
 
   test('the app draws the gate screen at its route rather than the "not built yet" view', async () => {
     const fake = daemon({ runs: [run()] });

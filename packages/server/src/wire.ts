@@ -112,6 +112,14 @@ export const STOP_REFUSAL_STATUS = {
  * The two fields cannot disagree because one is the other's length, which is what makes the
  * redundancy safe rather than a second authority. `RunView.gates` is derived per call from the
  * registry `askGate` parks on, so both are answers about this request and nothing is cached.
+ *
+ * **`refusal` crosses whole since Q-0016 as well, and it carries no code.** A `refused` row said
+ * only that the start never happened, so the one surface that renders one had to say it carried no
+ * reason — an admitted gap with the daemon's own sentence one field away. What is NOT carried is a
+ * {@link WireRefusal}'s `code`: `http.ts`'s `startRefusalCode` classifies a condition so `POST /runs`
+ * can pick a **status** for the request it is refusing, and this row is answered `200`, so a code here
+ * would be a status classification attached to a response that never made one. The condition is the
+ * failing library's own words and the remedy is this surface's, unaltered in both cases.
  */
 export function wireRunOf(view: RunView): WireRun {
   return {
@@ -122,5 +130,6 @@ export function wireRunOf(view: RunView): WireRun {
     state: view.state,
     pendingGates: view.gates.length,
     gates: view.gates,
+    refusal: view.refusal,
   };
 }
