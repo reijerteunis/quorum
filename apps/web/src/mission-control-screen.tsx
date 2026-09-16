@@ -74,7 +74,9 @@ export function MissionControlScreen({
 
   return (
     <section className="flex max-w-4xl flex-col gap-4">
-      <h1 className="text-lg text-text">Mission control</h1>
+      {/* MissionControlStatus's own Header already renders the "Mission control" title under
+          data-mission-control-header — the frozen contract's "complete header region" — so this
+          composition adds no second one. */}
       <MissionControlStatus
         handle={handle}
         snapshot={snapshot}
