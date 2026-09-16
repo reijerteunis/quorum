@@ -112,6 +112,41 @@ function daemon(answers: Answers): { fetch: (path: string, request?: DaemonReque
   };
 }
 
+/**
+ * A daemon whose first read answers a parked run and whose SECOND read never arrives.
+ *
+ * The shape that separates *the daemon settled this answer* from *the screen knows where the run is
+ * now*. The first is established by the exchange the reader just had; the second is a further
+ * request, and it is the half this page cannot promise — so a fixture that answers both in one turn
+ * cannot tell whether the first survives without the second. `followUp` is what the read does: stay
+ * out for ever, or fail.
+ */
+function afterAnswering(
+  gate: { readonly status: number; readonly body?: unknown },
+  followUp: 'never answers' | 'fails',
+): { fetch: (path: string, request?: DaemonRequest) => Promise<DaemonResponse>; sent: Sent[] } {
+  const sent: Sent[] = [];
+  let reads = 0;
+  return {
+    sent,
+    fetch: (path: string, request?: DaemonRequest) => {
+      sent.push({ path, request });
+      if (request?.method === 'POST') {
+        return Promise.resolve({
+          ok: gate.status >= 200 && gate.status < 300,
+          status: gate.status,
+          json: () => Promise.resolve(gate.body ?? null),
+        });
+      }
+      reads += 1;
+      if (reads === 1) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
+      return followUp === 'never answers'
+        ? new Promise<DaemonResponse>(() => { /* the read that follows the answer never arrives */ })
+        : Promise.reject(new Error('connection refused'));
+    },
+  };
+}
+
 /** Render `element` into a real document and answer the element it was mounted into. */
 async function render(element: ReactElement): Promise<HTMLElement> {
   const container = document.createElement('div');
@@ -413,6 +448,72 @@ describe('AC-11 — one answer in flight, and nothing claimed that was not obser
     expect(text, 'the screen claimed the run ended').not.toContain(GATE_SUBJECT_TEXT.ended);
   });
 
+  test.each([
+    ['never answers', runDetailPath(HANDLE)],
+    ['fails', 'not responding'],
+  ] as const)('and it keeps saying so while the read that follows it %s', async (followUp, readSays) => {
+    // **The half the run-2 review found missing.** The screen reads the run again the moment an
+    // answer is accepted, and that read is a further request: it can hang, and it can fail. What the
+    // exchange established — *the daemon took this answer* — is true whatever the read does, so it
+    // stays on the page rather than being replaced by the state of a question about something else.
+    // It was not: everything below the heading was drawn inside the loaded-run branch, so the read
+    // going back in flight hid the sentence naming the answer a reader had just sent, and a read that
+    // never arrived hid it for ever.
+    const fake = afterAnswering({ status: 204 }, followUp);
+    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
+    await click(controls(container)[0]);
+    const text = textOf(container);
+    expect(text, 'the screen stopped saying the daemon had taken an answer').toContain(ANSWERED_PREFIX);
+    expect(text, 'the screen stopped naming the answer it sent').toContain(ANSWER_LABEL.advance);
+    // …beside the read's own state, which is the other thing a reader needs and the thing that
+    // replaced it. Both, rather than either.
+    expect(text, 'the screen does not say what the read that follows is doing').toContain(readSays);
+    // And this really is the branch that used to hide it: the run is no longer loaded, so there is
+    // nothing to answer and no control is drawn.
+    expect(controls(container).length, 'the run is still loaded, so this clause has lost its subject').toBe(0);
+    // Nothing was re-sent to get here.
+    expect(envelopes(fake.sent).length, 'the answer was sent more than once').toBe(1);
+  });
+
+  test('and an answer about one run is never rendered under another', async () => {
+    // **The guard the clause above needs**, and the reason it is a clause rather than a line in a
+    // report. Drawn outside the loaded-run branch, the answer region is no longer gated by the run
+    // at all — so what the answer is ABOUT has to travel with it. A prop is committed before the
+    // effect reacting to it runs, and an answer still in flight is not cleared by that effect
+    // either, so without the handle beside it a screen moved from one run to another names the
+    // first run's gate path under the second run's heading. `loadedFor` cannot stand in for it: it
+    // moves with the read, which is a request that has not come back yet.
+    const other = 'run-8';
+    const fetcher = (path: string, request?: DaemonRequest): Promise<DaemonResponse> => {
+      // The answer stays out for ever, which is what keeps it in flight across the move.
+      if (request?.method === 'POST') return new Promise<DaemonResponse>(() => { /* never answers */ });
+      const body = path === runDetailPath(HANDLE) ? run() : run({ handle: other });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    };
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    mounted.push(() => root.unmount());
+
+    await act(async () => root.render(createElement(GateScreen, { handle: HANDLE, fetcher, now: CLOCK })));
+    await click(controls(container)[0]);
+    expect(textOf(container), 'the answer was never dispatched — this clause has lost its subject')
+      .toContain(runGatePath(HANDLE));
+
+    await act(async () => root.render(createElement(GateScreen, { handle: other, fetcher, now: CLOCK })));
+    expect(textOf(container), 'the screen is not showing the run it was moved to').toContain(other);
+    expect(textOf(container), 'one run\'s answer is rendered under another run\'s heading')
+      .not.toContain(runGatePath(HANDLE));
+    // …and the controls the second run draws are inert, because the guard is still held by the first
+    // run's answer. Drawn live from the answer this handle can see — which is none — they would be
+    // controls a reader can press that silently do nothing, which is the disagreement between the two
+    // halves of *inert* that the run-2 blocker was about.
+    expect(controls(container).length, 'the second run drew no control — this clause has lost its subject')
+      .toBeGreaterThan(0);
+    expect(controls(container).every((button) => button.disabled),
+      'a control was live while an answer was still outstanding').toBe(true);
+  });
+
   test('and the controls are gone once the gate is no longer pending, the route staying put', async () => {
     const fake = daemon({ runs: [run(), run({ pendingGates: 0, gates: [] })] });
     const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
@@ -514,6 +615,28 @@ describe('AC-12 — a gate that is no longer waiting is reported as that, and ne
     expect(text, 'the screen claimed the earlier answer was accepted').not.toContain(ANSWERED_PREFIX);
     expect(text, 'the screen reported a gate that is gone as a request that failed')
       .not.toContain('The daemon refused');
+  });
+
+  test.each([
+    ['never answers', runDetailPath(HANDLE)],
+    ['fails', 'not responding'],
+  ] as const)('and it keeps saying so while the read that follows it %s', async (followUp, readSays) => {
+    // AC-12's half of the same defect, and the worse half: this sentence is the only thing standing
+    // between a reader and answering a third time. If the read that follows it hides it, what is left
+    // on the page is a request that looks like it is still happening, which is an invitation to try
+    // again — against a gate that is already settled.
+    const fake = afterAnswering({
+      status: 404,
+      body: { code: GATE_GONE_CODE, condition: 'that run has no gate waiting under that id', remedy: null },
+    }, followUp);
+    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
+    await click(controls(container)[0]);
+    const text = textOf(container);
+    expect(text, 'a gate that is no longer waiting stopped being reported as that').toContain(GATE_GONE);
+    expect(text, 'the screen claimed the earlier answer was accepted').not.toContain(ANSWERED_PREFIX);
+    expect(text, 'the screen does not say what the read that follows is doing').toContain(readSays);
+    expect(controls(container).length, 'the run is still loaded, so this clause has lost its subject').toBe(0);
+    expect(envelopes(fake.sent).length, 'a gate that is gone was answered again').toBe(1);
   });
 
   test('and it reads the run again rather than re-sending anything', async () => {

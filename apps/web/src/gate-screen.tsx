@@ -173,6 +173,20 @@ export function answersOffered(question: GateQuestionEvent): readonly GateAnswer
   return gateAnswerSchema.options.filter((answer) => offersTarget || answer !== 'retry');
 }
 
+/**
+ * An answer this screen sent, and the run it was about.
+ *
+ * The handle travels with it because the region that renders it is drawn outside the branch that
+ * holds one run: what the daemon did with an answer is true whatever a later read is doing, so the
+ * region cannot be guarded by the run's state — and without the handle beside it, a screen moved from
+ * one run to another would paint the previous run's answer under the new one's heading for as long as
+ * it takes an effect to flush. {@link GateScreen}'s `loadedFor` is the same rule for the run region.
+ */
+interface AnsweredGate {
+  readonly handle: string;
+  readonly state: RequestState<GateAnswer>;
+}
+
 /** Injectable inputs: the browser supplies none of them, and every test supplies all of them. */
 export interface GateScreenProps {
   /** The handle the URL supplied, decoded. Never trusted to be one this daemon minted. */
@@ -287,13 +301,14 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   const request = fetcher ?? browserFetch;
   const clock = now ?? isoClock;
   const [run, setRun] = useState<RequestState<WireRun>>(runInFlight<WireRun>(handle));
-  const [answer, setAnswer] = useState<RequestState<GateAnswer> | null>(null);
+  const [answer, setAnswer] = useState<AnsweredGate | null>(null);
 
-  // Which handle everything above is an answer about, compared in the render body rather than
-  // cleared in an effect: a prop is committed BEFORE the effect reacting to it runs, so navigating
-  // from one run to another would paint the previous run's question under the new handle for as
-  // long as it takes React to flush a passive effect. The ticket page's own mechanism, for its
-  // reason — and it matters more here, where what would be painted is an answerable control.
+  // Which handle {@link run} is an answer about — the run and nothing else, {@link answer} carrying
+  // its own. Compared in the render body rather than cleared in an effect: a prop is committed
+  // BEFORE the effect reacting to it runs, so navigating from one run to another would paint the
+  // previous run's question under the new handle for as long as it takes React to flush a passive
+  // effect. The ticket page's own mechanism, for its reason — and it matters more here, where what
+  // would be painted is an answerable control.
   const [loadedFor, setLoadedFor] = useState(handle);
 
   // One counter for every READ this screen starts, whoever starts it, so a superseded read is
@@ -367,7 +382,7 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   const send = useCallback((question: GateQuestionEvent, chosen: GateAnswer) => {
     if (sending.current) return;
     sending.current = true;
-    setAnswer(gateAnswerInFlight<GateAnswer>(handle));
+    setAnswer({ handle, state: gateAnswerInFlight<GateAnswer>(handle) });
     void (async () => {
       // The correlation token is echoed and never read: it is opaque by contract, and the daemon's
       // own host refuses to take a run's identity out of one.
@@ -378,7 +393,7 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
       // outcome is a sentence about another run, and leaving the in-flight region standing would
       // hold the controls inert on a gate that has nothing outstanding.
       if (showing.current !== handle) { setAnswer(null); return; }
-      setAnswer(outcome);
+      setAnswer({ handle, state: outcome });
       // Accepted, or aimed at a gate that is not waiting: either way what is true now is a question
       // for the daemon rather than something to infer from a status. Nothing is re-sent.
       if (outcome.kind === 'loaded' || (outcome.kind === 'refused' && outcome.refusal.code === GATE_GONE_CODE)) {
@@ -387,24 +402,41 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
     })();
   }, [request, clock, handle, read]);
 
-  // The gate, and it is one comparison because everything below is rendered inside the branch under
-  // it: a state that did not come from this handle never reaches a question or a control.
+  // The run this handle's reads have answered with, and the answer this handle's reader sent. They
+  // are guarded separately because they are answers to two unlike questions: a question and the
+  // controls beside it may only be drawn from a run this handle was read for, while what the daemon
+  // did with an answer is established by that exchange alone and stays true whatever a later read is
+  // doing. Both are compared in the render body rather than cleared in an effect, a prop being
+  // committed before the effect reacting to it runs.
   const shown = loadedFor === handle ? run : runInFlight<WireRun>(handle);
+  const sent = answer !== null && answer.handle === handle ? answer.state : null;
+
+  // Inert while ANY answer is outstanding, which is what {@link sending} is: the two halves of
+  // *inert* have to agree, and a control drawn live from this handle's own answer while the guard
+  // still held somebody else's would be one a reader can press that silently does nothing.
+  const busy = answer?.state.kind === 'in-flight';
 
   if (shown.kind !== 'loaded') {
+    // The run is not loaded — so there is no question, no subject and nothing to answer. **The
+    // answer region is still drawn here**, and that is what the run-2 review stopped on rather than a
+    // convenience: an accepted answer sends the screen straight back into this branch, because
+    // reading again is what it does next. Drawn only inside the loaded branch, the sentence naming
+    // the answer a reader had just sent — and the one saying a gate is no longer waiting, which is
+    // the only thing standing between them and answering a third time — were hidden by the read that
+    // followed them, and hidden for good if it never arrived.
     return (
       <section className="max-w-3xl">
         <h1 className="text-lg text-text">{GATE_HEADING}</h1>
         <p className="mt-1 font-mono text-xs text-muted">{handle}</p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-col gap-3">
           <RequestRegion state={shown} onRetry={load} label={RETRY_LABEL} />
+          {sent === null ? null : <AnswerRegion state={sent} onLookAgain={load} />}
         </div>
       </section>
     );
   }
 
   const subject = gateSubjectOf(shown.value);
-  const busy = answer?.kind === 'in-flight';
 
   return (
     <section className="flex max-w-3xl flex-col gap-4">
@@ -422,7 +454,7 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
       <p className="text-text" data-gate-subject={subject.kind}>{GATE_SUBJECT_TEXT[subject.kind]}</p>
       {subject.kind === 'refused' ? <RefusalRegion refusal={subject.refusal} /> : null}
       {subject.kind === 'parked' ? <Question question={subject.question} busy={busy} onAnswer={(chosen) => send(subject.question, chosen)} /> : null}
-      {answer === null ? null : <AnswerRegion state={answer} onLookAgain={load} />}
+      {sent === null ? null : <AnswerRegion state={sent} onLookAgain={load} />}
     </section>
   );
 }
