@@ -1243,6 +1243,7 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     'dev/../../escape.md': 'likewise, written to climb out through a subdirectory rather than from the folder root',
     '../': 'a hostile readFiles pattern, asserted refused',
     '../elsewhere/': 'likewise, naming the sandbox directory these tests build outside the backlog root',
+    '../ticket.md': 'a hostile path handed to readTicketFileBytes and asserted refused — Q-0127 AC-2, where the twin beside it is a real nested path that must still be read',
   },
   'packages/core/src/run-history/writer.test.ts': {
     '../../escape': 'a hostile ticket id handed to the run-lock claim and asserted refused before any file is named (Q-0039 AC-3)',
@@ -1266,6 +1267,7 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '../escape.md': 'likewise',
     'dev/../../escape.md': 'likewise',
     '../elsewhere/': 'likewise',
+    '../ticket.md': 'likewise, for the Q-0127 entry above',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
     '/../../docs': 'the expected value of the template-chunk fixture below',
     '../a/b': 'likewise, for the fixture showing a real assertion site is still reported',
@@ -1645,6 +1647,11 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'this.root': 'the backlog root the caller constructed this Backlog with',
     dir: 'a ticket folder under this.root',
     file: 'one file readFiles enumerated inside a ticket folder, joined from the caller\'s root and confined leaf and all before it is opened — the base was `f` until run 2 gave both branches one reader',
+    // Q-0127's two reads, both rooted where every other row here is: at the backlog root the caller
+    // supplied, through `folderOf`/`fileInside`, which refuse a record that is not this backlog's
+    // and a leaf that is not inside the ticket folder before anything is stat'd or opened.
+    abs: 'readTicketFileBytes\'s destination — pathInside(folderOf(root, ticket), rel), so the caller\'s root confined leaf and all before it is opened',
+    handle: 'the descriptor opened at that same confined path, fstat\'d and read from so the file measured is the file served',
   },
   'packages/core/src/backlog/confine.ts': {
     target: 'realPath\'s and deepestExisting\'s parameter, rooted by every caller at the backlog root the Backlog was constructed with or at a ticket folder inside it',

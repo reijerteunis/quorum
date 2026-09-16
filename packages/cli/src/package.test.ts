@@ -431,7 +431,7 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
   test('the register it derives from has a subject', () => {
     // Without this, a regex that silently matched nothing would make every assertion below vacuous
     // — the failure "a check that skips its subject must not report success" (2026-08-25) names.
-    expect(domain()).toHaveLength(26);
+    expect(domain()).toHaveLength(29);
     expect(domain()).toContain('runFlow');
     expect(domain()).toContain('overrideAdapters');
   });
@@ -548,15 +548,28 @@ describe('Q-0096 AC-2 — the barrel exports the public API, so the trap closes 
     // production module of this package. So the register's sentence — helpers the frame is forbidden
     // to reimplement — is satisfied by a helper this package could not have written at all. See
     // *"`core` opens a URL, and the ninth folder is named for what it is about"* (2026-09-14).
+    // Q-0127 moved them to 29 and 34, and all three of its names are `pathInside`'s case rather than
+    // `openUrl`'s: no command reaches `listTicketFiles`, `readTicketFileBytes` or `isOneName`, and
+    // the consumer is `packages/server`'s route for one ticket. What that costs is the same thing
+    // Q-0122 wrote down — a `packages/cli` register grew for a `packages/server` need — and what it
+    // buys is the same too: the frame is still forbidden to reimplement all three, which is this
+    // register's own sentence and is true of them.
     expect(domain(), 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
     expect(domain(), 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
-    expect(domain(), 'the register moved and no ticket said so').toHaveLength(26);
+    expect(domain(), 'the register still holds the twenty-six it held before Q-0127').not.toHaveLength(26);
+    expect(domain(), 'the register moved and no ticket said so').toHaveLength(29);
     const barrel = (await import('@quorum/core')) as Record<string, unknown>;
     expect(Object.keys(barrel), 'the barrel still holds the twenty-nine it held before Q-0122')
       .not.toHaveLength(29);
     expect(Object.keys(barrel), 'the barrel still holds the thirty it held before Q-0126')
       .not.toHaveLength(30);
-    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(31);
+    expect(Object.keys(barrel), 'the barrel still holds the thirty-one it held before Q-0127')
+      .not.toHaveLength(31);
+    expect(Object.keys(barrel), 'the barrel moved and no ticket said so').toHaveLength(34);
+    for (const added of ['isOneName', 'listTicketFiles', 'readTicketFileBytes']) {
+      expect(domain(), `${added} is not on the register the barrel is derived from`).toContain(added);
+      expect(typeof barrel[added], `${added} is not a function on the barrel`).toBe('function');
+    }
     expect(domain(), 'openUrl is not on the register the barrel is derived from').toContain('openUrl');
     expect(typeof barrel.openUrl, 'openUrl is not a function on the barrel').toBe('function');
     expect(domain(), 'pathInside is not on the register the barrel is derived from').toContain('pathInside');

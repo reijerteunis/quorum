@@ -23,9 +23,13 @@
  * — so a timer here would make the most expensive route on the transport this app's hot path, and
  * a cached copy would be the UI holding a git fact it cannot keep current.
  */
-import { wireFlowListSchema, wireRefusalSchema, wireTicketListSchema, type WireFlowList, type WireTicketList } from '@quorum/shared';
+import {
+  wireFlowListSchema, wireRefusalSchema, wireTicketDetailSchema, wireTicketFileSchema,
+  wireTicketListSchema,
+  type WireFlowList, type WireTicketDetail, type WireTicketFile, type WireTicketList,
+} from '@quorum/shared';
 
-import { DAEMON_ENDPOINTS } from './daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import type { RequestState } from './request-state.js';
 
 /**
@@ -122,8 +126,28 @@ export const fetchTickets = (fetcher: FetchLike, now: Clock): Promise<RequestSta
 export const fetchFlows = (fetcher: FetchLike, now: Clock): Promise<RequestState<WireFlowList>> =>
   requestJson(fetcher, DAEMON_ENDPOINTS.flows, wireFlowListSchema, now);
 
+/** One ticket: the row a board card carries, plus the names and sizes of the files beside it. */
+export const fetchTicket = (fetcher: FetchLike, id: string, now: Clock): Promise<RequestState<WireTicketDetail>> =>
+  requestJson(fetcher, ticketDetailPath(id), wireTicketDetailSchema, now);
+
 /**
- * The in-flight state for each of the two, so a screen can say what it is waiting for without
+ * One file of one ticket, with its text.
+ *
+ * Separate from {@link fetchTicket} because that is what keeps this app from loading a folder to
+ * render a tab: the largest ticket folder in this repository's backlog is 3.1 MB and its largest
+ * single file 1.46 MB, so nothing large is asked for until a reader names that file with its size in
+ * front of them.
+ */
+export const fetchTicketFile = (
+  fetcher: FetchLike,
+  id: string,
+  rel: string,
+  now: Clock,
+): Promise<RequestState<WireTicketFile>> =>
+  requestJson(fetcher, ticketFilePath(id, rel), wireTicketFileSchema, now);
+
+/**
+ * The in-flight state for each request, so a screen can say what it is waiting for without
  * naming a path of its own.
  *
  * A caller that built its own would be the second place a daemon path is written down, which is the
@@ -134,3 +158,10 @@ export const ticketsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', p
 
 /** The flow listing's in-flight state, on {@link ticketsInFlight}'s terms. */
 export const flowsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.flows });
+
+/** One ticket's in-flight state, naming the ticket rather than the backlog. */
+export const ticketInFlight = <T>(id: string): RequestState<T> => ({ kind: 'in-flight', path: ticketDetailPath(id) });
+
+/** One file's in-flight state, naming the file a reader asked for. */
+export const ticketFileInFlight = <T>(id: string, rel: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: ticketFilePath(id, rel) });

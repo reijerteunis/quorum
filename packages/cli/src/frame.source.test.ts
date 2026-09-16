@@ -383,6 +383,14 @@ const DOMAIN = [
   // — which is Q-0093's `initProject` at a second site. Why: see *"`core` opens a URL, and the ninth
   // folder is named for what it is about"* (2026-09-14).
   'openUrl',
+  // Q-0127 added three, and all three are `pathInside`'s case rather than `openUrl`'s: no command
+  // reaches any of them. `listTicketFiles` and `readTicketFileBytes` are what a route answering for
+  // one ticket needs — the first names and measures a ticket folder without opening a file, the
+  // second reads one of those files as bytes — and `isOneName` is the predicate that keeps a status
+  // from being chosen by matching an error's prose. They are here because the barrel is derived from
+  // this register, so a symbol the barrel must carry has to appear on it; what the register claims
+  // of them is true in the strongest form, the frame naming none of the three.
+  'isOneName', 'listTicketFiles', 'readTicketFileBytes',
 ];
 
 /**
@@ -590,7 +598,12 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
       .toStrictEqual([]);
     expect(DOMAIN, 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
     expect(DOMAIN, 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(26);
+    expect(DOMAIN, 'the register still holds the twenty-six it held before Q-0127').not.toHaveLength(26);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(29);
+    for (const added of ['isOneName', 'listTicketFiles', 'readTicketFileBytes']) {
+      expect(DOMAIN, `the name Q-0127 added is not on the list it is supposed to be on: ${added}`)
+        .toContain(added);
+    }
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')
       .toContain('pushLag');
     expect(DOMAIN, 'the name Q-0126 added is not on the list it is supposed to be on')
