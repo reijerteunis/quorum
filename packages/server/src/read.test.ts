@@ -5,7 +5,7 @@
  * reads, no socket. Every route below is a GET, and the suite asserts that — a write reaching this
  * surface is the boundary this ticket exists to hold.
  */
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import { createRunHost } from './host.js';
 import { createApp } from './http.js';
@@ -575,20 +575,78 @@ describe('Q-0127 AC-5/AC-6 — one file, only one this request named, and only i
     expect((await response.json() as WireRefusal).code).toBe('not-a-file-path');
   });
 
-  test('a file that stops being one between the listing and the read is 404, not 400', async () => {
-    // The narrow window this status exists for, staged by removing the file after the request's own
-    // listing would have named it — proven by the same path answering 200 first.
+  test('a file removed BEFORE the request is refused at membership, and never reaches the read', async () => {
+    // The pre-request case, which is not the 404 arm and is kept apart from it so the two are not
+    // read as one answer: a file that has gone has left this request's own listing too, so
+    // membership stops it and the byte read is never asked. Proven by the same path answering 200
+    // while the file is there.
     const { project, app } = withFiles();
-    const rel = 'review/doomed.md';
+    const rel = 'review/removed-first.md';
     write(path.join(project.ticketDir, rel), 'here\n');
     expect((await app.request(fileAt(TICKET_ID, rel))).status).toBe(200);
     fs.rmSync(path.join(project.ticketDir, rel));
     const response = await app.request(fileAt(TICKET_ID, rel));
-    expect(response.status, 'a file that vanished was reported as a bad request').toBe(400);
-    // …which is the honest answer once it has left the listing too: `no-such-file` answers the case
-    // where it survives the listing and not the read, and that is a race no test can stage without
-    // interleaving the two. The code is reachable and is asserted over `core`'s own boundary below.
+    expect(response.status, 'a file that vanished before the request was not refused at membership').toBe(400);
     expect((await response.json() as WireRefusal).code).toBe('not-a-file-path');
+  });
+
+  test('a file that stops being one between the listing and the read is 404, not 400', async () => {
+    // AC-5's narrow arm, STAGED rather than described. The window is one request wide — membership
+    // is derived from the listing this same request computed — so the only way a listed path
+    // reaches the read and finds nothing is for the file to leave between the two.
+    //
+    // The seam is the listing's own measurement. `listTicketFiles` stats each name it enumerates,
+    // and the file is removed at the instant that stat returns, so the listing names it with the
+    // real size it has just read. Everything after that is unmocked production code: the membership
+    // test passes on a listing that is true of the moment it was taken, `readTicketFileBytes` opens
+    // a name with nothing at it and answers `null` for a real `ENOENT`, and the route maps that to
+    // 404. The seam reaches the listing and nothing else on this path — `pathInside` resolves
+    // through `realpathSync` and `lstatSync`, and the only other `statSync` in the request is
+    // `isFolderIn`'s, on the ticket DIRECTORY.
+    //
+    // `core` covers both reasons the read answers `null` — an absent file and a directory — over
+    // its own boundary; what only this seam can reach is the route's mapping of that `null` onto a
+    // status, which is the line the criterion is about.
+    const { project, app } = withFiles();
+    const rel = 'review/vanishes.md';
+    const abs = path.join(project.ticketDir, rel);
+    write(abs, 'here\n');
+    // The fixture is sound first, so a 404 below is the interleaving rather than a path this ticket
+    // never held.
+    expect((await app.request(fileAt(TICKET_ID, rel))).status).toBe(200);
+
+    const realStatSync = fs.statSync;
+    // An object rather than a `let`, so the assertion below reads its declared type: a `let` that
+    // is only ever assigned inside a callback is narrowed to its initialiser at every later read.
+    const staged = { listedBytes: -1 };
+    // The arguments are forwarded whole rather than re-declared, so the delegation is transparent
+    // for every caller and every overload — and so this names neither options type, one of which
+    // `@typescript-eslint/no-deprecated` refuses.
+    const stat = vi.spyOn(fs, 'statSync').mockImplementation(
+      (...args: Parameters<typeof fs.statSync>) => {
+        const answer = realStatSync(...args);
+        // Once, and only for the file this test is about: every other name — including the second
+        // look this path gets if anything asks again — is measured and left alone.
+        if (staged.listedBytes < 0 && String(args[0]) === abs) {
+          staged.listedBytes = Number(answer?.size ?? -1);
+          fs.rmSync(abs);
+        }
+        return answer;
+      });
+    try {
+      const response = await app.request(fileAt(TICKET_ID, rel));
+      // The staging happened, and it happened where this test says it does. A listing that never
+      // measured the file would leave it on disk and answer 200, so this cannot pass vacuously —
+      // and the size is the real one, which is what says the listing NAMED the file rather than
+      // skipping it.
+      expect(staged.listedBytes, 'the listing never measured the file, so nothing was staged').toBe(5);
+      expect(response.status, 'a file that survived the listing and not the read was not answered 404').toBe(404);
+      // 400 here would mean it had left the listing as well, which is the test above. This status
+      // is reachable only through membership passing and the byte read then answering nothing.
+      expect((await response.json() as WireRefusal).code).toBe('no-such-file');
+    } finally {
+      stat.mockRestore();
+    }
   });
 
   test('confinement still fires underneath, which membership does not replace', async () => {
