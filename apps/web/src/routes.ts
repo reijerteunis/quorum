@@ -10,7 +10,7 @@
  * THE M4 PATHS ARE DECLARED NOW, ahead of the tickets that fill them, for the same reason: four
  * later tickets inherit a URL shape instead of each inventing one. The rail is seven entries
  * because `docs/05-design-prompt.md:21` names seven, and it does NOT map one-to-one onto the M3
- * screen tickets — three rail entries have no ticket at all, and three routes (mission control, the
+ * screen tickets — two rail entries have no ticket at all, and three routes (mission control, the
  * gate screen, step chat) are reached from a run rather than from the rail.
  */
 
