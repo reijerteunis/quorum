@@ -106,3 +106,54 @@ row and becomes a whole page of nothing.
 
 The board (Q-0017), fixing Q-0060, mission control, the gate screen, run-history drill-down, parsing
 `runs.log` into links, editing anything in a ticket folder, and any write of any kind.
+
+## Three findings inherited from Q-0017, verified against the merged tree
+
+Found by a hand pass over the six files Q-0017's review diff could not carry — the cap truncated
+that diff on every one of its three rounds, and the hidden set grew 6 → 8 → 9 as the branch did.
+**No review round raised any of them**, and all three reviews claimed to have inspected those files.
+They land here rather than by hand at Q-0017's close because this ticket already opens `read.ts`
+and `wire.ts`, and a change reviewed with its neighbours is worth more than three isolated commits.
+
+**Severity is stated honestly, including where the first pass overstated it.** These were carried to
+the gate as three defects; re-measured against the merged tree, one is a documented design decision
+with no live instance, and it is written here as the question it actually is.
+
+1. **`packages/server/src/read.ts:68` — an all-unpriced history sums to `0`, not `null`.**
+   `billedCostOf` returns `null` for absent or empty history, which is right and deliberate. Its own
+   JSDoc then rules the null-entry case: *"A `null` entry cost is summed as zero, exactly as the
+   board does"*, disclosed by the cost legend and citing *"Codex cost is reported as tokens, never
+   priced locally"* (2026-08-22). So a ticket whose history exists and is **entirely** unpriced
+   renders `$0.00` — indistinguishable from one that genuinely cost nothing.
+   **Measured: zero such tickets exist in this backlog today**, so it is latent rather than live, and
+   reachable in principle by a ticket every run of which was codex-only. The question is not whether
+   the code matches its comment — it does — but whether the legend is sufficient disclosure for the
+   all-unpriced case, against `04-architecture.md:200`'s rule on fabricated values and the
+   `n/a`-never-`0` discipline the same file applies to every other measure on this transport.
+   **Decide it; do not assume the first pass was right that it is a defect.** If the answer is that
+   the legend suffices, say so in the JSDoc and add the case to a test, because the next reader will
+   ask again.
+
+2. **`packages/shared/src/wire.ts:157,164` — two commit counts that may be negative.**
+   `not-contained.ahead` and `unpushed.ahead` are `z.number().int()` with no `.nonnegative()`, while
+   `count` (`:50`) and `pendingGates` (`:126`) in the same file both carry it. A commit count cannot
+   be negative, and the schema is the only thing standing between a wrong `rev-list` reading and a
+   rendered figure. Two characters each; the value is the consistency, since a reader comparing the
+   four fields today learns the wrong rule about which counts are constrained.
+
+3. **`packages/shared/src/docs.test.ts:1702` — a test that does not do what it is named for.**
+   The case is titled *"so they cannot drift apart"* and its comment says the two strings are
+   *"held against each other rather than each against a paraphrase"*. They are not: each is matched
+   independently against `/same-origin/i`, `/absolute URL/i` and `/font host/i`, and the two are
+   never compared. The three needles do stop them drifting on those axes, so the test is not
+   vacuous — what is false is the comment's account of the mechanism, which is the class this
+   repository records most often. Either compare the two, or correct the comment to claim the weaker
+   property it actually enforces. **Do not delete the needles**: they are the anti-vacuity half.
+
+### What produced them, and the successor it argues for
+
+`repo.max_diff_bytes` defaults to 200,000 and truncates **head-only**. Since Q-0116 the engine warns
+and names the omitted files, which is how the six were identified at all — that fix is what made this
+pass possible. What it does not do is give the reviewer the bytes. Across Q-0017's three rounds the
+reviewer was handed 77–84% of the change and reported no findings in the remainder three times.
+**A ticket for the cap itself is owed and is not this one**, which must not grow a second subject.
