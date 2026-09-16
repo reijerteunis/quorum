@@ -36,6 +36,15 @@ function eventLine(event: Event): string {
   }
 }
 
+/** One event, rendered with its type named beside its payload — never one undifferentiated line. */
+function EventLine({ event }: { readonly event: Event }): ReactNode {
+  return (
+    <li className="whitespace-pre-wrap break-words font-mono">
+      <span className="text-muted">{event.type}</span> {eventLine(event)}
+    </li>
+  );
+}
+
 /** One step's column: its exact id, its latest observed vendor, and its events in arrival order. */
 function TraceColumnView({ column }: { readonly column: TraceColumn }): ReactNode {
   return (
@@ -49,9 +58,7 @@ function TraceColumnView({ column }: { readonly column: TraceColumn }): ReactNod
       </p>
       <ol className="flex flex-col gap-1 text-xs text-text">
         {column.events.map((event, index) => (
-          <li key={index} className="whitespace-pre-wrap break-words font-mono">
-            {eventLine(event)}
-          </li>
+          <EventLine key={index} event={event} />
         ))}
       </ol>
     </div>
@@ -75,9 +82,7 @@ export function MissionControlTrace({ events }: MissionControlTraceProps): React
         <p className="font-mono text-xs text-muted">Run activity</p>
         <ol className="flex flex-col gap-1 text-xs text-text">
           {runActivity.map((event, index) => (
-            <li key={index} className="whitespace-pre-wrap break-words font-mono">
-              {eventLine(event)}
-            </li>
+            <EventLine key={index} event={event} />
           ))}
         </ol>
       </div>
