@@ -10,7 +10,9 @@ import { afterAll, describe, expect, test } from 'vitest';
 import { createRunHost } from './host.js';
 import { createApp } from './http.js';
 import { mountRead } from './read.js';
-import { RUN_HISTORY_ROOT } from '@quorum/shared';
+import {
+  RUN_HISTORY_ROOT, wireFlowListSchema, wireTicketListSchema, type WireTicket, type WireTicketList,
+} from '@quorum/shared';
 import { fixture, removeTempDirs, TICKET_ID, write } from '../test/fixture.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -91,6 +93,90 @@ describe('Q-0119 — the surface answers what is there, and writes nothing', () 
     expect(broken?.problems.length, 'a refused flow carries no reason').toBeGreaterThan(0);
     // …and the good one is still runnable, so the clause discriminates rather than failing everything.
     expect(body.flows.find((f) => f.name === project.flowName)?.runnable).toBe(true);
+  });
+});
+
+describe('Q-0017 AC-1/AC-2 — a ticket row carries what a card renders, and nothing it cannot support', () => {
+  /** A ticket written by hand, so the frontmatter under test is exactly what this asserts over. */
+  const writeTicket = (repoDir: string, folder: string, id: string, extra: string): void => {
+    write(path.join(repoDir, 'backlog', folder, 'ticket.md'), [
+      '---', `id: ${id}`, 'title: cost probe', 'stage: draft', 'owner: qa', 'repos: []',
+      `branch: harness/${id}/integration`, 'priority: p1', 'created: 2026-09-16', extra, '---', 'body', '',
+    ].join('\n'));
+  };
+
+  /** Every row the listing answers with, by id. */
+  const rowsOf = async (app: ReturnType<typeof served>['app']): Promise<Record<string, WireTicket>> => {
+    const body = await (await app.request('/tickets')).json() as WireTicketList;
+    return Object.fromEntries(body.tickets.map((ticket) => [ticket.id, ticket]));
+  };
+
+  test('the listing parses against the shared schema — a browser executes this one, not a cast', async () => {
+    // The whole point of the shapes moving to `@quorum/shared` at this ticket: a browser needs a
+    // runtime PARSER and not a type, and a `JSON.parse` result assigned to an interface is the
+    // silent default the rules forbid. Asserted over a REAL response rather than over a fixture,
+    // because what could drift is this projection and not the schema.
+    const { app } = served();
+    const body = await (await app.request('/tickets')).json();
+    const parsed = wireTicketListSchema.safeParse(body);
+    expect(parsed.success ? '' : JSON.stringify(parsed.error.issues), 'the live listing does not satisfy its own schema').toBe('');
+    const flows = wireFlowListSchema.safeParse(await (await app.request('/flows')).json());
+    expect(flows.success ? '' : JSON.stringify(flows.error.issues), 'the live flow listing does not satisfy its own schema').toBe('');
+  });
+
+  test('nothing has run is null, every price is zero is zero, and two priced entries are their sum', async () => {
+    // Three fixtures because three answers are possible and only one of them is arithmetic.
+    // `null` is the one that matters: nothing has run is NOT the claim that it cost nothing, which
+    // is the `n/a`-never-`0` rule every other measure on this transport is under. `quorum board`
+    // prints `$0.00` for the first two alike, and that divergence is registered in `board.ts`
+    // rather than repaired here — no printed byte of that command moves on this ticket.
+    const { project, app } = served();
+    writeTicket(project.repoDir, 'T-0100-none', 'T-0100', 'iterations: {}');
+    writeTicket(project.repoDir, 'T-0101-empty', 'T-0101', 'history: []');
+    writeTicket(project.repoDir, 'T-0102-zero', 'T-0102',
+      'history:\n  - {stage: draft, run: 1, flow: probe, at: x, cost: 0}\n  - {stage: draft, run: 2, flow: probe, at: y, cost: 0}');
+    writeTicket(project.repoDir, 'T-0103-priced', 'T-0103',
+      'history:\n  - {stage: draft, run: 1, flow: probe, at: x, cost: 1.5}\n  - {stage: draft, run: 2, flow: probe, at: y, cost: 2.25}');
+
+    const rows = await rowsOf(app);
+    expect(rows['T-0100'].billedCostUsd, 'a ticket with no history key was priced').toBeNull();
+    expect(rows['T-0101'].billedCostUsd, 'a ticket whose history is empty was priced').toBeNull();
+    expect(rows['T-0102'].billedCostUsd, 'a run that really cost nothing was reported as never having run').toBe(0);
+    expect(rows['T-0103'].billedCostUsd).toBe(3.75);
+  });
+
+  test('a null entry cost is summed as zero, exactly as the board sums it', async () => {
+    // The vendor reported no price, so it contributes nothing — and the legend beside the figure is
+    // the only thing that says so. Pinned because a schema-level nullable invites the opposite
+    // treatment, and `quorum board`'s `?? 0` is the behaviour this is a projection of.
+    const { project, app } = served();
+    writeTicket(project.repoDir, 'T-0104-unpriced', 'T-0104',
+      'history:\n  - {stage: draft, run: 1, flow: probe, at: x, cost: null}\n  - {stage: draft, run: 2, flow: probe, at: y, cost: 4}');
+    expect((await rowsOf(app))['T-0104'].billedCostUsd).toBe(4);
+  });
+
+  test('iterations travel verbatim, and a stage the vocabulary cannot place still travels', async () => {
+    // Two claims the wire schema's own looseness is FOR. The counters are copied rather than
+    // computed — there is no denominator anywhere on this transport — and a damaged `ticket.md`
+    // yields the literal "undefined", which must reach a client that can name it rather than being
+    // refused into a listing nobody can render. Q-0060 is open and this repairs none of it.
+    const { project, app } = served();
+    writeTicket(project.repoDir, 'T-0105-iters', 'T-0105', "iterations: {review: 2, 'chore.review': 1}");
+    write(path.join(project.repoDir, 'backlog', 'T-0106-damaged', 'ticket.md'), 'no frontmatter at all\n');
+
+    const rows = await rowsOf(app);
+    expect(rows['T-0105'].iterations).toStrictEqual({ review: 2, 'chore.review': 1 });
+    expect(rows['undefined'], 'the damaged ticket was dropped from the listing').toBeDefined();
+    expect(rows['undefined'].stage, 'the damaged ticket was given a stage nobody wrote').toBe('undefined');
+  });
+
+  test('the base branch travels with the two git facts it was computed against', async () => {
+    // A containment answer is spelled `<base>:contained` and a push-lag sentence names the base, so
+    // a client holding the states without the ref can render neither — and deriving it from a second
+    // route would be a client guessing which base THESE answers used.
+    const { app } = served();
+    const body = await (await app.request('/tickets')).json() as WireTicketList;
+    expect(body.baseBranch, 'the listing does not say which base it answered about').toBe('main');
   });
 });
 

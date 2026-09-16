@@ -29,6 +29,20 @@
         // a document that has drifted from the sentence it quotes. The adapter side of that
         // comparison is already declared below.
         "../../docs/USAGE.md",
+        // Q-0017 AC-15: docs.test.ts holds the design brief against the answer set
+        // `gateAnswerSchema` declares, the brief having been the third document to promise the gate
+        // override the engine refuses and the last to be corrected. A cached pass must not stand
+        // over a brief that has drifted back.
+        "../../docs/05-design-prompt.md",
+        // Q-0017 AC-4: docs.test.ts holds `apps/web/test/source.test.ts`'s network-scan title
+        // against `docs/04-architecture.md`'s sentence about the same property, so the two cannot
+        // drift apart again. The anchor is here rather than in `apps/web` for the reason this
+        // package's own `apps/web` block already gives: that task would otherwise earn its first
+        // `turbo.json` for one assertion, and this task already declares the document.
+        "../../apps/web/test/source.test.ts",
+        // …and the module that made the old claim false, which the same block reads to prove the
+        // narrowing has an occasion rather than being a document weakened for nothing.
+        "../../apps/web/src/daemon-client.ts",
         "../../docs/06-development-plan.md",
         "../../docs/DECISIONS.md",
         "../../docs/decisions/*.md",

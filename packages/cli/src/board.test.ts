@@ -33,6 +33,9 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, test } from 'vitest';
 
+import { ALWAYS_RENDERED, BRANCH_EXPECTED } from '@quorum/shared';
+
+import { COST_LEGEND } from './board.js';
 import { SUCCESS } from './exit.js';
 import { invoke, plain, type Invocation } from '../test/invoke.js';
 
@@ -1032,5 +1035,82 @@ describe('Q-0105 — push lag, the one repository-level fact this board reports'
       .toMatch(/\(missing ref\)/);
     expect(lagLine(await board(notARepo)), 'a directory that is not a work tree has no fact to report')
       .toBeNull();
+  });
+});
+
+describe('Q-0017 AC-7/AC-10/AC-11 — the board rules are one register, read by both surfaces', () => {
+  /** A file of this repository, by path from the root. */
+  const repoFile = (relative: string): string => fs.readFileSync(path.join(WORKSPACE, relative), 'utf8');
+
+  /** This command's own module, and the browser board that renders the same facts. */
+  const COMMAND = 'packages/cli/src/board.ts';
+  const SCREEN = 'apps/web/src/backlog-board.tsx';
+
+  test('neither surface declares its own copy of the five that moved', () => {
+    // Five declarations left `board.ts` at Q-0017 — the two stage sets, the containment token, the
+    // `indeterminate` legend and the push-lag sentence — because `apps/web` renders the same board
+    // and every one of them was bought in this command after a failure. What would go wrong is
+    // re-derivation: two surfaces answering differently about one repository is the thing a board
+    // exists to prevent, and a local copy is how that starts.
+    const declaration = /(?:^|\n)\s*(?:export\s+)?(?:const|function)\s+(ALWAYS_RENDERED|BRANCH_EXPECTED|containmentToken|indeterminateLegend|pushLagSentence)\b/g;
+    for (const file of [COMMAND, SCREEN]) {
+      const declared = [...repoFile(file).matchAll(declaration)].map((match) => match[1]);
+      expect(declared, `${file} declares its own copy of a shared board rule`).toStrictEqual([]);
+    }
+    // …and the pattern finds one when it is there, so the emptiness above is an absence.
+    expect([...'\nconst ALWAYS_RENDERED = [];'.matchAll(declaration)].map((match) => match[1]))
+      .toStrictEqual(['ALWAYS_RENDERED']);
+  });
+
+  test('and both read the same register, which is what makes it one', () => {
+    const scope = `@${'quorum'}/shared`;
+    for (const file of [COMMAND, SCREEN]) {
+      const text = repoFile(file);
+      expect(text, `${file} does not import from the vocabulary package`).toContain(scope);
+      for (const symbol of ['ALWAYS_RENDERED', 'BRANCH_EXPECTED', 'containmentToken', 'pushLagSentence']) {
+        expect(text, `${file} does not read ${symbol}`).toContain(symbol);
+      }
+    }
+    // The identity itself, through the import this command already makes. A count would be
+    // satisfied by a member swapped for another, which is exactly what would go wrong.
+    expect([...ALWAYS_RENDERED]).toStrictEqual(['draft', 'requirements', 'solutioned']);
+    expect([...BRANCH_EXPECTED].sort())
+      .toStrictEqual(['deployed', 'green', 'qa-passed', 'red', 'reviewed', 'solutioned']);
+  });
+
+  test('AC-10 — the cost legend is one sentence, held byte-identical across the two surfaces', () => {
+    // **The one board rule that could NOT move**, and the reason is a guard rather than an
+    // oversight: `packages/shared/src/events.test.ts` refuses a vendor name in code anywhere under
+    // that package, and this sentence names one by design — disclosing that a token-only vendor
+    // contributes nothing to the figure is the whole of what it is for. Assembling the name to get
+    // past that scan is the obfuscation this repository refuses elsewhere, and weakening the scan
+    // would trade a property somebody bought for a convenience. So the sentence is declared twice
+    // and pinned here, which is Q-0068 AC-6's arrangement: one register kept by a guard rather than
+    // by an import, because an import is the thing that package may not offer.
+    const sentenceIn = (file: string): string => {
+      const found = /COST_LEGEND\s*(?::\s*string)?\s*=\s*\n?\s*'([^']+)'/.exec(repoFile(file));
+      if (!found) throw new Error(`${file} declares no COST_LEGEND — this check has lost its subject`);
+      return found[1];
+    };
+    expect(sentenceIn(SCREEN), 'the two surfaces disclose different things about one figure')
+      .toBe(sentenceIn(COMMAND));
+    // It says the two things it exists to say, so "identical" is not identically empty.
+    expect(sentenceIn(COMMAND)).toContain('billed cost where the vendor reports one');
+    expect(sentenceIn(COMMAND)).toContain('are not included');
+  });
+
+  test('and this command still prints that sentence under its own legend grammar', async () => {
+    // The byte the move could have changed. `board` composes `· cost = ` around the sentence, so a
+    // surface's grammar stays its own while the claim it makes does not.
+    const root = await projectFixture();
+    const ticket = await makeTicket(root);
+    rewriteTicket(ticket, ticketText(ticket).replace(
+      /^history: \[\]$/m,
+      'history:\n  - {stage: draft, run: 1, flow: probe, at: x, cost: 1.5}',
+    ));
+    const result = await board(root);
+    expect(result.exitCode, out(result)).toBe(SUCCESS);
+    expect(out(result), 'the legend no longer prints under its own name')
+      .toContain(`· cost = ${COST_LEGEND}`);
   });
 });

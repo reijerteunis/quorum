@@ -143,12 +143,32 @@ const NAVIGATION = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=
  *
  * A `:param` segment is given a literal, since what is being asked is whether the SHAPE survives a
  * reload; a router matches `/runs/:handle` and a browser only ever asks for `/runs/run-3`.
+ *
+ * **A row's `path:` may be a literal or a name, and a name is RESOLVED rather than transcribed.**
+ * It recognised one name — `HOME_PATH` — and answered it with `'/projects'` written down here, so a
+ * register that renamed its own home would have been compared against a stale copy while this file
+ * went on reporting twelve. Q-0017 declares two more (`BOARD_PATH`, and the ticket page's pattern,
+ * which `ticketPath` builds a card's link from), and a scraper that knows one name and not the next
+ * two is the guard-keyed-on-a-name shape this repository keeps finding. So every `const NAME =
+ * '<literal>'` in the file is collected first and a `path:` naming one is looked up; a name with no
+ * declaration **throws**, because a scraper that quietly dropped a row would take the count with it
+ * and the length assertion below is what would then be satisfied by the wrong twelve.
  */
 function shellPaths(): string[] {
   const source = repoFile('apps/web/src/routes.ts');
+  const declared = new Map<string, string>(
+    [...source.matchAll(/\b(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*'([^']+)'/g)]
+      .map((match) => [match[1], match[2]] as [string, string]),
+  );
   const block = /export const ROUTES: readonly Route\[\] = \[([\s\S]*?)\n\];/.exec(source)?.[1] ?? '';
-  const paths = [...block.matchAll(/\bpath:\s*(?:'([^']+)'|(HOME_PATH))/g)]
-    .map((match) => match[1] ?? '/projects');
+  const paths = [...block.matchAll(/\bpath:\s*(?:'([^']+)'|([A-Za-z_$][\w$]*))/g)].map((match) => {
+    if (match[1] !== undefined) return match[1];
+    const resolved = declared.get(match[2]);
+    if (resolved === undefined) {
+      throw new Error(`apps/web/src/routes.ts declares a route path as ${match[2]}, which this scan cannot resolve — it would otherwise drop the row`);
+    }
+    return resolved;
+  });
   return paths.map((entry) => entry.replace(/:[A-Za-z]+/g, 'q0122'));
 }
 

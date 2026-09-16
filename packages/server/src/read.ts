@@ -27,9 +27,14 @@ import {
 } from '@quorum/core';
 import { Hono } from 'hono';
 
-import { RUN_HISTORY_ROOT } from '@quorum/shared';
+import {
+  RUN_HISTORY_ROOT,
+  type TicketHistoryEntry, type WireFlow, type WireFlowList, type WireTicket, type WireTicketList,
+} from '@quorum/shared';
 
 import { badRequest } from './wire.js';
+
+export type { WireFlow, WireFlowList, WireTicket, WireTicketList };
 
 
 
@@ -46,15 +51,23 @@ function rollupRows(rollup: unknown): VendorRollup[] {
     typeof row === 'object' && row !== null && typeof (row as { vendor?: unknown }).vendor === 'string');
 }
 
-/** One ticket, as this surface reports it. */
-export interface WireTicket {
-  readonly id: string;
-  readonly title: string;
-  readonly stage: string;
-  readonly owner: string;
-  readonly branch: string;
-  /** Never stored: derived from git on this request, or `null` where git could not answer. */
-  readonly containment: unknown;
+/**
+ * The sum of a ticket's own billed history, or `null` where it has no history at all.
+ *
+ * The same arithmetic `packages/cli/src/board.ts` already prints, with one deliberate difference:
+ * that surface renders `$0.00` for a ticket nothing has run, and this answers `null`. **Nothing has
+ * run is not the claim that it cost nothing**, which is the `n/a`-never-`0` rule every other measure
+ * on this transport is under; an empty `history` array is the same case as an absent one and takes
+ * the same answer.
+ *
+ * A `null` entry cost is summed as zero, exactly as the board does. That is what the cost legend
+ * beside the figure exists to disclose: a vendor that reports no price contributes nothing here, and
+ * a ticket file cannot see its own incompleteness. See *"Codex cost is reported as tokens, never
+ * priced locally"* (2026-08-22).
+ */
+function billedCostOf(history: TicketHistoryEntry[] | undefined): number | null {
+  if (history === undefined || history.length === 0) return null;
+  return history.reduce((total, entry) => total + (entry.cost ?? 0), 0);
 }
 
 /**
@@ -66,9 +79,17 @@ export interface WireTicket {
  * make them stored facts, which both entries forbid by name — and a stale one would report an
  * ancestry that was true when it was written, which is worse than reporting none.
  */
-function gitFacts(project: Project): { spot: ReturnType<typeof containment>; lag: ReturnType<typeof pushLag> } {
+function gitFacts(project: Project): {
+  spot: ReturnType<typeof containment>;
+  lag: ReturnType<typeof pushLag>;
+  base: string;
+} {
   const base = project.config.repo?.base_branch ?? 'main';
-  return { spot: containment(project.repoDir, base), lag: pushLag(project.repoDir, base) };
+  // The ref travels with the answers it was computed against. A containment answer is spelled
+  // `<base>:contained` and a push-lag sentence names the base, so a client holding the states
+  // without the ref can render neither — and re-deriving it from a second route would be a client
+  // guessing which base THESE answers used.
+  return { spot: containment(project.repoDir, base), lag: pushLag(project.repoDir, base), base };
 }
 
 /** The read-only routes, mounted on an app that already carries the run routes. */
@@ -80,7 +101,7 @@ export function mountRead(app: Hono, project: Project): Hono {
   }));
 
   app.get('/tickets', (c) => {
-    const { spot, lag } = gitFacts(project);
+    const { spot, lag, base } = gitFacts(project);
     const tickets: WireTicket[] = project.backlog.list().map((ticket) => ({
       id: String(ticket.meta.id),
       title: String(ticket.meta.title ?? ''),
@@ -90,8 +111,14 @@ export function mountRead(app: Hono, project: Project): Hono {
       // `stateOf` answers `null` where it was asked nothing, which is not the same as an
       // indeterminate answer and is carried through rather than flattened.
       containment: spot?.stateOf(ticket.meta.branch) ?? null,
+      // Copied rather than computed: the loop counters the ticket already holds. There is no
+      // denominator here and there must not be one — a step's `max_iterations` lives inside a flow
+      // file and `GET /flows` carries no steps, so a `1/3` would be a number nobody measured.
+      iterations: ticket.meta.iterations ?? {},
+      billedCostUsd: billedCostOf(ticket.meta.history),
     }));
-    return c.json({ tickets, pushLag: lag });
+    const body: WireTicketList = { tickets, pushLag: lag, baseBranch: base };
+    return c.json(body);
   });
 
   app.get('/flows', (c) => {
@@ -103,8 +130,8 @@ export function mountRead(app: Hono, project: Project): Hono {
     // the only other caller. Passing the harness dir lints `harness.yaml` itself and reports one
     // record named "harness", which is what the first version of this did.
     const report = lintFlowDirectory(path.join(project.harnessDir, 'flows'));
-    return c.json({
-      flows: report.map((record) => ({
+    const body: WireFlowList = {
+      flows: report.map((record): WireFlow => ({
         // `file` is what a `FlowRecord` carries; a `name` lives on the parsed flow, which a refused
         // record does not have. Taking the basename means a refused flow is still NAMED, which is
         // the whole point of listing it.
@@ -114,7 +141,8 @@ export function mountRead(app: Hono, project: Project): Hono {
         produces: record.flow?.produces ?? null,
         problems: record.problems,
       })),
-    });
+    };
+    return c.json(body);
   });
 
   app.get('/history', (c) => {
