@@ -1,14 +1,23 @@
 ---
 id: Q-0017
 title: Backlog board and ticket page
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0017/integration
 priority: p2
 created: 2026-09-16
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-16T06:49:14.724Z
+    cost: 19.75
 ---
 apps/web renders the backlog as one column per stage and a ticket's folder as tabs. GET /tickets serves the board's data today; nothing serves a ticket's folder, and WireTicket carries neither the iteration counters nor the per-vendor cost the design brief's card asks for.
 

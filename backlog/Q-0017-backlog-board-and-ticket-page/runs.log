@@ -2,3 +2,6 @@
 2026-09-16T00:52:09.215Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=146930
 2026-09-16T01:00:53.034Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=7.925535000000001 ms=670753
 2026-09-16T01:10:04.177Z run=1 step=head-of-product vendor=claude model=opus verdict=needs-input cost=5.422633000000001 ms=551128
+2026-09-16T01:24:37.823Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=6.401911 ms=873629
+2026-09-16T06:49:14.717Z run=1 gate=human answer=advance
+2026-09-16T06:49:14.726Z run=1 completed stage=draft→requirements cost=19.75 tokens=14342772
