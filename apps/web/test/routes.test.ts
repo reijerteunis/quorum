@@ -137,7 +137,15 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
     // placeholder still draws.
     const app = fs.readFileSync(path.join(SOURCE, 'app.tsx'), 'utf8');
     for (const route of SCREEN_ROUTES.filter((entry) => entry.screenExists)) {
-      const name = route.path === BOARD_PATH ? 'BOARD_PATH' : route.path === TICKET_ROUTE ? 'TICKET_ROUTE' : route.path === GATE_ROUTE ? 'GATE_ROUTE' : route.path === RUNS_PATH ? 'RUNS_PATH' : 'RUN_ROUTE';
+      // A total map rather than a ternary chain: the chain's last arm was an unguarded default, so
+      // a SIXTH row claiming a screen took `RUN_ROUTE`'s name and passed on the fifth row's
+      // evidence. An unmapped row now fails here by name. Review round 1, N4.
+      const NAMES: Readonly<Record<string, string>> = {
+        [BOARD_PATH]: 'BOARD_PATH', [TICKET_ROUTE]: 'TICKET_ROUTE', [GATE_ROUTE]: 'GATE_ROUTE',
+        [RUNS_PATH]: 'RUNS_PATH', [RUN_ROUTE]: 'RUN_ROUTE',
+      };
+      const name = NAMES[route.path];
+      expect(name, `${route.path} claims a screen and this clause has no constant name for it`).toBeDefined();
       expect(app, `the app does not select ${route} by the register's own constant`).toContain(name);
     }
     expect(app, 'the app names a route path of its own rather than a register constant')
@@ -244,6 +252,9 @@ describe('Q-0121 AC-12 — the Runs landing route no longer says the daemon repo
     // And the shipped text is what this clause was written against, so an edit that emptied the
     // field would fail rather than satisfy every negative above.
     expect(waitingFor.length, 'the sentence is implausibly short').toBeGreaterThan(60);
+    // …and by content, as the gate row's own clause is: a length floor is satisfied by any
+    // 61-character sentence, including one describing a screen that no longer exists. Round 1, N6.
+    expect(waitingFor, 'the sentence does not describe the screen that shipped').toContain('runs the daemon is driving');
   });
 });
 
