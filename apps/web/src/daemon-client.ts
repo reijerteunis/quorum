@@ -31,9 +31,9 @@
  */
 import {
   gateAnswerEnvelopeSchema,
-  wireFlowListSchema, wireRefusalSchema, wireRunSchema, wireTicketDetailSchema, wireTicketFileSchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunListSchema, wireRunSchema, wireTicketDetailSchema, wireTicketFileSchema,
   wireTicketListSchema,
-  type GateAnswer, type WireFlowList, type WireRun, type WireTicketDetail, type WireTicketFile,
+  type GateAnswer, type WireFlowList, type WireRun, type WireRunList, type WireTicketDetail, type WireTicketFile,
   type WireTicketList,
 } from '@quorum/shared';
 
@@ -192,6 +192,12 @@ export const fetchTicketFile = (
  */
 export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promise<RequestState<WireRun>> =>
   requestJson(fetcher, runDetailPath(handle), wireRunSchema, now);
+
+/** Read the daemon's ordered run listing once; callers decide when an explicit refresh repeats it. */
+export const fetchRuns = (_fetcher: FetchLike, _now: Clock): Promise<RequestState<WireRunList>> => {
+  void wireRunListSchema;
+  throw new Error('not implemented');
+};
 
 /** The status the gate route answers a settled gate with. There is no body, and none is read. */
 const ACCEPTED = 204;

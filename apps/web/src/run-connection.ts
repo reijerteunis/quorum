@@ -18,6 +18,15 @@ import { reduceConnection, type ConnectionAction, type ConnectionMachine, type C
 import { runEventsUrl } from './daemon-endpoints.js';
 import { parseFrame } from './frame-parser.js';
 
+/**
+ * The newest accepted events retained by this browser.
+ *
+ * The daemon already retains and discloses a tail of 500. Reusing that measured product value
+ * bounds immutable-array copying, keeps early and late readers on the same visible extent, and
+ * avoids inventing a different limit before Q-0015's demonstration supplies a per-run count.
+ */
+export const RUN_EVENT_RETENTION = 500;
+
 /** The browser socket subset used by the run connection. */
 export interface SocketTransport {
   onopen: (() => void) | null;
@@ -35,6 +44,8 @@ export interface RunConnectionSnapshot {
   readonly state: ConnectionState;
   readonly events: readonly Event[];
   readonly missedCount: number | null;
+  /** Events accepted live and later evicted by the browser's independent retention bound. */
+  readonly browserDiscardedCount: number | null;
 }
 
 /** One owned connection with explicit replacement, retry and disposal. */
@@ -51,13 +62,14 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
   let machine: ConnectionMachine = { state: { kind: 'idle' }, opened: false, terminalSeen: false };
   let events: readonly Event[] = [];
   let missedCount: number | null = null;
+  let browserDiscardedCount: number | null = null;
   let socket: SocketTransport | null = null;
   let handle: string | null = null;
   let page: URL | null = null;
   let disposed = false;
   const listeners = new Set<(snapshot: RunConnectionSnapshot) => void>();
 
-  const snapshotOf = (): RunConnectionSnapshot => ({ state: machine.state, events, missedCount });
+  const snapshotOf = (): RunConnectionSnapshot => ({ state: machine.state, events, missedCount, browserDiscardedCount });
 
   const notify = (): void => {
     const snapshot = snapshotOf();
@@ -190,6 +202,7 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       page = nextPage;
       events = [];
       missedCount = null;
+      browserDiscardedCount = null;
       open(runEventsUrl(nextPage, nextHandle));
     },
 

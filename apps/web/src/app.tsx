@@ -46,7 +46,9 @@ const currentPageUrl = (): URL | undefined => (typeof window === 'undefined' ? u
 const defaultSocketFactory: SocketFactory = (url) => new WebSocket(url.toString()) as unknown as SocketTransport;
 
 /** What the top bar shows wherever no run route holds a live connection. */
-const IDLE_SNAPSHOT: RunConnectionSnapshot = { state: { kind: 'idle' }, events: [], missedCount: null };
+const IDLE_SNAPSHOT: RunConnectionSnapshot = {
+  state: { kind: 'idle' }, events: [], missedCount: null, browserDiscardedCount: null,
+};
 
 /** Injectable application inputs used by the browser and the transport-driven tests. */
 export interface AppProps {

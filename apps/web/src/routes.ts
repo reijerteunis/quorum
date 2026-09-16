@@ -105,6 +105,12 @@ export const TICKET_ROUTE = '/backlog/:ticketId';
  */
 export const GATE_ROUTE = '/runs/:handle/gate';
 
+/** The registered static path for the runs landing. */
+export const RUNS_PATH = '/runs';
+
+/** The registered pattern for mission control. */
+export const RUN_ROUTE = '/runs/:handle';
+
 /**
  * Where one ticket's page lives, with the id confined to a single path segment.
  *
@@ -114,6 +120,12 @@ export const GATE_ROUTE = '/runs/:handle/gate';
  * the `<PREFIX>-nnnn` grammar the glossary describes.
  */
 export const ticketPath = (id: string): string => TICKET_ROUTE.replace(':ticketId', encodeURIComponent(id));
+
+/** Where mission control for one opaque handle lives. */
+export const runPath = (handle: string): string => RUN_ROUTE.replace(':handle', encodeURIComponent(handle));
+
+/** Where the existing gate screen for one opaque handle lives. */
+export const gatePath = (handle: string): string => GATE_ROUTE.replace(':handle', encodeURIComponent(handle));
 
 /** The left rail: seven entries, in `docs/05-design-prompt.md:21`'s order. */
 export const RAIL: readonly RailEntry[] = [
