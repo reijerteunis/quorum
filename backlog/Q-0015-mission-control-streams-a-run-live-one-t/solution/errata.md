@@ -12,3 +12,52 @@ The guard must prove both directions: a template-literal parsing fixture is reje
 accessibility-selector fixture is accepted. Fixture strings are assembled so the guard does not
 flag its own source. This changes only the instrument, not AC-6's product rule: browser code must
 not parse a human-readable event message for a machine value.
+
+---
+
+## SE-2 — `routes.test.ts:139` fails open when this ticket lands, and qa-red owns the fix
+
+Carried from `solution/run-2/review-iter-4.md` N-2, **because `qa-red.yaml` does not read the
+architecture review** — its inputs are `merged.md`, `solution.md`, this file, `tasks.yaml` and its own
+scenario reviews. Without this entry the finding would have reached the architect and not the phase
+that has to act on it. Second instance of **Q-0132**'s gap inside one run.
+
+**The defect, verified at this gate rather than relayed.** `apps/web/test/routes.test.ts:131` asserts
+the screen-bearing rows by **identity** — `toStrictEqual([BOARD_PATH, TICKET_ROUTE, GATE_ROUTE])` — so
+it goes red the moment this ticket marks two more rows built, and QA is forced into that describe
+block. Nine lines down, `:139` loops over a **hard-coded three-element array** of the same three
+constants, asserting the property its own comment states: *"every row claiming a screen is one
+`app.tsx` selects by the register's own constant"*. That list stays green at three while five rows
+claim a screen, so the property silently stops covering `RUNS_PATH` and `RUN_ROUTE` — **the two rows
+this ticket adds** — and the shipped state is a guard covering three of five while reporting success.
+
+**The fix is the shape this repository already uses twice**: derive the loop from
+`SCREEN_ROUTES.filter((route) => route.screenExists)` rather than listing constants, so a sixth row is
+covered without anyone remembering — Q-0051's `q0050.source.test.ts` repair (derive from `production`
+rather than a hand-written array) and Q-0108's `covered` repair. **Show it red before green**: against
+the derived form with `app.tsx`'s selection of one new constant removed, the clause must fail and name
+that route.
+
+## SE-3 — T10 is narrowed: `docs/06-development-plan.md` is not a development task's surface
+
+`solution/tasks.yaml` has been edited at this gate — the gate whose stated reason is *"Architect owner
+approves solution/solution.md and solution/tasks.yaml"* — to remove that file from T10. The scoped
+copy at `solution/run-2/tasks.yaml` is the architect's output and is deliberately left as written.
+
+**Why, and it is a ruling rather than a preference.** `development.yaml` fans out `by: role` and T10 is
+`role: backend`, whose `paths:` include `docs` — so the task would have run and written that page.
+Three reasons it must not:
+
+1. **Q-0094 erratum E-3(a) already ruled it.** That ticket's E-2 required a development-plan edit and
+   E-3(a) withdrew it, recording that *"this page's bullets are rewritten by hand at each plan pass"*
+   and that the ruling *"turned a harmless revert into a review finding"*.
+2. **The entry already exists and holds work a development task cannot know.** Q-0015's bullet was
+   written at the requirements gate and records the three-way split, Q-0130 and Q-0131, the
+   no-producer finding and two run-time context defects. T10 would replace it with a description of
+   the shipped screen.
+3. **The facts a ticket entry carries do not exist yet.** Cost, implement rounds, review findings and
+   what was verified are all post-run, so no development-stage task can write that bullet correctly
+   whatever it is told.
+
+**`docs/04-architecture.md` stays T10's**, and legitimately: it is a living design document describing
+the code, which is exactly what a development task changes. Nothing else in the task moves.

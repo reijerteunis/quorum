@@ -1,0 +1,160 @@
+tasks:
+  - id: T01
+    role: frontend
+    title: Implement the ordered runs-list read
+    description: >-
+      Own only apps/web/src/daemon-client.ts and implement fetchRuns through requestJson,
+      DAEMON_ENDPOINTS.runs, and wireRunListSchema, returning the existing five-kind
+      RequestState promise contract. Do not touch components, routes, connection code,
+      contracts, documentation, styles, or tests.
+    contracts:
+      - apps/web/src/daemon-client.ts#fetchRuns
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T02
+    role: frontend
+    title: Implement lossless trace and timeline projections
+    description: >-
+      Own only apps/web/src/mission-control-model.ts and implement partitionTrace and
+      buildStepTimeline, including exact-id grouping, first-appearance ordering,
+      conservation, latest spawn-or-retry vendor, and all three dispositions. Do not
+      touch transport, components, copy, routes, documentation, styles, or tests.
+    contracts:
+      - apps/web/src/mission-control-model.ts
+      - contracts/Q-0015/mission-control.contract.md#trace-and-timeline
+    depends_on: []
+
+  - id: T03
+    role: frontend
+    title: Bound the accepted event tail and count browser discards
+    description: >-
+      Own only apps/web/src/run-connection.ts; retain the newest RUN_EVENT_RETENTION
+      events, increment browserDiscardedCount exactly, preserve earlier snapshot
+      immutability, reset both loss counters on retarget, and correct the stale Q-0121
+      forecast in the append comment. Do not touch models, components, routes, copy,
+      contracts, documentation, styles, or tests.
+    contracts:
+      - apps/web/src/run-connection.ts#RUN_EVENT_RETENTION
+      - apps/web/src/run-connection.ts#RunConnectionSnapshot
+      - contracts/Q-0015/mission-control.contract.md#retention-and-disclosure
+    depends_on: []
+
+  - id: T04
+    role: frontend
+    title: Finalize the mission-control route register
+    description: >-
+      Own only apps/web/src/routes.ts; mark the runs rail and both Q-0015 route rows
+      built, assign the landing to Q-0015, replace rather than empty waitingFor, use
+      exported route constants, and update the nearby JSDoc from three ticket-null rows
+      to two. Do not touch the router, app, components, tests, contracts, documentation,
+      or styles.
+    contracts:
+      - apps/web/src/routes.ts#RUNS_PATH
+      - apps/web/src/routes.ts#RUN_ROUTE
+      - apps/web/src/routes.ts#runPath
+      - apps/web/src/routes.ts#gatePath
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T05
+    role: frontend
+    title: Implement the runs landing screen
+    description: >-
+      Own only apps/web/src/runs-screen.tsx and implement one mount read, explicit
+      refresh, five request-state presentations, contracted loaded-empty and null-ticket
+      text, daemon-order rows, runPath navigation, and local utility-class layout. Do
+      not edit copy, clients, routes, app wiring, mission control, theme.css, contracts,
+      documentation, or tests.
+    contracts:
+      - apps/web/src/runs-screen.tsx
+      - apps/web/src/mission-control-text.ts#EMPTY_RUNS_TEXT
+      - apps/web/src/mission-control-text.ts#NO_TICKET_ID_TEXT
+      - apps/web/src/routes.ts#runPath
+      - apps/web/src/daemon-client.ts#fetchRuns
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T06
+    role: frontend
+    title: Render the lossless run lane and trace columns
+    description: >-
+      Own only apps/web/src/mission-control-trace.tsx and render the data-run-activity
+      lane plus one data-trace-step-id column per exact stepId, with latest observed
+      vendor and arrival-ordered event fields rendered as React text. Use local utility
+      classes and parse no message. Do not touch projections, status, composition,
+      transport, copy, routes, theme.css, documentation, contracts, or tests.
+    contracts:
+      - apps/web/src/mission-control-trace.tsx
+      - apps/web/src/mission-control-model.ts#partitionTrace
+      - contracts/Q-0015/mission-control.contract.md#trace-and-timeline
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T07
+    role: frontend
+    title: Render mission-control status and disclosures
+    description: >-
+      Own only apps/web/src/mission-control-status.tsx and render connection and metadata
+      states, retry actions, contracted header and identity anchors, independent loss
+      notices, five disclosures, the terminal-event run number, and the pendingGates-
+      derived gate link. Derive connection prose and retryability from snapshot.state
+      and use local utility classes. Do not touch trace, composition, copy, clients,
+      projections, routes, theme.css, documentation, contracts, or tests.
+    contracts:
+      - apps/web/src/mission-control-status.tsx
+      - apps/web/src/mission-control-text.ts
+      - apps/web/src/routes.ts#gatePath
+      - contracts/Q-0015/mission-control.contract.md#retention-and-disclosure
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T08
+    role: frontend
+    title: Compose mission control and render its observed timeline
+    description: >-
+      Own only apps/web/src/mission-control-screen.tsx; perform the handle metadata read,
+      compose the contracted trace and status components, and render the observed-only
+      timeline using STEP_DISPOSITION_TEXT, data-step-disposition, and local utility
+      classes. Do not duplicate child regions or edit child components, clients,
+      projections, copy, routes, app wiring, theme.css, documentation, contracts, or tests.
+    contracts:
+      - apps/web/src/mission-control-screen.tsx
+      - apps/web/src/mission-control-trace.tsx#MissionControlTrace
+      - apps/web/src/mission-control-status.tsx#MissionControlStatus
+      - apps/web/src/mission-control-model.ts#buildStepTimeline
+      - apps/web/src/mission-control-text.ts#STEP_DISPOSITION_TEXT
+      - contracts/Q-0015/mission-control.contract.md#trace-and-timeline
+      - contracts/Q-0015/mission-control.contract.md#routes-and-reads
+    depends_on: []
+
+  - id: T09
+    role: frontend
+    title: Wire both Q-0015 screens into the application
+    description: >-
+      Own only apps/web/src/app.tsx; select both screens by route-register constants,
+      pass request and connection inputs, preserve one controller across handle changes,
+      dispose it on leaving run routes, keep GATE_ROUTE socket-free, and prevent stale
+      callbacks from changing the new route. Do not touch screen implementations,
+      connection internals, routes, styles, contracts, documentation, or tests.
+    contracts:
+      - apps/web/src/app.tsx#App
+      - apps/web/src/runs-screen.tsx#RunsScreen
+      - apps/web/src/mission-control-screen.tsx#MissionControlScreen
+      - contracts/Q-0015/mission-control.contract.md#connection-lifetime
+    depends_on: []
+
+  - id: T10
+    role: backend
+    title: Record the shipped M3 mission-control surface
+    description: >-
+      Own only docs/04-architecture.md; update the M3 apps/web account to record the runs
+      landing, bounded live trace, run-level lane, observed-only timeline, gate link, and
+      missing-data disclosures, while retaining browser start/stop and structured header
+      values as successors. Do not touch apps, packages, tests, contracts, the decisions
+      index, decision entries, or docs/06-development-plan.md — that page's ticket entries
+      are rewritten by hand at each plan pass and carry facts (cost, rounds, findings) that
+      do not exist until a run has ended. See solution/errata.md SE-3.
+    contracts:
+      - contracts/Q-0015/mission-control.contract.md#write-boundary
+    depends_on: []
