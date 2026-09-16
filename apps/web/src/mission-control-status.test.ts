@@ -32,7 +32,12 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect(view.textContent).toContain(daemonMissedText(7)); expect(view.textContent).toContain(browserDiscardedText(3));
     const zero = await renderStatus(states[2]!, { snapshot: { state: states[2], events: [], missedCount: 0, browserDiscardedCount: null } });
     expect(zero.textContent).not.toContain(daemonMissedText(0)); expect(zero.textContent).not.toContain(browserDiscardedText(0));
-    const words = (text: string) => new Set(text.toLowerCase().match(/[a-z]+/g)); expect([...words(daemonMissedText(7))].some((word) => !words(browserDiscardedText(7)).has(word))).toBe(true);
+    // Both directions, because one is satisfied by a sentence that is a strict SUBSET of the
+    // other — which would lose the vocabulary AC-10 rests on while still passing. Review round 1, N3.
+    const words = (text: string) => new Set(text.toLowerCase().match(/[a-z]+/g));
+    const daemon = words(daemonMissedText(7)); const browser = words(browserDiscardedText(7));
+    expect([...daemon].some((word) => !browser.has(word)), 'the daemon sentence adds no word of its own').toBe(true);
+    expect([...browser].some((word) => !daemon.has(word)), 'the browser sentence adds no word of its own').toBe(true);
   });
 
   test('renders all five disclosures verbatim in order and no fabricated header placeholder', async () => {
