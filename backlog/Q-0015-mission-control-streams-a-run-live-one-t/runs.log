@@ -13,3 +13,5 @@
 2026-09-16T21:13:22.861Z run=2 step=architect vendor=codex model=- verdict=- cost=? ms=163507
 2026-09-16T21:28:31.601Z run=2 step=architecture-review vendor=claude model=opus verdict=revise cost=9.546441499999998 ms=908727
 2026-09-16T21:28:31.630Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-16T21:31:11.989Z run=2 gate=human-locked answer=retry
+2026-09-16T21:31:11.989Z run=2 gate=retry counter=solutioning.architecture-review set=2 (one further traversal authorised)

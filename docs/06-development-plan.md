@@ -3835,6 +3835,21 @@ parked at p2 with its three written reopening thresholds.
   `docs/05-design-prompt.md` screen 5 names and the wire does not carry, each needing a different
   answer. **To be weighed with Q-0129**, whose verdict card is the same problem on a different field:
   a structured value that crosses only inside a sentence composed for a human.
+- Q-0132 Three flows cannot read a gate ruling. *(Opened 2026-09-16 at Q-0015's **solutioning**
+  exhaustion gate, `draft`, p2 — found when a ruling that had to reach the architect had nowhere in
+  the flow to go.)* Measured by what each flow reads rather than by a filename: `chore` reads
+  `requirements/errata.md` and `qa-red` reads `solution/errata.md`, both being **the errata of the
+  stage whose artifact they consume** — while **`solutioning`, `development` and `review` read
+  none**, and `solutioning` consumes the same stage `chore` does. **Q-0015 wrote nine errata at its
+  requirements gate and not one was readable by the flow it then ran**; its AC-6 ruling reached
+  `qa-red` only because that criterion happens to be a test-guard spelling, and a ruling about a
+  contract would have had nowhere to go at all. **Q-0120 corroborates it from the record**: the only
+  other recent full-route ticket, whose entry says half its repair work was done by hand. It owes a
+  measurement before code — whether the edge is listed per flow or **derived from the consumed
+  stage**, the latter being the rule the two working flows already follow and what stops a seventh
+  flow arriving without one. `requirements` reads none and is right not to, nothing gating a
+  `draft`. **By hand**, for Q-0057's reason: a run cannot benefit from a change to the flow it is
+  running.
 - Q-0016 The gate screen shows a step's verdict and takes the answer. *(`reviewed` and
   `main:contained` 2026-09-16 — **M3's second screen**.)* *(Corrected 2026-09-16 at Q-0015's gate:
   this line said **"the first surface in this product a human can act through"**, which is true of
