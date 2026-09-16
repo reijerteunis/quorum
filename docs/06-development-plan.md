@@ -3776,7 +3776,28 @@ parked at p2 with its three written reopening thresholds.
   `dieOnUnexpected` with stacks intact.
 - Q-0015 Mission control screen.
 - Q-0016 Gate screen with diffs (git diff rendered; `diff2html` or similar).
-- Q-0017 Backlog board + ticket page (folder rendered as tabs).
+- Q-0017 Backlog board + ticket page (folder rendered as tabs). *(Opened 2026-09-16 as M3's first
+  screen ticket, `draft`, with its body measured against the tree rather than transcribed from this
+  line.)* **The board's data is served and the ticket page's is not**: the daemon registers thirteen
+  routes and **`GET /tickets/:id` is not among them**, nor does anything in `read.ts` read a ticket's
+  folder — while `apps/web` already declares both routes and both placeholders, naming this ticket.
+  `Backlog.readFiles` exists in `core` and is on the barrel, confined to the ticket's own folder by
+  Q-0059, so the primitive is there and the **route** is missing. Q-0014's gate split at exactly that
+  seam.
+  **Two measured gaps between the design brief and the wire.** `05-design-prompt.md:27` specifies a
+  card carrying *"iteration counters (review 1/3), cost to date per vendor"*, and `WireTicket` carries
+  **neither** — `iterations` is a widening of a field `TicketRecord.meta` already holds, while
+  per-vendor cost is a roll-up nothing answers per ticket (`GET /runs/:id/cost` answers per run). With
+  `04-architecture.md:200` forbidding a placeholder that shows a fabricated cost, scoping the card or
+  widening the wire is the ticket's first real decision.
+  **And the design prompt still promises the override the engine refuses, at three sites** — `:11`,
+  `:35` and `:43` — against `gateAnswerSchema = z.enum(['advance','retry','abort'])`. **It is the
+  third document to carry that claim and the first still uncorrected**: Q-0013's gate found it in
+  `04-architecture.md:63` and in this page's own M3 line, Q-0118 corrected those two and recorded
+  *"GO-2 is fully discharged"* — said of two documents while a third was never looked at. The brief is
+  what **every** screen ticket is built from, so Q-0015 to Q-0018 each inherit it. Not this ticket's
+  to implement, the gate screen being Q-0016's, but recorded so the fourth ticket does not rediscover
+  it.
 - Q-0018 Run history + trace drill-down.
 - Q-0019 Resume interrupted runs.
 
