@@ -182,25 +182,63 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
 });
 
 describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, name or issue', () => {
+  /**
+   * What this app may not write, and the one module each survivor is permitted in.
+   *
+   * **Re-aimed at Q-0016 rather than deleted, and the exemptions are per NEEDLE.** Until that
+   * ticket this app made no request that was not a GET, so the guard forbade four methods and two
+   * route literals everywhere and needed no exceptions. A gate screen has to answer a gate, which
+   * is one `POST` to one route — so the boundary narrows by exactly two names rather than being
+   * dropped, which is what would happen if the whole clause went: the board and the ticket page
+   * would silently stop being read-only with it.
+   *
+   * `'/stop'` is permitted nowhere, this app stopping no run; `PUT`, `PATCH` and `DELETE` are
+   * permitted nowhere, the daemon routing none of them. `daemon-client.ts` is where every request
+   * is made and `daemon-endpoints.ts` is where every path is built, which is why those two and not
+   * the screen: a component that assembled either would be the second place a request is composed.
+   */
+  const WRITE_RULES: { readonly needle: string; readonly what: string; readonly permitted: string | null }[] = [
+    { needle: `method:${' '}'POST'`, what: 'issues a POST', permitted: 'daemon-client.ts' },
+    { needle: `method:${' '}'PUT'`, what: 'issues a PUT', permitted: null },
+    { needle: `method:${' '}'PATCH'`, what: 'issues a PATCH', permitted: null },
+    { needle: `method:${' '}'DELETE'`, what: 'issues a DELETE', permitted: null },
+    { needle: `'${'/gate'}'`, what: "names the daemon's gate route", permitted: 'daemon-endpoints.ts' },
+    { needle: `'${'/stop'}'`, what: 'names the stop route', permitted: null },
+  ];
+
+  /** Every `<file>: <what>` the rules report, with the exemptions honoured or ignored. */
+  const writeOffenders = (exempt: boolean): string[] =>
+    sourceFiles().flatMap(([name, text]) => WRITE_RULES
+      .filter((rule) => !(exempt && rule.permitted === name) && text.includes(rule.needle))
+      .map((rule) => `${name}: ${rule.what}`));
+
   test('nothing under src issues a request that is not a GET, or names a route that takes one', () => {
     // The read-only boundary as a property of the source rather than only of the screen. Nothing
-    // this ticket adds writes: no run is started, no gate answered, no stage moved, no run lock
-    // taken — and `read.ts`'s own header says the same thing one package over, where it is the
-    // boundary that ticket exists to hold.
-    const methods = [`method:${' '}'POST'`, `method:${' '}'PUT'`, `method:${' '}'PATCH'`, `method:${' '}'DELETE'`];
-    const gateRoutes = ['/gate', '/stop'];
-    for (const [name, text] of sourceFiles()) {
-      for (const method of methods) {
-        expect(text.includes(method), `${name} issues ${method}`).toBe(false);
-      }
-      for (const route of gateRoutes) {
-        expect(text.includes(`'${route}'`), `${name} names the ${route} route`).toBe(false);
-      }
-    }
+    // outside the two modules named above writes: no run is started, no run is stopped, no stage is
+    // moved, no run lock is taken — and `read.ts`'s own header says the same thing one package
+    // over, where it is the boundary that ticket exists to hold.
+    expect(writeOffenders(true), 'a module outside the two named may write').toStrictEqual([]);
     // Each needle discriminates, over fixtures assembled so this file is not its own subject.
-    expect(methods.filter((method) => `await fetch(p, { method:${' '}'POST' })`.includes(method)))
-      .toStrictEqual([methods[0]]);
-    expect(gateRoutes.filter((route) => `const at = '${'/gate'}';`.includes(`'${route}'`))).toStrictEqual(['/gate']);
+    expect(WRITE_RULES.filter((rule) => `await fetch(p, { method:${' '}'POST' })`.includes(rule.needle)).map((rule) => rule.what))
+      .toStrictEqual(['issues a POST']);
+    expect(WRITE_RULES.filter((rule) => `const at = '${'/gate'}';`.includes(rule.needle)).map((rule) => rule.what))
+      .toStrictEqual(["names the daemon's gate route"]);
+  });
+
+  test('Q-0016 AC-5 — and each exemption is doing work: dropping it reports the module by name', () => {
+    // **The half that makes an exemption a narrowing rather than a hole.** A permitted file that no
+    // longer carries its needle is an exemption forgiving nothing, which reads as coverage and is
+    // not — so the same rules are run over the same corpus with the exemptions ignored, and what
+    // comes back is asserted to be exactly the two modules this ticket named. A guard whose
+    // exemption could be deleted with nothing failing has not been established.
+    expect(writeOffenders(false).sort(), 'the exemptions forgive something other than the two modules named')
+      .toStrictEqual(['daemon-client.ts: issues a POST', "daemon-endpoints.ts: names the daemon's gate route"]);
+    // …and the permitted set is exactly those two, so a third could not be added silently.
+    expect(WRITE_RULES.filter((rule) => rule.permitted !== null).map((rule) => rule.permitted))
+      .toStrictEqual(['daemon-client.ts', 'daemon-endpoints.ts']);
+    // The stop route is permitted nowhere, which is what says this ticket widened the boundary by
+    // one act rather than by a family of them.
+    expect(WRITE_RULES.find((rule) => rule.needle.includes('stop'))?.permitted, 'stopping a run became permitted').toBeNull();
   });
 
   test('nothing refetches on a timer, and nothing persists a board in the browser', () => {
@@ -320,6 +358,87 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     expect(RENDERERS.filter((each) => importSpecifiers(`import DOMPurify from '${'dompurify'}';`).includes(each)))
       .toStrictEqual(['dompurify']);
     expect(/dangerouslySetInnerHTML/.test('<pre dangerouslySetInnerHTML={{ __html: text }} />')).toBe(true);
+  });
+});
+
+describe('Q-0016 AC-7/AC-8/AC-9/AC-13 — what the gate screen may not parse, coin or claim', () => {
+  /** The screen itself, which every clause here is about. Absent, each one has lost its subject. */
+  const screen = (): string => {
+    const found = sourceFiles().find(([name]) => name === 'gate-screen.tsx')?.[1];
+    if (found === undefined) throw new Error('there is no gate screen — this check has lost its subject');
+    return found;
+  };
+
+  test('AC-7 — the correlation token is echoed and never taken apart', () => {
+    // `nextGateId` spells `<run number>:<n>`, so a `gateId` really does carry a run number and
+    // parsing one is tempting. The daemon's own host refuses to: its comment names taking a run
+    // number out of a `gateId` as the second authority `minted` exists to prevent, and a browser is
+    // under the same rule. The needle is any of the five ways a string is taken apart, applied to
+    // that field.
+    const takesApart = /\bgateId\s*(?:\.(?:split|slice|substring|substr|match|replace|indexOf|charAt)|\[)/;
+    expect(takesApart.test(screen()), 'the screen takes the correlation token apart').toBe(false);
+    // Both directions over fixtures, so the absence above is not a needle that matches nothing.
+    expect(takesApart.test('const run = gateId.split(\':\')[0];')).toBe(true);
+    expect(takesApart.test('answerGate(fetcher, handle, question.gateId, chosen, clock)')).toBe(false);
+    // And it really does echo one, so the clause is about a field the screen uses.
+    expect(screen(), 'the screen never names the correlation token at all').toContain('gateId');
+  });
+
+  test('AC-8 — the answer vocabulary is imported and not written here', () => {
+    // A second copy of `advance|retry|abort` in this app is the drift `@quorum/shared` exists to
+    // stop, and it is what would let a screen offer a fourth control the engine refuses. The
+    // property is that the OFFERED SET is derived from the schema's own options; the one literal
+    // that survives is the discriminator picking the answer a gate may not offer, and `GateAnswer`
+    // is what makes a typo there fail to compile.
+    expect(screen(), 'the offered set is not derived from the shared schema').toContain('gateAnswerSchema.options');
+    const ownVocabulary = /\[\s*'advance'\s*,\s*'retry'\s*,\s*'abort'\s*\]|z\.enum\(/;
+    expect(ownVocabulary.test(screen()), 'the screen declares an answer vocabulary of its own').toBe(false);
+    expect(ownVocabulary.test(`const answers = ['advance', 'retry', 'abort'];`),
+      'the needle matches no written-out vocabulary').toBe(true);
+  });
+
+  test('AC-9 — no gate is given a name of its own', () => {
+    // `handleFail` composes `kind: 'human-locked'` for every gate the engine presents itself, and an
+    // author-declared deploy gate will carry the same word — the field is an open string, so `kind`
+    // discriminates nothing. A screen that coined a noun from it would be labelling a gate by a
+    // field that cannot support the label.
+    const COINED = ['exhaustion gate', 'deploy gate', 'review gate', 'judge gate'];
+    for (const coined of COINED) {
+      expect(screen().toLowerCase().includes(coined), `the screen calls a gate a ${coined}`).toBe(false);
+    }
+    expect(COINED.filter((coined) => 'this is the exhaustion gate'.includes(coined))).toStrictEqual(['exhaustion gate']);
+    // …and it does render the word the engine sent, which is what it renders instead.
+    expect(screen(), 'the screen does not render the kind the engine sent').toContain('question.kind');
+  });
+
+  test('AC-14 — the retired placeholder sentence is absent', () => {
+    // The sentence the register carried for this route until the screen existed. It promised the
+    // half this ticket does not build, so a reader meeting it now would go looking for a rendering
+    // of something that is not there. Assembled, in this file's one rule, so the scan is not its own
+    // subject — and the register's own clause in `test/routes.test.ts` asserts what replaced it.
+    const retired = ["The gate screen shows a step's ", 'verdict and ', 'diffs, and takes the answer.'].join('');
+    expect(sourceFiles().filter(([, text]) => text.includes(retired)).map(([name]) => name)).toStrictEqual([]);
+    // The needle discriminates, so the emptiness above is an absence rather than a typo.
+    expect([['fixture.ts', `waitingFor: '${retired}'`]].filter(([, text]) => text.includes(retired)).map(([name]) => name))
+      .toStrictEqual(['fixture.ts']);
+  });
+
+  test('AC-13 — it names nothing about what the step decided, and reads no event prose', () => {
+    // The evidence half is Q-0129's: it is not on this wire, the artifact holding it is excluded
+    // from the backlog routes by a ruling of its own, and the run's own prose is a sentence
+    // composed for a human rather than a contract. The needles are the words a region standing in
+    // for absent evidence would need, assembled so this file is not its own subject.
+    const EVIDENCE = ['verd' + 'ict', 'find' + 'ings', 'summ' + 'ary', 'dif' + 'f', 'block' + 'er', 'hun' + 'k'];
+    for (const word of EVIDENCE) {
+      expect(new RegExp(`\\b${word}`, 'i').test(screen()), `the screen names ${word}`).toBe(false);
+    }
+    expect(EVIDENCE.filter((word) => new RegExp(`\\b${word}`, 'i').test('the verdict card lists two blockers')))
+      .toStrictEqual([EVIDENCE[0], EVIDENCE[4]]);
+    // An event's `message` is free text the engine composed — `${'step'}: ${'revise'} — …`, whose
+    // separator is absent exactly when the list it separates is — so reading one for a machine value
+    // is reading a sentence as a contract. The screen reads no event field at all.
+    expect(/\.message\b/.test(screen()), 'the screen reads an event message').toBe(false);
+    expect(/\.message\b/.test('const first = event.message;')).toBe(true);
   });
 });
 

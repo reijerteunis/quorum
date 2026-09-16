@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
 import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
-import { BOARD_PATH, HOME_PATH, isRedirect, RAIL, ROUTES, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
+import { BOARD_PATH, GATE_ROUTE, HOME_PATH, isRedirect, RAIL, ROUTES, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -70,6 +70,9 @@ const EXCEPTION_REASONS: Record<string, string> = {
   'run-connection.test.ts:/B/events': 'the second handle in the one-socket-at-a-time fixture',
   'shell.test.ts:/runs/run%20one/events': 'the socket path the no-daemon sentence names, asserted to reach the page since round 2 M-1',
   'backlog-board.test.ts:/backlog/Q-00%2042': "the percent-encoded href a card must build for a ticket id holding a space, asserted in both directions — a ticket id is agent-written frontmatter and `Backlog.read` asserts rather than parses it, so one segment is the property. Written out rather than taken from `ticketPath`, which would assert the implementation against itself",
+  'daemon-endpoints.ts:/gate': "the DAEMON's gate-answering segment, which is not a shell route and is deliberately not a DAEMON_ENDPOINTS prefix — the dev proxy forwards `/runs`, which already covers it, and a sixth entry there would claim a prefix nothing forwards. Written as a literal rather than as a template tail so that `test/source.test.ts`'s write guard, which permits it in this module and nowhere else, has a string to find: an exemption forgiving something nobody wrote would forgive nothing",
+  'gate-screen.test.ts:/repo/backlog/Q-0016-the-gate-screen': "the ticket folder a gate question carries, which is an absolute path on the DAEMON's machine rather than a route — `GateQuestionEvent.ticketDir`, asserted rendered verbatim. Declared once in that file so it is one row here rather than one per fixture",
+  'daemon-client.test.ts:/repo/backlog/Q-0016-a': 'the same field in the client suite, where a run body has to carry a well-formed question for the schema to accept it',
 };
 const EXCEPTIONS = new Set(Object.keys(EXCEPTION_REASONS));
 
@@ -119,24 +122,42 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/does not have yet/);
   });
 
-  test('exactly two route rows claim a screen, and they are the two that have one', () => {
-    // The rail says which entry has a screen and the rail has no ticket-page entry, which is why
-    // this field is on the route row too: `/backlog/:ticketId` is in neither table the rail draws
-    // from, so without it nothing in the register could say the screen exists. An identity rather
-    // than a count, because a count is satisfied by a row swapped for another.
+  test('exactly three route rows claim a screen, and they are the three that have one', () => {
+    // The rail says which entry has a screen and the rail has no ticket-page or gate entry, which
+    // is why this field is on the route row too: `/backlog/:ticketId` and `/runs/:handle/gate` are
+    // in neither table the rail draws from, so without it nothing in the register could say those
+    // screens exist. An identity rather than a count, because a count is satisfied by a row swapped
+    // for another. Two until Q-0016, which built the third.
     expect(SCREEN_ROUTES.filter((route) => route.screenExists).map((route) => route.path))
-      .toStrictEqual([BOARD_PATH, TICKET_ROUTE]);
+      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, GATE_ROUTE]);
     // The two registers agree where they overlap: the rail's board entry and the route row.
     expect(RAIL.find((entry) => entry.id === 'backlog')?.screenExists).toBe(true);
     // …and the field is load-bearing rather than decorative: every row claiming a screen is one
     // `app.tsx` selects by the register's own constant, and every row that does not is one the
     // placeholder still draws.
     const app = fs.readFileSync(path.join(SOURCE, 'app.tsx'), 'utf8');
-    for (const [name, route] of [['BOARD_PATH', BOARD_PATH], ['TICKET_ROUTE', TICKET_ROUTE]] as const) {
+    for (const [name, route] of [['BOARD_PATH', BOARD_PATH], ['TICKET_ROUTE', TICKET_ROUTE], ['GATE_ROUTE', GATE_ROUTE]] as const) {
       expect(app, `the app does not select ${route} by the register's own constant`).toContain(name);
     }
     expect(app, 'the app names a route path of its own rather than a register constant')
       .not.toMatch(/['"`]\/backlog/);
+  });
+
+  test('Q-0016 AC-14 — the gate row names the screen it built and the ticket that adds the rest', () => {
+    // **The same move `routes.ts:146` records for the ticket page, one row down.** The sentence is
+    // kept rather than emptied, because `screenExists` is what says a screen is built and a row
+    // whose explanation had been deleted would make a later `false` silent. What moved is the
+    // claim: the row no longer promises a rendering of what the step before the gate decided, which
+    // this screen does not do and which a reader meeting it would otherwise go looking for.
+    const route = SCREEN_ROUTES.find((entry) => entry.path === GATE_ROUTE);
+    if (!route) throw new Error('no gate-screen route — this check has lost its subject');
+    expect(route.screenExists, 'the row still says the screen is unbuilt').toBe(true);
+    expect(route.ticket, 'the gate screen no longer names the ticket that built it').toBe('Q-0016');
+    expect(route.waitingFor.length, 'the sentence a user reads was emptied').toBeGreaterThan(60);
+    expect(route.waitingFor, 'the row still promises the evidence half this screen does not render')
+      .not.toMatch(/diffs/);
+    expect(route.waitingFor, 'the row does not name what the rest of the screen waits for')
+      .toContain('Q-0129');
   });
 
   test('and the board\'s own path is a register constant both tables are built from', () => {

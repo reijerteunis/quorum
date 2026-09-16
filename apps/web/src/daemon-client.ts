@@ -22,14 +22,24 @@
  * own budget is up to 2n + 10 spawns, which at this repository's 105 tickets is a third of a second
  * — so a timer here would make the most expensive route on the transport this app's hot path, and
  * a cached copy would be the UI holding a git fact it cannot keep current.
+ *
+ * **Since Q-0016 exactly one request here is not a GET**, and it is the only one this app will make
+ * for as long as that stays true: answering a pending gate. Every other route this app reads is
+ * read-only and stays so — no run is started, no run is stopped, no stage is moved, no run lock is
+ * taken — and `apps/web/test/source.test.ts` holds that boundary by name rather than by absence,
+ * exempting this module for the method and the endpoint module for the path.
  */
 import {
-  wireFlowListSchema, wireRefusalSchema, wireTicketDetailSchema, wireTicketFileSchema,
+  gateAnswerEnvelopeSchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunSchema, wireTicketDetailSchema, wireTicketFileSchema,
   wireTicketListSchema,
-  type WireFlowList, type WireTicketDetail, type WireTicketFile, type WireTicketList,
+  type GateAnswer, type WireFlowList, type WireRun, type WireTicketDetail, type WireTicketFile,
+  type WireTicketList,
 } from '@quorum/shared';
 
-import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
+import {
+  DAEMON_ENDPOINTS, runDetailPath, runGatePath, ticketDetailPath, ticketFilePath,
+} from './daemon-endpoints.js';
 import type { RequestState } from './request-state.js';
 
 /**
@@ -44,8 +54,25 @@ export interface DaemonResponse {
   json(): Promise<unknown>;
 }
 
-/** How a request is actually made. Injected everywhere except in the browser. */
-export type FetchLike = (path: string) => Promise<DaemonResponse>;
+/**
+ * What a request that is not a GET carries — the one shape this module ever sends.
+ *
+ * `method` is the literal and not a string, so the set of things this app can do to the daemon is
+ * closed by the compiler rather than by a scan alone: a `DELETE` does not typecheck here.
+ */
+export interface DaemonRequest {
+  readonly method: 'POST';
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: string;
+}
+
+/**
+ * How a request is actually made. Injected everywhere except in the browser.
+ *
+ * The second parameter is optional, so every reader in this module goes on calling it with a path
+ * alone and a GET stays what a call with no second argument means.
+ */
+export type FetchLike = (path: string, request?: DaemonRequest) => Promise<DaemonResponse>;
 
 /** What the clock is, so a fetched-at instant is a value a test supplies rather than reads. */
 export type Clock = () => string;
@@ -55,7 +82,7 @@ export type Clock = () => string;
  *
  * The path is page-relative, which is what makes this same-origin without naming an origin.
  */
-export const browserFetch: FetchLike = (path) => fetch(path);
+export const browserFetch: FetchLike = (path, request) => fetch(path, request);
 
 /** The wall clock, as an ISO 8601 instant — a value that does not vary with a machine's locale. */
 export const isoClock: Clock = () => new Date().toISOString();
@@ -63,6 +90,29 @@ export const isoClock: Clock = () => new Date().toISOString();
 /** A schema this module can execute over a parsed body, without naming zod's own types here. */
 interface BodySchema<T> {
   safeParse(value: unknown): { success: true; data: T } | { success: false; error: { message: string } };
+}
+
+/**
+ * A non-2xx answer as a refusal, carrying the daemon's own words where the body holds them.
+ *
+ * One function rather than one per caller, because the fallback is the interesting half: a body
+ * that is not a {@link WireRefusal} is still reported as the daemon having ANSWERED, under a code
+ * naming the status, since reporting a request that was answered as one that was not would send a
+ * reader to restart a process that is running.
+ */
+function refused<T>(path: string, status: number, body: unknown): RequestState<T> {
+  const refusal = wireRefusalSchema.safeParse(body);
+  return refusal.success
+    ? { kind: 'refused', path, refusal: refusal.data }
+    : {
+      kind: 'refused',
+      path,
+      refusal: {
+        code: `http-${String(status)}`,
+        condition: `the daemon answered ${String(status)} and no refusal this page could read`,
+        remedy: null,
+      },
+    };
 }
 
 /**
@@ -98,20 +148,7 @@ export async function requestJson<T>(
     return { kind: 'unparseable', path, problem: 'the response body was not JSON' };
   }
 
-  if (!response.ok) {
-    const refusal = wireRefusalSchema.safeParse(body);
-    return refusal.success
-      ? { kind: 'refused', path, refusal: refusal.data }
-      : {
-        kind: 'refused',
-        path,
-        refusal: {
-          code: `http-${String(response.status)}`,
-          condition: `the daemon answered ${String(response.status)} and no refusal this page could read`,
-          remedy: null,
-        },
-      };
-  }
+  if (!response.ok) return refused(path, response.status, body);
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) return { kind: 'unparseable', path, problem: parsed.error.message };
@@ -147,6 +184,75 @@ export const fetchTicketFile = (
   requestJson(fetcher, ticketFilePath(id, rel), wireTicketFileSchema, now);
 
 /**
+ * One run, as the daemon reports it now — including the questions its gates are asking.
+ *
+ * Read on mount and when a reader asks again, like everything else here. There is no subscription:
+ * a run's event stream is mission control's subject, and what a gate screen needs from a run is one
+ * answer to *what is it waiting on right now*, which this is.
+ */
+export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promise<RequestState<WireRun>> =>
+  requestJson(fetcher, runDetailPath(handle), wireRunSchema, now);
+
+/** The status the gate route answers a settled gate with. There is no body, and none is read. */
+const ACCEPTED = 204;
+
+/**
+ * Answer one pending gate, and say what the daemon did about it.
+ *
+ * **The success is a status and not a body.** `POST /runs/:id/gate` answers `204` with nothing at
+ * all, so this recognises it before anything reads a body — routed through {@link requestJson} it
+ * would be reported as *the response body was not JSON*, which is a successful answer rendered as a
+ * failure. The `loaded` value is therefore the answer that was ACCEPTED, which is the only thing
+ * this exchange establishes: what the run does next is a read, not an inference from a 204.
+ *
+ * **Two of its refusals share a status, and the code is what tells them apart.** `no-such-run` and
+ * `no-such-gate` are both `404` — *that handle names no run* against *that gate is no longer
+ * waiting*, which say opposite things to a reader — so the body's `code` crosses through unaltered
+ * and nothing here branches on the status alone.
+ *
+ * The envelope is built through `@quorum/shared`'s own schema, so the two fields and their names
+ * come from the contract rather than from a literal here; `gates.ts` is what validates it, and a
+ * second copy of the answer vocabulary in this app would be the drift that contract exists to stop.
+ */
+export async function answerGate(
+  fetcher: FetchLike,
+  handle: string,
+  gateId: string,
+  answer: GateAnswer,
+  now: Clock,
+): Promise<RequestState<GateAnswer>> {
+  const path = runGatePath(handle);
+  let response: DaemonResponse;
+  try {
+    response = await fetcher(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(gateAnswerEnvelopeSchema.parse({ gateId, answer })),
+    });
+  } catch {
+    return { kind: 'unreachable', path };
+  }
+  // Before any body is read, which is the property AC-4 asks for rather than an optimisation.
+  if (response.status === ACCEPTED) return { kind: 'loaded', value: answer, fetchedAt: now() };
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return { kind: 'unparseable', path, problem: 'the response body was not JSON' };
+  }
+  if (!response.ok) return refused(path, response.status, body);
+  // A 2xx that is not the one this route answers with. Reported rather than taken for a success:
+  // this page and the daemon disagree about what answering a gate looks like, which is a thing to
+  // say and not a thing to assume went well.
+  return {
+    kind: 'unparseable',
+    path,
+    problem: `the daemon answered ${String(response.status)} where answering a gate is ${String(ACCEPTED)} and no body`,
+  };
+}
+
+/**
  * The in-flight state for each request, so a screen can say what it is waiting for without
  * naming a path of its own.
  *
@@ -165,3 +271,16 @@ export const ticketInFlight = <T>(id: string): RequestState<T> => ({ kind: 'in-f
 /** One file's in-flight state, naming the file a reader asked for. */
 export const ticketFileInFlight = <T>(id: string, rel: string): RequestState<T> =>
   ({ kind: 'in-flight', path: ticketFilePath(id, rel) });
+
+/** One run's in-flight state, naming the run rather than the listing. */
+export const runInFlight = <T>(handle: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: runDetailPath(handle) });
+
+/**
+ * The in-flight state of an answer on its way to a gate.
+ *
+ * It exists for the same reason the others do and for one more: it is what a screen holds while an
+ * answer is outstanding, so *one answer in flight* is a state rather than a flag beside one.
+ */
+export const gateAnswerInFlight = <T>(handle: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: runGatePath(handle) });

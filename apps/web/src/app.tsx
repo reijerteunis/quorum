@@ -8,15 +8,17 @@
  *
  * The one exception is the live connection a run route opens: `apps/web/src/run-connection.ts`
  * owns the socket, and this component owns only the one controller a run route needs, when the
- * path resolves to one.
+ * path resolves to one — with the gate screen's route excluded by name, that screen being ruled to
+ * hold no socket and a shell opening one for it being the same socket by another door.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
+import { GateScreen } from './gate-screen.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH, TICKET_ROUTE } from './routes.js';
+import { BOARD_PATH, GATE_ROUTE, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -88,10 +90,19 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
     }
   }, [redirectedTo]);
 
-  // Present on every route the register gives a `:handle` segment — today `/runs/:handle` and its
-  // two children — and absent everywhere else, which is what tells this component a live
-  // connection belongs on the current screen at all.
-  const handle = rendered.kind === 'screen' && 'handle' in rendered.params ? rendered.params.handle : undefined;
+  // Present on a route the register gives a `:handle` segment, and absent everywhere else, which is
+  // what tells this component a live connection belongs on the current screen at all.
+  //
+  // **The gate screen is excluded by name, and it is the one exclusion here.** That screen holds no
+  // socket by a ruling of its own (Q-0016 erratum E-2): it reads `GET /runs/:id` on mount and when
+  // the reader asks again, and rendering a run's event stream is mission control's subject. Opening
+  // one from the shell anyway would be that socket by another door — and it would answer a second
+  // way about a handle the screen is already reporting on, since a handle this host never minted is
+  // a 1008 close here and a route refusal there. `/runs/:handle` and `/runs/:handle/steps/:stepId`
+  // are unchanged; this is a name, not a rule about children.
+  const handle = rendered.kind === 'screen' && rendered.route.path !== GATE_ROUTE && 'handle' in rendered.params
+    ? rendered.params.handle
+    : undefined;
   const page = pageUrl ?? currentPageUrl();
   const pageHref = page?.href;
   const pageOrigin = page?.origin;
@@ -155,6 +166,11 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
         // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
         // name is the daemon's own first predicate, and this page renders that refusal.
         <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
+      ) : rendered.route.path === GATE_ROUTE ? (
+        // The handle likewise: whatever the URL carried, decoded out of one segment and not trusted
+        // to be one this daemon minted. A handle it never minted is the route's own 404, which the
+        // screen renders as the refusal it is rather than as an empty page.
+        <GateScreen handle={rendered.params.handle ?? ''} fetcher={fetcher} now={clock} />
       ) : (
         <Placeholder route={rendered.route} params={rendered.params} />
       )}

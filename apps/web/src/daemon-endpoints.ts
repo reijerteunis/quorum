@@ -13,6 +13,44 @@ export function runEventsPath(handle: string): string {
 }
 
 /**
+ * The page-relative path for what the daemon knows about one run, with the handle confined to one
+ * segment.
+ *
+ * One run rather than the listing, which is one segment away and answers a different question: the
+ * listing says what a client can join, and this says what the daemon knows about this handle. They
+ * are not interchangeable — reading the listing would make a screen search for its own run, and a
+ * handle the host never minted would then be silence rather than a refusal.
+ */
+export function runDetailPath(handle: string): string {
+  return `${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}`;
+}
+
+/**
+ * The segment that makes a run path the gate-answering one, written here and nowhere else.
+ *
+ * **A named constant rather than the tail of a template**, so the one thing this app may POST to is
+ * a literal a scan can find. `apps/web/test/source.test.ts` forbids that literal in every file
+ * under `src` except this one, and names this one — an exemption that forgives a string nobody
+ * wrote would forgive nothing, so the string is written.
+ */
+const GATE_SEGMENT = '/gate';
+
+/**
+ * The page-relative path that answers one run's pending gate, with the handle confined to one
+ * segment.
+ *
+ * Named for the DAEMON route rather than for the screen, on {@link ticketDetailPath}'s precedent:
+ * `routes.ts` carries `/runs/:handle/gate` too and that is the shell path a browser is AT, where
+ * this is the path it POSTs to. Two different things, so two names.
+ *
+ * The handle is percent-encoded rather than trusted: it is whatever a URL carried, and a token
+ * holding a separator is not one name.
+ */
+export function runGatePath(handle: string): string {
+  return `${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}${GATE_SEGMENT}`;
+}
+
+/**
  * The page-relative path for one ticket, with the id confined to one segment.
  *
  * Named for the DAEMON route rather than for the screen: `routes.ts` has a `ticketPath` too and it
