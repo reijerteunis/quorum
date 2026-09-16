@@ -172,7 +172,7 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
       expect(textOf(container)).not.toMatch(new RegExp(`${'Q'}-\\d{4}`));
     });
 
-  test('the register has three ticketless screens, so the clause above discriminates', () => {
+  test('the register has two ticketless screens, so the clause above discriminates', () => {
     // Without this, a register in which every screen had a ticket would satisfy the clause above by
     // running over nothing at all.
     expect(SCREEN_ROUTES.filter((route) => route.ticket === null).map((route) => route.path))
