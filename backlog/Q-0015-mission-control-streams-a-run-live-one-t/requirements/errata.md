@@ -138,3 +138,27 @@ place rather than quietly replaced, because the next reader should know this fil
 third recorded instances of Q-0098's finding: *a claim in a harness context file is one every future
 requirement inherits*. Two in one file in one sitting is the argument that a check may be owed —
 which is still not this ticket's to authorise, and which now has two subjects rather than one.
+
+## E-9 — OQ-5 ruled: the full seven-stage route
+
+`solutioning` → `qa-red` → `development` → `review`, not `requirements` → `chore`. Ruled by the
+operator at this gate, adopting §5's recommendation.
+
+**The reason is the document's and it was re-derived rather than copied**, which OQ-5 itself demanded
+and which the ticket body warned about by name: **this is no longer a rendering ticket.** AC-9 is a
+behaviour change to `run-connection.ts` carrying an eviction rule and a discard counter; AC-4's
+interleaving clause and AC-7's third disposition are properties a red test can hold **before any code
+exists**; and AC-5's conservation clause is a contract in the literal sense. Q-0016 went the chore
+route on the measured ground that fourteen criteria over three packages with one behavioural
+criterion is chore-shaped, and that ground does not hold here.
+
+**What the choice costs and what it buys.** Q-0120 walked this route at $198.54 against Q-0016's
+$126.68 and Q-0127's $108.67, so the difference is real money. Against it: M2's closing measurement —
+that the flows M3's feature work will use have four tickets of evidence between them, all from August
+— stands at five tickets with the most recent on 2026-09-12, which E-5 of Q-0016 re-derived and which
+is **not** re-derived here because nothing has walked the route since. This is the sixth.
+
+**What it does not change.** No criterion moves. AC-9's bound stays derived rather than chosen (E-3),
+the split stays as E-1 ruled it, and `solutioning` may not widen the scope the gate just narrowed —
+a contract for a fifteenth criterion is scope this gate refused, and `verdict=blocked` is the channel
+for saying a criterion cannot be met rather than for adding one.
