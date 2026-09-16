@@ -176,9 +176,24 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
       }
       return found;
     };
+    // **Fails closed on a path it cannot read.** The filter used to require a literal
+    // `initialPath: '/runs/…'`, so a render whose path arrives through a helper variable was not
+    // examined at all — which is what this package's newest run-route renders do. A render the scan
+    // cannot prove is NOT a run route must supply a factory, because the cost of being wrong is the
+    // outbound socket this guard exists to prevent. Review round 1, N5.
+    const literalPath = /initialPath:\s*(['"`][^'"`]*['"`])/;
     const offenders = sourceFiles().flatMap(([name, text]) => renders(text)
-      .filter((props) => /initialPath:\s*['"`]\/runs\//.test(props) && !props.includes('socketFactory'))
-      .map((props) => `${name}: ${/initialPath:\s*(['"`][^'"`]*['"`])/.exec(props)?.[1] ?? props}`));
+      .filter((props) => {
+        if (props.includes('socketFactory')) return false;
+        const literal = literalPath.exec(props)?.[1];
+        // A readable path is judged on its own render. An UNREADABLE one — a variable, which is how
+        // this package's newest run-route renders arrive — falls back to the file: it must supply a
+        // factory somewhere, because the helper that passes one is in the file and not in the props.
+        // Weaker than the per-render rule and stated as such; what it buys is that a file rendering a
+        // run route with no factory anywhere in it is reported, where before it was not examined.
+        return literal === undefined ? !text.includes('socketFactory') : literal.includes('/runs/');
+      })
+      .map((props) => `${name}: ${literalPath.exec(props)?.[1] ?? 'path not a literal'}`));
     expect(offenders, 'a run route is rendered with no socket factory').toStrictEqual([]);
     // It examined something, and it discriminates: a run route without a factory is reported, a
     // non-run route without one is not.
