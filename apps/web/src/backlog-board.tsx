@@ -22,7 +22,7 @@
  * request and stored nowhere — a board from ten minutes ago is showing an ancestry from ten minutes
  * ago.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {
   ALWAYS_RENDERED, BRANCH_EXPECTED, containmentToken, indeterminateLegend, pushLagSentence, STAGES,
@@ -89,6 +89,20 @@ interface BoardData {
 }
 
 /**
+ * What names a ticket on this screen: the id its file carries, or the folder that holds it.
+ *
+ * **The fallback is not cosmetic.** A `ticket.md` `parseFrontmatter` fell open on supplies no id, and
+ * the daemon sends `''` rather than inventing one — so without this, two damaged tickets render as
+ * one nameless row twice, and a reader cannot tell which folder to open. `folder` comes from the
+ * backlog directory rather than from the file that failed to parse, and is unique under one root by
+ * construction, which is also why it is this screen's React key everywhere rather than the id.
+ * Q-0060 is what makes a damaged ticket possible and is open; this names one rather than fixing it.
+ */
+function ticketName(ticket: WireTicket): string {
+  return ticket.id === '' ? ticket.folder : ticket.id;
+}
+
+/**
  * Which containment answer is worth rendering for a ticket, or `null` for none.
  *
  * The suppression rule is `BRANCH_EXPECTED`'s and is applied here rather than copied: every ticket
@@ -128,7 +142,7 @@ function Card({ ticket, base, onNavigate }: {
           onNavigate(to);
         }}
       >
-        <span className="block font-mono text-sm text-accent">{ticket.id}</span>
+        <span className="block font-mono text-sm text-accent">{ticketName(ticket)}</span>
         <span className="mt-1 block text-text">{ticket.title === '' ? NOT_SET : ticket.title}</span>
         <span className="mt-2 block font-mono text-xs text-muted">
           owner {ticket.owner === '' ? NOT_SET : ticket.owner}
@@ -177,7 +191,10 @@ function Column({ stage, tickets, flows, base, onNavigate }: {
       <h2 className="font-mono text-sm text-text">{stage}</h2>
       <ConsumedBy stage={stage} flows={flows} />
       <ul className="flex flex-col gap-2">
-        {tickets.map((ticket) => <Card key={ticket.id} ticket={ticket} base={base} onNavigate={onNavigate} />)}
+        {/* Keyed by the folder, never by the id: an id is what a damaged file failed to supply, and
+            two such tickets in one column would then share a key. A folder basename is unique under
+            one backlog root by construction. */}
+        {tickets.map((ticket) => <Card key={ticket.folder} ticket={ticket} base={base} onNavigate={onNavigate} />)}
       </ul>
     </section>
   );
@@ -214,19 +231,32 @@ export function BacklogBoard({ fetcher, now, onNavigate }: BacklogBoardProps): R
     flows: flowsInFlight<WireFlowList>(),
   });
 
+  // One counter for every load this screen starts, whoever starts it — the mount, Refresh, or a
+  // Retry. It is a ref rather than a flag inside `load` because a flag is private to the invocation
+  // that made it, and only the mount's cleanup is ever retained: a Refresh's was discarded by the
+  // click handler, so a slow earlier request could land on top of a newer answer and put a stale
+  // containment, push lag and fetched-at instant in front of a reader who had just asked for fresh
+  // ones. Starting a load invalidates the one before it; whatever a superseded request answers is
+  // dropped, in flight and unread, because there is no cancelling a promise that is already out.
+  const generation = useRef(0);
+
   const load = useCallback(() => {
-    let live = true;
+    const mine = (generation.current += 1);
     setData({ tickets: ticketsInFlight<WireTicketList>(), flows: flowsInFlight<WireFlowList>() });
     void (async () => {
       const [tickets, flows] = await Promise.all([fetchTickets(request, clock), fetchFlows(request, clock)]);
-      if (live) setData({ tickets, flows });
+      if (generation.current === mine) setData({ tickets, flows });
     })();
-    return () => { live = false; };
   }, [request, clock]);
 
   // On mount and on an explicit Refresh, and on nothing else: no interval, no focus listener, no
-  // revalidation. The cleanup is what stops a late answer landing on an unmounted screen.
-  useEffect(() => load(), [load]);
+  // revalidation. Unmounting bumps the same counter, which is what stops a late answer landing on a
+  // screen that is gone — the same act as a newer load superseding an older one, through one
+  // mechanism rather than two.
+  useEffect(() => {
+    load();
+    return () => { generation.current += 1; };
+  }, [load]);
 
   const { tickets, flows } = data;
   if (tickets.kind !== 'loaded') {
@@ -295,8 +325,8 @@ export function BacklogBoard({ fetcher, now, onNavigate }: BacklogBoardProps): R
           <h2 className="text-sm text-text">{UNPLACEABLE_HEADING}</h2>
           <ul className="mt-1">
             {unplaceable.map((ticket) => (
-              <li key={`${ticket.id}:${ticket.stage}`} className="font-mono text-xs text-muted">
-                {ticket.id === '' ? NOT_SET : ticket.id} — its stage reads {JSON.stringify(ticket.stage)}, which is not one this board knows
+              <li key={ticket.folder} className="font-mono text-xs text-muted">
+                {ticketName(ticket)} — its stage reads {JSON.stringify(ticket.stage)}, which is not one this board knows
               </li>
             ))}
           </ul>

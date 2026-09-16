@@ -97,6 +97,7 @@ describe('Q-0121 AC-10 — the run and refusal shapes are here, each with a sche
 /** One ticket row every clause below starts from, so a refusal is the one field it changed. */
 const TICKET = {
   id: 'Q-0017',
+  folder: 'Q-0017-backlog-board-and-ticket-page',
   title: 'Backlog board',
   stage: 'requirements',
   owner: 'ruud',
@@ -145,6 +146,21 @@ describe('Q-0017 AC-1 — the two listings the board reads, each with a schema',
       'a reason outside the closed set was accepted').toBe(false);
     expect(wireTicketSchema.safeParse({ ...TICKET, containment: { state: 'merged' } }).success,
       'a state this vocabulary does not have was accepted').toBe(false);
+  });
+
+  test('the folder is required, and an id the file did not supply is empty rather than invented', () => {
+    // The identity that survives a `ticket.md` nothing could parse. `id` is then `''` — the answer
+    // `title`, `owner` and `branch` already give for a value nobody wrote — so the schema has to
+    // accept an empty one, and `folder` has to be there for anything to name the ticket by. A
+    // schema that let `folder` be absent would let the daemon stop sending it and the board fall
+    // back to rendering two damaged tickets as one nameless row twice.
+    expect(wireTicketSchema.safeParse({ ...TICKET, id: '' }).success,
+      'a ticket whose own file supplied no id makes the whole listing unparseable').toBe(true);
+    const { folder: _dropped, ...withoutFolder } = TICKET;
+    expect(codesOf(wireTicketSchema.safeParse(withoutFolder)),
+      'a row with no folder was accepted, so the only identity a damaged ticket keeps is optional')
+      .toContain('invalid_type');
+    expect(wireTicketSchema.safeParse({ ...TICKET, folder: 42 }).success).toBe(false);
   });
 
   test('it refuses an unknown key and an absent stage, which is what a parser is FOR', () => {
@@ -209,7 +225,9 @@ describe('Q-0017 AC-2 — what a ticket row may carry, and what it may not', () 
     }
     // The fields it does declare, as an identity: a count would be satisfied by a swap.
     const fields = [...body.matchAll(/^\s*readonly ([A-Za-z]+)[?:]/gm)].map((match) => match[1]);
-    expect(fields).toStrictEqual(['id', 'title', 'stage', 'owner', 'branch', 'containment', 'iterations', 'billedCostUsd']);
+    expect(fields).toStrictEqual([
+      'id', 'folder', 'title', 'stage', 'owner', 'branch', 'containment', 'iterations', 'billedCostUsd',
+    ]);
     // …and the needle finds one when it is there, so the emptiness above is an absence.
     expect(/unpriced/i.test('  readonly unpricedRuns: number;')).toBe(true);
   });

@@ -181,13 +181,25 @@ export const pushLagResultSchema: z.ZodType<PushLagResult> = z.discriminatedUnio
  * switch on it; `null` means git was asked nothing about this branch, which is not an indeterminate
  * answer and is carried through rather than flattened.
  *
+ * **`id` is what the file said and `folder` is where the file is, which is why both are here.** A
+ * `ticket.md` `parseFrontmatter` fell open on supplies no id, and `id` is then the empty string —
+ * the same answer `title`, `owner` and `branch` already give for a value nobody wrote, rather than
+ * the literal `"undefined"`, which is a fabricated id a reader cannot tell from a real one.
+ * `folder` is the ticket directory's basename: it comes from `readdir` rather than from the damaged
+ * file, it is unique under one backlog root by construction, and it is therefore the identity that
+ * survives exactly the case where the other one does not. Two damaged tickets are two rows here and
+ * not one.
+ *
  * **`billedCostUsd` is `null` where nothing has run, and never `0`.** Nothing has run is not the
  * claim that it cost nothing, which is the `n/a`-never-`0` rule every other measure here is under.
  * It carries no vendor breakdown and no count of unpriced runs: a ticket file records one figure and
  * cannot see its own incompleteness, so what names that is `COST_LEGEND` in `board.ts` beside it.
  */
 export interface WireTicket {
+  /** The id the ticket's own frontmatter carries, or `''` where it carries none. Never invented. */
   readonly id: string;
+  /** The ticket directory's basename — read from the backlog root, so a damaged file cannot lose it. */
+  readonly folder: string;
   readonly title: string;
   readonly stage: string;
   readonly owner: string;
@@ -203,6 +215,7 @@ export interface WireTicket {
 /** Runtime validation for one ticket row. */
 export const wireTicketSchema: z.ZodType<WireTicket> = z.object({
   id: z.string(),
+  folder: z.string(),
   title: z.string(),
   stage: z.string(),
   owner: z.string(),

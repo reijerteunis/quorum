@@ -13,7 +13,7 @@
  */
 import { act, createElement, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { BacklogBoard, COST_LEGEND, NOT_SET, REFRESH_LABEL, RETRY_LABEL, UNPLACEABLE_HEADING, UNREADABLE_FLOWS_HEADING } from './backlog-board.js';
 import type { DaemonResponse } from './daemon-client.js';
@@ -49,11 +49,16 @@ const COST_TO_DATE = `cost to ${'date'}`;
 const TOKEN_COUNT = `${'token'}s`;
 
 /** One ticket row, with everything a card can carry defaulted to the quiet answer. */
-const ticket = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  id: 'Q-0001', title: 'a ticket', stage: 'draft', owner: 'ruud',
-  branch: 'harness/Q-0001/integration', containment: null, iterations: {}, billedCostUsd: null,
-  ...over,
-});
+const ticket = (over: Record<string, unknown> = {}): Record<string, unknown> => {
+  const row = {
+    id: 'Q-0001', title: 'a ticket', stage: 'draft', owner: 'ruud',
+    branch: 'harness/Q-0001/integration', containment: null, iterations: {}, billedCostUsd: null,
+    ...over,
+  };
+  // The folder follows the id unless a fixture names one, so rows are distinct without every call
+  // having to say so — and a fixture about a damaged ticket, whose id is what it lacks, says so.
+  return { folder: `${String(row.id)}-folder`, ...row };
+};
 
 /** One flow row, likewise. */
 const flow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -97,6 +102,28 @@ async function render(element: ReactElement): Promise<HTMLElement> {
 /** The board over one set of answers, already settled. */
 const board = async (answers: Answers, navigate: (to: string) => void = () => undefined): Promise<HTMLElement> =>
   render(createElement(BacklogBoard, { fetcher: daemon(answers).fetch, now: CLOCK, onNavigate: navigate }));
+
+/**
+ * Run `body` with `console.error` captured, and answer every line it wrote.
+ *
+ * React reports a duplicate key there and nowhere else — it is a complaint rather than a thrown
+ * error, so a suite that does not watch for it cannot see one.
+ */
+async function whileWatchingConsole(body: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const watched = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    lines.push(args.map((arg) => String(arg)).join(' '));
+  });
+  try {
+    await body();
+  } finally {
+    watched.mockRestore();
+  }
+  return lines;
+}
+
+/** Whether one captured line is React complaining that two children share a key. */
+const isKeyComplaint = (line: string): boolean => /same key|unique "?key/i.test(line);
 
 /** Every column heading the board rendered, in order. */
 const columns = (root: HTMLElement): string[] =>
@@ -149,6 +176,48 @@ describe('AC-8 — a stage the vocabulary cannot place is named, never dropped',
         .find((node) => node.getAttribute('aria-label') === heading);
       expect(column?.textContent ?? '', `the unplaceable ticket was filed under ${heading}`).not.toContain('undefined');
     }
+  });
+
+  test('two tickets whose files supplied no id are two rows, each named by its own folder', async () => {
+    // The review's finding, at the surface it is visible on. The daemon answers `id: ''` for a
+    // `ticket.md` `parseFrontmatter` fell open on rather than inventing one, so the folder is the
+    // only identity left — and it is what tells one damaged ticket from another, both for a reader
+    // and for React, which was handed the same key twice.
+    let root!: HTMLElement;
+    const complaints = await whileWatchingConsole(async () => {
+      root = await board({
+        tickets: {
+          tickets: [
+            ticket({ id: '', folder: 'T-0107-first-damaged', stage: 'undefined', title: '', owner: '' }),
+            ticket({ id: '', folder: 'T-0108-second-damaged', stage: 'undefined', title: '', owner: '' }),
+          ],
+          pushLag: null,
+          baseBranch: 'main',
+        },
+      });
+    });
+
+    const rows = [...root.querySelectorAll('li')].map((node) => node.textContent ?? '');
+    expect(rows, 'two damaged tickets were collapsed into one row').toHaveLength(2);
+    expect(rows.filter((text) => text.includes('T-0107-first-damaged')), 'the first is not named by its folder').toHaveLength(1);
+    expect(rows.filter((text) => text.includes('T-0108-second-damaged')), 'the second is not named by its folder').toHaveLength(1);
+    // Neither row falls back to the sentence a card uses for a value nobody wrote: a folder is a
+    // real identity and `not set` would be two rows saying the same nothing.
+    expect(root.textContent, 'a damaged ticket was rendered with no identity at all').not.toContain(NOT_SET);
+    // …and React was not handed two rows under one key, which is the other half of the finding.
+    expect(complaints.filter(isKeyComplaint), 'two rows share a React key').toStrictEqual([]);
+  });
+
+  test('and that key check discriminates — a list that really does repeat one complains', async () => {
+    // The check above is an ABSENCE, so it is worth nothing until the instrument is shown to fire.
+    // Same capture, same needle, over a list written to repeat a key on purpose.
+    const complaints = await whileWatchingConsole(async () => {
+      await render(createElement('ul', null,
+        createElement('li', { key: 'same' }, 'first'),
+        createElement('li', { key: 'same' }, 'second')));
+    });
+    expect(complaints.filter(isKeyComplaint).length, 'the console capture sees no duplicate key at all')
+      .toBeGreaterThan(0);
   });
 });
 
@@ -426,5 +495,52 @@ describe('AC-5/AC-6 — what the screen says before an answer, and when it does 
     expect(answering.asked).toStrictEqual([
       DAEMON_ENDPOINTS.tickets, DAEMON_ENDPOINTS.flows, DAEMON_ENDPOINTS.tickets, DAEMON_ENDPOINTS.flows,
     ]);
+  });
+
+  test('a slower earlier load never lands on top of a newer one', async () => {
+    // The review's finding: every `load()` used to own a private `live` flag, and only the one the
+    // mount's effect returned was ever retained — a Refresh's was dropped by the click handler. So
+    // an earlier, slower request could resolve LAST and put a stale board in front of a reader who
+    // had just asked for a fresh one, complete with a stale fetched-at instant and stale containment
+    // and push-lag facts that this screen derives per request and stores nowhere.
+    //
+    // Two loads are put in flight at once the way a screen really does it: Refresh starts one, and
+    // a re-render with a different fetcher starts another before the first has answered.
+    const pending: ((body: unknown) => void)[] = [];
+    const deferred = () => (): Promise<DaemonResponse> => new Promise<DaemonResponse>((resolve) => {
+      pending.push((body) => resolve({ ok: true, status: 200, json: () => Promise.resolve(body) }));
+    });
+    const listing = (id: string): unknown => ({ tickets: [ticket({ id })], pushLag: null, baseBranch: 'main' });
+    /** Answer the pair of requests one load issued — tickets first, then flows. */
+    const answer = async (first: number, tickets: unknown): Promise<void> => {
+      await act(async () => {
+        pending[first](tickets);
+        pending[first + 1]({ flows: [] });
+      });
+    };
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const mount = (fetcher: () => Promise<DaemonResponse>): Promise<void> =>
+      act(async () => root.render(createElement(BacklogBoard, { fetcher, now: CLOCK, onNavigate: () => undefined })));
+    await mount(deferred());
+    mounted.push(() => root.unmount());
+
+    // The mount's load, answered, so that Refresh exists to be pressed at all.
+    await answer(0, listing('Q-0001'));
+    const refresh = [...container.querySelectorAll('button')].find((node) => node.textContent === REFRESH_LABEL);
+    await act(async () => (refresh as HTMLButtonElement).click());
+    // …and a second load started before that one answers.
+    await mount(deferred());
+    expect(pending, 'three loads did not each issue their own pair of requests').toHaveLength(6);
+
+    // The newest answers first, which is the board a reader is now looking at.
+    await answer(4, listing('Q-0003'));
+    expect(container.textContent, 'the newest load did not render').toContain('Q-0003');
+    // Then the superseded one answers, and is dropped in flight rather than overwriting it.
+    await answer(2, listing('Q-0002'));
+    expect(container.textContent, 'a superseded request overwrote the newer board').not.toContain('Q-0002');
+    expect(container.textContent, 'the newer board was lost to a stale answer').toContain('Q-0003');
   });
 });

@@ -19,7 +19,8 @@ const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
 /** A well-formed listing, which every clause below starts from and changes one thing in. */
 const LISTING = {
   tickets: [{
-    id: 'Q-0017', title: 'Backlog board', stage: 'requirements', owner: 'ruud',
+    id: 'Q-0017', folder: 'Q-0017-backlog-board-and-ticket-page', title: 'Backlog board',
+    stage: 'requirements', owner: 'ruud',
     branch: 'harness/Q-0017/integration', containment: { state: 'contained' },
     iterations: {}, billedCostUsd: null,
   }],

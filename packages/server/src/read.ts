@@ -103,7 +103,14 @@ export function mountRead(app: Hono, project: Project): Hono {
   app.get('/tickets', (c) => {
     const { spot, lag, base } = gitFacts(project);
     const tickets: WireTicket[] = project.backlog.list().map((ticket) => ({
-      id: String(ticket.meta.id),
+      // `?? ''` like the three fields under it, and NOT `String(ticket.meta.id)`, which answers the
+      // literal "undefined" for a `ticket.md` `parseFrontmatter` fell open on — an id a reader
+      // cannot tell from a real one, and one that two damaged tickets would share. The identity
+      // that survives that case is `folder`, which comes from the directory rather than the file.
+      // `stage` keeps its `String()` deliberately: what the file claimed is what a client must be
+      // able to NAME (AC-8), and "" would say the file was silent where it was not.
+      id: String(ticket.meta.id ?? ''),
+      folder: ticket.folder,
       title: String(ticket.meta.title ?? ''),
       stage: String(ticket.meta.stage),
       owner: String(ticket.meta.owner ?? ''),

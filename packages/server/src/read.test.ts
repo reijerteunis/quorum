@@ -158,16 +158,42 @@ describe('Q-0017 AC-1/AC-2 — a ticket row carries what a card renders, and not
   test('iterations travel verbatim, and a stage the vocabulary cannot place still travels', async () => {
     // Two claims the wire schema's own looseness is FOR. The counters are copied rather than
     // computed — there is no denominator anywhere on this transport — and a damaged `ticket.md`
-    // yields the literal "undefined", which must reach a client that can name it rather than being
-    // refused into a listing nobody can render. Q-0060 is open and this repairs none of it.
+    // yields the literal "undefined" for its STAGE, which must reach a client that can name it
+    // rather than being refused into a listing nobody can render. Q-0060 is open and this repairs
+    // none of it.
     const { project, app } = served();
     writeTicket(project.repoDir, 'T-0105-iters', 'T-0105', "iterations: {review: 2, 'chore.review': 1}");
     write(path.join(project.repoDir, 'backlog', 'T-0106-damaged', 'ticket.md'), 'no frontmatter at all\n');
 
     const rows = await rowsOf(app);
     expect(rows['T-0105'].iterations).toStrictEqual({ review: 2, 'chore.review': 1 });
-    expect(rows['undefined'], 'the damaged ticket was dropped from the listing').toBeDefined();
-    expect(rows['undefined'].stage, 'the damaged ticket was given a stage nobody wrote').toBe('undefined');
+    const damaged = Object.values(rows).find((row) => row.folder === 'T-0106-damaged');
+    expect(damaged, 'the damaged ticket was dropped from the listing').toBeDefined();
+    expect(damaged?.stage, 'the damaged ticket was given a stage nobody wrote').toBe('undefined');
+  });
+
+  test('two tickets whose files supplied no id are two rows, each named by its own folder', async () => {
+    // The review's finding: `String(ticket.meta.id)` answered the literal "undefined", so every
+    // damaged ticket carried the same fabricated id — indistinguishable from each other, from a
+    // ticket whose id really is that word, and duplicate keys in the renderer. The folder is read
+    // from the backlog directory rather than from the file that failed to parse, so it is the one
+    // identity that survives exactly this case, and it is unique under one root by construction.
+    const { project, app } = served();
+    write(path.join(project.repoDir, 'backlog', 'T-0107-first-damaged', 'ticket.md'), 'no frontmatter\n');
+    write(path.join(project.repoDir, 'backlog', 'T-0108-second-damaged', 'ticket.md'), 'none here either\n');
+
+    const body = await (await app.request('/tickets')).json() as WireTicketList;
+    const nameless = body.tickets.filter((row) => row.id === '');
+    expect(nameless.map((row) => row.folder).sort(), 'two damaged tickets did not arrive as two rows')
+      .toStrictEqual(['T-0107-first-damaged', 'T-0108-second-damaged']);
+    // …and not one of them carries an id nobody wrote.
+    expect(body.tickets.filter((row) => row.id === 'undefined'), 'an id was fabricated from an absent one')
+      .toStrictEqual([]);
+    // Every row's folder is distinct, which is what makes it usable as an identity at all.
+    const folders = body.tickets.map((row) => row.folder);
+    expect(new Set(folders).size, 'two rows share a folder').toBe(folders.length);
+    // The whole listing still parses, one damaged row and all — the looseness above, exercised.
+    expect(wireTicketListSchema.safeParse(body).success, 'a damaged ticket made the listing unparseable').toBe(true);
   });
 
   test('the base branch travels with the two git facts it was computed against', async () => {
