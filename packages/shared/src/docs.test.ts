@@ -1653,3 +1653,153 @@ describe('Q-0124 AC-13 — the installation documents describe the install a str
       .toContain('the three **distribution** packages');
   });
 });
+
+describe('Q-0017 AC-4 — the two artifacts claiming this app fetches nothing say what they enforce', () => {
+  /**
+   * The describe title `apps/web/test/source.test.ts` gives its network scan.
+   *
+   * **Read here rather than asserted there**, on the precedent this file already states for the two
+   * `apps/web` anchors above: this package's `test` task declares `docs/04-architecture.md` as an
+   * input, and holding a document's wording against a guard's from inside `apps/web` would earn that
+   * package its first `turbo.json` for one assertion. The read in the other direction — this file
+   * opening a file under `apps/` — is declared in `packages/shared/turbo.json` and registered in
+   * `packages/core/src/turbo-inputs.test.ts`'s manifest, which is the other half of that trade.
+   */
+  const scanTitle = (): string => {
+    const source = repoFile('apps/web/test/source.test.ts');
+    const found = /describe\('(AC-10 — every request[^']+)'/.exec(source);
+    if (!found) throw new Error('apps/web/test/source.test.ts has no network-scan describe — this check has lost its subject');
+    return found[1];
+  };
+
+  /** The architecture document's own clause about what this app fetches. */
+  const architectureClause = (): string => {
+    const text = repoFile('docs/04-architecture.md');
+    const start = text.indexOf('### `apps/web`');
+    if (start < 0) throw new Error('docs/04-architecture.md has no apps/web section — this check has lost its subject');
+    const end = text.indexOf('\n## ', start + 1);
+    const web = text.slice(start, end < 0 ? undefined : end).replace(/\s+/g, ' ');
+    const found = /and \*\*([^*]+)\*\* — a deliberate divergence/.exec(web);
+    if (!found) throw new Error('docs/04-architecture.md no longer carries the fetch clause — this check has lost its subject');
+    return found[1];
+  };
+
+  test('neither claims that nothing is fetched, which stopped being true at this ticket', () => {
+    // `apps/web/src/daemon-client.ts` asks the daemon for the backlog on every board load. Both
+    // artifacts said the shell fetched nothing from a network, and both are enforced by a scan for
+    // three URL literals that a same-origin path trips none of — so both claims would have gone on
+    // passing while being false. That is a check outliving its subject at the level of the CLAIM
+    // rather than of the assertion, which is the class this repository records most.
+    const stale = /fetches nothing|nothing is fetched/i;
+    for (const [what, text] of [['the scan title', scanTitle()], ['the architecture clause', architectureClause()]] as const) {
+      expect(stale.test(text), `${what} still says nothing is fetched`).toBe(false);
+    }
+    // The needle discriminates, over the wording each of them carried until this ticket.
+    expect(stale.test('AC-10 — loading the shell fetches nothing from a network')).toBe(true);
+    expect(stale.test('and **nothing is fetched from a network** — a deliberate divergence')).toBe(true);
+  });
+
+  test('and both state the property the scan actually enforces, so they cannot drift apart', () => {
+    // What was always true, and still is: no absolute URL, no third-party host, no font host —
+    // every request the app makes is same-origin and page-relative. Held against each other rather
+    // than each against a paraphrase, because two sentences edited by two tickets is how one of
+    // them goes quiet. Nothing in the scan itself was weakened: the three needles, the licence
+    // subtraction and its both-directions test are untouched.
+    for (const [what, text] of [['the scan title', scanTitle()], ['the architecture clause', architectureClause()]] as const) {
+      expect(text, `${what} does not state the same-origin property`).toMatch(/same-origin/i);
+      expect(text, `${what} no longer names the absolute URL it forbids`).toMatch(/absolute URL/i);
+      expect(text, `${what} no longer names the font host it forbids`).toMatch(/font host/i);
+    }
+  });
+
+  test('the app really does fetch now, so neither clause is being narrowed for nothing', () => {
+    // Anti-vacuity from the other side: a claim narrowed for an occasion that never arrived is a
+    // document weakened for no reason. The occasion is a real module making a real request.
+    const client = repoFile('apps/web/src/daemon-client.ts');
+    expect(client, 'the client no longer fetches — this narrowing has lost its occasion').toContain('fetch(');
+    expect(/https?:\/\//.test(client), 'the client names an absolute URL after all').toBe(false);
+  });
+});
+
+describe('Q-0017 AC-15 — the design brief stops promising a gate action the engine refuses', () => {
+  /**
+   * The brief proper: everything below the rule that separates it from this repository's own record
+   * of what has been corrected in it.
+   *
+   * The split is what the document already has, and it is load-bearing here. The status block above
+   * the rule is where a correction is written down, so it NAMES the wording it removed; the brief
+   * below is what somebody pastes into a prompt. A scan over the whole file could not tell a promise
+   * from the record of one having been withdrawn.
+   */
+  const brief = (): string => {
+    const text = repoFile('docs/05-design-prompt.md');
+    const rule = text.indexOf('\n---\n');
+    if (rule < 0) throw new Error('docs/05-design-prompt.md has no rule separating its status block from the brief');
+    return text.slice(rule);
+  };
+
+  /** The status block above that rule — the repository's record rather than the brief. */
+  const record = (): string => {
+    const text = repoFile('docs/05-design-prompt.md');
+    return text.slice(0, text.indexOf('\n---\n')).replace(/\s+/g, ' ');
+  };
+
+  test('the brief offers no override and no "Advance anyway"', () => {
+    // Third document to carry that promise and the last to be corrected. `gateAnswerSchema` is a
+    // three-member enum and `gateAnswerEnvelopeSchema` is `.strict()` over it, so `askGate` raises
+    // on anything else — an override control is a screen a reader would build and the engine would
+    // refuse. Q-0013's gate found it in `04-architecture.md` and in `06-development-plan.md`, and
+    // Q-0118 recorded the discharge as complete while this file had never been looked at.
+    expect(/\boverride/i.test(brief()), 'the brief still offers an override').toBe(false);
+    expect(/advance anyway/i.test(brief()), 'the brief still offers an "Advance anyway" control').toBe(false);
+    // Both needles discriminate, over the two wordings this ticket removed.
+    expect(/\boverride/i.test('then advances, re-runs, or overrides.')).toBe(true);
+    expect(/advance anyway/i.test('secondary "Advance anyway" (override, requires a one-line reason)')).toBe(true);
+    // …and the record above the rule still carries the word, which is what makes the slice a
+    // separation rather than a hole: the correction has to be able to name what it removed.
+    expect(/\boverride/i.test(record()), 'the correction no longer names the wording it withdrew').toBe(true);
+  });
+
+  test('and it names the three answers the schema permits, which is the half a deletion would miss', () => {
+    // A negative alone is satisfied by a paragraph that stopped mentioning gates at all. What is
+    // asserted is the answer set, taken from the schema rather than transcribed beside it.
+    const answers = [...gateAnswerSchema.options];
+    expect(answers.slice().sort(), 'the answer set moved and this check did not')
+      .toStrictEqual(['abort', 'advance', 'retry']);
+    for (const answer of answers) {
+      expect(brief().includes(`\`${answer}\``), `the brief does not name ${answer}`).toBe(true);
+    }
+  });
+
+  test('the three documents agree: each names what refuses the override rather than the override', () => {
+    // *"The three documents' answer sets agree"*, as a property a check can hold: none of them
+    // offers the control, and each names the schema that refuses it — which is what makes the
+    // agreement a shared reason rather than three independent silences.
+    const SITES: [string, string][] = [
+      ['docs/04-architecture.md', repoFile('docs/04-architecture.md')],
+      ['docs/06-development-plan.md', repoFile('docs/06-development-plan.md')],
+      ['docs/05-design-prompt.md', repoFile('docs/05-design-prompt.md')],
+    ];
+    for (const [name, text] of SITES) {
+      expect(text, `${name} does not name the schema that refuses an override`).toContain('gateAnswerEnvelopeSchema');
+    }
+    // And the record above the rule names the other two, so the set is visible as complete rather
+    // than as two thirds of one — which is how this file came to be missed.
+    expect(record(), 'the correction does not name the architecture document').toContain('docs/04-architecture.md');
+    expect(record(), 'the correction does not name the development plan').toContain('docs/06-development-plan.md');
+  });
+
+  test('and the board paragraph records the four divergences the screen that shipped has from it', () => {
+    const text = brief();
+    const board = text.slice(text.indexOf('**2. Backlog board.**'), text.indexOf('**3. Harness editor.**'));
+    expect(board.length, 'the board paragraph was not found — this check has lost its subject').toBeGreaterThan(500);
+    for (const [what, needle] of [
+      ['the column count', /Ten columns, not eight/],
+      ['the missing denominator', /carry no denominator/],
+      ['what the cost figure is not', /neither per vendor nor cost to date/],
+      ['the refused button', /No "Run next flow/],
+    ] as [string, RegExp][]) {
+      expect(needle.test(board), `the board paragraph does not record ${what}`).toBe(true);
+    }
+  });
+});

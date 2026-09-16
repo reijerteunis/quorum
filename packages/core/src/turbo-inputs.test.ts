@@ -175,6 +175,9 @@ const MANIFEST: Record<string, Record<string, string>> = {
     'harness/harness.yaml': 'project.test.ts — the config corpus, and the Q-0065 --force guard',
     'harness/architecture.md': 'role.test.ts — Q-0107 AC-18, the role table\'s third column against every role\'s paths: frontmatter, which spike/test/smoke.js was the only thing checking',
     'harness/rules.md': 'docs.test.ts — Q-0115 AC-12, the canonical rules file held to a register of its own rules, so the one sentence decision 088 routes there stays one sentence and no existing rule moved with it',
+    'docs/05-design-prompt.md': 'docs.test.ts — Q-0017 AC-15, the design brief held to the answer set gateAnswerSchema declares, that file having been the third document to promise the gate override the engine refuses and the last to be looked at. It was a NOT_READ key until this ticket, as clause A\'s and clause B\'s own fixture, and giving it a real reader is what moved that fixture onto CONTRIBUTING.md — the same move Q-0098 made when this path replaced docs/01-product-definition.md for the identical reason',
+    'apps/web/test/source.test.ts': 'docs.test.ts — Q-0017 AC-4, that scan\'s own describe title held against docs/04-architecture.md\'s sentence about the same property. Both said the app fetched nothing from a network and both are enforced by a scan for three URL literals a same-origin path trips none of, so the claim would have gone false in silence. The anchor is in packages/shared rather than in apps/web on the precedent docs.test.ts already states for its two apps/web anchors: this task declares the document, and that one would earn its first turbo.json for one assertion',
+    'apps/web/src/daemon-client.ts': 'docs.test.ts — Q-0017 AC-4\'s anti-vacuity half: the module that made the old claim false, read so the narrowing is shown to have an occasion rather than being a document weakened for nothing',
     'packages/cli/templates/harness/flows/chore.yaml': 'flow.test.ts — Q-0083, the shipped chore flow against the adopter\'s copy: the verdict, its zero bound and the input that makes the edge converge',
     'packages/cli/templates/harness/roles/developer-generalist.md': 'flow.test.ts — Q-0083, the role that answers that verdict, and the negative half of its definition',
     'packages/cli/templates/harness/harness.yaml': 'project.test.ts — Q-0107 AC-9, the shipped template config, re-aimed off spike/templates/harness/harness.yaml onto the byte-identical copy an adopter\'s quorum init actually copies',
@@ -351,7 +354,19 @@ const NOT_READ: Record<string, string> = {
   // refused until somebody moves the row. That risk is the standing one this register carries.
   'README.md': 'backlog.test.ts writes one into a temp backlog root to prove `list` ignores a non-ticket file; the repository\'s own README is opened by nothing in either suite',
   '.gitignore': 'turbo-inputs.test.ts writes one into a temp repository so the inventory fixture has ignored roots to exclude; this file names it as data and opens nothing',
-  'docs/05-design-prompt.md': 'named nowhere but this file, as clause A\'s and clause B\'s own fixture below',
+  // Q-0017 moved this row's subject. `docs/05-design-prompt.md` stood here as clause A's and clause
+  // B's fixture until `packages/shared/src/docs.test.ts` began holding the design brief to the gate
+  // answer set (AC-15), at which point the entry would have been excusing a real read — and because
+  // `undeclaredPaths` skips a NOT_READ key for EVERY task, clause B would then have gone blind to
+  // whether `@quorum/shared#test` declared it. That is verbatim what Q-0098 found when
+  // `docs/01-product-definition.md` gained its first reader, and the remedy is the same: the row
+  // moves to MANIFEST and the fixture moves to a path nothing opens.
+  //
+  // `CONTRIBUTING.md` is that path, and it was chosen by measurement rather than by taste — it is
+  // tracked, it is outside `packages/core`, and `grep` across `packages/` and `apps/` returns no
+  // reference to it at all. A root-level file is a candidate at all only because Q-0108 widened the
+  // classifier to reach one.
+  'CONTRIBUTING.md': 'named nowhere but this file, as clause A\'s and clause B\'s own fixture below',
   // Q-0125. The architecture document's `packages/server` section names this file as the register
   // that refuses a browser dependency on the daemon, because that register is what the protection
   // rests on now that the package has an export surface — see "A fifth package emits, and
@@ -449,12 +464,12 @@ function listing(root: string = repoRoot): string[] {
  *   sits outside both directories or is not a `.ts` file.
  * - **`reported()`** — turbo's own enumeration, which is the other side of clause A rather than an
  *   independent reader, and which counts untracked-unignored files exactly as the walks do.
- * - **Clause A's and clause B's subject demonstrations**, which assert that
- *   `docs/05-design-prompt.md` really is in the repository before showing that no declaration covers
- *   it — a demonstration over a path that had gone would prove nothing. The file is tracked, so it
- *   is in every checkout of this commit, and the assertion classifies nothing either way. Both
- *   clauses use the one path since Q-0098; clause A's was `docs/01-product-definition.md` until that
- *   ticket gave it a real reader.
+ * - **Clause A's and clause B's subject demonstrations**, which assert that `CONTRIBUTING.md`
+ *   really is in the repository before showing that no declaration covers it — a demonstration over
+ *   a path that had gone would prove nothing. The file is tracked, so it is in every checkout of
+ *   this commit, and the assertion classifies nothing either way. Both clauses have used one path
+ *   since Q-0098, and it has been three paths: `docs/01-product-definition.md` until that ticket
+ *   gave it a reader, `docs/05-design-prompt.md` until Q-0017 gave that one a reader, and this.
  * - **This inventory's own failures** — git absent or failing is a named error; a listing that came
  *   back implausibly small is a named error; and a sparse checkout, which can track a path that is
  *   absent from disk, *collects* that literal, which asks more of the declaration rather than less.
@@ -1839,15 +1854,18 @@ describe('AC-7 clause A — every audited read is a hashed input', () => {
     // The failure this clause exists to catch, over a real reported input set: an escaping glob
     // that stopped resolving leaves its files out of `inputs` while turbo.json still names them.
     //
-    // Why this path moved (Q-0098): the fixture was `docs/01-product-definition.md`, which stopped
-    // being a path nothing reads the moment `packages/shared/src/docs.test.ts` began scanning it for
-    // an unqualified registry claim (AC-21). Its NOT_READ entry would then have been excusing a real
-    // read — and because `undeclaredPaths` skips a NOT_READ key for EVERY task, clause B would have
-    // gone blind to whether `@quorum/shared#test` declared it. Removing the entry is what restores
-    // the check; the fixture is served just as well by `docs/05-design-prompt.md`, which clause B
-    // below already demonstrates is in the repository and covered by no declaration.
-    expect(uncovered(['docs/05-design-prompt.md'], turbo['@quorum/core#test'].inputs))
-      .toEqual(['docs/05-design-prompt.md']);
+    // Why this path has moved twice. At Q-0098 the fixture was `docs/01-product-definition.md`,
+    // which stopped being a path nothing reads the moment `packages/shared/src/docs.test.ts` began
+    // scanning it for an unqualified registry claim (AC-21). Its NOT_READ entry would then have been
+    // excusing a real read — and because `undeclaredPaths` skips a NOT_READ key for EVERY task,
+    // clause B would have gone blind to whether `@quorum/shared#test` declared it. At Q-0017 the
+    // replacement, `docs/05-design-prompt.md`, gained a reader for exactly the same reason (AC-15),
+    // so the fixture moved again — to `CONTRIBUTING.md`, which is tracked, is outside
+    // `packages/core`, and which no suite in either audited package names. **A fixture that acquires
+    // a reader is not a defect in the fixture**; what would be one is leaving it here, where it
+    // reads as coverage while excusing the read.
+    expect(uncovered(['CONTRIBUTING.md'], turbo['@quorum/core#test'].inputs))
+      .toEqual(['CONTRIBUTING.md']);
   });
 });
 
@@ -1883,8 +1901,8 @@ describe('AC-7 clause B — every path either suite names is covered by a declar
     // Isolated from clause A: this calls the same predicate the scan calls, over a path that is
     // really in the repository, really outside `packages/core`, and really undeclared.
     const core = turbo['@quorum/core#test'];
-    expect(fs.existsSync(path.join(repoRoot, 'docs/05-design-prompt.md'))).toBe(true);
-    expect(covered('docs/05-design-prompt.md', core, 'packages/core')).toBe(false);
+    expect(fs.existsSync(path.join(repoRoot, 'CONTRIBUTING.md'))).toBe(true);
+    expect(covered('CONTRIBUTING.md', core, 'packages/core')).toBe(false);
   });
 
   test('and the dependency edge excuses only the package it points at', () => {

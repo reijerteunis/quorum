@@ -181,6 +181,81 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
   });
 });
 
+describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, name or issue', () => {
+  test('nothing under src issues a request that is not a GET, or names a route that takes one', () => {
+    // The read-only boundary as a property of the source rather than only of the screen. Nothing
+    // this ticket adds writes: no run is started, no gate answered, no stage moved, no run lock
+    // taken — and `read.ts`'s own header says the same thing one package over, where it is the
+    // boundary that ticket exists to hold.
+    const methods = [`method:${' '}'POST'`, `method:${' '}'PUT'`, `method:${' '}'PATCH'`, `method:${' '}'DELETE'`];
+    const gateRoutes = ['/gate', '/stop'];
+    for (const [name, text] of sourceFiles()) {
+      for (const method of methods) {
+        expect(text.includes(method), `${name} issues ${method}`).toBe(false);
+      }
+      for (const route of gateRoutes) {
+        expect(text.includes(`'${route}'`), `${name} names the ${route} route`).toBe(false);
+      }
+    }
+    // Each needle discriminates, over fixtures assembled so this file is not its own subject.
+    expect(methods.filter((method) => `await fetch(p, { method:${' '}'POST' })`.includes(method)))
+      .toStrictEqual([methods[0]]);
+    expect(gateRoutes.filter((route) => `const at = '${'/gate'}';`.includes(`'${route}'`))).toStrictEqual(['/gate']);
+  });
+
+  test('nothing refetches on a timer, and nothing persists a board in the browser', () => {
+    // `GET /tickets` walks the backlog and probes git per ticket, so an interval would make the
+    // most expensive route on the transport this app's hot path — and a stored copy would be the UI
+    // holding a git fact it cannot keep current. The persistence half is the block at the top of
+    // this file; this is the timer half, which nothing covered.
+    const timers = ['setInterval', 'setTimeout', 'requestIdleCallback'];
+    for (const [name, text] of sourceFiles()) {
+      for (const timer of timers) expect(text.includes(`${timer}(`), `${name} schedules work with ${timer}`).toBe(false);
+    }
+    expect(timers.filter((timer) => `${'setInterval'}(reload, 5000)`.includes(`${timer}(`)))
+      .toStrictEqual(['setInterval']);
+  });
+
+  test('no file under src calls a containment answer merged, landed or shipped', () => {
+    // `docs/GLOSSARY.md`: containment is an ancestry fact about two refs at the moment of reading,
+    // and the board says **contained** and never one of these three — an ancestry fact is not a
+    // claim about how the code arrived.
+    const SYNONYMS = ['merged', 'landed', 'shipped'];
+    for (const [name, text] of sourceFiles()) {
+      for (const word of SYNONYMS) {
+        expect(new RegExp(`\\b${word}\\b`, 'i').test(text), `${name} says ${word}`).toBe(false);
+      }
+    }
+    expect(SYNONYMS.filter((word) => new RegExp(`\\b${word}\\b`, 'i').test('the branch was merged into main')))
+      .toStrictEqual(['merged']);
+  });
+
+  test('no cost figure is labelled "cost to date", and no token count is reached for at all', () => {
+    // *"Codex cost is reported as tokens, never priced locally"* (2026-08-22) and the measurement
+    // this ticket's gate produced: the figure a ticket file holds is neither per vendor nor cost to
+    // date, and labelling it as either would be a claim the number cannot support.
+    //
+    // **The needles are the FIELD names a token count could only come from, not the word "token".**
+    // A word scan collides with containment's own vocabulary — the board renders three *tokens*,
+    // and `docs/GLOSSARY.md` uses that word for them — so it would have been a guard keyed on a name
+    // rather than on the behaviour, which is the family this repository records most. These five are
+    // every shape a count reaches this app in: `GET /history/:id`'s roll-up field, the `core`
+    // function behind it, and the three measures a manifest occurrence carries.
+    const COUNT_FIELDS = ['tokensByVendor', 'vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens'];
+    const PHRASE = `cost to ${'date'}`;
+    for (const [name, text] of sourceFiles()) {
+      expect(text.toLowerCase().includes(PHRASE), `${name} labels a figure "${PHRASE}"`).toBe(false);
+      for (const field of COUNT_FIELDS) {
+        expect(text.includes(field), `${name} reaches for ${field}, which is a count and not a price`).toBe(false);
+      }
+    }
+    // Both halves discriminate, over fixtures rather than over an empty corpus.
+    expect(`${PHRASE} per vendor`.includes(PHRASE)).toBe(true);
+    expect(COUNT_FIELDS.filter((field) => 'const total = row.input_tokens + row.output_tokens;'.includes(field)))
+      .toStrictEqual(['input_tokens', 'output_tokens']);
+  });
+});
+
 /**
  * Every module specifier `text` imports or re-exports.
  *
@@ -366,7 +441,7 @@ describe('AC-10 — the palette is defined once, and no component names a colour
   });
 });
 
-describe('AC-10 — loading the shell fetches nothing from a network', () => {
+describe('AC-10 — every request this app makes is same-origin: no absolute URL, no third-party host, no font host', () => {
   /**
    * Assembled, for the reason every needle in this file is: the scan covers this file too.
    *
@@ -375,6 +450,16 @@ describe('AC-10 — loading the shell fetches nothing from a network', () => {
    * document describes a single-file clickable mockup for visual validation, and Quorum is
    * local-first — a shell that fetches a font on every page load makes the product require the
    * internet and leaks a request off the machine.
+   *
+   * **This block was called *"loading the shell fetches nothing from a network"* until Q-0017, and
+   * the title moved because the app started fetching.** `daemon-client.ts` asks the daemon for the
+   * backlog on every board load, and a same-origin path trips none of these three needles — so
+   * every assertion below would have gone on passing under a title that had become false, which is
+   * a check outliving its subject at the level of the claim rather than of the assertion. What was
+   * always enforced, and still is, is the property now in the title. Nothing was weakened: the
+   * three needles, the licence subtraction and its both-directions test are unchanged, and
+   * `docs/04-architecture.md`'s sentence moved with this one — `packages/shared/src/docs.test.ts`
+   * holds the two against each other so they cannot drift apart again.
    */
   const NETWORK_LITERALS = [`http:${'//'}`, `https:${'//'}`, `${'//'}fonts.`];
 
@@ -448,6 +533,28 @@ describe('AC-10 — loading the shell fetches nothing from a network', () => {
       .toStrictEqual([NETWORK_LITERALS[1], NETWORK_LITERALS[2]]);
     expect(NETWORK_LITERALS.filter((literal) => `<a href="/backlog">`.includes(literal)),
       'a same-origin path trips the network scan').toStrictEqual([]);
+  });
+
+  test('Q-0017 AC-4 — the scan still has a subject now that the app fetches, and it discriminates', () => {
+    // The half the title move has to be shown against: a scan whose claim narrows must be proven
+    // still able to fail, or the narrowing is how the thing it forbids gets through. Both
+    // directions over the module that made the old title false.
+    const absolute = `const at = ${'`'}${NETWORK_LITERALS[1]}daemon.example/tickets${'`'};`;
+    expect(NETWORK_LITERALS.filter((literal) => fetchesIn('src/daemon-client.ts', absolute, literal)> 0),
+      'an absolute URL in the client is no longer reported').toStrictEqual([NETWORK_LITERALS[1]]);
+    // …and the request this app actually makes trips nothing, which is why the property in the
+    // title is the one that was always enforced.
+    const sameOrigin = "const answer = await fetch('/tickets');";
+    for (const literal of NETWORK_LITERALS) {
+      expect(fetchesIn('src/daemon-client.ts', sameOrigin, literal), `a same-origin request trips ${literal}`).toBe(0);
+    }
+    // And the real module is clean under the same predicate, so the fixtures above are not standing
+    // in for a file nobody looked at.
+    const client = filesBelow(PACKAGE).find(([name]) => name === 'src/daemon-client.ts');
+    expect(client, 'the client is not in the corpus — this clause has lost its subject').toBeDefined();
+    for (const literal of NETWORK_LITERALS) {
+      expect(fetchesIn('src/daemon-client.ts', client?.[1] ?? '', literal), `the client names ${literal}`).toBe(0);
+    }
   });
 
   test('the type stack is local system faces, named in the palette', () => {

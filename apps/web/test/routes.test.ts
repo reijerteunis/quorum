@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
 import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
-import { HOME_PATH, isRedirect, RAIL, ROUTES, type ScreenRoute } from '../src/routes.js';
+import { BOARD_PATH, HOME_PATH, isRedirect, RAIL, ROUTES, ticketPath, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -69,6 +69,7 @@ const EXCEPTION_REASONS: Record<string, string> = {
   'shell.test.ts:/backlog/%E0%A4%A': 'a malformed percent sequence, asserted not to throw',
   'run-connection.test.ts:/B/events': 'the second handle in the one-socket-at-a-time fixture',
   'shell.test.ts:/runs/run%20one/events': 'the socket path the no-daemon sentence names, asserted to reach the page since round 2 M-1',
+  'backlog-board.test.ts:/backlog/Q-00%2042': "the percent-encoded href a card must build for a ticket id holding a space, asserted in both directions — a ticket id is agent-written frontmatter and `Backlog.read` asserts rather than parses it, so one segment is the property. Written out rather than taken from `ticketPath`, which would assert the implementation against itself",
 };
 const EXCEPTIONS = new Set(Object.keys(EXCEPTION_REASONS));
 
@@ -88,10 +89,49 @@ describe('AC-6 — the rail is the seven entries the design brief names, in its 
     }
   });
 
-  test('and every entry is marked as having no screen, because none has one yet', () => {
+  test('Q-0017 AC-14 — exactly one entry is marked as having a screen, and it is the board\'s', () => {
     // The field exists so that "not yet" is a statement the register makes rather than something a
-    // component assumes. A later ticket flips exactly one of these, visibly.
-    expect(RAIL.filter((entry) => entry.screenExists)).toStrictEqual([]);
+    // component assumes, and Q-0014 left every entry `false` saying *"a later ticket flips exactly
+    // one of these, visibly"*. This is that ticket, and this is the visible part: the count is one,
+    // and the one is named, because a count alone is satisfied by a member swapped for another.
+    expect(RAIL.filter((entry) => entry.screenExists).map((entry) => entry.id)).toStrictEqual(['backlog']);
+    expect(RAIL.find((entry) => entry.id === 'backlog')?.path, 'the flipped entry points somewhere else')
+      .toBe(BOARD_PATH);
+    // …and the six that did not move, as an identity rather than as a count of what is left.
+    expect(RAIL.filter((entry) => !entry.screenExists).map((entry) => entry.id))
+      .toStrictEqual(['projects', 'harness', 'flows', 'runs', 'history', 'settings']);
+  });
+});
+
+describe('Q-0017 AC-14 — the register gains no path, and the ticket page names the ticket that builds it', () => {
+  test('the ticket route still carries a placeholder sentence, and names Q-0127 rather than Q-0017', () => {
+    // The board ships and the ticket page does not, so leaving this row naming the ticket that
+    // shipped would tell a reader the screen is somebody's when it is nobody's. The row that names
+    // the successor is what stops a sentence describing work nothing is doing.
+    const route = SCREEN_ROUTES.find((entry) => entry.path === '/backlog/:ticketId');
+    if (!route) throw new Error('no ticket-page route — this check has lost its subject');
+    expect(route.ticket, 'the ticket page still names the ticket that stopped building it').toBe('Q-0127');
+    expect(route.waitingFor.length, 'the sentence a user reads was emptied').toBeGreaterThan(60);
+    expect(route.waitingFor, 'the sentence no longer says what it is waiting for').toMatch(/route/);
+  });
+
+  test('and the board\'s own path is a register constant both tables are built from', () => {
+    // `app.tsx` has to know which resolved route draws a real screen; a path written there would be
+    // a second register. It reaches for `BOARD_PATH`, on `HOME_PATH`'s precedent, and both tables
+    // here use the same constant so the rail entry and the route row cannot come apart.
+    expect(ROUTES.some((route) => !isRedirect(route) && route.path === BOARD_PATH)).toBe(true);
+    expect(RAIL.some((entry) => entry.path === BOARD_PATH)).toBe(true);
+    expect(fs.readFileSync(path.join(SOURCE, 'app.tsx'), 'utf8'), 'the app names the board path rather than importing it')
+      .toContain('BOARD_PATH');
+  });
+
+  test('the ticket path is built by substitution into the registered pattern', () => {
+    // One string with one hole filled, so the path a card links to and the path the router matches
+    // cannot become two. And the id is percent-encoded to a single segment: a ticket id is
+    // agent-written frontmatter, which `Backlog.read` asserts rather than parses.
+    expect(ticketPath('Q-0042')).toBe('/backlog/Q-0042');
+    expect(ticketPath('a/b'), 'an id with a slash became two path segments').toBe('/backlog/a%2Fb');
+    expect(resolve(ticketPath('a/b')).kind, 'the path a card links to does not resolve').toBe('screen');
   });
 });
 

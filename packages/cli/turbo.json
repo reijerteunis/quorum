@@ -104,7 +104,15 @@
         // there moved this task from `e381d3d003a8d31e` to `45b8b67c3f133524` with nothing declared.
         // Declaring it would be the same claim twice, free to drift (Q-0121's measurement).
         "../../README.md",
-        "../../docs/USAGE.md"
+        "../../docs/USAGE.md",
+        // Q-0017 adds one. `src/board.test.ts` holds this command's cost legend byte-identical to
+        // the browser board's copy of the same sentence — the one board rule that could not move to
+        // `@quorum/shared`, because that package may name no vendor in code and the legend names one
+        // by design. The five that DID move need no declaration: they arrive through the
+        // `@quorum/shared#test` edge like everything else in that package. This file does not, and
+        // nothing else in this task's closure covers it — `../../apps/*/tsconfig.build.json` above
+        // reaches a manifest and not a source file.
+        "../../apps/web/src/backlog-board.tsx"
       ]
     }
   }
