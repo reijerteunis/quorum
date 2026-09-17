@@ -36,3 +36,46 @@
 2026-09-17T09:59:16.986Z run=2 gate=human answer=advance
 2026-09-17T09:59:18.425Z run=2 removed-worktrees=2 kept=0
 2026-09-17T09:59:18.426Z run=2 completed stage=requirements→reviewed cost=161.906 tokens=252276877
+
+2026-09-17 GO-4 discharged: the demonstration performed and transcribed, not reported. Written this
+  way because the operator reported Q-0016's equivalent discharged when its by-hand half had not been
+  performed; erratum E-4 records that, and this is the entry it demanded.
+
+  `pnpm turbo run build` (5 tasks), then `quorum open` → `✓ Quorum is serving http://127.0.0.1:7717`,
+  and a real Chrome tab driven against it. Both acts were performed **from the browser**, not by curl.
+
+  **Start, dry.** `/backlog/Q-0129` offered a "Run a flow" region carrying exactly one flow —
+  **Run requirements** — because Q-0129 is `draft` and `requirements` alone consumes `draft`; a dry
+  checkbox; and **no `auto` control**, which is OQ-4 visible rather than asserted. The confirmation
+  read *"Walk requirements on Q-0129 as a dry run? Nothing is invoked, nothing is written and no lock
+  is taken."* Confirming navigated to `/runs/run-1`, which rendered **Run 1 · requirements · Q-0129 ·
+  ended**, three step columns (`pm-claude`, `pm-codex`, `head-of-product`) beside the run-activity
+  lane, every entry naming its event type, the timeline's third disposition three times — *"The run
+  ended without reporting an end for this step."* — and **10 events** in the top bar.
+
+  **Start, real.** The same control without the dry box started `run-2`. Mission control showed
+  **Run run-2 · requirements · Q-0129 · running** — the **handle** rather than a number — and
+  `Connected to ws://127.0.0.1:7717/runs/run-2/events`, with `pm-claude · claude` and
+  `pm-codex · codex` streaming `spawn` and `stdout` side by side. **Two vendors in parallel, live.**
+
+  **The pair that proves Q-0015's M2 fix in both directions, observed rather than argued:** the ENDED
+  run rendered its run number and **omitted** disclosure 1, while the RUNNING run rendered the handle
+  and **showed** it — *"The run's number is not on the wire until the run ends; its handle identifies
+  it meanwhile."*
+
+  **Stop.** `Stop this run` → *"Stop run run-2? The daemon stops it through the signal it was started
+  with, and nothing here undoes that."* — naming the handle, and worded with none of `advance`,
+  `retry`, `abort`. Confirming produced: *"The daemon took the request to stop this run. Whether it
+  has ended is a read rather than something this page can infer: work already under way unwinds before
+  a run closes."*
+
+  What the daemon answered, read from the API afterwards rather than inferred from the screen:
+      GET /runs   → run-2 {runId: null, state: "running"}, then run-1 {runId: 1, state: "ended"},
+                    newest first, which is the daemon's own ordering and not the screen's.
+      GET /runs/run-2 after 25s → still {state: "running", runId: null}.
+  **The unwind had not finished when observed, and that is recorded as observed** — it is exactly
+  what the screen declined to infer, and a tidier line here would be the inference the screen refused.
+
+  Side effects, checked: Q-0129 is still `stage: draft` — a stopped run moves no stage. It gained one
+  `runs.log` line (`run=1 flow=requirements start stage=draft`) and a `.quorum/runs/Q-0129-1`
+  directory from the real run. The dry walk wrote neither, which is Q-0116 holding.
