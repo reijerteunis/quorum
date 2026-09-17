@@ -147,3 +147,38 @@
 2026-09-17T06:28:09.863Z run=9 gate=human-locked answer=advance
 2026-09-17T06:28:20.571Z run=9 gate=human answer=advance
 2026-09-17T06:28:20.580Z run=9 completed stage=green→reviewed cost=10.391 tokens=6284817
+
+2026-09-17 AC-14 demonstration, by hand against a running daemon. Transcribed rather than
+  paraphrased, because Q-0016's entry records this same obligation being reported discharged when
+  its by-hand half had not been performed, and round 4's verdict asked for it in those words.
+
+  The daemon was started with `quorum open` and bound 127.0.0.1:7717. The run was produced by this
+  request and by nothing else:
+
+      curl -s -X POST http://127.0.0.1:7717/runs -H 'content-type: application/json' \
+        -d '{"flow":"requirements","ticket":"Q-0129","dry":true}'
+      → {"handle":"run-1","flow":"requirements","ticketId":"Q-0129","runId":null,
+         "state":"running","pendingGates":0,"gates":[],"refusal":null}
+
+  §0.9 is why the request is recorded: `host.start` has one production caller and nothing issues it,
+  so no run exists in a daemon unless a human makes one. A report saying "opened the browser on a
+  real run" would be claiming something nobody did.
+
+  Observed, then, at the same daemon:
+  - `GET /runs/run-1` while running → `runId: null`, `state: "running"`.
+  - `GET /runs/run-1` after it ended → `runId: 1`, `state: "ended"`. **The run number is absent for
+    the whole life of a live run and arrives with the terminal event** — the measurement this
+    ticket's body made, confirmed against a running daemon, and the reason disclosure 1 exists.
+  - `GET /runs/x` for a handle nothing minted → **404**, not an empty list.
+  - The socket was opened on `run-1` AFTER it had ended and still replayed: Q-0121's retained-buffer
+    property, demonstrated rather than asserted.
+
+  AC-9's verification product, and the first per-run event count this repository holds:
+      events 10 · missed 0 · peak concurrent columns 3
+      by type: info 6, step 3, terminal 1
+
+  **Stated rather than left to be inferred: this was a `--dry` walk.** It invokes no adapter, so it
+  emits no `stdout`, and `stdout` is where a real run's volume is. So the figure above is a true
+  measurement of a dry requirements walk and is NOT a per-run count for a real one; AC-9's bound of
+  500 remains unmeasured against real traffic, exactly as §0.4 said it was. `.quorum/runs/` still
+  ends at `Q-0127-2` afterwards, so the walk wrote no history — Q-0116 holding.
