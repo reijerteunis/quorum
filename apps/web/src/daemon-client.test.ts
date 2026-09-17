@@ -8,13 +8,17 @@
  */
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS, runDetailPath, runGatePath, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
+import { WIRE_START_FIELDS } from '@quorum/shared';
+
+import { DAEMON_ENDPOINTS, runDetailPath, runGatePath, runStopPath, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import {
-  answerGate, fetchFlows, fetchRun, fetchRuns, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight,
-  gateAnswerInFlight, requestJson, runInFlight, ticketFileInFlight, ticketInFlight, ticketsInFlight,
+  answerGate, BROWSER_STOP_REASON, fetchFlows, fetchRun, fetchRuns, fetchTicket, fetchTicketFile,
+  fetchTickets, flowsInFlight, gateAnswerInFlight, requestJson, runInFlight, runStopInFlight,
+  startRun, startRunInFlight, stopRun, ticketFileInFlight, ticketInFlight, ticketsInFlight,
   type DaemonRequest, type DaemonResponse, type FetchLike,
 } from './daemon-client.js';
 import { canRetryRequest, type RequestState } from './request-state.js';
+import { START_REFUSAL_TEXT, STOP_REFUSAL_TEXT, refusalSentence } from './run-lifecycle.js';
 
 /** A clock a test owns, so a fetched-at instant is a value rather than a property of the machine. */
 const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
@@ -520,5 +524,242 @@ describe('AC-4 — fetchRun reads one run, over the route that answers for one h
     const state = await fetchRun(answering(refusal, 404).fetch, HANDLE, CLOCK);
     expect(state.kind).toBe('refused');
     if (state.kind === 'refused') expect(state.refusal).toStrictEqual(refusal);
+  });
+});
+
+describe('Q-0130 AC-3 — startRun, whose success is a body and not a status', () => {
+  /** One run row in the shape `wireRunSchema` accepts — what a `201` carries. */
+  const STARTED = {
+    handle: 'run-9', flow: 'chore', ticketId: 'Q-0130', runId: null, state: 'running',
+    pendingGates: 0, gates: [], refusal: null,
+  };
+
+  /** Everything one request carried, so *what was sent* is asserted rather than assumed. */
+  interface Sent {
+    readonly path: string;
+    readonly request?: DaemonRequest;
+  }
+
+  /** A daemon answering one status with one body, recording the request. */
+  const daemon = (status: number, body: unknown): { fetch: FetchLike; sent: Sent[] } => {
+    const sent: Sent[] = [];
+    return {
+      sent,
+      fetch: (path: string, request?: DaemonRequest) => {
+        sent.push({ path, request });
+        return Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => Promise.resolve(body),
+        });
+      },
+    };
+  };
+
+  const ASK = { flow: 'chore', ticket: 'Q-0130' } as const;
+
+  test('a 201 loads the run it carries, which is where the handle comes from', async () => {
+    const { fetch, sent } = daemon(201, STARTED);
+    const state = await startRun(fetch, ASK, CLOCK);
+    expect(state.kind, 'a started run was not reported as started').toBe('loaded');
+    if (state.kind !== 'loaded') return;
+    // The handle, and it is the point: it is minted inside the daemon and reaches a client here and
+    // nowhere else, so a `startRun` written to `answerGate`'s status-only shape would discard the
+    // only thing the exchange establishes.
+    expect(state.value.handle).toBe('run-9');
+    expect(state.fetchedAt).toBe(CLOCK());
+    expect(sent.map((each) => each.path), 'the start went somewhere other than the runs route')
+      .toStrictEqual([DAEMON_ENDPOINTS.runs]);
+    expect(sent[0]?.request?.method).toBe('POST');
+    expect(canRetryRequest(state), 'a started run offered a retry').toBe(false);
+    // And the in-flight state names the same path the request will ask for.
+    expect(startRunInFlight()).toStrictEqual({ kind: 'in-flight', path: DAEMON_ENDPOINTS.runs });
+  });
+
+  test('the body is built through the shared schema, so the field names come from the contract', async () => {
+    const { fetch, sent } = daemon(201, STARTED);
+    await startRun(fetch, { flow: 'chore', ticket: 'Q-0130', dry: true }, CLOCK);
+    expect(JSON.parse(sent[0]?.request?.body ?? '{}'), 'the body is not what the caller asked for')
+      .toStrictEqual({ flow: 'chore', ticket: 'Q-0130', dry: true });
+    // Every key it sends is one the route declares, taken from the tuple rather than transcribed.
+    const keys = Object.keys(JSON.parse(sent[0]?.request?.body ?? '{}') as Record<string, unknown>);
+    expect(keys.filter((key) => !(WIRE_START_FIELDS as readonly string[]).includes(key)),
+      'the body carries a key the route does not accept').toStrictEqual([]);
+  });
+
+  test('a 200 carrying a PERFECTLY GOOD run is reported rather than taken for a success', async () => {
+    // The clause the ordering exists for: a schema that accepts the body cannot see this, because
+    // the disagreement is about the exchange and not about the shape. This page and the daemon
+    // disagreeing about what starting a run looks like is a thing to say.
+    const state = await startRun(daemon(200, STARTED).fetch, ASK, CLOCK);
+    expect(state.kind, 'a 200 carrying a valid run was accepted as a start').toBe('unparseable');
+    if (state.kind === 'unparseable') expect(state.problem, 'the problem says nothing about the status').toContain('201');
+  });
+
+  test('a 201 whose body is not a run is unparseable, and a fetcher that throws is unreachable', async () => {
+    const wrong = await startRun(daemon(201, { ...STARTED, surprise: true }).fetch, ASK, CLOCK);
+    expect(wrong.kind, 'an undeclared field was accepted').toBe('unparseable');
+    const broken = await startRun(
+      () => Promise.resolve({ ok: true, status: 201, json: () => Promise.reject(new Error('Unexpected token <')) }),
+      ASK, CLOCK,
+    );
+    expect(broken.kind).toBe('unparseable');
+    if (broken.kind === 'unparseable') expect(broken.problem).toContain('not JSON');
+    const down = await startRun(() => Promise.reject(new Error('connection refused')), ASK, CLOCK);
+    expect(down.kind).toBe('unreachable');
+    if (down.kind === 'unreachable') expect(down.path).toBe(DAEMON_ENDPOINTS.runs);
+  });
+
+  test('Q-0130 AC-5 — every refusal a well-formed start can provoke keeps its own code', async () => {
+    // Two PAIRS share a status here, which is why nothing branches on one: `no-such-ticket` against
+    // `no-such-flow` is *that ticket is not there* against *that flow file is not there*, and
+    // `lock-held` against `not-runnable` is *wait* against *you asked for the wrong flow*.
+    const answered: string[] = [];
+    for (const [code, status] of [
+      ['lock-held', 409], ['not-runnable', 409], ['no-such-ticket', 404],
+      ['no-such-flow', 404], ['host-closed', 503], ['refused', 500],
+    ] as const) {
+      const refusal = { code, condition: `the daemon says ${code}`, remedy: null };
+      const state = await startRun(daemon(status, refusal).fetch, ASK, CLOCK);
+      expect(state.kind).toBe('refused');
+      if (state.kind !== 'refused') continue;
+      expect(state.refusal, 'the refusal was rewritten on the way through').toStrictEqual(refusal);
+      expect(canRetryRequest(state), 'a refusal offered no action at all').toBe(true);
+      answered.push(state.refusal.code);
+    }
+    expect(answered, 'two refusals sharing a status collapsed into one')
+      .toStrictEqual(['lock-held', 'not-runnable', 'no-such-ticket', 'no-such-flow', 'host-closed', 'refused']);
+    // …and a non-2xx whose body is not a refusal is still the daemon having ANSWERED, rather than a
+    // request nobody answered, which would send a reader to restart a process that is running.
+    const html = await startRun(daemon(502, '<html>').fetch, ASK, CLOCK);
+    expect(html.kind).toBe('refused');
+    if (html.kind === 'refused') expect(html.refusal.code).toContain('502');
+  });
+});
+
+describe('Q-0130 AC-4 — stopRun, whose success is a status and not a body', () => {
+  const HANDLE = 'run-9';
+
+  interface Sent {
+    readonly path: string;
+    readonly request?: DaemonRequest;
+    /** Whether the body was read at all — the half a status-only success has to be checked on. */
+    read: boolean;
+  }
+
+  const daemon = (status: number, body: unknown = null): { fetch: FetchLike; sent: Sent[] } => {
+    const sent: Sent[] = [];
+    return {
+      sent,
+      fetch: (path: string, request?: DaemonRequest) => {
+        const record: Sent = { path, request, read: false };
+        sent.push(record);
+        return Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => { record.read = true; return Promise.resolve(body); },
+        });
+      },
+    };
+  };
+
+  test('a 204 is accepted from its status, with no body read at all', async () => {
+    const { fetch, sent } = daemon(204);
+    const state = await stopRun(fetch, HANDLE, CLOCK);
+    expect(state.kind, 'a delivered cancellation was not reported as delivered').toBe('loaded');
+    if (state.kind !== 'loaded') return;
+    expect(state.value).toBe(BROWSER_STOP_REASON);
+    expect(sent[0]?.read, 'the success path read a body the route does not send').toBe(false);
+    expect(sent.map((each) => each.path), 'the stop went somewhere other than the stop route')
+      .toStrictEqual([runStopPath(HANDLE)]);
+    expect(runStopInFlight(HANDLE)).toStrictEqual({ kind: 'in-flight', path: runStopPath(HANDLE) });
+  });
+
+  test('the status is read before the body, which is the property rather than an optimisation', async () => {
+    // A fetcher whose `json()` throws still yields `loaded`: routed through `requestJson` this would
+    // be reported as *the response body was not JSON*, which is a delivered cancellation rendered as
+    // a failure. `answerGate` has the identical clause, and this is why it is not one shape twice.
+    const state = await stopRun(
+      () => Promise.resolve({ ok: true, status: 204, json: () => Promise.reject(new Error('no body')) }),
+      HANDLE, CLOCK,
+    );
+    expect(state.kind, 'the body was read on the success path').toBe('loaded');
+  });
+
+  test('it sends a reason, and never a blank one', async () => {
+    // `host.stop` refuses a whitespace-only note under `not-a-reason`, so sending one would be this
+    // page asking for a refusal it could have avoided — and the daemon's own default records only
+    // that the host did it, which is true of a shutdown too.
+    const { fetch, sent } = daemon(204);
+    await stopRun(fetch, HANDLE, CLOCK);
+    const body = JSON.parse(sent[0]?.request?.body ?? '{}') as { reason?: unknown };
+    expect(typeof body.reason).toBe('string');
+    expect(String(body.reason).trim(), 'a blank note is exactly what the route refuses').not.toBe('');
+    expect(Object.keys(body), 'the stop body carries a field the route does not accept').toStrictEqual(['reason']);
+  });
+
+  test('Q-0130 AC-5 — its three refusals keep their own codes, and a 2xx that is not 204 is reported', async () => {
+    const answered: string[] = [];
+    for (const [code, status] of [['no-such-run', 404], ['not-running', 409], ['not-a-reason', 400]] as const) {
+      const refusal = { code, condition: `the daemon says ${code}`, remedy: null };
+      const state = await stopRun(daemon(status, refusal).fetch, HANDLE, CLOCK);
+      expect(state.kind).toBe('refused');
+      if (state.kind === 'refused') answered.push(state.refusal.code);
+    }
+    expect(answered).toStrictEqual(['no-such-run', 'not-running', 'not-a-reason']);
+    const odd = await stopRun(daemon(200, { ok: true }).fetch, HANDLE, CLOCK);
+    expect(odd.kind, 'a 200 was taken for a delivered cancellation').toBe('unparseable');
+    if (odd.kind === 'unparseable') expect(odd.problem).toContain('204');
+    const down = await stopRun(() => Promise.reject(new Error('down')), HANDLE, CLOCK);
+    expect(down.kind).toBe('unreachable');
+    if (down.kind === 'unreachable') expect(down.path).toBe(runStopPath(HANDLE));
+  });
+});
+
+describe('Q-0130 AC-5 — each refusal code has a sentence of its own, asserted by value', () => {
+  test('the two registers name exactly the codes their routes can answer with', () => {
+    // Identities rather than counts, and the registers are what a screen reads: a code renders this
+    // surface's sentence and the daemon's condition, and one the register does not hold renders the
+    // condition alone rather than a composed guess.
+    expect(Object.keys(START_REFUSAL_TEXT).sort())
+      .toStrictEqual(['host-closed', 'lock-held', 'no-such-flow', 'no-such-ticket', 'not-runnable', 'refused']);
+    expect(Object.keys(STOP_REFUSAL_TEXT).sort())
+      .toStrictEqual(['no-such-run', 'not-a-reason', 'not-running']);
+  });
+
+  test('no two sentences are one, across both registers together', () => {
+    // The property, by VALUE over the whole set rather than by rendering each one: two codes that
+    // rendered the same words would be a screen telling a reader the wrong thing about which of
+    // them happened, and the two pairs sharing a status are exactly where that would land.
+    const sentences = [...Object.values(START_REFUSAL_TEXT), ...Object.values(STOP_REFUSAL_TEXT)];
+    expect(new Set(sentences).size, `two of ${String(sentences.length)} refusals render as one sentence`)
+      .toBe(sentences.length);
+    for (const said of sentences) expect(said.trim().length, 'a refusal renders an empty sentence').toBeGreaterThan(30);
+  });
+
+  test('a code neither register models loses the sentence and keeps the condition', () => {
+    expect(refusalSentence(START_REFUSAL_TEXT, 'lock-held')).toBe(START_REFUSAL_TEXT['lock-held']);
+    expect(refusalSentence(STOP_REFUSAL_TEXT, 'not-running')).toBe(STOP_REFUSAL_TEXT['not-running']);
+    // `null` is an answer rather than a gap: the daemon's own condition renders either way.
+    expect(refusalSentence(START_REFUSAL_TEXT, 'http-502'), 'a code this app does not model was answered for').toBeNull();
+    // …and a start code is not a stop code, so the two registers are not one lookup by accident.
+    expect(refusalSentence(STOP_REFUSAL_TEXT, 'lock-held')).toBeNull();
+    // Nothing inherited from Object.prototype answers either.
+    expect(refusalSentence(START_REFUSAL_TEXT, 'toString')).toBeNull();
+  });
+
+  test('and no sentence this ticket adds is worded with one of the three gate answers', () => {
+    // A stop cancels a run through its `AbortSignal` and is not one of the three words a gate takes;
+    // widening that set needs a decision entry this ticket did not take, so a control or a sentence
+    // spelling one would be this app offering an answer the engine would refuse.
+    const GATE_ANSWERS = ['advance', 'retry', 'abort'];
+    for (const said of [...Object.values(START_REFUSAL_TEXT), ...Object.values(STOP_REFUSAL_TEXT)]) {
+      for (const answer of GATE_ANSWERS) {
+        expect(new RegExp(`\\b${answer}`, 'i').test(said), `a refusal sentence is worded with ${answer}`).toBe(false);
+      }
+    }
+    // The needle discriminates, over a sentence that is worded with one.
+    expect(GATE_ANSWERS.filter((answer) => new RegExp(`\\b${answer}`, 'i').test('Abort the run')))
+      .toStrictEqual(['abort']);
   });
 });

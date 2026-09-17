@@ -1235,6 +1235,44 @@ describe('Q-0014 AC-11 — the architecture document describes the shell that sh
     expect(section(), 'the slice ran past the end of the section').not.toContain('is the first community milestone');
   });
 
+  test('Q-0130 AC-14 — and it says this app starts and stops a run, not that it cannot', () => {
+    // **Three claims went false at once and the negatives are asserted beside the positives**, in
+    // the shape the Q-0122 clause below uses: what a document of this kind gets wrong is not the new
+    // sentence but the old one nobody re-read. §`apps/web` said the gate screen was where this app
+    // stopped being read-only, that its one write was the gate route, and that nothing starts a run
+    // from mission control — all three true when they were written and all three false now.
+    const text = section();
+    expect(text, 'the section still says the gate screen is where this app stops being read-only')
+      .not.toMatch(/and the gate screen is where this app stops being read-only/);
+    expect(text, 'the section still says the gate answer is the one write')
+      .not.toMatch(/\*\*The one write is `POST \/runs\/:id\/gate`/);
+    expect(text, 'the section still says nothing starts a run from mission control')
+      .not.toMatch(/\*\*Nothing starts a run from here\*\*/);
+    expect(text, 'the section still says the write register is unmoved')
+      .not.toMatch(/`WRITE_RULES` register is unmoved by this ticket/);
+    // The positives, and they are the clauses a later edit is most likely to trim: WHERE the start
+    // is and why, that it names every consuming flow, the two fields it will not send, and that the
+    // request shape is declared once in the vocabulary package.
+    expect(text, 'the section does not say where a run is started').toMatch(/ticket page starts one/);
+    expect(text, 'the section does not say why it is not on a board card').toMatch(/not on a board card/);
+    expect(text, 'the section does not say every consuming flow is named').toMatch(/never one/);
+    expect(text, 'the section does not say which fields the browser will not send')
+      .toMatch(/never `auto` and never `base`/);
+    expect(text, 'the section does not name the shared request shape').toContain('wireStartRequestSchema');
+    expect(text, 'the section does not say the write register moved by one permission')
+      .toMatch(/one permission/);
+    // The negatives have subjects: the same needles find the superseded wording where it is written.
+    const asItWas = '**Since Q-0015 five of those screens exist — the backlog board, the ticket page, the gate screen, the runs landing and mission control — and the gate screen is where this app stops being read-only.** **The one write is `POST /runs/:id/gate`, and the boundary narrowed by name.** **Nothing starts a run from here**: `host.start` has one production caller, and the read-only guard\'s `WRITE_RULES` register is unmoved by this ticket.';
+    for (const needle of [
+      /and the gate screen is where this app stops being read-only/,
+      /\*\*The one write is `POST \/runs\/:id\/gate`/,
+      /\*\*Nothing starts a run from here\*\*/,
+      /`WRITE_RULES` register is unmoved by this ticket/,
+    ]) {
+      expect(needle.test(asItWas), `the fixture no longer reproduces ${String(needle)}`).toBe(true);
+    }
+  });
+
   test('Q-0122 AC-8 — and it says the app emits, rather than that it emits nothing', () => {
     // **The clause held the opposite until 2026-09-12, and that is why it is a clause rather than a
     // correction.** This section read *"The app emits nothing: it declares no `build` script, so
@@ -1828,6 +1866,32 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
       ['the refused button', /No "Run next flow/],
     ] as [string, RegExp][]) {
       expect(needle.test(board), `the board paragraph does not record ${what}`).toBe(true);
+    }
+  });
+
+  test('Q-0130 AC-14 — the board paragraph says where the refused button went, and screen 5 records the stop', () => {
+    const text = brief();
+    // The board's own paragraph keeps the refusal — `No "Run next flow ▸"` is asserted above — and
+    // gains where the control actually went. A negative alone would be satisfied by a paragraph
+    // that simply stopped mentioning it.
+    const board = text.slice(text.indexOf('**2. Backlog board.**'), text.indexOf('**3. Harness editor.**'));
+    expect(board, 'the board paragraph does not say where the control went instead')
+      .toMatch(/on the ticket page, not on a card/);
+    expect(board, 'the board paragraph does not say why it is not on a card').toMatch(/middle-click/);
+    expect(board, 'the board paragraph no longer says the board writes nothing').toMatch(/still writes nothing/);
+    // Screen 5's paragraph names a stop button and until this ticket nothing recorded what shipped
+    // instead. Sliced between its own heading and the gate screen's, so a clause satisfied by the
+    // gate paragraph would not be about this one.
+    const run = text.slice(text.indexOf('**5. Live run'), text.indexOf('**6. Gate screen'));
+    expect(run.length, 'the mission control paragraph was not found — this check has lost its subject')
+      .toBeGreaterThan(500);
+    for (const [what, needle] of [
+      ['what decides whether the control is offered', /never from the connection/],
+      ['that it is confirmed and single', /confirmed rather than immediate/],
+      ['what a 204 does and does not establish', /delivery, not an ending/],
+      ['that it is not a gate answer', /a stop is not a gate answer/],
+    ] as [string, RegExp][]) {
+      expect(needle.test(run), `the mission control paragraph does not record ${what}`).toBe(true);
     }
   });
 

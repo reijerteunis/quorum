@@ -37,7 +37,15 @@ export const TOP_BAR_REGIONS: readonly { readonly id: string; readonly label: st
   { id: 'subscriptions', label: 'Subscriptions' },
 ];
 
-/** The primary control's label, disabled here and enabled by whichever ticket can start a run. */
+/**
+ * The primary control's label. It stays disabled, and since Q-0130 that is a ruling rather than a
+ * wait.
+ *
+ * A run is started on a TICKET and this control is global, so enabling it would mean opening a
+ * picker — a screen nobody has designed and which no ticket builds. `docs/05-design-prompt.md`'s
+ * *"Run next flow ▸"* is refused on the board for a neighbouring reason, and the place a reader
+ * chooses a flow is the ticket page, where the stage is already in front of them.
+ */
 export const RUN_FLOW_LABEL = 'Run flow';
 
 /** The Retry action's label, offered only while the connection is in a failure state. */

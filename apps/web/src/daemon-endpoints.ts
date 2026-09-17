@@ -51,6 +51,29 @@ export function runGatePath(handle: string): string {
 }
 
 /**
+ * The segment that makes a run path the cancelling one, written here and nowhere else.
+ *
+ * {@link GATE_SEGMENT}'s arrangement for {@link GATE_SEGMENT}'s reason, one act later: the write
+ * guard in `apps/web/test/source.test.ts` forbids this literal in every file under `src` except
+ * this one, and an exemption that forgives a string nobody wrote would forgive nothing.
+ */
+const STOP_SEGMENT = '/stop';
+
+/**
+ * The page-relative path that cancels one run, with the handle confined to one segment.
+ *
+ * Named for the DAEMON route, on {@link runGatePath}'s precedent: no shell route ends in this
+ * segment, and if one ever did the two would still be different things.
+ *
+ * **Not a sixth {@link DAEMON_ENDPOINTS} entry.** That register is the set of prefixes the
+ * development server forwards, and `/runs` already forwards everything below it — so an entry here
+ * would claim a prefix nothing forwards, which is the ruling `runGatePath` records for `/gate`.
+ */
+export function runStopPath(handle: string): string {
+  return `${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}${STOP_SEGMENT}`;
+}
+
+/**
  * The page-relative path for one ticket, with the id confined to one segment.
  *
  * Named for the DAEMON route rather than for the screen: `routes.ts` has a `ticketPath` too and it

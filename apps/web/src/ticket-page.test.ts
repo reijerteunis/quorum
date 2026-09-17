@@ -18,11 +18,17 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import type { WireTicketFileEntry } from '@quorum/shared';
 
-import { ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
-import type { DaemonResponse } from './daemon-client.js';
+import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
+import type { DaemonRequest, DaemonResponse } from './daemon-client.js';
+import { FLOWS_UNREAD, NO_CONSUMING_FLOW } from './backlog-board.js';
+import { runPath } from './routes.js';
 import {
-  CHOOSE_FILE, LOG_HEADING, NO_FILES, NO_RUN_LOG, RETRY_LABEL, RUN_LOG, tabsOf, TICKET_FILE,
-  TicketPage,
+  CONFIRM_START_LABEL, LOOK_AGAIN_LABEL, REFUSED_FLOW_NOTE, START_REFUSAL_TEXT, STARTED_PREFIX,
+  WITHDRAW_LABEL, startConfirmation, startLabel,
+} from './run-lifecycle.js';
+import {
+  CHOOSE_FILE, LOG_HEADING, NO_FILES, NO_RUN_LOG, REFRESH_LABEL, RETRY_LABEL, RUN_LOG, tabsOf,
+  TICKET_FILE, TicketPage,
 } from './ticket-page.js';
 
 declare global {
@@ -43,6 +49,15 @@ afterEach(async () => {
 const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
 
 const TICKET = 'Q-0001';
+
+/**
+ * A navigation that goes nowhere, for the clauses whose subject is not a start.
+ *
+ * Q-0130 AC-7's own clauses supply a recorder instead: a spy asserted to have been called with the
+ * registered run path is what proves the navigation happens, and every clause below it predates the
+ * control that causes one.
+ */
+const NOWHERE = (): void => undefined;
 
 /** One ticket row, with everything a header can carry defaulted to the quiet answer. */
 const row = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -71,6 +86,15 @@ interface Answers {
   readonly status?: number;
   readonly fileStatus?: number;
   readonly reject?: boolean;
+  /**
+   * The flow listing, which the page reads beside the detail since Q-0130.
+   *
+   * Empty by default, so every clause that predates the start control gets a region saying no flow
+   * consumes this stage rather than one saying the listing could not be read — the second would be
+   * an unrelated failure sentence on a page under assertion for something else.
+   */
+  readonly flows?: unknown;
+  readonly flowStatus?: number;
 }
 
 function daemon(answers: Answers): { fetch: (path: string) => Promise<DaemonResponse>; asked: string[] } {
@@ -80,6 +104,14 @@ function daemon(answers: Answers): { fetch: (path: string) => Promise<DaemonResp
     fetch: (path: string) => {
       asked.push(path);
       if (answers.reject === true) return Promise.reject(new Error('connection refused'));
+      if (path === DAEMON_ENDPOINTS.flows) {
+        const status = answers.flowStatus ?? 200;
+        return Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => Promise.resolve(answers.flows ?? { flows: [] }),
+        });
+      }
       const isDetail = path === ticketDetailPath(TICKET);
       if (isDetail) {
         const status = answers.status ?? 200;
@@ -157,7 +189,7 @@ async function render(element: ReactElement): Promise<HTMLElement> {
 /** The page over one set of answers, already settled, with the requests it made. */
 async function page(answers: Answers, ticketId = TICKET): Promise<{ view: HTMLElement; asked: string[] }> {
   const server = daemon(answers);
-  const view = await render(createElement(TicketPage, { ticketId, fetcher: server.fetch, now: CLOCK }));
+  const view = await render(createElement(TicketPage, { ticketId, fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE }));
   return { view, asked: server.asked };
 }
 
@@ -179,12 +211,17 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
     entry('review/hand-review.txt', 1_048_576),
   ];
 
-  test('mounting issues exactly three requests, and none is for the megabyte artifact', async () => {
+  test('mounting issues exactly four requests, and none is for the megabyte artifact', async () => {
+    // **Four since Q-0130 and three before it**, and the one that arrived is the flow directory:
+    // which flows consume this ticket's stage is what the start region is built from. The clause is
+    // an IDENTITY rather than a count, so the arrival is visible as the path it is rather than as a
+    // number that moved — and what it has always been about is unchanged below.
     const { asked } = await page({
       detail: detail(FOLDER),
       texts: { [TICKET_FILE]: 'the ticket\n', [RUN_LOG]: 'a line\n' },
     });
     expect(asked).toStrictEqual([
+      DAEMON_ENDPOINTS.flows,
       ticketDetailPath(TICKET),
       ticketFilePath(TICKET, TICKET_FILE),
       ticketFilePath(TICKET, RUN_LOG),
@@ -193,17 +230,18 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
       .not.toContain(ticketFilePath(TICKET, 'review/hand-review.txt'));
   });
 
-  test('and a folder of fifty files still costs three, which is what a prefetcher fails', async () => {
-    // The discriminator, rather than a second reading of the clause above: three is a constant of
-    // the design and not of the fixture, so a version that fetched what it listed would issue
-    // fifty-one here and three there. The count is what goes red, by 48.
+  test('and a folder of fifty files still costs four, which is what a prefetcher fails', async () => {
+    // The discriminator, rather than a second reading of the clause above: the count is a constant
+    // of the design and not of the fixture, so a version that fetched what it listed would issue
+    // fifty-two here and four there. The count is what goes red, by 48 — the number the flow
+    // listing adds is the same on both sides, so what this clause measures did not move.
     const many = [entry(TICKET_FILE), entry(RUN_LOG)];
     for (let at = 0; at < 48; at += 1) many.push(entry(`dev/chore/run-${String(at)}/implement-iter-1.md`));
     const { asked } = await page({
       detail: detail(many),
       texts: { [TICKET_FILE]: 'the ticket\n', [RUN_LOG]: 'a line\n' },
     });
-    expect(asked.length, 'the page fetched more than the listing and the two files it renders').toBe(3);
+    expect(asked.length, 'the page fetched more than the listing, the flow directory and the two files it renders').toBe(4);
   });
 
   test('and selecting that file issues exactly one more request, which is for it', async () => {
@@ -249,10 +287,10 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    await act(async () => root.render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK })));
+    await act(async () => root.render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE })));
     mounted.push(() => root.unmount());
     expect(container.textContent).toContain('FIRST-TICKET-TEXT');
-    await act(async () => root.render(createElement(TicketPage, { ticketId: 'Q-0002', fetcher: server.fetch, now: CLOCK })));
+    await act(async () => root.render(createElement(TicketPage, { ticketId: 'Q-0002', fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE })));
     expect(container.textContent, 'one ticket\'s file is rendered under another ticket\'s id')
       .not.toContain('FIRST-TICKET-TEXT');
   });
@@ -272,7 +310,7 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
-    await act(async () => root.render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK })));
+    await act(async () => root.render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE })));
     mounted.push(() => root.unmount());
     await server.settle(ticketDetailPath(TICKET), detail([entry(TICKET_FILE, 812)]));
     await server.settle(ticketFilePath(TICKET, TICKET_FILE), fileBody(TICKET_FILE, 'FIRST-TICKET-TEXT'));
@@ -281,7 +319,7 @@ describe('AC-9 — the listing on mount, and no artifact text until a reader ask
 
     let committed = '';
     await act(async () => {
-      flushSync(() => root.render(createElement(TicketPage, { ticketId: OTHER, fetcher: server.fetch, now: CLOCK })));
+      flushSync(() => root.render(createElement(TicketPage, { ticketId: OTHER, fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE })));
       committed = container.textContent ?? '';
     });
 
@@ -397,7 +435,7 @@ describe('AC-9 and AC-10 — a superseded file answer lands nowhere, and a tab t
   /** The page over a daemon that holds its answers, with the listing already settled. */
   async function staged(files = FOLDER): Promise<{ view: HTMLElement; server: ReturnType<typeof deferring> }> {
     const server = deferring();
-    const view = await render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK }));
+    const view = await render(createElement(TicketPage, { ticketId: TICKET, fetcher: server.fetch, now: CLOCK, onNavigate: NOWHERE }));
     await server.settle(ticketDetailPath(TICKET), detail(files));
     return { view, server };
   }
@@ -542,6 +580,7 @@ describe('AC-8 — every request state renders, and each offers what can be done
       ticketId: TICKET,
       fetcher: () => new Promise<DaemonResponse>(() => undefined),
       now: CLOCK,
+      onNavigate: NOWHERE,
     })));
     mounted.push(() => root.unmount());
     seen.add(container.querySelector('[data-request-state]')?.getAttribute('data-request-state') ?? '');
@@ -585,5 +624,285 @@ describe('AC-8 — every request state renders, and each offers what can be done
     // The constant exists so that the sentence a reader meets and the one a test asserts cannot
     // become two. A tab whose file nobody has opened is not a blank region.
     expect(CHOOSE_FILE.trim().length).toBeGreaterThan(10);
+  });
+});
+
+describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a run', () => {
+  /** One flow row in the shape `wireFlowSchema` accepts. */
+  const flowRow = (name: string, over: Record<string, unknown> = {}): Record<string, unknown> =>
+    ({ name, runnable: true, consumes: 'requirements', produces: 'reviewed', problems: [], ...over });
+
+  /** The two flows this repository's own `requirements` stage is consumed by. Both, never one. */
+  const TWO = { flows: [flowRow('chore'), flowRow('solutioning'), flowRow('review', { consumes: 'green' })] };
+
+  /** One run row, as `POST /runs` answers a start it accepted. */
+  const STARTED = {
+    handle: 'run-9', flow: 'chore', ticketId: TICKET, runId: null, state: 'running',
+    pendingGates: 0, gates: [], refusal: null,
+  };
+
+  interface Sent { readonly path: string; readonly request?: DaemonRequest }
+
+  /**
+   * A daemon whose reads answer at once and whose START is held until a test settles it.
+   *
+   * The holding is what stages an OUTSTANDING mutation, which is the only state several clauses
+   * below are about: a fixture answering the start before the next act could happen cannot reach
+   * the case where a read lands while one is on its way.
+   */
+  function startDaemon(over: { flows?: unknown; stage?: string; flowStatus?: number }): {
+    fetch: (path: string, request?: DaemonRequest) => Promise<DaemonResponse>;
+    sent: Sent[];
+    settle: (status: number, body: unknown) => Promise<void>;
+  } {
+    const sent: Sent[] = [];
+    const held: ((answer: DaemonResponse) => void)[] = [];
+    return {
+      sent,
+      settle: async (status: number, body: unknown) => {
+        const resolve = held.shift();
+        if (resolve === undefined) throw new Error('no start is waiting');
+        await act(async () => {
+          resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
+        });
+      },
+      fetch: (path: string, request?: DaemonRequest) => {
+        sent.push({ path, request });
+        if (request?.method === 'POST') {
+          return new Promise<DaemonResponse>((resolve) => { held.push(resolve); });
+        }
+        if (path === DAEMON_ENDPOINTS.flows) {
+          const status = over.flowStatus ?? 200;
+          return Promise.resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            json: () => Promise.resolve(over.flows ?? TWO),
+          });
+        }
+        if (path.startsWith(ticketDetailPath(TICKET)) || path.startsWith(ticketDetailPath('Q-0002'))) {
+          const isFile = path.includes('file?path=');
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(isFile
+              ? { rel: TICKET_FILE, bytes: 3, text: 'txt' }
+              : detail([entry(TICKET_FILE, 3)], { ticket: row({ stage: over.stage ?? 'requirements' }) })),
+          });
+        }
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ code: 'no-such-file', condition: 'x', remedy: null }) });
+      },
+    };
+  }
+
+  /** The page over that daemon, with somewhere for a navigation to be recorded. */
+  async function startPage(over: Parameters<typeof startDaemon>[0] = {}, ticketId = TICKET): Promise<{
+    view: HTMLElement;
+    sent: Sent[];
+    went: string[];
+    settle: (status: number, body: unknown) => Promise<void>;
+  }> {
+    const server = startDaemon(over);
+    const went: string[] = [];
+    const view = await render(createElement(TicketPage, {
+      ticketId, fetcher: server.fetch, now: CLOCK, onNavigate: (to: string) => { went.push(to); },
+    }));
+    return { view, sent: server.sent, went, settle: server.settle };
+  }
+
+  /** Every control on the page that could start a run, whatever flow it names. */
+  const starters = (view: HTMLElement): HTMLButtonElement[] =>
+    [...view.querySelectorAll('button[data-start-flow]')] as HTMLButtonElement[];
+
+  /** The one control that confirms a start, where one is being confirmed. */
+  const confirmControl = (view: HTMLElement): HTMLButtonElement | null =>
+    view.querySelector('button[data-confirm-start]');
+
+  /** Every start this page actually sent, decoded. */
+  const bodies = (sent: Sent[]): Record<string, unknown>[] => sent
+    .filter((each) => each.request?.method === 'POST')
+    .map((each) => JSON.parse(each.request?.body ?? '{}') as Record<string, unknown>);
+
+  test('AC-6 — a stage two flows consume offers two, and never one', async () => {
+    const { view } = await startPage();
+    expect(starters(view).map((button) => button.dataset.startFlow), 'the routing choice was taken for the reader')
+      .toStrictEqual(['chore', 'solutioning']);
+    for (const button of starters(view)) {
+      expect(button.textContent, 'a control does not name the flow it runs').toBe(startLabel(button.dataset.startFlow ?? ''));
+    }
+    // …and a flow that consumes some other stage is not among them, so the filter is a filter.
+    expect(view.textContent, 'a flow that consumes another stage was offered').not.toContain(startLabel('review'));
+  });
+
+  test('AC-6 — a flow the linter refused is named and is not offered', async () => {
+    // The board's own rule: a flow that vanished from a list is indistinguishable from one that was
+    // never there, so it is named without a control beside it.
+    const { view } = await startPage({ flows: { flows: [flowRow('chore'), flowRow('solutioning', { runnable: false, problems: ['step 2 has no id'] })] } });
+    expect(starters(view).map((button) => button.dataset.startFlow)).toStrictEqual(['chore']);
+    const named = view.querySelector('[data-refused-flow="solutioning"]');
+    expect(named, 'the refused flow was hidden rather than named').not.toBeNull();
+    expect(named?.textContent, 'the refused flow is named without saying why it is not offered')
+      .toContain(REFUSED_FLOW_NOTE);
+  });
+
+  test('AC-6 — the three unavailable answers are three sentences, and none is another\'s', async () => {
+    // **Three rather than two.** A listing still out is neither *no flow consumes this stage* nor
+    // *the flow list could not be read*, and reporting it as either would be an unanswered question
+    // rendered as an answer. The first two are the board's own constants, imported so the two
+    // screens cannot disagree about one stage.
+    const none = await startPage({ stage: 'deployed' });
+    expect(none.view.querySelector('[data-start-unavailable="no-consuming-flow"]')?.textContent)
+      .toBe(NO_CONSUMING_FLOW);
+    const unread = await startPage({ flowStatus: 500 });
+    expect(unread.view.querySelector('[data-start-unavailable="flows-unread"]')?.textContent)
+      .toBe(FLOWS_UNREAD);
+    // And neither renders a control, which is what says *named* is not *offered*.
+    expect(starters(none.view)).toStrictEqual([]);
+    expect(starters(unread.view)).toStrictEqual([]);
+    expect(NO_CONSUMING_FLOW).not.toBe(FLOWS_UNREAD);
+  });
+
+  test('AC-9 — choosing a flow sends nothing until it is confirmed, and Cancel sends nothing at all', async () => {
+    const { view, sent } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    expect(bodies(sent), 'a start was sent before it was confirmed').toStrictEqual([]);
+    // The confirmation names the ticket, the flow and whether it is a dry walk — and NOT a handle,
+    // which does not exist until the daemon answers one.
+    const asked = view.querySelector('[data-confirm="start"]')?.textContent ?? '';
+    expect(asked, 'the confirmation does not name what is about to happen')
+      .toContain(startConfirmation(TICKET, 'chore', false));
+    expect(asked, 'the confirmation names a handle that does not exist yet').not.toContain('run-');
+    await click(view, 'button[data-withdraw]', WITHDRAW_LABEL);
+    expect(bodies(sent), 'withdrawing the confirmation sent a start').toStrictEqual([]);
+    expect(view.querySelector('[data-confirm="start"]'), 'the confirmation survived being withdrawn').toBeNull();
+  });
+
+  test('AC-9 — two activations in one turn issue one request', async () => {
+    const { view, sent } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    const confirm = confirmControl(view);
+    expect(confirm, 'nothing is confirming — this clause has lost its subject').not.toBeNull();
+    // Both inside ONE act, which is what makes it two activations in one turn: state has not
+    // flushed between them, so a guard held in state would let the second through.
+    await act(async () => { confirm?.click(); confirm?.click(); });
+    expect(bodies(sent).length, 'two activations in one turn issued two starts').toBe(1);
+  });
+
+  test('AC-12 — the body carries exactly the permitted keys, and never auto or base', async () => {
+    const { view, sent } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('solutioning'));
+    await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    expect(bodies(sent)).toStrictEqual([{ flow: 'solutioning', ticket: TICKET, dry: false }]);
+    // And the dry choice really reaches the body, so `dry: false` above is a value rather than a
+    // field that is always that.
+    const walk = await startPage();
+    await act(async () => { (walk.view.querySelector('input[data-dry]') as HTMLInputElement).click(); });
+    await click(walk.view, 'button[data-start-flow]', startLabel('chore'));
+    expect(walk.view.querySelector('[data-confirm="start"]')?.textContent,
+      'the confirmation does not say this is a dry walk').toContain(startConfirmation(TICKET, 'chore', true));
+    await click(walk.view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    expect(bodies(walk.sent)).toStrictEqual([{ flow: 'chore', ticket: TICKET, dry: true }]);
+  });
+
+  test('AC-9 — every control is inert while one is outstanding, and a READ does not release the guard', async () => {
+    // **The defect this clause exists for is Q-0016's review blocker**, one act along: a read
+    // released the in-flight guard there, so a Refresh re-enabled the controls and a second answer
+    // could race the first. Here the screen offers a control per consuming flow, so the failure
+    // would be two STARTS on one ticket rather than two answers to one gate.
+    const { view, sent, settle } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    expect(starters(view).every((button) => button.disabled), 'a start control stayed live while one was out').toBe(true);
+    expect((view.querySelector('input[data-dry]') as HTMLInputElement).disabled,
+      'the dry choice stayed live while a start it is part of was out').toBe(true);
+    const outstanding = view.querySelector('[data-start-outcome]')?.textContent ?? '';
+    expect(outstanding, 'nothing says a start is on its way').toContain(DAEMON_ENDPOINTS.runs);
+
+    // A read lands in between — the act that released the guard in Q-0016 — and changes none of it.
+    await click(view, 'button', REFRESH_LABEL);
+    expect(starters(view).every((button) => button.disabled), 'a read re-enabled the start controls').toBe(true);
+    expect(view.querySelector('[data-start-outcome]')?.textContent,
+      'a read cleared the sentence saying a start was on its way').toBe(outstanding);
+    expect(bodies(sent).length, 'a read issued a second start').toBe(1);
+
+    // …and the release is the request's OWN resolution, which is what the staging above proves: the
+    // controls come back only now.
+    await settle(201, STARTED);
+    expect(starters(view).length === 0 || starters(view).every((button) => !button.disabled),
+      'the start controls stayed inert after the request resolved').toBe(true);
+  });
+
+  test('AC-7 — a start the daemon accepted navigates to mission control on the handle it answered with', async () => {
+    const { view, went, settle } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    expect(went, 'the page navigated before the daemon had answered').toStrictEqual([]);
+    await settle(201, STARTED);
+    // Against the registered pattern rather than a literal, so a route rename moves both together.
+    expect(went, 'the page did not open mission control for the run it started')
+      .toStrictEqual([runPath('run-9')]);
+    // …and the handle stays visible, so a start that succeeded and a navigation that did not leaves
+    // a reachable run rather than a silent one.
+    const outcome = view.querySelector('[data-start-outcome="loaded"]')?.textContent ?? '';
+    expect(outcome, 'the outcome does not say the daemon started a run').toContain(STARTED_PREFIX);
+    expect(outcome, 'the handle the daemon answered with is not on the page').toContain('run-9');
+  });
+
+  test('AC-10 — nothing navigates on a refusal, and the action beside one issues a GET', async () => {
+    const { view, sent, went, settle } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    await settle(409, { code: 'lock-held', condition: 'run lock refused: ticket Q-0130 is held by run #7', remedy: null });
+    expect(went, 'a refused start navigated to a run that never started').toStrictEqual([]);
+    const outcome = view.querySelector('[data-start-outcome="refused"]')?.textContent ?? '';
+    // This surface's sentence for the code, AND the daemon's own condition unaltered beside it.
+    expect(outcome, 'the refusal renders no sentence of this surface\'s own')
+      .toContain(START_REFUSAL_TEXT['lock-held']);
+    expect(outcome, 'the daemon\'s own condition did not reach the page').toContain('run lock refused');
+    // The action beside it READS and re-sends nothing: `canRetryRequest` answers `true` for a
+    // refusal, so a bare Retry here would issue a second start.
+    const before = bodies(sent).length;
+    const asked = sent.length;
+    await click(view, 'button', LOOK_AGAIN_LABEL);
+    expect(bodies(sent).length, 'the action beside a refused start sent another one').toBe(before);
+    expect(sent.slice(asked).every((each) => each.request === undefined), 'the action was not a GET').toBe(true);
+    expect(sent.length, 'the action issued nothing at all').toBeGreaterThan(asked);
+  });
+
+  test('AC-10 — a code this page does not model keeps the daemon\'s condition and composes nothing', async () => {
+    const { view, settle } = await startPage();
+    await click(view, 'button[data-start-flow]', startLabel('chore'));
+    await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    await settle(418, { code: 'brewing', condition: 'the daemon is a teapot', remedy: null });
+    const outcome = view.querySelector('[data-start-outcome="refused"]')?.textContent ?? '';
+    expect(outcome, 'the daemon\'s own condition was dropped').toContain('the daemon is a teapot');
+    for (const said of Object.values(START_REFUSAL_TEXT)) {
+      expect(outcome, 'a sentence for some other code was composed for one this page does not model')
+        .not.toContain(said);
+    }
+  });
+
+  test('AC-9 — a start that resolves after the subject changed settles nothing on the new one', async () => {
+    const server = startDaemon({});
+    const went: string[] = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const at = (ticketId: string): ReactElement => createElement(TicketPage, {
+      ticketId, fetcher: server.fetch, now: CLOCK, onNavigate: (to: string) => { went.push(to); },
+    });
+    await act(async () => root.render(at(TICKET)));
+    mounted.push(() => root.unmount());
+    await click(container, 'button[data-start-flow]', startLabel('chore'));
+    await click(container, 'button[data-confirm-start]', CONFIRM_START_LABEL);
+    await act(async () => root.render(at('Q-0002')));
+    await server.settle(201, STARTED);
+    // The request was made about the ticket that was left and is not withdrawn, reinterpreted or
+    // attributed to the replacement: nothing is rendered for it here, and nothing navigated.
+    expect(container.querySelector('[data-start-outcome]'),
+      'one ticket\'s start was rendered under another ticket\'s id').toBeNull();
+    expect(went, 'a start about one ticket navigated the screen showing another').toStrictEqual([]);
+    // …and the guard it held is released, so the replacement's controls are live rather than stuck.
+    expect(starters(container).every((button) => !button.disabled),
+      'the replacement subject\'s controls were left inert by an act about the previous one').toBe(true);
   });
 });

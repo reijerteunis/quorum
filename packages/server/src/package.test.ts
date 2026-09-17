@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'vitest';
 
-import { eventSchema } from '@quorum/shared';
+import { eventSchema, WIRE_START_FIELDS } from '@quorum/shared';
 import { loadFlowByName, runFlow } from '@quorum/core';
 // Imported as types and used as types below, so `tsc --noEmit` — a required task, forced in CI —
 // is what proves each of them reaches a consumer through the barrel rather than through a deep
@@ -829,6 +829,50 @@ describe('Q-0125 AC-11 — nothing gives "no export surface" as the reason an ar
   // out-of-package read from the one package `turbo-inputs.test.ts` does not scan, where nothing
   // would report the missing declaration (R-5). What is owed is the document correction, and that
   // is `docs.test.ts`'s.
+});
+
+describe('Q-0130 AC-1 — the start field set is read from the vocabulary package, never written here', () => {
+  test('no file in this package writes a list of the five names', () => {
+    // **The register moved rather than being copied**, and this is the half that says so. Until
+    // Q-0130 `http.ts` held the set as its own literal and `host.ts` as an interface; a browser
+    // needing an executable builder for the same five names would have made a third, which is
+    // verbatim the drift Q-0120 was opened on.
+    //
+    // **The subject is ONE list naming the accepted set**, not the five names anywhere in a file —
+    // and the distinction is measured rather than stylistic. `startRequestOf` legitimately carries
+    // three OTHER lists, each about a different rule: `flow` and `ticket` are the two that must be
+    // non-empty strings, `dry` and `auto` the two that must be booleans, and `base` the one that
+    // must be a string. Between them they name all five, and a scan for the names would report a
+    // predicate that is not a second register at all — a guard keyed on a name rather than on the
+    // behaviour, which is the family this repository records most.
+    //
+    // So the unit is a bracketed group, and what is forbidden is one that holds all five.
+    const namesAll = (group: string): boolean =>
+      WIRE_START_FIELDS.every((field) => group.includes(`'${field}'`) || group.includes(`"${field}"`));
+    const lists = (text: string): string[] => [...text.matchAll(/\[[^\]]*\]/g)].map((found) => found[0]);
+    for (const [file, text] of production()) {
+      expect(lists(text).filter(namesAll), `${file} writes a second list of the start fields`).toStrictEqual([]);
+    }
+    expect(production().length, 'the production scan found nothing').toBeGreaterThan(5);
+    // It discriminates, over the literal this ticket removed from `http.ts` — assembled, so this
+    // file is not its own subject under the scan above — and over the three that must survive.
+    const asItWas = `const START_FIELDS = new Set([${"'flow'"}, ${"'ticket'"}, 'dry', 'auto', 'base']);`;
+    expect(lists(asItWas).filter(namesAll).length, 'the needle no longer finds the literal it was written against').toBe(1);
+    for (const kept of ["for (const key of ['flow', 'ticket'] as const)", "for (const key of ['dry', 'auto'] as const)"]) {
+      expect(lists(kept).filter(namesAll), `the needle reports the surviving predicate ${kept}`).toStrictEqual([]);
+    }
+  });
+
+  test('and the route really does build its set from the tuple, so the absence is a delegation', () => {
+    // A negative alone is satisfied by a package that stopped validating start bodies at all. The
+    // positive half: `http.ts` names the shared tuple, and the sentence its `unknown-field` remedy
+    // composes is that tuple's own order — which `http.test.ts` asserts a client actually receives.
+    const route = production().find(([name]) => name === 'http.ts')?.[1] ?? '';
+    expect(route, 'there is no route module — this clause has lost its subject').not.toBe('');
+    expect(route, 'the route does not build its field set from the shared tuple').toContain('WIRE_START_FIELDS');
+    expect([...WIRE_START_FIELDS].join(', '), 'the remedy sentence would no longer name the five in order')
+      .toBe('flow, ticket, dry, auto, base');
+  });
 });
 
 describe('AC-14 — this package declares no budget of its own', () => {

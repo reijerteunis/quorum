@@ -1,10 +1,12 @@
 /**
  * The gate screen: what a run is waiting to be told, and the one answer this app sends.
  *
- * **It is the whole of what this app writes.** Every other screen reads; this one settles a promise
- * `core` is already parked on, and nothing else — no run is started, no run is stopped, no stage is
- * moved, no run lock is taken. `apps/web/test/source.test.ts` holds that boundary by naming the two
- * modules that may carry the method and the path, rather than by the absence that held it before.
+ * **It settles a promise `core` is already parked on, and nothing beyond that.** It moves no stage,
+ * starts no run and stops none — starting and stopping are the ticket page's and mission control's
+ * since Q-0130, under the same guard and the same confirm-then-send discipline this screen's own
+ * review round produced. `apps/web/test/source.test.ts` holds that boundary by naming the two
+ * modules that may carry the method and the path, rather than by the absence that held it before,
+ * and by registering the three functions that issue a non-GET by name.
  *
  * **The question comes from `GET /runs/:id` and not from the event stream.** The daemon already
  * holds the pending questions whole and derives them per request, so a browser opened at this URL
@@ -42,6 +44,13 @@ import {
   type Clock, type FetchLike,
 } from './daemon-client.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
+// Declared in `run-lifecycle.ts` since Q-0130 and re-exported here: the ticket page and mission
+// control offer the same action beside a failed write, for the same reason this screen does, and two
+// declarations of one label would be free to drift into two words for one act. Re-exported rather
+// than moved, so every consumer that already names it here goes on doing so.
+import { LOOK_AGAIN_LABEL } from './run-lifecycle.js';
+
+export { LOOK_AGAIN_LABEL };
 
 /** The heading, in one place so a test and the view cannot disagree about what this screen is. */
 export const GATE_HEADING = 'Gate';
@@ -51,9 +60,6 @@ export const REFRESH_LABEL = 'Refresh';
 
 /** The action offered wherever a read failed, which repeats that read and nothing else. */
 export const RETRY_LABEL = 'Retry';
-
-/** The action offered beside a failed answer: it reads the run again and re-sends nothing. */
-export const LOOK_AGAIN_LABEL = 'Look again';
 
 /**
  * What each answer is called on a control.

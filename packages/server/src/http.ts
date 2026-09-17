@@ -22,6 +22,8 @@
  */
 import { Hono } from 'hono';
 
+import { WIRE_START_FIELDS } from '@quorum/shared';
+
 import type { RunHost, RunState, StartRequest } from './host.js';
 import { mountStatic } from './static.js';
 import {
@@ -52,8 +54,19 @@ export interface AppOptions {
   readonly bundle?: string;
 }
 
-/** The body `POST /runs` accepts, before it is known to be one. */
-const START_FIELDS = new Set(['flow', 'ticket', 'dry', 'auto', 'base']);
+/**
+ * The body `POST /runs` accepts, before it is known to be one.
+ *
+ * Built from `@quorum/shared`'s own tuple since Q-0130 rather than from a literal here: a browser
+ * needs an executable builder for the same five names, and two lists are two authorities free to
+ * drift the moment either end gains a field. The **iteration order** below is that tuple's, which
+ * is why it is a tuple — the `unknown-field` remedy spells the set out for a human to read.
+ *
+ * Nothing else about this predicate moved. It is not routed through the schema: its four refusal
+ * codes and the sentences it composes are what a client switches on, and `safeParse`'s message is
+ * not one of them.
+ */
+const START_FIELDS = new Set<string>(WIRE_START_FIELDS);
 
 /**
  * `body` as a {@link StartRequest}, or the refusal that says why it is not one.

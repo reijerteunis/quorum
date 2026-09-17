@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS, runDetailPath, runEventsPath, runEventsUrl, runGatePath } from '../src/daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, runDetailPath, runEventsPath, runEventsUrl, runGatePath, runStopPath } from '../src/daemon-endpoints.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,6 +56,39 @@ describe('AC-13 — same-origin daemon endpoints', () => {
     expect(runGatePath('run-3')).toBe(`${DAEMON_ENDPOINTS.runs}/run-3/gate`);
     expect(Object.values(DAEMON_ENDPOINTS), 'the gate segment became a forwarded prefix of its own')
       .not.toContain('/gate');
+  });
+
+  test.each(['a/b', 'a?b', 'a#b', 'a b', '../project'])(
+    'Q-0130 AC-2 — the stop path confines hostile handle %s to one segment', (handle) => {
+      // `runGatePath`'s clause one act later, and for its reasons: a handle is whatever a URL
+      // carried, and a traversing one must not become a path this app POSTs to. Asserted over a
+      // real `URL`, so the claim is about what a browser would send rather than about the string.
+      const built = runStopPath(handle);
+      const url = new URL(built, `https:${'//'}example.test/runs/x/gate`);
+      expect(url.pathname, 'the stop path escaped its own segment')
+        .toBe(`${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}/stop`);
+      expect(url.search, 'the stop path carried a query').toBe('');
+      expect(url.hash, 'the stop path carried a fragment').toBe('');
+      expect(built.startsWith(DAEMON_ENDPOINTS.runs), 'the stop path is not page-relative').toBe(true);
+      // …and the three run paths are three, one segment apart rather than the same path: a stop
+      // sent to the detail path is a POST the daemon does not route, and one sent to the gate path
+      // is an envelope that route refuses.
+      expect(new Set([runDetailPath(handle), runGatePath(handle), runStopPath(handle)]).size,
+        'two of the three run paths collapsed into one').toBe(3);
+      expect(built.startsWith(runDetailPath(handle))).toBe(true);
+    });
+
+  test('Q-0130 AC-2 — the stop segment is written out, and is not a proxy prefix', () => {
+    // The literal exists so the write guard's exemption has a string to find: `test/source.test.ts`
+    // permits it in `daemon-endpoints.ts` and nowhere else, and an exemption forgiving something
+    // nobody wrote would forgive nothing. The register is the set of prefixes the dev server
+    // forwards, and `/runs` already forwards everything below it.
+    expect(runStopPath('run-3')).toBe(`${DAEMON_ENDPOINTS.runs}/run-3/stop`);
+    expect(Object.values(DAEMON_ENDPOINTS), 'the stop segment became a forwarded prefix of its own')
+      .not.toContain('/stop');
+    const module = fs.readFileSync(path.join(ROOT, 'src', 'daemon-endpoints.ts'), 'utf8');
+    expect(module, 'the stop segment is assembled rather than written, so the exemption forgives nothing')
+      .toContain(`= '${'/stop'}'`);
   });
 
   test('the proxy and path builder consume the complete endpoint register', () => {

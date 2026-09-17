@@ -247,10 +247,20 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
    * dropped, which is what would happen if the whole clause went: the board and the ticket page
    * would silently stop being read-only with it.
    *
-   * `'/stop'` is permitted nowhere, this app stopping no run; `PUT`, `PATCH` and `DELETE` are
-   * permitted nowhere, the daemon routing none of them. `daemon-client.ts` is where every request
-   * is made and `daemon-endpoints.ts` is where every path is built, which is why those two and not
-   * the screen: a component that assembled either would be the second place a request is composed.
+   * **Q-0130 moved it by exactly ONE ROW**, and the arithmetic is worth writing down because it is
+   * what the second clause below exists for. A start needs no new path literal at all — it POSTs to
+   * `DAEMON_ENDPOINTS.runs`, which `daemon-endpoints.ts` already declares and `fetchRuns` already
+   * READS — and the method was already permitted in the same module, so `'/stop'`'s `permitted` is
+   * the whole of the change and the permitted MODULE set is unmoved at two. What that costs is
+   * stated rather than smoothed over: after this ticket these six needles can no longer tell *this
+   * app starts runs* from *this app lists runs*, so on their own they read as a boundary and are
+   * not one — Q-0073's *a count is not an identity* arriving on an exemption register. The identity
+   * clause below is the subject they lost.
+   *
+   * `PUT`, `PATCH` and `DELETE` stay permitted nowhere, the daemon routing none of them.
+   * `daemon-client.ts` is where every request is made and `daemon-endpoints.ts` is where every path
+   * is built, which is why those two and not the screen: a component that assembled either would be
+   * the second place a request is composed.
    */
   const WRITE_RULES: { readonly needle: string; readonly what: string; readonly permitted: string | null }[] = [
     { needle: `method:${' '}'POST'`, what: 'issues a POST', permitted: 'daemon-client.ts' },
@@ -258,8 +268,38 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     { needle: `method:${' '}'PATCH'`, what: 'issues a PATCH', permitted: null },
     { needle: `method:${' '}'DELETE'`, what: 'issues a DELETE', permitted: null },
     { needle: `'${'/gate'}'`, what: "names the daemon's gate route", permitted: 'daemon-endpoints.ts' },
-    { needle: `'${'/stop'}'`, what: 'names the stop route', permitted: null },
+    { needle: `'${'/stop'}'`, what: 'names the stop route', permitted: 'daemon-endpoints.ts' },
   ];
+
+  /**
+   * Every function in `daemon-client.ts` whose body issues a request that is not a GET.
+   *
+   * **The subject the needles above lost**, and it is a different one rather than a stronger
+   * version of theirs: they ask *which files may carry a write*, and this asks *which acts there
+   * are*. A fourth act added inside the one permitted module trips none of them, because the method
+   * and both segments are already forgiven there — it fails here, by name.
+   *
+   * The unit is the FUNCTION rather than the file, because that is what an act is. Each declaration
+   * is walked from its own opening brace to the matching close, so a `method:` inside one is
+   * attributed to it and to nothing else.
+   */
+  const writingFunctions = (text: string): string[] => {
+    const needle = `method:${' '}'POST'`;
+    const found: string[] = [];
+    for (const head of text.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*[(<]/g)) {
+      const open = text.indexOf('{', (head.index ?? 0) + head[0].length);
+      if (open < 0) continue;
+      let depth = 0;
+      let at = open;
+      for (; at < text.length; at += 1) {
+        if (text[at] === '{') depth += 1;
+        if (text[at] === '}') depth -= 1;
+        if (depth === 0) break;
+      }
+      if (text.slice(open, at).includes(needle)) found.push(head[1]);
+    }
+    return found.sort();
+  };
 
   /** Every `<file>: <what>` the rules report, with the exemptions honoured or ignored. */
   const writeOffenders = (exempt: boolean): string[] =>
@@ -268,10 +308,10 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       .map((rule) => `${name}: ${rule.what}`));
 
   test('nothing under src issues a request that is not a GET, or names a route that takes one', () => {
-    // The read-only boundary as a property of the source rather than only of the screen. Nothing
-    // outside the two modules named above writes: no run is started, no run is stopped, no stage is
-    // moved, no run lock is taken — and `read.ts`'s own header says the same thing one package
-    // over, where it is the boundary that ticket exists to hold.
+    // The boundary as a property of the source rather than only of the screen. Nothing outside the
+    // two modules named above writes: no stage is moved by this app and no file under a ticket
+    // folder is written by it — and `read.ts`'s own header says the same thing one package over,
+    // where it is the boundary that ticket exists to hold.
     expect(writeOffenders(true), 'a module outside the two named may write').toStrictEqual([]);
     // Each needle discriminates, over fixtures assembled so this file is not its own subject.
     expect(WRITE_RULES.filter((rule) => `await fetch(p, { method:${' '}'POST' })`.includes(rule.needle)).map((rule) => rule.what))
@@ -286,14 +326,125 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     // not — so the same rules are run over the same corpus with the exemptions ignored, and what
     // comes back is asserted to be exactly the two modules this ticket named. A guard whose
     // exemption could be deleted with nothing failing has not been established.
-    expect(writeOffenders(false).sort(), 'the exemptions forgive something other than the two modules named')
-      .toStrictEqual(['daemon-client.ts: issues a POST', "daemon-endpoints.ts: names the daemon's gate route"]);
-    // …and the permitted set is exactly those two, so a third could not be added silently.
-    expect(WRITE_RULES.filter((rule) => rule.permitted !== null).map((rule) => rule.permitted))
+    expect(writeOffenders(false).sort(), 'the exemptions forgive something other than the modules named')
+      .toStrictEqual([
+        'daemon-client.ts: issues a POST',
+        "daemon-endpoints.ts: names the daemon's gate route",
+        'daemon-endpoints.ts: names the stop route',
+      ]);
+    // …and the permitted MODULE set is exactly those two, which is the half Q-0130 did not move: it
+    // widened the boundary by one permission inside modules that already held one, and a third
+    // module could still not be added silently.
+    expect([...new Set(WRITE_RULES.map((rule) => rule.permitted).filter((name) => name !== null))].sort())
       .toStrictEqual(['daemon-client.ts', 'daemon-endpoints.ts']);
-    // The stop route is permitted nowhere, which is what says this ticket widened the boundary by
-    // one act rather than by a family of them.
-    expect(WRITE_RULES.find((rule) => rule.needle.includes('stop'))?.permitted, 'stopping a run became permitted').toBeNull();
+    // **The clause this replaced asserted `'/stop'`'s `permitted` was `toBeNull()`** under the
+    // message *"stopping a run became permitted"* — which is exactly what Q-0130 makes true, so a
+    // tidy implementation would have deleted it. It is replaced by one naming the module rather
+    // than removed, so the permission stays an identity: a stop permitted somewhere ELSE fails here
+    // rather than passing.
+    expect(WRITE_RULES.find((rule) => rule.needle.includes('stop'))?.permitted,
+      'the stop route is permitted somewhere other than the endpoint module').toBe('daemon-endpoints.ts');
+  });
+
+  test('Q-0130 AC-11 — and the acts that write are three, named, because the needles can no longer tell', () => {
+    // **A clause with a different subject**, and the register above is why it is owed: a start needs
+    // no new path literal and the method was already permitted in the same module, so a fourth
+    // writer added to `daemon-client.ts` trips not one of those six needles. They report which files
+    // may write; this reports what the writes ARE.
+    const client = sourceFiles().find(([name]) => name === 'daemon-client.ts')?.[1];
+    expect(client, 'there is no daemon client — this clause has lost its subject').toBeDefined();
+    expect(writingFunctions(client ?? ''), 'the set of acts this app performs on a run moved')
+      .toStrictEqual(['answerGate', 'startRun', 'stopRun']);
+    // An IDENTITY and not a count, shown both ways: a fourth writer is reported, and one name
+    // swapped for another is reported — which a length assertion would pass over.
+    const post = `{ method:${' '}'POST', headers: {}, body: '' }`;
+    const fixture = [
+      `export async function answerGate(f: F) { await f(p, ${post}); }`,
+      `export async function startRun(f: F) { await f(p, ${post}); }`,
+      `export async function stopRun(f: F) { await f(p, ${post}); }`,
+    ].join('\n');
+    expect(writingFunctions(fixture), 'the walk does not find the three it is written against')
+      .toStrictEqual(['answerGate', 'startRun', 'stopRun']);
+    expect(writingFunctions(`${fixture}\nexport async function deleteRun(f: F) { await f(p, ${post}); }`),
+      'a fourth writer is not reported').toStrictEqual(['answerGate', 'deleteRun', 'startRun', 'stopRun']);
+    expect(writingFunctions(fixture.replace('stopRun', 'purgeRun')),
+      'one name swapped for another is not reported').toStrictEqual(['answerGate', 'purgeRun', 'startRun']);
+    // …and a reader is not a writer: a function that makes a GET is not collected, so the three
+    // above are the acts rather than the exported functions.
+    expect(writingFunctions(`export async function fetchRuns(f: F) { await f(p); }`),
+      'a plain read was collected as a write').toStrictEqual([]);
+  });
+
+  test('Q-0130 AC-12 — no file under src names a start field this app will not send', () => {
+    // **Pillar 3 as a checked property of the source rather than as an intention.** `auto` advances
+    // every author-declared gate without a human, and *"Human-gated by default, auto opt-in per
+    // gate"* (2026-08-06) puts that choice in the FLOW FILE — so a browser control for it is a
+    // second mechanism for one rule and would owe a decision entry this ticket did not take. `base`
+    // moves a review's diff anchor and needs a revision no route on this transport can enumerate.
+    //
+    // The needles are the two names as an object KEY, in the three forms a key is written, because
+    // that is the shape a start body has. One exemption, measured rather than assumed.
+    const FORBIDDEN = ['auto', 'base'];
+    const forms = (field: string): string[] => [`${field}:`, `'${field}'`, `"${field}"`];
+    /**
+     * `base` on a board card, which is the CONFIGURED BASE BRANCH a containment token is spelled
+     * against — a different `base` entirely, and the one the wire already carries as `baseBranch`.
+     *
+     * A file-level exemption would forgive a genuine start body written there, so it is paired with
+     * the clause below: the exempted file names `startRun` nowhere, and the board starts no run.
+     */
+    const PERMITTED: Record<string, string> = { 'backlog-board.tsx:base:': "a card's containment base branch, which is `WireTicketList.baseBranch` and not a run's diff anchor" };
+    const named = (exempt: boolean): string[] => sourceFiles().flatMap(([name, text]) => FORBIDDEN
+      .flatMap((field) => forms(field).map((needle) => ({ needle, found: text.includes(needle) })))
+      .filter(({ needle, found }) => found && !(exempt && `${name}:${needle}` in PERMITTED))
+      .map(({ needle }) => `${name}:${needle}`));
+
+    expect(named(true), 'a file under src names a start field this app will not send').toStrictEqual([]);
+    // The exemption is doing work and is exactly the one measured: ignoring it reports that site and
+    // no other, so it forgives something rather than reading as coverage.
+    expect(named(false).sort(), 'the exemption forgives something other than the site it names')
+      .toStrictEqual(Object.keys(PERMITTED));
+    // …and the file it forgives starts no run, which is what keeps a file-level exemption from
+    // forgiving a start body written there.
+    const board = sourceFiles().find(([name]) => name === 'backlog-board.tsx')?.[1] ?? '';
+    expect(board, 'the board is not in the corpus — this exemption has lost its subject').not.toBe('');
+    expect(board.includes('startRun'), 'the exempted file starts a run').toBe(false);
+    // The needles discriminate, over fixtures assembled so this file is not its own subject.
+    const body = `{ flow: f, ticket: t, ${'auto'}: true }`;
+    expect(FORBIDDEN.flatMap(forms).filter((needle) => body.includes(needle))).toStrictEqual(['auto:']);
+    expect(FORBIDDEN.flatMap(forms).filter((needle) => `{ ${'base'}: ref }`.includes(needle))).toStrictEqual(['base:']);
+    expect(FORBIDDEN.flatMap(forms).filter((needle) => '{ flow: f, ticket: t, dry: true }'.includes(needle)))
+      .toStrictEqual([]);
+  });
+
+  test('Q-0130 AC-13 — every sentence saying this app cannot start or stop a run is gone', () => {
+    // **The negatives are what a document of this kind gets wrong**: not the new sentence but the
+    // old one nobody re-read. Five sites under `src` carried one, and each is asserted absent AND
+    // shown findable, so an emptiness here is an absence rather than five needles that match
+    // nothing. The sixth site is this file's own `WRITE_RULES` docblock, which no scan over `src`
+    // reaches and which moved with them.
+    const RETIRED: [string, string][] = [
+      ['the empty-runs sentence', ['This app cannot ', 'start one'].join('')],
+      ['the client header', ['Since Q-0016 exactly one request here ', 'is not a GET'].join('')],
+      ['the boundary clause both headers carried', ['no run is started, ', 'no run is stopped'].join('')],
+      ['the gate screen\'s claim to be the whole of it', ['It is the whole of ', 'what this app writes'].join('')],
+      ['the shell\'s wait', ['enabled by whichever ticket ', 'can start a run'].join('')],
+    ];
+    for (const [what, retired] of RETIRED) {
+      expect(sourceFiles().filter(([, text]) => text.includes(retired)).map(([name]) => name), `${what} survives`)
+        .toStrictEqual([]);
+      // The needle has a subject: the same one finds the wording where it is written.
+      expect([['fixture.ts', `/** ${retired} */`]].filter(([, text]) => text.includes(retired)).length,
+        `the needle for ${what} matches nothing`).toBe(1);
+    }
+    // And the half a set of negatives cannot carry: the clause that is STILL TRUE survived. A
+    // `quorum run` invocation imports `runFlow` and runs in its own process, so a run started at a
+    // command line is one this daemon's registry has never heard of, and deleting that with the
+    // clause beside it would have been the correction losing what it was not about.
+    const text = sourceFiles().find(([name]) => name === 'mission-control-text.ts')?.[1] ?? '';
+    expect(text, 'the empty-runs sentence is not in the corpus — this clause has lost its subject').not.toBe('');
+    expect(text, 'the clause that is still true was deleted with the one that went false')
+      .toContain('a different process that this daemon cannot see');
   });
 
   test('nothing refetches on a timer, and nothing persists a board in the browser', () => {
@@ -354,7 +505,11 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // A browser needs an executable parser, and a second declaration beside an import is free to
     // drift from the one `@quorum/shared` owns — the half-measure Q-0120 had to repair. The other
     // direction, that the shapes really are declared there, is asserted in that package.
-    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles']) {
+    // `WireStartRequest` joined them at Q-0130 under the same rule and in the other direction: it
+    // is the first shape here this app BUILDS rather than reads, and the field set had lived only
+    // inside `packages/server` — so a browser composing a start body without it would have written
+    // the five names a third time, which is verbatim the drift Q-0120 was opened on.
+    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest']) {
       const offenders = filesBelow(PACKAGE)
         .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
         .map(([name]) => name);
@@ -366,6 +521,10 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // written-out declaration here would make this file its own subject.
     const client = filesBelow(PACKAGE).find(([name]) => name === 'src/daemon-client.ts')?.[1] ?? '';
     expect(client, 'the client does not import the detail shape').toContain('WireTicketDetail');
+    // The start shape likewise, and with its SCHEMA: a type alone would be the half-measure Q-0120
+    // had to repair, a browser needing an executable builder rather than a declaration.
+    expect(client, 'the client does not import the start shape').toContain('WireStartRequest');
+    expect(client, 'the client builds a start body without the shared schema').toContain('wireStartRequestSchema');
     const fixture = `export interface ${'Wire'}${'TicketFile'} { rel: string }`;
     expect(/\b(?:interface|type)\s+WireTicketFile\s*[={]/.test(fixture)).toBe(true);
   });
