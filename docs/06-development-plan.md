@@ -3957,7 +3957,89 @@ parked at p2 with its three written reopening thresholds.
   requirements gate, `draft`, p2.)* The app's two run-lifecycle mutations, answered once rather than twice. It is also
   **the ticket that gives the daemon a producer**: until it lands, `GET /runs` answers `{"runs": []}`
   on any real machine and neither mission control nor Q-0016's gate screen has anything to show.
-- Q-0129 The gate screen shows the verdict that reached it. *(`requirements` 2026-09-17, ready on the
+- Q-0129 The gate screen shows the verdict that reached it. *(`reviewed` and `main:contained`
+  2026-09-17; retitled from *"…, and the diff"* when the gate split it, because that half is now
+  **Q-0134**'s.)* **$172.96 across three runs** — $7.39 on a requirements run that was interrupted,
+  $21.04 on the one that landed, ready on the first pass, and $144.53 on a chore run of **five
+  implement rounds and four reviews reached through two `retry` answers at two exhaustion gates**,
+  plus 231.7M tokens and four unpriced codex steps. `gateQuestionEventSchema` gained **one optional
+  field**, `reached`; `packages/core` holds it in one run-scoped slot; **`packages/server` changed
+  not at all**, which is AC-7's whole point — `gates` already crossed whole as the event union's own
+  element schema; and the gate screen renders the deciding step's id, verdict, summary and every
+  finding as values rather than parsing a sentence.
+  **Decision 097 landed at the requirements gate as a hard precondition and GO-1 made it one** —
+  *"A gate question carries the decision that reached it"* (2026-09-17), **verified by grep in the
+  implement step's actual 91,367-byte `prompt.txt`** rather than assumed, which is the check Q-0097
+  lost two errata by not making. It records **six refused alternatives** so Q-0131 cannot re-derive
+  them; the sharpest is that parsing the run's prose is refused because **4 of 1,080 findings
+  contain the join separator themselves and 1,071 contain `": "`**, while a step id contains a colon
+  by construction. It reverses nothing: the producer for the new member is `steps.ts`, which already
+  wrote these values to disk, and **Q-0127 E-1's `.harness/` exclusion stands** because the value
+  travels on the stream instead.
+  **Round 1 returned `blocked` and was right** — Q-0083's channel firing on a real refusal. AC-12
+  required a superseded-by note in `contracts/Q-0050/run-events.contract.md`, and **`contracts/` is
+  not among `developer-generalist`'s fourteen roots**. That is *"A requirement may not name a
+  surface its flow cannot write"* (2026-08-25), and what makes this instance worth recording is that
+  **the merged requirement's own §11 cites that rule by name** when striking a different criterion
+  and then names `contracts/` one criterion later — the document knew the rule, applied it, and
+  missed a second instance in its own text. Sixteenth appearance of a loop handed work no agent in
+  it can perform, and the first where the requirement **states the rule it then breaks**. The round
+  also **declined to write a deliberately failing guard**, because a red suite fails `integrate`
+  after the gate rather than at it — Q-0117's channel used exactly as designed, and the difference
+  between this round and the three Q-0062 spent. The note was written by hand at the gate and merged
+  into the implement branch, which is what `retry` is for.
+  **The review loop's shape is the ticket's most transferable measurement: 2 majors, 2, 2, then 1 —
+  and the first six are all the lifetime of one run-scoped slot.** Never cleared, so a later
+  non-verdict failure carried a stale verdict; cleared for that case and not for two author-declared
+  gates; cleared before `askGate` decides whether a question is emitted, so an auto-advanced gate
+  spends a decision nobody saw. **Each round's fix is what produced the next round's finding** — the
+  invariant was being restated at each call site instead of held in one place. **Erratum E-7 ruled it
+  at the exhaustion gate** on three measurements the reports did not have: all six shipped flows
+  declare exactly one author-declared gate and it is **last** in all six, all six are `gate: human`
+  with **no `gate: auto` anywhere**, and **no `parallel:` member declares a verdict in any of them**
+  — re-derived by parsing the flow files, because a grep across whole files reported two that do.
+  So both surviving findings were **latent**. It fixed the first anyway, **at the class**: consume
+  where the engine *emits*, which is the file's single `context.emit(request)`, turning *"every call
+  site remembers to clear at the right moment"* into *"the engine spends what it presents"*. It
+  registered the second on Q-0078's precedent — **and found that the fact keeping it latent was a
+  comment**. Round 1 had called it *"an identity the new `flow.test.ts` clause pins"*; there is no
+  such clause, and the day a flow gains a verdict-declaring parallel member the registered defect
+  goes live with nothing red.
+  **Round 5 closed both and the class finally changed**, to a sentence: the heading said *"What the
+  step before this gate decided"*, and in `chore.yaml` `integrate` runs between `review` and the
+  owner gate — so at the most common gate in this repository's history it named the wrong step.
+  E-7 had named the remedy for a second exhaustion in advance, so it was **repaired by hand** rather
+  than by a fourth grant (Q-0073, Q-0080), with the guard shown red against the retired wording.
+  **The hand pass R-5 owes is what earns this ticket's last finding, and it is Q-0128's argument in
+  one measurement.** Every one of the four reviews was truncated, and **the set of files it got no
+  patch at all for grew 10 → 13 → 14 → 15 as the branch did — 78.9%, 76.3%, 73.1%, 70.2%** — so the
+  longer the loop converged the less each successive reviewer saw, which is Q-0017's finding
+  repeating exactly. Among the files no review ever received a patch for were
+  **`packages/shared/src/events.ts`, the schema field this whole ticket exists to add**, and
+  `steps.ts`, `types.ts` and `wire.ts`. The hand pass over them found **the same adjacency claim
+  replicated at four more live sites** — `wire.ts`, `routes.ts`, `04-architecture.md` and
+  `05-design-prompt.md`, none of which any reviewer saw — while four further occurrences are
+  quotations of superseded sentences and were left, history not being drift. **It also found the
+  register clause asserting the retired phrase**, which pinned a *wording* where the criterion is
+  about a *property*: an honest rephrasing turned it red, and the wording it pinned was the one the
+  review had just found wrong. Re-aimed at the property, and it now forbids the phrase.
+  **Q-0124's warn did more than disclose this time, which is new.** All four reviews reported, as
+  `observation:` entries, that they had **inspected the omitted files directly from the implement
+  branch rather than judging them from the stat** — so the warn changed the reviewer's behaviour
+  rather than merely recording a gap, which is the strongest evidence yet that Q-0124's half and
+  Q-0117's channel compose.
+  **GO-6 was discharged by running the product and transcribing what it rendered**, which is the
+  standard Q-0016's equivalent failed: a real daemon from `quorum open`, a real run parked at a real
+  exhaustion gate, opened in Chrome, showing *The decision that reached this gate · needs-input ·
+  Step: head-of-product* with its summary and its one `MAJOR` finding. Only the **vendor CLI** was
+  mocked, through this product's own shipped mock adapter; the run had to be started **through the
+  daemon**, because a `quorum run` is a different process the host can never see — **Q-0121's
+  measurement, depended on here for the first time**. Both gate kinds were exercised across two
+  attempts, and everything it created was removed, `harness/harness.yaml` back to zero diff.
+  Verified forced in both environment rows — a detached worktree with neither `.harness/worktrees`
+  nor `.quorum/runs`, and `main` after the merge — 7/7 tasks 0 cached in each, `quorum lint` 6/6 and
+  the git-identity sweep green.
+  *(The requirements gate's own record follows.)* *(`requirements` 2026-09-17, ready on the
   first pass at twelve criteria; **cut in two there**, with **Q-0134** taking the diff.)* **$21.04**.
   **Decision 097 landed at that gate as a hard precondition** — *"A gate question carries the decision
   that reached it"* (2026-09-17) — because GO-1 made it one, citing Q-0126's round-1 `blocked` and

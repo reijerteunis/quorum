@@ -1,6 +1,6 @@
 ---
 id: Q-0129
-title: The gate screen shows the verdict that reached it, and the diff
+title: The gate screen shows the verdict that reached it
 stage: reviewed
 owner: ruud
 repos: []
