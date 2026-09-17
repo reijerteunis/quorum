@@ -274,6 +274,106 @@ describe('Q-0121 AC-7 and AC-11 — a client with no handle finds a run and join
   });
 });
 
+describe('Q-0131 AC-2 — a live run answers with its own number, over a real socket', () => {
+  /** Every event a socket receives until the run's terminal one, then that event. */
+  async function terminalOverSocket(url: string, handle: string): Promise<{ runId: number | null }> {
+    const socket = new WebSocket(`${url.replace('http://', 'ws://')}/runs/${handle}/events`);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { socket.close(); reject(new Error('no terminal event reached the socket')); }, 15_000);
+      socket.addEventListener('message', (message) => {
+        const envelope = JSON.parse(String(message.data)) as { type: string; event?: { type?: string; runId?: number | null } };
+        if (envelope.type !== 'event' || envelope.event?.type !== 'terminal') return;
+        clearTimeout(timer);
+        socket.close();
+        resolve({ runId: envelope.event.runId ?? null });
+      });
+      socket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('the socket errored')); });
+    });
+  }
+
+  /** A run's row, parsed through the schema a browser parses it with. */
+  const rowOf = async (url: string, handle: string) =>
+    wireRunSchema.parse(await (await fetch(`${url}/runs/${handle}`)).json());
+
+  test('GET /runs/:handle carries the number while the run is running, and the listing carries the same one', async () => {
+    // **The whole of what this ticket is for**, and a run parked at a human gate is what makes it
+    // assertable: it is `running`, it has emitted no terminal event, and it stays that way until
+    // somebody answers. Before Q-0131 this row's `runId` was `null` for the entire life of every
+    // run any reader could still watch.
+    const { project, server, url, host } = await listening({ flow: GATED_FLOW });
+    try {
+      const started = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID }),
+      });
+      expect(started.status).toBe(201);
+      const handle = (await started.json() as { handle: string }).handle;
+      const gate = await new Promise<GateQuestionEvent>((resolve, reject) => {
+        const socket = new WebSocket(`${url.replace('http://', 'ws://')}/runs/${handle}/events`);
+        const timer = setTimeout(() => { socket.close(); reject(new Error('no gate question reached the socket')); }, 15_000);
+        socket.addEventListener('message', (message) => {
+          const envelope = JSON.parse(String(message.data)) as { type: string; event?: { type?: string } };
+          if (envelope.type !== 'event' || envelope.event?.type !== 'gate') return;
+          clearTimeout(timer);
+          socket.close();
+          resolve(envelope.event as unknown as GateQuestionEvent);
+        });
+        socket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('the socket errored')); });
+      });
+      expect(gate.gateId, 'the run never parked, so there is no live run to read').toBeTruthy();
+
+      const live = await rowOf(url, handle);
+      // The two halves together: a number, on a row that says the run has not finished. Either
+      // alone passes over a run that ended before the read.
+      expect(live.state, 'the run is not running, so this reads a number off a finished run').toBe('running');
+      expect(live.runId, 'a live run still reports no number').toBe(1);
+      // …and no terminal event has been observed, which is the other half of "before the run ends"
+      // and is a fact about the host rather than about the row.
+      expect(host.view(handle)?.terminal, 'a terminal event arrived, so the run was already over').toBeNull();
+
+      // …and the listing is the same value, because `viewOf` projects one record.
+      const listed = wireRunListSchema.parse(await (await fetch(`${url}/runs`)).json())
+        .runs.find((row) => row.handle === handle);
+      expect(listed?.runId, 'the listing row disagrees with the lookup about this run\'s number')
+        .toBe(live.runId);
+
+      // **One authority, proven by the two deliveries agreeing.** The number reported at run start
+      // and the number the terminal event carries are `core`'s one allocation; a host that derived
+      // either would be free to disagree, and this fails if they do.
+      const terminal = terminalOverSocket(url, handle);
+      expect(host.answer(handle, { gateId: gate.gateId, answer: 'abort' })).toBeNull();
+      expect((await terminal).runId, 'the live number and the terminal event\'s number disagree')
+        .toBe(live.runId);
+    } finally {
+      await host.shutdown();
+      await server.close();
+    }
+  });
+
+  test('a refused start still answers no number at all', async () => {
+    // `null` there is the honest answer rather than a gap: no refusal reaches a run number, and a
+    // host that reported one would be inventing identity for a run that never existed.
+    const { server, url, host } = await listening();
+    try {
+      const refused = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: 'probe', ticket: 'T-0404' }),
+      });
+      expect(refused.status).toBe(404);
+      // The refusal discloses no handle, so the record is reached through the host — which is the
+      // only reader that can see one, and is why this clause exists rather than a route assertion.
+      const record = host.runs().at(-1);
+      expect(record?.state, 'the last minted run is not the refused one').toBe('refused');
+      expect(record?.runId, 'a refused start was given a run number').toBeNull();
+    } finally {
+      await host.shutdown();
+      await server.close();
+    }
+  });
+});
+
 describe('Q-0129 AC-7 — the transport carries a step\'s decision without being edited', () => {
   /** Every message a socket receives until one of them carries a gate question, then that question. */
   async function gateOverSocket(url: string, handle: string): Promise<GateQuestionEvent> {

@@ -24,6 +24,19 @@ import { parseFrame } from './frame-parser.js';
  * The daemon already retains and discloses a tail of 500. Reusing that measured product value
  * bounds immutable-array copying, keeps early and late readers on the same visible extent, and
  * avoids inventing a different limit before Q-0015's demonstration supplies a per-run count.
+ *
+ * **Q-0131 revisited it and left it where it is, on what the evidence can and cannot say.** What
+ * exists is Q-0015's demonstration, in that ticket's own `runs.log` —
+ * `events 10 · missed 0 · peak concurrent columns 3` — and that file states in its own words that
+ * the run was a **`--dry` walk**, which invokes no adapter and so emits no `stdout`, where a real
+ * run's volume is. Beside it: this repository's 165 recorded runs have a median of 4 occurrences,
+ * p90 11 and a maximum of 55, so its largest run is roughly 275 non-`stdout` events before a single
+ * line of vendor output.
+ *
+ * **The figure that would license a change does not exist and cannot be recovered from run
+ * history**, an occurrence's `output.txt` being the adapter's final message rather than the stdout
+ * stream it is one event per line of. So the number stays until a real run is measured against it,
+ * and a change made without that measurement is one nothing supports.
  */
 export const RUN_EVENT_RETENTION = 500;
 

@@ -7,19 +7,26 @@
  * metadata read, or the reverse — so each is rendered from its own state with its own retry, rather
  * than being folded into one region whose single failure sentence could name only one of them.
  *
- * **The run number is read from the terminal event in the socket snapshot, and nowhere else.**
- * `WireRun.runId` exists on the metadata read too, but `04-architecture.md:317` forbids a
- * fabricated value, and a running run's `runId` there is `null` until the run ends
- * (`packages/server/src/host.ts:304`) — so reading it from metadata would either show nothing a
- * live run could show, or, once a browser holds a stale `loaded` metadata snapshot from before this
- * run ended, show a number that belongs to a different run than the one just started at this
- * handle. The handle identifies the run until its own terminal event supplies a number.
+ * **The run number is read from the loaded metadata, beside the flow and ticket already read
+ * there.** It was read from the terminal event in the socket snapshot until Q-0131, and the reason
+ * was never that metadata is the wrong home for a run's identity: it was that a running run's
+ * `runId` there was `null` until the run ended, so reading it would have shown nothing a live run
+ * could show. `core` now reports its number at run start, which removes that premise — and taking
+ * the number from the same request that supplies `flow` and `ticketId` is what keeps the header's
+ * identity one read rather than two. `04-architecture.md`'s rule is unchanged and is what the
+ * handle still serves: a request that has not resolved, or one that failed, renders the handle
+ * rather than a fabricated number.
+ *
+ * **Nothing here reads the socket for identity at all**, which is the property rather than a
+ * consequence: a browser holding a `loaded` snapshot from before a run ended and a stream carrying
+ * a terminal event are two accounts of one number, and a screen that preferred one would be
+ * choosing between them.
  *
  * **Five disclosures render verbatim from `mission-control-text.ts` and nothing here approximates
  * one.** A parsed sentence is not a contract (ground rule 2): none of them is composed from
  * `done.message` or any other event's free text.
  */
-import type { Event, WireRun } from '@quorum/shared';
+import type { WireRun } from '@quorum/shared';
 import type { ReactNode } from 'react';
 
 import { canRetry, connectionStateText } from './connection-state.js';
@@ -39,14 +46,13 @@ export interface MissionControlStatusProps {
 }
 
 /**
- * The run's number, from the terminal event in `events` — the only place one may come from.
+ * The run's number, from the loaded metadata — the only place one may come from.
  *
- * There is at most one terminal event per run, so which end of the array is searched does not
- * matter; a `find` from the start is the plainer read.
+ * `null` for every state that is not `loaded`, so a request in flight and one that failed both
+ * fall back to the handle rather than to a number this screen does not have.
  */
-function terminalRunId(events: readonly Event[]): number | null {
-  const terminal = events.find((event) => event.type === 'terminal');
-  return terminal === undefined ? null : terminal.runId;
+function loadedRunId(metadata: RequestState<WireRun>): number | null {
+  return metadata.kind === 'loaded' ? metadata.value.runId : null;
 }
 
 /** The connection region: state prose and its own retry, independent of the metadata read. */
@@ -116,14 +122,18 @@ function LossRegion({ snapshot }: { snapshot: RunConnectionSnapshot }): ReactNod
  * The gate link derives from `metadata`'s own `pendingGates` count and never from a streamed gate
  * event, so it is present exactly when the loaded run reports one — including a late joiner whose
  * socket replay carries no `gate` event at all.
+ *
+ * **It takes no snapshot, and that is the property rather than a tidy-up.** Every value it renders
+ * comes from the one metadata read; a parameter carrying the event stream is what a later change
+ * would reach for to recover a number from a terminal event, which is the second authority Q-0131
+ * removed.
  */
-function Header({ handle, snapshot, metadata, onNavigate }: {
+function Header({ handle, metadata, onNavigate }: {
   handle: string;
-  snapshot: RunConnectionSnapshot;
   metadata: RequestState<WireRun>;
   onNavigate: (to: string) => void;
 }): ReactNode {
-  const runId = terminalRunId(snapshot.events);
+  const runId = loadedRunId(metadata);
   const to = gatePath(handle);
   const showGateLink = metadata.kind === 'loaded' && metadata.value.pendingGates > 0;
 
@@ -168,19 +178,19 @@ export function MissionControlStatus({
 }: MissionControlStatusProps): ReactNode {
   return (
     <div className="flex flex-col gap-4">
-      <Header handle={handle} snapshot={snapshot} metadata={metadata} onNavigate={onNavigate} />
+      <Header handle={handle} metadata={metadata} onNavigate={onNavigate} />
       <ConnectionRegion snapshot={snapshot} onRetry={onRetryConnection} />
       <MetadataRegion metadata={metadata} onRetry={onRetryMetadata} />
       <LossRegion snapshot={snapshot} />
       <ul className="flex flex-col gap-1 text-xs text-muted" data-mission-control-disclosures>
-        {/* The first disclosure explains that the run has no number yet and that the handle stands in
-            for it. Once a terminal event supplies one, `data-run-identity` renders the number — so
-            leaving the sentence would show the number and explain that there is none, on the screen
-            whose whole discipline is saying only what it has. The frozen contract says the same:
-            "a terminal-provided run number replaces that explanation only after it exists."
-            Review round 2, major 2. */}
+        {/* The first disclosure explains that the run has no number here yet and that the handle
+            stands in for it. Where the metadata read supplies one, `data-run-identity` renders the
+            number — so leaving the sentence would show the number and explain that there is none, on
+            the screen whose whole discipline is saying only what it has. Retired conditionally
+            rather than deleted, because the state it describes still happens: a read in flight, and
+            one that failed. Review round 2, major 2; re-aimed at the metadata read by Q-0131. */}
         {MISSION_CONTROL_DISCLOSURES
-          .filter((disclosure) => disclosure !== MISSION_CONTROL_DISCLOSURES[0] || terminalRunId(snapshot.events) === null)
+          .filter((disclosure) => disclosure !== MISSION_CONTROL_DISCLOSURES[0] || loadedRunId(metadata) === null)
           .map((disclosure) => <li key={disclosure}>{disclosure}</li>)}
       </ul>
     </div>

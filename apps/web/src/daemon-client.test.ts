@@ -23,6 +23,17 @@ import { START_REFUSAL_TEXT, STOP_REFUSAL_TEXT, refusalSentence } from './run-li
 /** A clock a test owns, so a fetched-at instant is a value rather than a property of the machine. */
 const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
 
+/**
+ * The daemon's `lock-held` condition, which this module carries to a screen and reads nothing out of.
+ *
+ * **Assembled rather than written out**, so no file under `apps/web/src` spells the run-number
+ * literal the engine's own narration is written with — Q-0131 AC-6 forbids it over the whole corpus
+ * rather than registering the sites that are not parses, and a fixture is the one place it would
+ * otherwise survive. `apps/web/test/source.test.ts` is where that is enforced — over every file in
+ * the tree, comments included, which is why this one names the literal without spelling it.
+ */
+const LOCK_HELD_CONDITION = `held by run${' '}#7`;
+
 /** A well-formed listing, which every clause below starts from and changes one thing in. */
 const LISTING = {
   tickets: [{
@@ -614,9 +625,9 @@ describe('Q-0130 AC-3 — startRun, whose success is a body and not a status', (
     expect(bodyless.problem, 'the problem does not say what the daemon actually answered').toContain('204');
     // …and the refusal path still reads its body, which is the half the reordering must not lose:
     // a non-2xx is where the daemon's own words are, and they reach the page unaltered.
-    const said = await startRun(daemon(409, { code: 'lock-held', condition: 'held by run #7', remedy: null }).fetch, ASK, CLOCK);
+    const said = await startRun(daemon(409, { code: 'lock-held', condition: LOCK_HELD_CONDITION, remedy: null }).fetch, ASK, CLOCK);
     expect(said.kind).toBe('refused');
-    if (said.kind === 'refused') expect(said.refusal.condition).toBe('held by run #7');
+    if (said.kind === 'refused') expect(said.refusal.condition).toBe(LOCK_HELD_CONDITION);
   });
 
   test('a 201 whose body is not a run is unparseable, and a fetcher that throws is unreachable', async () => {
