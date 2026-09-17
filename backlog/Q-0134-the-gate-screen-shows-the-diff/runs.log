@@ -34,3 +34,104 @@ branches contained in `main` — so `runs.log` must record how the demonstration
 2026-09-17T23:13:27.217Z run=2 gate=human answer=advance
 2026-09-17T23:13:28.633Z run=2 removed-worktrees=2 kept=0
 2026-09-17T23:13:28.636Z run=2 completed stage=requirements→reviewed cost=183.649 tokens=324776500
+
+## GO-5 — discharged, and it caught a shipped defect that three cross-vendor reviews approved
+
+Performed 2026-09-17/18 against the merged tree. **The obligation earned its existence here.**
+
+**How the range was built**, as GO-5 requires, because R-2's measurement — re-derived at the gate as
+**42 of 42** integration branches contained in `main` — means no ticket in this backlog has a
+non-empty one. A scratch ticket `Q-0136` was created, `harness/Q-0136/integration` cut from `main`,
+and three markdown notes committed on `harness/Q-0136/implement` alone, giving an
+`integration...implement` range of **897 bytes** across 3 files. `repo.max_diff_bytes` was lowered
+to **400** so the case is **truncated** with one file omitted entirely. Everything else — the
+daemon, the engine, the flow, the gate, the route, the browser — is the shipped product; only the
+vendor CLI is mocked, through `--adapter mock`.
+
+### What it rendered BEFORE the fix, which is why this obligation exists
+
+A chore run parked at its review exhaustion gate, `reached.stepId = review`. `runs.log` for that run
+records, twice, on consecutive lines:
+
+    run=9 diff truncated range=harness/Q-0136/integration...harness/Q-0136/implement limit=400
+          kept=400 of 897 — no patch at all for 1 file(s): demo/only9.md
+    run=9 step=review vendor=mock model=- verdict=revise
+
+and the gate screen said, of that same step:
+
+    The step whose decision reached this gate was given no diff, so there is nothing to show here.
+
+**That sentence was false.** `GET /runs/run-1/gates/9:4/diff` answered `no-diff`. The cause is
+`steps.ts`'s `promptContext`, an explicit literal narrowing the run context field by field, which
+did not forward `reportDiff` — optional on `DiffContext`, so its absence typechecks, lints and
+passes every suite. The **run-level preflight** path kept working; the **step-time** path captured
+nothing, which is **186 of 208 materialisations** in this repository's history and **every chore
+run** — verbatim the blindness `diff.ts`'s own capture comment describes and AC-1 exists to forbid,
+reproduced one layer up in a different file. Fixed by hand after the gate on Q-0073's and Q-0080's
+precedent, pinned by `prompt-context.source.test.ts`, and shown red by mutation.
+
+### What it renders AFTER the fix, transcribed from the browser
+
+    The decision that reached this gate   revise
+    Step: review
+    mock code-reviewer:verdict #1
+    MAJOR   major: src/mock.ts:1 (mock) placeholder finding
+
+    The diff that decision was made on    Given to step: review
+    Range: harness/Q-0136/integration...harness/Q-0136/implement
+    This diff was cut before that step saw all of it, so the review below it covers less than the change.
+    400 of 897 bytes kept, under a limit of 400.
+    That step was given no patch at all for these files, though they appear in the summary above:
+    demo/only9.md
+
+    FILES IN THIS RANGE
+    demo/only7.md | 4 ++++
+    demo/only8.md | 4 ++++
+    demo/only9.md | 4 ++++
+    3 files changed, 12 insertions(+)
+    diff --git a/demo/only7.md b/demo/only7.md
+    …
+
+**That is Q-0128's disclosure reaching a human at the gate** rather than a reviewer's prompt, which
+is the thing four earlier tickets were reviewed without.
+
+### The honest no-diff case, also transcribed
+
+At the same run's **implement** gate — a step that reads no diff — the screen says:
+
+    The step whose decision reached this gate was given no diff, so there is nothing to show here.
+    That is not a claim that nothing changed: most of the flows this product ships review no diff at
+    all, and a gate declared by a flow can follow any step.
+
+Correct there, and it names the condition rather than implying an empty change.
+
+### A measured limitation, recorded rather than left to be found
+
+**On `review.yaml` the gate shows no diff, and that is the implementation matching AC-2 rather than a
+bug.** Its deciding step is `verdict`, whose input is the panel's reports and whose own instruction
+reads *"Judge the reviews, not the code diff."* The two **panel** members read the diff and declare
+no verdict. So AC-2's model — the gate serves the *deciding* step's evidence — holds on `chore`,
+where one step both reads and decides, and yields *no diff* on the flow named for reviewing. Worth
+its own ticket; not repaired here, because which of two panel members' diffs a gate should show is a
+design question rather than a hand fix.
+
+### Cleaned up
+
+Run aborted, daemon stopped, scratch ticket `Q-0136`, its run history, both its branches and both
+worktrees removed, and `harness/harness.yaml` restored — `max_diff_bytes` back to 200000 and the
+`adapterOverride` gone.
+
+## GO-4 — the hand pass, and GO-6
+
+**GO-4.** All three reviews were truncated — 73.6%, 71.2%, 69.5% — on the **same** 13 files, among
+them `packages/shared/src/diff-evidence.ts` and the whole of the daemon route. The omitted tail was
+**87,100 bytes**, reviewed by hand cross-vendor with the governing rulings quoted. It returned two
+findings: one **confirmed** — `diffEvidenceSchema` declared `truncated`, `kept` and `total` as
+independent fields while the docblock four lines above said they *"cannot disagree"*, so
+`{ truncated: false, kept: 10, total: 20 }` parsed — and one **refuted**, that `evidenceFor` leaks
+across runs, which it does not: it keys by `(handle, gateId)` throughout and the contract defines
+`gateId` as unique *within one run*. Both recorded; the first fixed and shown red by mutation.
+
+**GO-6.** Verified forced in both environment rows — a detached worktree with neither
+`.harness/worktrees` nor `.quorum/runs`, and `main` after the merge — **7/7 tasks 0 cached** in each,
+`pnpm lint` and `pnpm typecheck` 7/7, `quorum lint` 6/6, and the git-identity sweep green.
