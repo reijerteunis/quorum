@@ -271,35 +271,86 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     { needle: `'${'/stop'}'`, what: 'names the stop route', permitted: 'daemon-endpoints.ts' },
   ];
 
+  /** The one method this app can send, spelled so this file is not its own subject. */
+  const WRITE_METHOD = `method:${' '}'POST'`;
+
+  /** A module's top-level declarations, each carrying the text that belongs to it. */
+  interface Declaration {
+    /** The declared name, or what stands in for one where there is no head to read. */
+    readonly name: string;
+    /** Whether the head introduces a VALUE — a `const`, `let`, `var`, `function` or `class`. */
+    readonly binds: boolean;
+    /** Everything from this head to the next one, so no byte of the module belongs to nothing. */
+    readonly text: string;
+  }
+
+  /** The heads that open a top-level declaration, and the four of them that bind a value. */
+  const DECLARATION_HEAD =
+    /^(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(function|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
+  const BINDS_A_VALUE = new Set(['function', 'const', 'let', 'var', 'class']);
+
   /**
-   * Every function in `daemon-client.ts` whose body issues a request that is not a GET.
+   * Split a module into its top-level declarations.
+   *
+   * **The extent runs from one head to the NEXT head rather than to a matching brace**, and that is
+   * what makes this blind to no declaration form rather than to one form fewer than before. The walk
+   * this replaced matched `function name(` alone and then brace-matched from the body's `{`, which
+   * finds neither shape a value binding takes: an arrow with a block body opens its brace after a
+   * `=>` the pattern never reaches, and a concise-bodied one has no body block at all, so the first
+   * `{` after its head belongs to some later declaration. That mattered here more than it reads —
+   * **the arrow is the house style in `daemon-client.ts`, eighteen bindings against five
+   * declarations, and every READER in it is an arrow** — so the one shape the register could not see
+   * was the shape the next writer would most likely be written in.
+   *
+   * Every byte after the first head belongs to exactly one declaration, and the text before it
+   * belongs to a pseudo-declaration rather than to nothing, so a write cannot fall outside this
+   * register at all. It can only be attributed to the wrong name, which fails the register rather
+   * than passing it.
+   *
+   * **A residual, stated rather than left to be found:** an anonymous `export default function` has
+   * no name to collect, so its body would be attributed to the declaration above it. Nothing in this
+   * app default-exports anything — the day something does, this is where it has to be taught.
+   */
+  const declarations = (text: string): Declaration[] => {
+    const heads = [...text.matchAll(DECLARATION_HEAD)];
+    const first = heads[0]?.index ?? text.length;
+    return [
+      { name: '(before the first declaration)', binds: false, text: text.slice(0, first) },
+      ...heads.map((head, i) => ({
+        name: head[2],
+        binds: BINDS_A_VALUE.has(head[1]),
+        text: text.slice(head.index ?? 0, heads[i + 1]?.index ?? text.length),
+      })),
+    ];
+  };
+
+  /**
+   * Every act in `daemon-client.ts` that issues a request which is not a GET.
    *
    * **The subject the needles above lost**, and it is a different one rather than a stronger
    * version of theirs: they ask *which files may carry a write*, and this asks *which acts there
    * are*. A fourth act added inside the one permitted module trips none of them, because the method
    * and both segments are already forgiven there — it fails here, by name.
    *
-   * The unit is the FUNCTION rather than the file, because that is what an act is. Each declaration
-   * is walked from its own opening brace to the matching close, so a `method:` inside one is
-   * attributed to it and to nothing else.
+   * The unit is the top-level DECLARATION rather than the file, because that is what an act is, and
+   * it is the declaration rather than the function so that no way of spelling a function can hide
+   * one. A binding whose text never names the method — {@link declarations} collects every top-level
+   * one, not only the callable ones — is simply not collected.
    */
-  const writingFunctions = (text: string): string[] => {
-    const needle = `method:${' '}'POST'`;
-    const found: string[] = [];
-    for (const head of text.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*[(<]/g)) {
-      const open = text.indexOf('{', (head.index ?? 0) + head[0].length);
-      if (open < 0) continue;
-      let depth = 0;
-      let at = open;
-      for (; at < text.length; at += 1) {
-        if (text[at] === '{') depth += 1;
-        if (text[at] === '}') depth -= 1;
-        if (depth === 0) break;
-      }
-      if (text.slice(open, at).includes(needle)) found.push(head[1]);
-    }
-    return found.sort();
-  };
+  const writingFunctions = (text: string): string[] =>
+    declarations(text).filter((one) => one.binds && one.text.includes(WRITE_METHOD))
+      .map((one) => one.name).sort();
+
+  /**
+   * Every top-level declaration that names the method and yet binds no value.
+   *
+   * The other half of {@link writingFunctions}, and the half that makes it exhaustive rather than
+   * merely wider: a method named outside every act is either the type that closes the set or a
+   * writer this walk failed to read, and the two are told apart by registering the first by name.
+   */
+  const typesNamingWrite = (text: string): string[] =>
+    declarations(text).filter((one) => !one.binds && one.text.includes(WRITE_METHOD))
+      .map((one) => one.name).sort();
 
   /** Every `<file>: <what>` the rules report, with the exemptions honoured or ignored. */
   const writeOffenders = (exempt: boolean): string[] =>
@@ -355,6 +406,13 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     expect(client, 'there is no daemon client — this clause has lost its subject').toBeDefined();
     expect(writingFunctions(client ?? ''), 'the set of acts this app performs on a run moved')
       .toStrictEqual(['answerGate', 'startRun', 'stopRun']);
+    // **The half that makes the three exhaustive rather than merely correct.** The method is named a
+    // fourth time in that module, in `DaemonRequest`, which is the type that closes the set by the
+    // compiler rather than an act — so it is registered by name instead of filtered out by a
+    // predicate nobody re-reads. Any OTHER declaration naming the method is a write this walk failed
+    // to read as one, and it fails here rather than being silently absent from the three above.
+    expect(typesNamingWrite(client ?? ''), 'the method is named outside every act and outside the type that closes it')
+      .toStrictEqual(['DaemonRequest']);
     // An IDENTITY and not a count, shown both ways: a fourth writer is reported, and one name
     // swapped for another is reported — which a length assertion would pass over.
     const post = `{ method:${' '}'POST', headers: {}, body: '' }`;
@@ -369,10 +427,36 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       'a fourth writer is not reported').toStrictEqual(['answerGate', 'deleteRun', 'startRun', 'stopRun']);
     expect(writingFunctions(fixture.replace('stopRun', 'purgeRun')),
       'one name swapped for another is not reported').toStrictEqual(['answerGate', 'purgeRun', 'startRun']);
-    // …and a reader is not a writer: a function that makes a GET is not collected, so the three
-    // above are the acts rather than the exported functions.
+    // **And the same three, spelled the way this module actually spells things.** The walk this
+    // replaced saw the declaration above and none of the three below, while `daemon-client.ts` is
+    // eighteen value bindings against five declarations and every READER in it is an arrow — so the
+    // form it was blind to is the form the next writer is likeliest to be written in. All three are
+    // here because they defeat a brace walk for three different reasons: a block body opens its
+    // brace past a `=>` the pattern never reaches, a concise body has no body block at all, and a
+    // function expression carries no name where a declaration carries one.
+    const bound = [
+      `export const answerGate = async (f: F) => { await f(p, ${post}); };`,
+      `export const startRun = (f: F) => f(p, ${post});`,
+      `const stopRun = async function (f: F) { await f(p, ${post}); };`,
+    ].join('\n');
+    expect(writingFunctions(bound), 'a writer that is a value binding rather than a declaration is not found')
+      .toStrictEqual(['answerGate', 'startRun', 'stopRun']);
+    expect(writingFunctions(`${bound}\nexport const deleteRun = (f: F) => f(p, ${post});`),
+      'a fourth writer in the form this module favours is not reported')
+      .toStrictEqual(['answerGate', 'deleteRun', 'startRun', 'stopRun']);
+    expect(writingFunctions(bound.replace('stopRun', 'purgeRun')),
+      'one bound name swapped for another is not reported').toStrictEqual(['answerGate', 'purgeRun', 'startRun']);
+    // …and a reader is not a writer, in either form: a binding that makes a GET is not collected, so
+    // the three above are the acts rather than the exported functions.
     expect(writingFunctions(`export async function fetchRuns(f: F) { await f(p); }`),
       'a plain read was collected as a write').toStrictEqual([]);
+    expect(writingFunctions(`export const fetchRuns = (f: F) => f(p);`),
+      'a plain read in the arrow form was collected as a write').toStrictEqual([]);
+    // …and a write that is not inside any declaration is attributed to something rather than lost,
+    // which is what makes the walk exhaustive rather than a wider enumeration of forms.
+    expect(typesNamingWrite(`await f(p, ${post});\n${fixture}`),
+      'a write before the first declaration was attributed to nothing')
+      .toStrictEqual(['(before the first declaration)']);
   });
 
   test('Q-0130 AC-12 — no file under src names a start field this app will not send', () => {
