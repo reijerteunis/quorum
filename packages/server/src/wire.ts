@@ -20,7 +20,7 @@
  * of the three"* — so no ANSI, no colour and no vendor branching crosses this boundary. The browser
  * decides how an event looks; this decides only what it is.
  */
-import type { AnswerRefusal, RunView, StopRefusal } from './host.js';
+import type { AnswerRefusal, GateDiffRefusal, RunView, StopRefusal } from './host.js';
 import type { Refusal } from './refusal.js';
 import type { WireMessage, WireRefusal, WireRun } from '@quorum/shared';
 
@@ -81,6 +81,29 @@ export const ANSWER_REFUSAL_STATUS = {
   // `number`, which Hono's `c.json` refuses, while dropping it would stop the table being checked
   // for completeness. This keeps both, and keeps this module free of any Hono type.
 } as const satisfies Record<AnswerRefusal, number>;
+
+/**
+ * The status each {@link GateDiffRefusal} answers with.
+ *
+ * All four are **404**, and that the numbers agree is not the point — the `code` is what tells them
+ * apart, which is the arrangement `no-such-run` and `no-such-gate` already have on the answer route
+ * and which `daemon-client.ts` says in as many words it does not branch on a status alone for.
+ * Each is a different sentence: that handle names no run, that gate is not waiting, that gate is
+ * waiting on somebody else, and *that gate is waiting and the step whose decision reached it read
+ * no diff*. The last is an **answer** rather than a failure, and it is a refusal rather than an
+ * empty success so that a surface can tell it from one — a `200` carrying an empty patch would be
+ * this transport reporting *there is nothing to show* and *here is nothing* in one shape.
+ *
+ * `not-this-run` is **404 and not the 409** its answer-route twin carries, and the difference is
+ * the act rather than the code: answering somebody else's gate is a conflicting write, where
+ * reading one is simply asking the wrong run for it.
+ */
+export const GATE_DIFF_REFUSAL_STATUS = {
+  'no-such-run': 404,
+  'no-such-gate': 404,
+  'not-this-run': 404,
+  'no-diff': 404,
+} as const satisfies Record<GateDiffRefusal, number>;
 
 /** The status each {@link StopRefusal} answers with. */
 export const STOP_REFUSAL_STATUS = {

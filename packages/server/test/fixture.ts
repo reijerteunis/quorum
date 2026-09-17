@@ -96,6 +96,58 @@ steps:
     reason: approve to advance
 `;
 
+/**
+ * A commit on `branch`, made without checking anything out, so a range spans something.
+ *
+ * `commit-tree` over a tree built in a temporary index rather than a checkout: the fixture's working
+ * tree is what a run's own worktrees branch from, and a test that switched it would be changing the
+ * thing under test. The identity is supplied per invocation, as everything here supplies one.
+ *
+ * @returns the commit's sha.
+ */
+export function commitOnBranch(repoDir: string, branch: string, file: string, body: string): string {
+  const index = path.join(tempDir('index-'), 'index');
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: repoDir, input: body, encoding: 'utf8' }).trim();
+  execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${blob},${file}`], { cwd: repoDir, env });
+  const tree = execFileSync('git', ['write-tree'], { cwd: repoDir, env, encoding: 'utf8' }).trim();
+  const parent = git(repoDir, 'rev-parse', 'main');
+  const sha = execFileSync(
+    'git',
+    ['-c', 'user.email=q@a', '-c', 'user.name=qa', 'commit-tree', tree, '-p', parent, '-m', `add ${file}`],
+    { cwd: repoDir, encoding: 'utf8' },
+  ).trim();
+  git(repoDir, 'branch', '-f', branch, sha);
+  return sha;
+}
+
+/**
+ * A flow whose one step READS A DIFF and decides something, so the gate it reaches carries both.
+ *
+ * The pair is what Q-0134's join needs and is `chore.yaml`'s own shape: `review` is the step that is
+ * given the patch and the step that declares the verdict, so a gate naming it names the step the
+ * bytes were materialised for. A flow where the two are different steps is `review.yaml`'s shape and
+ * is written inline by the test that wants it.
+ */
+export const DECIDING_DIFF_FLOW = `name: probe
+consumes: draft
+produces: requirements
+steps:
+  - id: work
+    input:
+      backlog: ["dev/work.md"]
+      diff: "{base}...harness/{id}/integration"
+    output:
+      write: dev/work.md
+      verdict: approve|changes-requested
+    on_fail:
+      goto: work
+      max_iterations: 1
+      on_exhausted: gate
+  - gate: human
+    reason: approve to advance
+`;
+
 /** A flow whose one step takes a worktree, so a stopped run has something to keep. */
 export const WORKTREE_FLOW = `name: probe
 consumes: draft

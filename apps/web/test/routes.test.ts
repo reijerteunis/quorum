@@ -72,6 +72,8 @@ const EXCEPTION_REASONS: Record<string, string> = {
   'backlog-board.test.ts:/backlog/Q-00%2042': "the percent-encoded href a card must build for a ticket id holding a space, asserted in both directions — a ticket id is agent-written frontmatter and `Backlog.read` asserts rather than parses it, so one segment is the property. Written out rather than taken from `ticketPath`, which would assert the implementation against itself",
   'daemon-endpoints.ts:/stop': "the DAEMON's run-cancelling segment, on the `/gate` row's terms and for its reasons (Q-0130 AC-2). It is not a shell route — no path in either table ends in it — and it is deliberately not a `DAEMON_ENDPOINTS` prefix, `/runs` already being forwarded by the dev proxy and covering everything below it. Written as a literal rather than as a template tail so that `test/source.test.ts`'s write guard, which permits it in this module and nowhere else, has a string to find",
   'daemon-endpoints.ts:/gate': "the DAEMON's gate-answering segment, which is not a shell route and is deliberately not a DAEMON_ENDPOINTS prefix — the dev proxy forwards `/runs`, which already covers it, and a sixth entry there would claim a prefix nothing forwards. Written as a literal rather than as a template tail so that `test/source.test.ts`'s write guard, which permits it in this module and nowhere else, has a string to find: an exemption forgiving something nobody wrote would forgive nothing",
+  'daemon-endpoints.ts:/gates': "the first of the DAEMON's two gate-diff segments, on the `/gate` row's terms with one difference: that route is a POST and this is a GET, so no write guard has a string to look for here and this register is the only one that asks whether a path this app names is one somebody decided on. Written as a literal rather than as a template tail for exactly that reason — a segment assembled out of a template is a path no scan sees. Not a shell route and not a `DAEMON_ENDPOINTS` prefix: `/runs` is already forwarded by the development server and covers everything below it (Q-0134 AC-5)",
+  'daemon-endpoints.ts:/diff': "the second of them, on the row above's terms and for its reasons. Two segments rather than one because the gate id sits between them, and it is percent-encoded — `nextGateId` spells `<run number>:<n>`, so a correlation token carries a separator and is not one path segment by construction",
   'gate-screen.test.ts:/repo/backlog/Q-0016-the-gate-screen': "the ticket folder a gate question carries, which is an absolute path on the DAEMON's machine rather than a route — `GateQuestionEvent.ticketDir`, asserted rendered verbatim. Declared once in that file so it is one row here rather than one per fixture",
   'daemon-client.test.ts:/repo/backlog/Q-0016-a': 'the same field in the client suite, where a run body has to carry a well-formed question for the schema to accept it',
 };
@@ -155,37 +157,37 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/['"`]\/backlog/);
   });
 
-  test('Q-0129 AC-12 — the gate row names what the screen renders now and whose the rest is', () => {
+  test('Q-0134 AC-13 — the gate row names the whole of what the screen renders, and owes nothing', () => {
     // **The same move `routes.ts:146` records for the ticket page, one row down.** The sentence is
     // kept rather than emptied, because `screenExists` is what says a screen is built and a row
     // whose explanation had been deleted would make a later `false` silent.
     //
-    // **Re-aimed at the successor rather than deleted, which is the half of this that matters.**
-    // It named Q-0129 as the ticket that would add what the step before the gate decided; that has
-    // landed, so the row says the screen shows it — and the clause pointing at the half that has
-    // NOT landed moves to **Q-0134** instead of going away, because a register that stops naming
-    // an owed half is one nothing will notice is owed.
+    // **Re-aimed for the second time, and the ticket clause is what moved.** Q-0016 wrote the row;
+    // Q-0129 landed the decision and moved the owed half to **Q-0134**; this landed that half, so
+    // the row names no owed successor at all — which is the one direction that needs a NEGATIVE
+    // beside it, because *"a register that stops naming an owed half is one nothing will notice is
+    // owed"* cuts both ways: a row still routing a landed half to a ticket tells a reader to wait
+    // for work that is done.
     const route = SCREEN_ROUTES.find((entry) => entry.path === GATE_ROUTE);
     if (!route) throw new Error('no gate-screen route — this check has lost its subject');
     expect(route.screenExists, 'the row still says the screen is unbuilt').toBe(true);
     expect(route.ticket, 'the gate screen no longer names the ticket that built it').toBe('Q-0016');
     expect(route.waitingFor.length, 'the sentence a user reads was emptied').toBeGreaterThan(60);
-    expect(route.waitingFor, 'the row still promises the diff this screen does not render')
-      .not.toMatch(/diffs/);
     expect(route.waitingFor, 'the row still routes the decision to the ticket that has landed it')
       .not.toMatch(/Q-0129/);
-    // Keyed on the landed entry's own noun rather than on a transcribed sentence. The clause read
-    // `/what the step before it decided/` until the hand repair after this ticket's exhaustion gate,
+    expect(route.waitingFor, 'the row still routes the diff to the ticket that has landed it')
+      .not.toMatch(/Q-0134/);
+    // Keyed on each landed half's own noun rather than on a transcribed sentence. The clause read
+    // `/what the step before it decided/` until the hand repair after Q-0129's exhaustion gate,
     // which is two defects in one line: it pinned a WORDING where the criterion is about a
     // PROPERTY, so an honest rephrasing turned it red — and the wording it pinned was the one the
-    // review found wrong, because the deciding step is not the preceding one. It also forbids the
-    // retired claim, so the sentence cannot drift back.
+    // review found wrong, because the deciding step is not the preceding one.
     expect(route.waitingFor, 'the row does not say the screen renders the decision that reached the gate')
       .toMatch(/decision that reached it/);
+    expect(route.waitingFor, 'the row does not say the screen renders the change that decision was made on')
+      .toMatch(/diff that decision was made on/);
     expect(route.waitingFor, 'the row claims the deciding step was the one immediately before the gate')
       .not.toMatch(/step before/);
-    expect(route.waitingFor, 'the row does not name what the rest of the screen waits for')
-      .toContain('Q-0134');
   });
 
   test('and the board\'s own path is a register constant both tables are built from', () => {

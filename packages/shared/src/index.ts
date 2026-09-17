@@ -7,6 +7,7 @@ export * from './board.js';
 export * from './cli-version.js';
 export * from './constants.js';
 export * from './containment.js';
+export * from './diff-evidence.js';
 export * from './events.js';
 export * from './flow.js';
 export * from './navigation.js';

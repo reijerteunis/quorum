@@ -1902,20 +1902,28 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
     for (const [what, needle] of [
       ['that the third answer is not primary and is often not offered', /not the primary action/],
       ['when the screen is actually reached', /Reached when a run parks/],
-      // Re-aimed by Q-0129 AC-12, not deleted. This clause asked that the paragraph name the
-      // ticket owing the half the screen did not render; that half is now two, of which the
-      // decision has landed and the diff has not — so the needle moves to the successor rather
-      // than going away, which is what keeps an owed half named by something.
-      ['what it does not render, and whose the rest is', /Q-0134/],
+      // **Re-aimed twice and deleted neither time.** Q-0129 moved it from *the ticket owing the
+      // decision* to *the ticket owing the diff*; Q-0134 landed that half, so what is left to ask
+      // is what a divergence paragraph is for — that the brief records what shipped INSTEAD of the
+      // mockup. The needle is the shape that differs, and it is the one the mockup names and the
+      // screen refuses.
+      ['what shipped instead of the mockup\'s side-by-side view', /unified rather than side-by-side/],
       ['that the decision the step returned IS rendered', /reached/],
       ['why no severity headline is rendered, with the measurement', /1,080/],
+      ['that the reviewed patch IS rendered', /renders the reviewed patch/],
+      ['why the patch is not on the event stream, with the measurement', /200,000/],
     ] as [string, RegExp][]) {
       expect(needle.test(gate), `the gate paragraph does not record ${what}`).toBe(true);
     }
-    // The negative beside the positives, in this file's own shape: the clause naming the ticket
-    // that owed the decision must be GONE from this paragraph, not merely joined by a newer one.
+    // The negatives beside the positives, in this file's own shape: a clause routing a LANDED half
+    // to the ticket that owed it must be gone rather than merely joined by a newer one, because a
+    // paragraph still naming a successor tells a reader to wait for work that is done.
     expect(gate, 'the paragraph still routes the decision to the ticket that has landed it')
       .not.toMatch(/Q-0129's/);
+    expect(gate, 'the paragraph still says the screen shows no region for the diff')
+      .not.toMatch(/shows no region standing in for/);
+    expect(gate, 'the paragraph still routes the diff to the ticket that has landed it')
+      .not.toMatch(/Q-0134's/);
   });
 
   test('and the count in it is re-derived, with the grep that produces it and the one that does not', () => {
