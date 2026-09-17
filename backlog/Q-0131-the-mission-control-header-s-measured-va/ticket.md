@@ -54,3 +54,46 @@ and summary, plus an artifact behind Q-0127 erratum E-1). This ticket then appli
 `cost` and keeps its two independent fields, the run number and elapsed, which no other ticket
 touches. **Do not re-derive this ticket's figures from its body either**; Q-0129's were all stale
 within a day when checked.*
+
+---
+
+## After Q-0129 — re-measured 2026-09-17, against tip `3cfb738`
+
+**Q-0129 shipped today**, and this section exists because the paragraph above says *"the two should
+be answered once"* and one of them now is. Re-derive nothing from it; read the entry.
+
+**The precedent is landed and is not this ticket's to re-argue.** *"A gate question carries the
+decision that reached it"* (2026-09-17), `docs/decisions/097-…`, rules that a structured value the
+engine already holds crosses as a **field** rather than being parsed out of a sentence composed for
+a human, and it **records six refused alternatives with their measurements** precisely so a second
+ticket on a second field does not re-derive them. The sharpest applies here unchanged: parsing the
+prose is refused because **4 of 1,080 findings in this repository's own history contain the join
+separator themselves and 1,071 contain `": "`**. A regex over `formatCost`'s sentence is refused by
+that measurement as well as by Q-0015's ground rule 2.
+
+**What 097 does NOT settle, and what this ticket's gate must therefore rule.** Its subject is the
+**gate question**, and cost's is the **`done` event** — a different member, emitted per step rather
+than once per park, and one every step produces rather than one a verdict-declaring step does. So
+whether an entry is owed here is genuinely open, and the two answers are not obviously the same:
+097's own reasoning was that the field is the **first machine-readable value the stream carries that
+a human acts on**, which is now false, and its refusal of *"inventing a member for a producer that
+does not exist"* does not bite either, because `formatCost` is the producer and it already computes
+the numbers it then stringifies. **Measure what a second field costs before choosing** — 097's own
+`reached` needed **no** transport edit, and whether that holds for a per-step event is a fact rather
+than an inference.
+
+**Three of the body's citations had moved and are re-derived here** — the fourth re-measurement in
+four consecutive tickets where this was true, which is why they are given as identities rather than
+as line numbers. `runId` is declared `number | null` in `packages/server/src/host.ts` and in
+`packages/shared/src/wire.ts`, `null` until the terminal event carries it, and `wire.ts` says so in
+its own JSDoc. `formatCost` is in `packages/core/src/engine/steps.ts` and returns `cost=$0.123` or
+`cost=n/a (<tokens> tokens, vendor reports no price)`; **its one emission site is the `done` event's
+free-text `message`**, which is the whole of what crosses. `apps/web/test/source.test.ts` forbids
+the five count fields as a named list and the phrase *cost to date* separately, each with its own
+fixture, and the list is a register a change here must move deliberately rather than route around.
+
+**And the elapsed half is untouched by any of this.** No event carries a timestamp, by *"What a run's
+event stream carries"* (2026-08-28), and that entry is the one a widening would contradict —
+097 widened the union's gate member with a field, not with a timestamp, and said nothing about time.
+Carrying a start time on `WireRun` still owes no entry and is still the cheaper shape. **Measure
+both before choosing**, as the body already says.
