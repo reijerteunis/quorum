@@ -3774,9 +3774,80 @@ parked at p2 with its three written reopening thresholds.
   the git-identity sweep green, and the four-shape catch discrimination proven by execution: the
   bundle refusal and `EADDRINUSE` die with their own sentences, `EACCES` and a `TypeError` both reach
   `dieOnUnexpected` with stacks intact.
-- Q-0015 Mission control streams a run live, one trace column per step. *(`requirements`
-  2026-09-16, ready at the gate on iteration 2 and answered `advance`; **cut in three there**.)*
-  **$19.76** across two head-of-product iterations. **Q-0130** takes start and stop, **Q-0131** the
+- Q-0015 Mission control streams a run live, one trace column per step. *(`reviewed` and
+  `main:contained` 2026-09-17 — **M3's third screen, and the sixth ticket ever to walk the full
+  seven-stage route**.)* **$296.00 across twelve runs**, the most expensive ticket in this project by
+  half again over Q-0120's $198.54: requirements $19.76, solutioning $31.29, qa-red $29.56,
+  development $140.23 + $24.84, review $11.99 + $16.03 + $11.89 + $10.39. **Cut in three at its
+  requirements gate**; Q-0130 takes start and stop, Q-0131 the header's measured values.
+  **What it cost is the finding, and it is about the development flow rather than the screen.**
+  The first fan-out did the work in one wave — nine tasks, one file each, no conflicts, ~6 minutes,
+  **$36.47**. Then three more waves cost **$81.27 and produced one three-line change**, because the
+  three remaining failures were in files **no task owns** and `development.yaml` forbids an
+  implementer to touch. Two arithmetic facts fall out of it. `scope: failing-tasks-only` — Q-0007's
+  targeted retry — **selected 10 of 10 tasks when 0 of 10 had work**, because a failure in an unowned
+  file maps to no task and the scoping degrades to everything. And a bound of `max_iterations: 3`
+  spends **four** full fan-outs before a human sees it, the same `N+1` the review loop then showed.
+  A wasted wave costs **73%** of a productive one; T04 and T09 each cost *more* doing nothing than
+  they had cost working.
+  **The deeper cause, which Q-0120 recorded only as a consequence.** Development round 2 fixed three
+  findings and left two majors untouched, and not from laziness: the fan-out's instruction is
+  *"Implement ONLY your task so that the tests covering it pass"*, so **a review finding with no
+  failing test cannot compel an implementer whose tests already pass**. M1 was fixed the moment a red
+  test existed for it; M2 and M3 had none and were not. That is why Q-0120 reported half its repair
+  done by hand, and it is a sharper statement than that ticket's own.
+  **Each stage found what no other route would.** `solutioning` returned a criterion that could not
+  go green (AC-6's needle collided with a shipped accessibility selector), a task with no work in it,
+  and two missing DOM anchors the two protected criteria needed — none visible in a diff. `qa-red`
+  proved red on the first attempt in both rounds and **caught, before the fan-out spent anything, a
+  red test development could never turn green**. The `review` panel ran four rounds at
+  **4 → 4 → 2 → 2 majors**, and the composition is the point rather than the count: round 4's were
+  both consequences of round 3's fix, which is Q-0050's *"every round found defects in the previous
+  round's fixes"* rather than a loop failing to converge.
+  **The operator's own record, kept because it is most of what the panel caught.** Four separate
+  times a register describing a thing was left behind when the thing moved — `tasks.yaml` without
+  `solution.md`, the AC-6 guard without its contract, the contract without SE-1, and `retry()`
+  without `04-architecture.md`'s guarantee. A first attempt at the M3 navigation test **passed with
+  the fix reverted**, the defect being one commit wide and `act()` flushing past it; it was rewritten
+  to observe the disputed commit through the screen's own metadata fetch. A fails-closed guard was
+  shipped **demonstrated by a fixture still running the predicate it replaced**. And the E-11 ruling
+  was right in principle and wrong in execution, charging a retry's cleared tail to a counter whose
+  sentence names a different cause. Every one was found by the cross-vendor panel and none by its
+  author.
+  **Two rulings the gate owed and one it owed twice.** **E-11** inverts Q-0120's retry pin: the
+  daemon replays its retained buffer to every new subscription, so preserving the tail renders each
+  event twice, and dedupe is unavailable because the event union carries no timestamp or sequence
+  number by decision. A doubled trace asserts events that did not happen, so `retry()` resets all
+  three loss facts exactly as `connect()` does. **Round 1 filed it as an observation and said it was
+  a ruling the gate owed; the gate did not make it, and round 3 raised it as a major and mistook the
+  deliberation for an oversight** — which is the case for the rule that no fan-out task may weigh a
+  landed choice against a new finding. **SE-3** keeps `docs/06-development-plan.md` out of a
+  development task's reach, and had to be landed in **two** registers because the fan-out reads
+  `solution.md` and not `tasks.yaml`.
+  **The demonstration is transcribed in `runs.log` rather than paraphrased**, because Q-0016's entry
+  records this same obligation reported discharged when its by-hand half was not performed, and round
+  4's verdict asked for it in those words. A run was produced by a hand `POST /runs` against a daemon
+  on 127.0.0.1:7717 — **§0.9 is why the request is recorded: `host.start` has one production caller
+  and nothing issues it, so no run exists in a daemon unless a human makes one.** `GET /runs/run-1`
+  answered `runId: null` while running and `runId: 1` after the terminal event, confirming live the
+  measurement disclosure 1 exists for; a socket opened *after* the run ended still replayed, which is
+  Q-0121's retained buffer demonstrated. **10 events, 0 missed, peak 3 concurrent columns** — the
+  first per-run count this repository holds, **and stated as a `--dry` walk**, which invokes no
+  adapter and so emits no `stdout`, where a real run's volume is. AC-9's bound of 500 remains
+  unmeasured against real traffic.
+  **Three tickets came out of the run itself**: **Q-0132** (three flows cannot read a gate ruling,
+  found when the AC-6 ruling had nowhere in `solutioning` to go), **Q-0133** (the test report's
+  roster has matched nothing since the suites moved to turbo, so the artifact a qa-red gate reads
+  cannot answer its own question), and Q-0130 and Q-0131 from the requirements gate. The review diff
+  never truncated — 160,004 to 187,540 bytes against the 200,000 cap — so all four verdicts cover
+  the whole change, which is what Q-0016's three truncated rounds did not.
+  **Its two stage moves by hand are stated rather than implied**: after rounds 2 and 3 regressed it,
+  `green` was asserted on its own terms — the branch merged and its suite passed, verified forced —
+  because a development run would have been ten no-ops. Both carry a `runs.log` note (Q-0050's
+  precedent). **The recorded final verdict is `changes-requested`**, its findings closed by hand
+  after the gate on Q-0073's and Q-0080's precedent; the flow's gate sentence says *"Review verdict
+  is approve"* and that is the flow's static wording, not this run's. *(The requirements-gate record
+  follows.)* **$19.76** across two head-of-product iterations. **Q-0130** takes start and stop, **Q-0131** the
   header's measured values, both opened at that gate with Appendix A transcribed in full.
   **Its headline finding is about the product rather than the screen: mission control has no
   producer.** `host.start` has exactly one production caller — `POST /runs` at `http.ts:178` — and
