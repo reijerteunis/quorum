@@ -189,10 +189,18 @@ opposite answers, the decision travelling on the question (Q-0129) and the evide
 **A gate is answered this only where its own `reached` names the step the bytes were materialised
 for**, which is an identity rather than a guess about which diff was most recent; a gate whose
 deciding step read none is told so in as many words rather than handed an empty patch, which is the
-`no-diff` refusal and is one of four the `code` tells apart. **Its lifetime is the gate's**: bound as
-the question is observed, released when that gate is answered and when the run releases its gates,
-so nothing outlives the question it was evidence for and a host record carries no patch once its run
-is over — which is what keeps Q-0123's measurement of what a record costs still true.
+`no-diff` refusal and is one of four the `code` tells apart. **That identity is why the run files a
+snapshot under the step that was given it rather than keeping the last one reported**: the preflight
+materialises every range whose endpoints already exist *before any step runs*, so with two such sites
+the most recent report at the first gate is the wrong site's, and a single slot answers `no-diff` for
+a step that read a diff the host is holding — a patch reported as an absence, which is the class
+Q-0074 and Q-0115 spent two tickets removing. What bounds it is the flow rather than a cap: of the six
+shipped flows `chore` declares one diff site, `review` declares two over one range that the preflight
+cache makes one snapshot, and four declare none, so a run holds **at most one**. **Its lifetime is the
+gate's**: bound as the question is observed, released when that gate is answered and when the run
+releases its gates, with any snapshot no gate claimed cleared as the run ends — so nothing outlives
+the question it was evidence for and a host record carries no patch once its run is over, which is
+what keeps Q-0123's measurement of what a record costs still true.
 
 **The two routes answering for ONE ticket are Q-0127's, and they are two rather than one because of
 a measurement.** `GET /tickets/:id` carries the same row `GET /tickets` holds for that ticket —

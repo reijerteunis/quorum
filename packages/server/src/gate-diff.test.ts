@@ -44,6 +44,16 @@ const INTEGRATION = `harness/${TICKET_ID}/integration`;
  */
 const MARKER = 'zzqq-patch-marker-0134';
 
+/**
+ * The same, for the change a SECOND diff site reads.
+ *
+ * Its own token rather than a reuse of {@link MARKER}, because the two-site clause below asserts
+ * something no single needle can: that the gate was handed the deciding step's bytes **and** was not
+ * handed the other site's. One marker proves the first half and is silent on the second, which is
+ * exactly the shape that let a single-slot host pass for a round.
+ */
+const OTHER_MARKER = 'zzqq-other-site-marker-0134';
+
 /** How long a poll waits before it says what never happened rather than hanging. */
 const DEADLINE_MS = 10_000;
 
@@ -157,11 +167,18 @@ steps:
     }
   });
 
-  test('a run with two diff sites does not expose the other site\'s merely because it ran later', async () => {
-    // The second step reads a DIFFERENT range and declares nothing, so the run's most recent
-    // materialisation is not the one the gate's decision was made on. The identity test is what
-    // answers `no-diff` here; a design that served *the last diff this run took* would hand a reader
-    // a change the deciding step never saw and name the deciding step over it.
+  test('a run with two diff sites gives the gate its deciding step\'s own bytes, and never the other site\'s', async () => {
+    // **The clause the review of round 1 was about, and it used to assert the defect.** The second
+    // step reads a DIFFERENT range and declares nothing, and `preflightDiffs` materialises BOTH
+    // before any step executes — one loop over every site whose endpoints already exist — so the
+    // most recent report at the moment the gate is reached is `other`'s. A host holding one slot
+    // therefore answered `no-diff`: a claim that `work` read no diff, about a step that read one and
+    // whose patch the host was still holding. This clause required that answer, so the defect had a
+    // test asserting it.
+    //
+    // What it asserts now is the join: the gate gets `work`'s bytes because its decision names
+    // `work`, and `other`'s bytes never reach it. Both halves, because a clause checking only the
+    // first passes over a host that hands out whatever it has last.
     const run = await parked(`name: probe
 consumes: draft
 produces: requirements
@@ -184,12 +201,67 @@ steps:
       write: dev/other.md
   - gate: human
     reason: approve to advance
-`, (repoDir) => { commitOnBranch(repoDir, `harness/${TICKET_ID}/other`, 'elsewhere.txt', 'a different change\n'); });
+`, (repoDir) => { commitOnBranch(repoDir, `harness/${TICKET_ID}/other`, 'elsewhere.txt', `${OTHER_MARKER}\n`); });
     try {
       expect(run.question.reached?.stepId).toBe('work');
       const found = run.host.gateDiff(run.handle, run.question.gateId);
-      expect('refusal' in found, 'the gate was served a diff its deciding step never read').toBe(true);
-      if ('refusal' in found) expect(found.refusal).toBe('no-diff');
+      expect('evidence' in found, 'the deciding step\'s diff was lost to the other site\'s').toBe(true);
+      if (!('evidence' in found)) return;
+      expect(found.evidence.stepId, 'the evidence is attributed to the wrong step').toBe('work');
+      expect(found.evidence.range, 'the range is the other site\'s').toBe(`main...${INTEGRATION}`);
+      expect(found.evidence.patch, 'the patch is not the change the deciding step read').toContain(MARKER);
+      // The half one marker cannot assert: the other site's change is absent from the bytes and from
+      // the summary, so this is the deciding step's materialisation rather than a blend of the two.
+      expect(found.evidence.patch, 'the gate was served the other site\'s patch').not.toContain(OTHER_MARKER);
+      expect(found.evidence.stat, 'the summary names the other site\'s file').not.toContain('elsewhere.txt');
+      expect(found.evidence.stat).toContain('changed.txt');
+    } finally {
+      await release(run);
+    }
+  });
+
+  test('the other site\'s snapshot is never served to the gate under its own step id either', async () => {
+    // **The other direction of the same join, so the fix is a lookup rather than a widening.** The
+    // gate is `work`'s; asking for it must not answer `other`'s bytes, and there is no second gate
+    // for `other` to be read through — its step declares no verdict, so nothing it read is ever
+    // fetchable. A host that filed both snapshots and then served whichever it found would pass the
+    // clause above and fail this one.
+    const run = await parked(`name: probe
+consumes: draft
+produces: requirements
+steps:
+  - id: other
+    input:
+      diff: "{base}...harness/{id}/other"
+    output:
+      write: dev/other.md
+  - id: work
+    input:
+      backlog: ["dev/work.md"]
+      diff: "{base}...harness/{id}/integration"
+    output:
+      write: dev/work.md
+      verdict: approve|changes-requested
+    on_fail:
+      goto: work
+      max_iterations: 1
+      on_exhausted: gate
+  - gate: human
+    reason: approve to advance
+`, (repoDir) => { commitOnBranch(repoDir, `harness/${TICKET_ID}/other`, 'elsewhere.txt', `${OTHER_MARKER}\n`); });
+    try {
+      // Declared FIRST this time, so the deciding site is the later report and the clause is not
+      // passing merely because the last writer happened to be the right one.
+      expect(run.question.reached?.stepId).toBe('work');
+      const found = run.host.gateDiff(run.handle, run.question.gateId);
+      expect('evidence' in found, 'the gate was answered no diff').toBe(true);
+      if (!('evidence' in found)) return;
+      expect(found.evidence.stepId).toBe('work');
+      expect(found.evidence.patch).toContain(MARKER);
+      expect(found.evidence.patch, 'the gate was served the other site\'s patch').not.toContain(OTHER_MARKER);
+      // And it is not on the stream either, which is AC-4's property holding for a site no gate took.
+      expect(JSON.stringify(run.events), 'the unclaimed site\'s patch reached the event stream')
+        .not.toContain(OTHER_MARKER);
     } finally {
       await release(run);
     }
@@ -517,10 +589,36 @@ describe('Q-0134 AC-6 — the evidence lives exactly as long as the gate that ow
 
     const host = fs.readFileSync(path.join(here, 'host.ts'), 'utf8');
     const observing = body(host, 'const observe =', '\n  };');
-    const TRANSFERS = /record\.evidence = null/;
+    // Re-aimed at the map's spelling and not weakened: the property is still *the run stops holding
+    // the bytes the gate now holds*, and what changed is that the thing given up is one entry rather
+    // than the whole slot. A `delete` keyed on the id that was just bound is what says the two are
+    // the same snapshot; `record.evidence.clear()` here would forget the OTHER sites too, which is
+    // the over-correction this clause also refuses by naming the key.
+    const TRANSFERS = /record\.evidence\.delete\(reached\)/;
     expect(observing, 'the gate no longer takes the snapshot at all').toMatch(/bindEvidence/);
     expect(TRANSFERS.test(observing), 'the snapshot is copied to the gate rather than transferred').toBe(true);
     expect(TRANSFERS.test(observing.replace(TRANSFERS, '')), 'the needle matches text it was removed from').toBe(false);
+    // **And the join is a lookup, not a comparison against the most recent report.** The defect this
+    // clause now also covers was one line: `event.reached?.stepId === record.evidence.stepId` reads
+    // as an identity test and is one — against whichever site reported last, which at the first gate
+    // of a two-site run is never the deciding one. A `.get` on the reached id cannot make that
+    // mistake, so the shape is what is pinned rather than the outcome.
+    const LOOKUP = /record\.evidence\.get\(reached\)/;
+    expect(LOOKUP.test(observing), 'the gate is matched against the most recent report rather than looked up')
+      .toBe(true);
+    expect(LOOKUP.test(observing.replace(LOOKUP, '')), 'the needle matches text it was removed from').toBe(false);
+
+    // **The third unobservable property, and it is the one a map created.** A slot was emptied by the
+    // gate that took it; a map can be left holding a site no gate ever claimed — `other` in the
+    // two-site clauses above, and every site of a run that ended before its gate. Nothing this
+    // package exposes can see that, `viewOf` projecting no such field and `records` never being
+    // pruned (Q-0123), so the instrument is the source here too.
+    const ending = body(host, 'const consume = async', '\n  };');
+    const CLEARS = /record\.evidence\.clear\(\)/;
+    expect(CLEARS.test(ending), 'a run that ended keeps the snapshots no gate took').toBe(true);
+    expect(CLEARS.test(ending.replace(CLEARS, '')), 'the needle matches text it was removed from').toBe(false);
+    expect(ending, 'the clean-up is no longer beside the gate release, so the pair is not a pair')
+      .toMatch(/gates\.release\(record\.handle\)/);
   });
 
   test('shutdown releases it, and a run that ended holds no patch afterwards', async () => {
