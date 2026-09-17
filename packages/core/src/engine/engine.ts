@@ -192,7 +192,7 @@ function toError(error: unknown): Error {
 
 /** Runs one flow to its terminal state, emitting every event through `emit`. */
 async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent): Promise<void> {
-  const { ticket: caller, flow, project, backlog, dry = false, auto = false, answerGate, reportRunNumber, base } = options;
+  const { ticket: caller, flow, project, backlog, dry = false, auto = false, answerGate, reportRunNumber, reportDiff, base } = options;
   /**
    * The ticket the run mutates: the caller's on a real run, a copy of it under `dry`.
    *
@@ -321,6 +321,11 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
       // The two maps the diff preflight fills and the steps that read them share, and whether `--base`
       // was typed at all — which `vars.base` above cannot answer, because it is set either way.
       diffInputs: new Map(), deferredDiffs: new Map(), baseOverride: base ?? null,
+      // The caller's diff channel, carried to `diff.ts` where a materialisation happens. Spread
+      // conditionally so a run whose caller supplied none carries no key at all, which is what
+      // `exactOptionalPropertyTypes` asks for and what keeps an absent channel absent rather than
+      // explicitly `undefined`. Q-0134 AC-3.
+      ...(reportDiff === undefined ? {} : { reportDiff }),
       // Filled by the steps that obtain a worktree and read by `finish`, so a run that finished gives
       // back exactly what it made. Nothing enumerates the worktree root or the ref namespace.
       worktrees: new Map(),

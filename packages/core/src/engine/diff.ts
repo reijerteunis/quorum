@@ -20,12 +20,12 @@
 import { execFileSync } from 'node:child_process';
 
 import { DEFAULT_BASE_BRANCH, integrationBranch, ticketBranch, ticketBranchPrefix } from '@quorum/shared';
-import type { Flow, ProjectConfig } from '@quorum/shared';
+import type { DiffEvidence, Flow, ProjectConfig } from '@quorum/shared';
 
 import type { TicketRecord } from '../backlog/backlog.js';
 import { emptyRangeEvidence, shortSha, type ShortShaResult } from '../git/git.js';
 import { interpolate } from './loaders.js';
-import { FlowError, type EmitEvent, type RunPersistence } from './types.js';
+import { FlowError, type EmitEvent, type ReportDiffEvidence, type RunPersistence } from './types.js';
 
 /** Which end of a three-dot range an endpoint is, left to right. */
 export type EndpointSide = 'left' | 'right';
@@ -102,6 +102,13 @@ export interface DiffContext {
    * told in a file nobody reads during a run.
    */
   emit: EmitEvent;
+  /**
+   * Where the bytes a step was given are handed to the caller, or nothing where it wants none.
+   *
+   * Optional, so every fixture that drives {@link materialiseDiff} directly goes on constructing a
+   * context without one and a run whose caller supplied none is unchanged. Q-0134 AC-1.
+   */
+  reportDiff?: ReportDiffEvidence;
 }
 
 /** What {@link preflightDiffs} reads: {@link DiffContext} plus the flow it walks and the maps it fills. */
@@ -405,7 +412,43 @@ export function materialiseDiff(step: DiffStep, context: DiffContext): string {
           + `the \`--stat\` above: ${omitted.join(', ')}. Say so in your review rather than judging them from `
           + 'the stat alone.')
     : '';
-  return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${stat.trim()}\n\n## Patch (${range})\n\n${bytes.toString('utf8')}${notice}`;
+  // **The same values the notice above renders, handed to whoever asked for them.** Captured here
+  // because this is where they are PRODUCED: both paths to a materialisation come through this
+  // function — the run-level preflight for a range whose endpoints all already exist, and
+  // `prompt.ts` at step time for one this run's own earlier step creates — and only the second
+  // covers a chore run, whose `integration...implement` range is deferred by construction and never
+  // enters `ctx.diffInputs`. Measured over this repository's run history that is 186 of 208
+  // materialised patches, so a reader that took the cache instead would be correct on `review.yaml`
+  // and blank on every chore run this product performs. See Q-0134 AC-1.
+  //
+  // No second `git` invocation and no re-derivation: every field is a value in hand one line above.
+  // The two below are BOUND rather than spelled twice, so the section the step reads and the record
+  // a reader is handed are the same strings rather than two evaluations that happen to agree.
+  const summary = stat.trim();
+  const patch = bytes.toString('utf8');
+  reportDiffEvidence(step, context, {
+    stepId: String(step.id), range, stat: summary, patch,
+    truncated, limit, kept: bytes.length, total: full.length, omitted,
+  });
+  return `\n## Diff to review\n\n### git diff --stat ${range}\n\n${summary}\n\n## Patch (${range})\n\n${patch}${notice}`;
+}
+
+/**
+ * Hands one materialisation to the caller's channel, and never lets that channel stop the run.
+ *
+ * `reportRunNumber`'s isolation for its reason (Q-0131 AC-1): a reporting channel is the caller's
+ * and a throwing one is the caller's defect, so it costs one `warn` and the run proceeds exactly as
+ * one whose caller supplied nothing — which is the state that already ships. Errors stay explicit:
+ * nothing is swallowed and nothing is defaulted.
+ */
+function reportDiffEvidence(step: DiffStep, context: DiffContext, evidence: DiffEvidence): void {
+  if (context.reportDiff === undefined) return;
+  try {
+    context.reportDiff(evidence);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    context.emit({ type: 'warn', message: `${String(step.id)}: the diff could not be reported: ${detail}` });
+  }
 }
 
 /**

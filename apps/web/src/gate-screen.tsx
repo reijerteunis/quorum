@@ -34,9 +34,16 @@
  * Q-0129 the question carries `reached` — the deciding step's id and the three values that step
  * returned — so the screen reads a value rather than a sentence. It is rendered as **text**, whole,
  * with no cap and nothing behind a control: the largest such record in this repository's history is
- * 13 KB, so there is no size to manage and nothing to disclose. What the change was *about* is
- * **Q-0134**'s: that needs a range no route on this transport carries and a renderer this workspace
- * does not have.
+ * 13 KB, so there is no size to manage and nothing to disclose.
+ *
+ * **And since Q-0134 it renders what that decision was made ON**, which is a second read rather than
+ * a second field: the patch is bounded by `repo.max_diff_bytes` at 200,000 bytes against a 214 B
+ * mean event, so it may not ride on the question the way the decision does, and it is fetched from
+ * a read-only route keyed on the same opaque `gateId` an answer echoes. Those are the two halves of
+ * one screen taking opposite answers for a reason that is size and replay rather than kind. The
+ * bytes are the reviewer's own — captured where the diff was produced and never re-taken here,
+ * because refs move and a second `git diff` at the moment this screen opens could show a reader a
+ * change the reviewer never saw.
  *
  * **Findings are grouped only by the vocabulary `@quorum/shared` declares, and one matching none is
  * shown whole.** The register is imported rather than re-spelled, so dropping a member from it stops
@@ -49,13 +56,15 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import {
   FINDING_SEVERITIES, gateAnswerSchema, OBSERVATION_TAG,
-  type GateAnswer, type GateQuestionEvent, type GateReached, type WireRun,
+  type DiffEvidence, type GateAnswer, type GateQuestionEvent, type GateReached, type WireRun,
 } from '@quorum/shared';
 
 import {
-  answerGate, browserFetch, fetchRun, gateAnswerInFlight, isoClock, runInFlight,
+  answerGate, browserFetch, fetchGateDiff, fetchRun, gateAnswerInFlight, gateDiffInFlight, isoClock,
+  NO_DIFF_CODE, runInFlight,
   type Clock, type FetchLike,
 } from './daemon-client.js';
+import { DiffRegion } from './diff-view.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
 // Declared in `run-lifecycle.ts` since Q-0130 and re-exported here: the ticket page and mission
 // control offer the same action beside a failed write, for the same reason this screen does, and two
@@ -115,6 +124,19 @@ export const NO_REACHED =
 
 /** What it says where a step decided something and reported nothing beside it. */
 export const NO_FINDINGS = 'That step reported nothing beside its verdict.';
+
+/**
+ * What it says where the step whose decision reached this gate was given no diff.
+ *
+ * **It names the condition and claims nothing about the change.** Four of the six flows this product
+ * ships declare no `input.diff` at all and a gate a flow file declares can follow any step, so this
+ * is the ordinary case rather than a gap — and the daemon answers it as its own coded refusal
+ * precisely so a screen can say which of the two it met instead of rendering an empty patch. *There
+ * is nothing to show* is not *nothing changed*, and saying the second would be this screen answering
+ * a question the run did not.
+ */
+export const NO_DIFF =
+  'The step whose decision reached this gate was given no diff, so there is nothing to show here. That is not a claim that nothing changed: most of the flows this product ships review no diff at all, and a gate declared by a flow can follow any step.';
 
 /** What it says where a step returned an empty summary, which is a value rather than a silence. */
 export const NO_SUMMARY = 'That step returned no summary.';
@@ -421,6 +443,53 @@ function ReachedRegion({ reached }: { reached: GateReached | undefined }): React
   );
 }
 
+/**
+ * The diff read for one gate, whatever it has come to — and no member of it is silence.
+ *
+ * Five outcomes, and the interesting one is the middle: `no-diff` is a **refusal** on the wire and
+ * an **answer** on the screen, so it is recognised by its code and rendered as a sentence rather
+ * than as a failure with a retry beside it. There is nothing to retry — the step read no diff and
+ * asking again cannot change that — and offering the action anyway would teach a reader that this
+ * region is broken when it is complete. {@link GATE_GONE_CODE} gets the same treatment one region
+ * down, for the same reason and by the same mechanism.
+ *
+ * **Its failures never touch the answer.** This region draws no control, clears no answer state and
+ * releases no in-flight guard: a diff that could not be read is a diff that could not be read, and
+ * a gate is still answerable without it — which is the honest arrangement, since the gate is
+ * answerable from a terminal with no diff at all.
+ */
+function GateDiffRegion({ state, onRetry }: {
+  state: RequestState<DiffEvidence>;
+  onRetry: () => void;
+}): ReactNode {
+  if (state.kind === 'loaded') return <DiffRegion evidence={state.value} />;
+  if (state.kind === 'refused' && state.refusal.code === NO_DIFF_CODE) {
+    return <p className="text-sm text-muted" data-diff="none">{NO_DIFF}</p>;
+  }
+  // Wrapped and named, so *the diff's own state* is addressable: the run's read draws the same
+  // region at the top of this screen, and a reader — or a test — that could not tell the two apart
+  // could not tell which read an action repeats.
+  return (
+    <div data-diff-request={state.kind}>
+      <RequestRegion state={state} onRetry={onRetry} label={RETRY_LABEL} />
+    </div>
+  );
+}
+
+/**
+ * A diff this screen read, and which gate of which run it is about.
+ *
+ * Both keys, for {@link AnsweredGate}'s reason and one more: a gate id is unique within a run and
+ * not across runs — `nextGateId` spells `<run number>:<n>`, so two tickets on their first run both
+ * ask `1:1` — so the handle is what makes the pair an identity. Without it, moving between two runs
+ * parked at their own first gate would paint one run's patch under the other's question.
+ */
+interface GateDiff {
+  readonly handle: string;
+  readonly gateId: string;
+  readonly state: RequestState<DiffEvidence>;
+}
+
 /** Why a refused start never happened, in the daemon's own words — or that the row carries none. */
 function RefusalRegion({ refusal }: { refusal: WireRun['refusal'] }): ReactNode {
   if (refusal === null) return <p className="text-sm text-muted" data-refusal="unstated">{REFUSAL_UNSTATED}</p>;
@@ -466,6 +535,7 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   const clock = now ?? isoClock;
   const [run, setRun] = useState<RequestState<WireRun>>(runInFlight<WireRun>(handle));
   const [answer, setAnswer] = useState<AnsweredGate | null>(null);
+  const [diff, setDiff] = useState<GateDiff | null>(null);
 
   // Which handle {@link run} is an answer about — the run and nothing else, {@link answer} carrying
   // its own. Compared in the render body rather than cleared in an effect: a prop is committed
@@ -482,6 +552,12 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   // arriving after one was dropped, leaving the region that draws the controls inert stuck at *on
   // its way* with nothing on its way. {@link alive} is what an answer is guarded by instead.
   const generation = useRef(0);
+
+  // The same counter for the diff read, separate because the two reads supersede independently: a
+  // Refresh repeats the run and not the evidence — a gate's diff is a snapshot and does not change
+  // while that gate waits — and a failed evidence read is repeated by the action beside it and by
+  // nothing else. Sharing one counter would make each read able to drop the other's answer.
+  const diffGeneration = useRef(0);
 
   // And the one that makes "at most one answer in flight" a property rather than a hope. State
   // cannot do it: two activations in one turn both read the state as it was before either of them,
@@ -543,6 +619,22 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
     return () => { alive.current = false; };
   }, []);
 
+  /**
+   * Read the diff one waiting gate's decision was made on.
+   *
+   * Keyed by handle AND gate id so a response for either an earlier run or an earlier gate cannot
+   * land on the screen a reader is looking at — the run read's own generation guard, applied to the
+   * pair that identifies this value. It touches nothing the gate answer depends on.
+   */
+  const readDiff = useCallback((gateId: string) => {
+    const mine = (diffGeneration.current += 1);
+    setDiff({ handle, gateId, state: gateDiffInFlight<DiffEvidence>(handle, gateId) });
+    void (async () => {
+      const answered = await fetchGateDiff(request, handle, gateId, clock);
+      if (diffGeneration.current === mine) setDiff({ handle, gateId, state: answered });
+    })();
+  }, [request, clock, handle]);
+
   const send = useCallback((question: GateQuestionEvent, chosen: GateAnswer) => {
     if (sending.current) return;
     sending.current = true;
@@ -579,6 +671,52 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
   // *inert* have to agree, and a control drawn live from this handle's own answer while the guard
   // still held somebody else's would be one a reader can press that silently does nothing.
   const busy = answer?.state.kind === 'in-flight';
+
+  // The gate this screen is parked at, if it is parked at one, and whether the run behind that
+  // answer is loaded at all. Both derived here rather than inside the loaded branch, because the
+  // effect below is a hook and a hook may not sit after a return — and they are two values rather
+  // than one because *no gate* and *no answer yet* are two different states, which is the whole of
+  // what the effect turns on.
+  const parkedGateId = shown.kind === 'loaded' && shown.value.state === 'running'
+    ? shown.value.gates[0]?.gateId ?? null
+    : null;
+  const runLoaded = shown.kind === 'loaded';
+
+  useEffect(() => {
+    // **One read per gate, and the guard is what makes that true rather than the dependency list.**
+    // The evidence for one gate is a snapshot — taken when the diff was materialised, and unable to
+    // change while that gate waits — so a repeat read costs a bounded body and establishes nothing.
+    // Keying the effect on *which gate* alone does not deliver it: the run's own read passes through
+    // *in flight* on its way back, so a Refresh makes the gate disappear and return, and the region
+    // would blink out and be fetched again for a value that had not moved. Asking whether this pair
+    // is already the one in hand is what closes it, and it is the same question a stale response is
+    // rejected by two lines down.
+    if (parkedGateId === null) {
+      // Forgotten only once a LOADED run says there is no gate to be at. A read in flight is not an
+      // answer, and clearing on one is the blink above.
+      if (runLoaded && diff !== null) setDiff(null);
+      return;
+    }
+    if (diff !== null && diff.handle === handle && diff.gateId === parkedGateId) return;
+    readDiff(parkedGateId);
+  }, [parkedGateId, runLoaded, diff, handle, readDiff]);
+
+  // Bumped when this screen goes away and at no other time, so a read still outstanding settles
+  // nothing on a component that is gone. Every SUPERSEDING bump is `readDiff`'s own, which is what
+  // makes an older read's answer unable to land on a newer one's.
+  useEffect(() => () => { diffGeneration.current += 1; }, []);
+
+  /**
+   * This handle's and this gate's own diff read, or the in-flight state naming what is being asked.
+   *
+   * The fallback is {@link shown}'s arrangement for its reason: a prop is committed before the
+   * effect reacting to it runs, so the first render at a new gate would otherwise have either
+   * nothing to draw or the previous gate's patch under the new gate's question.
+   */
+  const diffFor = (gateId: string): RequestState<DiffEvidence> =>
+    diff !== null && diff.handle === handle && diff.gateId === gateId
+      ? diff.state
+      : gateDiffInFlight<DiffEvidence>(handle, gateId);
 
   if (shown.kind !== 'loaded') {
     // The run is not loaded — so there is no question, no subject and nothing to answer. **The
@@ -622,6 +760,17 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
           decision says so, which is what stops the region being an absence a reader reads as
           reassurance. */}
       {subject.kind === 'parked' ? <ReachedRegion reached={subject.question.reached} /> : null}
+      {/* Between the decision and the controls, because it is what that decision was made ON: a
+          reader answering from the verdict is answering from the change under it, and a patch drawn
+          below the buttons would be evidence a reader meets after the act it is evidence for. */}
+      {subject.kind === 'parked'
+        ? (
+          <GateDiffRegion
+            state={diffFor(subject.question.gateId)}
+            onRetry={() => { readDiff(subject.question.gateId); }}
+          />
+        )
+        : null}
       {subject.kind === 'parked' ? <Question question={subject.question} busy={busy} onAnswer={(chosen) => send(subject.question, chosen)} /> : null}
       {sent === null ? null : <AnswerRegion state={sent} onLookAgain={load} />}
     </section>

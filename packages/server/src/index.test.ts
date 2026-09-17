@@ -37,6 +37,7 @@ const SURFACE: Record<string, string> = {
   BIND_HOSTNAME: 'the only address the server binds, and not configurable — Q-0013 OQ-2',
   createApp: 'the Hono app over a host: five routes and a WebSocket, owning no run state',
   eventMessage: 'one event as one WebSocket message, JSON, with nothing rendered',
+  GATE_DIFF_REFUSAL_STATUS: 'the status each gate-diff refusal answers with — four 404s the `code` tells apart, one of which is an answer rather than a failure (Q-0134)',
   missedMessage: 'what a late subscriber is told it missed, which is a message kind and never an `Event`',
   createDaemon: 'a project in, a listening server out — the one place that chooses a retention capacity',
   DEFAULT_RETENTION: 'how many events a run retains for a subscriber that arrives after it started',

@@ -23,12 +23,13 @@ import {
 
 import { App } from './app.js';
 import type { DaemonRequest, DaemonResponse } from './daemon-client.js';
-import { runDetailPath, runGatePath } from './daemon-endpoints.js';
+import { gateDiffPath, runDetailPath, runGatePath } from './daemon-endpoints.js';
+import { DIFF_HEADING } from './diff-view.js';
 import {
   ANSWER_LABEL, ANSWERED_PREFIX, answersOffered, GATE_GONE, GATE_GONE_CODE, GATE_HEADING,
   GATE_SUBJECT_TEXT, GATE_SUBJECTS, gateSubjectOf, GateScreen, groupReported, LOOK_AGAIN_LABEL,
-  NO_FINDINGS, NO_REACHED, NO_RETRY_TARGET, NO_SUMMARY, REACHED_HEADING, REFRESH_LABEL, REFUSAL_PREFIX,
-  REFUSAL_UNSTATED, REPORT_GROUPS, RETURNS_TO, RETRY_LABEL,
+  NO_DIFF, NO_FINDINGS, NO_REACHED, NO_RETRY_TARGET, NO_SUMMARY, REACHED_HEADING, REFRESH_LABEL,
+  REFUSAL_PREFIX, REFUSAL_UNSTATED, REPORT_GROUPS, RETURNS_TO, RETRY_LABEL,
 } from './gate-screen.js';
 import { GATE_ROUTE } from './routes.js';
 import type { SocketTransport } from './run-connection.js';
@@ -61,9 +62,18 @@ const HANDLE = 'run-7';
  */
 const TICKET_DIR = '/repo/backlog/Q-0016-the-gate-screen';
 
+/**
+ * The correlation token every question here carries.
+ *
+ * Named because the gate-diff path is built from it and a literal in two places is two places to be
+ * wrong. It holds a colon deliberately: `nextGateId` spells `<run number>:<n>`, so a fixture with a
+ * separator-free id would not exercise the encoding the path builder performs.
+ */
+const GATE_ID = '3:1';
+
 /** One gate question, in the shape `askGate` emits. */
 const question = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  type: 'gate', gateId: '3:1', kind: 'human',
+  type: 'gate', gateId: GATE_ID, kind: 'human',
   reason: 'chore: approve to advance ticket to "reviewed"',
   ticketDir: TICKET_DIR, ...over,
 });
@@ -80,16 +90,32 @@ interface Sent {
   readonly request?: DaemonRequest;
 }
 
+/**
+ * The body a daemon answers a gate-diff read with when the deciding step was given no diff.
+ *
+ * **The default rather than a special case**, because it is what a real daemon answers for the
+ * question every fixture here composes: `question()` carries no `reached`, so no evidence is ever
+ * bound to it and `no-diff` is the honest answer. A fixture wanting the other branch supplies
+ * `diffBody`. Q-0134.
+ */
+const NO_DIFF_BODY = {
+  code: 'no-diff',
+  condition: 'the step whose decision reached that gate was given no diff to review',
+  remedy: null,
+};
+
 /** What a fixture's daemon answers. `runs` is a queue; the last entry answers every later read. */
 interface Answers {
   readonly runs?: unknown[];
   readonly runStatus?: number;
   readonly gateStatus?: number;
   readonly gateBody?: unknown;
+  readonly diffStatus?: number;
+  readonly diffBody?: unknown;
   readonly reject?: boolean;
 }
 
-function daemon(answers: Answers): { fetch: (path: string, request?: DaemonRequest) => Promise<DaemonResponse>; sent: Sent[] } {
+function daemon(answers: Answers, handle = HANDLE): { fetch: (path: string, request?: DaemonRequest) => Promise<DaemonResponse>; sent: Sent[] } {
   const sent: Sent[] = [];
   const queue = [...(answers.runs ?? [run()])];
   return {
@@ -103,6 +129,18 @@ function daemon(answers: Answers): { fetch: (path: string, request?: DaemonReque
           ok: status >= 200 && status < 300,
           status,
           json: () => Promise.resolve(answers.gateBody ?? null),
+        });
+      }
+      // **The screen makes exactly two kinds of GET**, and the one that is not the run's detail is
+      // the gate's diff. Discriminated that way rather than by a path literal, so this fixture does
+      // not become a second place the daemon's own segments are spelled — `test/routes.test.ts`
+      // permits them in `daemon-endpoints.ts` and registers them there with their reasons.
+      if (path !== runDetailPath(handle)) {
+        const status = answers.diffStatus ?? 404;
+        return Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => Promise.resolve(answers.diffBody ?? NO_DIFF_BODY),
         });
       }
       const body = queue.length > 1 ? queue.shift() : queue[0];
@@ -163,7 +201,7 @@ async function render(element: ReactElement): Promise<HTMLElement> {
 
 /** The screen, over one fixture's daemon. */
 const screen = async (answers: Answers, handle = HANDLE): Promise<{ container: HTMLElement; sent: Sent[] }> => {
-  const fake = daemon(answers);
+  const fake = daemon(answers, handle);
   const container = await render(createElement(GateScreen, { handle, fetcher: fake.fetch, now: CLOCK }));
   return { container, sent: fake.sent };
 };
@@ -527,8 +565,18 @@ describe('AC-11 — one answer in flight, and nothing claimed that was not obser
     // Still the gate screen, rather than a redirect to a screen that does not exist.
     expect(textOf(container)).toContain(GATE_HEADING);
     // And the answer is settled through a READ, which is the request after the POST.
-    expect(fake.sent.map((each) => each.path))
-      .toStrictEqual([runDetailPath(HANDLE), runGatePath(HANDLE), runDetailPath(HANDLE)]);
+    //
+    // **The gate's diff read sits between the run's first read and the answer, and it is one
+    // request and not one per render** (Q-0134 AC-11): it is started when the screen arrives at a
+    // gate, and the second run read — which finds no gate pending — starts no third, which is what
+    // this sequence asserts by being exactly four entries long. A read per render, or one repeated
+    // by the run read beside it, fails here rather than merely costing a request.
+    expect(fake.sent.map((each) => each.path)).toStrictEqual([
+      runDetailPath(HANDLE),
+      gateDiffPath(HANDLE, GATE_ID),
+      runGatePath(HANDLE),
+      runDetailPath(HANDLE),
+    ]);
   });
 
   test('the controls are inert while an answer is outstanding', async () => {
@@ -1020,5 +1068,185 @@ describe('AC-14 — the register says the screen exists, and the placeholder no 
       .toContain('chore: approve to advance ticket to "reviewed"');
     expect(main, 'the screen offers no way to reload').toContain(REFRESH_LABEL);
     expect(fake.sent[0]?.path, 'the screen read something other than its own run').toBe(runDetailPath(HANDLE));
+  });
+});
+
+describe('Q-0134 AC-8 and AC-11 — the change that decision was made on, and every state of reading it', () => {
+  /** One evidence body, in the shape the daemon answers with. */
+  const EVIDENCE = {
+    stepId: 'work',
+    range: 'harness/Q-0016/integration...harness/Q-0016/implement',
+    stat: ' src/a.ts | 2 +-\n 1 file changed',
+    patch: 'diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-const was = 1;\n+const is = 2;\n',
+    truncated: false,
+    limit: 200000,
+    kept: 96,
+    total: 96,
+    omitted: [] as string[],
+  };
+
+  /** A fixture's daemon that answers the gate's diff rather than the file's default refusal. */
+  const withDiff = (over: Answers = {}): Answers => ({ diffStatus: 200, diffBody: EVIDENCE, ...over });
+
+  test('AC-8 — the region sits after the decision and before the answer controls', async () => {
+    const { container } = await screen(withDiff({
+      runs: [run({ gates: [question({ reached: { stepId: 'work', verdict: 'approve', findings: [], summary: 'it holds' } })] })],
+    }));
+    const text = textOf(container);
+    const at = (needle: string): number => text.indexOf(needle);
+    expect(at(REACHED_HEADING), 'the decision is not on the page').toBeGreaterThanOrEqual(0);
+    expect(at(DIFF_HEADING), 'the diff region is not on the page').toBeGreaterThanOrEqual(0);
+    expect(at(ANSWER_LABEL.advance), 'no control is drawn').toBeGreaterThanOrEqual(0);
+    expect(at(DIFF_HEADING), 'the diff is drawn above the decision it was made for')
+      .toBeGreaterThan(at(REACHED_HEADING));
+    expect(at(DIFF_HEADING), 'the diff is drawn below the controls a reader answers with')
+      .toBeLessThan(at(ANSWER_LABEL.advance));
+    // The patch itself, and the controls unchanged beside it.
+    expect(text, 'the patch did not reach the page').toContain('+const is = 2;');
+    expect(controls(container).map((button) => button.textContent))
+      .toStrictEqual([ANSWER_LABEL.advance, ANSWER_LABEL.abort]);
+  });
+
+  test('AC-11 — a Refresh that finds the same gate waiting starts no second diff read', async () => {
+    // **The evidence for one gate is a snapshot** — taken when the diff was materialised, held for
+    // as long as that gate waits, and unable to change while it does. So a repeat read costs a
+    // bounded body and establishes nothing, and the region must not blink out and back while the
+    // run is being read again either. The failure this is written against is a real one: the run's
+    // own read passes through *in flight* on its way back, so an effect keyed on *is there a gate*
+    // alone sees the gate go away and return, and reads twice for one Refresh.
+    const fake = daemon(withDiff({ runs: [run()] }));
+    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
+    expect(textOf(container), 'the diff did not draw — this check has lost its subject')
+      .toContain(EVIDENCE.range);
+
+    const refresh = [...container.querySelectorAll('button')]
+      .find((button) => button.textContent === REFRESH_LABEL);
+    expect(refresh, 'the screen offers no Refresh').toBeDefined();
+    const before = fake.sent.length;
+    await act(async () => { refresh?.click(); });
+
+    expect(fake.sent.slice(before).map((each) => each.path),
+      'a Refresh re-read the gate\'s diff, which cannot have changed while that gate waits')
+      .toStrictEqual([runDetailPath(HANDLE)]);
+    // …and the region is still drawn, rather than having been cleared by the read passing through.
+    expect(textOf(container), 'the diff region was dropped while the run was read again')
+      .toContain(EVIDENCE.range);
+  });
+
+  test('AC-11 — a gate whose deciding step read no diff says so, and offers nothing to retry', async () => {
+    // The daemon's default answer in this file is exactly this refusal, because the question every
+    // fixture composes carries no decision. It is an ANSWER: no action is offered, since asking
+    // again cannot make a step have read something it did not.
+    const { container } = await screen({});
+    expect(textOf(container), 'the screen does not say why there is no diff').toContain(NO_DIFF);
+    expect(container.querySelector('[data-diff="none"]'), 'the region is an absence rather than a sentence').not.toBeNull();
+    expect(container.querySelector('[data-diff-request]'), 'a no-diff answer was drawn as a failed read').toBeNull();
+    // …and it is not a claim that nothing changed, which is the sentence that would be wrong.
+    expect(NO_DIFF, 'the sentence reads as a claim about the change').toContain('not a claim that nothing changed');
+  });
+
+  test('AC-11 — while the read is in flight the screen says what it is reading', async () => {
+    const sent: Sent[] = [];
+    const container = await render(createElement(GateScreen, {
+      handle: HANDLE,
+      fetcher: (path: string, request?: DaemonRequest) => {
+        sent.push({ path, request });
+        if (path !== runDetailPath(HANDLE)) return new Promise<DaemonResponse>(() => { /* never answers */ });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
+      },
+      now: CLOCK,
+    }));
+    expect(container.querySelector('[data-diff-request]')?.getAttribute('data-diff-request')).toBe('in-flight');
+    expect(textOf(container), 'the screen does not name the read it is waiting for')
+      .toContain(gateDiffPath(HANDLE, GATE_ID));
+    // Nothing on the page stands in for an answer — the placeholder rule, which is why the in-flight
+    // state is a sentence naming a path rather than an animation.
+    for (const placeholder of ['n/a', 'TBD', 'Loading']) {
+      expect(textOf(container).includes(placeholder), `the screen renders the placeholder ${placeholder}`).toBe(false);
+    }
+  });
+
+  test('AC-11 — a read that failed shows the daemon\'s condition and repeats THAT read alone', async () => {
+    const sent: Sent[] = [];
+    const container = await render(createElement(GateScreen, {
+      handle: HANDLE,
+      fetcher: (path: string, request?: DaemonRequest) => {
+        sent.push({ path, request });
+        if (path !== runDetailPath(HANDLE)) return Promise.reject(new Error('connection refused'));
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
+      },
+      now: CLOCK,
+    }));
+    const failed = container.querySelector('[data-diff-request]');
+    expect(failed?.getAttribute('data-diff-request'), 'the failed read was not reported').toBe('unreachable');
+    const retry = failed?.querySelector('button');
+    expect(retry, 'a failed read offers no way to repeat it').not.toBeNull();
+
+    const before = sent.length;
+    await act(async () => { retry?.click(); });
+    // **That read alone**: the run is not re-read, which is the difference between an action beside
+    // one request and a Refresh.
+    expect(sent.slice(before).map((each) => each.path)).toStrictEqual([gateDiffPath(HANDLE, GATE_ID)]);
+  });
+
+  test('AC-11 — a failed read neither clears, enables, disables nor submits an answer', async () => {
+    // The diff is read from a route of its own, so the one thing it must not touch is the exchange
+    // this screen exists for. A gate is answerable from a terminal with no diff at all.
+    const sent: Sent[] = [];
+    const container = await render(createElement(GateScreen, {
+      handle: HANDLE,
+      fetcher: (path: string, request?: DaemonRequest) => {
+        sent.push({ path, request });
+        if (request?.method === 'POST') return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve(null) });
+        if (path !== runDetailPath(HANDLE)) return Promise.reject(new Error('connection refused'));
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
+      },
+      now: CLOCK,
+    }));
+    expect(container.querySelector('[data-diff-request]')?.getAttribute('data-diff-request')).toBe('unreachable');
+    // The controls are live rather than inert, and pressing one still sends exactly one answer.
+    expect(controls(container).every((button) => !button.disabled), 'a failed diff read disabled the controls').toBe(true);
+    await click(controls(container)[0]);
+    expect(envelopes(sent).length, 'the answer was not sent, or was sent twice').toBe(1);
+    expect(textOf(container), 'the screen stopped saying the daemon took the answer').toContain(ANSWERED_PREFIX);
+  });
+
+  test('AC-11 — a response for an earlier gate cannot replace the current screen\'s evidence', async () => {
+    // Two runs parked at two different gates, the first one's diff read staying out for ever. The
+    // screen is moved to the second while that read is outstanding; when it arrives it must reach
+    // nothing, or a reader would be shown one gate's change under another gate's question.
+    const other = 'run-9';
+    const otherGate = '4:1';
+    const STALE_RANGE = 'harness/STALE/integration...harness/STALE/implement';
+    const fetcher = (path: string): Promise<DaemonResponse> => {
+      if (path === runDetailPath(HANDLE)) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(run()) });
+      }
+      if (path === runDetailPath(other)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(run({ handle: other, gates: [question({ gateId: otherGate })] })),
+        });
+      }
+      // The first gate's diff never answers; the second's answers at once, with a range of its own
+      // so a stale response could be told from a fresh one if one ever arrived.
+      if (path === gateDiffPath(HANDLE, GATE_ID)) return new Promise<DaemonResponse>(() => { /* never */ });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(EVIDENCE) });
+    };
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    mounted.push(() => root.unmount());
+
+    await act(async () => root.render(createElement(GateScreen, { handle: HANDLE, fetcher, now: CLOCK })));
+    expect(textOf(container), 'the first gate\'s read was never started').toContain(gateDiffPath(HANDLE, GATE_ID));
+
+    await act(async () => root.render(createElement(GateScreen, { handle: other, fetcher, now: CLOCK })));
+    const text = textOf(container);
+    expect(text, 'the screen is not showing the run it was moved to').toContain(other);
+    expect(text, 'the first gate\'s in-flight sentence survived the move').not.toContain(gateDiffPath(HANDLE, GATE_ID));
+    expect(text, 'a stale range was rendered under the new gate').not.toContain(STALE_RANGE);
+    expect(text, 'the second gate\'s own diff did not draw').toContain(EVIDENCE.range);
   });
 });

@@ -46,13 +46,13 @@
  */
 import { loadFlowByName, runFlow } from '@quorum/core';
 import type { Project, TicketRecord } from '@quorum/core';
-import type { Event, GateQuestionEvent, RunTerminalEvent } from '@quorum/shared';
+import type { DiffEvidence, Event, GateQuestionEvent, RunTerminalEvent } from '@quorum/shared';
 
 import { assertRetention, createBroadcast } from './broadcast.js';
 import type { Broadcast, Subscription } from './broadcast.js';
 import { refusalFor } from './failures.js';
 import { createGateRegistry } from './gates.js';
-import type { GateRefusal } from './gates.js';
+import type { EvidenceRefusal, EvidenceResult, GateRefusal } from './gates.js';
 import { refusalOf } from './refusal.js';
 import type { Refusal } from './refusal.js';
 
@@ -142,6 +142,14 @@ export type StartOutcome =
 /** Why an answer was refused before `core` saw it, or the host had no run to give it to. */
 export type AnswerRefusal = 'no-such-run' | GateRefusal;
 
+/** Why a read of one gate's reviewed diff answered nothing, the host's own absence included. */
+export type GateDiffRefusal = 'no-such-run' | EvidenceRefusal;
+
+/** What a read of one gate's reviewed diff came to: the bytes that step was given, or why not. */
+export type GateDiffResult =
+  | { readonly evidence: DiffEvidence }
+  | { readonly refusal: GateDiffRefusal };
+
 /** Why a stop did not happen. */
 export type StopRefusal =
   /** No run was ever minted under that handle. */
@@ -203,6 +211,19 @@ export interface RunHost {
   subscribe(handle: string): Subscription | null;
   /** Settle one pending gate of one run, or refuse and leave it waiting. */
   answer(handle: string, envelope: unknown): AnswerRefusal | null;
+  /**
+   * The diff the step whose decision reached one waiting gate was given, or why there is none.
+   *
+   * **A gate is answered this only where its own `reached` names the step the bytes were
+   * materialised for**, which is what stops a run with two `input.diff` sites being shown the one
+   * that merely ran most recently. `chore.yaml` is the shape that makes it work — its `review` step
+   * both reads the diff and declares the verdict, and the `integrate` between it and the gate
+   * materialises none, so the join holds across a step that reads nothing. `review.yaml` is the
+   * shape that makes it answer `no-diff`: its panel reads the range and its `verdict` step, whose
+   * own instruction is *"Judge the reviews, not the code diff"*, is what reaches the gate. Saying so
+   * is the honest answer; attributing the panel's bytes to a step that never saw them would not be.
+   */
+  gateDiff(handle: string, gateId: string): GateDiffResult;
   /** Cancel one run through the `AbortSignal` it was started with. */
   stop(handle: string, reason?: string): StopRefusal | null;
   /**
@@ -230,6 +251,35 @@ interface RunRecord {
   failure: string | null;
   refusal: Refusal | null;
   broadcast: Broadcast | null;
+  /**
+   * The diff each step of this run was given, by the id of the step that was given it, until the
+   * gate whose decision names that step takes it.
+   *
+   * **Keyed by producing step and not one slot, because the producer runs before the consumer can
+   * and there is more than one producer.** `preflightDiffs` materialises every range whose endpoints
+   * all already exist *before any step executes* — one loop over every diff site in flow order — so
+   * a run with two such sites reports twice at run start, and a single slot would hold the second
+   * site's bytes by the time the first site's step reached its gate. The identity test in `observe`
+   * would then miss, and the gate would be answered `no-diff`: a claim that the deciding step read
+   * no diff, about a step that read one. A patch this host is holding, reported as an absence —
+   * *"A probe that could not answer is not a negative"* (2026-09-10) at the one site this ticket
+   * adds. Found by review rather than by a test, because both shipped multi-site shapes are
+   * one-snapshot shapes and no fixture reached it.
+   *
+   * **The key is the step id because the consumer's key is `reached.stepId`**, so the join is an
+   * identity on both sides rather than a lookup one end infers. A second materialisation under one
+   * step id replaces the first, which is exact for that join: `input.diff` is one field of one step,
+   * so two bytes under one id can only be one site read twice.
+   *
+   * **Transferred rather than copied**: `observe` deletes the entry as it binds, so a patch is held
+   * by exactly one of this map and the gate registry and never by both (R-3). What bounds it is the
+   * flow: measured over the six shipped flows, `chore` declares one diff site, `review` declares two
+   * over one range — which the preflight cache makes one snapshot, Q-0038 AC-10 — and four declare
+   * none, so every flow this product ships holds **at most one** snapshot here. It is cleared when
+   * the run ends whether or not any gate wanted it, and on the refusal exit beside it, which is what
+   * keeps a record's own footprint where Q-0123 measured it, `records` never being pruned.
+   */
+  readonly evidence: Map<string, DiffEvidence>;
   controller: AbortController | null;
   iterator: AsyncIterator<Event> | null;
   /** The consumption loop, so shutdown can wait for it to have cleaned up. */
@@ -279,7 +329,7 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
       handle: `run-${minted}`,
       flow,
       ticket: null, runId: null, state: 'refused',
-      terminal: null, failure: null, refusal: null,
+      terminal: null, failure: null, refusal: null, evidence: new Map(),
       broadcast: null, controller: null, iterator: null, drained: null,
     };
     records.set(record.handle, record);
@@ -291,6 +341,15 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     record.state = 'refused';
     record.refusal = refusal;
     gates.release(record.handle);
+    // The clean-up `consume` performs when a run ends, on the run's other exit. **Empty on every
+    // refusal this host can meet today, and unconditional anyway.** Measured rather than assumed: a
+    // preflight that fails after materialising an earlier site does not refuse the start, because
+    // the run has emitted its `info` line above the preflight and emits its terminal event before
+    // the error closes the channel, and a first pull settled by either is a run that is `running`.
+    // Both facts are `core`'s, a record is never pruned (Q-0123), and a refusal that did arrive
+    // after a materialisation would hold a capped patch for the life of the process — so the map is
+    // emptied on the exit that owns it rather than on the strength of another package's ordering.
+    record.evidence.clear();
     return { started: false, run: viewOf(record), refusal };
   };
 
@@ -317,6 +376,23 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
       record.terminal = event;
       record.runId = event.runId;
     }
+    // **A gate takes the diff its own deciding step was given, and takes it away from the run.**
+    // The identity test is the whole of the rule (Q-0134 AC-2): a question carries `reached` only
+    // where a verdict-declaring step reached it, and the bytes are that gate's evidence only where
+    // the two name one step. It is a LOOKUP on that id rather than a comparison against whatever
+    // was reported most recently, because the producers all run before the first gate can be
+    // reached and the most recent one is not the deciding one — see {@link RunRecord.evidence}. A
+    // question carrying no decision, or one naming a step that read no diff, binds nothing and is
+    // answered `no-diff` — which is a sentence rather than an empty patch. Nothing is published, so
+    // no patch byte enters the retained buffer.
+    if (event.type === 'gate') {
+      const reached = event.reached?.stepId;
+      const given = reached === undefined ? undefined : record.evidence.get(reached);
+      if (reached !== undefined && given !== undefined) {
+        gates.bindEvidence(record.handle, event.gateId, given);
+        record.evidence.delete(reached);
+      }
+    }
   };
 
   /**
@@ -340,6 +416,14 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     } finally {
       record.state = 'ended';
       gates.release(record.handle);
+      // Every snapshot no gate took with it, so a run that ended without reaching a gate that wanted
+      // one — or that reported a site whose step never decided anything — holds no patch afterwards.
+      // `records` is never pruned (Q-0123), which is exactly why the bytes may not be left on one:
+      // what that ticket measured and ruled acceptable is ~0.1 MB of events per ended run, and a
+      // retained patch would be twice that again on its own. This is the clean-up an unconsumed
+      // snapshot has, and it is unconditional rather than keyed on anything, so a site the flow
+      // declares and no gate ever claims cannot outlive the run that read it.
+      record.evidence.clear();
       record.broadcast?.close();
     }
   };
@@ -378,6 +462,14 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
         // the rule `observe` below states and the reason the value is taken from the engine at all.
         // Q-0131 AC-2.
         reportRunNumber: (runId) => { record.runId = runId; },
+        // The diff each step is given, as it is produced. Out of band for the reason the run number
+        // is — a callback carries a value no event gains — and for one of its own: a patch is
+        // capped at 200,000 bytes against a 214 B mean event, and an event is retained and replayed
+        // to every late subscriber. Nothing here reads it, measures it or publishes it; `observe`
+        // hands it to the gate whose decision names the step it belongs to. Filed under the step
+        // that was given it rather than into one slot, because the preflight reports every
+        // pre-existing site before any step runs — see {@link RunRecord.evidence}. Q-0134 AC-3.
+        reportDiff: (evidence) => { record.evidence.set(evidence.stepId, evidence); },
         signal: controller.signal,
         ...(request.base === undefined ? {} : { base: request.base }),
       });
@@ -438,6 +530,15 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     answer(handle, envelope) {
       if (!records.has(handle)) return 'no-such-run';
       return gates.answer(handle, envelope);
+    },
+
+    gateDiff(handle, gateId) {
+      // A handle this host never minted is its own answer, as it is for `answer` and for `view`:
+      // the gate registry can only speak about runs, and a refusal composed from its vocabulary
+      // would say *that run has no gate waiting under that id* about a run that does not exist.
+      if (!records.has(handle)) return { refusal: 'no-such-run' };
+      const found: EvidenceResult = gates.evidenceFor(handle, gateId);
+      return found;
     },
 
     stop(handle, reason) {

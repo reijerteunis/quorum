@@ -7,7 +7,9 @@
  * {@link GateUnansweredError} is the one value, because a classifier that tests `instanceof` needs
  * a single identity and this is already the file every engine module reads its error identity from.
  */
-import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, GateReached, ProjectConfig } from '@quorum/shared';
+import type {
+  DiffEvidence, Event, Flow, GateAnswerEnvelope, GateQuestionEvent, GateReached, ProjectConfig,
+} from '@quorum/shared';
 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
@@ -97,6 +99,31 @@ export type AnswerGate = (question: GateQuestionEvent) => Promise<GateAnswerEnve
 export type ReportRunNumber = (runId: number) => void;
 
 /**
+ * Hands the caller the diff one step was given, at the moment it is produced.
+ *
+ * {@link ReportRunNumber}'s channel, for {@link ReportRunNumber}'s reason and one of its own. The
+ * reason it shares: a caller-supplied callback carries a value no event gains, so the event union
+ * is untouched and every sentence about what it carries stays true verbatim. The reason it does not
+ * share is size — a materialised patch is capped at `repo.max_diff_bytes`, 200,000 by default,
+ * against a 214 B mean event, and an event enters a broadcast buffer replayed to every late
+ * subscriber. `contracts/Q-0050/run-events.contract.md` records that the two halves of one screen
+ * take opposite answers for that reason.
+ *
+ * It is invoked from `diff.ts`, where the value is PRODUCED, rather than from a step or a gate —
+ * which is the one siting that covers a chore run: `preflightDiffs` caches a range only where every
+ * endpoint already exists, so `chore.yaml`'s `integration...implement` range, whose right endpoint
+ * an earlier step of that flow creates, is deferred to step time and never enters `ctx.diffInputs`.
+ * Measured over this repository's own run history, that is 186 of 208 materialised patches. See
+ * Q-0134 AC-1.
+ *
+ * It reports and decides nothing: a run whose caller supplies none is unchanged in every respect,
+ * and one whose callback throws costs a `warn` and nothing else.
+ *
+ * Why: deliberate addition, not preservation — Q-0134.
+ */
+export type ReportDiffEvidence = (evidence: DiffEvidence) => void;
+
+/**
  * What a caller supplies to run one flow. The project and backlog are already loaded: the run
  * never reloads configuration from disk, so a caller-selected `project.config.adapterOverride`
  * survives even when nothing on disk carries it.
@@ -127,6 +154,15 @@ export interface RunFlowOptions {
    * value travels this way rather than on the stream.
    */
   reportRunNumber?: ReportRunNumber;
+  /**
+   * Told the diff each diff-bearing step was given, as each one is produced.
+   *
+   * Out of band for {@link ReportDiffEvidence}'s reasons, and called once per materialisation
+   * rather than once per step that reads one: a range every endpoint of which already exists is
+   * materialised by the run-level preflight and cached, so a `parallel:` panel over one range is
+   * one call and not two — Q-0038 AC-10's identical-bytes guarantee, holding at a new site.
+   */
+  reportDiff?: ReportDiffEvidence;
   /** Caller-owned cancellation. The engine installs no process signal handler of its own. */
   signal?: AbortSignal;
   /**
@@ -283,6 +319,14 @@ export interface RunContext {
    * file, and an override may legitimately name the configured value. See Q-0077, Q-0038.
    */
   baseOverride: string | null;
+  /**
+   * The caller's diff channel, or nothing where it supplied none.
+   *
+   * Carried on the context rather than read from the options at the call site, because
+   * {@link DiffContext} — the narrowed shape `materialiseDiff` reads — is satisfied structurally by
+   * this one, and the value has to reach the site the bytes are produced at. Q-0134.
+   */
+  reportDiff?: ReportDiffEvidence;
   /**
    * Every task this run's fan-out expanded, appended one per task before its step runs.
    *

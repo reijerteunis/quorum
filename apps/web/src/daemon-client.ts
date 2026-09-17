@@ -31,15 +31,16 @@
  * registering the three functions below by name so that a fourth writer is a visible act.
  */
 import {
-  gateAnswerEnvelopeSchema,
+  diffEvidenceSchema, gateAnswerEnvelopeSchema,
   wireFlowListSchema, wireRefusalSchema, wireRunListSchema, wireRunSchema, wireStartRequestSchema,
   wireTicketDetailSchema, wireTicketFileSchema, wireTicketListSchema,
-  type GateAnswer, type WireFlowList, type WireRun, type WireRunList, type WireStartRequest,
-  type WireTicketDetail, type WireTicketFile, type WireTicketList,
+  type DiffEvidence, type GateAnswer, type WireFlowList, type WireRun, type WireRunList,
+  type WireStartRequest, type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
 import {
-  DAEMON_ENDPOINTS, runDetailPath, runGatePath, runStopPath, ticketDetailPath, ticketFilePath,
+  DAEMON_ENDPOINTS, gateDiffPath, runDetailPath, runGatePath, runStopPath, ticketDetailPath,
+  ticketFilePath,
 } from './daemon-endpoints.js';
 import type { RequestState } from './request-state.js';
 
@@ -197,6 +198,36 @@ export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promis
 /** Read the daemon's ordered run listing once; callers decide when an explicit refresh repeats it. */
 export const fetchRuns = (fetcher: FetchLike, now: Clock): Promise<RequestState<WireRunList>> =>
   requestJson(fetcher, DAEMON_ENDPOINTS.runs, wireRunListSchema, now);
+
+/**
+ * The diff the step whose decision reached one waiting gate was given.
+ *
+ * **A separate request from {@link fetchRun} and not a field on it**, which is {@link fetchTicketFile}'s
+ * arrangement for its reason one register over: a patch is bounded by `repo.max_diff_bytes` — 200,000
+ * by default — where a run row is a few hundred bytes, and every screen that reads a run would
+ * otherwise carry one. It is asked for only where a gate is waiting and a reader is looking at it.
+ *
+ * **Its `no-diff` refusal is an ANSWER**, and a caller is expected to say so rather than to retry: a
+ * gate whose deciding step read no diff is the ordinary case in four of the six flows this product
+ * ships, and the daemon reports it as a coded refusal rather than as an empty patch precisely so the
+ * two can be told apart. {@link NO_DIFF_CODE} is the code, and the screen renders its own sentence.
+ */
+export const fetchGateDiff = (
+  fetcher: FetchLike,
+  handle: string,
+  gateId: string,
+  now: Clock,
+): Promise<RequestState<DiffEvidence>> =>
+  requestJson(fetcher, gateDiffPath(handle, gateId), diffEvidenceSchema, now);
+
+/**
+ * The refusal code that means the gate is waiting and nothing was reviewed for it.
+ *
+ * Declared beside the request that meets it, as {@link BROWSER_STOP_REASON} is: it is a value of
+ * this exchange rather than of a screen, and a second spelling on the screen would be a second place
+ * to be wrong about a word the daemon chooses.
+ */
+export const NO_DIFF_CODE = 'no-diff';
 
 /**
  * The status the gate and stop routes answer a request they took with. No body, and none is read.
@@ -440,6 +471,10 @@ export const ticketFileInFlight = <T>(id: string, rel: string): RequestState<T> 
 /** One run's in-flight state, naming the run rather than the listing. */
 export const runInFlight = <T>(handle: string): RequestState<T> =>
   ({ kind: 'in-flight', path: runDetailPath(handle) });
+
+/** One gate's diff read, in flight — naming that gate rather than the run it belongs to. */
+export const gateDiffInFlight = <T>(handle: string, gateId: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: gateDiffPath(handle, gateId) });
 
 /**
  * The in-flight state of an answer on its way to a gate.

@@ -18,6 +18,13 @@
  * this handle?* — two different questions, which is why they select differently and why only one of
  * them is entitled to a 404.
  *
+ * **Q-0134 added the third read, and it is the first route here whose answer is bytes a RUN
+ * produced.** `GET /runs/:id/gates/:gateId/diff` answers *what was the decision at this gate made
+ * ON?*, from a snapshot the run handed the host out of band while the diff was being materialised —
+ * never re-derived, because refs move and a second measurement could show a diff the reviewer never
+ * saw. It owes no decision entry and the ruling is recorded at the route rather than in a document;
+ * the reasoning is there.
+ *
  * Why: deliberate addition, not preservation — Q-0118.
  */
 import { Hono } from 'hono';
@@ -27,7 +34,8 @@ import { WIRE_START_FIELDS } from '@quorum/shared';
 import type { RunHost, RunState, StartRequest } from './host.js';
 import { mountStatic } from './static.js';
 import {
-  ANSWER_REFUSAL_STATUS, badRequest, START_REFUSAL_STATUS, STOP_REFUSAL_STATUS,
+  ANSWER_REFUSAL_STATUS, badRequest, GATE_DIFF_REFUSAL_STATUS, START_REFUSAL_STATUS,
+  STOP_REFUSAL_STATUS,
   type StartRefusalCode, type WireMessage, type WireRefusal, wireRefusalOf, wireRunOf,
 } from './wire.js';
 
@@ -222,6 +230,30 @@ export function createApp({ host, upgrade, bundle }: AppOptions): Hono {
     return c.json(wireRunOf(view));
   });
 
+  // The diff the step whose decision reached one waiting gate was given — a **read**, so it adds no
+  // write to this transport and takes no git range, ref or path from the caller: the only two
+  // things it accepts are the handle this host minted and the opaque `gateId` the question carried,
+  // and what it answers with is bytes the run itself produced and handed over out of band.
+  //
+  // **No decision entry is owed, and the ruling lives here rather than in a document** (Q-0134 E-1,
+  // Q-0108's precedent). Each limb has one from the last week: a read-only route on this transport
+  // is Q-0119's and Q-0121's, which ruled *"no decision entry is owed and the document edit is"*;
+  // bounded in-flight daemon memory is Q-0123's, measured and ruled; and an out-of-band
+  // `RunFlowOptions` callback is Q-0131's, ruled to owe none because a callback is not an event.
+  // The test this repository applies is *does any landed sentence go false?* — and none does, at
+  // the five sites that could: the glossary's **Event** term, `events.ts`'s *"one optional field
+  // and not the beginning of a family"*, *"A gate question carries the decision that reached it"*
+  // (2026-09-17), and the glossary's **Occurrence** and **Run history**. Nothing is added to the
+  // event union and nothing new is persisted.
+  app.get('/runs/:id/gates/:gateId/diff', (c) => {
+    const found = host.gateDiff(c.req.param('id'), c.req.param('gateId'));
+    if ('refusal' in found) {
+      return c.json(badRequest(found.refusal, refusalCondition(found.refusal), gateDiffRemedy(found.refusal)),
+        GATE_DIFF_REFUSAL_STATUS[found.refusal]);
+    }
+    return c.json(found.evidence);
+  });
+
   app.post('/runs/:id/gate', async (c) => {
     let envelope: unknown;
     try {
@@ -281,6 +313,24 @@ function refusalCondition(code: string): string {
     case 'not-an-answer': return 'the envelope is not {gateId, answer} over advance, retry or abort';
     case 'not-running': return 'that run is not running';
     case 'not-a-reason': return 'the stop reason must be a non-empty string';
+    // **Not a claim that nothing changed**, which is the one thing this sentence must not be read
+    // as. Four of the six shipped flows declare no `input.diff` at all and a gate a flow file
+    // declares can follow any step, so a step that was given no diff is ordinary. What is said is
+    // what happened.
+    case 'no-diff': return 'the step whose decision reached that gate was given no diff to review';
     default: return code;
   }
+}
+
+/**
+ * What a reader can do about a gate-diff refusal, or `null` where the surface has nothing to add.
+ *
+ * `no-diff` is the one with a remedy worth composing, and it is a statement rather than an
+ * instruction: there is nothing to fetch and nothing to retry, so a surface repeating the request
+ * would be asking again for a thing that is not there.
+ */
+function gateDiffRemedy(code: string): string | null {
+  return code === 'no-diff'
+    ? 'Nothing was reviewed for this gate, so there is nothing to fetch; the decision beside it is what it was reached on.'
+    : null;
 }
