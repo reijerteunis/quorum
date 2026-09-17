@@ -52,3 +52,45 @@ Q-0097 lost two errata by not making and Q-0125's GO-1 made.
 2026-09-17T14:54:38.541Z run=3 gate=human answer=advance
 2026-09-17T14:54:39.881Z run=3 removed-worktrees=2 kept=0
 2026-09-17T14:54:39.882Z run=3 completed stage=requirements→reviewed cost=144.533 tokens=231737493
+
+## GO-6 — discharged by running the product, and this is what it rendered rather than that it did
+
+Performed 2026-09-17 against the merged tree plus the hand repair, in Chrome, at
+`http://127.0.0.1:7717/runs/run-1/gate`. Transcribed from the page, not from a report:
+
+    The decision that reached this gate        needs-input
+    Step: head-of-product
+    mock head-of-product:verdict #1
+    MAJOR
+    major: src/mock.ts:1 (mock) placeholder finding
+
+    human-locked
+    loop exhausted at head-of-product (requirements.head-of-product = 2, limit 1); choose: advance
+    (accept as is), retry (exactly one more head-of-product), abort
+    …/backlog/Q-0135-go-6-gate-screen-demonstration
+    Sending it back runs this step once more: head-of-product
+    [Advance] [Send it back] [Abort the run]
+
+**The step id, the verdict and a finding are all three present**, which is what GO-6 asked for, and
+the heading is the one the hand repair landed — the screen naming the **deciding** step rather than
+the preceding one, which is the defect review round 4 found, live and fixed.
+
+**What was real and what was mocked, stated rather than blurred.** Real: the daemon started by
+`quorum open`, the built bundle it served, the engine, the flow, the backward edge exhausting at
+`limit 1`, the gate question, `GET /runs/:id` over HTTP, the browser, and the `204` the `abort`
+answer returned. Mocked: the **vendor CLI** only, through `--adapter mock`, which is a shipped
+adapter of this product and what the regression suite runs on. Nothing about the field's path from
+`steps.ts` to the page was simulated.
+
+**Why the run had to be started through the daemon**: a `quorum run` is a different process and the
+host's registry is in-memory, so a CLI run can never appear on this screen — which is the
+measurement **Q-0121** recorded and which this demonstration is the first to depend on.
+
+**Two attempts, and the first is worth keeping.** The first parked at the author-declared gate with
+`verdict: ready` and `findings: []` — a true rendering and not the one GO-6 asks for, the mock
+passing on its second call. The second ran with every verdict failing, which reached the
+**exhaustion** gate instead and carried a finding. So both gate kinds were exercised, which is AC-5.
+
+**Cleaned up completely**: the run was aborted from the API, the daemon stopped, the scratch ticket
+`Q-0135` and both `.quorum/runs/Q-0135-*` directories removed, and `harness/harness.yaml` restored
+to zero diff — the `adapterOverride: mock` key it carried for the demonstration is gone.
