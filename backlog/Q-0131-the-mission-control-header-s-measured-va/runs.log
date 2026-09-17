@@ -5,3 +5,13 @@
 2026-09-17T15:44:28.621Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=5.2837625 ms=548594
 2026-09-17T15:45:01.211Z run=1 gate=human answer=advance
 2026-09-17T15:45:01.219Z run=1 completed stage=draft→requirements cost=22.264 tokens=15231107
+
+2026-09-17 requirements gate answered `advance`. $22.26, ready at iteration 2, seven criteria after
+the split.
+
+GO-1 ratified out-of-band supply (E-1), GO-2's contract note written by hand (E-2), GO-3 ratified
+the split with **Q-0135** as the successor (E-3, and GO-6 with it). `harness/Q-0131/integration` cut.
+
+Route: **chore**, on Q-0129's precedent — same surface, comparable size, and the change is one
+option on `runFlow` with its producer and its two consumers, which a fan-out would split across
+worktrees.
