@@ -90,3 +90,55 @@ number, which has now moved three times** (`:200` → `:317` → `:336`).
 whether this ticket can be demonstrated at all, and it moves every time a branch lands.
 
 ---
+
+## Re-measured 2026-09-17, against tip `863c900`, as the section above instructs
+
+Every claim above was checked against the tree before this ticket ran. **Six hold, one moved exactly
+as the body predicted it would, and one is a correction.** Do not re-derive from the paragraphs
+above where they differ from this section.
+
+**The containment figure — re-measured first, as instructed — holds and has moved.** It is now
+**42 of 42**, not 40 of 40: every `harness/*/integration` branch in this repository is an ancestor of
+`main`, so `{base}...integration` is empty for all of them and `integration...implement` is empty
+too. Sampled directly on Q-0127, Q-0129 and Q-0131: **0 files in both ranges for all three.** The
+conclusion is unchanged and is the sequencing fact — **there is nothing in this backlog to show** —
+so acceptance evidence must be a repository a test builds, and no gate demonstration can use a past
+ticket. The two new branches are Q-0129's and Q-0131's, which landed after the body was written.
+
+**The dependency claim holds, and sharpens in a way that changes what it costs.** `diff2html`, `diff`
+and `jsdiff` appear in no manifest in this workspace. But `apps/web` declares **no `dependencies` key
+at all** — ten devDependencies and nothing else, React among them, because Vite bundles it. So a diff
+renderer would be a **devDependency** and would grow the **served bundle**, not add a runtime edge to
+a packed install. The body's *"the cold-store install already doubles"* (Q-0014's measurement) is
+therefore about the **dev** install; the cost that lands on an adopter is bundle bytes.
+**Measure against the current bundle**: `apps/web/dist` is **352,894 B** of JavaScript and
+**10,599 B** of CSS today. A renderer's weight is to be compared with that figure, and `@quorum/web`
+is a distribution package, so the bundle is what a packed install serves.
+
+**The two constants hold**: `repo.max_diff_bytes` defaults to **200,000** at
+`packages/core/src/engine/diff.ts:372`, and `DEFAULT_RETENTION` is **500** at
+`packages/server/src/serve.ts:47`. The retention arithmetic the body rests on is unchanged.
+
+**The needle register is THREE, not two — the one correction.** The body says *"AC-13 keeps `diff`
+and `hunk` forbidden"*. Measured at `apps/web/test/source.test.ts:1064`, the register is
+`SUCCESSOR = ['diff', 'blocker', 'hunk']` — **`blocker` is the third and the body omits it**. All
+three are assembled from fragments so the guard is not its own subject, and the file asserts they
+still discriminate against a sentence containing all three. This ticket re-aims **three** needles.
+
+**AC-14's retired sentence holds and is asserted at `source.test.ts:1050`**, assembled as
+`["The gate screen shows a step's ", 'verdict and ', 'diffs, and takes the answer.'].join('')` — for
+the same reason, which is why a plain grep for the sentence finds nothing and must not be read as
+absence.
+
+**The placeholder rule holds, and its line has moved a FOURTH time** — `:200` → `:317` → `:336` →
+**`:342`** — which is the body's own warning vindicated within a day. Cite it by its words and never
+by a number: *"No placeholder is a blank panel, a spinner or a skeleton, and none shows a fabricated
+project, run, ticket or cost."* Note the capital `N`, which is why a lowercase grep answers nothing.
+
+**What Q-0129 settled that this ticket inherits rather than re-derives.** *"A gate question carries
+the decision that reached it"* (2026-09-17) established the shape the body calls *"identity rather
+than inference"* — the evidence travels **on the question** — and its `reached` snapshot was measured
+at **13 KB** at its largest, which is inside Q-0123's arithmetic. **This half is not**, at a 200,000
+B cap against a 214 B mean event, so the entry is the precedent for the *shape* and decides nothing
+about *where the bytes live*. That is still this ticket's first decision, and the entry records six
+refused alternatives which are about parsing prose and do not reach it.
