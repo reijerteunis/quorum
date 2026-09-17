@@ -21,16 +21,25 @@ function interruptedGate(request: GateQuestionEvent): FlowError {
  * gate differ: see {@link handleFail}. See *"A gate question carries the decision that reached it"*
  * (2026-09-17).
  *
- * **A decision is carried to the first gate that takes it and no further.** Each site clears what
- * this builder was handed, so a later gate reached with nothing decided since carries nothing rather
- * than re-presenting a decision the reader has already answered on — which is AC-6's *neither layer
- * substitutes a previous gate's value* in the direction the identity test in {@link handleFail} does
- * not reach. Taking is what ends it, so each site consumes exactly what it took and no more.
+ * **A decision is carried to the first gate that PRESENTS it and no further**, so a later gate
+ * reached with nothing decided since carries nothing rather than re-presenting a decision the reader
+ * has already answered on — which is AC-6's *neither layer substitutes a previous gate's value* in
+ * the direction the identity test in {@link handleFail} does not reach. Neither site that composes a
+ * question spends one: {@link askGate} does, at the emit, because composing a question is not the
+ * same act as asking it and only the second one has a reader. See Q-0129 erratum E-7(a).
  */
 const reachedBy = (reached: GateReached | undefined): { reached?: GateReached } =>
   reached === undefined ? {} : { reached };
 
-/** Publishes one correlated question and validates the caller's out-of-band answer. */
+/**
+ * Publishes one correlated question and validates the caller's out-of-band answer.
+ *
+ * **The engine spends the decision it presents, and this is where it presents one.** Emitting the
+ * question is the act that means a reader was shown anything, and the three returns above that line
+ * — an `auto` gate, a non-locked gate under `--auto`, a `--dry` walk — are gates nobody was shown.
+ * So a decision cleared where a question is *built* would be spent on one that was never asked, and
+ * the next reader would be handed nothing. See {@link reachedBy} and Q-0129 erratum E-7(a).
+ */
 export async function askGate(request: GateQuestionEvent, context: RoutingContext): Promise<'advance' | 'retry' | 'abort'> {
   if (request.kind === 'auto' || (context.auto && request.kind !== 'human-locked')) {
     context.emit({ type: 'info', message: `gate: auto-advanced (${request.kind})` });
@@ -43,6 +52,10 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
   if (context.signal?.aborted) throw interruptedGate(request);
 
   context.emit(request);
+  // Presented, so the decision it carried is spent — and only where the slot still holds the very
+  // object this question took: a `parallel:` sibling may have replaced it while an exhaustion gate
+  // awaited its record below, and a sibling's decision is not this gate's to spend.
+  if (request.reached !== undefined && context.reached === request.reached) context.reached = undefined;
   // Typed rather than plain since Q-0040: a caller that supplied no channel is nobody being there,
   // which the run classifies `undecided`. The wording is unchanged.
   if (!context.answerGate) {
@@ -88,6 +101,13 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     // re-applying them here in the order the flow file writes them is what stops a reader being
     // shown a value chosen by scheduling. Re-applied rather than picked, so the last member that
     // decided wins and one that decided nothing displaces nobody.
+    //
+    // Why: preserved defect, see Q-0129 E-7(b) — a member that presented its own exhaustion gate has
+    // already spent its decision, and this loop restores it, so a later gate could carry one the
+    // reader has answered. Registered rather than closed: per-member evidence contradicts the slot's
+    // landed note and no criterion asks for one, which is a ticket rather than a line in a revise
+    // round. Latent while no `parallel:` member of a shipped flow declares a verdict at all, which
+    // `packages/shared/src/flow.test.ts` asserts by flow and member name.
     for (let index = 0; index < members.length; index += 1) {
       const reached = decided.get(index);
       if (reached !== undefined) context.reached = reached;
@@ -111,17 +131,12 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
 
   if (step.gate) {
     const retry = typeof step.retryTarget === 'string' ? step.retryTarget : undefined;
-    // Taken, not merely read. This gate carries the last decision the run recorded, and carrying it
-    // is what spends it: a second gate reached with nothing decided in between gets nothing rather
-    // than the decision this reader answered at the first. Nothing awaits between here and the
-    // question below, and no member of a `parallel:` group is still running — that branch returns
-    // above — so the value cleared is the value carried.
-    const reached = context.reached;
-    context.reached = undefined;
+    // Read and not taken: an author-declared gate carries the last decision the run recorded, and
+    // what SPENDS it is `askGate` emitting the question — this gate may auto-advance without one.
     const request: GateQuestionEvent = {
       type: 'gate', gateId: context.nextGateId(), kind: String(step.gate),
       reason: String(step.reason ?? step.prompt ?? `${context.flow.name}: approve to advance ticket to "${context.flow.produces}"`),
-      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(reached),
+      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(context.reached),
     };
     const answer = await askGate(request, context);
     if (answer === 'advance') return null;
@@ -151,10 +166,11 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
  * The gate it may present carries what **this** step decided and nothing else, which is the half of
  * the slot's rule that differs from an author-declared gate's: that one carries the last decision
  * the run recorded, and this one describes the refusal that reached it. What the two share is that
- * carrying a decision spends it — a traversal, which presents no question, spends nothing.
+ * **presenting** a decision spends it, which {@link askGate} does and neither of them does — so a
+ * traversal, which asks nothing, leaves the slot exactly as it found it.
  */
 export async function handleFail(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<StepResult> {
-  // Read before this function's first await, and taken only where it NAMES the step that is
+  // Read before this function's first await, and carried only where it NAMES the step that is
   // failing. Three call sites reach here and only the agent step's carries a verdict, so without
   // the identity test a script or an integrate failure would present the last verdict-declaring
   // step's decision — one an earlier gate may already have been answered on — as its own. And a
@@ -175,12 +191,6 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
     context.emit({ type: 'warn', message: `${String(step.id)}: iteration ${count}/${limit} → goto ${target}` });
     return { goto: target, counter, limit };
   }
-
-  // Past here a question is certain, so this is where the decision is spent — the traversal above
-  // presents nothing and must leave the slot alone. Only what this gate took is cleared: a sibling's
-  // decision the identity test refused is not this gate's to spend, and the slot is compared rather
-  // than assumed because a `parallel:` member may have replaced it since. See {@link reachedBy}.
-  if (reached !== undefined && context.reached === reached) context.reached = undefined;
 
   // A bound of zero authorises no unattended traversal, so the first failure arrives here and
   // "exhausted" would be a false account of it — nothing looped. The two are the same gate with the

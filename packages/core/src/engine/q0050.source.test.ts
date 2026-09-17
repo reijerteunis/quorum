@@ -245,7 +245,10 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'lifecycle.ts': ['deliberate addition'],
       'loaders.ts': ['behaviour-from-spike'],
       'prompt.ts': ['behaviour-from-spike', 'preserved defect/Q-0038'],
-      'routing.ts': ['preserved defect/AC-12', 'preserved behavior'],
+      // Q-0129 E-7(b) adds the second: the parallel group's declaration-order reconciliation
+      // restores a decision a member's own exhaustion gate has already presented. Registered here
+      // rather than closed in a revise round, which is what this row exists to make a visible act.
+      'routing.ts': ['preserved defect/AC-12', 'preserved defect/Q-0129', 'preserved behavior'],
       'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052', 'preserved defect/Q-0052'],
       'suite-output.ts': ['behaviour-from-spike', 'preserved behaviour/Q-0053'],
     };
@@ -296,7 +299,12 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
     // `preserved defect, see Q-0050 AC-10` registered a dry walk mutating the caller's ticket, and a
     // dry walk no longer does. A decrement here is the one edit this clause is designed to make
     // expensive, so it is stated with what was removed and why rather than quietly adjusted.
-    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(13)
+    // 14 since Q-0129, which ADDED one rather than moving it: `routing.ts`'s parallel reconciliation,
+    // where a member's own exhaustion gate has already presented the decision this loop restores.
+    // Re-derived from the map above rather than incremented — 6 in `composite.ts`, 2 each in
+    // `engine.ts`, `routing.ts` and `steps.ts`, 1 each in `diff.ts` and `prompt.ts` — for the reason
+    // the paragraph opens with, that a sentence which is itself a sum goes stale when it is adjusted.
+    expect(Object.values(found).flat().filter((m) => m.startsWith('preserved defect/'))).toHaveLength(14)
   });
 
   test('AC-13d: no authority line reproduces a sentence from the decisions index or the ticket body', () => {

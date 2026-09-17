@@ -520,6 +520,68 @@ describe('Q-0087 — every artifact a run can rewrite is named by what makes it 
       'requirements.yaml': 1, 'review.yaml': 1, 'solutioning.yaml': 1,
     });
   });
+
+  // Q-0129 erratum E-7(c) — the premise the registered defect at
+  // `packages/core/src/engine/routing.ts`'s parallel reconciliation rests on, as an assertion rather
+  // than a comment. That loop re-applies every member's decision once the group settles, including
+  // one a member's own exhaustion gate has already presented, and it is latent only because no
+  // `parallel:` member declares a verdict at all. A registration whose premise nothing checks is a
+  // note: the day a flow gains such a member the defect is live and nothing would go red.
+  //
+  // The clause above cannot make this claim. It counts verdicts PER FLOW, and a verdict moved from a
+  // top-level step into a parallel member of the same flow leaves that total exactly where it was.
+  describe('Q-0129 E-7(c) — no `parallel:` member of a shipped flow declares a verdict', () => {
+    /**
+     * Every `<flow>: <member id>` whose `parallel:` member declares a verdict — by name, because
+     * `flow.yaml has one` sends a reader to search a file the message could have pointed into.
+     */
+    const deciding = (name: string, steps: readonly Record<string, unknown>[]): string[] =>
+      steps.flatMap((step) => ((step.parallel ?? []) as Record<string, unknown>[])
+        .filter((member) => (member.output as Record<string, unknown> | undefined)?.verdict !== undefined)
+        .map((member) => `${name}: ${String(member.id)}`));
+
+    /** Every `parallel:` member, deciding or not — what says the clause below has a subject. */
+    const membersOf = (steps: readonly Record<string, unknown>[]): string[] =>
+      steps.flatMap((step) => ((step.parallel ?? []) as Record<string, unknown>[]).map((member) => String(member.id)));
+
+    const parsed = (): [string, Record<string, unknown>[]][] => flowFiles().map((file) => [
+      path.basename(file),
+      (flowSchema.parse(loadAsTheEngineDoes(file)).steps ?? []) as unknown as Record<string, unknown>[],
+    ]);
+
+    test('the corpus holds parallel members at all, and they are these four', () => {
+      // An identity rather than a floor: a corpus with no `parallel:` group anywhere would satisfy
+      // the clause below over nothing, and this is what refuses that — naming the members so a flow
+      // that loses its panel fails here rather than quietly emptying the subject.
+      expect(Object.fromEntries(parsed().map(([name, steps]) => [name, membersOf(steps)]))).toStrictEqual({
+        'chore.yaml': [], 'development.yaml': [], 'qa-red.yaml': [],
+        'requirements.yaml': ['pm-claude', 'pm-codex'],
+        'review.yaml': ['review-claude', 'review-codex'],
+        'solutioning.yaml': [],
+      });
+    });
+
+    test('and not one of them declares a verdict', () => {
+      expect(parsed().flatMap(([name, steps]) => deciding(name, steps))).toStrictEqual([]);
+    });
+
+    test('and the rule fires, over a flow that has one', () => {
+      // The SAME predicate the shipped flows are held to, so what is demonstrated is the guard and
+      // not a second implementation of it beside it. The fixture is a flow `flowSchema` accepts,
+      // because a shape the schema would refuse could not reach the reconciliation either.
+      const panel = flowSchema.parse({
+        name: 'panel', consumes: 'green', produces: 'reviewed',
+        steps: [{
+          parallel: [
+            { id: 'review-claude', role: 'code-reviewer', adapter: 'claude', output: { write: 'review/claude.md' } },
+            { id: 'review-codex', role: 'code-reviewer', adapter: 'codex', output: { write: 'review/codex.md', verdict: 'approve|changes-requested' } },
+          ],
+        }],
+      });
+      expect(deciding('panel.yaml', (panel.steps ?? []) as unknown as Record<string, unknown>[]))
+        .toStrictEqual(['panel.yaml: review-codex']);
+    });
+  });
 });
 
 describe('Q-0083 — the chore flow can report a refusal, and the shipped copies agree', () => {

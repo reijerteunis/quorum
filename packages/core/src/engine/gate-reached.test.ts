@@ -526,6 +526,63 @@ describe('Q-0129 AC-6 — absence is absence', () => {
     expect(gates[1]?.reached?.summary).toBe('the second look');
   });
 
+  test('a gate that auto-advanced spends nothing, so the next reader is still shown the decision', async () => {
+    // **The other half of the pair above, and the one the run-3 review found missing.** A question
+    // consumes; a gate that emitted none has shown nobody anything and must leave the decision for
+    // whoever is next. `askGate` returns above its `context.emit` for an `auto` gate, so a decision
+    // cleared where a question is BUILT would be spent here and the human gate below would carry
+    // nothing — which is why the consumption sits at the emit. See erratum E-7(a).
+    const fixture = runFixture({ run: { answerGate: aborting } });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+      { gate: 'auto', reason: 'no reader is asked here' },
+      { gate: 'human', reason: 'approve the merge' },
+    ]);
+    stubAdapter(() => ({
+      output: { summary: 'nothing to report', document: '# r\n', verdict: 'approve', findings: [] },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    // **The ordering is the proof, and it is why nothing here reads a message.** One question for
+    // two gate steps, and it is the SECOND one's — which a run that never reached the auto gate
+    // could not produce, the steps being run in order. So the clause below cannot pass over a flow
+    // whose first gate did not run, and the engine's own `gate: auto-advanced` line stays something
+    // a reader is shown rather than something a test takes a value out of (AC-2(b)).
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.map((gate) => gate.reason), 'the auto gate asked a question, or the run never reached the human one')
+      .toStrictEqual(['approve the merge']);
+    expect(gates[0]?.reached?.stepId, 'a gate nobody was shown spent the decision the next reader needed').toBe('review');
+    expect(gates[0]?.reached?.summary).toBe('nothing to report');
+  });
+
+  test('and neither does one `--auto` advanced past, the human-locked gate after it still carrying it', async () => {
+    // The same property at the second of `askGate`'s three early returns, because `--auto` is how a
+    // scripted run reaches a `human-locked` gate — the one kind it may never advance past — and that
+    // reader is owed what a reader answering by hand would have been shown.
+    const fixture = runFixture({ run: { auto: true, answerGate: aborting } });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+      { gate: 'human', reason: 'auto advances past this one' },
+      { gate: 'human-locked', reason: 'and never past this one' },
+    ]);
+    stubAdapter(() => ({
+      output: { summary: 'one small thing', document: '# r\n', verdict: 'approve', findings: ['nit: a.ts:1 the name reads oddly'] },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    // One question for two gate steps, and it is the locked one's — which is the same ordering
+    // argument as above: `--auto` passed the `human` gate without asking, and the run got here.
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.map((gate) => gate.kind), 'the `human` gate asked a question, or the run never reached the locked one')
+      .toStrictEqual(['human-locked']);
+    expect(gates[0]?.reached?.summary, 'the gate `--auto` cannot pass carried nothing').toBe('one small thing');
+    expect(gates[0]?.reached?.findings).toStrictEqual(['nit: a.ts:1 the name reads oddly']);
+  });
+
   test('a decision answered at an exhaustion gate is not presented again at the gate after it', async () => {
     // **The shape a shipped flow actually reaches**, and the reason the rule is one rule rather than
     // a clause about author-declared gates alone: `chore.yaml`'s review loop exhausts, the reader
