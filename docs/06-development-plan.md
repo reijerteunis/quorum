@@ -4064,8 +4064,48 @@ parked at p2 with its three written reopening thresholds.
   **Every figure in the body had moved and the one that matters had not**: verdict artifacts 274/71 →
   **306/73** and answers 220/148 → 235/157, all of it this session's own gates — while across **157**
   author-declared gates `retry` has been chosen **zero** times, which is what Q-0015's AC-8 rests on.
-- Q-0134 The gate screen shows the diff. *(Opened 2026-09-17 at Q-0129's requirements gate, `draft`,
-  p2, with §7 transcribed in full.)* The half split off: a review's diff on the gate screen, which
+- Q-0134 The gate screen shows the diff. *(`requirements` 2026-09-17, ready at iteration 2 at
+  fourteen criteria.)* **$22.75**. The reviewed patch is captured inside `materialiseDiff`, where the
+  value is produced, held in the daemon with a **gate-scoped lifetime** and fetched on demand from a
+  read-only route keyed on the opaque `gateId` — never carried on the event union.
+  **Its decisive measurement is one no earlier account had, and it makes AC-1 untrimmable.** Over
+  every prompt in this repository's run history — **828 prompts, 208 carrying a `## Patch (`
+  section** — **186, or 89%, name the `integration...implement` range that `chore.yaml`'s own
+  `implement` step creates**, so that range is always *deferred* and never enters `ctx.diffInputs`.
+  An implementation that reads the cache at the gate is correct on `review.yaml`, green in any test
+  written against it, and **blank on every chore run this product performs** — the route 55 of this
+  repository's tickets took. Capturing at the production site is Q-0129's siting rule at a second
+  subject.
+  **GO-1 ruled no decision entry is owed**, by the test this repository actually applies — *does any
+  landed sentence go false?* — answered at five named sites, with a precedent per limb: a read-only
+  route (Q-0119, Q-0121), bounded in-flight daemon memory (Q-0123), an out-of-band callback
+  (Q-0131, one day old).
+  **A third transport was found at the gate, measured, and refused — recorded so it is not
+  re-derived.** The bytes **are already a file**: a review step's materialised diff sits verbatim in
+  its own `prompt.txt`, delimited by a string `diff.ts:408` composes at exactly one site, **with the
+  range inside the delimiter twice** — which answers *"nothing on the wire says which range the
+  reviewer saw"* with no transport at all. It loses on one ground, and it is this repository's
+  most-recorded failure: `materialiseDiff` holds `truncated`, `limit`, the byte counts and the
+  `omitted` file list as **structured values** and renders them into a notice, so serving from the
+  prompt would read those facts back out of the rendered text — **inference where identity is
+  available**, which decision 097 refused for a different field one day earlier. **The patch bytes
+  are not the hard part; the truncation metadata is.**
+  **GO-3's contract note was written by hand**, `contracts/` not being among the chore role's roots —
+  the surface that cost Q-0129 an implement round two days earlier. It records the **counterpoint** to
+  decision 097: this evidence deliberately does *not* travel on the union while `reached` does, and
+  the reason is **size and replay rather than kind** — 200,000 B against a 214 B mean event and a
+  buffer replayed to every late subscriber, against `reached`'s measured 13 KB. Two halves of one
+  screen, opposite answers, both measured.
+  **The run corrected the ticket body and the operator's own re-measurement in three places**: the
+  gate is **two** steps after the review and not three; the diff renderer is a **precedented**
+  devDependency the architect may take, owing no second entry, where both candidates and the operator
+  treated it as heavier; and two of candidate-claude's supporting figures were re-derived and the
+  differences named rather than quietly resolved.
+  **R-2 is the sequencing fact and it was re-measured first, as the body instructs: 42 of 42
+  integration branches are contained in `main`**, so every diff range in this backlog is **0 bytes**
+  and there is nothing to show. Acceptance evidence must be a repository a test builds, and GO-5
+  requires `runs.log` to say how the range was built. *(Opened 2026-09-17 at Q-0129's requirements
+  gate with §7 transcribed in full.)* The half split off: a review's diff on the gate screen, which
   needs a **range the wire does not carry** — `review.yaml` diffs `{base}...harness/{id}/integration`
   and nothing projects it — and this workspace's **first** diff dependency, `diff2html`, `diff` and
   `jsdiff` appearing in no manifest. **Q-0128** is its neighbour: a diff served to a browser has the
