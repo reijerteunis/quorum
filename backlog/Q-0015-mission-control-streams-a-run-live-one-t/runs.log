@@ -134,3 +134,8 @@
 2026-09-17T05:52:15.240Z run=8 step=review-claude vendor=claude model=- verdict=- cost=7.887055499999998 ms=606396
 2026-09-17T05:56:23.740Z run=8 step=verdict vendor=claude model=- verdict=changes-requested cost=4.0055715 ms=248481
 2026-09-17T05:56:23.762Z run=8 regressed stage=green→red cost=11.893 tokens=8112033
+2026-09-17 stage=green by hand (no engine run) — review round 3's backward edge regressed the
+  ticket; its two majors and six nits were fixed at 3f7d122, one of them by a ruling only the
+  gate may make (errata E-11, inverting Q-0120's retry pin). `green` on its own terms:
+  the integration branch merged and its suite passes, verified forced 21/21 tasks 0 cached.
+  A development run would again have been ten no-ops. Q-0050's precedent.
