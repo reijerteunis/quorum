@@ -1,7 +1,7 @@
 ---
 id: Q-0129
 title: The gate screen shows the verdict that reached it, and the diff
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0129/integration
@@ -17,6 +17,14 @@ history:
     stage_after: draft
     at: 2026-09-17T10:16:48.145Z
     cost: 7.391
+  - stage: requirements
+    run: 2
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-17T11:47:37.998Z
+    cost: 21.035
 ---
 **M3**, and the half split off from Q-0016 at its requirements gate on 2026-09-16. The body below is
 §7 of `backlog/Q-0016-*/requirements/merged.md`, transcribed in full rather than referenced, because

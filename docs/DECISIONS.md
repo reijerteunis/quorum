@@ -188,3 +188,7 @@ edits. `packages/shared/src/docs.test.ts` fails if this page and the folder disa
 ## 2026-09-15
 
 - [The distribution set is five, and rejoins the emitting set](decisions/096-the-distribution-set-is-five-and-rejoins-the-emitting-set.md)
+
+## 2026-09-17
+
+- [A gate question carries the decision that reached it](decisions/097-a-gate-question-carries-the-decision-that-reached-it.md)
