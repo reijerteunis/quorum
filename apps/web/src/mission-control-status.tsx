@@ -137,6 +137,12 @@ function Header({ handle, snapshot, metadata, onNavigate }: {
         <p className="font-mono text-xs text-muted">
           {metadata.value.flow}
           {metadata.value.ticketId === null ? null : <> · {metadata.value.ticketId}</>}
+          {/* The daemon's own account of the run, which this screen read and then dropped. It is not
+              the connection state — that describes this browser's transport and can change without
+              changing the run — and `refusal` is the field Q-0016 added precisely so a surface would
+              stop admitting a gap with the daemon's words one field away. Review round 2, major 3. */}
+          <> · {metadata.value.state}</>
+          {metadata.value.refusal === null ? null : <> · {metadata.value.refusal.condition}</>}
         </p>
       ) : null}
       {showGateLink ? (
@@ -167,7 +173,15 @@ export function MissionControlStatus({
       <MetadataRegion metadata={metadata} onRetry={onRetryMetadata} />
       <LossRegion snapshot={snapshot} />
       <ul className="flex flex-col gap-1 text-xs text-muted" data-mission-control-disclosures>
-        {MISSION_CONTROL_DISCLOSURES.map((disclosure) => <li key={disclosure}>{disclosure}</li>)}
+        {/* The first disclosure explains that the run has no number yet and that the handle stands in
+            for it. Once a terminal event supplies one, `data-run-identity` renders the number — so
+            leaving the sentence would show the number and explain that there is none, on the screen
+            whose whole discipline is saying only what it has. The frozen contract says the same:
+            "a terminal-provided run number replaces that explanation only after it exists."
+            Review round 2, major 2. */}
+        {MISSION_CONTROL_DISCLOSURES
+          .filter((disclosure) => disclosure !== MISSION_CONTROL_DISCLOSURES[0] || terminalRunId(snapshot.events) === null)
+          .map((disclosure) => <li key={disclosure}>{disclosure}</li>)}
       </ul>
     </div>
   );

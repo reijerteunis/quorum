@@ -52,6 +52,32 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect(asked, 'the control does not re-read the metadata').toBe(1);
   });
 
+  test('a terminal-bearing snapshot renders the run number and drops the sentence saying it has none', async () => {
+    // **Both regions on ONE fixture**, which is the instrument failure behind major 2: AC-11's two
+    // clauses were each satisfied by a different snapshot — disclosures on `live`, identity on
+    // `ended` — so the contradiction between them was asserted by neither. Review round 2, major 2.
+    const terminal = { type: 'terminal', runId: 42, stageBefore: 'red', stageAfter: 'green', cost: 0, tokens: 0, status: 'completed' };
+    const view = await renderStatus(states[5]!, { snapshot: { state: states[5], events: [terminal] as never[], missedCount: null, browserDiscardedCount: null } });
+    expect(view.querySelector('[data-run-identity]')?.textContent, 'the terminal run number did not reach the identity region').toContain('42');
+    expect(view.querySelector('[data-mission-control-disclosures]')?.textContent,
+      'the screen shows the run number and, beside it, the sentence saying it has none')
+      .not.toContain(MISSION_CONTROL_DISCLOSURES[0]);
+    // …and the other four survive, so the filter removed one sentence rather than the region.
+    for (const disclosure of MISSION_CONTROL_DISCLOSURES.slice(1)) {
+      expect(view.querySelector('[data-mission-control-disclosures]')?.textContent).toContain(disclosure);
+    }
+  });
+
+  test("the daemon's own account of the run reaches the header", async () => {
+    // `state` and `refusal` were read and discarded. Connection state is this browser's transport and
+    // is a different fact; `refusal` is the field Q-0016 added so a surface would stop admitting a
+    // gap with the daemon's words one field away. Review round 2, major 3.
+    const loaded = await renderStatus(states[2]!);
+    expect(loaded.querySelector('[data-mission-control-header]')?.textContent, "the run's own state is not rendered").toContain('running');
+    const refused = await renderStatus(states[2]!, { metadata: { kind: 'loaded', fetchedAt: 'now', value: { ...run(), state: 'refused', refusal: { condition: 'no ticket T-0404 in this backlog', remedy: null } } } });
+    expect(refused.querySelector('[data-mission-control-header]')?.textContent, "the daemon's refusal condition is not rendered").toContain('T-0404');
+  });
+
   test('renders all five disclosures verbatim in order and no fabricated header placeholder', async () => {
     const view = await renderStatus(states[2]!); const region = view.querySelector('[data-mission-control-disclosures]')!; let at = -1;
     for (const disclosure of MISSION_CONTROL_DISCLOSURES) { expect(region.textContent).toContain(disclosure); const next = region.textContent!.indexOf(disclosure); expect(next).toBeGreaterThan(at); at = next; }

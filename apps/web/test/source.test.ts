@@ -57,21 +57,34 @@ const sourceFiles = (): [string, string][] => filesBelow(SOURCE);
 
 const forbiddenPersistence = ['localStorage', 'sessionStorage', 'indexedDB', `document.${'cookie'}`, 'caches'];
 
-const MESSAGE_PARSE_NEEDLES = ["'", '"', '`', '/'].flatMap((prefix) =>
-  ['cost', 'role', 'verdict'].map((field) => `${prefix}${field}${'='}`));
+// **`role=` is the only field that needed narrowing, so it is the only one narrowed.** The measured
+// collision is `backlog-board.test.ts`'s `[role="progressbar"]`, an accessibility selector that must
+// stay; `cost=` and `verdict=` occur nowhere in this corpus in any form, so requiring a delimiter
+// before them bought nothing and stopped forbidding the bare literal a concatenating parser writes.
+// Six needles rather than twelve. Review round 2, major 4 — which corrects `solution/errata.md` SE-1,
+// where this operator applied the architect's delimiter form to all three without asking which of
+// them the measurement covered.
+const MESSAGE_PARSE_NEEDLES = [
+  ...['cost', 'verdict'].map((field) => `${field}${'='}`),
+  ...["'", '"', '`', '/'].map((prefix) => `${prefix}role${'='}`),
+];
 
 describe('Q-0015 AC-6 — browser source never parses values out of human event prose', () => {
   const offenders = (files: [string, string][]): string[] => files.flatMap(([name, text]) =>
     MESSAGE_PARSE_NEEDLES.filter((needle) => text.includes(needle)).map((needle) => `${name}:${needle}`));
 
   test('the complete source corpus contains none of the twelve parsing forms', () => {
-    expect(MESSAGE_PARSE_NEEDLES).toHaveLength(12);
+    expect(MESSAGE_PARSE_NEEDLES).toHaveLength(6);
     expect(offenders(sourceFiles())).toStrictEqual([]);
   });
 
   test('the scan rejects a template parse but accepts the shipped accessibility selector', () => {
     const parsing = ['`', 'cost', '=', '$0.123', '`'].join('');
     expect(offenders([['bad.ts', parsing]])).toHaveLength(1);
+    // …and the bare form a concatenating parser writes, which the twelve-needle set had stopped
+    // rejecting for two of its three fields.
+    expect(offenders([['bare.ts', ['cost', '='].join('')]])).toHaveLength(1);
+    expect(offenders([['bare2.ts', ['verdict', '='].join('')]])).toHaveLength(1);
     const selector = ['[', 'role', '=', '"progressbar"]'].join('');
     expect(offenders([['ok.ts', selector]])).toStrictEqual([]);
   });
@@ -181,27 +194,34 @@ describe('Q-0120 AC-12/19/20 — live connection source guards', () => {
     // examined at all — which is what this package's newest run-route renders do. A render the scan
     // cannot prove is NOT a run route must supply a factory, because the cost of being wrong is the
     // outbound socket this guard exists to prevent. Review round 1, N5.
+    //
+    // **Named, so the demonstration below runs THE predicate rather than a copy.** It inlined the
+    // pre-fix expression, which left the fails-closed branch covered by nothing: replacing it with
+    // `return false` restored the hole and this file stayed green. Review round 2, major 1.
     const literalPath = /initialPath:\s*(['"`][^'"`]*['"`])/;
+    const unfactoried = (props: string, text: string): boolean => {
+      if (props.includes('socketFactory')) return false;
+      const literal = literalPath.exec(props)?.[1];
+      // A readable path is judged on its own render. An UNREADABLE one — a variable, which is how
+      // this package's newest run-route renders arrive — falls back to the file: it must supply a
+      // factory somewhere, because the helper that passes one is in the file and not in the props.
+      // Weaker than the per-render rule and stated as such.
+      return literal === undefined ? !text.includes('socketFactory') : literal.includes('/runs/');
+    };
     const offenders = sourceFiles().flatMap(([name, text]) => renders(text)
-      .filter((props) => {
-        if (props.includes('socketFactory')) return false;
-        const literal = literalPath.exec(props)?.[1];
-        // A readable path is judged on its own render. An UNREADABLE one — a variable, which is how
-        // this package's newest run-route renders arrive — falls back to the file: it must supply a
-        // factory somewhere, because the helper that passes one is in the file and not in the props.
-        // Weaker than the per-render rule and stated as such; what it buys is that a file rendering a
-        // run route with no factory anywhere in it is reported, where before it was not examined.
-        return literal === undefined ? !text.includes('socketFactory') : literal.includes('/runs/');
-      })
+      .filter((props) => unfactoried(props, text))
       .map((props) => `${name}: ${literalPath.exec(props)?.[1] ?? 'path not a literal'}`));
     expect(offenders, 'a run route is rendered with no socket factory').toStrictEqual([]);
     // It examined something, and it discriminates: a run route without a factory is reported, a
     // non-run route without one is not.
     expect(renders(`createElement(App, { initialPath: '/runs/x' })`).length, 'the scan found no render at all').toBe(1);
-    const fixture: [string, string][] = [['fixture.ts', `createElement(App, { initialPath: '/runs/x' });\ncreateElement(App, { initialPath: '/projects' });`]];
-    expect(fixture.flatMap(([name, text]) => renders(text)
-      .filter((props) => /initialPath:\s*['"`]\/runs\//.test(props) && !props.includes('socketFactory'))
-      .map(() => name))).toStrictEqual(['fixture.ts']);
+    const report = (text: string): string[] => renders(text).filter((props) => unfactoried(props, text));
+    // Three fixtures through the SAME predicate, one per branch it has, so replacing any of them
+    // with a constant turns this red rather than leaving it green. Review round 2, major 1.
+    expect(report(`createElement(App, { initialPath: '/runs/x' });`), 'a literal run route with no factory is not reported').toHaveLength(1);
+    expect(report(`createElement(App, { initialPath: '/projects' });`), 'a literal non-run route was reported').toHaveLength(0);
+    expect(report(`createElement(App, { initialPath: at });`), 'an unreadable path in a file with no factory is not reported').toHaveLength(1);
+    expect(report(`const f = socketFactory;\ncreateElement(App, { initialPath: at });`), 'an unreadable path was reported although the file supplies a factory').toHaveLength(0);
   });
 
   test('no browser persistence API occurs and the guard detects a fixture', () => {
