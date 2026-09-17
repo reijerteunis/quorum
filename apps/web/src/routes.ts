@@ -209,7 +209,7 @@ export const ROUTES: readonly Route[] = [
       "Mission control streams a run live: a run-activity lane, one trace column per parallel step, and an observed-only timeline. The header's run number, elapsed time and per-vendor cost are Q-0131's; starting or stopping a run is Q-0130's.",
   },
   // Built by Q-0016, which was cut in two at its own requirements gate, and completed by Q-0129,
-  // which added what the step before the gate decided once the question carried it. What the change
+  // which added the decision that reached it once the question carried it. What the change
   // was ABOUT — the diff — is **Q-0134**'s, needing a range no route on this transport carries and
   // a renderer this workspace does not have. The sentence is kept for the board's and the ticket
   // page's reason: `screenExists` is what says the screen is built, and a row whose sentence had
@@ -219,7 +219,7 @@ export const ROUTES: readonly Route[] = [
     screen: 'Gate screen',
     ticket: 'Q-0016',
     screenExists: true,
-    waitingFor: 'The gate screen shows what a parked run is being asked, what the step before it decided, and takes the answer; the change that step was about is what Q-0134 adds.',
+    waitingFor: 'The gate screen shows what a parked run is being asked, the decision that reached it, and takes the answer; the change that decision was about is what Q-0134 adds.',
   },
   {
     path: '/runs/:handle/steps/:stepId',

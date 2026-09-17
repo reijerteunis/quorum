@@ -30,7 +30,7 @@
  * at one of those a `retry` does not repeat anything — `routing.ts:97` returns `{ abort: true }`, so
  * a control reading *send it back* would end the run.
  *
- * **It renders what the step before the gate decided, and nothing it worked out for itself.** Since
+ * **It renders the decision that reached the gate, and nothing it worked out for itself.** Since
  * Q-0129 the question carries `reached` — the deciding step's id and the three values that step
  * returned — so the screen reads a value rather than a sentence. It is rendered as **text**, whole,
  * with no cap and nothing behind a control: the largest such record in this repository's history is
@@ -87,8 +87,17 @@ export const ANSWER_LABEL: Record<GateAnswer, string> = {
   abort: 'Abort the run',
 };
 
-/** How the screen introduces what the step before this gate decided. */
-export const REACHED_HEADING = 'What the step before this gate decided';
+/**
+ * How the screen introduces the decision the question carries.
+ *
+ * It names the **deciding** step rather than the preceding one, because those are not the same step
+ * and AC-3(a) is explicit that they need not be: the engine carries the nearest verdict-declaring
+ * step's decision across intervening steps that declare none. `chore.yaml` is exactly that shape —
+ * `integrate` runs between `review` and the owner gate — so a heading claiming adjacency would
+ * misname the step at the most common gate in this repository's history. The wording is *"A gate
+ * question carries the decision that reached it"* (2026-09-17)'s own, rather than a synonym for it.
+ */
+export const REACHED_HEADING = 'The decision that reached this gate';
 
 /** How it names the step, so `runs.log`, the manifest and this screen all say one thing. */
 export const REACHED_STEP = 'Step:';
@@ -350,7 +359,9 @@ function Question({ question, busy, onAnswer }: {
 }
 
 /**
- * What the step before this gate decided, whole — or the sentence saying it decided nothing.
+ * The decision that reached this gate, whole — or the sentence saying nothing decided.
+ *
+ * The deciding step is not necessarily the preceding one: see {@link REACHED_HEADING}.
  *
  * Everything here is rendered as **text**. A summary and a reported entry are written by an agent,
  * so they are the one thing on this screen a stranger's words reach directly; React escapes what it

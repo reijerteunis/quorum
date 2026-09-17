@@ -41,3 +41,14 @@ Q-0097 lost two errata by not making and Q-0125's GO-1 made.
 2026-09-17T14:03:18.029Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 273686 — no patch at all for 14 file(s): packages/core/src/engine/routing.ts, packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
 2026-09-17T14:04:18.791Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=60761
 2026-09-17T14:04:18.801Z run=3 exhausted stage=requirements→requirements cost=0
+2026-09-17T14:07:16.271Z run=3 gate=human-locked answer=retry
+2026-09-17T14:07:16.271Z run=3 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-17T14:50:57.206Z run=3 step=implement vendor=claude model=- verdict=proceed cost=27.436136500000003 ms=2620838
+2026-09-17T14:50:57.250Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 284931 — no patch at all for 15 file(s): packages/core/src/engine/q0050.source.test.ts, packages/core/src/engine/routing.ts, packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T14:51:43.421Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=46168
+2026-09-17T14:51:43.432Z run=3 exhausted stage=requirements→requirements cost=0
+2026-09-17T14:52:15.448Z run=3 gate=human-locked answer=advance
+2026-09-17T14:54:05.330Z run=3 step=integrate merged=1/1 tests=ok
+2026-09-17T14:54:38.541Z run=3 gate=human answer=advance
+2026-09-17T14:54:39.881Z run=3 removed-worktrees=2 kept=0
+2026-09-17T14:54:39.882Z run=3 completed stage=requirements→reviewed cost=144.533 tokens=231737493

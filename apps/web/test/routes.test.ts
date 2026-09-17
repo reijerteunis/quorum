@@ -174,8 +174,16 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/diffs/);
     expect(route.waitingFor, 'the row still routes the decision to the ticket that has landed it')
       .not.toMatch(/Q-0129/);
-    expect(route.waitingFor, 'the row does not say the screen renders what the step decided')
-      .toMatch(/what the step before it decided/);
+    // Keyed on the landed entry's own noun rather than on a transcribed sentence. The clause read
+    // `/what the step before it decided/` until the hand repair after this ticket's exhaustion gate,
+    // which is two defects in one line: it pinned a WORDING where the criterion is about a
+    // PROPERTY, so an honest rephrasing turned it red — and the wording it pinned was the one the
+    // review found wrong, because the deciding step is not the preceding one. It also forbids the
+    // retired claim, so the sentence cannot drift back.
+    expect(route.waitingFor, 'the row does not say the screen renders the decision that reached the gate')
+      .toMatch(/decision that reached it/);
+    expect(route.waitingFor, 'the row claims the deciding step was the one immediately before the gate')
+      .not.toMatch(/step before/);
     expect(route.waitingFor, 'the row does not name what the rest of the screen waits for')
       .toContain('Q-0134');
   });

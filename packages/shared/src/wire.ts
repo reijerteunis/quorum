@@ -128,7 +128,7 @@ export const wireRunStateSchema: z.ZodType<WireRunState> = z.enum(WIRE_RUN_STATE
  * **And what it carries is what a question carries, which is not a list this sentence may keep.**
  * It said `kind`, `reason` and `retry` were *"the whole of what a gate screen can honestly render"*
  * until Q-0129, and that was a count of the question's own fields written down a second time: the
- * question gained `reached`, the decision the step before the gate returned, and this shape gained
+ * question gained `reached`, the decision that reached the gate, and this shape gained
  * it with no edit here because the element IS {@link GateQuestionEvent}. The pass-through is the
  * property; an enumeration beside it is a register free to go stale in silence, which is what that
  * clause did the day the union widened. See *"A gate question carries the decision that reached

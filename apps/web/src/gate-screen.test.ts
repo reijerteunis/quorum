@@ -27,7 +27,7 @@ import { runDetailPath, runGatePath } from './daemon-endpoints.js';
 import {
   ANSWER_LABEL, ANSWERED_PREFIX, answersOffered, GATE_GONE, GATE_GONE_CODE, GATE_HEADING,
   GATE_SUBJECT_TEXT, GATE_SUBJECTS, gateSubjectOf, GateScreen, groupReported, LOOK_AGAIN_LABEL,
-  NO_FINDINGS, NO_REACHED, NO_RETRY_TARGET, NO_SUMMARY, REFRESH_LABEL, REFUSAL_PREFIX,
+  NO_FINDINGS, NO_REACHED, NO_RETRY_TARGET, NO_SUMMARY, REACHED_HEADING, REFRESH_LABEL, REFUSAL_PREFIX,
   REFUSAL_UNSTATED, REPORT_GROUPS, RETURNS_TO, RETRY_LABEL,
 } from './gate-screen.js';
 import { GATE_ROUTE } from './routes.js';
@@ -795,6 +795,37 @@ describe('Q-0129 AC-9 — grouped only by the register `@quorum/shared` declares
       runs: [run({ gates: [question({ reached: { stepId: 'review', verdict: 'approve', summary: '', findings: [] } })] })],
     });
     expect(textOf(container), 'an empty summary rendered as an empty region').toContain(NO_SUMMARY);
+  });
+});
+
+describe("Q-0129 AC-3(a) — the heading names the DECIDING step, never the preceding one", () => {
+  // Review round 4's surviving major, repaired by hand after the exhaustion gate on Q-0073's and
+  // Q-0080's precedent. `chore.yaml` runs `implement` (verdict), `review` (verdict), `integrate`
+  // (none), then the owner gate — so at the most common gate in this repository's history the step
+  // that DECIDED is `review` and the step BEFORE is `integrate`. A heading claiming adjacency names
+  // the wrong one, and nothing in this file could have caught it: every earlier fixture puts the
+  // deciding step immediately before the gate, where the two readings coincide.
+  //
+  // Asserted over the heading's own words rather than over a rendering, because the defect was a
+  // sentence. The needles are the adjacency claims; each is a phrase the retired heading contained.
+  test('it claims no adjacency, in any of the spellings the retired heading used', () => {
+    for (const claim of ['step before', 'previous step', 'preceding step', 'last step', 'step prior']) {
+      expect(REACHED_HEADING.toLowerCase(), `the heading claims the deciding step was adjacent: "${claim}"`)
+        .not.toContain(claim);
+    }
+    // Anti-vacuity: a heading that said nothing at all would pass every clause above.
+    expect(REACHED_HEADING.toLowerCase(), 'the heading no longer names a decision at all').toContain('decision');
+  });
+
+  test('the deciding step it names is the one the question carries, across an intervening step', async () => {
+    // The shape the review named: `review` decided, `integrate` ran after it and decided nothing,
+    // and the gate carries `review`. The screen must name `review` and must not name `integrate`.
+    const { container } = await screen({
+      runs: [run({ gates: [question({ reached: { stepId: 'review', verdict: 'approve', summary: 's', findings: [] } })] })],
+    });
+    const text = textOf(container);
+    expect(text, 'the screen did not name the step whose decision the question carries').toContain('review');
+    expect(text, 'the screen named a step the question does not carry').not.toContain('integrate');
   });
 });
 
