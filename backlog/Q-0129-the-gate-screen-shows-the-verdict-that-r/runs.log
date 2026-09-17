@@ -8,3 +8,16 @@
 2026-09-17T11:46:37.106Z run=2 step=head-of-product vendor=claude model=opus verdict=ready cost=5.875503000000001 ms=825213
 2026-09-17T11:47:37.991Z run=2 gate=human answer=advance
 2026-09-17T11:47:38.001Z run=2 completed stage=draft→requirements cost=21.035 tokens=23520526
+
+2026-09-17 requirements gate answered `advance`. $21.04, ready on the first pass, twelve criteria.
+
+GO-1 discharged before any further run: `docs/decisions/097-a-gate-question-carries-the-decision-
+that-reached-it.md`, indexed under 2026-09-17. GO-2 ratified (`reached`). GO-3 ratified — the split
+stands and **Q-0134** is the successor, opened at this gate with §7 transcribed in full (GO-4).
+Rulings in `requirements/errata.md` E-1 to E-5. `harness/Q-0129/integration` cut at 86fa771.
+
+Route: **chore**, on Q-0016's precedent — its sibling half, same surface, same size. The full
+seven-stage route is refused here for a measured reason rather than for cost: a fan-out requires
+every file a red test needs to be owned by exactly one task (2026-08-23), and this change is one
+schema field with its engine producer and its browser consumer, which must land together. Splitting
+them across tasks would put the field in one worktree and the code that reads it in another.
