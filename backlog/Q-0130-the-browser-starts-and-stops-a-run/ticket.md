@@ -65,3 +65,19 @@ do not re-derive it from Q-0016's comment, which was written when this app could
 
 Also here: the race between a stop and a run finishing — the client renders the daemon's refusal and
 never infers completion from an attempted mutation.
+
+---
+
+*Re-measured against the tree on 2026-09-17, before the requirements run, because three consecutive
+tickets had their bodies refuted by their own run. **Nine claims checked and all nine hold**, across
+a shipped Q-0015 that edited three of the files this body names: `host.start` still has exactly one
+production caller; `apps/web/src`'s only non-GET is still `daemon-client.ts:232`, the gate answer;
+the shell's Run flow control is still disabled; `apps/web` still declares `@quorum/shared` alone;
+`POST /runs/:id/stop` and `runGatePath` are still there; `WRITE_RULES` is still six needles with
+`daemon-client.ts` and `daemon-endpoints.ts` the only exemptions and all three anti-vacuity clauses
+present — `writeOffenders(false)`, the permitted set, and `'/stop'`'s `toBeNull()` under "stopping a
+run became permitted"; the board still refuses the brief's button for the two-flows reason; and
+`chore` and `solutioning` still both consume `requirements`. Nothing is corrected because nothing
+was wrong. Recorded because it is the first body in this stretch to survive the check, and the
+difference is visible: it was written by the flow at a gate from a merged requirement rather than by
+the operator from the plan.*
