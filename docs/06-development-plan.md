@@ -4071,7 +4071,66 @@ parked at p2 with its three written reopening thresholds.
   `jsdiff` appearing in no manifest. **Q-0128** is its neighbour: a diff served to a browser has the
   same truncation question a diff handed to a reviewer has, and answering it twice is how the two
   drift.
-- Q-0131 The mission control header's measured values. *(`requirements` 2026-09-17, ready at
+- Q-0131 The mission control header's measured values. *(`reviewed` and `main:contained`
+  2026-09-17.)* **$100.94 across two runs** — $22.26 requirements, ready at iteration 2 and **cut in
+  two there**, and $78.68 chore across three implement rounds and three reviews ending at a review
+  exhaustion gate answered `advance`. 996 insertions across 21 files. **Mission control shows the run
+  number while the run is running**, where three screens had been showing a handle since Q-0015.
+  **Its ruling is a decision NOT to write a decision entry, and the measurement is what makes it
+  one.** Two transports were measured rather than weighed in the abstract. A new `start` member on
+  the event union is in-band and mirrors `terminal` — and makes **three landed sentences false**,
+  `docs/GLOSSARY.md`'s **Event** term, `packages/shared/src/events.ts`'s header and
+  `packages/server/src/host.ts`'s `runId` JSDoc, each saying only the terminal event carries run
+  identity — so it owes an entry. Supplying the number **out of band**, through an option on
+  `runFlow` beside `answerGate`, leaves all three true **verbatim**, because every one is about *an
+  event* and a callback is not one. Ratified on that, re-derived at the gate rather than relayed, and
+  recorded in AC-1's own JSDoc on Q-0108's precedent.
+  **Decision 097 is explicitly not authority for it, one day after it landed.** That entry rules a
+  value onto the stream **because its producer already writes it there** — `steps.ts` computes the
+  verdict. The run number's producer is `nextRunId`, which writes to `runs.log` and the run directory
+  and never to the stream. Answering the second from the shape of the first would have been reasoning
+  from a precedent instead of from a measurement.
+  **E-1 priced the out-of-band supply at one read's latency and the demonstration came out better**:
+  `runId` is on the `POST /runs` response itself, so there is no later read to wait for. Recorded as
+  an estimate beaten rather than left standing.
+  **The review loop is this ticket's transferable finding, and it is Q-0129's shape at a second
+  site**: three rounds, four majors, **every one about the same guard**, with the subject unmoved
+  after round 1. Round 1 was right — the clause exempted two files so its own fixture could carry the
+  forbidden literal, turning a corpus-wide prohibition into a register of exceptions. Rounds 2 and 3
+  each demanded a strictly stronger *instrument* against a corpus containing **no extraction of any
+  form**. **Erratum E-6 refused round 3's first major** under *"a criterion's `Test:` clause bounds
+  the instrument: a reviewer may find the instrument fails the job that clause gives it, and may not
+  raise the job"* — sixth site — and on the harder ground that its recommended remedy, a type-aware
+  lint rule, **contradicts a landed entry**: *"Type-aware linting is on for exactly one rule"*
+  (2026-08-27) names a decision and a second rule is one no step on this route may write.
+  **Its second major was accepted as a trade rather than reverted, which is the more interesting
+  half.** Chasing the instrument, round 3 banned `Number`, `parseInt` and `parseFloat` outright under
+  `apps/web/src` — wider than AC-6's words, which are about event prose. The reviewer read a
+  deliberate trade as an accident: anchoring on the **coercion** rather than on the operand is what
+  survives a renamed message and an assembled literal, and its cost was measured at **zero
+  occurrences** of all three in the corpus, tests included. So it stands — **and what the finding
+  earned is the exit condition, written into the failure message a future developer actually reads**,
+  not only into the JSDoc above it. Demonstrated by running a probe file through the guard and
+  transcribing what it printed: *narrow this clause deliberately rather than overriding it*. A
+  constraint wider than its criterion has to say so where it fires.
+  **GO-2's contract note was written by hand at the gate**, `contracts/` not being among the chore
+  role's fourteen roots — the surface that cost Q-0129 an implement round hours earlier. It moves two
+  clauses of `contracts/Q-0015/mission-control.contract.md`: *five* absent capabilities becomes
+  **four**, and the run number's source. **The second is recorded as a removed premise rather than a
+  contradiction** — *"read from the terminal event in the socket snapshot"* described the only source
+  that existed when it was written, and was not wrong; its subject changed.
+  **GO-3 was discharged by running the product and transcribing it**: a real daemon, a run started
+  **through the daemon** because a `quorum run` is a process the host can never see (Q-0121), and
+  mission control open in Chrome **while the run was running** showing `Run 1 · requirements ·
+  Q-0136 · running` — with the disclosure list down to **four** entries, the run number's retired,
+  and the same `1` cross-checked in the ticket's `runs.log` and in `.quorum/runs/Q-0136-1`. One thing
+  went off script and is recorded rather than tidied: the closing `abort` answered `404 no-such-gate`
+  because the gate id was guessed rather than read.
+  **GO-4 found nothing to do, and that is itself the measurement**: all three reviews were handed the
+  whole diff, the first ticket in this stretch not truncated at all, against Q-0129's four rounds
+  which all were. The difference is change size, which is what **Q-0128**'s evidence says the cap
+  tracks. Verified forced in both environment rows, 7/7 tasks 0 cached in each.
+  *(The requirements gate's own record follows.)* *(`requirements` 2026-09-17, ready at
   iteration 2 and **cut in two there**, with **Q-0135** taking elapsed time and the cost split.)*
   **$22.26**. It keeps AC-1 to AC-7: the run number, which is `null` for the whole life of a live run
   and arrives only on the terminal event, so three screens have been showing a handle where the brief
