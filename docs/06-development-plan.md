@@ -4064,8 +4064,61 @@ parked at p2 with its three written reopening thresholds.
   **Every figure in the body had moved and the one that matters had not**: verdict artifacts 274/71 →
   **306/73** and answers 220/148 → 235/157, all of it this session's own gates — while across **157**
   author-declared gates `retry` has been chosen **zero** times, which is what Q-0015's AC-8 rests on.
-- Q-0134 The gate screen shows the diff. *(`requirements` 2026-09-17, ready at iteration 2 at
-  fourteen criteria.)* **$22.75**. The reviewed patch is captured inside `materialiseDiff`, where the
+- Q-0134 The gate screen shows the diff. *(`reviewed` and `main:contained` 2026-09-18.)*
+  **$206.40 across two runs** — $22.75 requirements, ready at iteration 2 at fourteen criteria, and
+  $183.65 chore across three implement rounds and three reviews, converging **1 major → 1 major →
+  approve**. The reviewed patch is captured inside `materialiseDiff`, held in the daemon with a
+  gate-scoped lifetime keyed on the opaque `gateId`, and fetched on demand from a read-only route —
+  never carried on the event union. **Its biggest open question answered itself cheaply: no diff
+  dependency was added at all**, the renderer being 234 hand-written lines, and the served bundle
+  grew **1.5%**, 352,894 → 358,148 B of JavaScript.
+  **Round 1 cost $150.20 across 81 minutes — the most expensive implement round in this project** —
+  and both review majors were the same shape as Q-0129's: evidence in a mutable slot, overwritten by
+  a later producer, then not cleared on the refusal path.
+  **What this ticket is worth recording for is that GO-5 caught a shipped defect three cross-vendor
+  reviews had approved.** The obligation was written to be unfakeable after Q-0016's equivalent was
+  reported discharged without being performed; here it earned its existence outright. Run at a real
+  gate, the screen said *"the step whose decision reached this gate was given no diff"* about a step
+  whose truncated diff `runs.log` records on the line above. **`steps.ts` builds `promptContext` as
+  an explicit literal narrowing the run context field by field, and did not forward `reportDiff`** —
+  optional on `DiffContext`, so its absence typechecks, lints and passes every suite. The run-level
+  preflight path kept working; the **step-time** path captured nothing, which is **186 of 208
+  materialisations and every chore run** — verbatim the blindness `diff.ts`'s own capture comment
+  describes and AC-1 exists to forbid, **reproduced one layer up in a different file**. Fixed by
+  hand after the gate, pinned, and shown red by mutation.
+  **The guard written to pin it was first satisfied by its own explanatory comment** — the needle
+  matched `reportDiff` anywhere in the literal and the comment above the forwarded field contains
+  that word, so deleting the field left the check green. Caught by mutation rather than by reading,
+  which is the class this ticket kept finding, committed inside the fix for it.
+  **GO-4's hand pass earned itself too.** All three reviews were truncated on the **same 13 files** —
+  73.6%, 71.2%, 69.5% — including the new shared shape and the whole daemon route, 87,100 bytes the
+  panel never saw. Reviewed cross-vendor by hand: one finding **confirmed**, `diffEvidenceSchema`
+  declaring `truncated`, `kept` and `total` independently while the docblock four lines above said
+  they *"cannot disagree"*, so `{ truncated: false, kept: 10, total: 20 }` parsed; one **refuted**,
+  that `evidenceFor` leaks across runs, which it does not — it keys by `(handle, gateId)` and the
+  contract defines `gateId` as unique *within one run*.
+  **A measured limitation is recorded as a ticket rather than in this entry: Q-0136.** On
+  `review.yaml` the gate shows no diff, and that is the implementation matching AC-2 rather than a
+  bug — the deciding step is `verdict`, which reads none by design (*"Judge the reviews, not the code
+  diff"*), while the two panel members read the diff and declare no verdict. AC-2's model holds where
+  one step does both, which is `chore` and 89% of this history, and yields nothing on the flow named
+  for reviewing.
+  **GO-1 ruled no decision entry is owed**, by the test this repository applies — *does any landed
+  sentence go false?* — answered at five named sites, with a precedent per limb: a read-only route
+  (Q-0119, Q-0121), bounded in-flight daemon memory (Q-0123), an out-of-band callback (Q-0131).
+  **A third transport was found at the gate, measured, and refused — recorded so it is not
+  re-derived.** The bytes **are already a file**: a review step's materialised diff sits verbatim in
+  its own `prompt.txt`, delimited by a string `diff.ts` composes at exactly one site, **with the
+  range inside the delimiter twice**. It loses on one ground — `materialiseDiff` holds the
+  truncation facts as **structured values** and renders them into a notice, so serving from the
+  prompt would read them back out of the rendered text, **inference where identity is available**.
+  **The patch bytes are not the hard part; the truncation metadata is.**
+  **GO-3's contract note was written by hand**, `contracts/` not being among the chore role's roots.
+  It records the **counterpoint** to decision 097: this evidence deliberately does *not* travel on
+  the union while `reached` does, and the reason is **size and replay rather than kind**.
+  **R-2 was re-measured first as the body instructs — 42 of 42 integration branches contained in
+  `main`** — so the demonstration's range had to be built, and `runs.log` records how. *(Its
+  requirements-gate record follows.)* **$22.75**. The reviewed patch is captured inside `materialiseDiff`, where the
   value is produced, held in the daemon with a **gate-scoped lifetime** and fetched on demand from a
   read-only route keyed on the opaque `gateId` — never carried on the event union.
   **Its decisive measurement is one no earlier account had, and it makes AC-1 untrimmable.** Over
@@ -4226,6 +4279,17 @@ parked at p2 with its three written reopening thresholds.
   `docs/05-design-prompt.md` screen 5 names and the wire does not carry, each needing a different
   answer. **To be weighed with Q-0129**, whose verdict card is the same problem on a different field:
   a structured value that crosses only inside a sentence composed for a human.
+- Q-0136 A review panel's diff reaches no gate, because the deciding step is not the one that read
+  it. *(Opened 2026-09-18 at Q-0134's close, `draft`, p2, from what its GO-5 demonstration measured.)*
+  On `review.yaml` the gate screen shows no diff: the deciding step is `verdict`, whose input is the
+  panel's two reports and whose own instruction reads *"Judge the reviews, not the code diff"*, while
+  `review-claude` and `review-codex` read the diff and declare no verdict. **Not Q-0134's defect** —
+  that implementation matches its criterion, and the criterion's model is what is too narrow, because
+  it was measured against the flow where the two roles coincide. The hard part is not the plumbing:
+  the panel is **two** members reading the **same** range, so *the panel's diff* is well defined by
+  range and ambiguous by step, and Q-0129 measured that **no shipped flow declares a verdict on a
+  `parallel:` member** — so any rule keyed on *the member that decided* has no subject today.
+  Ruling that the screen should say why it has none here costs nothing and may be the honest answer.
 - Q-0132 Three flows cannot read a gate ruling. *(Opened 2026-09-16 at Q-0015's **solutioning**
   exhaustion gate, `draft`, p2 — found when a ruling that had to reach the architect had nowhere in
   the flow to go.)* Measured by what each flow reads rather than by a filename: `chore` reads
