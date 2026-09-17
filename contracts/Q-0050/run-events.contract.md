@@ -46,6 +46,18 @@ type RunTerminalEvent =
     });
 ```
 
+**And the evidence a reviewer was given deliberately does NOT travel here, which Q-0134 rules.** The
+gate screen renders the reviewed patch, and the patch is fetched on demand from a read-only daemon
+route keyed on the `gateId` this contract already defines as opaque — never carried on the question
+and never in any retained event. Two facts decide it and both are measurements rather than taste: a
+materialised diff is capped at `repo.max_diff_bytes`, **200,000** by default, against a **214 B**
+mean event, so a question carrying one is ~1,000x the mean and enters a broadcast buffer that is
+replayed to every late subscriber; and `reached`'s own snapshot, which *does* travel here, was
+measured at **13 KB** at its largest. **So the two halves of one screen take opposite answers, and
+the reason is size and replay rather than kind** — which is why this note sits beside the one above
+rather than superseding it. Nothing in the union changes, no member is added, and the *"no timestamp,
+no sequence number, no run id"* rule is untouched.
+
 `GateQuestionEvent` gained one optional field, `reached`, by Q-0129 — superseded by *"A gate
 question carries the decision that reached it"* (2026-09-17). It is whole or absent, never partly
 present, and carries the deciding step's id with the `verdict`, `findings` and `summary` that step

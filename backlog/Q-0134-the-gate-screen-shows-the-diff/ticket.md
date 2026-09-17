@@ -1,14 +1,23 @@
 ---
 id: Q-0134
 title: The gate screen shows the diff
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0134/integration
 priority: p2
 created: 2026-09-17
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-17T21:09:51.080Z
+    cost: 22.752
 ---
 The half split from Q-0129: a review's diff rendered on the gate screen, needing a range the wire does not carry and this workspace's first diff dependency.
 
