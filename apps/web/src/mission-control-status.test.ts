@@ -52,13 +52,22 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect(asked, 'the control does not re-read the metadata').toBe(1);
   });
 
-  test('a terminal-bearing snapshot renders the run number and drops the sentence saying it has none', async () => {
+  test('Q-0131 AC-4/AC-5 — a loaded number reaches the header and drops the sentence saying it has none', async () => {
     // **Both regions on ONE fixture**, which is the instrument failure behind major 2: AC-11's two
     // clauses were each satisfied by a different snapshot — disclosures on `live`, identity on
     // `ended` — so the contradiction between them was asserted by neither. Review round 2, major 2.
+    //
+    // **Re-aimed at the metadata read by Q-0131**, and the snapshot is what makes the re-aim
+    // checkable rather than a rename: it carries a terminal event with a DIFFERENT number, so a
+    // screen that still read the socket would render 42 and fail here. The value under test is 7.
     const terminal = { type: 'terminal', runId: 42, stageBefore: 'red', stageAfter: 'green', cost: 0, tokens: 0, status: 'completed' };
-    const view = await renderStatus(states[5]!, { snapshot: { state: states[5], events: [terminal] as never[], missedCount: null, browserDiscardedCount: null } });
-    expect(view.querySelector('[data-run-identity]')?.textContent, 'the terminal run number did not reach the identity region').toContain('42');
+    const view = await renderStatus(states[5]!, {
+      metadata: { kind: 'loaded', value: run(0, 7), fetchedAt: 'now' },
+      snapshot: { state: states[5], events: [terminal] as never[], missedCount: null, browserDiscardedCount: null },
+    });
+    const identity = view.querySelector('[data-run-identity]')?.textContent;
+    expect(identity, 'the loaded run number did not reach the identity region').toContain('7');
+    expect(identity, 'the number came from the socket snapshot rather than from the metadata read').not.toContain('42');
     expect(view.querySelector('[data-mission-control-disclosures]')?.textContent,
       'the screen shows the run number and, beside it, the sentence saying it has none')
       .not.toContain(MISSION_CONTROL_DISCLOSURES[0]);
@@ -79,15 +88,44 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
   });
 
   test('renders all five disclosures verbatim in order and no fabricated header placeholder', async () => {
-    const view = await renderStatus(states[2]!); const region = view.querySelector('[data-mission-control-disclosures]')!; let at = -1;
+    // **Q-0131 AC-5: the count is asserted as well as the contents.** The first sentence is now
+    // rendered conditionally, and a disclosure quietly leaving the array is exactly what a loop
+    // over the array cannot see — it would iterate four and report five renderings of four.
+    expect(MISSION_CONTROL_DISCLOSURES, 'a disclosure left the array without anyone deciding to').toHaveLength(5);
+    const view = await renderStatus(states[2]!, { metadata: { kind: 'loaded', value: run(0, null), fetchedAt: 'now' } }); const region = view.querySelector('[data-mission-control-disclosures]')!; let at = -1;
     for (const disclosure of MISSION_CONTROL_DISCLOSURES) { expect(region.textContent).toContain(disclosure); const next = region.textContent!.indexOf(disclosure); expect(next).toBeGreaterThan(at); at = next; }
     expect(view.querySelector('[data-mission-control-header]')?.textContent).not.toMatch(/—|\$|0:00|n\/a/);
   });
 
-  test('uses the handle until a terminal event supplies the run number, ignoring metadata runId', async () => {
-    const metadataNumber = await renderStatus(states[2]!, { metadata: { kind: 'loaded', value: run(0, 99), fetchedAt: 'now' } }); expect(metadataNumber.querySelector('[data-run-identity]')?.textContent).toContain('h'); expect(metadataNumber.querySelector('[data-run-identity]')?.textContent).not.toContain('99');
-    const terminal = { type: 'terminal' as const, runId: 42, stageBefore: 'a', stageAfter: 'b', cost: 0, tokens: 0, status: 'completed' as const };
-    const ended = await renderStatus(states[5]!, { snapshot: { state: states[5], events: [terminal], missedCount: null, browserDiscardedCount: null } }); expect(ended.querySelector('[data-run-identity]')?.textContent).toContain('42');
+  test('Q-0131 AC-4 — the handle stands in only where no number has been loaded', async () => {
+    // **The inverse of what this clause asserted until Q-0131**, and it is written as both branches
+    // so that deleting either fails: the assertion it replaced said a metadata number must be
+    // IGNORED, which was right while a live run's `runId` was always `null` there and is the
+    // premise `core` removed by reporting its number at run start.
+    const loaded = await renderStatus(states[2]!, { metadata: { kind: 'loaded', value: run(0, 99), fetchedAt: 'now' } });
+    expect(loaded.querySelector('[data-run-identity]')?.textContent, 'a loaded number was not rendered').toContain('99');
+    const none = await renderStatus(states[2]!, { metadata: { kind: 'loaded', value: run(0, null), fetchedAt: 'now' } });
+    expect(none.querySelector('[data-run-identity]')?.textContent, 'a row carrying no number did not fall back to the handle').toContain('h');
+    // …and a read that has not resolved, and one that failed, are the two states that still have no
+    // number to render: a fabricated one is what `04-architecture.md` forbids, and this is where a
+    // later change would reach for the socket to invent one.
+    // The path is assembled rather than written, which is this suite's existing rule: `routes.test.ts`
+    // holds every route-path literal a component carries against the register, and a daemon endpoint
+    // is not a route of this app.
+    const metadataPath = ['', 'runs', 'h'].join('/');
+    for (const metadata of [{ kind: 'in-flight' as const, path: metadataPath }, { kind: 'unreachable' as const, path: metadataPath }]) {
+      const terminal = { type: 'terminal' as const, runId: 42, stageBefore: 'a', stageAfter: 'b', cost: 0, tokens: 0, status: 'completed' as const };
+      const view = await renderStatus(states[5]!, { metadata, snapshot: { state: states[5], events: [terminal], missedCount: null, browserDiscardedCount: null } });
+      const identity = view.querySelector('[data-run-identity]')?.textContent;
+      expect(identity, `a ${metadata.kind} read did not fall back to the handle`).toContain('h');
+      expect(identity, `a ${metadata.kind} read took a number off the socket`).not.toContain('42');
+      // …and the failed read still renders its own account rather than a blank region.
+      expect(view.textContent?.trim(), `a ${metadata.kind} read rendered nothing`).not.toBe('');
+      // …with the sentence saying the number has not been read, which is the state it now names.
+      expect(view.querySelector('[data-mission-control-disclosures]')?.textContent,
+        `a ${metadata.kind} read dropped the sentence explaining the missing number`)
+        .toContain(MISSION_CONTROL_DISCLOSURES[0]);
+    }
   });
 
   test('derives the gate link only from loaded pendingGates, even with no gate event retained', async () => {

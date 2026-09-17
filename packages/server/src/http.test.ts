@@ -281,10 +281,17 @@ describe('Q-0121 AC-4 — the listing carries the runs this host can back, and d
     // the handle the listing left out, which is what AC-5 is about.
     expect((await app.request(`/runs/${refused.run.handle}`)).status, 'the run the listing excluded was reported absent by the lookup').toBe(200);
 
-    // Nothing is cached: the same handle is `ended` once the run finishes, with the three identity
-    // fields unchanged and `runId` moving from null to core's number.
+    // Nothing is cached: the same handle is `ended` once the run finishes, with the four identity
+    // fields — `runId` among them since Q-0131 — unchanged across the two reads.
+    //
+    // **`state` is what moves now, and that is a re-aim rather than a weakening.** This clause read
+    // `expect(before?.runId).toBeNull()` and its partner below watched the number arrive with the
+    // terminal event, which was a real discriminator while a live run had no number. It is no
+    // longer one: `core` reports the number at run start, so a LIVE run carries it — which is what
+    // the first assertion now says, and it fails against a transport that went back to waiting.
     const before = listed.find((run) => run.handle === live);
-    expect(before?.runId, 'a running run claimed a run number').toBeNull();
+    expect(before?.runId, 'a live run is listed with no run number').toBe(1);
+    expect(before?.state, 'the run this clause is about is not running').toBe('running');
     const gate = host.view(live)?.gates[0] as GateQuestionEvent;
     expect(host.answer(live, { gateId: gate.gateId, answer: 'advance' })).toBeNull();
     await until(() => host.view(live)?.state === 'ended', 'the gated run to end');
@@ -294,7 +301,9 @@ describe('Q-0121 AC-4 — the listing carries the runs this host can back, and d
     expect(after?.handle).toBe(before?.handle);
     expect(after?.flow).toBe(before?.flow);
     expect(after?.ticketId).toBe(before?.ticketId);
-    expect(after?.runId, "core's run number did not arrive with the terminal event").toBe(1);
+    // …and the number the run reported at its start is the number it still carries once it is over,
+    // which is one authority's value read twice rather than two values that happen to match.
+    expect(after?.runId, "the run's number changed between the two reads").toBe(before?.runId);
   });
 });
 

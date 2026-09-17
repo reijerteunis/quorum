@@ -88,6 +88,75 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
     const selector = ['[', 'role', '=', '"progressbar"]'].join('');
     expect(offenders([['ok.ts', selector]])).toStrictEqual([]);
   });
+
+  /**
+   * The run number's own parsing form, which Q-0131 added and which the six above cannot see.
+   *
+   * **`run #` is the fourth refusal of one shape, and it is the sharpest because the value really
+   * is there.** Every run's first event is an `info` whose message reads
+   * `run #<n>  flow=…  ticket=…`, so a browser that wanted a live run's number before Q-0131 had a
+   * regex away from getting one — and the number is now on `WireRun.runId` precisely so nobody
+   * writes that regex. It is refused by Q-0015's ground rule 2, by decision 097's measurement that
+   * 4 of this repository's 1,080 findings contain the join separator in their own text, and by the
+   * daemon's own host, whose `observe` names taking a run number out of a `gateId` as the second
+   * authority `minted` exists to prevent.
+   *
+   * **The literal is REGISTERED rather than banned outright, and the register is the measurement.**
+   * Three files under `src` carry `run #` today and not one of them parses anything: each is a
+   * fixture of the daemon's own `lock-held` REFUSAL CONDITION, which is a different field from an
+   * event message and is prose this app renders verbatim. A ban would have made those three the
+   * subject of a clause about parsing, so they are exempted by name and the clause below proves the
+   * exemptions forgive exactly them. What the exemption cannot hide is a parse written in one of
+   * those files, because {@link extractsFromMessage} is not exempted anywhere.
+   */
+  const RUN_NUMBER_LITERAL = ['run', ' ', '#'].join('');
+
+  /** The three sites that carry the literal, each with why it is not a parse. */
+  const LITERAL_PERMITTED: Record<string, string> = {
+    'daemon-client.test.ts': "a fixture of the daemon's lock-held refusal condition, which this app renders as prose and never reads a value out of",
+    'ticket-page.test.ts': 'the same refusal condition, as the ticket page receives it from a start that was refused',
+  };
+
+  /**
+   * Any expression taking a value out of an event's `message`, which no file may do.
+   *
+   * **Every gap is `[ \t]` and never `\s`, and that is a correction rather than a style.** `\s`
+   * matches a newline, so the first draft's third needle read a comment ending in a full stop,
+   * crossed the blank line after it, and matched vitest's own `test('… a non-string message never
+   * reaches JSON', …)` — reporting `frame-parser.test.ts`, which parses no message and never did.
+   * A guard that reports a file doing nothing of the kind is one a reader learns to override.
+   */
+  const extractsFromMessage = (text: string): boolean =>
+    /\bmessage[ \t]*\.[ \t]*(?:match|split|slice|substring|substr|replace|replaceAll|indexOf|lastIndexOf|search|charAt|exec)[ \t]*\(/.test(text)
+    || /\b(?:Number|parseInt|parseFloat)[ \t]*\([^)\n]*\bmessage\b/.test(text)
+    || /\.[ \t]*(?:exec|test)[ \t]*\([^)\n]*\bmessage\b/.test(text);
+
+  test('Q-0131 AC-6 — no file under src parses a run number out of the narration that carries one', () => {
+    const named = (exempt: boolean): string[] => sourceFiles()
+      .filter(([name, text]) => text.includes(RUN_NUMBER_LITERAL) && !(exempt && name in LITERAL_PERMITTED))
+      .map(([name]) => name);
+    expect(named(true), 'a file under src names the run-number literal').toStrictEqual([]);
+    // The exemptions forgive exactly the sites measured, so an emptiness above is a narrowing and
+    // not a register that excuses everything.
+    expect(named(false).sort(), 'the exemptions forgive something other than the sites they name')
+      .toStrictEqual(Object.keys(LITERAL_PERMITTED).sort());
+    // …and the half a file-level exemption cannot carry: no file extracts from a message at all,
+    // exemptions or not, so a parse written inside an exempted file fails here.
+    expect(sourceFiles().filter(([, text]) => extractsFromMessage(text)).map(([name]) => name),
+      'a file under src takes a value out of an event message').toStrictEqual([]);
+
+    // Every needle discriminates, over fixtures assembled so this file is not its own subject.
+    expect(named(false).length, 'the literal needle matches nothing at all').toBeGreaterThan(0);
+    const parse = `const n = Number(event${'.'}message${'.'}split('${RUN_NUMBER_LITERAL}')[1]);`;
+    expect(extractsFromMessage(parse), 'the extraction needle misses the parse it is written against').toBe(true);
+    expect(extractsFromMessage(`const at = /${RUN_NUMBER_LITERAL}(\\d+)/${'.'}exec(event${'.'}message);`),
+      'a regex executed against a message is not reported').toBe(true);
+    // …and the benign forms this app really does write are not reported: the trace renders a
+    // message verbatim, and a refusal condition is a string it displays.
+    expect(extractsFromMessage(`case 'info': return event${'.'}message;`), 'rendering a message was reported as parsing one').toBe(false);
+    expect(extractsFromMessage(`expect(said.refusal.condition).toBe('held by ${RUN_NUMBER_LITERAL}7');`),
+      'a refusal-condition fixture was reported as parsing a message').toBe(false);
+  });
 });
 
 // Every top-level object body of a declaration, union members INCLUDED.
@@ -1176,4 +1245,50 @@ describe('AC-10 — every request this app makes is same-origin: no absolute URL
   });
 
   const palette = (): string => fs.readFileSync(path.join(SOURCE, 'theme.css'), 'utf8');
+});
+
+describe('Q-0131 AC-7 — the browser\'s retention bound, and what would license moving it', () => {
+  /** The module the bound lives in. Absent, this clause has lost its subject. */
+  const connection = (): string => {
+    const found = sourceFiles().find(([name]) => name === 'run-connection.ts')?.[1];
+    if (found === undefined) throw new Error('there is no run connection — this check has lost its subject');
+    return found;
+  };
+
+  /**
+   * The module's text with JSDoc gutters and line breaks collapsed to single spaces.
+   *
+   * So that a needle is about what the comment SAYS rather than about where it happens to wrap: a
+   * reflow is a legitimate edit and a guard that goes red on one is a guard a reader learns to
+   * ignore, which is how a check stops being a check.
+   */
+  const flowed = (): string => connection().replace(/\n\s*\*\s?/g, ' ').replace(/\s+/g, ' ');
+
+  test('the bound is 500, and its own comment says what the evidence for it is and is not', () => {
+    // **Revisited and left alone, which is the criterion rather than an omission.** The ticket
+    // body's instruction was to move this figure only on the datum Q-0015's verification produced
+    // — and that datum, `backlog/Q-0015-*/runs.log`, records a `--dry` walk: ten events, zero
+    // missed, three concurrent columns, from a run that invoked no adapter and therefore emitted no
+    // `stdout`, which is where a real run's volume is. So the evidence exists, does not reach, and
+    // says so itself. A later change that moves the number without a real-traffic measurement
+    // fails here BY NAME rather than passing quietly, which is what a bare value pin cannot do.
+    expect(connection(), 'the bound moved').toContain('RUN_EVENT_RETENTION = 500');
+    const REQUIRED: [string, string][] = [
+      ['the dry-walk datum', ['events 10', ' · missed 0'].join('')],
+      ['that the walk was dry', ['`--dry` ', 'walk'].join('')],
+      ['why a dry walk cannot answer the question', ['emits no ', '`stdout`'].join('')],
+      ['that the real-traffic figure does not exist', ['cannot be recovered from run ', 'history'].join('')],
+    ];
+    for (const [what, needle] of REQUIRED) {
+      expect(flowed().includes(needle), `the bound's comment no longer records ${what}`).toBe(true);
+      // Each needle has a subject, so an assertion above is a reading rather than a predicate that
+      // matches anything.
+      expect(`/** ${needle} */`.includes(needle), `the needle for ${what} matches nothing`).toBe(true);
+      expect('a comment that records none of this'.includes(needle),
+        `the needle for ${what} matches text that does not contain it`).toBe(false);
+    }
+    // …and the value pin discriminates: the same reading over a moved bound reports it.
+    expect('export const RUN_EVENT_RETENTION = 1000;'.includes('RUN_EVENT_RETENTION = 500'),
+      'the value needle is satisfied by a bound that moved').toBe(false);
+  });
 });

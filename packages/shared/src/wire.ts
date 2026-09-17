@@ -105,8 +105,11 @@ export const wireRunStateSchema: z.ZodType<WireRunState> = z.enum(WIRE_RUN_STATE
  * One run, as the wire reports it — the shape a start, a listing and a lookup all answer with.
  *
  * `handle` is the daemon's own name for the run: opaque, and what `:id` names in every route that
- * takes one. `runId` is `core`'s own number and is `null` until the terminal event carries it,
- * which is a fact about the engine rather than about the transport.
+ * takes one. `runId` is `core`'s own number, reported out of band at run start and `null` only
+ * before a run is under way — a fact about the engine rather than about the transport, and one
+ * this shape did not change to carry: the field has been `number | null` since Q-0121. Q-0131
+ * replaced a sentence here that dated the number's arrival to the end of the run, which was true of
+ * the engine at the time and is a claim the wire was never the right place to make.
  *
  * **`ticketId` is deliberately not named after the field it narrows** (Q-0121 GO-3). The daemon's
  * own view of a run carries a whole ticket record; a wire field that narrows one to an id may not

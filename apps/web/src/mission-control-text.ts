@@ -22,9 +22,17 @@ export const STEP_DISPOSITION_TEXT = {
   'started-with-no-end-reported': 'The run ended without reporting an end for this step.',
 } as const;
 
-/** Exact disclosures for values and structures absent from the live contract. */
+/**
+ * Exact disclosures for values and structures absent from the live contract.
+ *
+ * **The first one changed subject at Q-0131 rather than retiring.** It said *"The run's number is
+ * not on the wire until the run ends"*, which stopped being true the day `core` began reporting the
+ * number at run start — but the state it describes did not stop happening, because a metadata read
+ * that is still in flight or that failed supplies no number either. So it names the read rather
+ * than the run's age, and `mission-control-status.tsx` renders it only where no number was loaded.
+ */
 export const MISSION_CONTROL_DISCLOSURES = [
-  "The run's number is not on the wire until the run ends; its handle identifies it meanwhile.",
+  "The run's number has not been read from the daemon; its handle identifies it meanwhile.",
   'Elapsed time is unavailable because no event has a timestamp and the run has no start time on the wire.',
   'Per-vendor cost and token totals are unavailable as structured values; they occur only inside a human-readable message.',
   "What comes next is unavailable because the run metadata carries no flow step list.",

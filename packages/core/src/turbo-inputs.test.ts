@@ -1605,6 +1605,10 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'fixture.repoDir': 'that temp repository itself, for the directories a dry run must not create',
     'gate.ticketDir': "the ticket folder the gate event named, asserted to be the one the fixture built — the check is that the path a human is sent to exists",
   },
+  'packages/core/src/engine/run-number.test.ts': {
+    'fixture.ticketDir': "the ticket folder inside the temp repository runFixture() built, whose runs.log is seeded to run=2 so the number under test is the THIRD and cannot be a recomputation — Q-0131 AC-1",
+    'fixture.repoDir': 'that temp repository itself, for the run-history manifest the reported number must agree with, and for the `.quorum` a dry walk must not create',
+  },
   'packages/core/src/engine/steps.test.ts': {
     ticketDir: "the ticket folder inside tempDir('script-'), where the script step's declared output landed",
   },
