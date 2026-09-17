@@ -118,7 +118,17 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(1);
   });
 
-  test('explicit retry replaces once and preserves events and missed notice', () => {
+  // **Inverted at Q-0015 rather than deleted, and the reason is recorded where the pin is.** Q-0120
+  // chose to preserve the accepted tail across a retry — the browser genuinely observed those events
+  // and the daemon retains only 500, so clearing loses a head it can no longer replay. Q-0015 is the
+  // first ticket to RENDER that tail, and rendering is what made the other half visible: the daemon
+  // replays its retained buffer to every new subscription, so preserving means every retained event
+  // appears twice. The events carry no identity to dedupe on, the union having no timestamp and no
+  // sequence number by decision (2026-08-28), so the choice is a doubled trace or a shorter true one.
+  // A doubled trace asserts events that did not happen, which is the one thing this app may never do;
+  // the loss is charged to `browserDiscardedCount`, whose sentence already renders, so it is
+  // disclosed rather than silent. See `requirements/errata.md` E-11. Review round 3, M-1.
+  test('explicit retry replaces once, and clears the tail the daemon will replay', () => {
     const { connection, sockets } = setup();
     connection.connect('A', page);
     sockets[0]!.onopen?.();
@@ -128,8 +138,9 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(1);
     connection.retry();
     expect(sockets).toHaveLength(2);
-    expect(connection.snapshot.events).toStrictEqual([event]);
-    expect(connection.snapshot.missedCount).toBe(7);
+    expect(connection.snapshot.events, 'the retained tail survived a retry the daemon will replay').toStrictEqual([]);
+    expect(connection.snapshot.missedCount, "the daemon's missed count outlived the subscription it described").toBeNull();
+    expect(connection.snapshot.browserDiscardedCount, 'what the retry dropped was not disclosed').toBe(1);
   });
 
   test('rapid repeated retry leaves only its newest socket current', () => {

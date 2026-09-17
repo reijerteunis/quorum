@@ -265,6 +265,8 @@ export async function answerGate(
  * something the request does not ask for.
  */
 export const ticketsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.tickets });
+/** The runs listing's, beside its siblings rather than inside the screen. Review round 3, N-6. */
+export const runsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.runs });
 
 /** The flow listing's in-flight state, on {@link ticketsInFlight}'s terms. */
 export const flowsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.flows });

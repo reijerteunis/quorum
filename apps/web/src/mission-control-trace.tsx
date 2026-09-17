@@ -32,7 +32,12 @@ function eventLine(event: Event): string {
     case 'info': return event.message;
     case 'warn': return event.message;
     case 'gate': return event.reason;
-    case 'terminal': return `${event.stageBefore} → ${event.stageAfter}`;
+    // `status` first, because a failed, aborted, interrupted or undecided run rendered
+    // byte-identically to a completed one while only the stage pair showed — the one event whose
+    // whole purpose is saying how the run ended. `error` follows where the union carries one.
+    // Review round 3, M-2.
+    case 'terminal': return `${event.status}: ${event.stageBefore} → ${event.stageAfter}`
+      + (event.error === undefined ? '' : ` — ${event.error}`);
   }
 }
 

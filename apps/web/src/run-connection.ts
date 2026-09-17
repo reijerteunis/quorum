@@ -219,6 +219,16 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       if (disposed) return;
       if (handle === null || page === null) return;
       closeCurrentSocket();
+      // Cleared exactly as `connect` above clears them, and for the same reason: the daemon replays
+      // its retained tail to EVERY new subscription, so keeping what the browser already holds
+      // renders every retained event twice. The events carry no identity to dedupe on — the union
+      // deliberately has no timestamp and no sequence number — so the choice is a doubled trace or a
+      // shorter true one, and a doubled trace claims events that did not happen. What is dropped is
+      // charged to the browser's own discard counter, whose sentence already renders.
+      // Review round 3, M-1.
+      browserDiscardedCount = (browserDiscardedCount ?? 0) + events.length;
+      events = [];
+      missedCount = null;
       open(runEventsUrl(page, handle));
     },
 

@@ -18,6 +18,19 @@ describe('Q-0015 AC-4/5/6 — trace rendering', () => {
     expect(view.querySelector('[data-run-activity]')?.textContent).toMatch(/first[\s\S]*last/);
   });
 
+  test('a failed run does not render byte-identically to a completed one', async () => {
+    // The terminal arm rendered the stage pair alone, so `failed`, `aborted`, `interrupted` and
+    // `undecided` were indistinguishable from `completed` — on the one event whose whole purpose is
+    // saying how the run ended. Review round 3, M-2.
+    const base = { type: 'terminal', runId: 7, stageBefore: 'red', stageAfter: 'green', cost: 0, tokens: 0 };
+    const completed = await render(createElement(MissionControlTrace, { events: [{ ...base, status: 'completed' }] as Event[] }));
+    const failed = await render(createElement(MissionControlTrace, { events: [{ ...base, status: 'failed', error: 'codex exited 1' }] as Event[] }));
+    expect(failed.textContent, 'the terminal status is not rendered').toContain('failed');
+    expect(failed.textContent, "the terminal event's error is not rendered").toContain('codex exited 1');
+    expect(failed.textContent, 'a failed run renders byte-identically to a completed one').not.toBe(completed.textContent);
+    expect(completed.textContent, 'the completed run lost its status').toContain('completed');
+  });
+
   test('every entry names its event type, in the column and in the run lane', async () => {
     // AC-6's first clause — *"Each entry names its event type"* — which `eventLine` never carried
     // and which the frozen contract's Trace-and-timeline section omits, so the implementer and QA

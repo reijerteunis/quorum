@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { WireRun, WireRunList } from '@quorum/shared';
 
-import { browserFetch, fetchRuns, isoClock, type Clock, type FetchLike } from './daemon-client.js';
+import { browserFetch, fetchRuns, isoClock, runsInFlight, type Clock, type FetchLike } from './daemon-client.js';
 import { DAEMON_ENDPOINTS } from './daemon-endpoints.js';
 import { EMPTY_RUNS_TEXT, NO_TICKET_ID_TEXT } from './mission-control-text.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
@@ -43,7 +43,6 @@ export const RETRY_LABEL = 'Retry';
  * helper for it there yet. Built the same way those are — the same path the fetch itself uses,
  * from {@link DAEMON_ENDPOINTS} and nowhere else — rather than a literal of its own.
  */
-const runsInFlight = (): RequestState<WireRunList> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.runs });
 
 /** Injectable inputs: the browser supplies none of them, and every test supplies all of them. */
 export interface RunsScreenProps {

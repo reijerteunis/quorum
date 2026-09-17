@@ -73,7 +73,7 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
   const offenders = (files: [string, string][]): string[] => files.flatMap(([name, text]) =>
     MESSAGE_PARSE_NEEDLES.filter((needle) => text.includes(needle)).map((needle) => `${name}:${needle}`));
 
-  test('the complete source corpus contains none of the twelve parsing forms', () => {
+  test('the complete source corpus contains none of the six parsing forms', () => {
     expect(MESSAGE_PARSE_NEEDLES).toHaveLength(6);
     expect(offenders(sourceFiles())).toStrictEqual([]);
   });
