@@ -32,9 +32,12 @@
  * daemon reporting a run that is not running, so neither takes the control away — reading the
  * request state instead withdrew the one act a reader has the moment they asked for a fresh answer
  * about it, which is the asymmetry this screen already refuses for a socket that dropped. Review
- * round 3. **A confirmation is withdrawn by the same answer that withdraws the control**: a report
+ * round 3. **A confirmation is withdrawn by the same answer that withdraws the control** — a report
  * moving the run off `running` is the daemon saying there is nothing here to stop, and a question
- * left standing after that is one a reader can still answer.
+ * left standing after that is one a reader can still answer — **and this screen does not do the
+ * withdrawing**. It supplies the last report to `useRunMutation` as the premise a pending act is
+ * held to, and that module withdraws it: one mechanism for every surface, rather than a guard per
+ * screen that each had to re-derive *a request is not a report* on its own.
  *
  * **A stop is not a gate answer.** It cancels the run through the `AbortSignal` it was started with
  * and is none of the three words a gate takes, so nothing here is worded with one.
@@ -141,7 +144,7 @@ function StopOutcome({ state, onLookAgain }: {
  */
 function StopControl({ reported, mutation, onAsk, onLookAgain }: {
   reported: WireRun | null;
-  mutation: RunMutation<string>;
+  mutation: RunMutation<string, WireRun | null>;
   onAsk: () => void;
   onLookAgain: () => void;
 }): ReactNode {
@@ -236,21 +239,6 @@ export function MissionControlScreen({
     };
   }, [readMetadata]);
 
-  // The one act this screen performs on a run, under the guard `run-lifecycle.ts` owns. Its subject
-  // is the handle, so a stop that resolves after a reader has moved to another run settles nothing
-  // here — and `readMetadata` cannot release that guard, which is the whole of the correction
-  // Q-0016's review round produced for the gate screen and the reason it is written once.
-  const stop = useRunMutation<string>(handle);
-  const { ask: askStop } = stop;
-
-  const onAskStop = useCallback(() => {
-    askStop({
-      sentence: stopConfirmation(handle),
-      inFlight: runStopInFlight<string>(handle),
-      send: () => stopRun(request, handle, clock),
-    });
-  }, [askStop, request, clock, handle]);
-
   // The last report ABOUT THIS HANDLE, and nothing where the subject has moved: a report is kept
   // until a later one replaces it, so one that is not about the run on the screen is no answer at
   // all rather than a stale one. `app.tsx` keys this screen by handle, so arriving here needs the
@@ -258,19 +246,32 @@ export function MissionControlScreen({
   // leave the previous run's `running` standing indefinitely rather than for one commit.
   const lastReported = reported !== null && reported.handle === handle ? reported.run : null;
 
-  // **A confirmation does not outlive the control that offered it.** A report that moves the run off
-  // `running` is the daemon saying there is nothing here to stop, and a question left standing after
-  // that is one a reader can still answer — so it is WITHDRAWN rather than hidden, which is also
-  // what stops a later report saying `running` again from putting an offer back on the screen that
-  // nobody made twice. Driven by the same predicate the control is, so a refresh in flight withdraws
-  // neither and a report of a run that is over withdraws both.
+  // The one act this screen performs on a run, under the guard `run-lifecycle.ts` owns. Its subject
+  // is the handle, so a stop that resolves after a reader has moved to another run settles nothing
+  // here — and `readMetadata` cannot release that guard, which is the whole of the correction
+  // Q-0016's review round produced for the gate screen and the reason it is written once.
   //
-  // In the render that stops offering it rather than in an effect, which is `ticket-page.tsx`'s own
-  // `loadedFor` reasoning: a state cleared after the commit is cleared one commit too late, and the
-  // commit in between is one where an irreversible control is on the screen and live. Conditional
-  // and self-cancelling — `confirming` is `null` on the re-render this schedules — so it settles
-  // rather than loops, which is React's own sanctioned shape for adjusting state during a render.
-  if (!daemonSaysRunning(lastReported) && stop.confirming !== null) stop.cancel();
+  // **Its premise is the run the daemon last reported**, handed over on every render, so a pending
+  // confirmation is withdrawn by exactly the answer that withdraws the control above it. This screen
+  // withdraws nothing itself: it says what the offer rests on and `useRunMutation` does the rest,
+  // which is what stops *offered* and *still offered* becoming two rules maintained in two places.
+  const stop = useRunMutation<string, WireRun | null>(handle, lastReported);
+  const { ask: askStop } = stop;
+
+  const onAskStop = useCallback(() => {
+    askStop({
+      sentence: stopConfirmation(handle),
+      inFlight: runStopInFlight<string>(handle),
+      send: () => stopRun(request, handle, clock),
+      // The same predicate the control is drawn from, asked again on every render. A report moving
+      // the run off `running` is the daemon saying there is nothing here to stop, so the question
+      // goes with the control — WITHDRAWN rather than hidden, which is also what stops a later
+      // report saying `running` again putting an offer back that nobody made twice. A refresh in
+      // flight and a read that never answered reach this as the last report unchanged, so neither
+      // withdraws anything: they are facts about a request, not reports about a run.
+      holds: (reportedNow) => daemonSaysRunning(reportedNow),
+    });
+  }, [askStop, request, clock, handle]);
 
   const timeline = buildStepTimeline(snapshot.events);
 

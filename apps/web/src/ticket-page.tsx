@@ -99,6 +99,34 @@ export interface TicketPageProps {
   readonly onNavigate: (to: string) => void;
 }
 
+/**
+ * Whether this page would OFFER a flow for a stage: it consumes that stage, and the linter did not
+ * refuse it.
+ *
+ * Declared once and read both by the region that offers a flow and by the premise a pending
+ * confirmation is held to, so *offered* and *still offered* cannot become two predicates that
+ * disagree about one listing — mission control's own `daemonSaysRunning` arrangement, for its
+ * reason. It is not the same test as *named*: a refused flow is still named, because a flow that
+ * vanished from a list is indistinguishable from one that was never there.
+ */
+const offerable = (flow: WireFlow, stage: string): boolean => flow.consumes === stage && flow.runnable;
+
+/**
+ * What a pending start on this page was offered under: the stage and the flows, as last REPORTED.
+ *
+ * **`null` means the daemon has not reported one, and is not a report that there is none.** A
+ * refresh replaces both the moment it starts and a read that never answered replaces neither with an
+ * answer, so a premise drawn from the request state would withdraw a reader's pending act the
+ * instant they asked for a fresher view of the ticket — the defect mission control was corrected for
+ * in review round 3, one screen over. Where either is `null` the offer stands, and the daemon
+ * remains the authority on the act itself: a start against a stage that has moved is refused
+ * `not-runnable`, which `START_REFUSAL_TEXT` already renders as what it is.
+ */
+interface StartPremise {
+  readonly stage: string | null;
+  readonly flows: readonly WireFlow[] | null;
+}
+
 /** One tab: the top-level segment that names it, and the files filed under it. */
 interface Tab {
   readonly name: string;
@@ -210,6 +238,11 @@ function StartOutcome({ state, onLookAgain }: {
  * A flow the linter refused is NAMED and not offered, which is the board's own rule: a flow that
  * vanished from a list is indistinguishable from one that was never there.
  *
+ * **A confirmation is offered under the same test and no longer than it.** Which flows are offerable
+ * is a fact about what the daemon last reported, and a reader can ask about one and then Refresh, so
+ * the pending act is held to {@link offerable} on every render by `useRunMutation` rather than by
+ * anything here — a question about a flow this page would no longer offer is still offering it.
+ *
  * **Its two unavailable answers are the board's sentences, imported rather than re-worded**, so the
  * two screens cannot come to disagree about one stage. There are THREE unavailable states rather
  * than two: a listing still out is neither *no flow consumes this stage* nor *the flow list could
@@ -221,7 +254,7 @@ function RunStart({ stage, flows, dry, onDry, mutation, onAsk, onLookAgain }: {
   flows: RequestState<WireFlowList>;
   dry: boolean;
   onDry: (next: boolean) => void;
-  mutation: RunMutation<WireRun>;
+  mutation: RunMutation<WireRun, StartPremise>;
   onAsk: (flow: WireFlow) => void;
   onLookAgain: () => void;
 }): ReactNode {
@@ -253,7 +286,7 @@ function RunStart({ stage, flows, dry, onDry, mutation, onAsk, onLookAgain }: {
             {DRY_LABEL}
           </label>
           <div className="flex flex-wrap items-center gap-2">
-            {consuming.map((flow) => (flow.runnable ? (
+            {consuming.map((flow) => (offerable(flow, stage) ? (
               <button
                 key={flow.name}
                 type="button"
@@ -453,16 +486,38 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
     return () => { generation.current += 1; fileRequest.current += 1; };
   }, [load]);
 
+  // The gate, and it is one comparison because everything else this page draws is drawn inside the
+  // branch below it: a state that did not come from this ticket never reaches a tab, a file or the
+  // rail, because they are only rendered where the detail loaded. What a reader sees in the gap is
+  // what a mount shows — the request being waited for, naming the id the URL now carries.
+  const shownDetail = loadedFor === ticketId ? detail : ticketInFlight<WireTicketDetail>(ticketId);
+
+  // What a pending start is held to, recomputed every render and never captured. Both halves are
+  // what the DAEMON last reported: a read still out or one that failed reaches this as `null`, which
+  // is *no new answer* rather than an answer that there is no such stage or no such flow.
+  const premise: StartPremise = {
+    stage: shownDetail.kind === 'loaded' ? shownDetail.value.ticket.stage : null,
+    flows: flows.kind === 'loaded' ? flows.value.flows : null,
+  };
+
   // The one act this page performs on a run, under the guard `run-lifecycle.ts` owns. Its subject is
   // the ticket the URL names, so a start that resolves after a reader has moved to another ticket
   // settles nothing here and is never reported under the new one's name.
-  const start = useRunMutation<WireRun>(ticketId);
+  const start = useRunMutation<WireRun, StartPremise>(ticketId, premise);
   const { ask: askStart } = start;
 
   const onAskStart = useCallback((flow: WireFlow) => {
     askStart({
       sentence: startConfirmation(ticketId, flow.name, dry),
       inFlight: startRunInFlight<WireRun>(),
+      // **The offer stands while the flow it names is still one this page would offer.** A reader
+      // can ask about `chore`, press Refresh, and be handed a ticket whose stage has moved or a
+      // listing where the linter now refuses that file — after which the control is gone and, until
+      // review round 4, the question beside it was not: it was still answerable, and rendering the
+      // flow as refused while keeping its live confirmation is still offering it. The same predicate
+      // the control is drawn from, over the same listing, asked again.
+      holds: ({ stage, flows: listed }) => stage === null || listed === null
+        || listed.some((each) => each.name === flow.name && offerable(each, stage)),
       // The three fields this app is willing to send, written here and nowhere else. `auto` is
       // absent because *"Human-gated by default"* is a quality pillar and a browser control that
       // flips it is a decision rather than a checkbox; `base` is absent because it moves a review's
@@ -474,12 +529,6 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
       onAccepted: (run) => onNavigate(runPath(run.handle)),
     });
   }, [askStart, ticketId, dry, request, clock, onNavigate]);
-
-  // The gate, and it is one comparison because everything else this page draws is drawn inside the
-  // branch below it: a state that did not come from this ticket never reaches a tab, a file or the
-  // rail, because they are only rendered where the detail loaded. What a reader sees in the gap is
-  // what a mount shows — the request being waited for, naming the id the URL now carries.
-  const shownDetail = loadedFor === ticketId ? detail : ticketInFlight<WireTicketDetail>(ticketId);
 
   if (shownDetail.kind !== 'loaded') {
     return (

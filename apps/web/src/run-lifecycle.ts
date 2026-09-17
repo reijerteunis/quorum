@@ -13,6 +13,17 @@
  * whether it is a dry walk, and it cannot name a handle: handles are minted inside the daemon when a
  * start is accepted, so before one is sent there is no name for the run to be confirmed by.
  *
+ * **And a confirmation carries the premise it was offered under, which is the other half of the same
+ * rule.** A control is drawn from something the daemon reported and the question beside it offers
+ * that same act, so a later answer that would take the control away takes the question with it —
+ * otherwise a reader is looking at an irreversible offer the screen would no longer make. Each
+ * screen supplies its premise to {@link useRunMutation} and states it once as {@link RunAct.holds};
+ * none of them withdraws anything itself. That is deliberate rather than tidy: this repository's
+ * most-recorded failure is fixing the instance a reviewer names rather than the class it belongs to,
+ * and one review loop here found the same defect on three screens in four rounds — a confirmation
+ * outliving a change of subject, then one outliving the run's state, then one outliving the chosen
+ * flow's eligibility. A fourth surface supplies a premise or does not compile.
+ *
  * **Nothing here infers an outcome from a mutation.** The daemon answers what it did, and what the
  * run does next is a read. A delivered cancellation is not a run that ended, a refused one is not a
  * run that completed, and neither of those sentences may be composed from a status.
@@ -128,14 +139,45 @@ export function refusalSentence(register: Readonly<Record<string, string>>, code
   return Object.prototype.hasOwnProperty.call(register, code) ? register[code] : null;
 }
 
-/** One act a reader may confirm: what they are confirming, and the request that happens if they do. */
-export interface RunAct<T> {
+/**
+ * One act a reader may confirm: what they are confirming, the request that happens if they do, and
+ * the premise it is being offered under.
+ *
+ * @typeParam T what the daemon answers an accepted act with.
+ * @typeParam P what this screen knows that made the act offerable — the run the daemon last reported,
+ *   the flow directory it last listed. Supplied to {@link useRunMutation} fresh on every render and
+ *   handed back to {@link RunAct.holds}; it is never captured, which is the whole of why it is a
+ *   parameter rather than a closure.
+ */
+export interface RunAct<T, P> {
   /** The sentence naming exactly what is about to happen, composed before anything is sent. */
   readonly sentence: string;
   /** What the screen shows while the request is out, naming the path it will ask for. */
   readonly inFlight: RequestState<T>;
   /** The request itself. Made once, when a reader confirms it, and never before. */
   send(): Promise<RequestState<T>>;
+  /**
+   * Whether this act is still one the screen would offer, given what it knows NOW.
+   *
+   * **This is the premise the confirmation was offered under, and it is asked again on every
+   * render.** A control is drawn from something the daemon reported — a run that is `running`, a
+   * flow that consumes this ticket's stage and that the linter did not refuse — and the question
+   * beside it is an offer to do that same thing. So when the answer that made it offerable is
+   * replaced by one that does not, the question is not merely stale: it is one a reader can still
+   * answer, about an act the screen would no longer propose.
+   *
+   * **It takes the premise rather than closing over it**, which is what makes this a mechanism and
+   * not a fourth guard written beside a fourth screen. A predicate capturing the screen's values
+   * when the act was asked about would answer with what was true then, which is the question this
+   * exists to stop being asked.
+   *
+   * **A read in flight and a read that failed are not premises that stopped holding.** They are
+   * facts about this browser's request rather than answers about the run or the harness, and a
+   * screen that withdrew an act on them would be withholding it exactly when a reader asked for a
+   * fresher answer. Each screen says so in its own premise by answering `true` where it has no new
+   * report — `docs/GLOSSARY.md`'s *"connection state … is not run state"* one layer over.
+   */
+  holds(premise: P): boolean;
   /**
    * What follows an act the daemon ACCEPTED, where anything does.
    *
@@ -155,13 +197,13 @@ export interface RunAct<T> {
  * confirmed; reading the screen's current subject at confirmation time is reading a second, later
  * answer to a question the closure has already answered, and the two can differ.
  */
-interface Pending<T> {
+interface Pending<T, P> {
   readonly subject: string;
-  readonly act: RunAct<T>;
+  readonly act: RunAct<T, P>;
 }
 
 /** One screen's lifecycle-mutation state: what is being confirmed, what came back, and whether to wait. */
-export interface RunMutation<T> {
+export interface RunMutation<T, P> {
   /** The sentence awaiting confirmation, or `null` where nothing is. */
   readonly confirming: string | null;
   /** What the daemon said about the last act sent ABOUT THIS SUBJECT, or `null` where there is none. */
@@ -169,7 +211,7 @@ export interface RunMutation<T> {
   /** Whether any act is outstanding — what every control that could start or stop a run is drawn inert from. */
   readonly busy: boolean;
   /** Ask for confirmation of one act. Ignored while one is outstanding. */
-  readonly ask: (act: RunAct<T>) => void;
+  readonly ask: (act: RunAct<T, P>) => void;
   /** Withdraw the confirmation. Issues nothing. */
   readonly cancel: () => void;
   /** Send the act that was confirmed. At most one is ever in flight. */
@@ -190,18 +232,29 @@ export interface RunMutation<T> {
  * first, and the later one can arrive before it. *The daemon serialises them* is not a licence to
  * send two: which of them wins would be a race rather than a choice.
  *
- * **A confirmation and a request in flight are treated differently by a change of subject, because
- * they are different things.** A request has been MADE about the subject it was composed for, so it
- * completes and is neither withdrawn, reinterpreted nor attributed to the replacement. A
- * confirmation has been made about nothing yet: it is an offer to act on the subject a reader was
- * looking at, and a reader now looking at another one is not being offered it, so it is dropped.
+ * **A confirmation and a request in flight are treated differently by everything that happens after
+ * they are made, because they are different things.** A request has been MADE about the subject it
+ * was composed for, so it completes and is neither withdrawn, reinterpreted nor attributed to the
+ * replacement. A confirmation has been made about nothing yet: it is an offer, standing only while
+ * what made it offerable still does, so it is withdrawn the moment that stops being true.
+ *
+ * **One withdrawal and one reason, which is why the premise is a parameter of this hook.** A
+ * confirmation carries the premise it was offered under ({@link RunAct.holds}) and is dropped in the
+ * render where the subject moves or that premise stops holding. Both halves are the same sentence —
+ * *the screen would not offer this now* — and writing them as one is what stops a fifth surface
+ * arriving with a fifth guard of its own: the review loop that produced this found the same defect
+ * on three screens in four rounds, each fix closing the instance it was handed.
  *
  * @param subject what the outcome is ABOUT — a ticket id for a start, a handle for a stop. This
  *   screen's subject NOW, which is not necessarily the subject of an act already asked about or
  *   already sent; those carry their own, which is what {@link Pending} exists for.
+ * @param premise what this screen knows NOW that a pending act's {@link RunAct.holds} is asked
+ *   about. Recomputed by the screen every render and never captured, so the question a reader is
+ *   looking at is judged against the daemon's latest answer rather than against the one that was on
+ *   the screen when they asked.
  */
-export function useRunMutation<T>(subject: string): RunMutation<T> {
-  const [asked, setAsked] = useState<Pending<T> | null>(null);
+export function useRunMutation<T, P>(subject: string, premise: P): RunMutation<T, P> {
+  const [asked, setAsked] = useState<Pending<T, P> | null>(null);
   const [answered, setAnswered] = useState<{ subject: string; state: RequestState<T> } | null>(null);
 
   const sending = useRef(false);
@@ -216,25 +269,38 @@ export function useRunMutation<T>(subject: string): RunMutation<T> {
   // wrong one for deciding what to do to the screen afterwards.
   const showing = useRef(subject);
 
-  // **A confirmation does not survive the change of subject, and it is dropped in the render that
-  // changes it rather than in an effect.** A prop is committed BEFORE the effect reacting to it
-  // runs, so a confirmation cleared in an effect is one commit late: the previous subject's question
-  // renders under the new subject's name, and confirming it there sends the request the old subject
-  // composed. The ticket page is that case exactly — `app.tsx` keys mission control by handle so a
-  // handle change remounts it, and keys the ticket page by nothing, so one instance survives a
-  // navigation from one ticket to another. `ticket-page.tsx`'s own `loadedFor` gate is the same
-  // mechanism for the same reason.
-  if (showing.current !== subject) {
-    showing.current = subject;
-    if (asked !== null) setAsked(null);
-  }
+  // **A confirmation stands only while what made it offerable does, and there is ONE place it is
+  // withdrawn.** Two things end an offer and they are the same sentence: the subject moved, so the
+  // reader being offered it is looking at something else; or the premise it was offered under no
+  // longer holds, so the screen would not propose the act now. A screen supplies the second and
+  // supplies nothing else — every guard of its own was a place for this defect to come back, which
+  // is what four review rounds across three screens measured.
+  //
+  // **In the render that ends the offer rather than in an effect.** A prop is committed BEFORE the
+  // effect reacting to it runs, so a confirmation cleared in an effect is one commit late, and that
+  // commit is one where an irreversible control is on the screen and live: the previous subject's
+  // question renders under the new subject's name, and confirming it there sends the request the old
+  // subject composed. The ticket page is that case exactly — `app.tsx` keys mission control by
+  // handle so a handle change remounts it, and keys the ticket page by nothing, so one instance
+  // survives a navigation from one ticket to another. `ticket-page.tsx`'s own `loadedFor` gate is
+  // the same mechanism for the same reason. Conditional and self-cancelling — `asked` is `null` on
+  // the re-render this schedules — so it settles rather than loops, which is React's own sanctioned
+  // shape for adjusting state during a render.
+  //
+  // The premise is asked about only where the subject did NOT move. **Nothing behavioural rests on
+  // that order** and no test holds it, the two halves being an OR: what it buys is that an act
+  // composed for the ticket being left is never asked a question about the premise of the one
+  // arrived at, which would be two screens' answers compared as though they were one.
+  const movedOn = showing.current !== subject;
+  if (movedOn) showing.current = subject;
+  if (asked !== null && (movedOn || !asked.act.holds(premise))) setAsked(null);
 
   useEffect(() => {
     alive.current = true;
     return () => { alive.current = false; };
   }, []);
 
-  const ask = useCallback((act: RunAct<T>) => {
+  const ask = useCallback((act: RunAct<T, P>) => {
     if (sending.current) return;
     setAsked({ subject, act });
   }, [subject]);

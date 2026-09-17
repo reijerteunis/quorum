@@ -650,15 +650,45 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
    * below are about: a fixture answering the start before the next act could happen cannot reach
    * the case where a read lands while one is on its way.
    */
-  function startDaemon(over: { flows?: unknown; stage?: string; flowStatus?: number }): {
+  /** Whatever the next READ does: answer as staged, never come back, or fail to reach anything. */
+  type Reads = 'answer' | 'hold' | 'fail';
+
+  /** What a daemon a test drives can be told between one read and the next. */
+  interface Staging {
+    /** What the NEXT flow read lists, and with what status — a listing can change under a reader. */
+    readonly setFlows: (next: unknown, status?: number) => void;
+    /** What the NEXT ticket read reports as this ticket's stage. */
+    readonly setStage: (next: string) => void;
+    /**
+     * How every further read behaves, or every further TICKET read where `only` says so.
+     *
+     * A POST is unaffected either way: it is still held for {@link settle}. The narrowing is what
+     * stages the one window the two reads are not in step — `load` issues them together and the
+     * listing can answer while the ticket is still out — which is the case where the stage half of
+     * a start's premise is what decides rather than the listing half.
+     */
+    readonly setReads: (how: Reads, only?: 'all' | 'ticket') => void;
+  }
+
+  function startDaemon(over: { flows?: unknown; stage?: string; flowStatus?: number }): Staging & {
     fetch: (path: string, request?: DaemonRequest) => Promise<DaemonResponse>;
     sent: Sent[];
     settle: (status: number, body: unknown) => Promise<void>;
   } {
     const sent: Sent[] = [];
     const held: ((answer: DaemonResponse) => void)[] = [];
+    let flows: unknown = over.flows ?? TWO;
+    let flowStatus = over.flowStatus ?? 200;
+    let stage = over.stage ?? 'requirements';
+    let reads: Reads = 'answer';
+    let readsOnly: 'all' | 'ticket' = 'all';
+    const isTicketRead = (path: string): boolean =>
+      path.startsWith(ticketDetailPath(TICKET)) || path.startsWith(ticketDetailPath('Q-0002'));
     return {
       sent,
+      setFlows: (next: unknown, status = 200) => { flows = next; flowStatus = status; },
+      setStage: (next: string) => { stage = next; },
+      setReads: (how: Reads, only: 'all' | 'ticket' = 'all') => { reads = how; readsOnly = only; },
       settle: async (status: number, body: unknown) => {
         const resolve = held.shift();
         if (resolve === undefined) throw new Error('no start is waiting');
@@ -671,12 +701,17 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
         if (request?.method === 'POST') {
           return new Promise<DaemonResponse>((resolve) => { held.push(resolve); });
         }
+        // Staged AFTER the write branch, so *this read never answered* stages a read and never an
+        // act: a start held here would be a mutation nothing could settle rather than a refresh.
+        if (readsOnly === 'all' || isTicketRead(path)) {
+          if (reads === 'hold') return new Promise<DaemonResponse>(() => undefined);
+          if (reads === 'fail') return Promise.reject(new Error('nothing answered'));
+        }
         if (path === DAEMON_ENDPOINTS.flows) {
-          const status = over.flowStatus ?? 200;
           return Promise.resolve({
-            ok: status >= 200 && status < 300,
-            status,
-            json: () => Promise.resolve(over.flows ?? TWO),
+            ok: flowStatus >= 200 && flowStatus < 300,
+            status: flowStatus,
+            json: () => Promise.resolve(flows),
           });
         }
         if (path.startsWith(ticketDetailPath(TICKET)) || path.startsWith(ticketDetailPath('Q-0002'))) {
@@ -686,7 +721,7 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
             status: 200,
             json: () => Promise.resolve(isFile
               ? { rel: TICKET_FILE, bytes: 3, text: 'txt' }
-              : detail([entry(TICKET_FILE, 3)], { ticket: row({ stage: over.stage ?? 'requirements' }) })),
+              : detail([entry(TICKET_FILE, 3)], { ticket: row({ stage }) })),
           });
         }
         return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ code: 'no-such-file', condition: 'x', remedy: null }) });
@@ -695,7 +730,7 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
   }
 
   /** The page over that daemon, with somewhere for a navigation to be recorded. */
-  async function startPage(over: Parameters<typeof startDaemon>[0] = {}, ticketId = TICKET): Promise<{
+  async function startPage(over: Parameters<typeof startDaemon>[0] = {}, ticketId = TICKET): Promise<Staging & {
     view: HTMLElement;
     sent: Sent[];
     went: string[];
@@ -706,7 +741,15 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
     const view = await render(createElement(TicketPage, {
       ticketId, fetcher: server.fetch, now: CLOCK, onNavigate: (to: string) => { went.push(to); },
     }));
-    return { view, sent: server.sent, went, settle: server.settle };
+    return {
+      view,
+      sent: server.sent,
+      went,
+      settle: server.settle,
+      setFlows: server.setFlows,
+      setStage: server.setStage,
+      setReads: server.setReads,
+    };
   }
 
   /** Every control on the page that could start a run, whatever flow it names. */
@@ -879,6 +922,102 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
       expect(outcome, 'a sentence for some other code was composed for one this page does not model')
         .not.toContain(said);
     }
+  });
+
+  test('AC-6/AC-9 — a read that makes the chosen flow ineligible WITHDRAWS its confirmation', async () => {
+    // **Review round 4, and the fourth instance of one class in one review loop**: a confirmation
+    // outliving the premise that made it offerable. A reader chooses `chore`, presses Refresh, and
+    // is handed a ticket whose stage has moved or a listing where the linter now refuses that
+    // file — after which the control is gone and, until this, the question beside it was not.
+    // Rendering the flow as refused while keeping its live confirmation is still offering it, which
+    // is what AC-6 forbids.
+    //
+    // **Three stagings, because eligibility is lost in three ways and a clause covering one of them
+    // would be this repository's other recurring failure** — fixing the instance rather than the
+    // class. What withdraws them is one predicate over one listing: {@link offerable}, which the
+    // control is drawn from and the pending act is now held to.
+    const INELIGIBLE: [string, (page: Awaited<ReturnType<typeof startPage>>) => void][] = [
+      ['the linter now refuses that flow', (page) => page.setFlows({ flows: [flowRow('chore', { runnable: false, problems: ['step 2 has no id'] }), flowRow('solutioning')] })],
+      ['the ticket has moved to a stage that flow does not consume', (page) => page.setStage('solutioned')],
+      ['that flow is no longer in the listing at all', (page) => page.setFlows({ flows: [flowRow('solutioning')] })],
+    ];
+    for (const [what, stage] of INELIGIBLE) {
+      const page = await startPage();
+      await click(page.view, 'button[data-start-flow]', startLabel('chore'));
+      expect(page.view.querySelector('[data-confirm="start"]'),
+        `nothing is confirming, so "${what}" has lost its subject`).not.toBeNull();
+
+      stage(page);
+      const before = page.sent.length;
+      await click(page.view, 'button', REFRESH_LABEL);
+      expect(page.sent.length, `the read this clause stages never happened: ${what}`).toBeGreaterThan(before);
+      expect(starters(page.view).map((button) => button.dataset.startFlow),
+        `the control was still offered after ${what}`).not.toContain('chore');
+      expect(page.view.querySelector('[data-confirm="start"]'),
+        `the confirmation outlived the offer: ${what}`).toBeNull();
+      // …and what is on the screen is ANSWERED rather than only counted, which is the half that
+      // says *withdrawn* rather than *rendered somewhere else*.
+      const stale = confirmControl(page.view);
+      if (stale !== null) await act(async () => { stale.click(); });
+      expect(bodies(page.sent), `a start was sent for a flow this page would no longer offer: ${what}`)
+        .toStrictEqual([]);
+    }
+
+    // **Withdrawn rather than hidden**, which is what this last half discriminates: a confirmation
+    // merely gated on eligibility comes back the moment a later listing offers that flow again,
+    // putting an offer on the screen that nobody made twice.
+    const back = await startPage();
+    await click(back.view, 'button[data-start-flow]', startLabel('chore'));
+    back.setFlows({ flows: [flowRow('solutioning')] });
+    await click(back.view, 'button', REFRESH_LABEL);
+    back.setFlows(TWO);
+    await click(back.view, 'button', REFRESH_LABEL);
+    expect(starters(back.view).map((button) => button.dataset.startFlow),
+      'the control did not come back for a flow the listing offers again').toContain('chore');
+    expect(back.view.querySelector('[data-confirm="start"]'),
+      'a withdrawn confirmation was put back by a later listing').toBeNull();
+  });
+
+  test('AC-9 — a read still out and a read that failed are not reports, so neither withdraws one', async () => {
+    // The other side of the same rule, and it is why the premise is *the last REPORT* rather than
+    // the last request: a reader asking for a fresher view of the ticket must not lose the act they
+    // were part-way through asking for. Mission control was corrected for exactly this one screen
+    // over (review round 3), and the rule is now one rule in one module rather than two derivations.
+    //
+    // **The listing half is asserted with the page fully rendered**, because the ticket read still
+    // answers: the region renders its own *could not be read* sentence and the question stands.
+    const unread = await startPage();
+    await click(unread.view, 'button[data-start-flow]', startLabel('chore'));
+    unread.setFlows(TWO, 500);
+    await click(unread.view, 'button', REFRESH_LABEL);
+    expect(unread.view.querySelector('[data-start-unavailable="flows-unread"]'),
+      'the listing this clause stages did not come back unread').not.toBeNull();
+    expect(unread.view.querySelector('[data-confirm="start"]'),
+      'a listing that could not be read withdrew a confirmation the daemon had said nothing about').not.toBeNull();
+
+    // **And the ticket half is asserted by letting the read land**, which is stronger than looking
+    // for the question while the page is showing a failure: this page replaces its whole body while
+    // the detail is not loaded, so *not rendered* would prove nothing either way. The confirmation
+    // coming back with the ticket is what says it was never withdrawn.
+    //
+    // **The TICKET read alone fails here, and that is what gives this half a subject.** `load`
+    // issues both together, so failing everything leaves the listing unread too — and the listing
+    // half of the premise would then be what answers, shielding the stage half from ever deciding.
+    // Measured rather than reasoned: with both failing, a premise that treated an unread ticket as
+    // a report of some other stage passed this clause. The one-answered-one-out window is real, the
+    // two requests settling independently by design.
+    const failed = await startPage();
+    await click(failed.view, 'button[data-start-flow]', startLabel('chore'));
+    failed.setReads('fail', 'ticket');
+    await click(failed.view, 'button', REFRESH_LABEL);
+    expect(failed.view.querySelector('[data-request-state]')?.getAttribute('data-request-state'),
+      'the read this clause stages did not fail').toBe('unreachable');
+    failed.setReads('answer');
+    await click(failed.view, 'button', RETRY_LABEL);
+    expect(starters(failed.view).map((button) => button.dataset.startFlow),
+      'the ticket never came back, so this clause has lost its subject').toContain('chore');
+    expect(failed.view.querySelector('[data-confirm="start"]'),
+      'a read that could not answer withdrew a confirmation the daemon had said nothing about').not.toBeNull();
   });
 
   test('AC-9 — a confirmation does not survive a change of subject, and cannot be answered after one', async () => {

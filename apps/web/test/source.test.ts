@@ -459,6 +459,111 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       .toStrictEqual(['(before the first declaration)']);
   });
 
+  /** The hook a screen offers a confirmable act on a run through, and the only way one is offered. */
+  const OFFERS_AN_ACT = 'useRunMutation';
+
+  /** A call of it: the name, optional type arguments, then the argument list. */
+  const CALLS_THE_HOOK = /useRunMutation\s*(?:<[^()]*>)?\s*\(/g;
+
+  /**
+   * How many top-level arguments the call whose `(` is at `open` supplies, or `-1` for a call whose
+   * brackets never close — which fails the register rather than being read as *none*.
+   */
+  const argumentCount = (text: string, open: number): number => {
+    let depth = 0;
+    let commas = 0;
+    for (let at = open; at < text.length; at += 1) {
+      const char = text[at];
+      if (char === '(' || char === '[' || char === '{') depth += 1;
+      else if (char === ')' || char === ']' || char === '}') {
+        depth -= 1;
+        if (depth === 0) return text.slice(open + 1, at).trim() === '' ? 0 : commas + 1;
+      } else if (char === ',' && depth === 1) commas += 1;
+    }
+    return -1;
+  };
+
+  /**
+   * Every screen in one module that can offer an act on a run, as `<declaration> supplies <n>`.
+   *
+   * **The register the errata asked for, and its subject is the SECOND argument.** A premise is a
+   * parameter of the hook rather than something a screen remembers to check, so a call site that
+   * supplies one is visible here and one that does not is visible as `supplies 1`. The declaration
+   * the call sits in is what names it, over {@link declarations}, so no way of spelling a component
+   * can hide one — the correction round 3 made to the writing register, reused rather than
+   * re-derived.
+   *
+   * The hook's OWN declaration is excluded by name: its head reads `useRunMutation<T, P>(`, which is
+   * a definition and not a call, and excluding it by name is what keeps the exclusion visible rather
+   * than a predicate that could quietly widen. A call written in prose inside a comment is collected
+   * and fails, which is the safe direction.
+   *
+   * **What it does NOT cover, stated rather than left to be read into it.** Its subject is a
+   * CONFIRMATION, so a screen that sends without asking first is invisible here — `gate-screen.tsx`
+   * is one, sending a gate answer straight from the control that names it, and it has no pending
+   * offer for a premise to be attached to. The clause that sees all three acts whatever screen
+   * issues them is the writing register above; this one says that every act a reader is ASKED about
+   * carries what it was asked under.
+   */
+  const actSites = (text: string): string[] =>
+    declarations(text)
+      .filter((one) => one.name !== OFFERS_AN_ACT)
+      .flatMap((one) => [...one.text.matchAll(CALLS_THE_HOOK)]
+        .map((call) => `${one.name} supplies ${argumentCount(one.text, (call.index ?? 0) + call[0].length - 1)}`));
+
+  /** The same over the whole corpus, so a fourth screen is a fourth row wherever it is written. */
+  const offerSites = (): string[] => sourceFiles()
+    .flatMap(([name, text]) => actSites(text).map((site) => `${name}: ${site}`)).sort();
+
+  test('Q-0130 AC-9 — a screen cannot offer an act on a run without supplying the premise it is under', () => {
+    // **The evidence the fourth review round asked for, and it is deliberately not one test per
+    // screen.** Four findings in one review loop were one class — a confirmation outliving the
+    // premise that made it offerable: a change of subject, then the run's state, then the chosen
+    // flow's eligibility — and each round closed the instance it was handed while the next found the
+    // same defect on a sibling surface. A clause per surface is that failure written down. What
+    // makes a fifth surface safe is that a premise is a parameter of the hook: a screen states what
+    // its offer rests on and `run-lifecycle.ts` withdraws it, so a call site cannot forget to.
+    expect(offerSites(), 'a screen offers an act on a run without supplying the premise it is under')
+      .toStrictEqual([
+        'mission-control-screen.tsx: MissionControlScreen supplies 2',
+        'ticket-page.tsx: TicketPage supplies 2',
+      ]);
+    // The same property stated over the set rather than through the identity above, because a
+    // register a later reader updates by hand can be updated to the wrong number: every site, named
+    // or not, supplies two.
+    expect(offerSites().filter((site) => !site.endsWith(' supplies 2')),
+      'a call site supplies something other than a subject and a premise').toStrictEqual([]);
+    // The exclusion has a subject and is exactly one file: the hook is declared once, in the module
+    // that owns the discipline.
+    expect(sourceFiles().filter(([, text]) => text.includes(`function ${OFFERS_AN_ACT}<`)).map(([name]) => name),
+      'the hook is declared somewhere other than the module that owns the discipline')
+      .toStrictEqual(['run-lifecycle.ts']);
+    // **And the act's own half, which is what the compiler holds rather than this file**: the
+    // premise a pending confirmation is judged by is a REQUIRED member of an act, so a fourth screen
+    // that supplies the argument and composes an act without a predicate does not typecheck. An
+    // optional one would make the whole mechanism something a call site can decline.
+    const lifecycle = sourceFiles().find(([name]) => name === 'run-lifecycle.ts')?.[1] ?? '';
+    expect(lifecycle, 'there is no lifecycle module — this clause has lost its subject').not.toBe('');
+    expect(lifecycle.includes('holds('), 'an act declares no premise at all').toBe(true);
+    expect(lifecycle.includes('holds?'), 'the premise became optional, so an act can be offered without one').toBe(false);
+    // An IDENTITY and not a count, shown three ways over fixtures assembled so this file is not its
+    // own subject: a call supplying no premise is reported as such, a fourth screen is reported by
+    // name, and the arrow form — the one round 2 found the writing register blind to — is seen.
+    const site = (name: string, args: string): string =>
+      `export function ${name}() { const act = ${OFFERS_AN_ACT}<string, P>(${args}); return act; }`;
+    expect(actSites(site('Screen', 'handle, reported')), 'the walk does not find the call it is written against')
+      .toStrictEqual(['Screen supplies 2']);
+    expect(actSites(site('Screen', 'handle')), 'a call site supplying no premise was not reported as one')
+      .toStrictEqual(['Screen supplies 1']);
+    expect(actSites(`${site('Screen', 'handle, reported')}\nexport const Fourth = () => ${OFFERS_AN_ACT}(id);`),
+      'a fourth screen in the arrow form was not reported')
+      .toStrictEqual(['Screen supplies 2', 'Fourth supplies 1']);
+    // …and a module that offers nothing is not a site, so the two above are the screens rather than
+    // the components.
+    expect(actSites('export function Board() { return null; }'), 'a screen that offers no act was collected')
+      .toStrictEqual([]);
+  });
+
   test('Q-0130 AC-12 — no file under src names a start field this app will not send', () => {
     // **Pillar 3 as a checked property of the source rather than as an intention.** `auto` advances
     // every author-declared gate without a human, and *"Human-gated by default, auto opt-in per
