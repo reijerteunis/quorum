@@ -155,21 +155,29 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/['"`]\/backlog/);
   });
 
-  test('Q-0016 AC-14 — the gate row names the screen it built and the ticket that adds the rest', () => {
+  test('Q-0129 AC-12 — the gate row names what the screen renders now and whose the rest is', () => {
     // **The same move `routes.ts:146` records for the ticket page, one row down.** The sentence is
     // kept rather than emptied, because `screenExists` is what says a screen is built and a row
-    // whose explanation had been deleted would make a later `false` silent. What moved is the
-    // claim: the row no longer promises a rendering of what the step before the gate decided, which
-    // this screen does not do and which a reader meeting it would otherwise go looking for.
+    // whose explanation had been deleted would make a later `false` silent.
+    //
+    // **Re-aimed at the successor rather than deleted, which is the half of this that matters.**
+    // It named Q-0129 as the ticket that would add what the step before the gate decided; that has
+    // landed, so the row says the screen shows it — and the clause pointing at the half that has
+    // NOT landed moves to **Q-0134** instead of going away, because a register that stops naming
+    // an owed half is one nothing will notice is owed.
     const route = SCREEN_ROUTES.find((entry) => entry.path === GATE_ROUTE);
     if (!route) throw new Error('no gate-screen route — this check has lost its subject');
     expect(route.screenExists, 'the row still says the screen is unbuilt').toBe(true);
     expect(route.ticket, 'the gate screen no longer names the ticket that built it').toBe('Q-0016');
     expect(route.waitingFor.length, 'the sentence a user reads was emptied').toBeGreaterThan(60);
-    expect(route.waitingFor, 'the row still promises the evidence half this screen does not render')
+    expect(route.waitingFor, 'the row still promises the diff this screen does not render')
       .not.toMatch(/diffs/);
+    expect(route.waitingFor, 'the row still routes the decision to the ticket that has landed it')
+      .not.toMatch(/Q-0129/);
+    expect(route.waitingFor, 'the row does not say the screen renders what the step decided')
+      .toMatch(/what the step before it decided/);
     expect(route.waitingFor, 'the row does not name what the rest of the screen waits for')
-      .toContain('Q-0129');
+      .toContain('Q-0134');
   });
 
   test('and the board\'s own path is a register constant both tables are built from', () => {

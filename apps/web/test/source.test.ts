@@ -764,7 +764,7 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
   });
 });
 
-describe('Q-0016 AC-7/AC-8/AC-9/AC-13 — what the gate screen may not parse, coin or claim', () => {
+describe('Q-0016 AC-7/AC-8/AC-9 and Q-0129 AC-10 — what the gate screen may not parse, coin or claim', () => {
   /** The screen itself, which every clause here is about. Absent, each one has lost its subject. */
   const screen = (): string => {
     const found = sourceFiles().find(([name]) => name === 'gate-screen.tsx')?.[1];
@@ -826,22 +826,45 @@ describe('Q-0016 AC-7/AC-8/AC-9/AC-13 — what the gate screen may not parse, co
       .toStrictEqual(['fixture.ts']);
   });
 
-  test('AC-13 — it names nothing about what the step decided, and reads no event prose', () => {
-    // The evidence half is Q-0129's: it is not on this wire, the artifact holding it is excluded
-    // from the backlog routes by a ruling of its own, and the run's own prose is a sentence
-    // composed for a human rather than a contract. The needles are the words a region standing in
-    // for absent evidence would need, assembled so this file is not its own subject.
-    const EVIDENCE = ['verd' + 'ict', 'find' + 'ings', 'summ' + 'ary', 'dif' + 'f', 'block' + 'er', 'hun' + 'k'];
-    for (const word of EVIDENCE) {
-      expect(new RegExp(`\\b${word}`, 'i').test(screen()), `the screen names ${word}`).toBe(false);
+  test('Q-0129 AC-10/AC-12 — three of the six needles retire, and three are the successor\'s', () => {
+    // **Narrowed rather than deleted, and it is narrowed by exactly half.** Q-0016's AC-13 forbade
+    // six words because the screen rendered nothing about what the step before the gate decided.
+    // Three of those — the decision itself — are what Q-0129 builds, so they retire; the other
+    // three are **Q-0134**'s, which adds the change the step was about and has not landed. A guard
+    // that had simply been deleted with the criterion would have stopped forbidding those too.
+    const RETIRED = ['verd' + 'ict', 'find' + 'ings', 'summ' + 'ary'];
+    const SUCCESSOR = ['dif' + 'f', 'block' + 'er', 'hun' + 'k'];
+    for (const word of SUCCESSOR) {
+      expect(new RegExp(`\\b${word}`, 'i').test(screen()), `the screen names ${word}, which is Q-0134's`).toBe(false);
     }
-    expect(EVIDENCE.filter((word) => new RegExp(`\\b${word}`, 'i').test('the verdict card lists two blockers')))
-      .toStrictEqual([EVIDENCE[0], EVIDENCE[4]]);
+    // The needles still discriminate, so the three absences above are absences rather than typos.
+    expect(SUCCESSOR.filter((word) => new RegExp(`\\b${word}`, 'i').test('the unified diff lists two blockers per hunk')))
+      .toStrictEqual(SUCCESSOR);
+    // …and the three that retired are named here rather than dropped silently, with the clause that
+    // says WHY they may now appear: the screen renders the decision, so it names it.
+    expect(RETIRED.every((word) => new RegExp(`\\b${word}`, 'i').test(screen())),
+      'a retired needle names something the screen does not render after all').toBe(true);
+    // **The severity vocabulary is imported and never spelled here**, which is what the surviving
+    // `blocker` needle enforces now that it is no longer about an absent region: a screen taking its
+    // group labels from `@quorum/shared` cannot write the word, and one that re-spelled the register
+    // would fail above.
+    expect(screen(), 'the screen does not take the reported-entry register from the shared package')
+      .toContain('FINDING_SEVERITIES');
+    expect(screen(), 'the screen does not take the observation tag from the shared package')
+      .toContain('OBSERVATION_TAG');
     // An event's `message` is free text the engine composed — `${'step'}: ${'revise'} — …`, whose
     // separator is absent exactly when the list it separates is — so reading one for a machine value
     // is reading a sentence as a contract. The screen reads no event field at all.
     expect(/\.message\b/.test(screen()), 'the screen reads an event message').toBe(false);
     expect(/\.message\b/.test('const first = event.message;')).toBe(true);
+  });
+
+  test('Q-0129 AC-8 — an agent\'s words are rendered as text and never as markup', () => {
+    // A summary and a reported entry are the one thing on this screen written by an agent, so they
+    // are where a markup escape would land. React escapes what it interpolates; the needle is the
+    // one property that undoes that.
+    expect(/dangerouslySetInnerHTML/.test(screen()), 'the screen renders agent text as markup').toBe(false);
+    expect(/dangerouslySetInnerHTML/.test('<p dangerouslySetInnerHTML={{ __html: summary }} />')).toBe(true);
   });
 });
 

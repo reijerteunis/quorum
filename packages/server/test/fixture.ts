@@ -69,6 +69,33 @@ steps:
     reason: approve to advance
 `;
 
+/**
+ * A gated flow whose step DECIDES something, so the question it parks on carries evidence.
+ *
+ * The bound is one rather than zero deliberately: the mock adapter answers the failing verdict on
+ * its first call per key and the passing one afterwards, so a bound of one reaches the gate either
+ * way — as an author-declared `human` gate after the loop converges, or, if this worker's counter
+ * has already been advanced, on the first pass. What the fixture guarantees is a verdict-declaring
+ * step before a gate, which is the whole of what Q-0129 AC-7 needs.
+ */
+export const DECIDING_GATED_FLOW = `name: probe
+consumes: draft
+produces: requirements
+steps:
+  - id: work
+    output:
+      write: dev/work.md
+      verdict: approve|changes-requested
+    input:
+      backlog: ["dev/work.md"]
+    on_fail:
+      goto: work
+      max_iterations: 1
+      on_exhausted: gate
+  - gate: human
+    reason: approve to advance
+`;
+
 /** A flow whose one step takes a worktree, so a stopped run has something to keep. */
 export const WORKTREE_FLOW = `name: probe
 consumes: draft

@@ -30,14 +30,27 @@
  * at one of those a `retry` does not repeat anything — `routing.ts:97` returns `{ abort: true }`, so
  * a control reading *send it back* would end the run.
  *
- * **It renders the question and nothing about what the step decided.** What a step concluded, and
- * what it changed, are Q-0129's: they are not on this wire, the artifact holding them is excluded
- * from the backlog routes by a ruling of its own, and inferring either from a run's prose would be
- * reading a sentence composed for a human as though it were a contract.
+ * **It renders what the step before the gate decided, and nothing it worked out for itself.** Since
+ * Q-0129 the question carries `reached` — the deciding step's id and the three values that step
+ * returned — so the screen reads a value rather than a sentence. It is rendered as **text**, whole,
+ * with no cap and nothing behind a control: the largest such record in this repository's history is
+ * 13 KB, so there is no size to manage and nothing to disclose. What the change was *about* is
+ * **Q-0134**'s: that needs a range no route on this transport carries and a renderer this workspace
+ * does not have.
+ *
+ * **Findings are grouped only by the vocabulary `@quorum/shared` declares, and one matching none is
+ * shown whole.** The register is imported rather than re-spelled, so dropping a member from it stops
+ * this file compiling. Measured over this repository's own 1,080 findings, **one in seven carries no
+ * recognised prefix** — most of them from steps whose instructions declare no taxonomy at all — so a
+ * screen with nowhere to put one would drop a seventh of what a reader is owed, or file it under a
+ * severity it does not claim.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { gateAnswerSchema, type GateAnswer, type GateQuestionEvent, type WireRun } from '@quorum/shared';
+import {
+  FINDING_SEVERITIES, gateAnswerSchema, OBSERVATION_TAG,
+  type GateAnswer, type GateQuestionEvent, type GateReached, type WireRun,
+} from '@quorum/shared';
 
 import {
   answerGate, browserFetch, fetchRun, gateAnswerInFlight, isoClock, runInFlight,
@@ -73,6 +86,39 @@ export const ANSWER_LABEL: Record<GateAnswer, string> = {
   retry: 'Send it back',
   abort: 'Abort the run',
 };
+
+/** How the screen introduces what the step before this gate decided. */
+export const REACHED_HEADING = 'What the step before this gate decided';
+
+/** How it names the step, so `runs.log`, the manifest and this screen all say one thing. */
+export const REACHED_STEP = 'Step:';
+
+/**
+ * What it says where the question carries no decision at all.
+ *
+ * **It names the condition and composes no likely reason.** A gate a flow file declares can follow
+ * any step — a script, an integrate, or the first step of a run — and *nothing was reported* is not
+ * *nothing was wrong*. Saying the second would be this screen answering a question the engine did
+ * not, which `docs/04-architecture.md`'s placeholder rule refuses in as many words.
+ */
+export const NO_REACHED =
+  'This gate follows a step that declared no verdict, so the run reported no decision to show here. That is not a claim that nothing was wrong: it is that nothing was asked of that step.';
+
+/** What it says where a step decided something and reported nothing beside it. */
+export const NO_FINDINGS = 'That step reported nothing beside its verdict.';
+
+/** What it says where a step returned an empty summary, which is a value rather than a silence. */
+export const NO_SUMMARY = 'That step returned no summary.';
+
+/**
+ * How it heads the entries carrying no prefix this product declares.
+ *
+ * Neither dropped nor re-filed: **150 of this repository's 1,080 findings are in that state**, most
+ * of them written by steps whose instructions declare no taxonomy, so they are ordinary rather than
+ * malformed — and counting one into a severity it does not claim would be a number that is wrong
+ * without saying so.
+ */
+export const UNCATEGORISED_HEADING = 'Reported without a severity';
 
 /** What the screen says where the gate names no step to go back to. */
 export const NO_RETRY_TARGET =
@@ -180,6 +226,46 @@ export function answersOffered(question: GateQuestionEvent): readonly GateAnswer
 }
 
 /**
+ * The register a reported entry is grouped under, or `null` where it carries none of them.
+ *
+ * **Imported and never re-spelled**, which is the property AC-9 is about: `FINDING_SEVERITIES` is
+ * `@quorum/shared`'s and so is the observation tag, so a member dropped from either stops this file
+ * compiling rather than leaving a group nothing can ever fall into. The prefix test is the one
+ * `checkAgainstSchema` applies at the other end — the tag, a colon and a space — so the two ends
+ * cannot disagree about what an entry claims to be.
+ */
+export const REPORT_GROUPS = [...FINDING_SEVERITIES, OBSERVATION_TAG] as const;
+
+/** One of {@link REPORT_GROUPS}. */
+export type ReportGroup = (typeof REPORT_GROUPS)[number];
+
+/** What one step reported, sorted into the declared register and the entries outside it. */
+export interface ReportedEntries {
+  /** One entry per group that has any, in the register's own order. */
+  readonly grouped: readonly { readonly group: ReportGroup; readonly entries: readonly string[] }[];
+  /** Everything matching no group, whole and in the order it was reported. */
+  readonly rest: readonly string[];
+}
+
+/**
+ * Sorts what a step reported into the declared register, keeping everything.
+ *
+ * Every entry lands in exactly one place and nothing is dropped, which is asserted rather than
+ * intended: the two halves sum to the input, and an entry outside the register keeps its own text
+ * untouched rather than being re-filed or trimmed to look like one that is inside it.
+ */
+export function groupReported(entries: readonly string[]): ReportedEntries {
+  const of = (entry: string): ReportGroup | null =>
+    REPORT_GROUPS.find((group) => entry.startsWith(`${group}: `)) ?? null;
+  return {
+    grouped: REPORT_GROUPS
+      .map((group) => ({ group, entries: entries.filter((entry) => of(entry) === group) }))
+      .filter((each) => each.entries.length > 0),
+    rest: entries.filter((entry) => of(entry) === null),
+  };
+}
+
+/**
  * An answer this screen sent, and the run it was about.
  *
  * The handle travels with it because the region that renders it is drawn outside the branch that
@@ -259,6 +345,67 @@ function Question({ question, busy, onAnswer }: {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the step before this gate decided, whole — or the sentence saying it decided nothing.
+ *
+ * Everything here is rendered as **text**. A summary and a reported entry are written by an agent,
+ * so they are the one thing on this screen a stranger's words reach directly; React escapes what it
+ * interpolates, and this file carries no way round that.
+ */
+function ReachedRegion({ reached }: { reached: GateReached | undefined }): ReactNode {
+  if (reached === undefined) {
+    return <p className="text-sm text-muted" data-reached="none">{NO_REACHED}</p>;
+  }
+  const reported = groupReported(reached.findings);
+  return (
+    <div className="flex flex-col gap-3 rounded border border-border bg-surface p-3" data-reached="stated">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="text-sm text-text">{REACHED_HEADING}</h2>
+        {/* The word the engine sent, as it was sent. A step's vocabulary is its own flow file's —
+            `approve`, `ready`, `proceed`, `changes-requested` — so a noun coined from one here
+            would be this screen naming a decision it cannot classify.
+
+            The attribute is `data-decided` and not the field's own name, which is not fastidiousness:
+            Q-0015 AC-6 forbids the literal that field spells followed by `=` anywhere under `src`,
+            because that is the token a parser of the `done` message would key on, and its emptiness
+            is measured. A JSX attribute of that name would write the token while parsing nothing —
+            and a needle weakened to allow it stops forbidding the thing it was measured for. */}
+        <p className="font-mono text-xs text-accent" data-decided={reached.verdict}>{reached.verdict}</p>
+      </div>
+      <p className="font-mono text-xs text-muted">{REACHED_STEP} <span className="text-text">{reached.stepId}</span></p>
+      {reached.summary === ''
+        ? <p className="text-sm text-muted" data-summary="empty">{NO_SUMMARY}</p>
+        : <p className="text-text" data-summary="stated">{reached.summary}</p>}
+      {reported.grouped.length === 0 && reported.rest.length === 0
+        ? <p className="text-sm text-muted" data-findings="none">{NO_FINDINGS}</p>
+        : (
+          <div className="flex flex-col gap-2">
+            {reported.grouped.map(({ group, entries }) => (
+              <div key={group} className="flex flex-col gap-1">
+                <p className="font-mono text-xs uppercase text-muted" data-group={group}>{group}</p>
+                {entries.map((entry, at) => (
+                  <p key={`${group}-${String(at)}`} className="text-sm text-text" data-finding={group}>{entry}</p>
+                ))}
+              </div>
+            ))}
+            {reported.rest.length === 0 ? null : (
+              <div className="flex flex-col gap-1">
+                {/* Its own place, named. An entry the register does not recognise is reported by a
+                    step whose instructions declare no taxonomy, which is most of them — so it is
+                    ordinary, and putting it under a heading of its own is what stops it being read
+                    as something it never claimed to be. */}
+                <p className="font-mono text-xs uppercase text-muted" data-group="uncategorised">{UNCATEGORISED_HEADING}</p>
+                {reported.rest.map((entry, at) => (
+                  <p key={`rest-${String(at)}`} className="text-sm text-text" data-finding="uncategorised">{entry}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
     </div>
   );
 }
@@ -459,6 +606,11 @@ export function GateScreen({ handle, fetcher, now }: GateScreenProps): ReactNode
       <RequestRegion state={shown} onRetry={load} label={RETRY_LABEL} />
       <p className="text-text" data-gate-subject={subject.kind}>{GATE_SUBJECT_TEXT[subject.kind]}</p>
       {subject.kind === 'refused' ? <RefusalRegion refusal={subject.refusal} /> : null}
+      {/* Above the controls, because it is what a reader is answering FROM. Drawn for every parked
+          gate rather than only where there is something to show: a question that carries no
+          decision says so, which is what stops the region being an absence a reader reads as
+          reassurance. */}
+      {subject.kind === 'parked' ? <ReachedRegion reached={subject.question.reached} /> : null}
       {subject.kind === 'parked' ? <Question question={subject.question} busy={busy} onAnswer={(chosen) => send(subject.question, chosen)} /> : null}
       {sent === null ? null : <AnswerRegion state={sent} onLookAgain={load} />}
     </section>

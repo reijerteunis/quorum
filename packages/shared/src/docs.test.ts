@@ -1902,10 +1902,20 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
     for (const [what, needle] of [
       ['that the third answer is not primary and is often not offered', /not the primary action/],
       ['when the screen is actually reached', /Reached when a run parks/],
-      ['what it does not render, and whose the rest is', /Q-0129/],
+      // Re-aimed by Q-0129 AC-12, not deleted. This clause asked that the paragraph name the
+      // ticket owing the half the screen did not render; that half is now two, of which the
+      // decision has landed and the diff has not — so the needle moves to the successor rather
+      // than going away, which is what keeps an owed half named by something.
+      ['what it does not render, and whose the rest is', /Q-0134/],
+      ['that the decision the step returned IS rendered', /reached/],
+      ['why no severity headline is rendered, with the measurement', /1,080/],
     ] as [string, RegExp][]) {
       expect(needle.test(gate), `the gate paragraph does not record ${what}`).toBe(true);
     }
+    // The negative beside the positives, in this file's own shape: the clause naming the ticket
+    // that owed the decision must be GONE from this paragraph, not merely joined by a newer one.
+    expect(gate, 'the paragraph still routes the decision to the ticket that has landed it')
+      .not.toMatch(/Q-0129's/);
   });
 
   test('and the count in it is re-derived, with the grep that produces it and the one that does not', () => {
@@ -1929,5 +1939,178 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
     ] as [string, RegExp][]) {
       expect(needle.test(gate), `the paragraph does not state ${what}`).toBe(true);
     }
+  });
+});
+
+/**
+ * The run-event contract, and **the first file under `contracts/` any suite in this workspace
+ * reads** — that directory has no package, so nothing had opened one before and no task declared
+ * one. `packages/shared/turbo.json` gains the row, and removing it turns three clauses of
+ * `packages/core/src/turbo-inputs.test.ts` red naming this path.
+ *
+ * The path is a quoted literal inside the read rather than a `const` the two callers share:
+ * that scanner collects a literal and reads a binding as an indirect route, which would then need
+ * excusing in a register for nothing. Measured — as a `const` it reported
+ * `repoFile → CONTRACT` unregistered.
+ */
+const runEventsContract = (): string => repoFile('contracts/Q-0050/run-events.contract.md');
+
+/** The `*"Title"* (YYYY-MM-DD)` shape `.claude/rules/docs-and-decisions.md` requires of a citation. */
+const CITATION = /\*"([^"]+)"\*\s*\((\d{4}-\d{2}-\d{2})\)/;
+
+/** A citation by file name: a path into the folder, or a bare `NNN-slug.md` basename. */
+const BY_FILE_NAME = /decisions\/[^\s)]+\.md|\b\d{3}-[a-z0-9-]+\.md/;
+
+/** A citation by number: `decision 097`, `entry 97`, `#097`. */
+const BY_NUMBER = /\b(?:decision|entry)\s+#?0*\d{1,3}\b|#0\d{2}\b/i;
+
+/**
+ * The superseded-by notes in a contract that are about `reached`, selected by their subject rather
+ * than by their position — so reordering the document cannot quietly move the check below onto a
+ * different paragraph. Paragraphs are blank-line separated, and no line of the fenced declaration
+ * block carries `superseded by`, so the block cannot be collected as one.
+ */
+function reachedNotes(contract: string): string[] {
+  return contract
+    .split(/\n[ \t]*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.includes('superseded by') && /\breached\b/.test(paragraph));
+}
+
+/**
+ * The one thing wrong with the contract's `reached` note, or `null` where it cites a landed entry
+ * the way the rule requires.
+ *
+ * **It returns the problem rather than asserting, so that the shipped contract and the fixtures
+ * below go through the same code.** A fixture checked by a second implementation demonstrates that
+ * implementation and not this guard, which is the nit Q-0125 shipped three times; and `contracts/`
+ * is outside the chore role's write paths, so mutating the real file to show a clause red is not
+ * available here (erratum E-6).
+ *
+ * **What it checks is that the citation RESOLVES**, never that it equals a title typed here. An
+ * entry is cited by its title and date and never by its file name or its number, so the citation is
+ * parsed out of the note, looked up in `docs/DECISIONS.md`'s index, and matched against the entry
+ * the index links to. A guard comparing the note with a transcribed string would pass over an index
+ * row renamed underneath it, which is the drift a citation rule exists to catch.
+ */
+function citationProblem(
+  contract: string,
+  rows: readonly Listed[],
+  entries: ReadonlyMap<string, string>,
+): string | null {
+  const notes = reachedNotes(contract);
+  if (notes.length === 0) {
+    return 'the contract carries no superseded-by note about `reached` — this check has lost its subject';
+  }
+  if (notes.length > 1) {
+    return `the contract carries ${notes.length} superseded-by notes about \`reached\`, so which one rules the field is ambiguous`;
+  }
+  const note = notes[0];
+  if (BY_FILE_NAME.test(note)) return 'the note cites the entry by its file name';
+  if (BY_NUMBER.test(note)) return 'the note cites the entry by its number';
+  const cited = CITATION.exec(note);
+  if (!cited) return 'the note names no entry by title and date';
+  // The contract's prose is wrapped at the column this repository writes to, so the title spans a
+  // line break and the captured text carries the newline with it. Collapsing is what makes the
+  // lookup below the index lookup it reads as — without it the shipped note fails here.
+  const title = cited[1].replace(/\s+/g, ' ');
+  const date = cited[2];
+  const row = rows.find((listedEntry) => listedEntry.title === title);
+  if (!row) return `the note cites "${title}", which docs/DECISIONS.md does not list`;
+  if (row.date !== date) {
+    return `the note dates that entry ${date} where the index lists it under ${row.date}`;
+  }
+  const entry = entries.get(row.file);
+  if (entry === undefined) {
+    return `the index links "${title}" to ${row.file}, which docs/decisions/ does not hold`;
+  }
+  const heading = entry.split('\n', 1)[0];
+  if (heading !== `# ${title} — ${date}`) {
+    return `${row.file} opens "${heading}" rather than with the title and date the note cites`;
+  }
+  // …and the entry it resolves to is the one that rules THIS field. Without this clause the note
+  // could cite any landed entry, resolve cleanly, and still not be the ruling it claims to be.
+  for (const subject of ['reached', 'gateQuestionEventSchema']) {
+    if (!entry.includes(subject)) {
+      return `${row.file} does not name \`${subject}\`, so it is not the entry that rules this field`;
+    }
+  }
+  return null;
+}
+
+describe('Q-0129 AC-12 — the run-event contract cites the entry that rules `reached`', () => {
+  test('the shipped note names a landed entry by title and date, and the citation resolves', () => {
+    expect(citationProblem(runEventsContract(), listed(), onDisk())).toBeNull();
+  });
+
+  test('and the note it rests on is really there, beside the declaration it amends', () => {
+    // Anti-vacuity beside the predicate: this is what says the paragraph the whole check hangs off
+    // is about what it claims to be about, rather than some other superseded-by note in the file —
+    // there is a second one, added by Q-0040.
+    const contract = runEventsContract();
+    const notes = reachedNotes(contract);
+    expect(notes.length, 'the contract carries no superseded-by note about `reached`').toBe(1);
+    expect(notes[0], 'the note does not name the event the field was added to').toContain('GateQuestionEvent');
+    expect(
+      contract.indexOf(notes[0]),
+      'the note does not sit after the declaration block it amends',
+    ).toBeGreaterThan(contract.indexOf('interface GateQuestionEvent'));
+  });
+
+  test('and every way of getting the citation wrong is refused, through that same predicate', () => {
+    const TITLE = 'A gate question carries the decision that reached it';
+    const ROWS: Listed[] = [{ title: TITLE, file: '097-slug.md', date: '2026-09-17' }];
+    const ENTRY = `# ${TITLE} — 2026-09-17\n\n\`gateQuestionEventSchema\` gains one optional field, \`reached\`.\n`;
+    const ENTRIES = new Map([['097-slug.md', ENTRY]]);
+    const GOOD = `\`GateQuestionEvent\` gained \`reached\` — superseded by *"${TITLE}"* (2026-09-17).`;
+
+    // The positive control first. Without it every clause below would be satisfied by a predicate
+    // that refuses everything, which is a demonstration of nothing.
+    expect(citationProblem(`# c\n\n${GOOD}\n`, ROWS, ENTRIES), 'the well-formed fixture was refused').toBeNull();
+
+    for (const [what, contract, needle] of [
+      ['no note at all', '# c\n\nNothing about the field here.\n', /lost its subject/],
+      ['two notes about the field', `# c\n\n${GOOD}\n\n${GOOD}\n`, /ambiguous/],
+      [
+        'a citation by file name',
+        '# c\n\n`reached` — superseded by decisions/097-a-gate-question.md.\n',
+        /by its file name/,
+      ],
+      ['a citation by number', '# c\n\n`reached` — superseded by decision 097.\n', /by its number/],
+      [
+        'no citation at all',
+        "# c\n\n`reached` — superseded by the ruling landed at this ticket's gate.\n",
+        /names no entry by title and date/,
+      ],
+      [
+        'a title the index does not list',
+        '# c\n\n`reached` — superseded by *"A ruling nobody landed"* (2026-09-17).\n',
+        /docs\/DECISIONS\.md does not list/,
+      ],
+      [
+        'a date the index disagrees with',
+        `# c\n\n\`reached\` — superseded by *"${TITLE}"* (2026-09-16).\n`,
+        /where the index lists it under/,
+      ],
+    ] as [string, string, RegExp][]) {
+      const problem = citationProblem(contract, ROWS, ENTRIES);
+      expect(problem, `a note with ${what} was accepted`).not.toBeNull();
+      expect(problem, `a note with ${what} was refused for the wrong reason`).toMatch(needle);
+    }
+
+    // The last two branches need a different index or a different entry, so they sit beside the
+    // loop rather than inside it.
+    expect(
+      citationProblem(`# c\n\n${GOOD}\n`, ROWS, new Map()),
+      'an index row pointing at a file the folder does not hold was accepted',
+    ).toMatch(/docs\/decisions\/ does not hold/);
+    expect(
+      citationProblem(`# c\n\n${GOOD}\n`, ROWS, new Map([['097-slug.md', `# ${TITLE} — 2026-09-18\n\n\`gateQuestionEventSchema\` \`reached\`\n`]])),
+      "an entry whose own heading disagrees with the index's date was accepted",
+    ).toMatch(/rather than with the title and date/);
+    expect(
+      citationProblem(`# c\n\n${GOOD}\n`, ROWS, new Map([['097-slug.md', `# ${TITLE} — 2026-09-17\n\nAbout something else entirely.\n`]])),
+      'an entry that does not rule this field was accepted',
+    ).toMatch(/is not the entry that rules this field/);
   });
 });
