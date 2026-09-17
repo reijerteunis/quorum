@@ -23,6 +23,7 @@ import type { Event, GateAnswerEnvelope, GateQuestionEvent, GateReached } from '
 
 import { removeTempDirs, write } from '../../test/repo.js';
 import { runFixture, stubAdapter } from '../../test/run-fixture.js';
+import * as lifecycle from './lifecycle.js';
 
 afterAll(removeTempDirs);
 afterEach(() => { vi.restoreAllMocks(); });
@@ -299,6 +300,65 @@ describe('Q-0129 AC-5 — both gate kinds carry it, from one slot', () => {
       stepId: 'review', verdict: 'approve', summary: 'nothing to report', findings: [],
     });
   });
+
+  test('a member that exhausts carries its own decision, not the sibling that landed in its window', async () => {
+    // **The interleaving is staged rather than described**, on Q-0127 round 4's precedent: a race a
+    // finding says no test can stage is staged by hooking the call that opens the window. Every
+    // member of a `parallel:` group shares one `RunContext`, and the window is the `await` on the
+    // exhaustion record — between this member's own assignment and the question built after it.
+    // **It cannot pass vacuously**: the sibling is held until the hook releases it, so a hook that
+    // never fired leaves the group waiting rather than reporting a green with no window staged.
+    let releaseBeta = (): void => {};
+    const betaHeld = new Promise<void>((resolve) => { releaseBeta = resolve; });
+    const recordEvent = lifecycle.recordEvent;
+    vi.spyOn(lifecycle, 'recordEvent').mockImplementation(async (...args) => {
+      await recordEvent(...args);
+      if (args[2] !== 'exhausted') return;
+      releaseBeta();
+      // A macrotask, so every microtask the sibling's continuation is made of has run: from its
+      // stub's resumption to `context.reached = …` nothing awaits, so the slot holds the SIBLING's
+      // decision by the time this returns. That is the interleaving rather than a hope about one.
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
+
+    const fixture = runFixture({ run: { answerGate: aborting } });
+    fixture.role('alpha', '---\n---\nthe member that stops\n');
+    fixture.role('beta', '---\n---\nthe member that finishes\n');
+    fixture.steps([
+      {
+        parallel: [
+          { id: 'alpha', role: 'alpha', output: { write: 'dev/a.md', verdict: 'approve|changes-requested' }, on_fail: { goto: 'alpha', max_iterations: 0 } },
+          { id: 'beta', role: 'beta', output: { write: 'dev/b.md', verdict: 'approve|changes-requested' } },
+        ],
+      },
+    ]);
+    stubAdapter(async (invocation) => {
+      if (invocation.prompt.includes('# Role: beta')) {
+        await betaHeld;
+        return { output: { summary: 'beta decided', document: '# b\n', verdict: 'approve', findings: [] }, raw: '{}', usage: BILLED };
+      }
+      return {
+        output: { summary: 'alpha stopped', document: '# a\n', verdict: 'changes-requested', findings: ['major: a.ts:1 the shape is wrong'] },
+        raw: '{}', usage: BILLED,
+      };
+    });
+
+    const { events } = await fixture.settle();
+
+    // The sibling really did decide before the question was built, so the clause below is about
+    // isolation rather than an interleaving that never happened: `steps.ts` assigns the slot BEFORE
+    // it emits `done`, so a `done` for beta ahead of the question IS that assignment, observed.
+    const sibling = events.findIndex((event) => event.type === 'done' && event.stepId === 'beta');
+    const asked = events.findIndex((event) => event.type === 'gate');
+    expect(sibling, 'the sibling never finished — the fixture proves nothing').toBeGreaterThan(-1);
+    expect(asked, 'no question was asked — this clause has lost its subject').toBeGreaterThan(-1);
+    expect(sibling, 'the sibling had not decided when the question was built — the window was not staged')
+      .toBeLessThan(asked);
+    expect(gateOf(events).reached, 'the question carried the sibling that landed in its window').toStrictEqual({
+      stepId: 'alpha', verdict: 'changes-requested', summary: 'alpha stopped',
+      findings: ['major: a.ts:1 the shape is wrong'],
+    });
+  });
 });
 
 describe('Q-0129 AC-6 — absence is absence', () => {
@@ -333,6 +393,39 @@ describe('Q-0129 AC-6 — absence is absence', () => {
     const gate = gateOf(events);
     expect(gate.kind).toBe('human-locked');
     expect('reached' in gate, 'the question carried an empty decision rather than none').toBe(false);
+  });
+
+  test('a step that declares no verdict is not handed the decision an answered gate carried', async () => {
+    // One run, two questions. `review` decides, the author-declared gate carries that decision and
+    // is answered `advance`, and then a step that decides NOTHING fails — so what the reader is
+    // handed next must describe that failure rather than re-present a decision they have already
+    // answered on. Three call sites reach `handleFail` and only the agent step's carries a verdict,
+    // which is what the second question here is empty BECAUSE of, rather than in spite of.
+    const fixture = runFixture({
+      run: {
+        answerGate: (question: GateQuestionEvent): Promise<GateAnswerEnvelope> => Promise.resolve({
+          gateId: question.gateId, answer: question.kind === 'human' ? 'advance' as const : 'abort' as const,
+        }),
+      },
+    });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+      { gate: 'human', reason: 'approve to advance' },
+      { id: 'check', type: 'script', run: 'exit 3', on_fail: { goto: 'check', max_iterations: 0 } },
+    ]);
+    stubAdapter(() => ({
+      output: { summary: 'nothing to report', document: '# r\n', verdict: 'approve', findings: [] },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.map((gate) => gate.kind), 'the run did not reach both questions — this clause has lost its subject')
+      .toStrictEqual(['human', 'human-locked']);
+    expect(gates[0]?.reached?.stepId, 'the gate that followed the decision carried nothing').toBe('review');
+    expect('reached' in gates[1]!, 'a script step\'s failure was presented as the decision the reader had already answered')
+      .toBe(false);
   });
 
   test('a later gate is not handed an earlier RUN\'s decision', async () => {

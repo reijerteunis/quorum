@@ -285,6 +285,11 @@ export interface RunContext {
    * reconciled in declaration order once the group settles, because `Promise.allSettled` completes
    * them in whatever order the vendors answer and what a reader is shown may not be a property of
    * scheduling. See *"A gate question carries the decision that reached it"* (2026-09-17).
+   *
+   * **The two gate kinds are entitled to different readings of it**, which is the half a single slot
+   * does not carry on its own: an author-declared gate takes the last decision the run recorded,
+   * while an **exhaustion** gate takes it only where it names the step that failed, because that
+   * gate describes a refusal rather than a position in the run. `handleFail` is where that holds.
    */
   reached?: GateReached;
   /**

@@ -363,6 +363,10 @@ export async function runAgentStep(
     };
     context.reached = reached;
     extra.collectReached?.(reached);
+    // Nothing between this assignment and the `handleFail` call below may await: this step's own
+    // exhaustion gate reads the slot at that function's first line, and a `parallel:` sibling
+    // finishing in a window opened here is what it would read instead. The identity test there is
+    // what makes that safe rather than merely true today — see Q-0129 AC-5.
   }
   if (branch) {
     const files = commitAll(

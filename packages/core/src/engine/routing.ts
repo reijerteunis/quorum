@@ -10,17 +10,19 @@ function interruptedGate(request: GateQuestionEvent): FlowError {
 }
 
 /**
- * What the run's slot holds, as the fragment a gate question spreads — `{}` where it holds nothing.
+ * A decision as the fragment a gate question spreads — `{}` where there is nothing to carry.
  *
  * Spread rather than assigned so that *no step before this gate declared a verdict* renders as the
  * field being **absent**, which is what a reader is owed: an object of empty members would say a
- * step decided nothing, and nothing decided at all is a different sentence. Read here at both sites
- * that compose a question, and derived from nowhere else — no message is parsed, no `gateId` is
- * taken apart and no artifact is re-read. See *"A gate question carries the decision that reached
- * it"* (2026-09-17).
+ * step decided nothing, and nothing decided at all is a different sentence. Both sites that compose
+ * a question read {@link RoutingContext.reached} and hand what they read to this one builder, and it is
+ * derived from nowhere else — no message is parsed, no `gateId` is taken apart and no artifact is
+ * re-read. What differs is which reading each site is entitled to, which is where the two kinds of
+ * gate differ: see {@link handleFail}. See *"A gate question carries the decision that reached it"*
+ * (2026-09-17).
  */
-const reachedBy = (context: RoutingContext): { reached?: GateReached } =>
-  context.reached === undefined ? {} : { reached: context.reached };
+const reachedBy = (reached: GateReached | undefined): { reached?: GateReached } =>
+  reached === undefined ? {} : { reached };
 
 /** Publishes one correlated question and validates the caller's out-of-band answer. */
 export async function askGate(request: GateQuestionEvent, context: RoutingContext): Promise<'advance' | 'retry' | 'abort'> {
@@ -106,7 +108,7 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     const request: GateQuestionEvent = {
       type: 'gate', gateId: context.nextGateId(), kind: String(step.gate),
       reason: String(step.reason ?? step.prompt ?? `${context.flow.name}: approve to advance ticket to "${context.flow.produces}"`),
-      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(context),
+      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(context.reached),
     };
     const answer = await askGate(request, context);
     if (answer === 'advance') return null;
@@ -130,8 +132,24 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
   return runAgentStep(step, context);
 }
 
-/** Charges one failed traversal and returns its bounded routing decision or exhaustion answer. */
+/**
+ * Charges one failed traversal and returns its bounded routing decision or exhaustion answer.
+ *
+ * The gate it may present carries what **this** step decided and nothing else, which is the half of
+ * the slot's rule that differs from an author-declared gate's: that one carries the last decision
+ * the run recorded, and this one describes the refusal that reached it.
+ */
 export async function handleFail(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<StepResult> {
+  // Read before this function's first await, and taken only where it NAMES the step that is
+  // failing. Three call sites reach here and only the agent step's carries a verdict, so without
+  // the identity test a script or an integrate failure would present the last verdict-declaring
+  // step's decision — one an earlier gate may already have been answered on — as its own. And a
+  // `parallel:` sibling finishing while this member waits on the record below would otherwise
+  // overwrite the slot between `steps.ts`'s assignment and the question built at the end of this
+  // function; nothing between that assignment and this line awaits, and the identity test is what
+  // keeps that ordering off the critical path, since an await introduced there makes the question
+  // carry nothing rather than a sibling's decision. See Q-0129 AC-5 and AC-6.
+  const reached = context.reached?.stepId === String(step.id) ? context.reached : undefined;
   const failure = step.on_fail as Readonly<Record<string, unknown>>;
   const counter = typeof failure.counter === 'string' ? failure.counter : `${String(context.flow.name)}.${String(step.id)}`;
   const limit = Number(failure.max_iterations);
@@ -166,7 +184,7 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
     reason: exhausted
       ? `loop exhausted at ${String(step.id)} (${counter} = ${count}, limit ${limit}); choose: advance (accept as is), retry (exactly one more ${target}), abort`
       : `${String(step.id)} stopped rather than looping (${counter} = ${count}, limit ${limit}); choose: advance (accept its answer and carry on), retry (exactly one more ${target}, for once you have changed what it reads), abort`,
-    ticketDir: context.ticket.dir, retry: target, ...reachedBy(context),
+    ticketDir: context.ticket.dir, retry: target, ...reachedBy(reached),
   };
   const answer = await askGate(request, context);
   if (answer === 'advance') return null;
