@@ -7,11 +7,11 @@
  */
 import { afterAll, describe, expect, test } from 'vitest';
 
-import { wireRunListSchema } from '@quorum/shared';
+import { wireRunListSchema, wireRunSchema, type GateQuestionEvent } from '@quorum/shared';
 
 import { createRunHost } from './host.js';
 import { BIND_HOSTNAME, createDaemon, DEFAULT_RETENTION, MAX_BUFFERED_BYTES, overBuffered, serve } from './serve.js';
-import { fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
+import { DECIDING_GATED_FLOW, fixture, GATED_FLOW, removeTempDirs, TICKET_ID } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
 
@@ -270,6 +270,59 @@ describe('Q-0121 AC-7 and AC-11 — a client with no handle finds a run and join
       expect(code, 'the socket did not close normally over a run that had ended').toBe(1000);
     } finally {
       await daemon.close();
+    }
+  });
+});
+
+describe('Q-0129 AC-7 — the transport carries a step\'s decision without being edited', () => {
+  /** Every message a socket receives until one of them carries a gate question, then that question. */
+  async function gateOverSocket(url: string, handle: string): Promise<GateQuestionEvent> {
+    const socket = new WebSocket(`${url.replace('http://', 'ws://')}/runs/${handle}/events`);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { socket.close(); reject(new Error('no gate question reached the socket')); }, 15_000);
+      socket.addEventListener('message', (message) => {
+        const envelope = JSON.parse(String(message.data)) as { type: string; event?: { type?: string } };
+        if (envelope.type !== 'event' || envelope.event?.type !== 'gate') return;
+        clearTimeout(timer);
+        socket.close();
+        resolve(envelope.event as unknown as GateQuestionEvent);
+      });
+      socket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('the socket errored')); });
+    });
+  }
+
+  test('the question on the socket and the question in the run row are the same value, field for field', async () => {
+    // **`wireRunOf` projects `gates` WHOLE, and this is what says so.** That pass-through is the
+    // reason `packages/server` needed no edit for this ticket, and it is one tidy-up away from
+    // being a hand-copy of the five fields a question carried before — which would drop `reached`
+    // in silence while every other assertion in this package stayed green.
+    //
+    // Two transports rather than one source read twice: the engine's own event as a WebSocket
+    // client receives it, against the row `GET /runs/:id` answers. A deep equality between them
+    // cannot be satisfied by a projection that names fields.
+    const { project, server, url, host } = await listening({ flow: DECIDING_GATED_FLOW });
+    try {
+      const started = await fetch(`${url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ flow: project.flowName, ticket: TICKET_ID }),
+      });
+      expect(started.status).toBe(201);
+      const handle = (await started.json() as { handle: string }).handle;
+
+      const emitted = await gateOverSocket(url, handle);
+      expect(emitted.reached, 'the gate question carried nothing about the step that reached it').toBeDefined();
+      expect(emitted.reached?.stepId).toBe('work');
+
+      const row = wireRunSchema.parse(await (await fetch(`${url}/runs/${handle}`)).json());
+      expect(row.gates, 'the row carries no pending question').toHaveLength(1);
+      expect(row.gates[0], 'the row is not the question the engine emitted').toStrictEqual(emitted);
+
+      // Let the run finish rather than leaving it parked under the shutdown below.
+      expect(host.answer(handle, { gateId: emitted.gateId, answer: 'abort' })).toBeNull();
+    } finally {
+      await host.shutdown();
+      await server.close();
     }
   });
 });

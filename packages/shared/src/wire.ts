@@ -122,9 +122,17 @@ export const wireRunStateSchema: z.ZodType<WireRunState> = z.enum(WIRE_RUN_STATE
  *
  * `pendingGates` is what makes a row actionable: a run waiting on a human that nobody can find is
  * the case this shape exists to remove. `gates` is what makes it ANSWERABLE, which is Q-0016's:
- * `gateId` is the correlation token an answer has to echo, and `kind`, `reason` and `retry` are the
- * whole of what a gate screen can honestly render — a browser that had only the count could say a
- * gate was waiting and could not say what it asked or offer an answer to it.
+ * `gateId` is the correlation token an answer has to echo — a browser that had only the count could
+ * say a gate was waiting and could not say what it asked or offer an answer to it.
+ *
+ * **And what it carries is what a question carries, which is not a list this sentence may keep.**
+ * It said `kind`, `reason` and `retry` were *"the whole of what a gate screen can honestly render"*
+ * until Q-0129, and that was a count of the question's own fields written down a second time: the
+ * question gained `reached`, the decision the step before the gate returned, and this shape gained
+ * it with no edit here because the element IS {@link GateQuestionEvent}. The pass-through is the
+ * property; an enumeration beside it is a register free to go stale in silence, which is what that
+ * clause did the day the union widened. See *"A gate question carries the decision that reached
+ * it"* (2026-09-17).
  *
  * **`refusal` narrows nothing either, and it is NOT a {@link WireRefusal}.** A `refused` row said
  * only that the start never happened until Q-0016, so a screen reporting one could name no reason
@@ -161,9 +169,10 @@ export const wireRunSchema: z.ZodType<WireRun> = z.object({
   runId: z.number().int().nullable(),
   state: wireRunStateSchema,
   pendingGates: z.number().int().nonnegative(),
-  // The event union's own schema as the element, never a second declaration of those six fields:
-  // the question a browser echoes back has to be the question `askGate` emitted, and two
-  // declarations of one shape are free to drift the moment either end gains a field.
+  // The event union's own schema as the element, never a second declaration of its fields: the
+  // question a browser echoes back has to be the question `askGate` emitted, and two declarations
+  // of one shape are free to drift the moment either end gains a field — which Q-0129 is the first
+  // ticket to do, and it needed no line here.
   gates: z.array(gateQuestionEventSchema),
   // Nullable rather than optional, which is `remedy`'s own rule one level down: absent and `null`
   // are different answers, and only one of them says "this run has no refusal to report".

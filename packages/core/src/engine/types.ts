@@ -7,7 +7,7 @@
  * {@link GateUnansweredError} is the one value, because a classifier that tests `instanceof` needs
  * a single identity and this is already the file every engine module reads its error identity from.
  */
-import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, ProjectConfig } from '@quorum/shared';
+import type { Event, Flow, GateAnswerEnvelope, GateQuestionEvent, GateReached, ProjectConfig } from '@quorum/shared';
 
 import type { Backlog, TicketRecord } from '../backlog/backlog.js';
 import type { Project } from '../backlog/project.js';
@@ -271,6 +271,36 @@ export interface RunContext {
   failingTasks?: Set<string> | null;
   /** The last failed integration's notes and the tail of its output, appended to a retry's prompt. */
   lastIntegration?: string;
+  /**
+   * What the most recently completed verdict-declaring step decided, for the next gate question to
+   * carry.
+   *
+   * Optional and assigned by the step for {@link RunContext.failingTasks}'s reason: a run whose flow
+   * declares no verdict anywhere never carries the key, and a gate reached with the slot empty is a
+   * gate that follows no such step. **Absence is the answer there** — neither the engine nor a
+   * surface substitutes a previous run's, a previous gate's or a previous iteration's value.
+   *
+   * **Execution order decides what is in it**, so a step re-entered through a backward edge replaces
+   * what its earlier iteration wrote. The one exception is a `parallel:` group, whose members are
+   * reconciled in declaration order once the group settles, because `Promise.allSettled` completes
+   * them in whatever order the vendors answer and what a reader is shown may not be a property of
+   * scheduling. See *"A gate question carries the decision that reached it"* (2026-09-17).
+   *
+   * **The two gate kinds are entitled to different readings of it**, which is the half a single slot
+   * does not carry on its own: an author-declared gate takes the last decision the run recorded,
+   * while an **exhaustion** gate takes it only where it names the step that failed, because that
+   * gate describes a refusal rather than a position in the run. `handleFail` is where that holds.
+   *
+   * **A decision is carried to the first gate that PRESENTS it and no further**, so a later gate
+   * reached with nothing decided since carries nothing. That is the *a previous gate's value* half of
+   * the paragraph above, and it is why this is a slot a question spends rather than a register of the
+   * run's last verdict: the two read the same for every flow this repository ships, each of which
+   * declares exactly one gate, and they differ the moment one declares two. **What spends it is the
+   * emit and not the composing**, so a gate that auto-advances — an `auto` one, a non-locked one
+   * under `--auto`, any under `--dry` — leaves it for the next reader who is actually shown
+   * something. `askGate` is where that holds; see Q-0129 erratum E-7(a).
+   */
+  reached?: GateReached;
   /**
    * Every worktree this run obtained, keyed by branch and valued by its directory.
    *
