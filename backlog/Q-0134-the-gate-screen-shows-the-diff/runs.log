@@ -20,3 +20,17 @@ would put the producer in one worktree and its two consumers in others.
 GO-4, GO-5 and GO-6 are the operator's at the close, and GO-5 is not a formality: R-2 means no
 ticket in this backlog has a non-empty range — re-measured at this gate as 42 of 42 integration
 branches contained in `main` — so `runs.log` must record how the demonstration's range was built.
+2026-09-17T21:11:50.951Z run=2 flow=chore start stage=requirements
+2026-09-17T22:32:43.116Z run=2 step=implement vendor=claude model=- verdict=proceed cost=150.20334350000002 ms=4851780
+2026-09-17T22:32:43.165Z run=2 diff truncated range=harness/Q-0134/integration...harness/Q-0134/implement limit=200000 kept=200000 of 271686 — no patch at all for 12 file(s): packages/server/src/gates.ts, packages/server/src/host.ts, packages/server/src/http.ts, packages/server/src/index.test.ts, packages/server/src/index.ts, packages/server/src/package.test.ts, packages/server/src/wire.ts, packages/server/test/fixture.ts, packages/shared/src/diff-evidence.test.ts, packages/shared/src/diff-evidence.ts, packages/shared/src/docs.test.ts, packages/shared/src/index.ts
+2026-09-17T22:34:10.243Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=87074
+2026-09-17T22:51:57.156Z run=2 step=implement vendor=claude model=- verdict=proceed cost=15.863204499999998 ms=1066806
+2026-09-17T22:51:57.202Z run=2 diff truncated range=harness/Q-0134/integration...harness/Q-0134/implement limit=200000 kept=200000 of 281040 — no patch at all for 13 file(s): packages/server/src/gate-diff.test.ts, packages/server/src/gates.ts, packages/server/src/host.ts, packages/server/src/http.ts, packages/server/src/index.test.ts, packages/server/src/index.ts, packages/server/src/package.test.ts, packages/server/src/wire.ts, packages/server/test/fixture.ts, packages/shared/src/diff-evidence.test.ts, packages/shared/src/diff-evidence.ts, packages/shared/src/docs.test.ts, packages/shared/src/index.ts
+2026-09-17T22:53:15.453Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=78247
+2026-09-17T23:10:05.895Z run=2 step=implement vendor=claude model=- verdict=proceed cost=17.582156000000005 ms=1010318
+2026-09-17T23:10:05.947Z run=2 diff truncated range=harness/Q-0134/integration...harness/Q-0134/implement limit=200000 kept=200000 of 287815 — no patch at all for 13 file(s): packages/server/src/gate-diff.test.ts, packages/server/src/gates.ts, packages/server/src/host.ts, packages/server/src/http.ts, packages/server/src/index.test.ts, packages/server/src/index.ts, packages/server/src/package.test.ts, packages/server/src/wire.ts, packages/server/test/fixture.ts, packages/shared/src/diff-evidence.test.ts, packages/shared/src/diff-evidence.ts, packages/shared/src/docs.test.ts, packages/shared/src/index.ts
+2026-09-17T23:11:13.212Z run=2 step=review vendor=codex model=- verdict=approve cost=? ms=67263
+2026-09-17T23:13:04.267Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-17T23:13:27.217Z run=2 gate=human answer=advance
+2026-09-17T23:13:28.633Z run=2 removed-worktrees=2 kept=0
+2026-09-17T23:13:28.636Z run=2 completed stage=requirements→reviewed cost=183.649 tokens=324776500

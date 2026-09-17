@@ -75,4 +75,24 @@ export const diffEvidenceSchema: z.ZodType<DiffEvidence> = z.object({
   kept: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
   omitted: z.array(z.string()),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  // **The invariant the docblock above states, enforced rather than described.** That comment says
+  // the three cannot disagree and that `truncated` IS `kept < total`, and until this clause it was
+  // a claim about the PRODUCER — true of `materialiseDiff`, which computes all three at one site —
+  // sitting on a schema whose whole job is the opposite: validating a value that has crossed a
+  // boundary and did NOT necessarily come from that site. So `{ truncated: false, kept: 10,
+  // total: 20 }` parsed cleanly while contradicting the sentence four lines above it.
+  //
+  // Found by a cross-vendor hand pass over the files this ticket's three reviews were never handed
+  // a patch for — the review diff was truncated on all three rounds and this file was omitted every
+  // time — and repaired after the gate on Q-0073's and Q-0080's precedent.
+  if (value.kept > value.total) {
+    ctx.addIssue({ code: 'custom', path: ['kept'], message: 'kept exceeds total: a truncation cannot keep more bytes than it measured' });
+  }
+  if (value.truncated !== value.kept < value.total) {
+    ctx.addIssue({
+      code: 'custom', path: ['truncated'],
+      message: `truncated is ${String(value.truncated)} while kept ${value.kept} and total ${value.total} say ${String(value.kept < value.total)}`,
+    });
+  }
+}) as unknown as z.ZodType<DiffEvidence>;

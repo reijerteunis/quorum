@@ -1,0 +1,3 @@
+major: packages/server/src/host.ts:475 When the first iterator pull throws after `preflightDiffs` has already reported one or more valid diffs, `begin()` calls `refuse()` without clearing `record.evidence`; refused records are never pruned, so up to one capped patch per previously materialised site remains in daemon memory indefinitely despite no pending gate owning it. Clear the evidence map on the refusal path and add a regression with an earlier valid diff site followed by a preflight failure.
+
+observation: Focused Vitest execution was unavailable because the read-only sandbox prevented Vite from creating its `.vite-temp` config artifact; the implementer reports the full forced suite passing outside this sandbox.

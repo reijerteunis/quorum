@@ -1,0 +1,3 @@
+# Review
+
+major: packages/server/src/host.ts:434 `reportDiff` overwrites the run’s sole evidence slot for every materialisation. Because `preflightDiffs` materialises all pre-existing ranges before any step executes, a later diff site replaces an earlier deciding step’s evidence before that step reaches its gate. The `stepId` check then returns `no-diff`, falsely claiming the deciding step read no diff. Preserve evidence by producing step/site until the matching gate consumes it, clean up unused snapshots on release, and change the two-site regression test to assert that the gate receives the deciding step’s own evidence while never receiving the other site’s evidence.
