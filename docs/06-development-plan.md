@@ -3897,8 +3897,64 @@ parked at p2 with its three written reopening thresholds.
   second is fixed by deleting the copy rather than updating it, the plan being the authority. Both
   are Q-0098's class — a claim in a harness context file is one every future requirement inherits —
   and two in one file in one sitting is an argument that a check may be owed.
-- Q-0130 The browser starts and stops a run. *(Opened 2026-09-16 at Q-0015's requirements gate,
-  `draft`, p2.)* The app's two run-lifecycle mutations, answered once rather than twice. It is also
+- Q-0130 The browser starts and stops a run. *(`reviewed` and `main:contained` 2026-09-17 — **the
+  daemon has a producer**, so `GET /runs` no longer answers `{"runs": []}` on a real machine and both
+  M3 screens have something to show.)* **$180.13** — $18.22 requirements, ready on the first pass at
+  fourteen criteria, and $161.91 chore across **six implement rounds and three exhaustion gates**.
+  **It is the first ticket here whose body survived re-measurement intact** — nine claims checked
+  against the tree before the run, all nine holding across a shipped Q-0015 that edited three of the
+  files it names. Q-0016's body was refuted three times, Q-0015's three, Q-0127's twice, and the
+  difference is visible: **this body was written by the flow at a gate from a merged requirement, and
+  those three were written by the operator from the plan.**
+  **The requirements run answered the body's one open question by arithmetic.** It guessed a decision
+  entry was *"likely owed"* on whether the write boundary is still one boundary or a family; measured,
+  the register moves by **one row** (`'/stop'`: `null` → `daemon-endpoints.ts`) and **a start needs no
+  new path literal at all**, posting to `DAEMON_ENDPOINTS.runs`, which that module already declares
+  and `fetchRuns` already reads. The permitted **module** set stays two. One boundary, one permission,
+  no entry — Q-0108's precedent. Its five open questions were **stated rather than asked** (Q-0105's
+  remedy), the load-bearing one being that **the browser may not send `auto`**, since *"human-gated by
+  default"* is a quality pillar and a checkbox that flips it is a decision; that is also the answer
+  that keeps an entry from being owed, and it is guarded two ways with a discriminating fixture.
+  **The chore run's shape is the finding, and it is this repository's most-recorded failure happening
+  inside one review loop.** Four of the first five majors were **one class** — a confirmation
+  outliving the premise that made it offerable: captured for one subject and executed under another;
+  surviving the run ceasing to be `running`; surviving the selected flow becoming ineligible. Each
+  round closed the instance it was handed and the next found the same defect on a sibling surface.
+  **Round 3's finding is what proves it is a class rather than a list**: it is not a new defect but
+  round 1's fix overshooting, and it overshot by substituting a **request** state for a **run** state
+  — which `docs/GLOSSARY.md`'s **Connection state** entry forbids in as many words.
+  **Erratum E-6 named the class at the second exhaustion gate and round 5 built one mechanism**, in
+  `run-lifecycle.ts`, with both call sites *reduced* to supplying a premise — and the evidence is
+  structural rather than a test per site: **a fourth surface that omits its premise does not compile**
+  (`TS2345`), which is stronger than the register E-6 asked for. **E-7 then corrected E-6's own rule**,
+  which round 5 had applied exactly as written: a premise is **tri-state** — *holds*, *lapsed*,
+  *unknown* — composing asymmetrically, one conclusive `lapsed` withdrawing the offer whatever else is
+  unknown, and `unknown` alone never doing so. That is **containment**'s and **push lag**'s discipline
+  at a fourth subject, and the operator had the rule available and did not reach for it.
+  **The approve was distrusted and verified by execution** (Q-0051), because the reviewer disclosed it
+  could not run the suite at all — `EPERM` under `--sandbox read-only`, the **fifth** ticket to record
+  that. Mutation-tested at the gate: a never-lapsing premise turns **three** tests red, one naming
+  E-7's mixed success/failure case by hand, and a call site omitting its premise fails to compile.
+  **Every one of its six reviews was handed a truncated diff** — 252,751 to 322,340 bytes against the
+  200,000 cap, 21% rising to 38%, the same six files each time and `wire.ts` among them — and **every
+  one disclosed it and inspected the omitted files from the branch**, through Q-0124's warn and
+  Q-0117's `observation:` channel. Third consecutive ticket where that pair composed; it is now a
+  mechanism rather than a coincidence, and it is the strongest evidence **Q-0128** has. The operator's
+  own hand review of the tail found nothing, which corroborates the claim rather than resting on it.
+  **GO-4 was written to be unfakeable, because the operator faked its predecessor.** Q-0016's GO-6
+  asked for the product run by hand and it was reported discharged when the by-hand half had not been
+  performed; Q-0015's gate found that. So this obligation names what must be recorded, and `runs.log`
+  records it: a dry walk and then a **real run started from Chrome** on the ticket page — which
+  offered exactly one flow, `requirements`, because Q-0129 is `draft`, and **no `auto` control** —
+  watched in mission control with **`pm-claude` and `pm-codex` streaming side by side**, then
+  **stopped from that screen**. The stop's outcome is the sentence worth keeping: *"The daemon took
+  the request to stop this run. Whether it has ended is a read rather than something this page can
+  infer: work already under way unwinds before a run closes."* Read from the API afterwards, the
+  unwind had **not** finished 25 seconds later, and that is recorded as observed — a tidier line would
+  have been the inference the screen refused. **The pair also proves Q-0015's M2 fix in both
+  directions**: the ended run showed its number and omitted disclosure 1; the running run showed the
+  handle and displayed it. *(The requirements-gate record follows.)* *(Opened 2026-09-16 at Q-0015's
+  requirements gate, `draft`, p2.)* The app's two run-lifecycle mutations, answered once rather than twice. It is also
   **the ticket that gives the daemon a producer**: until it lands, `GET /runs` answers `{"runs": []}`
   on any real machine and neither mission control nor Q-0016's gate screen has anything to show.
 - Q-0131 The mission control header's measured values. *(Opened 2026-09-16 at Q-0015's requirements
