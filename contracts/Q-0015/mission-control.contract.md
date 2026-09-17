@@ -35,11 +35,15 @@ union, daemon routes and wire schemas are existing contracts and are not changed
 - A column's vendor is the latest vendor observed on that step's `spawn` or `retry`, or `null` when
   neither supplied one. All event messages and stdout lines render as React text.
 - Source protection against parsing human prose scans the complete `apps/web/src` corpus for
-  twelve parse needles: each of `cost=`, `role=` and `verdict=` prefixed by a single quote, double
-  quote, backtick or slash. Bare `role=` is deliberately not a needle: it falsely matches the
-  existing accessibility selector `[role="progressbar"]`. The guard proves both directions with a
-  template-literal parse fixture that is rejected and that selector fixture that is accepted; it
-  never narrows the corpus.
+  **six** parse needles: bare `cost=` and `verdict=`, and `role=` prefixed by a single quote, double
+  quote, backtick or slash. **The delimiter requirement applies to `role=` alone, because it is the
+  only one with a measured collision** — the existing accessibility selector
+  `[role="progressbar"]`, which must stay — while `cost=` and `verdict=` occur in this corpus in no
+  form, so requiring a prefix before them bought nothing and stopped forbidding the bare literal a
+  concatenating parser writes. The guard proves both directions with a template-literal parse
+  fixture that is rejected, bare-form fixtures for the two unprefixed fields, and that selector
+  fixture accepted; it never narrows the corpus. *(Twelve needles until review round 2's major 4;
+  `solution/errata.md` SE-1 moved with it.)*
 - `buildStepTimeline` creates one row per step id observed on `step` or `done`, in first-observed
   order. A start alone is `started`; a done is `ended` and retains its message; after a terminal,
   an unmatched start is `started-with-no-end-reported`. A done retained without its start still
