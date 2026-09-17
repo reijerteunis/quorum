@@ -63,6 +63,35 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
   /** What one request carried, so *what was sent* is asserted rather than assumed. */
   interface Sent { readonly path: string; readonly request?: DaemonRequest }
 
+  /** The three ways a read can come back carrying no report of the run at all. */
+  type ReadFailure = 'unreachable' | 'refused' | 'unparseable';
+
+  /** How the NEXT read answers: with a run in some state, with a failure, or not at all. */
+  type Read =
+    | { readonly kind: 'answers'; readonly state: string }
+    | { readonly kind: 'held' }
+    | { readonly kind: 'fails'; readonly as: ReadFailure };
+
+  /** One read, staged — the three failures told apart the way `requestJson` tells them apart. */
+  const answerRead = (read: Read): Promise<DaemonResponse> => {
+    if (read.kind === 'held') return new Promise<DaemonResponse>(() => undefined);
+    if (read.kind === 'answers') {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...body(HANDLE), state: read.state }) });
+    }
+    switch (read.as) {
+      case 'unreachable':
+        return Promise.reject(new Error('nothing answered'));
+      case 'refused':
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: () => Promise.resolve({ code: 'no-such-run', condition: 'no run is registered under that handle', remedy: null }),
+        });
+      case 'unparseable':
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ not: 'a run' }) });
+    }
+  };
+
   /**
    * The screen over a daemon whose reads answer at once and whose STOP is held until a test settles
    * it — the staging every clause about an outstanding act needs.
@@ -76,18 +105,18 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     settle: (status: number, body: unknown) => Promise<void>;
     /** What the NEXT read answers — the staging a clause about a run changing under a reader needs. */
     setRunState: (state: string) => void;
+    /** Leave every further read outstanding, which is a refresh started and not an answer. */
+    holdReads: () => void;
+    /** Make every further read come back carrying no report, one failure at a time. */
+    failReads: (as: ReadFailure) => void;
   }> {
     const sent: Sent[] = [];
     const held: ((answer: DaemonResponse) => void)[] = [];
-    let runState = over.runState ?? 'running';
+    let read: Read = { kind: 'answers', state: over.runState ?? 'running' };
     const fetcher = (path: string, request?: DaemonRequest): Promise<DaemonResponse> => {
       sent.push({ path, request });
       if (request?.method === 'POST') return new Promise<DaemonResponse>((resolve) => { held.push(resolve); });
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ ...body(HANDLE), state: runState }),
-      });
+      return answerRead(read);
     };
     const view = document.createElement('div');
     document.body.append(view);
@@ -107,7 +136,9 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     return {
       view,
       sent,
-      setRunState: (state: string) => { runState = state; },
+      setRunState: (state: string) => { read = { kind: 'answers', state }; },
+      holdReads: () => { read = { kind: 'held' }; },
+      failReads: (as: ReadFailure) => { read = { kind: 'fails', as }; },
       settle: async (status: number, payload: unknown) => {
         const resolve = held.shift();
         if (resolve === undefined) throw new Error('no stop is waiting');
@@ -208,6 +239,82 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     expect(stopButton(view), 'the control did not come back for a run that is running again').not.toBeNull();
     expect(view.querySelector('[data-confirm="stop"]'),
       'a withdrawn confirmation was put back by a later read').toBeNull();
+  });
+
+  test('AC-8 — a refresh started and a read that failed are not reports, so neither withdraws anything', async () => {
+    // Review round 3: the predicate read the REQUEST state, which `readMetadata` replaces with
+    // `in-flight` the instant a refresh starts and with a failure where one never answers — so
+    // asking for a fresh answer about a run took away the one act a reader has on it, and so did a
+    // daemon that could not be reached. AC-8 is written on what the daemon LAST REPORTED, and none
+    // of these four is a report that the run is not running.
+    const refresh = async (staged: { view: HTMLElement; sent: Sent[] }): Promise<void> => {
+      const before = staged.sent.length;
+      // The metadata region's own control, which is the first button the status region renders
+      // above the stop while that read is loaded — the read the existing withdrawal clause uses.
+      await click(staged.view.querySelector('button'));
+      expect(staged.sent.length, 'the read this clause stages never happened').toBeGreaterThan(before);
+    };
+    const readState = (view: HTMLElement): string | null =>
+      view.querySelector('[data-request-state]')?.getAttribute('data-request-state') ?? null;
+
+    // (a) a refresh that has not come back yet.
+    const pending = await control();
+    await click(stopButton(pending.view));
+    pending.holdReads();
+    await refresh(pending);
+    expect(readState(pending.view), 'the refresh this clause stages is not outstanding').toBe('in-flight');
+    expect(stopButton(pending.view),
+      'a refresh in flight withdrew the control for a run the daemon last reported running').not.toBeNull();
+    expect(pending.view.querySelector('[data-confirm="stop"]'),
+      'a refresh in flight withdrew a confirmation the daemon had said nothing about').not.toBeNull();
+
+    // (b) each of the three ways a read comes back carrying no report — asserted over the set
+    // rather than over one example, because what they have in common is what the criterion is
+    // about: the daemon did not say the run is not running.
+    for (const as of ['unreachable', 'refused', 'unparseable'] as const) {
+      const staged = await control();
+      await click(stopButton(staged.view));
+      staged.failReads(as);
+      await refresh(staged);
+      expect(readState(staged.view), `the read this clause stages did not come back ${as}`).toBe(as);
+      expect(stopButton(staged.view),
+        `a read that came back ${as} withdrew the control for a run last reported running`).not.toBeNull();
+      expect(staged.view.querySelector('[data-confirm="stop"]'),
+        `a read that came back ${as} withdrew a confirmation the daemon had said nothing about`).not.toBeNull();
+    }
+  });
+
+  test('AC-8 — a report is about one handle, and never decides the control on another', async () => {
+    // The other half of keeping a report: it is kept until a LATER one replaces it, so it has to
+    // carry the handle it is about. `app.tsx` keys this screen by handle and a remount would clear
+    // it, but a screen whose subject moves under one instance must not draw an irreversible control
+    // on the run that was left — and a read that then fails at the new handle would leave the
+    // previous run's `running` standing indefinitely rather than for one commit.
+    const view = document.createElement('div');
+    document.body.append(view);
+    const root = createRoot(view);
+    roots.push(() => root.unmount());
+    const render = (handle: string, answer: () => Promise<DaemonResponse>): Promise<void> =>
+      act(async () => root.render(createElement(MissionControlScreen, {
+        handle,
+        snapshot: {
+          state: { kind: 'live', requestedUrl: 'x' },
+          events: [], missedCount: null, browserDiscardedCount: null,
+        },
+        onRetryConnection: () => undefined,
+        fetcher: () => answer(),
+        now: () => 'now',
+        onNavigate: () => undefined,
+      })));
+
+    await render('run-1', () => Promise.resolve({
+      ok: true, status: 200, json: () => Promise.resolve({ ...body('run-1'), state: 'running' }),
+    }));
+    expect(stopButton(view), 'run-1 offered no stop, so this clause has lost its subject').not.toBeNull();
+
+    // The same instance, a different run, and a read that cannot answer for it.
+    await render('run-2', () => Promise.reject(new Error('nothing answered')));
+    expect(stopButton(view), 'a report about the run that was left offered a stop on the run arrived at').toBeNull();
   });
 
   test('AC-9 — two activations in one turn issue one request, and a read does not release the guard', async () => {

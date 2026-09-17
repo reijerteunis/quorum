@@ -19,15 +19,22 @@
  * so a reader and a test read the identical words.
  *
  * **Since Q-0130 it can stop the run it is showing, and what decides whether it offers to is the
- * DAEMON's answer rather than this browser's socket.** The control is drawn from the metadata read's
- * own `state`: present while the daemon last reported the run `running`, absent for a refused start
- * and for a run that is over. `docs/GLOSSARY.md` says connection state *"is not run state"* in as
- * many words — a transport can drop, end or be interrupted without the run changing — so a screen
- * that hid the control when its socket failed would be withholding the one act a reader wants
- * precisely when they can no longer watch what is happening. **A confirmation is withdrawn by the
- * same answer that withdraws the control**: a read moving the run off `running` is the daemon saying
- * there is nothing here to stop, and a question left standing after that is one a reader can still
- * answer.
+ * DAEMON's answer rather than this browser's socket.** The control is drawn from the run the daemon
+ * last REPORTED: present while that report says `running`, absent for a refused start and for a run
+ * that is over. `docs/GLOSSARY.md` says connection state *"is not run state"* in as many words — a
+ * transport can drop, end or be interrupted without the run changing — so a screen that hid the
+ * control when its socket failed would be withholding the one act a reader wants precisely when they
+ * can no longer watch what is happening.
+ *
+ * **What the daemon last reported is not what became of the last request for it**, and the two
+ * diverge exactly where a reader is most likely to be looking: a refresh replaces the request state
+ * the instant it starts, and a daemon that never answered replaces it with a failure. Neither is the
+ * daemon reporting a run that is not running, so neither takes the control away — reading the
+ * request state instead withdrew the one act a reader has the moment they asked for a fresh answer
+ * about it, which is the asymmetry this screen already refuses for a socket that dropped. Review
+ * round 3. **A confirmation is withdrawn by the same answer that withdraws the control**: a report
+ * moving the run off `running` is the daemon saying there is nothing here to stop, and a question
+ * left standing after that is one a reader can still answer.
  *
  * **A stop is not a gate answer.** It cancels the run through the `AbortSignal` it was started with
  * and is none of the three words a gate takes, so nothing here is worded with one.
@@ -62,14 +69,35 @@ export interface MissionControlScreenProps {
 }
 
 /**
- * Whether the DAEMON's last answer about this run says it is running.
+ * The run the daemon last REPORTED at one handle, and the handle that report is about.
+ *
+ * **A request in flight and a request that failed are not reports**, which is the whole of this
+ * type's reason to exist. {@link RequestState} answers *what became of the last request*; this
+ * answers *what the daemon last said about the run*. The handle travels with the run so a report
+ * about one can never decide a control on another — `useRunMutation`'s own `answered.subject`
+ * arrangement, for its reason.
+ */
+interface RunReport {
+  readonly handle: string;
+  readonly run: WireRun;
+}
+
+/**
+ * Whether the DAEMON's last report about this run says it is running.
  *
  * Declared once and read by both the control and the withdrawal below it, so *offered* and *still
- * offered* cannot become two predicates that disagree about one read. It takes the metadata state
- * rather than a boolean, which is what makes a connection state structurally unable to reach it.
+ * offered* cannot become two predicates that disagree about one answer.
+ *
+ * **It takes the reported run rather than the read's request state, and that is the criterion rather
+ * than an implementation detail.** AC-8 offers the control while the daemon LAST REPORTED the run
+ * `running`, and a refresh in flight, a daemon that did not answer and a body this page could not
+ * read are each *no new report* rather than a report that the run is not running. A `WireRun` reaches
+ * this only from a daemon answer that carried one, so a connection state is structurally unable to
+ * decide it — the property the previous signature had, kept, and now held by the value's own origin
+ * rather than by which state union it belongs to.
  */
-const daemonSaysRunning = (metadata: RequestState<WireRun>): boolean =>
-  metadata.kind === 'loaded' && metadata.value.state === 'running';
+const daemonSaysRunning = (reported: WireRun | null): boolean =>
+  reported !== null && reported.state === 'running';
 
 /** What became of a stop this screen sent, in a sentence that claims only what was observed. */
 function StopOutcome({ state, onLookAgain }: {
@@ -104,18 +132,20 @@ function StopOutcome({ state, onLookAgain }: {
 /**
  * The stop control, its confirmation, and what the daemon said about the last one.
  *
- * **Offered from `metadata` alone.** The snapshot this screen also holds is the browser's account of
- * a socket, and a socket that dropped says nothing about the run — so it is not a parameter here at
- * all, which makes *connection state does not decide this* a property of the signature rather than
- * of a branch nobody re-reads.
+ * **Offered from the daemon's last report alone.** The snapshot this screen also holds is the
+ * browser's account of a socket, and a socket that dropped says nothing about the run — so it is not
+ * a parameter here at all, which makes *connection state does not decide this* a property of the
+ * signature rather than of a branch nobody re-reads. What it takes is the reported run itself rather
+ * than the request state it arrived in, so *a refresh is not an answer* is a property of the
+ * signature too.
  */
-function StopControl({ metadata, mutation, onAsk, onLookAgain }: {
-  metadata: RequestState<WireRun>;
+function StopControl({ reported, mutation, onAsk, onLookAgain }: {
+  reported: WireRun | null;
   mutation: RunMutation<string>;
   onAsk: () => void;
   onLookAgain: () => void;
 }): ReactNode {
-  const running = daemonSaysRunning(metadata);
+  const running = daemonSaysRunning(reported);
   return (
     <div className="flex flex-col gap-2" data-stop-region={running ? 'running' : 'not-running'}>
       {running ? (
@@ -171,6 +201,12 @@ export function MissionControlScreen({
   const clock = now ?? isoClock;
   const [metadata, setMetadata] = useState<RequestState<WireRun>>(runInFlight<WireRun>(handle));
 
+  // What the daemon last SAID about this run, which is not what became of the last request for it.
+  // The status region is about the request and reads `metadata`; the stop control is about the run
+  // and reads this, because AC-8 is written on the last report and a read replaces the request state
+  // the instant it starts.
+  const [reported, setReported] = useState<RunReport | null>(null);
+
   // Guards a superseded read exactly as the gate screen's `generation` does: a handle change starts
   // a new read before the previous one may have resolved, and only the newest one may commit state.
   const generation = useRef(0);
@@ -180,7 +216,16 @@ export function MissionControlScreen({
     setMetadata(runInFlight<WireRun>(handle));
     void (async () => {
       const result = await fetchRun(request, handle, clock);
-      if (generation.current === mine) setMetadata(result);
+      if (generation.current !== mine) return;
+      setMetadata(result);
+      // **Only an answer that CARRIED a run is a report about one.** A refusal is the daemon
+      // answering the request rather than reporting the run — a `no-such-run` at a handle it once
+      // minted is a daemon that restarted, since a handle is meaningless across one — and nothing
+      // answering at all is not the daemon saying anything. Withdrawing a reader's only act on that
+      // evidence is the asymmetry AC-8 already refuses for a socket that dropped, and the daemon
+      // stays the authority either way: a stop sent to a run that is gone is answered `no-such-run`
+      // and rendered as that refusal rather than guessed at here.
+      if (result.kind === 'loaded') setReported({ handle, run: result.value });
     })();
   }, [request, clock, handle]);
 
@@ -206,18 +251,26 @@ export function MissionControlScreen({
     });
   }, [askStop, request, clock, handle]);
 
-  // **A confirmation does not outlive the control that offered it.** A read that moves the run off
+  // The last report ABOUT THIS HANDLE, and nothing where the subject has moved: a report is kept
+  // until a later one replaces it, so one that is not about the run on the screen is no answer at
+  // all rather than a stale one. `app.tsx` keys this screen by handle, so arriving here needs the
+  // prop to move under one instance — and a read that then fails at the new handle would otherwise
+  // leave the previous run's `running` standing indefinitely rather than for one commit.
+  const lastReported = reported !== null && reported.handle === handle ? reported.run : null;
+
+  // **A confirmation does not outlive the control that offered it.** A report that moves the run off
   // `running` is the daemon saying there is nothing here to stop, and a question left standing after
   // that is one a reader can still answer — so it is WITHDRAWN rather than hidden, which is also
-  // what stops a later read saying `running` again from putting an offer back on the screen that
-  // nobody made twice.
+  // what stops a later report saying `running` again from putting an offer back on the screen that
+  // nobody made twice. Driven by the same predicate the control is, so a refresh in flight withdraws
+  // neither and a report of a run that is over withdraws both.
   //
   // In the render that stops offering it rather than in an effect, which is `ticket-page.tsx`'s own
   // `loadedFor` reasoning: a state cleared after the commit is cleared one commit too late, and the
   // commit in between is one where an irreversible control is on the screen and live. Conditional
   // and self-cancelling — `confirming` is `null` on the re-render this schedules — so it settles
   // rather than loops, which is React's own sanctioned shape for adjusting state during a render.
-  if (!daemonSaysRunning(metadata) && stop.confirming !== null) stop.cancel();
+  if (!daemonSaysRunning(lastReported) && stop.confirming !== null) stop.cancel();
 
   const timeline = buildStepTimeline(snapshot.events);
 
@@ -235,7 +288,7 @@ export function MissionControlScreen({
         onNavigate={onNavigate}
       />
       <StopControl
-        metadata={metadata}
+        reported={lastReported}
         mutation={stop}
         onAsk={onAskStop}
         onLookAgain={readMetadata}
