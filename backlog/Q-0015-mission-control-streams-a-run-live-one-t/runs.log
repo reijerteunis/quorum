@@ -122,3 +122,10 @@
 2026-09-17T00:20:03.220Z run=7 step=review-claude vendor=claude model=- verdict=- cost=11.349716500000001 ms=835922
 2026-09-17T00:25:52.033Z run=7 step=verdict vendor=claude model=- verdict=changes-requested cost=4.682151500000001 ms=348795
 2026-09-17T00:25:52.055Z run=7 regressed stage=green→red cost=16.032 tokens=9663925
+2026-09-17 stage=green by hand (no engine run) — review round 2's backward edge regressed the
+  ticket to red; all four majors were then fixed by hand at c89e865 because two were the
+  operator's own and the other two have no failing test, which round 2 measured is the only
+  thing that compels the fan-out. `green` is asserted on its own terms — the integration
+  branch merged and its suite passes — verified forced at 21/21 tasks 0 cached on c89e865.
+  A development run would have been ten no-ops. Q-0050's precedent: a stage moved by hand is
+  recorded here and carries no history entry.

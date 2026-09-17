@@ -1,7 +1,7 @@
 ---
 id: Q-0015
 title: Mission control streams a run live, one trace column per step
-stage: red
+stage: green
 owner: ruud
 repos: []
 branch: harness/Q-0015/integration
