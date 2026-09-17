@@ -86,3 +86,57 @@ live sites no reviewer had seen. **Q-0128** accumulates that evidence.
 **GO-5**: verified forced in both environment rows and recorded. Q-0016's equivalent was reported
 discharged when its by-hand half had not been performed; every gate since has been written to be
 unfakeable for that reason, and this one is no exception.
+
+## E-6 — ruled at the review exhaustion gate: one finding refused as an instrument escalation, one accepted as a trade rather than as a defect
+
+Three review rounds, four majors, **every one about the same guard** — AC-6's clause forbidding the
+run number's narration being parsed — while **the subject stopped moving after round 1**. Round 1:
+the clause exempted two files so its own fixture could carry the literal, turning a corpus-wide
+prohibition into a register of exceptions. That was right and was fixed. Rounds 2 and 3 each asked
+for a strictly stronger instrument against a corpus that contains **no extraction of any form**.
+
+### (a) Round 3's Major 1 is refused — *a criterion's `Test:` clause bounds the instrument*
+
+It asks for the text scan to be replaced by *"preferably a type-aware lint rule"* covering
+data-flow through object properties and unary coercion. **AC-6's `Test:` clause reads**: *the new
+clause is shown red over a fixture that parses `run #` out of a message, and green over the shipped
+corpus.* That is the job the criterion gives the instrument, and it is met.
+
+This is *"An adapter records the version it was verified against"*'s erratum E-1 rule at a sixth
+site: **a reviewer may find that the instrument fails the job its `Test:` clause gives it — which is
+exactly what round 1 found — and may not raise the job.** The escalation here is monotonic across
+three rounds, which is the shape that rule was written for.
+
+**And its recommended remedy contradicts a landed entry.** *"Type-aware linting is on for exactly
+one rule"* (2026-08-27) is a decision, and `@typescript-eslint/no-deprecated` is that rule; adding a
+second is an entry `developer-generalist` may not write, so the finding names a remedy no step on
+this route may take.
+
+### (b) Round 3's Major 2 is accepted as the trade it is, and is NOT reverted
+
+The reviewer is literally right that AC-6's words authorise forbidding extraction *from event prose*
+and that `COERCES_TO_NUMBER` bans `Number`, `parseInt` and `parseFloat` under `apps/web/src`
+outright. But it reads a **deliberate, measured and documented trade** as an accident, and the trade
+is what answers round 2's own finding: anchoring on the **coercion** rather than on the operand is
+what survives aliasing, an assembled literal and any number of hands the string passed through —
+*"what makes a number is the coercion rather than the operand"*, which is the implementer's sentence
+and is correct.
+
+**Its cost was measured rather than assumed: there are zero occurrences of all three under
+`apps/web/src` today, tests included.** A screen that needs a number is handed one — `WireRun.runId`
+is a typed `number`, which is the whole of what this ticket did. The residual is stated in place
+rather than implied: `+text`, `text * 1` and `charCodeAt` coerce too and are not needled, because a
+needle reporting every `+` is one a reader learns to override.
+
+**What the finding does earn is the exit condition, written down**, because a constraint wider than
+its criterion's words must say so where it fires: the clause is deliberately broader than AC-6, the
+day `apps/web/src` legitimately needs one of the three it is **narrowed rather than overridden**, and
+that is a visible act. Verified by hand at this gate that the failure message names the reason rather
+than only the file.
+
+### (c) The answer is `advance`, and the remedy for what remains is a hand repair
+
+E-7 of Q-0129 named the same remedy in the same situation one ticket ago and it applies unchanged:
+a loop escalating the instrument is not converging, and a fourth grant buys a fifth finding rather
+than a fix. The run completes through `integrate`, and anything owed is repaired on `main` after the
+gate on Q-0073's and Q-0080's precedent.

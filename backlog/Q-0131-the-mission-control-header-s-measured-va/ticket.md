@@ -9,6 +9,7 @@ priority: p2
 created: 2026-09-16
 iterations:
   requirements.head-of-product: 1
+  chore.review: 3
 history:
   - stage: requirements
     run: 1
@@ -18,6 +19,14 @@ history:
     stage_after: requirements
     at: 2026-09-17T15:45:01.217Z
     cost: 22.264
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-17T16:50:15.985Z
+    cost: 0
 ---
 The run number, the elapsed time and the per-vendor cost ticker: three values the brief names and the wire does not carry.
 **M3**, split from Q-0015 at its requirements gate on 2026-09-16. The body below is Appendix A(b)
