@@ -101,21 +101,21 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
    * daemon's own host, whose `observe` names taking a run number out of a `gateId` as the second
    * authority `minted` exists to prevent.
    *
-   * **The literal is REGISTERED rather than banned outright, and the register is the measurement.**
-   * Three files under `src` carry `run #` today and not one of them parses anything: each is a
+   * **The literal is banned outright, over the complete corpus, and there is no register of
+   * exceptions.** The first draft exempted the two files that carried it — three sites, each a
    * fixture of the daemon's own `lock-held` REFUSAL CONDITION, which is a different field from an
-   * event message and is prose this app renders verbatim. A ban would have made those three the
-   * subject of a clause about parsing, so they are exempted by name and the clause below proves the
-   * exemptions forgive exactly them. What the exemption cannot hide is a parse written in one of
-   * those files, because {@link extractsFromMessage} is not exempted anywhere.
+   * event message and is prose this app renders verbatim — and that was weaker than AC-6, which
+   * names *anywhere under `apps/web/src`*. An exemption forgives a FILE rather than a USE, so a
+   * parse written inside one of those two would have been left to {@link extractsFromMessage}
+   * alone, which is one incomplete pattern standing in for a prohibition. The three fixture sites
+   * are assembled instead — `` `held by run${' '}#7` `` — which is this file's own rule applied one
+   * directory over: a needle is assembled so it is not its own subject, and a corpus under a
+   * prohibition is written so it is not one either. Review round 1, major 1.
    */
   const RUN_NUMBER_LITERAL = ['run', ' ', '#'].join('');
 
-  /** The three sites that carry the literal, each with why it is not a parse. */
-  const LITERAL_PERMITTED: Record<string, string> = {
-    'daemon-client.test.ts': "a fixture of the daemon's lock-held refusal condition, which this app renders as prose and never reads a value out of",
-    'ticket-page.test.ts': 'the same refusal condition, as the ticket page receives it from a start that was refused',
-  };
+  /** The two files whose fixtures were assembled, so the emptiness below is about files really scanned. */
+  const ASSEMBLED_FIXTURES = ['daemon-client.test.ts', 'ticket-page.test.ts'];
 
   /**
    * Any expression taking a value out of an event's `message`, which no file may do.
@@ -131,22 +131,33 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
     || /\b(?:Number|parseInt|parseFloat)[ \t]*\([^)\n]*\bmessage\b/.test(text)
     || /\.[ \t]*(?:exec|test)[ \t]*\([^)\n]*\bmessage\b/.test(text);
 
-  test('Q-0131 AC-6 — no file under src parses a run number out of the narration that carries one', () => {
-    const named = (exempt: boolean): string[] => sourceFiles()
-      .filter(([name, text]) => text.includes(RUN_NUMBER_LITERAL) && !(exempt && name in LITERAL_PERMITTED))
-      .map(([name]) => name);
-    expect(named(true), 'a file under src names the run-number literal').toStrictEqual([]);
-    // The exemptions forgive exactly the sites measured, so an emptiness above is a narrowing and
-    // not a register that excuses everything.
-    expect(named(false).sort(), 'the exemptions forgive something other than the sites they name')
-      .toStrictEqual(Object.keys(LITERAL_PERMITTED).sort());
-    // …and the half a file-level exemption cannot carry: no file extracts from a message at all,
-    // exemptions or not, so a parse written inside an exempted file fails here.
+  test('Q-0131 AC-6 — no file under src names or parses the run number the narration carries', () => {
+    const carriers = (files: [string, string][]): string[] =>
+      files.filter(([, text]) => text.includes(RUN_NUMBER_LITERAL)).map(([name]) => name);
+    expect(carriers(sourceFiles()), 'a file under src names the run-number literal').toStrictEqual([]);
+    // …and the half the literal cannot carry, which is why both clauses are here: a parse written
+    // without the literal in front of it — out of a `gateId`, or off an assembled needle of its own
+    // — fails here rather than passing the clause above.
     expect(sourceFiles().filter(([, text]) => extractsFromMessage(text)).map(([name]) => name),
       'a file under src takes a value out of an event message').toStrictEqual([]);
 
+    // **The emptiness above is an absence and not a corpus that was not looked at.** The two files
+    // whose fixtures the first draft exempted are still scanned, and each still carries the refusal
+    // condition as prose — so the remedy was assembling those three sites and not deleting them,
+    // which a prohibition over a corpus can otherwise be satisfied by.
+    const scanned = sourceFiles();
+    for (const name of ASSEMBLED_FIXTURES) {
+      const found = scanned.find(([each]) => each === name);
+      expect(found, `${name} is not in the corpus — this clause has lost a site it was written for`).toBeDefined();
+      expect(found?.[1], `${name} no longer carries the refusal condition its fixture was about`)
+        .toContain(['held', 'by', 'run'].join(' '));
+    }
+
     // Every needle discriminates, over fixtures assembled so this file is not its own subject.
-    expect(named(false).length, 'the literal needle matches nothing at all').toBeGreaterThan(0);
+    expect(carriers([['bad.ts', `const at = text${'.'}indexOf('${RUN_NUMBER_LITERAL}');`]]),
+      'the literal needle matches nothing at all').toStrictEqual(['bad.ts']);
+    expect(carriers([['ok.ts', `const label = 'run-9'; // see issue${' '}#7`]]),
+      'a file naming the word and the hash apart was reported as naming the literal').toStrictEqual([]);
     const parse = `const n = Number(event${'.'}message${'.'}split('${RUN_NUMBER_LITERAL}')[1]);`;
     expect(extractsFromMessage(parse), 'the extraction needle misses the parse it is written against').toBe(true);
     expect(extractsFromMessage(`const at = /${RUN_NUMBER_LITERAL}(\\d+)/${'.'}exec(event${'.'}message);`),
