@@ -812,6 +812,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/core/src/engine/diff-evidence.test.ts': {
     'repoRoot → dir': 'walk()\'s parameter, and its one call site maps a literal TWO-element array in the same file — packages/core/src and packages/server/src, which clause B collects and WALKS already declares the member outside this package. Q-0134 AC-1 claims that no file of the daemon reads the engine\'s range cache, and a claim about that tree can only be answered by reading it: the cache is the reader that is right for review.yaml and blank for a chore run, so a file there naming it would be one step from a route answering nothing for 89% of this product\'s materialisations',
   },
+  'packages/core/src/engine/prompt-context.source.test.ts': {
+    'repoFile → STEPS': 'the constant is `packages/core/src/engine/steps.ts`, a literal at the top of that file which clause B collects and the manifest names. One file is the whole of what this task reads: the check is about a single object literal in a single module — Q-0134\'s shipped defect, where the narrowed prompt context dropped an optional callback and the step-time diff capture went silent',
+  },
   'packages/core/src/caught-failures.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal TWO-element array at the top of that file — packages/core/src and packages/cli/src — and clause B collects both. The Q-0059 AC-8 shape over a second tree, because Q-0115 AC-3 claims something about the roots it walks; shared is deliberately out, for the reason recorded above that array',
     'repoRoot → root': 'the same two literals, joined for the same loop; the base is repoRoot and the leaf is a member of that array',

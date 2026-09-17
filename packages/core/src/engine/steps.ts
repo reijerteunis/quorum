@@ -261,6 +261,15 @@ export async function runAgentStep(
     repoDir: context.repoDir, config: context.config, vars, ticket, runId: context.runId,
     baseOverride: context.baseOverride, deferredDiffs: context.deferredDiffs, diffInputs: context.diffInputs,
     persistence: context.persistence, emit: context.emit, backlog: context.backlog, harnessDir: context.harnessDir, dry: context.dry,
+    // **Forwarded, and its absence was Q-0134's shipped defect.** This literal narrows the run
+    // context field by field, `reportDiff` is OPTIONAL on `DiffContext`, and an omitted optional
+    // field typechecks — so dropping it here silently disabled the capture on the STEP-TIME path
+    // while leaving the run-level preflight working. That is 186 of 208 materialisations in this
+    // repository's history and every chore run: the gate screen said *"the step whose decision
+    // reached this gate was given no diff"* about a step that had just been given one. Verbatim the
+    // blindness `diff.ts`'s own comment above the capture describes and AC-1 exists to forbid,
+    // reproduced one layer up. `prompt-context.source.test.ts` now fails if this line is removed.
+    ...(context.reportDiff === undefined ? {} : { reportDiff: context.reportDiff }),
   };
   const prompt = buildPrompt(step, role, promptContext) + (extra.promptSuffix?.(cwd) ?? '');
   const started = `${adapterName}${model ? '/' + model : ''} role=${String(step.role ?? '-')}`;
