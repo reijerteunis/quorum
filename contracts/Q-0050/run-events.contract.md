@@ -46,6 +46,13 @@ type RunTerminalEvent =
     });
 ```
 
+`GateQuestionEvent` gained one optional field, `reached`, by Q-0129 — superseded by *"A gate
+question carries the decision that reached it"* (2026-09-17). It is whole or absent, never partly
+present, and carries the deciding step's id with the `verdict`, `findings` and `summary` that step
+returned. The "no timestamp, no sequence number, no run id" rule below is unchanged and still
+governs the payload a consumer reads; the `gateId` clause is unchanged, and `reached` exists
+precisely so that nothing has to be parsed out of one.
+
 `undecided` was added to the non-regressed member by Q-0040 — superseded by that ticket's
 `requirements/errata.md` and by *"A run nobody answered is undecided, and keeps the branch it
 proved"* (2026-09-01). The "on failure, the next pull rejects" rule below needs no amendment: it is

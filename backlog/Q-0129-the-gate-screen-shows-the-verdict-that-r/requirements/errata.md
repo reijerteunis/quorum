@@ -59,3 +59,117 @@ is what AC-8 of Q-0015 rests on and what `docs/05-design-prompt.md`'s screen 6 s
 Verify forced in **both** environment rows and record it. Q-0016's equivalent was reported discharged
 when its by-hand half had not been performed; Q-0015's gate found that, and Q-0130's GO-4 was written
 to be unfakeable because of it. The same standard applies to this ticket's close.
+
+## E-6 — AC-12's contract clause names a surface this flow cannot write; the note is written here, at the gate
+
+Implement round 1 returned **`blocked`** on AC-12's first clause and it is right. It requires
+`contracts/Q-0050/run-events.contract.md` to gain a superseded-by note, and **`contracts/` is not
+among `developer-generalist`'s `paths:`** — verified: the role declares fourteen roots and that is
+not one of them, and every commit that ever touched that directory came from the architect in the
+solutioning flow or from a human. That is *"A requirement may not name a surface its flow cannot
+write"* (2026-08-25).
+
+**What makes this instance worth writing down rather than merely fixing**: the merged requirement's
+own §11 cites that rule **by name** when striking candidate-codex's AC-2 for making the decision
+entry an acceptance criterion — and then names `contracts/` one criterion later. The document knew
+the rule, applied it, and missed a second instance of it in its own text. Sixteenth recorded
+appearance of a loop handed work no agent in it can perform, and the first where the requirement
+**states the rule it then breaks**.
+
+**The note is written by hand at this gate** and merged into the implement branch, which is what
+changes what the step reads and what `retry` is for. Its wording is the implementer's own §7, taken
+as offered: it is correct, it uses the idiom that file already uses three times, and re-writing it
+to prove authorship would be the operator inventing a difference.
+
+**The remedy is `retry`, not `advance`.** AC-12's *Test:* clause wants a guard asserting the note
+names the entry by **title and date** — `packages/shared` is writable, the note now exists, so the
+criterion becomes satisfiable for the first time. `advance` would carry a real unmet criterion into
+review, which is what an exhaustion gate exists to prevent.
+
+**What round 1 did NOT do, and was right not to**: it declined to write a deliberately failing guard
+for the missing note, because a red suite fails `integrate` *after* the gate rather than *at* it.
+That is Q-0117's channel used exactly as intended — *my work is done and this one thing is yours* —
+and it is the difference between this round and the three Q-0062 spent.
+
+**Its two other AC-12 test clauses are already green and are not re-opened**: the source clause is
+keyed on the **routing** forms rather than on the ticket id, because *"completed by Q-0129"* is a
+true provenance sentence an over-broad needle would have forbidden; and both re-aimed register
+clauses were shown red against their replacements.
+
+**Its nit and three observations are accepted as recorded and none is a criterion.** The
+`routing.ts:78` slot race is unreachable — no shipped flow declares a verdict on a `parallel:`
+member — and closing it means a per-call context that AC-3 does not ask for. The `git-identity`
+sweep failure (1 in 3, `exec.test.ts`, an EPIPE write/exit race) is **Q-0102's subject**, recorded
+as a rate rather than characterised, which is that ticket's own reopening discipline. The unused
+`eslint-disable` at `backlog.ts:448` is pre-existing and reported rather than migrated, which is
+`.claude/rules/engineering.md`'s rule.
+
+## E-7 — ruled at the review exhaustion gate: one fix at the class, one registration, and the identity behind it becomes an assertion
+
+The review loop exhausted at three rounds, **six majors, and every one of them is about the lifetime
+of the same run-scoped slot** — never cleared, then cleared for one case and not the next, then
+cleared at the wrong moment. Each round's fix is what produced the next round's finding. The
+reviewer was right every time; what the trend says is that the *invariant* was being restated at
+each call site rather than held in one place, which is the fix-the-instance failure this repository
+records more often than any other.
+
+**Both of round 4's majors were re-derived before being ruled, and the reachability is not what
+either report assumes.** All six shipped flows declare exactly one author-declared gate and it is
+**last** in all six, and all six are `gate: human` with **no `gate: auto` anywhere**. So an
+auto-advanced gate that spends the slot has nothing downstream to show a stale value to, and both
+findings are **latent** rather than live. Re-derived by parsing the flow files, not by grep — a grep
+across a whole file reported two flows with a verdict-declaring parallel member, and parsing says
+**none of the six has one**.
+
+### (a) Major 1 — fixed, and fixed at the class
+
+`runStep` takes and clears the slot *before* `askGate` decides whether a question is emitted, and
+`askGate` returns early for `auto`, for a non-locked gate under `--auto` and for `--dry` **without
+reaching `context.emit(request)`** — so a decision can be spent on a question nobody was shown.
+
+**The remedy is the reviewer's second one, and it is one line at one site**: consume where the engine
+*emits*, which `routing.ts:45` is — the file has exactly **one** `context.emit(request)`, and both
+question-composing paths go through it. That converts *"every call site remembers to clear at the
+right moment"*, got wrong three times in three different ways, into *"the engine spends what it
+presents"*, which no future call site can get wrong. Latency is not a reason to leave it: the fix is
+cheaper than the third restatement of the invariant would be.
+
+A regression is owed for the case that makes it visible — an emitted question consumes, a gate that
+auto-advanced does not.
+
+### (b) Major 2 — registered, not engineered around
+
+No shipped flow declares a verdict on a `parallel:` member, AC-3's ordering rule names `parallel`
+alone, and a per-member context contradicts `RunContext`'s landed note while no criterion asks for
+one. **Registered with its authority rather than built around**, on *"A deferred diff site can be
+served an earlier site's cached materialisation"*'s precedent (Q-0078) — a latent defect whose fix is
+a design question is a ticket, not a line smuggled into a revise round.
+
+### (c) The condition that makes (b) latent must be an assertion, and today it is a comment
+
+This is the gate's own finding rather than either report's. Round 1 wrote that the case is
+*"unreachable today — `development.yaml` declares zero verdicts, which the new `flow.test.ts` clause
+pins as an identity"*. **There is no such clause.** The fact lives at
+`gate-reached.test.ts:178` as a **comment** inside AC-3(c)'s synthetic fixture, and nothing anywhere
+asserts it: the day a flow gains a verdict-declaring parallel member, the registered defect becomes
+live and **nothing goes red**. A registration whose premise is unchecked is not a registration, it is
+a note — *"A check is not established by reading it"* (2026-08-29).
+
+So the registration is admissible only with the identity beside it: a clause over the **six shipped
+flow files** asserting that no `parallel:` member declares a verdict, failing by flow and member name
+when one does, and shown red against a fixture that has one. That is what makes (b) a bounded
+deferral rather than a silence.
+
+### (d) The in-flight-answer test — round 4 reports it fixed; the fix is what is reviewed, not the claim
+
+Round 3's review found `gate-screen.test.ts:879` rendering evidence in one container and submitting
+in another, so it could not detect the thing it claimed to cover — the same class as (c), on the
+browser side. It is to be verified by mutation rather than read: the assertion must go red when the
+evidence is hidden during submission.
+
+**The answer is `retry` rather than `advance`**, because the tree changes: this ruling is what the
+next round reads, and it removes (b) from the loop's reach so a round cannot spend itself there.
+Q-0101's measurement is the reason — both of its rounds that opened after an erratum landed were
+cheap and productive, against three before it that were not. **If the loop exhausts again**, the
+remedy named in advance is a hand repair after the gate on Q-0073's and Q-0080's precedent, not a
+fourth grant.

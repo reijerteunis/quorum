@@ -1,0 +1,7 @@
+# Review: Q-0129
+
+Verdict: **revise**
+
+major: packages/core/src/engine/routing.ts:109 `reachedBy(context)` snapshots the slot into an author-declared question but nothing consumes or clears the slot afterward. If that gate advances and a later script, integrate, or other non-verdict step fails, the exhaustion question at line 169 carries the earlier gate’s verdict instead of omitting `reached`. This directly violates AC-6’s requirement not to substitute a previous gate’s value and AC-5’s requirement that an exhaustion gate describe the step whose refusal reached it; consume/reset the pending evidence when a question is composed (while preserving the immutable snapshot already placed on that question), and add a regression run with a verdict gate followed by a non-verdict failure.
+
+major: packages/core/src/engine/routing.ts:75 Parallel members all receive the same mutable `RunContext`, and each verdict assignment occurs before a member may build its own exhaustion question. A sibling can therefore overwrite `context.reached` while `handleFail` awaits persistence, causing the question at line 169 to show the sibling’s decision rather than the failing step’s. Reconciliation at lines 83–86 happens only after every member settles and cannot correct a question already emitted. Pass the current step’s evidence directly through its failure path or otherwise isolate per-member pending evidence, and cover an out-of-order parallel fixture where one verdict-declaring member exhausts while another completes.

@@ -8,3 +8,36 @@
 2026-09-17T11:46:37.106Z run=2 step=head-of-product vendor=claude model=opus verdict=ready cost=5.875503000000001 ms=825213
 2026-09-17T11:47:37.991Z run=2 gate=human answer=advance
 2026-09-17T11:47:38.001Z run=2 completed stage=draft→requirements cost=21.035 tokens=23520526
+
+2026-09-17 requirements gate answered `advance`. $21.04, ready on the first pass, twelve criteria.
+
+GO-1 discharged before any further run: `docs/decisions/097-a-gate-question-carries-the-decision-
+that-reached-it.md`, indexed under 2026-09-17. GO-2 ratified (`reached`). GO-3 ratified — the split
+stands and **Q-0134** is the successor, opened at this gate with §7 transcribed in full (GO-4).
+Rulings in `requirements/errata.md` E-1 to E-5. `harness/Q-0129/integration` cut at 86fa771.
+
+Route: **chore**, on Q-0016's precedent — its sibling half, same surface, same size. The full
+seven-stage route is refused here for a measured reason rather than for cost: a fan-out requires
+every file a red test needs to be owned by exactly one task (2026-08-23), and this change is one
+schema field with its engine producer and its browser consumer, which must land together. Splitting
+them across tasks would put the field in one worktree and the code that reads it in another.
+2026-09-17T11:51:43.228Z run=3 flow=chore start stage=requirements
+
+GO-1 verified by measurement rather than assumed. In `.quorum/runs/Q-0129-3/steps/001-implement/
+prompt.txt` — the implement step's *actual* prompt, 91,367 bytes — decision 097 appears cited by its
+title and date, and its path is named beside it. The errata file reaches it too. That is the check
+Q-0097 lost two errata by not making and Q-0125's GO-1 made.
+2026-09-17T12:43:45.292Z run=3 step=implement vendor=claude model=- verdict=blocked cost=71.98352200000002 ms=3121682
+2026-09-17T12:43:45.310Z run=3 exhausted stage=requirements→requirements cost=0
+2026-09-17T12:45:47.846Z run=3 gate=human-locked answer=retry
+2026-09-17T12:45:47.846Z run=3 gate=retry counter=chore.implement set=0 (one further traversal authorised)
+2026-09-17T13:06:35.404Z run=3 step=implement vendor=claude model=- verdict=proceed cost=11.184804500000002 ms=1247448
+2026-09-17T13:06:35.459Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 253474 — no patch at all for 10 file(s): packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T13:07:20.601Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=45139
+2026-09-17T13:35:45.777Z run=3 step=implement vendor=claude model=- verdict=proceed cost=17.76678 ms=1705047
+2026-09-17T13:35:45.834Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 261998 — no patch at all for 13 file(s): packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T13:36:50.697Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=64862
+2026-09-17T14:03:17.962Z run=3 step=implement vendor=claude model=- verdict=proceed cost=16.1616135 ms=1587145
+2026-09-17T14:03:18.029Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 273686 — no patch at all for 14 file(s): packages/core/src/engine/routing.ts, packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T14:04:18.791Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=60761
+2026-09-17T14:04:18.801Z run=3 exhausted stage=requirements→requirements cost=0

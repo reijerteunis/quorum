@@ -7,7 +7,9 @@ repos: []
 branch: harness/Q-0129/integration
 priority: p2
 created: 2026-09-16
-iterations: {}
+iterations:
+  chore.implement: 0
+  chore.review: 3
 history:
   - stage: draft
     run: 1
@@ -25,6 +27,22 @@ history:
     stage_after: requirements
     at: 2026-09-17T11:47:37.998Z
     cost: 21.035
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-17T12:43:45.308Z
+    cost: 0
+  - stage: requirements
+    run: 3
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-17T14:04:18.800Z
+    cost: 0
 ---
 **M3**, and the half split off from Q-0016 at its requirements gate on 2026-09-16. The body below is
 §7 of `backlog/Q-0016-*/requirements/merged.md`, transcribed in full rather than referenced, because
