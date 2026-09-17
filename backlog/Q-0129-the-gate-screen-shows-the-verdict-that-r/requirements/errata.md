@@ -103,3 +103,73 @@ sweep failure (1 in 3, `exec.test.ts`, an EPIPE write/exit race) is **Q-0102's s
 as a rate rather than characterised, which is that ticket's own reopening discipline. The unused
 `eslint-disable` at `backlog.ts:448` is pre-existing and reported rather than migrated, which is
 `.claude/rules/engineering.md`'s rule.
+
+## E-7 — ruled at the review exhaustion gate: one fix at the class, one registration, and the identity behind it becomes an assertion
+
+The review loop exhausted at three rounds, **six majors, and every one of them is about the lifetime
+of the same run-scoped slot** — never cleared, then cleared for one case and not the next, then
+cleared at the wrong moment. Each round's fix is what produced the next round's finding. The
+reviewer was right every time; what the trend says is that the *invariant* was being restated at
+each call site rather than held in one place, which is the fix-the-instance failure this repository
+records more often than any other.
+
+**Both of round 4's majors were re-derived before being ruled, and the reachability is not what
+either report assumes.** All six shipped flows declare exactly one author-declared gate and it is
+**last** in all six, and all six are `gate: human` with **no `gate: auto` anywhere**. So an
+auto-advanced gate that spends the slot has nothing downstream to show a stale value to, and both
+findings are **latent** rather than live. Re-derived by parsing the flow files, not by grep — a grep
+across a whole file reported two flows with a verdict-declaring parallel member, and parsing says
+**none of the six has one**.
+
+### (a) Major 1 — fixed, and fixed at the class
+
+`runStep` takes and clears the slot *before* `askGate` decides whether a question is emitted, and
+`askGate` returns early for `auto`, for a non-locked gate under `--auto` and for `--dry` **without
+reaching `context.emit(request)`** — so a decision can be spent on a question nobody was shown.
+
+**The remedy is the reviewer's second one, and it is one line at one site**: consume where the engine
+*emits*, which `routing.ts:45` is — the file has exactly **one** `context.emit(request)`, and both
+question-composing paths go through it. That converts *"every call site remembers to clear at the
+right moment"*, got wrong three times in three different ways, into *"the engine spends what it
+presents"*, which no future call site can get wrong. Latency is not a reason to leave it: the fix is
+cheaper than the third restatement of the invariant would be.
+
+A regression is owed for the case that makes it visible — an emitted question consumes, a gate that
+auto-advanced does not.
+
+### (b) Major 2 — registered, not engineered around
+
+No shipped flow declares a verdict on a `parallel:` member, AC-3's ordering rule names `parallel`
+alone, and a per-member context contradicts `RunContext`'s landed note while no criterion asks for
+one. **Registered with its authority rather than built around**, on *"A deferred diff site can be
+served an earlier site's cached materialisation"*'s precedent (Q-0078) — a latent defect whose fix is
+a design question is a ticket, not a line smuggled into a revise round.
+
+### (c) The condition that makes (b) latent must be an assertion, and today it is a comment
+
+This is the gate's own finding rather than either report's. Round 1 wrote that the case is
+*"unreachable today — `development.yaml` declares zero verdicts, which the new `flow.test.ts` clause
+pins as an identity"*. **There is no such clause.** The fact lives at
+`gate-reached.test.ts:178` as a **comment** inside AC-3(c)'s synthetic fixture, and nothing anywhere
+asserts it: the day a flow gains a verdict-declaring parallel member, the registered defect becomes
+live and **nothing goes red**. A registration whose premise is unchecked is not a registration, it is
+a note — *"A check is not established by reading it"* (2026-08-29).
+
+So the registration is admissible only with the identity beside it: a clause over the **six shipped
+flow files** asserting that no `parallel:` member declares a verdict, failing by flow and member name
+when one does, and shown red against a fixture that has one. That is what makes (b) a bounded
+deferral rather than a silence.
+
+### (d) The in-flight-answer test — round 4 reports it fixed; the fix is what is reviewed, not the claim
+
+Round 3's review found `gate-screen.test.ts:879` rendering evidence in one container and submitting
+in another, so it could not detect the thing it claimed to cover — the same class as (c), on the
+browser side. It is to be verified by mutation rather than read: the assertion must go red when the
+evidence is hidden during submission.
+
+**The answer is `retry` rather than `advance`**, because the tree changes: this ruling is what the
+next round reads, and it removes (b) from the loop's reach so a round cannot spend itself there.
+Q-0101's measurement is the reason — both of its rounds that opened after an erratum landed were
+cheap and productive, against three before it that were not. **If the loop exhausts again**, the
+remedy named in advance is a hand repair after the gate on Q-0073's and Q-0080's precedent, not a
+fourth grant.

@@ -29,3 +29,15 @@ title and date, and its path is named beside it. The errata file reaches it too.
 Q-0097 lost two errata by not making and Q-0125's GO-1 made.
 2026-09-17T12:43:45.292Z run=3 step=implement vendor=claude model=- verdict=blocked cost=71.98352200000002 ms=3121682
 2026-09-17T12:43:45.310Z run=3 exhausted stage=requirements→requirements cost=0
+2026-09-17T12:45:47.846Z run=3 gate=human-locked answer=retry
+2026-09-17T12:45:47.846Z run=3 gate=retry counter=chore.implement set=0 (one further traversal authorised)
+2026-09-17T13:06:35.404Z run=3 step=implement vendor=claude model=- verdict=proceed cost=11.184804500000002 ms=1247448
+2026-09-17T13:06:35.459Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 253474 — no patch at all for 10 file(s): packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T13:07:20.601Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=45139
+2026-09-17T13:35:45.777Z run=3 step=implement vendor=claude model=- verdict=proceed cost=17.76678 ms=1705047
+2026-09-17T13:35:45.834Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 261998 — no patch at all for 13 file(s): packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T13:36:50.697Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=64862
+2026-09-17T14:03:17.962Z run=3 step=implement vendor=claude model=- verdict=proceed cost=16.1616135 ms=1587145
+2026-09-17T14:03:18.029Z run=3 diff truncated range=harness/Q-0129/integration...harness/Q-0129/implement limit=200000 kept=200000 of 273686 — no patch at all for 14 file(s): packages/core/src/engine/routing.ts, packages/core/src/engine/run-composition.test.ts, packages/core/src/engine/steps.ts, packages/core/src/engine/types.ts, packages/core/src/gate-evidence.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/serve.test.ts, packages/server/test/fixture.ts, packages/shared/src/docs.test.ts, packages/shared/src/events.test.ts, packages/shared/src/events.ts, packages/shared/src/flow.test.ts, packages/shared/src/wire.ts, packages/shared/turbo.json
+2026-09-17T14:04:18.791Z run=3 step=review vendor=codex model=- verdict=revise cost=? ms=60761
+2026-09-17T14:04:18.801Z run=3 exhausted stage=requirements→requirements cost=0
