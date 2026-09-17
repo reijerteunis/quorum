@@ -3957,6 +3957,38 @@ parked at p2 with its three written reopening thresholds.
   requirements gate, `draft`, p2.)* The app's two run-lifecycle mutations, answered once rather than twice. It is also
   **the ticket that gives the daemon a producer**: until it lands, `GET /runs` answers `{"runs": []}`
   on any real machine and neither mission control nor Q-0016's gate screen has anything to show.
+- Q-0129 The gate screen shows the verdict that reached it. *(`requirements` 2026-09-17, ready on the
+  first pass at twelve criteria; **cut in two there**, with **Q-0134** taking the diff.)* **$21.04**.
+  **Decision 097 landed at that gate as a hard precondition** — *"A gate question carries the decision
+  that reached it"* (2026-09-17) — because GO-1 made it one, citing Q-0126's round-1 `blocked` and
+  Q-0062's three rounds as what a missing entry costs. `gateQuestionEventSchema` gains **one optional
+  field**, `reached`, whole or absent, carrying the deciding step's id and its `verdict`, `findings`
+  and `summary`; `packages/core` holds them in one run-scoped slot, **`packages/server` changes not at
+  all**, and the browser renders them from `WireRun.gates` — the field Q-0016 already added.
+  **It is the first machine-readable value the event stream carries that a human acts on**, which is
+  why it is an entry rather than a field: the stream has carried narration and one correlation token
+  and nothing else. It does **not** reverse *"The event union is derived from what the product emits"*
+  (2026-08-25) — that entry refuses inventing a member for an absent producer, and the producer is
+  `steps.ts`, which already writes these three values to disk — and it leaves **Q-0127 erratum E-1's
+  reader-side exclusion standing**, `.harness/` staying unreadable because the value travels on the
+  stream instead.
+  **Six alternatives were refused on measurements, recorded in the entry so Q-0131 cannot re-derive
+  them.** The sharpest: parsing the `warn` or `done` prose is refused because **4 of 1,080 findings
+  contain the join separator themselves and 1,071 contain `": "`**, while a step id contains a colon
+  by construction — a parser would be wrong on this repository's own data.
+  **Its census decomposes completely**, which is the check the body asked for: `gate=` matches **275**
+  lines = **235** engine answers + **39** retry grants + **1** hand-written note, by kind `human`
+  **157** (154 advance, 3 abort) and `human-locked` **78** (39 retry, 31 advance, 8 abort).
+  **Every figure in the body had moved and the one that matters had not**: verdict artifacts 274/71 →
+  **306/73** and answers 220/148 → 235/157, all of it this session's own gates — while across **157**
+  author-declared gates `retry` has been chosen **zero** times, which is what Q-0015's AC-8 rests on.
+- Q-0134 The gate screen shows the diff. *(Opened 2026-09-17 at Q-0129's requirements gate, `draft`,
+  p2, with §7 transcribed in full.)* The half split off: a review's diff on the gate screen, which
+  needs a **range the wire does not carry** — `review.yaml` diffs `{base}...harness/{id}/integration`
+  and nothing projects it — and this workspace's **first** diff dependency, `diff2html`, `diff` and
+  `jsdiff` appearing in no manifest. **Q-0128** is its neighbour: a diff served to a browser has the
+  same truncation question a diff handed to a reviewer has, and answering it twice is how the two
+  drift.
 - Q-0131 The mission control header's measured values. *(Opened 2026-09-16 at Q-0015's requirements
   gate, `draft`, p3.)* The run number, the elapsed time and the per-vendor cost ticker — three values
   `docs/05-design-prompt.md` screen 5 names and the wire does not carry, each needing a different
