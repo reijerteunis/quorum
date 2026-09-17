@@ -196,3 +196,31 @@ listed per flow.
 
 **What was done instead**: the AC-6 ruling is in `solution/errata.md`, which `qa-red` reads, and
 which is where a test-guard spelling belongs anyway.
+
+## E-11 — Q-0120's retry pin is inverted, and why that is the gate's call rather than an implementer's
+
+Review round 1 filed the Retry-doubling as an **observation** and said, correctly, that it was *"a
+behaviour ruling the gate owes"*. The gate did not make it, so round 3 raised it as a major — and
+reframed it as an inconsistency, *"`connect()` clears all three and `retry()` clears none"*. **That
+reframing is wrong and the observation was right**: `run-connection.test.ts` pins the preservation
+deliberately, and Q-0120 chose it for a stated reason — the browser genuinely observed those events
+and the daemon retains only 500, so clearing loses a head it can no longer replay.
+
+**What made it visible is that Q-0015 is the first ticket to render that tail.** `shell.tsx` read
+`.at(-1)` and `.length`; nothing drew the list. Preservation plus the daemon replaying its retained
+buffer to **every** new subscription means each retained event appears twice the moment anything
+renders them.
+
+**Ruled: clear on retry, and disclose what was dropped.** Dedupe is unavailable — the event union
+carries no timestamp and no sequence number, by *"What a run's event stream carries"* (2026-08-28) —
+so the two available answers are a doubled trace or a shorter true one. **A doubled trace asserts
+events that did not happen**, which `docs/04-architecture.md:317` forbids and which this screen's
+whole discipline is against; a cleared one is less complete and true. The loss is charged to
+`browserDiscardedCount`, whose sentence already renders, so it is disclosed rather than silent —
+which is the half that makes this answer honest rather than merely simpler.
+
+**The pin is inverted rather than deleted** (Q-0116's shape), with the reasoning recorded beside it
+in `run-connection.test.ts` so a reader meeting Q-0120's choice first is not left to guess why it
+moved. **This reverses a deliberate decision of another ticket**, which is why it is an erratum at a
+gate and not an implementer's edit: no fan-out task may weigh a landed choice against a new finding,
+and round 3's own framing shows how easily the deliberation is mistaken for an oversight.
