@@ -65,6 +65,26 @@ union, daemon routes and wire schemas are existing contracts and are not changed
   renders no placeholder value for them. The handle identifies a live run; a terminal-provided run
   number replaces that explanation only after it exists. The run number is read from the terminal
   event in the socket snapshot, never from a second metadata read.
+
+  **Superseded in two clauses by Q-0131, written at its requirements gate.** *Five* absent
+  capabilities becomes **four**: the run number is supplied while the run is running, so its
+  disclosure retires. And *"read from the terminal event in the socket snapshot, never from a second
+  metadata read"* was a description of the only source that existed, not a prohibition on a better
+  one — Q-0131 supplies the number **out of band**, through an option on `runFlow` beside
+  `answerGate`, so it reaches `RunRecord` at run start and the screen reads it from the metadata the
+  screen already reads. **That removes the clause's premise rather than contradicting its reasoning**,
+  which is why this is a note and not a reversal. The remaining three disclosures — elapsed time,
+  structured cost and token totals, the next flow step — and the no-placeholder rule are unchanged
+  and still bind; the structured tool and reasoning events stay absent.
+
+  **No decision entry is owed for it**, and the reason is worth keeping beside the clause: all three
+  landed sentences on run identity — `docs/GLOSSARY.md`'s **Event** term, `packages/shared/src/
+  events.ts`'s header and `packages/server/src/host.ts`'s `runId` JSDoc — say that *an event* carries
+  run identity only at the terminal, and an out-of-band callback is not an event, so each stays true
+  verbatim. The in-band alternative, a new `start` member on the union, would make all three false
+  and **would** owe one. See *"A gate question carries the decision that reached it"* (2026-09-17)
+  for the neighbouring ruling, which is not authority for this one: that field rides the stream
+  because its producer already wrote it there.
 - Every connection state has non-empty main-region prose. A no-such-run state creates no columns.
   Raw vendor output may be asymmetric and is not presented as a complete run history.
 

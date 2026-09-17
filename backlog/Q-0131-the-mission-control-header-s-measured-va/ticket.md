@@ -1,14 +1,23 @@
 ---
 id: Q-0131
 title: The mission control header's measured values
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0131/integration
 priority: p2
 created: 2026-09-16
-iterations: {}
-history: []
+iterations:
+  requirements.head-of-product: 1
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-17T15:45:01.217Z
+    cost: 22.264
 ---
 The run number, the elapsed time and the per-vendor cost ticker: three values the brief names and the wire does not carry.
 **M3**, split from Q-0015 at its requirements gate on 2026-09-16. The body below is Appendix A(b)
