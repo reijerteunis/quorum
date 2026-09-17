@@ -8,7 +8,15 @@ branch: harness/Q-0129/integration
 priority: p2
 created: 2026-09-16
 iterations: {}
-history: []
+history:
+  - stage: draft
+    run: 1
+    flow: requirements
+    status: interrupted
+    stage_before: draft
+    stage_after: draft
+    at: 2026-09-17T10:16:48.145Z
+    cost: 7.391
 ---
 **M3**, and the half split off from Q-0016 at its requirements gate on 2026-09-16. The body below is
 §7 of `backlog/Q-0016-*/requirements/merged.md`, transcribed in full rather than referenced, because
@@ -80,3 +88,21 @@ copied (Q-0099).
 decomposition above is exact as written, and `gate=` now matches **255** lines rather than 254 —
 221 engine answers rather than 220 — because Q-0016's own requirements gate was answered between the
 document being written and this check. Which is the paragraph above demonstrating itself.*
+
+---
+
+*Re-measured 2026-09-17, before the requirements run, as this body's own closing paragraph instructs.
+**The structural claims hold and every count has moved.** `warnEventSchema` is still `.strict()` over
+`{type, message}` with no `stepId`; `diff2html`, `diff` and `jsdiff` still appear in no manifest. The
+figures, now: verdict artifacts **306 across 73 ticket folders** (was 274/71); engine-recorded gate
+answers **235** (was 220), of which **157** are at author-declared gates (was 148). The movement is
+this repository's own work between 2026-09-16 and today — Q-0016, Q-0015 and Q-0130 shipped, and
+their gates are in that census. The zero that matters is unchanged: `retry` has still never been
+chosen at an author-declared gate.*
+
+*Sequencing ruled 2026-09-17: **Q-0129 runs before Q-0131**, which its own body requires be weighed
+with this one. Both need one ruling — how a structured value the engine already holds reaches a
+browser — and this ticket carries the harder instance: three fields rather than one, and an artifact
+behind Q-0127 erratum E-1, which owes a decision entry. Settling it on the harder case and letting
+Q-0131 apply it to `cost` is the cheaper order; deciding it twice is what the pairing instruction
+exists to prevent.*

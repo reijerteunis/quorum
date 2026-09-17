@@ -44,3 +44,13 @@ observed event count and peak concurrent column count of a real run. Revisit the
 that evidence; do not adjust it on an impression.
 
 ---
+
+---
+
+*Sequencing ruled 2026-09-17, recorded here so the pairing instruction above does not drift into
+prose nobody acts on: **Q-0129 runs first.** Both tickets need one ruling — how a structured value the
+engine already holds reaches a browser — and Q-0129 carries the harder instance (verdict, findings
+and summary, plus an artifact behind Q-0127 erratum E-1). This ticket then applies that ruling to
+`cost` and keeps its two independent fields, the run number and elapsed, which no other ticket
+touches. **Do not re-derive this ticket's figures from its body either**; Q-0129's were all stale
+within a day when checked.*

@@ -1,2 +1,4 @@
 2026-09-17T10:05:48.444Z run=1 flow=requirements start stage=draft
 2026-09-17T10:08:15.613Z run=1 step=pm-codex vendor=codex model=- verdict=- cost=? ms=147150
+2026-09-17T10:16:48.132Z run=1 step=pm-claude vendor=claude model=opus verdict=- cost=7.390634 ms=659673
+2026-09-17T10:16:48.148Z run=1 interrupted stage=draft→draft cost=7.391 tokens=6937670 error="stopped by a reader in the Quorum web app"
