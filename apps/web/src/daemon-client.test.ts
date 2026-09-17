@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest';
 
 import { DAEMON_ENDPOINTS, runDetailPath, runGatePath, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import {
-  answerGate, fetchFlows, fetchRun, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight,
+  answerGate, fetchFlows, fetchRun, fetchRuns, fetchTicket, fetchTicketFile, fetchTickets, flowsInFlight,
   gateAnswerInFlight, requestJson, runInFlight, ticketFileInFlight, ticketInFlight, ticketsInFlight,
   type DaemonRequest, type DaemonResponse, type FetchLike,
 } from './daemon-client.js';
@@ -30,6 +30,24 @@ const LISTING = {
   pushLag: null,
   baseBranch: 'main',
 };
+
+describe('Q-0015 AC-1 — fetchRuns is the one validated runs-list read', () => {
+  const body = { runs: [{ handle: 'run-b', flow: 'development', ticketId: null, runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null }] };
+
+  test('loads the registered endpoint exactly once and preserves the clock value', async () => {
+    const server = answering(body);
+    await expect(fetchRuns(server.fetch, CLOCK)).resolves.toStrictEqual({ kind: 'loaded', value: body, fetchedAt: CLOCK() });
+    expect(server.asked).toStrictEqual([DAEMON_ENDPOINTS.runs]);
+  });
+
+  test('uses the existing failure vocabulary for rejection, refusal, and invalid shape', async () => {
+    await expect(fetchRuns(() => Promise.reject(new Error('down')), CLOCK)).resolves.toMatchObject({ kind: 'unreachable' });
+    await expect(fetchRuns(answering({ code: 'no-project', condition: 'missing', remedy: null }, 404).fetch, CLOCK))
+      .resolves.toMatchObject({ kind: 'refused', refusal: { code: 'no-project' } });
+    await expect(fetchRuns(answering({ runs: [{ handle: 'missing fields' }] }).fetch, CLOCK))
+      .resolves.toMatchObject({ kind: 'unparseable' });
+  });
+});
 
 /** A fetch that answers `body` with `status`, recording every path it was asked for. */
 const answering = (body: unknown, status = 200): { fetch: (path: string) => Promise<DaemonResponse>; asked: string[] } => {

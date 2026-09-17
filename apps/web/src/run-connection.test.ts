@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { createRunConnection, type SocketTransport } from './run-connection.js';
+import { createRunConnection, RUN_EVENT_RETENTION, type SocketTransport } from './run-connection.js';
 
 class FakeSocket implements SocketTransport {
   onopen: (() => void) | null = null;
@@ -118,7 +118,17 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(1);
   });
 
-  test('explicit retry replaces once and preserves events and missed notice', () => {
+  // **Inverted at Q-0015 rather than deleted, and the reason is recorded where the pin is.** Q-0120
+  // chose to preserve the accepted tail across a retry — the browser genuinely observed those events
+  // and the daemon retains only 500, so clearing loses a head it can no longer replay. Q-0015 is the
+  // first ticket to RENDER that tail, and rendering is what made the other half visible: the daemon
+  // replays its retained buffer to every new subscription, so preserving means every retained event
+  // appears twice. The events carry no identity to dedupe on, the union having no timestamp and no
+  // sequence number by decision (2026-08-28), so the choice is a doubled trace or a shorter true one.
+  // A doubled trace asserts events that did not happen, which is the one thing this app may never do;
+  // the loss is charged to `browserDiscardedCount`, whose sentence already renders, so it is
+  // disclosed rather than silent. See `requirements/errata.md` E-11. Review round 3, M-1.
+  test('explicit retry replaces once, and clears the tail the daemon will replay', () => {
     const { connection, sockets } = setup();
     connection.connect('A', page);
     sockets[0]!.onopen?.();
@@ -128,8 +138,9 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(1);
     connection.retry();
     expect(sockets).toHaveLength(2);
-    expect(connection.snapshot.events).toStrictEqual([event]);
-    expect(connection.snapshot.missedCount).toBe(7);
+    expect(connection.snapshot.events, 'the retained tail survived a retry the daemon will replay').toStrictEqual([]);
+    expect(connection.snapshot.missedCount, "the daemon's missed count outlived the subscription it described").toBeNull();
+    expect(connection.snapshot.browserDiscardedCount, 'a retry left a bounded-retention loss standing for events the daemon will replay').toBeNull();
   });
 
   test('rapid repeated retry leaves only its newest socket current', () => {
@@ -153,5 +164,27 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     connection.dispose();
     expect(sockets[0]!.closes).toBe(1);
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('Q-0015 AC-9/10 — bounded immutable event retention', () => {
+  test('retains exactly the newest 500 and counts every browser eviction', () => {
+    const { connection, sockets } = setup(); connection.connect('A', page);
+    for (let i = 0; i < 700; i += 1) sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event: { type: 'step', stepId: String(i), message: String(i) } }) });
+    expect(connection.snapshot.events).toHaveLength(RUN_EVENT_RETENTION);
+    expect(connection.snapshot.events[0]).toMatchObject({ stepId: '200' });
+    expect(connection.snapshot.browserDiscardedCount).toBe(200);
+  });
+
+  test('does not mutate an earlier snapshot and resets both counters on retarget', () => {
+    const { connection, sockets } = setup(); connection.connect('A', page);
+    for (let i = 0; i < RUN_EVENT_RETENTION; i += 1) sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
+    const before = connection.snapshot; const copy = [...before.events];
+    sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'event', event }) });
+    sockets[0]!.onmessage?.({ data: JSON.stringify({ type: 'missed', count: 7 }) });
+    expect(before.events).toStrictEqual(copy);
+    expect(connection.snapshot).toMatchObject({ missedCount: 7, browserDiscardedCount: 1 });
+    connection.connect('B', page);
+    expect(connection.snapshot).toMatchObject({ missedCount: null, browserDiscardedCount: null });
   });
 });

@@ -18,6 +18,15 @@ import { reduceConnection, type ConnectionAction, type ConnectionMachine, type C
 import { runEventsUrl } from './daemon-endpoints.js';
 import { parseFrame } from './frame-parser.js';
 
+/**
+ * The newest accepted events retained by this browser.
+ *
+ * The daemon already retains and discloses a tail of 500. Reusing that measured product value
+ * bounds immutable-array copying, keeps early and late readers on the same visible extent, and
+ * avoids inventing a different limit before Q-0015's demonstration supplies a per-run count.
+ */
+export const RUN_EVENT_RETENTION = 500;
+
 /** The browser socket subset used by the run connection. */
 export interface SocketTransport {
   onopen: (() => void) | null;
@@ -35,6 +44,8 @@ export interface RunConnectionSnapshot {
   readonly state: ConnectionState;
   readonly events: readonly Event[];
   readonly missedCount: number | null;
+  /** Events accepted live and later evicted by the browser's independent retention bound. */
+  readonly browserDiscardedCount: number | null;
 }
 
 /** One owned connection with explicit replacement, retry and disposal. */
@@ -51,13 +62,14 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
   let machine: ConnectionMachine = { state: { kind: 'idle' }, opened: false, terminalSeen: false };
   let events: readonly Event[] = [];
   let missedCount: number | null = null;
+  let browserDiscardedCount: number | null = null;
   let socket: SocketTransport | null = null;
   let handle: string | null = null;
   let page: URL | null = null;
   let disposed = false;
   const listeners = new Set<(snapshot: RunConnectionSnapshot) => void>();
 
-  const snapshotOf = (): RunConnectionSnapshot => ({ state: machine.state, events, missedCount });
+  const snapshotOf = (): RunConnectionSnapshot => ({ state: machine.state, events, missedCount, browserDiscardedCount });
 
   const notify = (): void => {
     const snapshot = snapshotOf();
@@ -141,14 +153,23 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
         return;
       }
       // COPIED, deliberately, and this is the note round 2's N-2 asked for rather than an
-      // oversight. `[...events, event]` is O(n) per event and so quadratic over a long stream, which
-      // is real. What it buys is that a snapshot's `events` never changes after it is handed out:
-      // `snapshotOf` returns the array by reference, so pushing in place would make every snapshot
-      // a live view that grows under its holder — and Q-0015 renders mission control from this same
-      // snapshot while Q-0121 will hold several controllers at once. Trading an immutability every
-      // consumer can rely on for a constant factor is not a nit's worth of risk; the cap question
-      // AC-19 deliberately leaves open is where this belongs, with a measurement behind it.
+      // oversight. `[...events, event]` is what keeps a returned snapshot's `events` immutable after
+      // it is handed out: `snapshotOf` returns the array by reference, so pushing in place would
+      // make every snapshot a live view that grows under its holder. The retention bound below is
+      // where the growth this note originally flagged as unbounded is closed, at Q-0015's measured
+      // value rather than an invented one — see `RUN_EVENT_RETENTION`.
+      //
+      // Correction to the deferral this comment used to make: it predicted Q-0121 would hold several
+      // controllers at once and routed the cap question there. Q-0121's deliverable is the `/runs`
+      // listing, not multiple browser connections, and `App` still owns exactly one `RunConnection`
+      // at a time (app.tsx). The cap lands here instead because Q-0015 is the first screen to render
+      // the retained list rather than only its tail.
       events = [...events, result.frame.event];
+      if (events.length > RUN_EVENT_RETENTION) {
+        const overflow = events.length - RUN_EVENT_RETENTION;
+        events = events.slice(overflow);
+        browserDiscardedCount = (browserDiscardedCount ?? 0) + overflow;
+      }
       dispatch({ type: 'event', event: result.frame.event });
       notify();
     };
@@ -190,6 +211,7 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       page = nextPage;
       events = [];
       missedCount = null;
+      browserDiscardedCount = null;
       open(runEventsUrl(nextPage, nextHandle));
     },
 
@@ -197,6 +219,18 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       if (disposed) return;
       if (handle === null || page === null) return;
       closeCurrentSocket();
+      // Cleared exactly as `connect` above clears them, and for the same reason: the daemon replays
+      // its retained tail to EVERY new subscription, so keeping what the browser already holds
+      // renders every retained event twice. The events carry no identity to dedupe on — the union
+      // deliberately has no timestamp and no sequence number — so the choice is a doubled trace or a
+      // shorter true one, and a doubled trace claims events that did not happen. **All three reset**,
+      // because a retry is a fresh subscription and that is exactly what `connect` does: charging the
+      // cleared tail to the browser's discard counter reported a bounded-retention loss for events the
+      // daemon is about to replay, and a third counter would be a third loss cause that AC-10 and the
+      // contract's two-loss model do not have. Review round 3 M-1, corrected at round 4.
+      events = [];
+      missedCount = null;
+      browserDiscardedCount = null;
       open(runEventsUrl(page, handle));
     },
 

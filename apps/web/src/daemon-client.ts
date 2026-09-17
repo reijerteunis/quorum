@@ -31,9 +31,9 @@
  */
 import {
   gateAnswerEnvelopeSchema,
-  wireFlowListSchema, wireRefusalSchema, wireRunSchema, wireTicketDetailSchema, wireTicketFileSchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunListSchema, wireRunSchema, wireTicketDetailSchema, wireTicketFileSchema,
   wireTicketListSchema,
-  type GateAnswer, type WireFlowList, type WireRun, type WireTicketDetail, type WireTicketFile,
+  type GateAnswer, type WireFlowList, type WireRun, type WireRunList, type WireTicketDetail, type WireTicketFile,
   type WireTicketList,
 } from '@quorum/shared';
 
@@ -193,6 +193,10 @@ export const fetchTicketFile = (
 export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promise<RequestState<WireRun>> =>
   requestJson(fetcher, runDetailPath(handle), wireRunSchema, now);
 
+/** Read the daemon's ordered run listing once; callers decide when an explicit refresh repeats it. */
+export const fetchRuns = (fetcher: FetchLike, now: Clock): Promise<RequestState<WireRunList>> =>
+  requestJson(fetcher, DAEMON_ENDPOINTS.runs, wireRunListSchema, now);
+
 /** The status the gate route answers a settled gate with. There is no body, and none is read. */
 const ACCEPTED = 204;
 
@@ -261,6 +265,8 @@ export async function answerGate(
  * something the request does not ask for.
  */
 export const ticketsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.tickets });
+/** The runs listing's, beside its siblings rather than inside the screen. Review round 3, N-6. */
+export const runsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.runs });
 
 /** The flow listing's in-flight state, on {@link ticketsInFlight}'s terms. */
 export const flowsInFlight = <T>(): RequestState<T> => ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.flows });

@@ -83,3 +83,18 @@ it is the operator's here**: fixing the instance a finding names rather than the
 — Q-0112's five review rounds, three of them on that one failure. A ruling that changes a register
 must name **every** register that carries the claim, and *which register a step actually reads* is
 the question that decides it.
+
+### SE-1, corrected 2026-09-17 — the narrowing belongs to `role=` alone
+
+SE-1 adopted the architect's parsing-idiom form — the literal preceded by a quote, backtick or slash
+— and applied it to **all three** fields. The measurement behind it covers **one**: the collision is
+`backlog-board.test.ts:530`'s `[role="progressbar"]`, and `cost=` and `verdict=` occur in the
+`apps/web/src` corpus in no form at all. So for two of the three the delimiter requirement bought
+nothing and gave something up: bare `cost=` stopped being forbidden, which is the form a
+concatenating parser writes.
+
+Six needles rather than twelve, and `contracts/Q-0015/mission-control.contract.md` moved with this
+entry rather than after it. Found by review round 2's major 4, whose own recommendation named both
+registers — **and which this operator then did not move, which is why round 3 raised the contract
+again.** Fixing the guard and leaving the document that specifies it is the same failure the entry
+above records at SE-3, in the same ticket, a second time.

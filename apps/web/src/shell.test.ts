@@ -172,11 +172,11 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
       expect(textOf(container)).not.toMatch(new RegExp(`${'Q'}-\\d{4}`));
     });
 
-  test('the register has three ticketless screens, so the clause above discriminates', () => {
+  test('the register has two ticketless screens, so the clause above discriminates', () => {
     // Without this, a register in which every screen had a ticket would satisfy the clause above by
     // running over nothing at all.
     expect(SCREEN_ROUTES.filter((route) => route.ticket === null).map((route) => route.path))
-      .toStrictEqual(['/projects', '/runs', '/settings']);
+      .toStrictEqual(['/projects', '/settings']);
   });
 
   test('a dynamic route shows the decoded segment the URL supplied', async () => {
@@ -193,16 +193,28 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
     const container = await render(createElement(App, {
       initialPath: '/runs/run%20one',
       socketFactory: () => new FakeSocket(),
+      // Injected since Q-0015: this route draws mission control, which READS, so without a fetcher
+      // the screen reaches the browser's own `fetch` and the test does different work depending on
+      // what answers — the same hazard the socket factory above is injected for, on the same rule.
+      // Review round 4, N-3.
+      fetcher: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ handle: 'run one', flow: 'development', ticketId: null, runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null }) }),
+      clock: () => 'now',
       pageUrl: new URL(`https:${'/' + '/'}page.test`),
     }));
-    // Scoped to `main` rather than the whole container: since M-1 the connection region renders
-    // `connectionStateText`, whose sentence names the requested URL — and that URL is correctly
-    // percent-encoded, AC-13 requiring `runEventsPath` to encode the handle one segment at a time.
-    // So the encoded form legitimately appears in the header while the route content must show the
-    // decoded one, and asserting over the whole page would force one of the two criteria to give.
+    // Scoped to the run-identity region since Q-0015, and the narrowing is forced rather than
+    // chosen. `connectionStateText`'s sentence names the requested URL — correctly percent-encoded,
+    // AC-13 requiring `runEventsPath` to encode the handle one segment at a time — and until this
+    // ticket that sentence rendered only in the header, so scoping to `main` separated the two.
+    // `/runs/:handle` now draws mission control, whose status region renders that sentence INSIDE
+    // `main`, so the old scope asks the screen to show a URL and to hide the encoding in it at once.
+    // What the criterion is about is what identifies the run TO A READER, which is the anchor the
+    // contract froze for it; the positive stays on `main` because the decoded form may appear in
+    // more than one region and this test does not say which.
     const text = textOf(container.querySelector('main') as HTMLElement);
     expect(text, 'the segment was not decoded').toContain('run one');
-    expect(text, 'the raw encoding is being shown instead').not.toContain('run%20one');
+    const identity = textOf(container.querySelector('[data-run-identity]') as HTMLElement);
+    expect(identity, 'the run identity does not name the decoded handle').toContain('run one');
+    expect(identity, 'the raw encoding is being shown as the run identity').not.toContain('run%20one');
   });
 
   test('and no placeholder shows a fabricated figure or a control that claims to act', async () => {

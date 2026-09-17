@@ -17,8 +17,9 @@ import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
 import { GateScreen } from './gate-screen.js';
+import { MissionControlScreen } from './mission-control-screen.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH, GATE_ROUTE, TICKET_ROUTE } from './routes.js';
+import { BOARD_PATH, GATE_ROUTE, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -26,6 +27,7 @@ import {
   type SocketFactory,
   type SocketTransport,
 } from './run-connection.js';
+import { RunsScreen } from './runs-screen.js';
 import { Shell, type ShellConnectionProps } from './shell.js';
 import { TicketPage } from './ticket-page.js';
 import { NotFound, Placeholder } from './views.js';
@@ -46,7 +48,9 @@ const currentPageUrl = (): URL | undefined => (typeof window === 'undefined' ? u
 const defaultSocketFactory: SocketFactory = (url) => new WebSocket(url.toString()) as unknown as SocketTransport;
 
 /** What the top bar shows wherever no run route holds a live connection. */
-const IDLE_SNAPSHOT: RunConnectionSnapshot = { state: { kind: 'idle' }, events: [], missedCount: null };
+const IDLE_SNAPSHOT: RunConnectionSnapshot = {
+  state: { kind: 'idle' }, events: [], missedCount: null, browserDiscardedCount: null,
+};
 
 /** Injectable application inputs used by the browser and the transport-driven tests. */
 export interface AppProps {
@@ -107,6 +111,9 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
   const pageHref = page?.href;
   const pageOrigin = page?.origin;
 
+  // Which handle the snapshot below belongs to. Absent until the connect effect has run for the
+  // current route, which is what makes the guard hold for the commit that would otherwise be wrong.
+  const [connectedHandle, setConnectedHandle] = useState<string | undefined>(undefined);
   const connectionRef = useRef<RunConnection | null>(null);
   const [snapshot, setSnapshot] = useState<RunConnectionSnapshot | null>(null);
 
@@ -134,6 +141,12 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
     // discard the trace it has already accepted.
     if (handle === undefined || pageHref === undefined) return;
     connectionRef.current?.connect(handle, new URL(pageHref));
+    // Recorded here so a render between a handle change and this effect cannot paint the PREVIOUS
+    // run under the new handle. `handle` moves synchronously with the route; the controller is
+    // retargeted only in this post-commit effect, so for one commit `snapshot` still belongs to the
+    // run that was left — its trace, its terminal run number in `data-run-identity`, and a gate link
+    // built from the new handle on the old run's `pendingGates`. Review round 1, M3.
+    setConnectedHandle(handle);
     // `socketFactory` is a dependency here as well as above, and the mismatch was the defect: the
     // effect above rebuilds the controller when the factory's identity moves, and without this one
     // firing too the replacement was never connected — leaving the region at `idle`, which offers no
@@ -147,7 +160,7 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
   // Always a real value, never absent: off a run route, or before the controller's first snapshot,
   // the region shows the idle state rather than rendering nothing.
   const connection: ShellConnectionProps =
-    handle === undefined || snapshot === null
+    handle === undefined || snapshot === null || connectedHandle !== handle
       ? { snapshot: IDLE_SNAPSHOT, text: connectionStateText(IDLE_SNAPSHOT.state), retryable: canRetry(IDLE_SNAPSHOT.state), onRetry }
       : { snapshot, text: connectionStateText(snapshot.state), retryable: canRetry(snapshot.state), onRetry };
 
@@ -166,6 +179,29 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
         // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
         // name is the daemon's own first predicate, and this page renders that refusal.
         <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
+      ) : rendered.route.path === RUNS_PATH ? (
+        // The read-only landing: one GET /runs at mount, daemon order preserved, each row linking to
+        // this same RUN_ROUTE via `runPath`.
+        <RunsScreen fetcher={fetcher} now={clock} onNavigate={navigate} />
+      ) : rendered.route.path === RUN_ROUTE ? (
+        // The handle is decoded the same way the ticket id and the gate handle are: whatever the URL
+        // carried, not trusted to be one this daemon minted — the screen's own metadata read renders
+        // that refusal. `connection` already resolves to the live snapshot for this route (`handle`
+        // is computed above from the same `'handle' in rendered.params` check, GATE_ROUTE excluded),
+        // so mission control reads the one controller this component owns rather than a second one.
+        <MissionControlScreen
+          // Keyed by the handle so a handle-to-handle navigation REMOUNTS rather than re-renders:
+          // the screen's `metadata` is its own state and was reset only in a post-commit effect, so
+          // without this the previous run's flow, ticket and pending-gate count paint under the new
+          // handle for one commit. Review round 1, M3.
+          key={rendered.params.handle ?? ''}
+          handle={rendered.params.handle ?? ''}
+          snapshot={connection.snapshot}
+          onRetryConnection={onRetry}
+          fetcher={fetcher}
+          now={clock}
+          onNavigate={navigate}
+        />
       ) : rendered.route.path === GATE_ROUTE ? (
         // The handle likewise: whatever the URL carried, decoded out of one segment and not trusted
         // to be one this daemon minted. A handle it never minted is the route's own 404, which the
