@@ -71,6 +71,22 @@ function gateOf(events: Event[]): GateQuestionEvent {
 const aborting = (question: GateQuestionEvent): Promise<GateAnswerEnvelope> =>
   Promise.resolve({ gateId: question.gateId, answer: 'abort' as const });
 
+/**
+ * Answer the questions in the order they are asked, `abort` once the list runs out.
+ *
+ * What a fixture about a SECOND gate needs and {@link aborting} cannot give it: both gates of a
+ * two-gate flow are `human`, so the answer cannot be chosen from the question's kind the way the
+ * script-failure fixture below chooses one.
+ */
+function answering(...answers: readonly GateAnswerEnvelope['answer'][]): (question: GateQuestionEvent) => Promise<GateAnswerEnvelope> {
+  let at = 0;
+  return (question: GateQuestionEvent): Promise<GateAnswerEnvelope> => {
+    const answer = answers[at] ?? 'abort';
+    at += 1;
+    return Promise.resolve({ gateId: question.gateId, answer });
+  };
+}
+
 /** A run whose steps are `steps`, drained to its terminal event. */
 async function runWith(
   steps: Record<string, unknown>[],
@@ -395,6 +411,27 @@ describe('Q-0129 AC-6 — absence is absence', () => {
     expect('reached' in gate, 'the question carried an empty decision rather than none').toBe(false);
   });
 
+  test('a step that declares no verdict is not handed the decision of the step before it', async () => {
+    // **The case the identity test in `handleFail` is the only thing standing in**, and it is here
+    // because this round's other change took its subject away: with no gate between the two steps
+    // there is nothing to have spent the decision, so what empties this question is `handleFail`
+    // refusing a slot that names somebody else. The fixture below has a gate in between and now
+    // passes for two reasons; this one has one reason, and reverting the identity test turns it red
+    // while leaving that one green.
+    const { events } = await runWith(
+      [
+        { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+        { id: 'check', type: 'script', run: 'exit 3', on_fail: { goto: 'check', max_iterations: 0 } },
+      ],
+      () => ({ summary: 'nothing to report', document: '# r\n', verdict: 'approve', findings: [] }),
+    );
+
+    const gate = gateOf(events);
+    expect(gate.kind).toBe('human-locked');
+    expect('reached' in gate, 'a script step\'s failure was presented as the decision the step before it made')
+      .toBe(false);
+  });
+
   test('a step that declares no verdict is not handed the decision an answered gate carried', async () => {
     // One run, two questions. `review` decides, the author-declared gate carries that decision and
     // is answered `advance`, and then a step that decides NOTHING fails — so what the reader is
@@ -426,6 +463,92 @@ describe('Q-0129 AC-6 — absence is absence', () => {
     expect(gates[0]?.reached?.stepId, 'the gate that followed the decision carried nothing').toBe('review');
     expect('reached' in gates[1]!, 'a script step\'s failure was presented as the decision the reader had already answered')
       .toBe(false);
+  });
+
+  test('a second author-declared gate reached with nothing decided since carries nothing', async () => {
+    // **The rule this run selected, pinned.** A decision is carried to the first gate that TAKES it
+    // and no further: `review` decides, the first gate carries it and is answered, a step that
+    // decides nothing runs, and the second gate carries none — rather than re-presenting a decision
+    // this reader has already answered on, under a heading naming it the step before that gate.
+    // `handleFail`'s identity test cannot reach this: both gates here are author-declared, so that
+    // function never runs, and what makes the second question empty is the first one having spent it.
+    //
+    // **No shipped flow discriminates the two readings** — all six declare exactly one gate — so this
+    // fixture is the whole of where the choice lives, which is why it is a pair with the clause below
+    // rather than one assertion.
+    const fixture = runFixture({ run: { answerGate: answering('advance', 'abort') } });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+      { gate: 'human', reason: 'approve the review' },
+      { id: 'note', output: { write: 'dev/n.md' } },
+      { gate: 'human', reason: 'approve the merge' },
+    ]);
+    stubAdapter((_invocation, call) => ({
+      output: call === 1
+        ? { summary: 'nothing to report', document: '# r\n', verdict: 'approve', findings: [] }
+        : { summary: 'a note that decided nothing', document: '# n\n' },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.map((gate) => gate.reason), 'the run did not reach both gates — this clause has lost its subject')
+      .toStrictEqual(['approve the review', 'approve the merge']);
+    expect(gates[0]?.reached?.stepId, 'the gate that followed the decision carried nothing').toBe('review');
+    expect('reached' in gates[1]!, 'the second gate re-presented the decision answered at the first').toBe(false);
+  });
+
+  test('a second author-declared gate reached AFTER a further decision carries that one', async () => {
+    // The anti-vacuity half, and the reason the two are a pair: a mechanism that simply never carried
+    // anything to a second gate would pass the clause above and fail this one. What a question spends
+    // is the decision it carried, never the next gate's ability to carry one.
+    const fixture = runFixture({ run: { answerGate: answering('advance', 'abort') } });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' } },
+      { gate: 'human', reason: 'approve the review' },
+      { id: 'recheck', output: { write: 'dev/c.md', verdict: 'approve|changes-requested' } },
+      { gate: 'human', reason: 'approve the merge' },
+    ]);
+    stubAdapter((_invocation, call) => ({
+      output: call === 1
+        ? { summary: 'the first look', document: '# r\n', verdict: 'approve', findings: [] }
+        : { summary: 'the second look', document: '# c\n', verdict: 'approve', findings: [] },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.length, 'the run did not reach both gates — this clause has lost its subject').toBe(2);
+    expect(gates[0]?.reached?.stepId).toBe('review');
+    expect(gates[1]?.reached?.stepId, 'a decision made after the first gate never reached the second').toBe('recheck');
+    expect(gates[1]?.reached?.summary).toBe('the second look');
+  });
+
+  test('a decision answered at an exhaustion gate is not presented again at the gate after it', async () => {
+    // **The shape a shipped flow actually reaches**, and the reason the rule is one rule rather than
+    // a clause about author-declared gates alone: `chore.yaml`'s review loop exhausts, the reader
+    // answers `advance` on the reviewer's findings, `integrate` runs, and the run stops at the flow's
+    // own gate. Spent at the first question, that gate says what it truthfully can — the step before
+    // it declared no verdict — instead of showing the same findings to the same reader twice.
+    const fixture = runFixture({ run: { answerGate: answering('advance', 'abort') } });
+    fixture.steps([
+      { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' }, on_fail: { goto: 'review', max_iterations: 0 } },
+      { gate: 'human', reason: 'approve the merge' },
+    ]);
+    stubAdapter(() => ({
+      output: { summary: 'it is not ready', document: '# r\n', verdict: 'changes-requested', findings: ['major: a.ts:1 the shape is wrong'] },
+      raw: '{}', usage: BILLED,
+    }));
+
+    const { events } = await fixture.settle();
+
+    const gates = events.filter((event): event is GateQuestionEvent => event.type === 'gate');
+    expect(gates.map((gate) => gate.kind), 'the run did not reach both gates — this clause has lost its subject')
+      .toStrictEqual(['human-locked', 'human']);
+    expect(gates[0]?.reached?.summary, 'the exhaustion gate carried nothing').toBe('it is not ready');
+    expect('reached' in gates[1]!, 'the decision answered at the exhaustion gate was presented a second time').toBe(false);
   });
 
   test('a later gate is not handed an earlier RUN\'s decision', async () => {

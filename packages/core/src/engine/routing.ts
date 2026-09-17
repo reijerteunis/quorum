@@ -20,6 +20,12 @@ function interruptedGate(request: GateQuestionEvent): FlowError {
  * re-read. What differs is which reading each site is entitled to, which is where the two kinds of
  * gate differ: see {@link handleFail}. See *"A gate question carries the decision that reached it"*
  * (2026-09-17).
+ *
+ * **A decision is carried to the first gate that takes it and no further.** Each site clears what
+ * this builder was handed, so a later gate reached with nothing decided since carries nothing rather
+ * than re-presenting a decision the reader has already answered on — which is AC-6's *neither layer
+ * substitutes a previous gate's value* in the direction the identity test in {@link handleFail} does
+ * not reach. Taking is what ends it, so each site consumes exactly what it took and no more.
  */
 const reachedBy = (reached: GateReached | undefined): { reached?: GateReached } =>
   reached === undefined ? {} : { reached };
@@ -105,10 +111,17 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
 
   if (step.gate) {
     const retry = typeof step.retryTarget === 'string' ? step.retryTarget : undefined;
+    // Taken, not merely read. This gate carries the last decision the run recorded, and carrying it
+    // is what spends it: a second gate reached with nothing decided in between gets nothing rather
+    // than the decision this reader answered at the first. Nothing awaits between here and the
+    // question below, and no member of a `parallel:` group is still running — that branch returns
+    // above — so the value cleared is the value carried.
+    const reached = context.reached;
+    context.reached = undefined;
     const request: GateQuestionEvent = {
       type: 'gate', gateId: context.nextGateId(), kind: String(step.gate),
       reason: String(step.reason ?? step.prompt ?? `${context.flow.name}: approve to advance ticket to "${context.flow.produces}"`),
-      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(context.reached),
+      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(reached),
     };
     const answer = await askGate(request, context);
     if (answer === 'advance') return null;
@@ -137,7 +150,8 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
  *
  * The gate it may present carries what **this** step decided and nothing else, which is the half of
  * the slot's rule that differs from an author-declared gate's: that one carries the last decision
- * the run recorded, and this one describes the refusal that reached it.
+ * the run recorded, and this one describes the refusal that reached it. What the two share is that
+ * carrying a decision spends it — a traversal, which presents no question, spends nothing.
  */
 export async function handleFail(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<StepResult> {
   // Read before this function's first await, and taken only where it NAMES the step that is
@@ -161,6 +175,12 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
     context.emit({ type: 'warn', message: `${String(step.id)}: iteration ${count}/${limit} → goto ${target}` });
     return { goto: target, counter, limit };
   }
+
+  // Past here a question is certain, so this is where the decision is spent — the traversal above
+  // presents nothing and must leave the slot alone. Only what this gate took is cleared: a sibling's
+  // decision the identity test refused is not this gate's to spend, and the slot is compared rather
+  // than assumed because a `parallel:` member may have replaced it since. See {@link reachedBy}.
+  if (reached !== undefined && context.reached === reached) context.reached = undefined;
 
   // A bound of zero authorises no unattended traversal, so the first failure arrives here and
   // "exhausted" would be a false account of it — nothing looped. The two are the same gate with the

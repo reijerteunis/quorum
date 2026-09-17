@@ -290,6 +290,13 @@ export interface RunContext {
    * does not carry on its own: an author-declared gate takes the last decision the run recorded,
    * while an **exhaustion** gate takes it only where it names the step that failed, because that
    * gate describes a refusal rather than a position in the run. `handleFail` is where that holds.
+   *
+   * **A decision is carried to the first gate that takes it and no further**, so a question clears
+   * what it carried and a later gate reached with nothing decided since carries nothing. That is the
+   * *a previous gate's value* half of the paragraph above, and it is why this is a slot a question
+   * spends rather than a register of the run's last verdict: the two read the same for every flow
+   * this repository ships, each of which declares exactly one gate, and they differ the moment one
+   * declares two.
    */
   reached?: GateReached;
   /**

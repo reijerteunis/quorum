@@ -877,25 +877,47 @@ describe('Q-0129 AC-11 — malformed, stale and in-flight evidence cannot show a
   });
 
   test('an answer in flight leaves the decision rendered, the controls inert, and nothing claimed', async () => {
-    const reached = { stepId: 'review', verdict: 'approve', summary: 'nothing to report', findings: [] };
-    const fake = afterAnswering({ status: 204 }, 'never answers');
-    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
-    // The first read answers the plain fixture, so the evidence is put there by a second render at
-    // the same handle rather than by the helper — which keeps `afterAnswering`'s shape unchanged.
-    const parked = await screen({ runs: [run({ gates: [question({ reached })] })] });
-    expect(textOf(parked.container)).toContain('nothing to report');
+    // **Into the SAME screen whose control is pressed.** The run-3 review found this clause reading
+    // one mount while the evidence was rendered into another, so every assertion after the click
+    // inspected a screen that had never had a decision on it: deleting the evidence mid-answer would
+    // have left it green, and so would drawing no controls at all, `every` being true of nothing.
+    //
+    // And the answer **never settles**, which is the moment AC-11 is about. A fixture that resolves
+    // the POST is asking what the screen says once the daemon has replied — a different claim, and
+    // one the two clauses above already make.
+    const reached = {
+      stepId: 'review', verdict: 'changes-requested', summary: 'two majors and a nit',
+      findings: ['major: src/host.ts:4 the record is never released'],
+    };
+    const sent: Sent[] = [];
+    const fetcher = (path: string, request?: DaemonRequest): Promise<DaemonResponse> => {
+      sent.push({ path, request });
+      if (request?.method === 'POST') return new Promise<DaemonResponse>(() => { /* the answer stays out for ever */ });
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(run({ gates: [question({ reached })] })),
+      });
+    };
+    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher, now: CLOCK }));
+    expect(textOf(container), 'the decision never reached the screen — this clause has lost its subject')
+      .toContain('two majors and a nit');
 
     const advance = controls(container).find((button) => button.dataset.answer === 'advance');
     expect(advance, 'there is no control to press — this clause has lost its subject').toBeDefined();
     await click(advance!);
 
     const text = textOf(container);
-    expect(controls(container).every((button) => button.disabled), 'the controls stayed live while an answer was out').toBe(true);
-    // The sentence beside them says the daemon took the answer and that where the run is now is a
-    // further read — it may not say the ticket advanced, which is not something this exchange
-    // established.
+    expect(envelopes(sent).length, 'no answer went out, so nothing is in flight — this clause has lost its subject').toBe(1);
+    expect(text, 'the summary was cleared while the answer was still on its way').toContain('two majors and a nit');
+    expect(text, 'a reported entry was cleared while the answer was still on its way')
+      .toContain('major: src/host.ts:4 the record is never released');
+    const offered = controls(container);
+    expect(offered.length, 'there are no controls to be inert — `every` would be true of nothing').toBeGreaterThan(0);
+    expect(offered.every((button) => button.disabled), 'the controls stayed live while an answer was out').toBe(true);
+    // Neither half of what has not happened yet: the ticket has not moved, and the daemon has not
+    // accepted anything either — this request is still on its way.
     expect(text, 'the screen claims the ticket advanced').not.toMatch(/advanced|reviewed now|moved on/i);
-    expect(text).toContain(ANSWERED_PREFIX);
+    expect(text, 'the screen claimed an answer the daemon has not taken').not.toContain(ANSWERED_PREFIX);
   });
 });
 
