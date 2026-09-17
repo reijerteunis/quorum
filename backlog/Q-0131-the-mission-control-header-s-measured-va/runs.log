@@ -28,3 +28,59 @@ worktrees.
 2026-09-17T16:53:53.643Z run=2 gate=human answer=advance
 2026-09-17T16:53:55.054Z run=2 removed-worktrees=2 kept=0
 2026-09-17T16:53:55.059Z run=2 completed stage=requirements→reviewed cost=78.675 tokens=122630420
+
+## GO-3 — discharged by running the product, transcribed rather than paraphrased
+
+Performed 2026-09-17 against the merged tree plus the hand repair, in Chrome, at
+`http://127.0.0.1:7717/runs/run-1`, **while the run was running**.
+
+**The request that produced the run**, recorded as GO-3 asks:
+
+    POST /runs {"flow":"requirements","ticket":"Q-0136"}
+    → {"handle":"run-1","flow":"requirements","ticketId":"Q-0136","runId":1,"state":"running", …}
+
+**The number is on the start response itself**, which is better than the ruling's stated worst case:
+E-1 accepted *"one read later"* as the price of the out-of-band supply, and measured, the callback
+lands before the response is composed, so there is no later read to wait for. Recorded as a
+measurement that came out better than the estimate rather than left as the estimate.
+
+**What the screen rendered**, transcribed from the page:
+
+    Mission control    Run 1    requirements · Q-0136 · running
+    Connected to ws://127.0.0.1:7717/runs/run-1/events.
+
+    Elapsed time is unavailable because no event has a timestamp and the run has no start time on the wire.
+    Per-vendor cost and token totals are unavailable as structured values; they occur only inside a human-readable message.
+    What comes next is unavailable because the run metadata carries no flow step list.
+    Structured tool calls and assistant reasoning are unavailable because neither event kind has a producer; columns show the vendor's stdout.
+
+**`Run 1` is rendered while `state` is `running`**, which is the whole of what this ticket is for,
+and **the disclosure list is four entries rather than five** — the run number's is gone, which is
+exactly the clause GO-2's contract note retires. The remaining four are the three Q-0135 and later
+tickets own plus the structured-events one.
+
+**The same number, cross-checked in the two places the run records it itself**: the ticket's
+`runs.log` carries `run=1`, and the run history directory is `.quorum/runs/Q-0136-1`. So what the
+browser shows is the engine's own number and not a handle dressed up as one.
+
+**Only the vendor CLI was mocked**, through `--adapter mock`, and the run was started **through the
+daemon** because a `quorum run` is a different process the host can never see (Q-0121).
+
+**One thing did not go as scripted and is recorded rather than tidied**: the `abort` sent at the end
+answered `404 no-such-gate`, because the gate id was guessed from the previous demonstration rather
+than read from `GET /runs`. The daemon was then stopped, which ended the run. Everything created was
+removed — the scratch ticket `Q-0136`, `.quorum/runs/Q-0136-1`, and `harness/harness.yaml` back to
+zero diff. No lock and no worktree survived.
+
+## GO-5 — verified forced in both environment rows
+
+`main` after the merge and a detached worktree with neither `.harness/worktrees` nor `.quorum/runs`:
+`pnpm turbo run test --force --continue` **7/7 tasks, 0 cached** in each, `pnpm lint` and
+`pnpm typecheck` 7/7, `quorum lint` 6/6, and the git-identity sweep green.
+
+## GO-4 — no review was truncated
+
+Recorded because it is the first ticket in this stretch where that is true: all three review rounds
+were handed the whole diff, so no hand pass over an omitted tail was owed. Q-0129's four rounds were
+all truncated. The difference is change size — 19 files and 996 insertions here — which is what
+**Q-0128**'s evidence says the cap tracks.
