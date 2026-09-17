@@ -327,6 +327,27 @@ const WALKS: readonly Walk[] = [
       && /\.tsx?$/.test(below),
     why: 'the same walk, over the second glob pnpm-workspace.yaml declares',
   },
+  // Q-0129 AC-2 — a THIRD walk of two of the same trees, again by a different suite and under a
+  // different rule. `gate-evidence.source.test.ts` claims that no second path exists anywhere to a
+  // step's decision, and the three trees it names are the three that value can travel through:
+  // `packages/core/src` is inside this package and covered by `$TURBO_DEFAULT$`, so only the two
+  // outside it are rows. They are NOT a widening of the two above: those collect by the workspace
+  // glob's parent and this one names the source tree, so a literal `packages/server/src` is not the
+  // literal `packages` and clause B can see neither through the other.
+  {
+    taskId: '@quorum/core#test',
+    dir: 'packages/server/src',
+    collects: (below) => !below.split('/').some((part) => ['node_modules', 'dist', '.turbo'].includes(part))
+      && /\.tsx?$/.test(below),
+    why: 'walk() — gate-evidence.source.test.ts, the daemon\'s own source, because the four routes that criterion refuses reach the transport as readily as the engine',
+  },
+  {
+    taskId: '@quorum/core#test',
+    dir: 'apps/web/src',
+    collects: (below) => !below.split('/').some((part) => ['node_modules', 'dist', '.turbo'].includes(part))
+      && /\.tsx?$/.test(below),
+    why: 'the same walk, over the browser tree — the surface a regex over a sentence would most plausibly be written on',
+  },
 ];
 
 /**
@@ -784,6 +805,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   'packages/core/src/browser/browser.source.test.ts': {
     'repoRoot → dir': 'walk()\'s parameter, and both call sites pass a literal: the two workspace globs, \'packages\' and \'apps\', which clause B collects and WALKS declares. Q-0126 AC-12 claims that ONE site in the workspace launches a browser, and a claim about every package can only be answered by reading every package',
     'repoFile → `${COVERED_ELSEWHERE}/src/index.test.ts`': 'COVERED_ELSEWHERE is the literal \'packages/shared\' at the top of that file, and clause B collects the joined path as a literal too. It is the one package the walk does not enter — the workspace dependency edge hashes it — and this read is what makes that exclusion checkable rather than argued',
+  },
+  'packages/core/src/gate-evidence.source.test.ts': {
+    'repoRoot → dir': 'walk()\'s parameter, and every call site iterates ROOTS — a literal three-element array at the top of that file, which clause B collects and WALKS declares the two members outside this package. Q-0129 AC-2 claims that NO second path to a step\'s decision exists, and a claim about three trees can only be answered by reading all three',
   },
   'packages/core/src/caught-failures.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal TWO-element array at the top of that file — packages/core/src and packages/cli/src — and clause B collects both. The Q-0059 AC-8 shape over a second tree, because Q-0115 AC-3 claims something about the roots it walks; shared is deliberately out, for the reason recorded above that array',
@@ -1572,6 +1596,10 @@ const READ_BASES: Record<string, Record<string, string>> = {
     'f.ticketDir': 'the ticket folder inside that repository, for the artifacts an integrate step declared it writes',
     'f.worktree(INTEGRATION)': "path.join(f.repoDir, '.harness', 'worktrees', worktreeDirName(…)) — the integration worktree inside that same repository, where the merges and the test command happened",
   },
+  'packages/core/src/engine/gate-reached.test.ts': {
+    ticketDir: "the ticket folder inside the temp repository runFixture() built, where the verdict artifact the gate's evidence is compared against landed — Q-0129 AC-2",
+    'overridden.ticketDir': 'the same, for the second fixture in that pair, which aims the artifact at a path the flow author chose',
+  },
   'packages/core/src/engine/run-composition.test.ts': {
     'fixture.ticketDir': 'the ticket folder inside the temp repository runFixture() built',
     'fixture.repoDir': 'that temp repository itself, for the directories a dry run must not create',
@@ -1771,6 +1799,9 @@ const READ_BASES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/browser/browser.source.test.ts': {
     here: 'path.join(repoRoot, dir) for the two workspace globs, then a directory `readdirSync` returned from inside one of them — so every read is below \'packages\' or \'apps\', the two literals WALKS declares for this task',
+  },
+  'packages/core/src/gate-evidence.source.test.ts': {
+    here: "path.join(repoRoot, dir) for each member of ROOTS, then a directory `readdirSync` returned from inside one of them — so every read is below 'packages/core/src', 'packages/server/src' or 'apps/web/src', the three literals in that array, of which the two outside this package are what WALKS declares for this task",
   },
   'packages/core/src/test-command.test.ts': {
     // Q-0107 AC-16 removed `dir` with `spikeSources()`, whose walk of the spike's source directory

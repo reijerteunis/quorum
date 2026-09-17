@@ -12,7 +12,7 @@
  */
 import path from 'node:path';
 
-import { OUTPUT_FILE, PROMPT_FILE, TICKET_ARTIFACT_DIR, ticketBranch } from '@quorum/shared';
+import { OUTPUT_FILE, PROMPT_FILE, TICKET_ARTIFACT_DIR, ticketBranch, type GateReached } from '@quorum/shared';
 
 import { checkAgainstSchema, getAdapter } from '../adapters/adapters.js';
 import type { AdapterError, RetriedAdapterResult } from '../adapters/adapters.js';
@@ -41,6 +41,15 @@ export interface AgentStepExtra {
   syncBase?: boolean;
   /** Appended to the built prompt, given the working directory the step resolved. */
   promptSuffix?: (cwd: string) => string;
+  /**
+   * Told what this call decided, for a caller that must order several decisions itself.
+   *
+   * The slot on the run is assigned either way — a gate this member reaches on its own failure has
+   * to see its own verdict and not the run's previous one — and this is the notification beside it,
+   * so `runStep`'s parallel branch can re-apply the group's decisions in declaration order once
+   * every member has settled. Nobody else supplies it.
+   */
+  collectReached?: (reached: GateReached) => void;
 }
 
 /** A step's `output:` block, as far as the agent step reads it. */
@@ -338,6 +347,22 @@ export async function runAgentStep(
     // step. See Q-0089.
     const verdictPath = interpolate(String(declared.verdict_file ?? `${TICKET_ARTIFACT_DIR}/run-{run}/${stepId}-verdict-iter-{iter}.json`), vars);
     context.backlog.writeFile(ticket, verdictPath, JSON.stringify({ verdict: output.verdict, findings: output.findings ?? [], summary: output.summary }, null, 2));
+    // The one place a step's decision is put where a later gate can carry it, and it is this place
+    // because it is where the decision is VALIDATED: `schemaFor` makes all three required whenever a
+    // step declares a verdict, so what is written to disk one line above and what is handed to the
+    // gate below are the same values rather than two readings of them. Deliberately not the
+    // `handleFail` site: that one receives no output, and the gate this repository reaches most is
+    // the one that follows a PASSING verdict, which never enters it. Each `??` is a representable
+    // empty rather than a default — a schema that stopped requiring one of the three would put an
+    // empty string in front of a reader and never the word `undefined` (Q-0052's coercion lesson).
+    const reached: GateReached = {
+      stepId,
+      verdict: output.verdict ?? '',
+      findings: output.findings ?? [],
+      summary: output.summary ?? '',
+    };
+    context.reached = reached;
+    extra.collectReached?.(reached);
   }
   if (branch) {
     const files = commitAll(

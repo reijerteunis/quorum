@@ -16,15 +16,19 @@ import { act, createElement, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
-import { gateAnswerSchema, type GateAnswer, type GateQuestionEvent } from '@quorum/shared';
+import {
+  FINDING_SEVERITIES, gateAnswerSchema, OBSERVATION_TAG,
+  type GateAnswer, type GateQuestionEvent,
+} from '@quorum/shared';
 
 import { App } from './app.js';
 import type { DaemonRequest, DaemonResponse } from './daemon-client.js';
 import { runDetailPath, runGatePath } from './daemon-endpoints.js';
 import {
   ANSWER_LABEL, ANSWERED_PREFIX, answersOffered, GATE_GONE, GATE_GONE_CODE, GATE_HEADING,
-  GATE_SUBJECT_TEXT, GATE_SUBJECTS, gateSubjectOf, GateScreen, LOOK_AGAIN_LABEL, NO_RETRY_TARGET,
-  REFRESH_LABEL, REFUSAL_PREFIX, REFUSAL_UNSTATED, RETURNS_TO, RETRY_LABEL,
+  GATE_SUBJECT_TEXT, GATE_SUBJECTS, gateSubjectOf, GateScreen, groupReported, LOOK_AGAIN_LABEL,
+  NO_FINDINGS, NO_REACHED, NO_RETRY_TARGET, NO_SUMMARY, REFRESH_LABEL, REFUSAL_PREFIX,
+  REFUSAL_UNSTATED, REPORT_GROUPS, RETURNS_TO, RETRY_LABEL,
 } from './gate-screen.js';
 import { GATE_ROUTE } from './routes.js';
 import type { SocketTransport } from './run-connection.js';
@@ -690,10 +694,119 @@ describe('AC-12 — a gate that is no longer waiting is reported as that, and ne
   });
 });
 
-describe('AC-13 — the screen renders nothing about what the step before it decided', () => {
-  test('a parked run renders no region standing in for something that is not there', async () => {
+describe('Q-0129 AC-8 — the decision that reached the gate, whole, as text', () => {
+  test('the step, the verdict word, the summary and every reported entry', async () => {
+    // **Twenty-three, which is the measured maximum a verdict record in this repository carries.**
+    // Nothing is paged, capped or put behind a control: the largest such record is 13 KB, so the
+    // property is that the rendered count EQUALS the array's length rather than that it is large.
+    const entries = Array.from({ length: 23 }, (_value, at) => `nit: src/m${String(at)}.ts:${String(at + 1)} entry number ${String(at)}`);
+    const { container } = await screen({
+      runs: [run({ gates: [question({ reached: { stepId: 'dev:backend-wire-schema', verdict: 'changes-requested', summary: 'the summary this step returned', findings: entries } })] })],
+    });
+    const text = textOf(container);
+
+    expect(text, 'the deciding step is not named').toContain('dev:backend-wire-schema');
+    // The word the engine sent, and not a noun coined from it. `Q-0016`'s AC-9 rule at a second
+    // field: `changes-requested` is one flow's vocabulary and another declares `needs-input`.
+    expect(text, 'the verdict word the engine sent is not rendered').toContain('changes-requested');
+    expect(text, 'the summary is not rendered').toContain('the summary this step returned');
+    for (const entry of entries) {
+      expect(text, `a reported entry is missing: ${entry}`).toContain(entry);
+    }
+    expect(container.querySelectorAll('[data-finding]'), 'the rendered count is not the array\'s length')
+      .toHaveLength(entries.length);
+  });
+
+  test('the verdict is what the question carried, whatever word that is', async () => {
+    // The anti-coining half with a subject: a screen mapping verdicts to nouns of its own would
+    // render the same thing for both of these.
+    for (const verdict of ['approve', 'ready', 'proceed', 'needs-input']) {
+      const { container } = await screen({
+        runs: [run({ gates: [question({ reached: { stepId: 'work', verdict, summary: 's', findings: [] } })] })],
+      });
+      expect(textOf(container), `the verdict ${verdict} is not rendered as the engine sent it`).toContain(verdict);
+    }
+  });
+});
+
+describe('Q-0129 AC-9 — grouped only by the register `@quorum/shared` declares', () => {
+  /** One per severity, one observation, and the two the register does not recognise. */
+  const SEVEN = [
+    'blocker: src/a.ts:1 the first',
+    'major: src/b.ts:2 the second',
+    'nit: src/c.ts:3 the third',
+    'observation: the suite is red under load',
+    'the step wrote this with no prefix at all',
+    'minor: src/d.ts:4 a severity this product does not declare',
+  ];
+
+  test('all six render, and the two outside the register are whole and in their own place', async () => {
+    const { container } = await screen({
+      runs: [run({ gates: [question({ reached: { stepId: 'review', verdict: 'changes-requested', summary: 's', findings: SEVEN } })] })],
+    });
+    const text = textOf(container);
+
+    // Nothing is dropped, which is the half a grouping implementation gets wrong: 13.9% of this
+    // repository's findings carry no recognised prefix.
+    for (const entry of SEVEN) expect(text, `a reported entry was dropped: ${entry}`).toContain(entry);
+    expect(container.querySelectorAll('[data-finding]')).toHaveLength(SEVEN.length);
+
+    // The two are outside EVERY severity group rather than merely present — filed under one they do
+    // not claim, they would still be findable in the text above.
+    const uncategorised = [...container.querySelectorAll('[data-finding="uncategorised"]')]
+      .map((element) => element.textContent ?? '');
+    expect(uncategorised, 'an unrecognised entry was re-filed under a severity it does not claim')
+      .toStrictEqual([SEVEN[4], SEVEN[5]]);
+    // …and it is verbatim, rather than trimmed to look like one that is inside the register.
+    expect(uncategorised[1], 'the entry was rewritten on its way to its own group').toBe('minor: src/d.ts:4 a severity this product does not declare');
+
+    // Each recognised entry is under its own group and under no other, so a grouping that put
+    // everything in the first bucket fails here rather than passing on the text above.
+    for (const [group, entry] of [['blocker', SEVEN[0]], ['major', SEVEN[1]], ['nit', SEVEN[2]], ['observation', SEVEN[3]]] as const) {
+      const under = [...container.querySelectorAll(`[data-finding="${group}"]`)].map((element) => element.textContent ?? '');
+      expect(under, `the ${group} group does not hold exactly its own entry`).toStrictEqual([entry]);
+    }
+  });
+
+  test('the grouping keeps everything, which is asserted rather than intended', () => {
+    // The pure half, so the property is checkable without a DOM: the two halves sum to the input,
+    // element for element, and nothing is rewritten on the way.
+    const { grouped, rest } = groupReported(SEVEN);
+    expect([...grouped.flatMap((each) => each.entries), ...rest].sort()).toStrictEqual([...SEVEN].sort());
+    expect(grouped.map((each) => each.group), 'a group with no entries was rendered')
+      .toStrictEqual(['blocker', 'major', 'nit', 'observation']);
+    expect(rest).toStrictEqual([SEVEN[4], SEVEN[5]]);
+    // The register is the shared package's, in its own order — which is what fails if this screen
+    // ever writes one of its own.
+    expect(REPORT_GROUPS).toStrictEqual([...FINDING_SEVERITIES, OBSERVATION_TAG]);
+  });
+
+  test('an empty list says so, and never renders as nothing having been wrong', async () => {
+    const { container } = await screen({
+      runs: [run({ gates: [question({ reached: { stepId: 'review', verdict: 'approve', summary: 'nothing to report', findings: [] } })] })],
+    });
+    const text = textOf(container);
+    expect(text, 'an empty list renders no sentence at all').toContain(NO_FINDINGS);
+    expect(container.querySelectorAll('[data-finding]'), 'an empty list rendered an entry').toHaveLength(0);
+  });
+
+  test('an empty summary is a value and is reported as one', async () => {
+    const { container } = await screen({
+      runs: [run({ gates: [question({ reached: { stepId: 'review', verdict: 'approve', summary: '', findings: [] } })] })],
+    });
+    expect(textOf(container), 'an empty summary rendered as an empty region').toContain(NO_SUMMARY);
+  });
+});
+
+describe('Q-0129 AC-10 — absent evidence names the condition, and no region is empty', () => {
+  test('a question carrying no decision says so, and claims nothing about what was found', async () => {
     const { container } = await screen({ runs: [run({ gates: [question({ retry: 'implement' })] })] });
     const text = textOf(container);
+
+    expect(text, 'the screen is silent about a gate that follows no verdict').toContain(NO_REACHED);
+    expect(container.querySelector('[data-reached="none"]'), 'the absent case has no region of its own').not.toBeNull();
+    expect(container.querySelectorAll('[data-finding]'), 'a question with no decision rendered entries').toHaveLength(0);
+
     // The markers a fabricated region would need. Each is a thing this app renders elsewhere for a
     // measured absence and which here would stand in for evidence nobody measured.
     for (const placeholder of ['n/a', 'not set', 'TBD', '—', '--']) {
@@ -707,10 +820,82 @@ describe('AC-13 — the screen renders nothing about what the step before it dec
     }
   });
 
+  test('the question and its controls stay usable in the absent case', async () => {
+    // The half a region added above the controls could break: the gate is still answerable.
+    const { container } = await screen({ runs: [run({ gates: [question({ retry: 'implement' })] })] });
+    expect(controls(container).map((button) => button.dataset.answer)).toStrictEqual(['advance', 'retry', 'abort']);
+    expect(textOf(container), 'the reason the engine composed is gone').toContain('chore: approve to advance ticket to "reviewed"');
+  });
+
   test('and the needles discriminate, over a region built to trip them', () => {
-    const fabricated = 'changes requested — 2 blockers, 5 majors; files changed n/a';
+    const fabricated = 'changes requested — 2 findings; files changed n/a';
     expect(['n/a', '—'].filter((placeholder) => fabricated.includes(placeholder)))
       .toStrictEqual(['n/a', '—']);
+  });
+});
+
+describe('Q-0129 AC-11 — malformed, stale and in-flight evidence cannot show a wrong decision', () => {
+  test('a row whose evidence fails the schema reaches the invalid-response state and renders none of it', async () => {
+    // `reached` is `.strict()` at both levels and whole-or-absent, so a partly populated one is a
+    // response this app cannot parse — which is a state it already has a sentence for. What it may
+    // not do is render the half that did arrive.
+    const { container } = await screen({
+      runs: [run({ gates: [{ ...question(), reached: { stepId: 'review', verdict: 'changes-requested' } }] })],
+    });
+    expect(container.querySelector('[data-request-state="unparseable"]'), 'a malformed row was accepted').not.toBeNull();
+    expect(textOf(container), 'a verdict from a row that did not parse reached the page').not.toContain('changes-requested');
+    expect(container.querySelectorAll('[data-reached]'), 'a malformed row drew a decision region').toHaveLength(0);
+  });
+
+  test('a render at another handle shows none of the first handle\'s entries', async () => {
+    const first = { stepId: 'review', verdict: 'changes-requested', summary: 'handle A summary', findings: ['major: src/a.ts:1 A only'] };
+    // The second handle's read never answers, which is the moment the claim is about: a screen that
+    // cleared its run in an effect would paint A's decision under B's heading for as long as it
+    // takes React to flush one, and a fixture answering both reads in a turn cannot see that.
+    let reads = 0;
+    const fetcher = (): Promise<DaemonResponse> => {
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve(run({ gates: [question({ reached: first })] })),
+        })
+        : new Promise<DaemonResponse>(() => { /* the read at the second handle never arrives */ });
+    };
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(GateScreen, { handle: HANDLE, fetcher, now: CLOCK })));
+    mounted.push(() => root.unmount());
+    expect(textOf(container)).toContain('major: src/a.ts:1 A only');
+
+    // The prop is committed before an effect reacting to it runs, so this is the moment a screen
+    // that cleared in an effect would paint one run's decision under another's heading.
+    await act(async () => root.render(createElement(GateScreen, { handle: 'run-9', fetcher, now: CLOCK })));
+    expect(textOf(container), 'the previous handle\'s entry survived the move').not.toContain('A only');
+    expect(textOf(container), 'the previous handle\'s summary survived the move').not.toContain('handle A summary');
+  });
+
+  test('an answer in flight leaves the decision rendered, the controls inert, and nothing claimed', async () => {
+    const reached = { stepId: 'review', verdict: 'approve', summary: 'nothing to report', findings: [] };
+    const fake = afterAnswering({ status: 204 }, 'never answers');
+    const container = await render(createElement(GateScreen, { handle: HANDLE, fetcher: fake.fetch, now: CLOCK }));
+    // The first read answers the plain fixture, so the evidence is put there by a second render at
+    // the same handle rather than by the helper — which keeps `afterAnswering`'s shape unchanged.
+    const parked = await screen({ runs: [run({ gates: [question({ reached })] })] });
+    expect(textOf(parked.container)).toContain('nothing to report');
+
+    const advance = controls(container).find((button) => button.dataset.answer === 'advance');
+    expect(advance, 'there is no control to press — this clause has lost its subject').toBeDefined();
+    await click(advance!);
+
+    const text = textOf(container);
+    expect(controls(container).every((button) => button.disabled), 'the controls stayed live while an answer was out').toBe(true);
+    // The sentence beside them says the daemon took the answer and that where the run is now is a
+    // further read — it may not say the ticket advanced, which is not something this exchange
+    // established.
+    expect(text, 'the screen claims the ticket advanced').not.toMatch(/advanced|reviewed now|moved on/i);
+    expect(text).toContain(ANSWERED_PREFIX);
   });
 });
 

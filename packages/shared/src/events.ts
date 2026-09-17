@@ -169,12 +169,44 @@ export const warnEventSchema = z.object({
 }).strict();
 
 /**
+ * What the step that reached a gate decided: its id, and the three values that step returned.
+ *
+ * **Whole or absent, never partly present.** All four members are required, so there is no state in
+ * which a reader is shown a verdict with no step behind it or findings with no verdict over them —
+ * and a gate that follows no verdict-declaring step carries no `reached` at all rather than an
+ * object of empty members, because a summary a step really wrote empty and a summary nobody wrote
+ * are not the same claim.
+ *
+ * **Nothing here is parsed, grouped or counted.** `findings` is the array the step returned, in its
+ * own order: the severity vocabulary is `constants.ts`'s `FINDING_SEVERITIES`, and only the steps
+ * whose verdict vocabulary carries `changes-requested` are held to `FINDING_PATTERN` — so an entry
+ * matching neither is ordinary rather than malformed, and a renderer owes it a place.
+ *
+ * See *"A gate question carries the decision that reached it"* (2026-09-17).
+ */
+export const gateReachedSchema = z.object({
+  /** The deciding step's interpolated id — `review`, or a fan-out child's `dev:backend-wire`. */
+  stepId,
+  /** The verdict word, exactly as that step's own `output.verdict` vocabulary spells it. */
+  verdict: z.string(),
+  /** Every finding the step returned, in the order it returned them. */
+  findings: z.array(z.string()),
+  /** The step's own summary, as it returned it. */
+  summary: z.string(),
+}).strict();
+
+/**
  * The gate QUESTION — the only event that expects an answer. Payload verbatim from the one call
  * site, spike/src/engine.js:574, as consumed at spike/bin/harness.js:74.
  *
  * `kind` is open for the reason gate steps are open in flow.ts: anything that is neither `auto`
  * nor overridden is treated as human-gated (spike/src/engine.js:559). `retry` is present only when
  * the gate offers a retry — an exhaustion gate does, an author-declared gate does not.
+ *
+ * `reached` is the one field on this union that a human ACTS on rather than reads: every other
+ * payload here is narration or the correlation token an answer echoes. It is one optional field and
+ * not the beginning of a family — a second would be a new decision rather than an extension of the
+ * one this cites.
  */
 export const gateQuestionEventSchema = z.object({
   type: z.literal('gate'),
@@ -186,6 +218,14 @@ export const gateQuestionEventSchema = z.object({
   ticketDir: z.string(),
   /** The step id a `retry` answer would jump back to — spike/src/engine.js:553, :580. */
   retry: z.string().optional(),
+  /**
+   * What the step that reached this gate decided, absent where no step before it declared a verdict.
+   *
+   * The engine holds it in one run-scoped slot, assigned where a verdict is validated and read at
+   * both sites that build one of these. See *"A gate question carries the decision that reached
+   * it"* (2026-09-17).
+   */
+  reached: gateReachedSchema.optional(),
 }).strict();
 
 /** The closed set of decisions core accepts for a pending gate. */
@@ -258,6 +298,7 @@ export type StepStartedEvent = z.infer<typeof stepStartedEventSchema>;
 export type StepDoneEvent = z.infer<typeof stepDoneEventSchema>;
 export type InfoEvent = z.infer<typeof infoEventSchema>;
 export type WarnEvent = z.infer<typeof warnEventSchema>;
+export type GateReached = z.infer<typeof gateReachedSchema>;
 export type GateQuestionEvent = z.infer<typeof gateQuestionEventSchema>;
 export type GateAnswer = z.infer<typeof gateAnswerSchema>;
 export type GateAnswerEnvelope = z.infer<typeof gateAnswerEnvelopeSchema>;

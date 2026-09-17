@@ -494,6 +494,32 @@ describe('Q-0087 — every artifact a run can rewrite is named by what makes it 
       expect(classes, `${path.basename(file)}'s integrate writes, by the class its spelling selects`).toStrictEqual(expected);
     }
   });
+
+  // Q-0129 AC-6's anti-vacuity half, and it is here rather than in `packages/core` because the
+  // claim is about the FLOW CORPUS — that one shipped flow declares no verdict anywhere — and this
+  // task already declares the shipped flows as a read. `packages/core/src/engine/gate-reached.test.ts`
+  // proves the engine's half: a gate reached with no verdict behind it carries no evidence field.
+  test('development.yaml is the shipped flow that declares no verdict anywhere', () => {
+    const verdicts = (file: string): number => {
+      const flow = flowSchema.parse(loadAsTheEngineDoes(file));
+      const declared = (step: Record<string, unknown>): number => {
+        const output = step.output as Record<string, unknown> | undefined;
+        const members = (step.parallel ?? []) as Record<string, unknown>[];
+        const nested = step.step === undefined ? [] : [step.step as Record<string, unknown>];
+        return (output?.verdict === undefined ? 0 : 1)
+          + [...members, ...nested].reduce((sum, member) => sum + declared(member), 0);
+      };
+      return ((flow.steps ?? []) as unknown as Record<string, unknown>[]).reduce((sum, step) => sum + declared(step), 0);
+    };
+    const counted = Object.fromEntries(flowFiles().map((file) => [path.basename(file), verdicts(file)]));
+    // An identity rather than a count of the ones that are zero: a flow that stopped declaring one
+    // fails here by name, and so does one that started. `chore.yaml` is two — `implement` declares
+    // Q-0083's `proceed|blocked` and `review` declares `approve|changes-requested`.
+    expect(counted).toStrictEqual({
+      'chore.yaml': 2, 'development.yaml': 0, 'qa-red.yaml': 1,
+      'requirements.yaml': 1, 'review.yaml': 1, 'solutioning.yaml': 1,
+    });
+  });
 });
 
 describe('Q-0083 — the chore flow can report a refusal, and the shipped copies agree', () => {

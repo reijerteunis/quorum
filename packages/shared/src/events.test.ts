@@ -166,3 +166,90 @@ describe('AC-9 — vendor identity is one neutral, open label', () => {
     expect(events[1]).toContain('NO VENDOR-SPECIFIC FIELD AND NO VENDOR BRANCHING OUTSIDE AN');
   });
 });
+
+describe('Q-0129 AC-1 — a gate question carries the decision that reached it, whole or not at all', () => {
+  /** One question in the shape `askGate` emits, with whatever a clause needs laid over it. */
+  const question = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    type: 'gate', gateId: '3:1', kind: 'human',
+    reason: 'chore: approve to advance ticket to "reviewed"',
+    ticketDir: '/repo/backlog/Q-0129-the-gate-screen', ...over,
+  });
+
+  /** The four members, as `steps.ts` composes them from a validated agent output. */
+  const REACHED = {
+    stepId: 'review', verdict: 'changes-requested',
+    findings: ['major: src/wire.ts:12 the row narrows it', 'observation: somebody else\'s ticket'],
+    summary: 'one major and an observation',
+  };
+
+  test('the field is optional, and a question carrying it round-trips unchanged', () => {
+    const without = eventSchema.safeParse(question());
+    expect(without.error?.issues ?? []).toEqual([]);
+    expect(without.data).toEqual(question());
+    // Deep equality rather than a spot check on one member: what this field is FOR is travelling
+    // whole, so a schema that silently dropped `findings` would pass a shallower assertion.
+    const with_ = eventSchema.safeParse(question({ reached: REACHED }));
+    expect(with_.error?.issues ?? []).toEqual([]);
+    expect(with_.data).toEqual(question({ reached: REACHED }));
+  });
+
+  test('whole or absent: a question missing any one of the four members is refused', () => {
+    // The clause that makes *"never partly present"* a property rather than a convention. One
+    // member removed at a time, so a schema that required three of the four would fail exactly
+    // where it is wrong rather than being covered by a neighbour.
+    for (const member of ['stepId', 'verdict', 'findings', 'summary'] as const) {
+      const partial: Record<string, unknown> = { ...REACHED };
+      delete partial[member];
+      expect(eventSchema.safeParse(question({ reached: partial })).success, `a question survived without ${member}`).toBe(false);
+    }
+    // …and an empty object, which is what a field populated from nothing would look like.
+    expect(eventSchema.safeParse(question({ reached: {} })).success).toBe(false);
+  });
+
+  test('both levels stay strict, so an unknown key is refused wherever it is put', () => {
+    expect(eventSchema.safeParse(question({ thread_id: 't' })).success).toBe(false);
+    expect(eventSchema.safeParse(question({ reached: { ...REACHED, diff: 'x' } })).success).toBe(false);
+    // The types, too: a finding is a string and a verdict is not an object, so a value that merely
+    // has the right key names is not accepted for one that has the right shape.
+    expect(eventSchema.safeParse(question({ reached: { ...REACHED, findings: 'major: a.ts:1 x' } })).success).toBe(false);
+    expect(eventSchema.safeParse(question({ reached: { ...REACHED, verdict: { name: 'approve' } } })).success).toBe(false);
+  });
+
+  test('every other member of the union parses byte-identically to before', () => {
+    // The anti-regression half. `contracts/Q-0050/run-events.contract.md` is the frozen description
+    // of these shapes, and what this ticket changed is one member of it; the rest are re-parsed
+    // here and compared by value, so a `.strict()` lost or a field widened in passing fails.
+    const unchanged = [
+      { type: 'spawn', stepId: 'implement', vendor: 'claude', cmd: 'claude -p' },
+      { type: 'stdout', stepId: 'implement', line: 'thinking…' },
+      { type: 'retry', stepId: 'review', vendor: 'codex', attempt: 1, of: 5, delayMs: 5000, reason: 'a timeout', message: 'socket hang up' },
+      { type: 'step', stepId: 'implement', message: 'claude/opus role=developer-generalist' },
+      { type: 'done', stepId: 'review', message: 'verdict=approve cost=$1.234 4567ms' },
+      { type: 'info', message: 'run #2  flow=chore  ticket=Q-0129  requirements → reviewed' },
+      { type: 'warn', message: 'review: revise — blocker: a.ts:1 x' },
+      { type: 'terminal', runId: 2, stageBefore: 'requirements', stageAfter: 'reviewed', cost: 1.5, tokens: 900, status: 'completed' },
+    ];
+    for (const sample of unchanged) {
+      const result = eventSchema.safeParse(sample);
+      expect(result.error?.issues ?? [], JSON.stringify(sample)).toEqual([]);
+      expect(result.data).toEqual(sample);
+    }
+    // None of them may acquire the new field: it belongs to the question a human answers and to
+    // nothing else, which is what keeps this one field rather than a structured mirror of every
+    // message the engine emits.
+    for (const sample of unchanged) {
+      expect(eventSchema.safeParse({ ...sample, reached: REACHED }).success, JSON.stringify(sample)).toBe(false);
+    }
+  });
+
+  test('no event gained a timestamp, a sequence number or a run id', () => {
+    // The contract's own rule, re-asserted because this is the first ticket to widen a member of
+    // this union since it was written. The terminal event's run identity is the one exception and
+    // is unchanged.
+    for (const forbidden of ['at', 'ts', 'timestamp', 'seq', 'sequence']) {
+      expect(eventSchema.safeParse(question({ [forbidden]: 1 })).success, `a gate question accepted ${forbidden}`).toBe(false);
+      expect(eventSchema.safeParse({ type: 'info', message: 'x', [forbidden]: 1 }).success, `an info accepted ${forbidden}`).toBe(false);
+    }
+    expect(eventSchema.safeParse(question({ runId: 3 })).success).toBe(false);
+  });
+});

@@ -404,12 +404,21 @@ describe('Q-0052 AC-14 — the gate oracle\'s last four leaf keys gain their fir
     const exhaustion = await gateOf([
       { id: 'review', output: { write: 'dev/r.md', verdict: 'approve|changes-requested' }, on_fail: { goto: 'review', max_iterations: 0 } },
     ]);
-    expect(payloadKeys(exhaustion)).toStrictEqual(KEYS);
+    // **Q-0129 added a fifth key and it is NOT in the fixture, deliberately.** That file is the
+    // oracle for the MESSAGE FORMATS a run emits — every leaf of `gate` there is a placeholder
+    // string, `<kind>`, `<reason>`, `<absoluteTicketDir>`, `<retryTarget-if-offered>` — and
+    // `reached` carries no message: it is the structured decision a step returned, which has no
+    // format for that oracle to hold. So the claim above is narrowed rather than widened, and
+    // stated where it is checked: the four the fixture names are carried, and `reached` is carried
+    // beside them wherever a verdict-declaring step reached the gate, which here it did.
+    expect(payloadKeys(exhaustion)).toStrictEqual([...KEYS, 'reached']);
     expect(exhaustion.kind).toBe('human-locked');
     expect(exhaustion.retry).toBe('review');
 
     vi.restoreAllMocks();
     const declared = await gateOf([{ id: 'approve', gate: 'human', reason: 'approve to continue' }]);
+    // No step ran before this one, so the fifth key is absent and the fixture's own set is exact —
+    // which is what keeps this half a check on the oracle rather than on the addition.
     expect(payloadKeys(declared)).toStrictEqual(KEYS.filter((key) => key !== 'retry'));
   });
 

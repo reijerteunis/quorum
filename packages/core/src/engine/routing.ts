@@ -1,5 +1,5 @@
 /** Gate policy, step dispatch, and bounded backward-edge decisions for one running flow. */
-import { gateAnswerEnvelopeSchema, type GateQuestionEvent } from '@quorum/shared';
+import { gateAnswerEnvelopeSchema, type GateQuestionEvent, type GateReached } from '@quorum/shared';
 
 import { runFanOut, runIntegrate } from './composite.js';
 import { runAgentStep, runScript } from './steps.js';
@@ -8,6 +8,19 @@ import { FlowError, GateUnansweredError, type RoutingContext, type StepResult } 
 function interruptedGate(request: GateQuestionEvent): FlowError {
   return new FlowError(`gate ${request.kind} (${request.reason}) interrupted`);
 }
+
+/**
+ * What the run's slot holds, as the fragment a gate question spreads — `{}` where it holds nothing.
+ *
+ * Spread rather than assigned so that *no step before this gate declared a verdict* renders as the
+ * field being **absent**, which is what a reader is owed: an object of empty members would say a
+ * step decided nothing, and nothing decided at all is a different sentence. Read here at both sites
+ * that compose a question, and derived from nowhere else — no message is parsed, no `gateId` is
+ * taken apart and no artifact is re-read. See *"A gate question carries the decision that reached
+ * it"* (2026-09-17).
+ */
+const reachedBy = (context: RoutingContext): { reached?: GateReached } =>
+  context.reached === undefined ? {} : { reached: context.reached };
 
 /** Publishes one correlated question and validates the caller's out-of-band answer. */
 export async function askGate(request: GateQuestionEvent, context: RoutingContext): Promise<'advance' | 'retry' | 'abort'> {
@@ -56,8 +69,21 @@ export async function askGate(request: GateQuestionEvent, context: RoutingContex
 export async function runStep(step: Readonly<Record<string, unknown>>, context: RoutingContext): Promise<StepResult> {
   if (step.parallel) {
     const members = step.parallel as ReadonlyArray<Readonly<Record<string, unknown>>>;
+    // What each member decided, by its position in the flow file rather than by when it answered.
+    const decided = new Map<number, GateReached>();
     // Why: preserved defect, see Q-0050 AC-12.
-    const settled = await Promise.allSettled(members.map((member) => runAgentStep(member, context)));
+    const settled = await Promise.allSettled(members.map((member, index) => runAgentStep(member, context, {
+      collectReached: (reached) => { decided.set(index, reached); },
+    })));
+    // Declaration order decides which of a group's decisions the next gate carries. The members
+    // assigned the run's slot as they finished, which is the order the vendors answered in, so
+    // re-applying them here in the order the flow file writes them is what stops a reader being
+    // shown a value chosen by scheduling. Re-applied rather than picked, so the last member that
+    // decided wins and one that decided nothing displaces nobody.
+    for (let index = 0; index < members.length; index += 1) {
+      const reached = decided.get(index);
+      if (reached !== undefined) context.reached = reached;
+    }
     const failed = settled
       .map((result, index) => ({ result, step: members[index] }))
       .filter((entry): entry is { result: PromiseRejectedResult; step: Readonly<Record<string, unknown>> } => entry.result.status === 'rejected');
@@ -80,7 +106,7 @@ export async function runStep(step: Readonly<Record<string, unknown>>, context: 
     const request: GateQuestionEvent = {
       type: 'gate', gateId: context.nextGateId(), kind: String(step.gate),
       reason: String(step.reason ?? step.prompt ?? `${context.flow.name}: approve to advance ticket to "${context.flow.produces}"`),
-      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }),
+      ticketDir: context.ticket.dir, ...(retry === undefined ? {} : { retry }), ...reachedBy(context),
     };
     const answer = await askGate(request, context);
     if (answer === 'advance') return null;
@@ -140,7 +166,7 @@ export async function handleFail(step: Readonly<Record<string, unknown>>, contex
     reason: exhausted
       ? `loop exhausted at ${String(step.id)} (${counter} = ${count}, limit ${limit}); choose: advance (accept as is), retry (exactly one more ${target}), abort`
       : `${String(step.id)} stopped rather than looping (${counter} = ${count}, limit ${limit}); choose: advance (accept its answer and carry on), retry (exactly one more ${target}, for once you have changed what it reads), abort`,
-    ticketDir: context.ticket.dir, retry: target,
+    ticketDir: context.ticket.dir, retry: target, ...reachedBy(context),
   };
   const answer = await askGate(request, context);
   if (answer === 'advance') return null;

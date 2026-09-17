@@ -1902,7 +1902,21 @@ describe('Q-0017 AC-15 — the design brief stops promising a gate action the en
     for (const [what, needle] of [
       ['that the third answer is not primary and is often not offered', /not the primary action/],
       ['when the screen is actually reached', /Reached when a run parks/],
-      ['what it does not render, and whose the rest is', /Q-0129/],
+      // Re-aimed by Q-0129 AC-12, not deleted. This clause asked that the paragraph name the
+      // ticket owing the half the screen did not render; that half is now two, of which the
+      // decision has landed and the diff has not — so the needle moves to the successor rather
+      // than going away, which is what keeps an owed half named by something.
+      ['what it does not render, and whose the rest is', /Q-0134/],
+      ['that the decision the step returned IS rendered', /reached/],
+      ['why no severity headline is rendered, with the measurement', /1,080/],
+    ] as [string, RegExp][]) {
+      expect(needle.test(gate), `the gate paragraph does not record ${what}`).toBe(true);
+    }
+    // The negative beside the positives, in this file's own shape: the clause naming the ticket
+    // that owed the decision must be GONE from this paragraph, not merely joined by a newer one.
+    expect(gate, 'the paragraph still routes the decision to the ticket that has landed it')
+      .not.toMatch(/Q-0129's/);
+    for (const [what, needle] of [
     ] as [string, RegExp][]) {
       expect(needle.test(gate), `the gate paragraph does not record ${what}`).toBe(true);
     }
