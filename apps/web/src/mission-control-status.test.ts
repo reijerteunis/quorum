@@ -40,6 +40,18 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect([...browser].some((word) => !daemon.has(word)), 'the browser sentence adds no word of its own').toBe(true);
   });
 
+  test('a loaded read still offers a control to ask again', async () => {
+    // M2: `canRetryRequest` is false for `loaded`, so a live+loaded screen rendered zero buttons —
+    // and this screen holds no socket for metadata, so a gate opened while it watches surfaces only
+    // when the reader asks again. Without a control the only exit was a page reload. Round 1, M2.
+    let asked = 0;
+    const view = await renderStatus(states[2]!, { onRetryMetadata: () => { asked += 1; } });
+    const buttons = [...view.querySelectorAll('button')].filter((node) => /again|retry/i.test(node.textContent ?? ''));
+    expect(buttons.length, 'a loaded metadata read offers no way to ask again').toBeGreaterThan(0);
+    await act(async () => { buttons[buttons.length - 1]!.click(); });
+    expect(asked, 'the control does not re-read the metadata').toBe(1);
+  });
+
   test('renders all five disclosures verbatim in order and no fabricated header placeholder', async () => {
     const view = await renderStatus(states[2]!); const region = view.querySelector('[data-mission-control-disclosures]')!; let at = -1;
     for (const disclosure of MISSION_CONTROL_DISCLOSURES) { expect(region.textContent).toContain(disclosure); const next = region.textContent!.indexOf(disclosure); expect(next).toBeGreaterThan(at); at = next; }

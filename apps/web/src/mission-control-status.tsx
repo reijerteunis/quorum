@@ -82,6 +82,14 @@ function MetadataRegion({ metadata, onRetry }: {
         <button type="button" onClick={onRetry} className="rounded border border-border px-2 py-1 text-text hover:text-accent">
           Retry
         </button>
+      ) : metadata.kind === 'loaded' ? (
+        // A loaded read is not a final answer. `pendingGates` is a fact about the moment it was read
+        // and this screen holds no socket for metadata (erratum E-2/GO-4), so a gate opened while it
+        // is watching surfaces only when the reader asks again — and with no control here the only
+        // exit was a page reload. Review round 1, M2.
+        <button type="button" onClick={onRetry} className="rounded border border-border px-2 py-1 text-text hover:text-accent">
+          Check again
+        </button>
       ) : null}
     </div>
   );
