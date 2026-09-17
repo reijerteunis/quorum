@@ -74,3 +74,41 @@ shipped Q-0015 that edited three of the files the body names. It is the first bo
 survive the check; Q-0016's was refuted three times, Q-0015's three times, Q-0127's twice. The
 difference is visible and worth keeping: **this body was written by the flow at a gate from a merged
 requirement, and those three were written by the operator from the plan.**
+
+## E-6 — four of five majors are one class; the next round fixes the class, not a fifth instance
+
+Written at the second exhaustion gate, after review rounds 1–4. **Counted rather than impressed:**
+
+| round | finding | surface |
+| --- | --- | --- |
+| 1 | a pending confirmation captured for one subject executes under another | `run-lifecycle.ts` |
+| 1 | the stop confirmation stays actionable after the run is no longer `running` | `mission-control-screen.tsx` |
+| 3 | availability keyed on the metadata **request** state, so an in-flight re-read withdraws a control the daemon still licenses | `mission-control-screen.tsx` |
+| 4 | the confirmation stays actionable after a refresh makes the selected flow ineligible | `ticket-page.tsx` |
+
+**One class: a confirmation outliving the premise that made it offerable.** Round 1 named it, each
+round closed the instance it was handed, and the next round found the same defect on a sibling
+surface. That is *fixing the instance a reviewer names rather than the class it belongs to* — the
+failure this repository has recorded most, at Q-0112 three times in one ticket — occurring four times
+inside one review loop, and it is the reason this ticket is at its second exhaustion gate rather than
+integrated.
+
+**Round 3's finding is the one that proves it is a class rather than a list.** It is not a new
+defect; it is round 1's second fix overshooting, and it overshot by substituting a **request** state
+for a **run** state — which `docs/GLOSSARY.md`'s **Connection state** entry forbids in as many words:
+*"It is not run state: connection state describes this browser's transport and can change without
+changing the daemon run."* A per-instance fix had to re-derive that boundary each time and got it
+wrong once.
+
+**What the next round must do.** Not a fifth guard on a fifth surface. **One mechanism**, where the
+confirmations already live: a pending confirmation carries the premise it was offered under, and is
+withdrawn when that premise no longer holds — subject, run state as the daemon last *reported* it,
+and flow eligibility alike — with the three existing call sites reduced to supplying their premise.
+An in-flight or failed read is **not** a premise that has stopped holding; it is a read in progress,
+and AC-8 already says availability rests on the daemon's last reported state.
+
+**And one test per call site is not the evidence.** The evidence is that a **fourth** call site
+cannot be added without supplying a premise — the register shape AC-11 already uses for writing
+functions, which round 3 rebuilt to see all function forms after round 2 found it blind to arrow
+functions. A guard keyed on one syntactic form is this cut's other recurring class and the two should
+not be traded against each other.
