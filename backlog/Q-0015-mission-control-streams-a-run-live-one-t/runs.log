@@ -117,3 +117,8 @@
 2026-09-16T23:51:22.999Z run=6 gate=human answer=advance
 2026-09-16T23:51:28.444Z run=6 removed-worktrees=11 kept=0
 2026-09-16T23:51:28.447Z run=6 completed stage=red→green cost=24.841 tokens=31962973
+2026-09-17T00:06:07.262Z run=7 flow=review start stage=green
+2026-09-17T00:07:23.166Z run=7 step=review-codex vendor=codex model=- verdict=- cost=? ms=75862
+2026-09-17T00:20:03.220Z run=7 step=review-claude vendor=claude model=- verdict=- cost=11.349716500000001 ms=835922
+2026-09-17T00:25:52.033Z run=7 step=verdict vendor=claude model=- verdict=changes-requested cost=4.682151500000001 ms=348795
+2026-09-17T00:25:52.055Z run=7 regressed stage=green→red cost=16.032 tokens=9663925
