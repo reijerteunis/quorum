@@ -28,16 +28,34 @@
  * child, so a file containing a script tag renders those characters and creates no element. A
  * Markdown renderer needs a sanitiser, which needs a dependency and a justification — a separate
  * decision with its own subject, taken deliberately rather than arrived at while building a page.
+ *
+ * **Since Q-0130 it is also where a run is started, and that is a decision rather than a location.**
+ * The design brief puts a *"Run next flow ▸"* button on a board card; the board refused it, because
+ * two flows consume `requirements` and one button would take the most consequential routing choice
+ * in this product silently. What the board does instead is NAME the flows that consume a stage — and
+ * it names them per COLUMN, so that naming is attached to no ticket at all and cannot be made
+ * actionable where it is. A card is one anchor besides, deliberately, so a reader can middle-click
+ * it, and a control inside it would be interactive content inside a link. This page already carries
+ * the stage, is reached in one click from that card, and is where a reader has just read the ticket.
+ * So the choice of flow is a reader's, made here, named by `GET /flows` and never guessed.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import type { WireTicketDetail, WireTicketFile, WireTicketFileEntry } from '@quorum/shared';
+import type { WireFlow, WireFlowList, WireRun, WireTicketDetail, WireTicketFile, WireTicketFileEntry } from '@quorum/shared';
 
+import { FLOWS_UNREAD, NO_CONSUMING_FLOW } from './backlog-board.js';
 import {
-  browserFetch, fetchTicket, fetchTicketFile, isoClock, ticketFileInFlight, ticketInFlight,
+  browserFetch, fetchFlows, fetchTicket, fetchTicketFile, flowsInFlight, isoClock, startRun,
+  startRunInFlight, ticketFileInFlight, ticketInFlight,
   type Clock, type FetchLike,
 } from './daemon-client.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
+import { runPath } from './routes.js';
+import {
+  CONFIRM_START_LABEL, DRY_LABEL, LOOK_AGAIN_LABEL, REFUSED_FLOW_NOTE, START_HEADING,
+  START_REFUSAL_TEXT, STARTED_PREFIX, STARTED_SUFFIX, WITHDRAW_LABEL, refusalSentence,
+  startConfirmation, startLabel, useRunMutation, type RunMutation,
+} from './run-lifecycle.js';
 
 /** The ticket file every ticket has, and the one this page opens first. */
 export const TICKET_FILE = 'ticket.md';
@@ -77,6 +95,104 @@ export interface TicketPageProps {
   readonly ticketId: string;
   readonly fetcher?: FetchLike;
   readonly now?: Clock;
+  /** Where a run this page started is watched. Required, on the board's own precedent. */
+  readonly onNavigate: (to: string) => void;
+}
+
+/**
+ * Whether this page would OFFER a flow for a stage: it consumes that stage, and the linter did not
+ * refuse it.
+ *
+ * Declared once and read both by the region that offers a flow and by the premise a pending
+ * confirmation is held to, so *offered* and *still offered* cannot become two predicates that
+ * disagree about one listing — mission control's own `daemonSaysRunning` arrangement, for its
+ * reason. It is not the same test as *named*: a refused flow is still named, because a flow that
+ * vanished from a list is indistinguishable from one that was never there.
+ */
+const offerable = (flow: WireFlow, stage: string): boolean => flow.consumes === stage && flow.runnable;
+
+/**
+ * What a pending start on this page was offered under: the stage and the flows, as last REPORTED.
+ *
+ * **Each is the daemon's last ANSWER about its own input, kept until a later answer replaces it** —
+ * `mission-control-screen.tsx`'s `RunReport` one screen over, and for its reason. A refresh replaces
+ * a request state the instant it starts and a read that never answered replaces it with a failure,
+ * and neither is the daemon reporting anything. Derived from the two request states instead, as this
+ * was until review round 5, the premise LOST whichever input was being re-read — so a listing that
+ * reported the chosen flow gone could not withdraw the offer while the ticket read was failing, and
+ * a stage that had moved could not while the listing read was. **Two things fix that and they are
+ * not the same one twice**: keeping each input as a last report is what leaves the other half
+ * something to decide against, and {@link offerStanding} is what stops an input the daemon has not
+ * reported standing in for one it has.
+ *
+ * **`null` means the daemon has never reported it, and is never a report that there is none.** The
+ * stage is stamped with the ticket it is about, so one ticket's answer cannot decide another's
+ * offer; the listing is not stamped, the flow directory being the harness's rather than any
+ * ticket's. And a refusal reports nothing either way — a `no-such-ticket` is the daemon answering
+ * the request rather than reporting a stage — with the daemon still the authority on the act itself,
+ * since a start against a stage that has moved is refused `not-runnable` and `START_REFUSAL_TEXT`
+ * renders that as what it is.
+ */
+interface StartPremise {
+  readonly stage: string | null;
+  readonly flows: readonly WireFlow[] | null;
+}
+
+/**
+ * The stage the daemon last reported for one ticket, and the ticket that report is about.
+ *
+ * The stamp is what stops a report outliving its subject: this page is keyed by nothing, so one
+ * instance survives a navigation from one ticket to another, and a stage kept without its id would
+ * decide an offer on a ticket it was never about. `useRunMutation`'s own `answered.subject`
+ * arrangement, for its reason.
+ */
+interface StageReport {
+  readonly ticketId: string;
+  readonly stage: string;
+}
+
+/**
+ * What the last reports say about an offer: it still holds, it has conclusively lapsed, or they
+ * cannot tell.
+ *
+ * Three answers rather than two, because the two that are not *holds* are not the same thing —
+ * containment, push lag and a verified version each keep a state meaning *could not tell* that is
+ * never rendered as either of the other two, and this is that discipline a layer inside a browser.
+ */
+export type OfferStanding = 'holds' | 'lapsed' | 'unknown';
+
+/**
+ * Whether the offer to run `flow` on this ticket still stands, given what the daemon LAST REPORTED.
+ *
+ * **The composition is asymmetric, and the asymmetry is the rule rather than an ordering.** One
+ * conclusive lapse ends the offer whatever the other input says: a flow the listing no longer holds,
+ * and one it now reports the linter refused, are offerable at NO stage, so both are decided before
+ * the stage is consulted and an unreported stage cannot mask either. `unknown` alone never ends an
+ * offer — a reader asking for a fresher view of a ticket must not lose the act they were part-way
+ * through asking for, which is `docs/GLOSSARY.md`'s *"connection state … is not run state"* one
+ * layer over. What the half-rule produced is the defect review round 5 found: *either* input being
+ * unavailable preserved the offer, including where the other had already reported it gone.
+ *
+ * **Where this answers `unknown` the daemon has never reported that input at all**, each being kept
+ * as a last report rather than re-derived from a request: while an offer stands both have been
+ * reported by construction, the region that offers a flow rendering only from a loaded listing
+ * beneath a loaded ticket. So no sequence of reads on this screen reaches those two branches, and
+ * clauses in this module's suite are what exercise them rather than the DOM. They are what keeps the
+ * rule from resting on a property of another component's render conditions, which is the shape the
+ * defect above was written in.
+ */
+export function offerStanding(flow: string, { stage, flows }: StartPremise): OfferStanding {
+  if (flows === null) return 'unknown';
+  const entry = flows.find((each) => each.name === flow);
+  // The listing alone, before any stage is consulted: a flow that is gone and one the linter refused
+  // are ineligible at every stage, so there is nothing a stage could add and nothing its absence may
+  // take away. `runnable` is the half of {@link offerable} that needs no stage rather than a second
+  // predicate beside it — a refused flow is offerable at no stage at all.
+  if (entry === undefined || !entry.runnable) return 'lapsed';
+  // Only the stage is missing now, and it is the flow's own `consumes` that a stage is judged
+  // against, so neither input decides this half by itself.
+  if (stage === null) return 'unknown';
+  return offerable(entry, stage) ? 'holds' : 'lapsed';
 }
 
 /** One tab: the top-level segment that names it, and the files filed under it. */
@@ -130,8 +246,19 @@ function FileRegion({ state, onRetry }: { state: RequestState<WireTicketFile>; o
   );
 }
 
-/** The state of one request, as a sentence, its remedy, and the action that re-runs it. */
-function RequestRegion({ state, onRetry }: { state: RequestState<unknown>; onRetry: () => void }): ReactNode {
+/**
+ * The state of one request, as a sentence, its remedy, and the action that follows it.
+ *
+ * The label is a parameter since Q-0130 and defaults to {@link RETRY_LABEL}, because the action
+ * beside a failed READ repeats that read while the one beside a failed WRITE must not: a start that
+ * was refused offers *look again*, which issues a GET, since `canRetryRequest` answers `true` for a
+ * refusal and a bare Retry there would send a second start.
+ */
+function RequestRegion({ state, onRetry, label = RETRY_LABEL }: {
+  state: RequestState<unknown>;
+  onRetry: () => void;
+  label?: string;
+}): ReactNode {
   const remedy = requestStateRemedy(state);
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -139,10 +266,138 @@ function RequestRegion({ state, onRetry }: { state: RequestState<unknown>; onRet
       {remedy === null ? null : <span className="text-muted">{remedy}</span>}
       {canRetryRequest(state) ? (
         <button type="button" onClick={onRetry} className="rounded border border-border px-2 py-1 text-text hover:text-accent">
-          {RETRY_LABEL}
+          {label}
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** What became of a start this page sent, in a sentence that claims only what was observed. */
+function StartOutcome({ state, onLookAgain }: {
+  state: RequestState<WireRun>;
+  onLookAgain: () => void;
+}): ReactNode {
+  if (state.kind === 'loaded') {
+    return (
+      <p className="text-sm text-muted" data-start-outcome="loaded">
+        {STARTED_PREFIX} <span className="font-mono text-text">{state.value.handle}</span>. {STARTED_SUFFIX}
+      </p>
+    );
+  }
+  // This surface's sentence where it has one for the code, and the daemon's own condition either
+  // way — the second through `requestStateText`, unaltered. A code this page does not model loses
+  // the first and keeps the second, which is the honest answer rather than a composed guess.
+  const said = state.kind === 'refused' ? refusalSentence(START_REFUSAL_TEXT, state.refusal.code) : null;
+  return (
+    <div className="flex flex-col gap-1" data-start-outcome={state.kind}>
+      {said === null ? null : <p className="text-sm text-text">{said}</p>}
+      <RequestRegion state={state} onRetry={onLookAgain} label={LOOK_AGAIN_LABEL} />
+    </div>
+  );
+}
+
+/**
+ * Where a reader starts the next flow on this ticket: every flow that consumes its stage, and one
+ * confirmation between choosing one and anything being sent.
+ *
+ * **Every flow, never one.** `chore` and `solutioning` both consume `requirements`, and a screen
+ * offering one of them would take that routing choice on a reader's behalf without saying it had.
+ * A flow the linter refused is NAMED and not offered, which is the board's own rule: a flow that
+ * vanished from a list is indistinguishable from one that was never there.
+ *
+ * **A confirmation is offered under the same test and no longer than it.** Which flows are offerable
+ * is a fact about what the daemon last reported, and a reader can ask about one and then Refresh, so
+ * the pending act is held to {@link offerable} on every render by `useRunMutation` rather than by
+ * anything here — a question about a flow this page would no longer offer is still offering it.
+ *
+ * **Its two unavailable answers are the board's sentences, imported rather than re-worded**, so the
+ * two screens cannot come to disagree about one stage. There are THREE unavailable states rather
+ * than two: a listing still out is neither *no flow consumes this stage* nor *the flow list could
+ * not be read*, and reporting it as either would be an unanswered question rendered as an answer —
+ * so it renders the request's own in-flight sentence, which names what is being waited for.
+ */
+function RunStart({ stage, flows, dry, onDry, mutation, onAsk, onLookAgain }: {
+  stage: string;
+  flows: RequestState<WireFlowList>;
+  dry: boolean;
+  onDry: (next: boolean) => void;
+  mutation: RunMutation<WireRun, StartPremise>;
+  onAsk: (flow: WireFlow) => void;
+  onLookAgain: () => void;
+}): ReactNode {
+  const consuming = flows.kind === 'loaded'
+    ? flows.value.flows.filter((flow) => flow.consumes === stage)
+    : null;
+  return (
+    <section className="flex flex-col gap-2 rounded border border-border bg-surface p-3" aria-label={START_HEADING}>
+      <h2 className="text-sm text-text">{START_HEADING}</h2>
+      {flows.kind === 'in-flight' ? (
+        <p className="text-xs text-muted" data-start-unavailable="in-flight">{requestStateText(flows)}</p>
+      ) : consuming === null ? (
+        <p className="text-xs text-muted" data-start-unavailable="flows-unread">{FLOWS_UNREAD}</p>
+      ) : consuming.length === 0 ? (
+        <p className="text-xs text-muted" data-start-unavailable="no-consuming-flow">{NO_CONSUMING_FLOW}</p>
+      ) : (
+        <>
+          {/* Inert while an act is outstanding, like the controls below it: what it chooses is part
+              of what a start IS, so a reader flipping it mid-flight would be changing the sentence
+              they already confirmed. */}
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={dry}
+              disabled={mutation.busy}
+              data-dry
+              onChange={(event) => onDry(event.target.checked)}
+            />
+            {DRY_LABEL}
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            {consuming.map((flow) => (offerable(flow, stage) ? (
+              <button
+                key={flow.name}
+                type="button"
+                data-start-flow={flow.name}
+                disabled={mutation.busy}
+                onClick={() => onAsk(flow)}
+                className="rounded border border-border px-3 py-1 text-sm text-text hover:border-accent hover:text-accent disabled:opacity-50"
+              >
+                {startLabel(flow.name)}
+              </button>
+            ) : (
+              <span key={flow.name} className="font-mono text-xs text-muted" data-refused-flow={flow.name}>
+                {flow.name} — {REFUSED_FLOW_NOTE}
+              </span>
+            )))}
+          </div>
+        </>
+      )}
+      {mutation.confirming === null ? null : (
+        <div className="flex flex-col gap-2 rounded border border-accent p-2" data-confirm="start">
+          <p className="text-sm text-text">{mutation.confirming}</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-confirm-start
+              onClick={mutation.confirm}
+              className="rounded border border-accent px-3 py-1 text-sm text-accent hover:underline"
+            >
+              {CONFIRM_START_LABEL}
+            </button>
+            <button
+              type="button"
+              data-withdraw
+              onClick={mutation.cancel}
+              className="rounded border border-border px-3 py-1 text-sm text-muted hover:text-text"
+            >
+              {WITHDRAW_LABEL}
+            </button>
+          </div>
+        </div>
+      )}
+      {mutation.outcome === null ? null : <StartOutcome state={mutation.outcome} onLookAgain={onLookAgain} />}
+    </section>
   );
 }
 
@@ -189,19 +444,34 @@ function FileList({ tab, selected, onOpen }: {
 /**
  * The ticket page, at whatever the daemon last answered.
  *
- * Three requests on mount and no more: the listing, then `ticket.md` and `runs.log`, which are the
- * two files this page renders without being asked. Every other file costs one request, when a reader
+ * Four requests on mount and no more: the listing, then `ticket.md` and `runs.log` — the two files
+ * this page renders without being asked — and since Q-0130 the flow directory, which is what says
+ * which flows may be started from here and is the premise a start offer is withdrawn on. Every other file costs one request, when a reader
  * asks for it. Nothing here polls, and nothing keeps a copy — a ticket folder is written by runs
  * while a browser is open, so a cached file would be text that was true earlier.
  */
-export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNode {
+export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPageProps): ReactNode {
   const request = fetcher ?? browserFetch;
   const clock = now ?? isoClock;
   const [detail, setDetail] = useState<RequestState<WireTicketDetail>>(ticketInFlight<WireTicketDetail>(ticketId));
+  // The flow directory, read with the detail rather than after it: which flows consume this
+  // ticket's stage is what the start region is built from, and two requests answered in one commit
+  // are what stop that region rendering *the flow list could not be read* while one is merely out.
+  const [flows, setFlows] = useState<RequestState<WireFlowList>>(flowsInFlight<WireFlowList>());
+  const [dry, setDry] = useState(false);
   const [tab, setTab] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [file, setFile] = useState<RequestState<WireTicketFile> | null>(null);
   const [log, setLog] = useState<RequestState<WireTicketFile> | null>(null);
+
+  // What the daemon last SAID about each half of a start's premise, which is not what became of the
+  // last request for either. The start region is about the requests and reads the two states above;
+  // a pending confirmation is about the ticket and the harness, and is held to these — so a read
+  // that is merely out, or one that failed, withdraws nothing, while whatever the OTHER read
+  // answered still decides. Kept separately for that reason: one report may not be lost because its
+  // sibling's request was.
+  const [reportedStage, setReportedStage] = useState<StageReport | null>(null);
+  const [reportedFlows, setReportedFlows] = useState<readonly WireFlow[] | null>(null);
 
   // Which ticket everything above is an answer about, stamped by `load` and compared in the render
   // body. A prop is committed BEFORE the effect that reacts to it runs, so state cleared in an
@@ -258,10 +528,27 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
     fileRequest.current += 1;
     setLoadedFor(ticketId);
     setDetail(ticketInFlight<WireTicketDetail>(ticketId));
+    setFlows(flowsInFlight<WireFlowList>());
     setTab(null);
     setSelected(null);
     setFile(null);
     setLog(null);
+    // Issued with the detail and settled on its own, which is deliberately NOT the board's
+    // `Promise.all`: there the two listings are one screen, and here the flow directory decides one
+    // region while the ticket decides the page. Awaited together, a flow listing that never answered
+    // would leave a reader looking at nothing at all rather than at the ticket they asked for — so
+    // the start region carries a third state for a listing that is merely still out, which is also
+    // what stops it reporting one as *could not be read*.
+    void (async () => {
+      const listed = await fetchFlows(request, clock);
+      if (generation.current !== mine) return;
+      setFlows(listed);
+      // **Only an answer that CARRIED a listing is a report of one.** A refusal is the daemon
+      // answering the request, and nothing answering at all is not the daemon saying anything — so
+      // neither replaces what it last said, and neither may take from the stage half the evidence it
+      // needs to decide. Mission control's `readMetadata` for its reason, one screen over.
+      if (listed.kind === 'loaded') setReportedFlows(listed.value.flows);
+    })();
     void (async () => {
       const answered = await fetchTicket(request, ticketId, clock);
       // `mine` is compared rather than read from the ref directly, so a load superseded while this
@@ -270,6 +557,7 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
       if (generation.current !== mine) return;
       setDetail(answered);
       if (answered.kind !== 'loaded') return;
+      setReportedStage({ ticketId, stage: answered.value.ticket.stage });
       const tabs = tabsOf(answered.value.files);
       const opening = tabs.find((each) => each.name === TICKET_FILE) ?? tabs[0];
       setTab(opening?.name ?? null);
@@ -288,6 +576,48 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
   // rail, because they are only rendered where the detail loaded. What a reader sees in the gap is
   // what a mount shows — the request being waited for, naming the id the URL now carries.
   const shownDetail = loadedFor === ticketId ? detail : ticketInFlight<WireTicketDetail>(ticketId);
+
+  // What a pending start is held to, recomputed every render and never captured. Both halves are
+  // what the DAEMON last reported rather than what became of the last request for it, and they are
+  // read independently: a refresh that fails one read leaves that half standing at the last answer
+  // and leaves the other half's new answer free to decide. The stage's stamp is what keeps a report
+  // from outliving its subject, a navigation between tickets being the one way this page's props
+  // move under one instance.
+  const premise: StartPremise = {
+    stage: reportedStage !== null && reportedStage.ticketId === ticketId ? reportedStage.stage : null,
+    flows: reportedFlows,
+  };
+
+  // The one act this page performs on a run, under the guard `run-lifecycle.ts` owns. Its subject is
+  // the ticket the URL names, so a start that resolves after a reader has moved to another ticket
+  // settles nothing here and is never reported under the new one's name.
+  const start = useRunMutation<WireRun, StartPremise>(ticketId, premise);
+  const { ask: askStart } = start;
+
+  const onAskStart = useCallback((flow: WireFlow) => {
+    askStart({
+      sentence: startConfirmation(ticketId, flow.name, dry),
+      inFlight: startRunInFlight<WireRun>(),
+      // **The offer stands while the flow it names is still one this page would offer.** A reader
+      // can ask about `chore`, press Refresh, and be handed a ticket whose stage has moved or a
+      // listing where the linter now refuses that file — after which the control is gone and, until
+      // review round 4, the question beside it was not: it was still answerable, and rendering the
+      // flow as refused while keeping its live confirmation is still offering it. It lapses on the
+      // first report that says so conclusively, whatever became of the read beside it, which is
+      // {@link offerStanding}'s asymmetry and round 5's finding — over the same {@link offerable}
+      // the control is drawn from, so *offered* and *still offered* stay one predicate.
+      holds: (premise) => offerStanding(flow.name, premise) !== 'lapsed',
+      // The three fields this app is willing to send, written here and nowhere else. `auto` is
+      // absent because *"Human-gated by default"* is a quality pillar and a browser control that
+      // flips it is a decision rather than a checkbox; `base` is absent because it moves a review's
+      // diff anchor and needs a revision no route on this transport can enumerate.
+      send: () => startRun(request, { flow: flow.name, ticket: ticketId, dry }, clock),
+      // Only where the daemon accepted it, and only with the handle it answered with: a handle is
+      // minted inside the daemon, so composing one here or looking it up afterwards in the listing
+      // would be inference rather than identity.
+      onAccepted: (run) => onNavigate(runPath(run.handle)),
+    });
+  }, [askStart, ticketId, dry, request, clock, onNavigate]);
 
   if (shownDetail.kind !== 'loaded') {
     return (
@@ -335,6 +665,15 @@ export function TicketPage({ ticketId, fetcher, now }: TicketPageProps): ReactNo
         {' · '}cost {ticket.billedCostUsd === null ? 'n/a' : `$${ticket.billedCostUsd.toFixed(2)}`}
       </p>
       <RequestRegion state={shownDetail} onRetry={load} />
+      <RunStart
+        stage={ticket.stage}
+        flows={flows}
+        dry={dry}
+        onDry={setDry}
+        mutation={start}
+        onAsk={onAskStart}
+        onLookAgain={load}
+      />
 
       <div className="flex gap-6">
         <div className="min-w-0 flex-1">
