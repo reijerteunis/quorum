@@ -5,3 +5,18 @@
 2026-09-17T21:08:51.848Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=5.413908000000001 ms=616895
 2026-09-17T21:09:51.074Z run=1 gate=human answer=advance
 2026-09-17T21:09:51.082Z run=1 completed stage=draft→requirements cost=22.752 tokens=10773399
+
+2026-09-17 requirements gate answered `advance`. $22.75, ready at iteration 2, fourteen criteria.
+
+GO-1 ratified — no decision entry owed (E-1), with a third transport found, measured and refused at
+this gate (E-2). GO-2 ratified the cut at fourteen with AC-9 named as the seam (E-3). GO-3's contract
+note written by hand (E-4). `harness/Q-0134/integration` cut.
+
+Route: **chore**, on Q-0129's and Q-0131's precedent. The change is one capture site in `core`, one
+read-only route in `packages/server` and one region in `apps/web`, which must land together — a
+fan-out requires every file a red test needs to be owned by exactly one task (2026-08-23), and this
+would put the producer in one worktree and its two consumers in others.
+
+GO-4, GO-5 and GO-6 are the operator's at the close, and GO-5 is not a formality: R-2 means no
+ticket in this backlog has a non-empty range — re-measured at this gate as 42 of 42 integration
+branches contained in `main` — so `runs.log` must record how the demonstration's range was built.
