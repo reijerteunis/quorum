@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_DAEMON_PORT } from '@quorum/shared';
 import { describe, expect, test } from 'vitest';
 
-import { DAEMON_ENDPOINTS, runDetailPath, runEventsPath, runEventsUrl, runGatePath, runStopPath } from '../src/daemon-endpoints.js';
+import {
+  DAEMON_ENDPOINTS, gateDiffPath, runDetailPath, runEventsPath, runEventsUrl, runGatePath, runStopPath,
+} from '../src/daemon-endpoints.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -89,6 +91,38 @@ describe('AC-13 — same-origin daemon endpoints', () => {
     const module = fs.readFileSync(path.join(ROOT, 'src', 'daemon-endpoints.ts'), 'utf8');
     expect(module, 'the stop segment is assembled rather than written, so the exemption forgives nothing')
       .toContain(`= '${'/stop'}'`);
+  });
+
+  test.each(['a/b', 'a?b', 'a#b', 'a b', '../project'])(
+    'Q-0134 AC-5 — the gate-diff path confines hostile handle %s to one segment', (hostile) => {
+      // `runStopPath`'s clause for its reasons, with one more of its own: this path has TWO
+      // caller-supplied segments rather than one, and the second is a correlation token that carries
+      // a separator by construction — `nextGateId` spells `<run number>:<n>`. A builder that encoded
+      // the handle and trusted the id would be closed at one end.
+      const built = gateDiffPath(hostile, '1:2');
+      const url = new URL(built, `https:${'//'}example.test/runs/x/gate`);
+      expect(url.pathname, 'the gate-diff path escaped its own segments')
+        .toBe(`${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(hostile)}/gates/${encodeURIComponent('1:2')}/diff`);
+      expect(url.search, 'the gate-diff path carried a query').toBe('');
+      expect(url.hash, 'the gate-diff path carried a fragment').toBe('');
+      expect(built.startsWith(runDetailPath(hostile)), 'the gate-diff path is not below the run it is about').toBe(true);
+      // …and a hostile GATE ID is confined too, which is the end a one-sided builder would leave open.
+      const token = new URL(gateDiffPath('run-3', hostile), `https:${'//'}example.test/`);
+      expect(token.pathname).toBe(`${DAEMON_ENDPOINTS.runs}/run-3/gates/${encodeURIComponent(hostile)}/diff`);
+    });
+
+  test('Q-0134 AC-5 — the two gate-diff segments are written out, and neither is a proxy prefix', () => {
+    // The literals exist so `test/routes.test.ts`'s route-literal scan has strings to find: a
+    // segment assembled out of a template is a path no register asks about, and this route is a GET,
+    // so the write guard — which is what gives `/gate` and `/stop` their strings — never sees it.
+    expect(gateDiffPath('run-3', '1:1')).toBe(`${DAEMON_ENDPOINTS.runs}/run-3/gates/1%3A1/diff`);
+    for (const segment of ['/gates', '/diff']) {
+      expect(Object.values(DAEMON_ENDPOINTS), `${segment} became a forwarded prefix of its own`)
+        .not.toContain(segment);
+      const module = fs.readFileSync(path.join(ROOT, 'src', 'daemon-endpoints.ts'), 'utf8');
+      expect(module, `${segment} is assembled rather than written, so no register can ask about it`)
+        .toContain(`= '${segment}'`);
+    }
   });
 
   test('the proxy and path builder consume the complete endpoint register', () => {

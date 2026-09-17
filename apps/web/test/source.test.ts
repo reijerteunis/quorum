@@ -316,6 +316,27 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
     expect(COERCES_TO_NUMBER.test('const shown = metadata.value.runId;'), 'reading a typed number was reported as coercing one').toBe(false);
     expect(COERCES_TO_NUMBER.test('const label = `Run ${String(runId)}`;'), 'rendering a number was reported as coercing one').toBe(false);
   });
+
+  test('Q-0134 AC-12 — the clause\'s own escape hatch has a caller now, and it is not used', () => {
+    // **The half a blanket prohibition cannot state about itself.** The message above invites the
+    // next file that needs a number to NARROW this clause, and Q-0134 is the first plausible
+    // caller: the gate screen renders three byte counts — what was kept, what git produced and the
+    // configured limit — which is exactly the shape a reader would reach for `Number` over. It does
+    // not, because those three arrive as typed fields of a schema the browser executes, which is
+    // the design stated as a property of the source rather than a claim in a docblock.
+    //
+    // So the emptiness above is asserted to be an absence over a corpus that HAS a subject for it,
+    // rather than one where the question never arose. A narrowing of the clause to let a renderer
+    // parse a figure out of prose would fail here by name.
+    const renderer = sourceFiles().find(([name]) => name === 'diff-view.tsx')?.[1];
+    expect(renderer, 'the patch renderer is not in the corpus — this clause has lost its subject').toBeDefined();
+    expect(renderer ?? '', 'the renderer draws no figure, so it is not a caller of the hatch after all')
+      .toMatch(/evidence\.(?:kept|total|limit)/);
+    expect(COERCES_TO_NUMBER.test(renderer ?? ''), 'the renderer coerces a string to a number').toBe(false);
+    // …and the figures it draws are rendered rather than derived, which is what makes not coercing
+    // possible rather than merely avoided.
+    expect(renderer ?? '', 'a figure is composed rather than taken from the evidence').toContain('String(evidence.kept)');
+  });
 });
 
 // Every top-level object body of a declaration, union members INCLUDED.
@@ -1054,24 +1075,45 @@ describe('Q-0016 AC-7/AC-8/AC-9 and Q-0129 AC-10 — what the gate screen may no
       .toStrictEqual(['fixture.ts']);
   });
 
-  test('Q-0129 AC-10/AC-12 — three of the six needles retire, and three are the successor\'s', () => {
-    // **Narrowed rather than deleted, and it is narrowed by exactly half.** Q-0016's AC-13 forbade
-    // six words because the screen rendered nothing about what the step before the gate decided.
-    // Three of those — the decision itself — are what Q-0129 builds, so they retire; the other
-    // three are **Q-0134**'s, which adds the change the step was about and has not landed. A guard
-    // that had simply been deleted with the criterion would have stopped forbidding those too.
-    const RETIRED = ['verd' + 'ict', 'find' + 'ings', 'summ' + 'ary'];
-    const SUCCESSOR = ['dif' + 'f', 'block' + 'er', 'hun' + 'k'];
-    for (const word of SUCCESSOR) {
-      expect(new RegExp(`\\b${word}`, 'i').test(screen()), `the screen names ${word}, which is Q-0134's`).toBe(false);
+  test('Q-0134 AC-13 — two more needles retire, and the third was never about an absent region', () => {
+    // **Narrowed a second time, and by exactly the two words whose subject arrived.** Q-0016's
+    // AC-13 forbade six because the screen rendered neither what the step before the gate decided
+    // nor what it decided ON. Q-0129 retired the first three; this ticket retires `diff` and `hunk`,
+    // which the screen now has, and **`blocker` is not among them** — Q-0129 already gave that one a
+    // different job, which its own clause below states and which this ticket does not touch. A
+    // register that retired all three because they arrived together would have deleted a live rule.
+    const RETIRED = ['verd' + 'ict', 'find' + 'ings', 'summ' + 'ary', 'dif' + 'f', 'hun' + 'k'];
+    const FORBIDDEN = ['block' + 'er'];
+    for (const word of FORBIDDEN) {
+      expect(new RegExp(`\\b${word}`, 'i').test(screen()), `the screen names ${word}`).toBe(false);
     }
-    // The needles still discriminate, so the three absences above are absences rather than typos.
-    expect(SUCCESSOR.filter((word) => new RegExp(`\\b${word}`, 'i').test('the unified diff lists two blockers per hunk')))
-      .toStrictEqual(SUCCESSOR);
-    // …and the three that retired are named here rather than dropped silently, with the clause that
-    // says WHY they may now appear: the screen renders the decision, so it names it.
-    expect(RETIRED.every((word) => new RegExp(`\\b${word}`, 'i').test(screen())),
+    // The needles still discriminate, so the absence above is an absence rather than a typo.
+    expect(FORBIDDEN.filter((word) => new RegExp(`\\b${word}`, 'i').test('the unified diff lists two blockers per hunk')))
+      .toStrictEqual(FORBIDDEN);
+    // …and the retired ones are named here rather than dropped silently, with the clause that says
+    // WHY they may now appear: the screen renders the decision and the change it was made on, so it
+    // names both.
+    //
+    // **The corpus for THIS clause is the pair and not the component**, which every other clause in
+    // this block is scoped to and deliberately stays scoped to. Those ask what the gate screen may
+    // parse, coin or claim, which is a property of the file that composes. This one asks whether a
+    // retired word has a subject, and the subject arrived in two files: `hunk` is a classification a
+    // patch renderer makes and belongs in the renderer, not in the screen that draws it. Scoping it
+    // to `gate-screen.tsx` alone would have retired a needle and then required the word to appear in
+    // a file with no business saying it.
+    const rendered = [screen(), sourceFiles().find(([name]) => name === 'diff-view.tsx')?.[1] ?? ''].join('\n');
+    expect(rendered.length - screen().length,
+      'there is no patch renderer beside the screen — this clause has lost half its corpus').toBeGreaterThan(1000);
+    expect(RETIRED.every((word) => new RegExp(`\\b${word}`, 'i').test(rendered)),
       'a retired needle names something the screen does not render after all').toBe(true);
+    // **And the two this ticket retired are replaced by a clause over the shipped behaviour rather
+    // than deleted**, which is what stops a narrowing from being a hole: the screen draws the region
+    // from a value it fetched, and a deletion of that region fails here by name.
+    expect(screen(), 'the screen no longer draws the diff region it retired two needles for')
+      .toContain('DiffRegion');
+    expect(screen(), 'the screen no longer reads the gate diff from the daemon').toContain('fetchGateDiff');
+    expect(screen(), 'the screen no longer recognises the answer that there was no diff to review')
+      .toContain('NO_DIFF_CODE');
     // **The severity vocabulary is imported and never spelled here**, which is what the surviving
     // `blocker` needle enforces now that it is no longer about an absent region: a screen taking its
     // group labels from `@quorum/shared` cannot write the word, and one that re-spelled the register

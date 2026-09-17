@@ -339,7 +339,7 @@ const WALKS: readonly Walk[] = [
     dir: 'packages/server/src',
     collects: (below) => !below.split('/').some((part) => ['node_modules', 'dist', '.turbo'].includes(part))
       && /\.tsx?$/.test(below),
-    why: 'walk() — gate-evidence.source.test.ts, the daemon\'s own source, because the four routes that criterion refuses reach the transport as readily as the engine',
+    why: 'walk() — gate-evidence.source.test.ts, the daemon\'s own source, because the four routes that criterion refuses reach the transport as readily as the engine. Since Q-0134 a SECOND suite walks the same tree under a different rule: engine/diff-evidence.test.ts claims that no file of the daemon reads the engine\'s range cache, which is a claim about that tree and can only be answered by reading it. One row rather than two, because the row is the directory and the reason it is entered is cumulative',
   },
   {
     taskId: '@quorum/core#test',
@@ -808,6 +808,9 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/gate-evidence.source.test.ts': {
     'repoRoot → dir': 'walk()\'s parameter, and every call site iterates ROOTS — a literal three-element array at the top of that file, which clause B collects and WALKS declares the two members outside this package. Q-0129 AC-2 claims that NO second path to a step\'s decision exists, and a claim about three trees can only be answered by reading all three',
+  },
+  'packages/core/src/engine/diff-evidence.test.ts': {
+    'repoRoot → dir': 'walk()\'s parameter, and its one call site maps a literal TWO-element array in the same file — packages/core/src and packages/server/src, which clause B collects and WALKS already declares the member outside this package. Q-0134 AC-1 claims that no file of the daemon reads the engine\'s range cache, and a claim about that tree can only be answered by reading it: the cache is the reader that is right for review.yaml and blank for a chore run, so a file there naming it would be one step from a route answering nothing for 89% of this product\'s materialisations',
   },
   'packages/core/src/caught-failures.source.test.ts': {
     'coreSourceFiles → path.join(repoRoot, root)': 'the loop iterates PACKAGE_SOURCE_ROOTS, a literal TWO-element array at the top of that file — packages/core/src and packages/cli/src — and clause B collects both. The Q-0059 AC-8 shape over a second tree, because Q-0115 AC-3 claims something about the roots it walks; shared is deliberately out, for the reason recorded above that array',
@@ -1806,6 +1809,9 @@ const READ_BASES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/gate-evidence.source.test.ts': {
     here: "path.join(repoRoot, dir) for each member of ROOTS, then a directory `readdirSync` returned from inside one of them — so every read is below 'packages/core/src', 'packages/server/src' or 'apps/web/src', the three literals in that array, of which the two outside this package are what WALKS declares for this task",
+  },
+  'packages/core/src/engine/diff-evidence.test.ts': {
+    here: "path.join(repoRoot, dir) for each of the two directories corpus() maps, then a directory `readdirSync` returned from inside one of them — so every read is below 'packages/core/src' or 'packages/server/src', both literals in that file, of which the one outside this package is what WALKS declares for this task",
   },
   'packages/core/src/test-command.test.ts': {
     // Q-0107 AC-16 removed `dir` with `spikeSources()`, whose walk of the spike's source directory

@@ -255,7 +255,11 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       // deliberate addition, and its line names erratum E-1 — which refuses the in-band alternative
       // rather than ruling anything about the engine's existing behaviour. It is the first `Why:`
       // line in a file that declares no function, which is why the row is new rather than longer.
-      'types.ts': ['deliberate addition'],
+      // Q-0134 adds the second, and it is the same kind for a second reason: `ReportDiffEvidence`
+      // is the channel a reviewed diff reaches the caller by, out of band for the reason the run
+      // number is and for one of its own — a patch is ~1,000x a mean event and an event is retained
+      // and replayed. Neither line rules on preserved behaviour, so the count below is unmoved.
+      'types.ts': ['deliberate addition', 'deliberate addition'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {

@@ -746,16 +746,17 @@ const architectureSection = (): string => {
 };
 
 describe('Q-0121 AC-13 — every route this package registers is named in the architecture document', () => {
-  test('the derived set is the fourteen routes, so the register cannot silently shrink', () => {
+  test('the derived set is the fifteen routes, so the register cannot silently shrink', () => {
     // An identity rather than a count (Q-0073): a count is satisfied by a route swapped for
     // another. `GET /*` is Q-0122's static route and sorts first; two are Q-0121's; two are
-    // Q-0127's; the rest are Q-0118's and Q-0119's, and the document named Q-0119's five as a noun
-    // list and never as routes until Q-0121 — which this guard is what found, a paragraph behind
-    // the code.
+    // Q-0127's; one is Q-0134's; the rest are Q-0118's and Q-0119's, and the document named
+    // Q-0119's five as a noun list and never as routes until Q-0121 — which this guard is what
+    // found, a paragraph behind the code.
     expect(registeredRoutes()).toStrictEqual([
       'GET /*',
       'GET /flows', 'GET /history', 'GET /history/:id', 'GET /project', 'GET /runs',
-      'GET /runs/:id', 'GET /runs/:id/events', 'GET /tickets', 'GET /tickets/:id',
+      'GET /runs/:id', 'GET /runs/:id/events', 'GET /runs/:id/gates/:gateId/diff',
+      'GET /tickets', 'GET /tickets/:id',
       'GET /tickets/:id/file',
       'POST /runs', 'POST /runs/:id/gate', 'POST /runs/:id/stop',
     ]);

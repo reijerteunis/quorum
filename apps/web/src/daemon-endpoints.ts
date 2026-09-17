@@ -74,6 +74,33 @@ export function runStopPath(handle: string): string {
 }
 
 /**
+ * The two segments that make a run path the one answering with a gate's reviewed diff.
+ *
+ * Written as literals for {@link GATE_SEGMENT}'s reason with one difference: this route is a
+ * **GET**, so no write guard has a string to look for here. What does is `test/routes.test.ts`'s
+ * route-literal scan, which collects every quoted literal beginning with a slash — so writing these
+ * as the tail of a template instead would hide them from the one register that asks whether a path
+ * this app names is a path somebody decided on. They are registered there as exceptions, on the
+ * `/gate` and `/stop` rows' terms: not shell routes, and not `DAEMON_ENDPOINTS` prefixes either,
+ * `/runs` already being forwarded by the development server and covering everything below it.
+ */
+const GATES_SEGMENT = '/gates';
+const DIFF_SEGMENT = '/diff';
+
+/**
+ * The page-relative path for the diff one waiting gate's deciding step was given.
+ *
+ * Named for the DAEMON route, on {@link runGatePath}'s precedent. Both the handle and the
+ * correlation token are percent-encoded rather than trusted: `nextGateId` spells a gate id
+ * `<run number>:<n>`, so it carries a separator, and — like the handle — it is whatever a screen was
+ * handed rather than something this app composed. **Encoded and never taken apart**: the token is
+ * opaque by contract and nothing here reads a run number out of it.
+ */
+export function gateDiffPath(handle: string, gateId: string): string {
+  return `${DAEMON_ENDPOINTS.runs}/${encodeURIComponent(handle)}${GATES_SEGMENT}/${encodeURIComponent(gateId)}${DIFF_SEGMENT}`;
+}
+
+/**
  * The page-relative path for one ticket, with the id confined to one segment.
  *
  * Named for the DAEMON route rather than for the screen: `routes.ts` has a `ticketPath` too and it
