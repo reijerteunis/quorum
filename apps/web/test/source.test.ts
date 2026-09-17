@@ -118,18 +118,112 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
   const ASSEMBLED_FIXTURES = ['daemon-client.test.ts', 'ticket-page.test.ts'];
 
   /**
-   * Any expression taking a value out of an event's `message`, which no file may do.
+   * The three binding forms that give an event's message a SECOND NAME, which is what the needles
+   * below were blind to.
+   *
+   * **A guard anchored on the identifier `message` is keyed on a name rather than on the behaviour
+   * it is about** — the family this repository records most — and round 2 named the evasion it
+   * costs: `const prose = event.message;` followed by a parse of `prose` satisfies neither half of
+   * the clause below, so the prohibition AC-6 states was not the one being enforced. These forms
+   * collect the new name so the same needles reach it.
+   *
+   * **The shipped corpus really does alias one**, which is what gives this a subject rather than
+   * only a fixture: `mission-control-model.ts` writes `row.doneMessage = event.message`, and the
+   * second form is there for that shape rather than for a hypothetical one. It is never taken
+   * apart — it is compared with `null` and rendered — so collecting it leaves the corpus clean.
+   *
+   * **What is deliberately NOT a form here, and the measurement that decided it.** An
+   * object-literal property is not collected: `daemon-client.ts` writes
+   * `{ kind: 'unparseable', path, problem: parsed.error.message }`, where the `.message` is a
+   * **zod error's** and not an event's, and a text scan cannot tell the two fields apart. Under a
+   * rule that followed object properties, `problem` would be tainted and `daemon-client.test.ts`'s
+   * two `state.problem.slice(0, 40)` labels would fail — so the rule would have needed a register
+   * of forgiven sites, which is exactly the shape round 1's finding refused. Collecting renames and
+   * not object fields is the line, and {@link COERCES_TO_NUMBER} is what bounds what it leaves.
+   */
+  const MESSAGE_ALIAS_FORMS: readonly RegExp[] = [
+    // `const prose = event.message;` — a binding that renames the text. `=(?![=>])` and the
+    // lookbehind keep a comparison (`a.b === c.message`) from reading as one.
+    /(?:const|let|var)[ \t]+([A-Za-z_$][\w$]*)[ \t]*(?<![=!<>])=(?![=>])[^;\n]*\.[ \t]*message\b/g,
+    // `row.doneMessage = event.message;` — the form this app actually writes.
+    /\.[ \t]*([A-Za-z_$][\w$]*)[ \t]*(?<![=!<>])=(?![=>])[^;\n]*\.[ \t]*message\b/g,
+    // `const { message: prose } = event;` — a destructuring rename. The `const {` is required so
+    // that a type annotation (`message: string`) and an object literal are not read as renames,
+    // which would otherwise taint the name `string`.
+    /(?:const|let|var)[ \t]*\{[^}\n]*\bmessage[ \t]*:[ \t]*([A-Za-z_$][\w$]*)/g,
+  ];
+
+  /**
+   * Every name a module gives an event's message, to a fixpoint, `message` itself included.
+   *
+   * The fixpoint is what makes a rename of a rename — `const cut = prose;` — the same act rather
+   * than one the walk stops one step short of. It over-collects rather than under-collects: a
+   * binding that merely MENTIONS a tainted name is taken as carrying it, which can only report a
+   * file that is doing nothing of the kind and never pass over one that is.
+   */
+  const messageAliases = (text: string): string[] => {
+    const names = new Set<string>(['message']);
+    for (const form of MESSAGE_ALIAS_FORMS) for (const at of text.matchAll(form)) names.add(at[1]);
+    for (let pass = 0; pass < 5; pass += 1) {
+      const before = names.size;
+      for (const name of [...names]) {
+        const rebound = new RegExp(`(?:const|let|var)[ \\t]+([A-Za-z_$][\\w$]*)[ \\t]*(?<![=!<>])=(?![=>])[ \\t]*${name}[ \\t]*;`, 'g');
+        for (const at of text.matchAll(rebound)) names.add(at[1]);
+      }
+      if (names.size === before) break;
+    }
+    return [...names].sort();
+  };
+
+  /**
+   * Any expression taking a value out of an event's `message`, under any name it has been given.
    *
    * **Every gap is `[ \t]` and never `\s`, and that is a correction rather than a style.** `\s`
    * matches a newline, so the first draft's third needle read a comment ending in a full stop,
    * crossed the blank line after it, and matched vitest's own `test('… a non-string message never
    * reaches JSON', …)` — reporting `frame-parser.test.ts`, which parses no message and never did.
    * A guard that reports a file doing nothing of the kind is one a reader learns to override.
+   *
+   * The three patterns are unchanged from the clause round 2 reviewed; what moved is the NAME they
+   * are anchored on, which is now every one {@link messageAliases} finds rather than the literal
+   * `message` alone. AC-6 asks for the guard to be extended and not weakened, and applying the same
+   * needles to a wider set of operands is the one direction that cannot weaken it.
    */
+  const extractsFrom = (text: string, name: string): boolean =>
+    new RegExp(`\\b${name}[ \\t]*\\.[ \\t]*(?:match|split|slice|substring|substr|replace|replaceAll|indexOf|lastIndexOf|search|charAt|exec)[ \\t]*\\(`).test(text)
+    || new RegExp(`\\b(?:Number|parseInt|parseFloat)[ \\t]*\\([^)\\n]*\\b${name}\\b`).test(text)
+    || new RegExp(`\\.[ \\t]*(?:exec|test)[ \\t]*\\([^)\\n]*\\b${name}\\b`).test(text);
+
   const extractsFromMessage = (text: string): boolean =>
-    /\bmessage[ \t]*\.[ \t]*(?:match|split|slice|substring|substr|replace|replaceAll|indexOf|lastIndexOf|search|charAt|exec)[ \t]*\(/.test(text)
-    || /\b(?:Number|parseInt|parseFloat)[ \t]*\([^)\n]*\bmessage\b/.test(text)
-    || /\.[ \t]*(?:exec|test)[ \t]*\([^)\n]*\bmessage\b/.test(text);
+    messageAliases(text).some((name) => extractsFrom(text, name));
+
+  /**
+   * Turning a string into a number, which no file under `src` does — and the half of AC-6 that
+   * needs no dataflow at all.
+   *
+   * **This is the clause that makes the aliasing question bounded rather than endless.** A rename
+   * can be followed; a value passed through a function boundary, stored in an object field or
+   * returned to a caller cannot be, not by a text scan, and round 2's finding has no floor if the
+   * answer is a longer list of forms. AC-6's words are *"any expression extracting a NUMBER from an
+   * event message"*, and what makes a number is the COERCION rather than the operand — so anchoring
+   * here is anchoring on the behaviour, and the name the text is carrying when it arrives stops
+   * mattering. Round 2's own example, `Number(prose.split(…)[1])`, fails this whatever `prose` is
+   * called, how the literal was assembled, and how many hands the string passed through first.
+   *
+   * **It needs no register, and that is a measurement rather than a hope: there are ZERO of these
+   * in the corpus today**, tests included — `Number`, `parseInt` and `parseFloat` do not occur
+   * under `apps/web/src` in any form. So the prohibition is blanket, which is the strongest shape
+   * available and the one round 1 asked for when it refused a register of exceptions. A screen that
+   * needs a number is handed one: `WireRun.runId` is a typed `number`, which is the whole of what
+   * this ticket did, and this clause is that design stated as a property of the source.
+   *
+   * **The residual, stated rather than implied.** `+text`, `text * 1` and `charCodeAt` coerce too
+   * and are not needled — `+` cannot be told from addition or from string concatenation by a scan,
+   * and a needle that reports every `+` is one a reader learns to override. What is claimed is the
+   * three named forms, which are how a number is read out of prose in practice and are what round
+   * 2's example uses.
+   */
+  const COERCES_TO_NUMBER = /\b(?:Number|parseInt|parseFloat)[ \t]*\(/;
 
   test('Q-0131 AC-6 — no file under src names or parses the run number the narration carries', () => {
     const carriers = (files: [string, string][]): string[] =>
@@ -162,11 +256,55 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
     expect(extractsFromMessage(parse), 'the extraction needle misses the parse it is written against').toBe(true);
     expect(extractsFromMessage(`const at = /${RUN_NUMBER_LITERAL}(\\d+)/${'.'}exec(event${'.'}message);`),
       'a regex executed against a message is not reported').toBe(true);
+    // **And the same needles under a name the message was renamed to** — round 2, major 1. The
+    // first fixture is the evasion that finding named, verbatim; the three after it are the three
+    // binding forms separately, so one of them ceasing to be collected fails here by itself rather
+    // than being covered by a sibling.
+    const renamed = `const prose = event${'.'}message;\nconst n = Number(prose${'.'}split('${RUN_NUMBER_LITERAL}')[1]);`;
+    expect(extractsFromMessage(renamed), 'a parse of a renamed message is not reported').toBe(true);
+    expect(extractsFromMessage(`const prose = event${'.'}message;\nconst at = prose${'.'}indexOf('#');`),
+      'a rename taken apart without coercing is not reported').toBe(true);
+    expect(extractsFromMessage(`const { message: prose } = event;\nconst at = prose${'.'}indexOf('#');`),
+      'a destructuring rename is not collected').toBe(true);
+    expect(extractsFromMessage(`row${'.'}doneMessage = event${'.'}message;\nconst at = row${'.'}doneMessage${'.'}indexOf('#');`),
+      'the rename form this app really writes is not collected').toBe(true);
+    expect(extractsFromMessage(`const prose = event${'.'}message;\nconst cut = prose;\nconst at = cut${'.'}indexOf('#');`),
+      'a rename of a rename is not followed').toBe(true);
+    // **The walk has a subject in the shipped tree and not only in the fixtures above**: this app
+    // aliases a message exactly once, and it is the second form that sees it.
+    const model = sourceFiles().find(([name]) => name === 'mission-control-model.ts')?.[1] ?? '';
+    expect(model, 'the timeline model is not in the corpus — the alias walk has lost its subject').not.toBe('');
+    expect(messageAliases(model), 'the alias walk does not see the rename this app really writes')
+      .toContain('doneMessage');
     // …and the benign forms this app really does write are not reported: the trace renders a
-    // message verbatim, and a refusal condition is a string it displays.
+    // message verbatim, a refusal condition is a string it displays, and a rename that is only
+    // handed on is a rename and not a parse.
     expect(extractsFromMessage(`case 'info': return event${'.'}message;`), 'rendering a message was reported as parsing one').toBe(false);
     expect(extractsFromMessage(`expect(said.refusal.condition).toBe('held by ${RUN_NUMBER_LITERAL}7');`),
       'a refusal-condition fixture was reported as parsing a message').toBe(false);
+    expect(extractsFromMessage(`const prose = event${'.'}message;\nreturn prose;`),
+      'a renamed message that is only rendered was reported as parsed').toBe(false);
+  });
+
+  test('Q-0131 AC-6 — no file under src turns a string into a number, whatever it is called', () => {
+    // **The half that needs no dataflow**, and the reason the clause above can state a residual
+    // instead of growing a longer list of forms. See {@link COERCES_TO_NUMBER}.
+    expect(sourceFiles().filter(([, text]) => COERCES_TO_NUMBER.test(text)).map(([name]) => name),
+      'a file under src coerces a string to a number').toStrictEqual([]);
+    // Round 2's evasion, which is what this clause is for: the rename defeats the needles above and
+    // the assembled literal defeats the one above them, and neither of those matters here.
+    const evasion = `const prose = event${'.'}message;\nconst n = Number(prose${'.'}split(['run', ' ', '#'].join(''))[1]);`;
+    expect(COERCES_TO_NUMBER.test(evasion), 'the coercion needle misses the parse it is written against').toBe(true);
+    // **And it really is blanket rather than a clause about messages**, which is what makes the
+    // operand's name stop mattering: a coercion of something that was never a message fails too,
+    // and so does the act spelled through the namespace.
+    expect(COERCES_TO_NUMBER.test('const n = parseInt(row.count, 10);'), 'parseInt is not reported').toBe(true);
+    expect(COERCES_TO_NUMBER.test('const n = parseFloat(row.cost);'), 'parseFloat is not reported').toBe(true);
+    expect(COERCES_TO_NUMBER.test('const n = Number.parseInt(text);'), 'the namespaced spelling is not reported').toBe(true);
+    // …and the forms this app does write are not reported: a number that arrived as a number needs
+    // no coercion, which is the whole of why the corpus is empty.
+    expect(COERCES_TO_NUMBER.test('const shown = metadata.value.runId;'), 'reading a typed number was reported as coercing one').toBe(false);
+    expect(COERCES_TO_NUMBER.test('const label = `Run ${String(runId)}`;'), 'rendering a number was reported as coercing one').toBe(false);
   });
 });
 
