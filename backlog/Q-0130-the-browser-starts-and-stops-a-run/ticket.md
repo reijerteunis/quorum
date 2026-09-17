@@ -34,6 +34,14 @@ history:
     stage_after: requirements
     at: 2026-09-17T09:00:12.232Z
     cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-17T09:28:16.054Z
+    cost: 0
 ---
 The app's two run-lifecycle mutations, answered once: start and stop widen the same write boundary, need the same discipline and raise the same routing question.
 **M3**, split from Q-0015 at its requirements gate on 2026-09-16. The body below is Appendix A(a)

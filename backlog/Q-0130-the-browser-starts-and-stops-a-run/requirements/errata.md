@@ -112,3 +112,24 @@ cannot be added without supplying a premise — the register shape AC-11 already
 functions, which round 3 rebuilt to see all function forms after round 2 found it blind to arrow
 functions. A guard keyed on one syntactic form is this cut's other recurring class and the two should
 not be traded against each other.
+
+## E-7 — E-6's rule was incomplete, and round 5 applied it exactly as written
+
+E-6 said *"An in-flight or failed read is **not** a premise that has stopped holding; it is a read in
+progress."* That is true and it is not the whole rule, and round 5's `holds` predicate is what the
+half-rule produces: **any** unavailable input preserves the confirmation, including when a *different*
+input has conclusively reported the premise gone.
+
+**The completed rule.** A premise has three states, not two — *holds*, *lapsed*, and *unknown* — and
+they compose asymmetrically: **one conclusive `lapsed` withdraws the offer whatever else is unknown,
+and `unknown` alone never does.** An unavailable read is `unknown` for **its own** input only; it may
+not mask a sibling input's `lapsed`. So the inputs are kept as independent last reports rather than
+collapsed into one boolean, which is the same discipline `containment` and `push lag` already use —
+a state meaning *could not tell* that is never reported as either of the other two, and never allowed
+to stand in for them.
+
+**This is the operator's imprecision rather than the implementer's error**, and it is recorded that
+way because the same half-rule would be re-derived by anyone reading E-6 alone. The mechanism built
+in round 5 is right and is not to be rebuilt: what changes is the predicate inside it, and the test
+the review names — both mixed success/failure refresh sequences, so that neither ordering can pass by
+the other's evidence.
