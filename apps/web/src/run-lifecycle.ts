@@ -147,6 +147,19 @@ export interface RunAct<T> {
   onAccepted?(value: T): void;
 }
 
+/**
+ * One act awaiting confirmation, and the subject it was asked about — captured together.
+ *
+ * **The pairing is the point.** An act's `send` is composed by the screen for one ticket or one
+ * handle, so the subject a request is ABOUT is settled when it is asked rather than when it is
+ * confirmed; reading the screen's current subject at confirmation time is reading a second, later
+ * answer to a question the closure has already answered, and the two can differ.
+ */
+interface Pending<T> {
+  readonly subject: string;
+  readonly act: RunAct<T>;
+}
+
 /** One screen's lifecycle-mutation state: what is being confirmed, what came back, and whether to wait. */
 export interface RunMutation<T> {
   /** The sentence awaiting confirmation, or `null` where nothing is. */
@@ -177,13 +190,18 @@ export interface RunMutation<T> {
  * first, and the later one can arrive before it. *The daemon serialises them* is not a licence to
  * send two: which of them wins would be a race rather than a choice.
  *
- * @param subject what the outcome is ABOUT — a ticket id for a start, a handle for a stop. A screen
- *   whose subject changes while an act is out renders nothing for the new one and the act still
- *   completes: the request was made about the old subject and is not withdrawn, reinterpreted or
- *   attributed to the new one.
+ * **A confirmation and a request in flight are treated differently by a change of subject, because
+ * they are different things.** A request has been MADE about the subject it was composed for, so it
+ * completes and is neither withdrawn, reinterpreted nor attributed to the replacement. A
+ * confirmation has been made about nothing yet: it is an offer to act on the subject a reader was
+ * looking at, and a reader now looking at another one is not being offered it, so it is dropped.
+ *
+ * @param subject what the outcome is ABOUT — a ticket id for a start, a handle for a stop. This
+ *   screen's subject NOW, which is not necessarily the subject of an act already asked about or
+ *   already sent; those carry their own, which is what {@link Pending} exists for.
  */
 export function useRunMutation<T>(subject: string): RunMutation<T> {
-  const [asked, setAsked] = useState<RunAct<T> | null>(null);
+  const [asked, setAsked] = useState<Pending<T> | null>(null);
   const [answered, setAnswered] = useState<{ subject: string; state: RequestState<T> } | null>(null);
 
   const sending = useRef(false);
@@ -197,7 +215,19 @@ export function useRunMutation<T>(subject: string): RunMutation<T> {
   // closure holds the subject its request was about, which is the right one for the request and the
   // wrong one for deciding what to do to the screen afterwards.
   const showing = useRef(subject);
-  showing.current = subject;
+
+  // **A confirmation does not survive the change of subject, and it is dropped in the render that
+  // changes it rather than in an effect.** A prop is committed BEFORE the effect reacting to it
+  // runs, so a confirmation cleared in an effect is one commit late: the previous subject's question
+  // renders under the new subject's name, and confirming it there sends the request the old subject
+  // composed. The ticket page is that case exactly — `app.tsx` keys mission control by handle so a
+  // handle change remounts it, and keys the ticket page by nothing, so one instance survives a
+  // navigation from one ticket to another. `ticket-page.tsx`'s own `loadedFor` gate is the same
+  // mechanism for the same reason.
+  if (showing.current !== subject) {
+    showing.current = subject;
+    if (asked !== null) setAsked(null);
+  }
 
   useEffect(() => {
     alive.current = true;
@@ -206,19 +236,23 @@ export function useRunMutation<T>(subject: string): RunMutation<T> {
 
   const ask = useCallback((act: RunAct<T>) => {
     if (sending.current) return;
-    setAsked(act);
-  }, []);
+    setAsked({ subject, act });
+  }, [subject]);
 
   const cancel = useCallback(() => { setAsked(null); }, []);
 
   const confirm = useCallback(() => {
     if (sending.current || asked === null) return;
     sending.current = true;
-    const mine = subject;
+    // The subject the act was ASKED about, so the request and the name its answer is filed under are
+    // one capture rather than two reads a re-render apart. `send` was composed for that subject;
+    // recording what came back under whatever the screen is showing now would be this screen's
+    // second answer to a question the closure had already settled, and the two can differ.
+    const { subject: mine, act } = asked;
     setAsked(null);
-    setAnswered({ subject: mine, state: asked.inFlight });
+    setAnswered({ subject: mine, state: act.inFlight });
     void (async () => {
-      const outcome = await asked.send();
+      const outcome = await act.send();
       sending.current = false;
       if (!alive.current) return;
       // An answer about a subject this screen has moved off settles nothing and is cleared instead:
@@ -226,12 +260,12 @@ export function useRunMutation<T>(subject: string): RunMutation<T> {
       // state standing would hold this subject's controls inert with nothing outstanding.
       if (showing.current !== mine) { setAnswered(null); return; }
       setAnswered({ subject: mine, state: outcome });
-      if (outcome.kind === 'loaded') asked.onAccepted?.(outcome.value);
+      if (outcome.kind === 'loaded') act.onAccepted?.(outcome.value);
     })();
-  }, [asked, subject]);
+  }, [asked]);
 
   return {
-    confirming: asked?.sentence ?? null,
+    confirming: asked?.act.sentence ?? null,
     // What the daemon did about THIS subject. An answer about another one is held rather than
     // rendered, which is what stops one ticket's start being reported under another ticket's name.
     outcome: answered !== null && answered.subject === subject ? answered.state : null,

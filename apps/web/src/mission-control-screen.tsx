@@ -24,7 +24,10 @@
  * and for a run that is over. `docs/GLOSSARY.md` says connection state *"is not run state"* in as
  * many words — a transport can drop, end or be interrupted without the run changing — so a screen
  * that hid the control when its socket failed would be withholding the one act a reader wants
- * precisely when they can no longer watch what is happening.
+ * precisely when they can no longer watch what is happening. **A confirmation is withdrawn by the
+ * same answer that withdraws the control**: a read moving the run off `running` is the daemon saying
+ * there is nothing here to stop, and a question left standing after that is one a reader can still
+ * answer.
  *
  * **A stop is not a gate answer.** It cancels the run through the `AbortSignal` it was started with
  * and is none of the three words a gate takes, so nothing here is worded with one.
@@ -57,6 +60,16 @@ export interface MissionControlScreenProps {
   readonly now?: Clock;
   readonly onNavigate: (to: string) => void;
 }
+
+/**
+ * Whether the DAEMON's last answer about this run says it is running.
+ *
+ * Declared once and read by both the control and the withdrawal below it, so *offered* and *still
+ * offered* cannot become two predicates that disagree about one read. It takes the metadata state
+ * rather than a boolean, which is what makes a connection state structurally unable to reach it.
+ */
+const daemonSaysRunning = (metadata: RequestState<WireRun>): boolean =>
+  metadata.kind === 'loaded' && metadata.value.state === 'running';
 
 /** What became of a stop this screen sent, in a sentence that claims only what was observed. */
 function StopOutcome({ state, onLookAgain }: {
@@ -102,7 +115,7 @@ function StopControl({ metadata, mutation, onAsk, onLookAgain }: {
   onAsk: () => void;
   onLookAgain: () => void;
 }): ReactNode {
-  const running = metadata.kind === 'loaded' && metadata.value.state === 'running';
+  const running = daemonSaysRunning(metadata);
   return (
     <div className="flex flex-col gap-2" data-stop-region={running ? 'running' : 'not-running'}>
       {running ? (
@@ -192,6 +205,19 @@ export function MissionControlScreen({
       send: () => stopRun(request, handle, clock),
     });
   }, [askStop, request, clock, handle]);
+
+  // **A confirmation does not outlive the control that offered it.** A read that moves the run off
+  // `running` is the daemon saying there is nothing here to stop, and a question left standing after
+  // that is one a reader can still answer — so it is WITHDRAWN rather than hidden, which is also
+  // what stops a later read saying `running` again from putting an offer back on the screen that
+  // nobody made twice.
+  //
+  // In the render that stops offering it rather than in an effect, which is `ticket-page.tsx`'s own
+  // `loadedFor` reasoning: a state cleared after the commit is cleared one commit too late, and the
+  // commit in between is one where an irreversible control is on the screen and live. Conditional
+  // and self-cancelling — `confirming` is `null` on the re-render this schedules — so it settles
+  // rather than loops, which is React's own sanctioned shape for adjusting state during a render.
+  if (!daemonSaysRunning(metadata) && stop.confirming !== null) stop.cancel();
 
   const timeline = buildStepTimeline(snapshot.events);
 

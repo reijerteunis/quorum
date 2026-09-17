@@ -287,7 +287,10 @@ export async function answerGate(
  *
  * A `2xx` that is not {@link STARTED} is reported rather than taken for a success: this page and the
  * daemon disagreeing about what starting a run looks like is a thing to say and not a thing to
- * assume went well. Its refusals cross through {@link refused} unaltered, and two pairs of them
+ * assume went well — and that check is made **before the success body is read**, as
+ * {@link answerGate}'s status check is, because a 2xx this route does not answer with may carry no
+ * body at all and reading first would report the disagreement as a body that failed to parse. Its
+ * refusals cross through {@link refused} unaltered, and two pairs of them
  * share a status — `no-such-ticket` against `no-such-flow`, and `lock-held` against `not-runnable` —
  * so the body's `code` is what tells them apart and nothing here branches on the status alone.
  *
@@ -312,23 +315,38 @@ export async function startRun(
     return { kind: 'unreachable', path };
   }
 
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    return { kind: 'unparseable', path, problem: 'the response body was not JSON' };
+  // A refusal's body is where the daemon's own words are, so it is read on this path and on this
+  // path alone.
+  if (!response.ok) {
+    let refusalBody: unknown;
+    try {
+      refusalBody = await response.json();
+    } catch {
+      return { kind: 'unparseable', path, problem: 'the response body was not JSON' };
+    }
+    return refused(path, response.status, refusalBody);
   }
 
-  if (!response.ok) return refused(path, response.status, body);
-  // Before the body is validated, so a `200` carrying a perfectly good run is still reported: the
-  // disagreement is about the exchange rather than about the shape, and a schema that accepts the
-  // body cannot see it.
+  // **Before the success body is read rather than after it**, which is the property and not an
+  // ordering preference: a 2xx this route does not answer with need carry no body at all — a `204`
+  // carries none by definition — so reading first reports the disagreement as *the response body
+  // was not JSON*, a true sentence about the wrong thing that sends a reader looking for a parser
+  // defect. Checking here also keeps the case the shape cannot see: a `200` carrying a perfectly
+  // good run is still reported, because the disagreement is about the exchange rather than about
+  // the body, and a schema that accepts it is blind to that.
   if (response.status !== STARTED) {
     return {
       kind: 'unparseable',
       path,
       problem: `the daemon answered ${String(response.status)} where starting a run is ${String(STARTED)} and the run it started`,
     };
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return { kind: 'unparseable', path, problem: 'the response body was not JSON' };
   }
   const parsed = wireRunSchema.safeParse(body);
   if (!parsed.success) return { kind: 'unparseable', path, problem: parsed.error.message };

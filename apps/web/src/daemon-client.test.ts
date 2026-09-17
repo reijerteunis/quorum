@@ -596,6 +596,29 @@ describe('Q-0130 AC-3 — startRun, whose success is a body and not a status', (
     if (state.kind === 'unparseable') expect(state.problem, 'the problem says nothing about the status').toContain('201');
   });
 
+  test('a 2xx carrying NO body is the status disagreement, not a body that failed to parse', async () => {
+    // Review round 1: the status was checked after the success body was read, so a bodyless 2xx —
+    // a `204` carries none by definition, and it is what the OTHER two writes on this transport
+    // answer with — was reported as *the response body was not JSON*. True of the read and wrong
+    // about the exchange: it sends a reader looking for a parser defect where what happened is that
+    // this page and the daemon disagree about what starting a run looks like.
+    const bodyless = await startRun(
+      () => Promise.resolve({ ok: true, status: 204, json: () => Promise.reject(new Error('Unexpected end of JSON input')) }),
+      ASK, CLOCK,
+    );
+    expect(bodyless.kind).toBe('unparseable');
+    if (bodyless.kind !== 'unparseable') return;
+    expect(bodyless.problem, 'a bodyless 2xx was reported as a body that failed to parse')
+      .not.toContain('not JSON');
+    expect(bodyless.problem, 'the problem does not say what the exchange should have been').toContain('201');
+    expect(bodyless.problem, 'the problem does not say what the daemon actually answered').toContain('204');
+    // …and the refusal path still reads its body, which is the half the reordering must not lose:
+    // a non-2xx is where the daemon's own words are, and they reach the page unaltered.
+    const said = await startRun(daemon(409, { code: 'lock-held', condition: 'held by run #7', remedy: null }).fetch, ASK, CLOCK);
+    expect(said.kind).toBe('refused');
+    if (said.kind === 'refused') expect(said.refusal.condition).toBe('held by run #7');
+  });
+
   test('a 201 whose body is not a run is unparseable, and a fetcher that throws is unreachable', async () => {
     const wrong = await startRun(daemon(201, { ...STARTED, surprise: true }).fetch, ASK, CLOCK);
     expect(wrong.kind, 'an undeclared field was accepted').toBe('unparseable');

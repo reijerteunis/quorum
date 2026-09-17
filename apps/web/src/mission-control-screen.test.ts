@@ -74,16 +74,19 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     view: HTMLElement;
     sent: Sent[];
     settle: (status: number, body: unknown) => Promise<void>;
+    /** What the NEXT read answers — the staging a clause about a run changing under a reader needs. */
+    setRunState: (state: string) => void;
   }> {
     const sent: Sent[] = [];
     const held: ((answer: DaemonResponse) => void)[] = [];
+    let runState = over.runState ?? 'running';
     const fetcher = (path: string, request?: DaemonRequest): Promise<DaemonResponse> => {
       sent.push({ path, request });
       if (request?.method === 'POST') return new Promise<DaemonResponse>((resolve) => { held.push(resolve); });
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ ...body(HANDLE), state: over.runState ?? 'running' }),
+        json: () => Promise.resolve({ ...body(HANDLE), state: runState }),
       });
     };
     const view = document.createElement('div');
@@ -104,6 +107,7 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     return {
       view,
       sent,
+      setRunState: (state: string) => { runState = state; },
       settle: async (status: number, payload: unknown) => {
         const resolve = held.shift();
         if (resolve === undefined) throw new Error('no stop is waiting');
@@ -173,6 +177,37 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     await click(view.querySelector('button[data-withdraw]'));
     expect(posts(sent), 'withdrawing the confirmation sent a stop').toStrictEqual([]);
     expect(view.querySelector('[data-confirm="stop"]'), 'the confirmation survived being withdrawn').toBeNull();
+  });
+
+  test('AC-8/AC-9 — a read that moves the run off running WITHDRAWS a pending confirmation', async () => {
+    // Review round 1: the control was drawn from the daemon's last answer and the confirmation
+    // beside it was not, so a read landing between asking and confirming took the control away and
+    // left the question — a reader could still answer it, and the stop went to a run the daemon had
+    // already said there was nothing to stop.
+    const { view, sent, setRunState } = await control();
+    await click(stopButton(view));
+    expect(view.querySelector('[data-confirm="stop"]'),
+      'nothing is confirming — this clause has lost its subject').not.toBeNull();
+
+    // The daemon's next answer says the run is over. The read is the screen's own *Check again*,
+    // which is the first control the status region renders above the stop.
+    setRunState('ended');
+    const before = sent.length;
+    await click(view.querySelector('button'));
+    expect(sent.length, 'the read this clause stages never happened').toBeGreaterThan(before);
+    expect(stopButton(view), 'a run the daemon says is over still offered a stop').toBeNull();
+    expect(view.querySelector('[data-confirm="stop"]'),
+      'the confirmation outlived the control that offered it').toBeNull();
+    expect(posts(sent), 'a stop was sent, so the question was still answerable').toStrictEqual([]);
+
+    // **Withdrawn rather than hidden**, which is what this second half discriminates: a
+    // confirmation merely gated on the run's state comes back the moment a later read says
+    // `running` again, putting an offer on the screen that nobody made twice.
+    setRunState('running');
+    await click(view.querySelector('button'));
+    expect(stopButton(view), 'the control did not come back for a run that is running again').not.toBeNull();
+    expect(view.querySelector('[data-confirm="stop"]'),
+      'a withdrawn confirmation was put back by a later read').toBeNull();
   });
 
   test('AC-9 — two activations in one turn issue one request, and a read does not release the guard', async () => {

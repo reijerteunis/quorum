@@ -881,6 +881,43 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
     }
   });
 
+  test('AC-9 — a confirmation does not survive a change of subject, and cannot be answered after one', async () => {
+    // Review round 1: the act awaiting confirmation was captured under one ticket and the subject it
+    // would be recorded against was read at confirmation time, so a navigation in between left a
+    // question about the ticket that was LEFT standing under the id of the one arrived at —
+    // answerable, sending the old ticket's start and navigating away on its handle. `app.tsx` keys
+    // mission control by handle and keys this page by nothing, so one instance survives the
+    // navigation and this is the page where it happens.
+    const server = startDaemon({});
+    const went: string[] = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const at = (ticketId: string): ReactElement => createElement(TicketPage, {
+      ticketId, fetcher: server.fetch, now: CLOCK, onNavigate: (to: string) => { went.push(to); },
+    });
+    await act(async () => root.render(at(TICKET)));
+    mounted.push(() => root.unmount());
+    await click(container, 'button[data-start-flow]', startLabel('chore'));
+    expect(confirmControl(container), 'nothing is confirming — this clause has lost its subject').not.toBeNull();
+    expect(container.querySelector('[data-confirm="start"]')?.textContent, 'the confirmation is not about the ticket being left')
+      .toContain(startConfirmation(TICKET, 'chore', false));
+
+    await act(async () => root.render(at('Q-0002')));
+    expect(container.querySelector('[data-confirm="start"]'),
+      'one ticket\'s confirmation was left standing under another ticket\'s id').toBeNull();
+    // …and whatever IS on the screen is answered rather than only counted, which is the half that
+    // says *withdrawn* and not *rendered somewhere else*. Looked up now rather than held from
+    // before: this page's loading branch unmounts the whole region while the replacement ticket is
+    // read, so a control captured earlier is detached and clicking it would prove nothing either
+    // way — which is what the first draft of this clause did, and it passed under the defect.
+    const stale = confirmControl(container);
+    if (stale !== null) await act(async () => { stale.click(); });
+    expect(bodies(server.sent), 'a start about the ticket that was left was sent from the one arrived at')
+      .toStrictEqual([]);
+    expect(went, 'confirming after a navigation navigated on the ticket that was left').toStrictEqual([]);
+  });
+
   test('AC-9 — a start that resolves after the subject changed settles nothing on the new one', async () => {
     const server = startDaemon({});
     const went: string[] = [];
