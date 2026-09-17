@@ -178,7 +178,7 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
         // The id comes from the router, which decoded it out of one path segment. It is whatever a
         // URL carried and is not trusted to be a ticket id: what refuses a token that is not one
         // name is the daemon's own first predicate, and this page renders that refusal.
-        <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} />
+        <TicketPage ticketId={rendered.params.ticketId ?? ''} fetcher={fetcher} now={clock} onNavigate={navigate} />
       ) : rendered.route.path === RUNS_PATH ? (
         // The read-only landing: one GET /runs at mount, daemon order preserved, each row linking to
         // this same RUN_ROUTE via `runPath`.

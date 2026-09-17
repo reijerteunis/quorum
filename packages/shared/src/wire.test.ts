@@ -7,7 +7,8 @@ import {
   containmentResultSchema, pushLagResultSchema, WIRE_RUN_STATES, wireExcludedFilesSchema,
   wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunListSchema,
   wireRunSchema, wireRunStateSchema, wireTicketDetailSchema, wireTicketFileEntrySchema,
-  wireTicketFileSchema, wireTicketListSchema, wireTicketSchema, type WireRun,
+  wireTicketFileSchema, wireTicketListSchema, wireTicketSchema, WIRE_START_FIELDS,
+  wireStartRequestSchema, type WireRun, type WireStartRequest,
 } from './wire.js';
 import { ticketSchema } from './ticket.js';
 import * as shared from './index.js';
@@ -102,6 +103,51 @@ describe('Q-0121 AC-10 — the run and refusal shapes are here, each with a sche
     // And the rows are checked rather than the container, which is the distinction Q-0119's review
     // round 2 found the other way round: `Array.isArray` alone moves a throw rather than removing it.
     expect(wireRunListSchema.safeParse({ runs: [{ ...RUN, state: 'paused' }] }).success).toBe(false);
+  });
+});
+
+describe('Q-0130 AC-1 — the start request is declared here, once, with a schema', () => {
+  test('the barrel publishes the tuple and the schema', () => {
+    // The **type** adds no runtime key, so what a runtime check can see is these two — which is the
+    // half that matters, a moved type with no schema being exactly the half-measure Q-0120 had to
+    // repair. That the type is exported is proven by this file compiling against it below.
+    const published = shared as unknown as Record<string, unknown>;
+    expect(published.WIRE_START_FIELDS, 'the field tuple is not on the barrel').toStrictEqual(WIRE_START_FIELDS);
+    expect(typeof published.wireStartRequestSchema, 'the schema is not on the barrel').toBe('object');
+  });
+
+  test('the five field names are an identity in the route\'s own order', () => {
+    // An identity rather than a count, and ORDERED rather than a set: `startRequestOf`'s
+    // `unknown-field` remedy spells this out for a human — *"this route accepts flow, ticket, dry,
+    // auto, base"* — so a reordering changes a sentence somebody reads. `http.test.ts` is what
+    // holds that sentence against this tuple from the other side.
+    expect([...WIRE_START_FIELDS]).toStrictEqual(['flow', 'ticket', 'dry', 'auto', 'base']);
+    // …and the tuple names exactly the schema's own keys, in both directions, so a sixth field
+    // added to one of them cannot be silently absent from the other.
+    const declared = Object.keys((wireStartRequestSchema as unknown as { shape: Record<string, unknown> }).shape);
+    expect(declared.slice().sort(), 'the tuple and the schema declare different fields')
+      .toStrictEqual([...WIRE_START_FIELDS].sort());
+  });
+
+  test('the two required fields are required, the other three optional, and nothing else accepted', () => {
+    const minimal: WireStartRequest = { flow: 'chore', ticket: 'Q-0130' };
+    expect(wireStartRequestSchema.safeParse(minimal).success).toBe(true);
+    expect(wireStartRequestSchema.safeParse({ ...minimal, dry: true, auto: false, base: 'main' }).success).toBe(true);
+    expect(codesOf(wireStartRequestSchema.safeParse({ flow: 'chore' }))).toStrictEqual(['invalid_type']);
+    expect(codesOf(wireStartRequestSchema.safeParse({ ...minimal, dry: 'yes' }))).toStrictEqual(['invalid_type']);
+    // `.strict()`, for the reason the route already gives: a client that misspells `ticket` is told
+    // so rather than given a run it did not ask for.
+    expect(codesOf(wireStartRequestSchema.safeParse({ ...minimal, tickett: 'x' })))
+      .toStrictEqual(['unrecognized_keys']);
+  });
+
+  test('and it checks the SHAPE rather than the route\'s own predicate, deliberately', () => {
+    // An empty `ticket` parses here and is refused `missing-field` by `startRequestOf`, which is
+    // the split the schema's own docblock states: the route composes a refusal a caller reads, and
+    // a second non-emptiness rule here would answer the same question in a different vocabulary and
+    // be free to disagree. Stated as a property so a later edit that "tightens" it is a visible act.
+    expect(wireStartRequestSchema.safeParse({ flow: 'chore', ticket: '   ' }).success,
+      'the wire schema took over the route\'s own emptiness predicate').toBe(true);
   });
 });
 

@@ -1,8 +1,16 @@
 /** Typed contract for mission-control copy shared by rendering and assertions. */
 
-/** Honest explanation for a successfully loaded empty run listing. */
+/**
+ * Honest explanation for a successfully loaded empty run listing.
+ *
+ * **One of its two clauses went false at Q-0130 and the other did not.** *"This app cannot start
+ * one"* was true until a ticket page could, so it is replaced by where a reader starts one. The
+ * second clause stands unaltered: `quorum run` imports `runFlow` from `@quorum/core` and runs it in
+ * its own process, so a run started at a command line is one this daemon's registry has never heard
+ * of and no ticket here changes that.
+ */
 export const EMPTY_RUNS_TEXT =
-  'The daemon is driving no runs. This app cannot start one, and quorum run uses a different process that this daemon cannot see.';
+  'The daemon is driving no runs. A ticket page is where one is started, and quorum run uses a different process that this daemon cannot see.';
 
 /** Honest explanation when the daemon supplied no ticket identity for a run. */
 export const NO_TICKET_ID_TEXT = 'The daemon supplied no ticket id for this run.';

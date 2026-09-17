@@ -22,6 +22,11 @@
  * a ticket page's tabs and one to render a file it opened, and neither `packages/server` nor
  * `apps/web` declares either shape of its own.
  *
+ * **{@link WireStartRequest} joined them at Q-0130, and it is the first shape here a browser
+ * BUILDS rather than reads.** The rule is the same in both directions — one declaration, executable
+ * in a browser — and the field set had lived only inside `packages/server`, so a browser composing a
+ * start body would have written the five names a third time.
+ *
  * **{@link WireRefusal} and {@link WireRun} joined it at Q-0121, and each arrives WITH a schema.**
  * The server's own `wire.ts` carried both as bare interfaces and its header named this ticket as one
  * of the two that would move them — *"the same way rather than copying them"*, the way being this
@@ -178,6 +183,67 @@ export interface WireRunList {
 /** Runtime validation for a run listing. */
 export const wireRunListSchema: z.ZodType<WireRunList> = z.object({
   runs: z.array(wireRunSchema),
+}).strict();
+
+/**
+ * The field names `POST /runs` accepts, in that route's own order.
+ *
+ * **The order is part of the value**, which is why this is a tuple and not a set: the route's
+ * `unknown-field` refusal spells the accepted set out for a human — *"remove it; this route accepts
+ * flow, ticket, dry, auto, base"* — so a reordering here changes a sentence somebody reads.
+ *
+ * It describes **what the route accepts**, never what any one client sends. Narrowing it to the
+ * three a browser uses would make this package a second and weaker authority for a route another
+ * client may also call; which fields a given surface is willing to send is that surface's own
+ * property, checked where that surface is.
+ */
+export const WIRE_START_FIELDS = ['flow', 'ticket', 'dry', 'auto', 'base'] as const;
+
+/**
+ * What a caller asks the daemon to start.
+ *
+ * It lives here for {@link WireRefusal}'s and {@link WireRun}'s reason, arriving at Q-0130 in the
+ * other direction: those two are what a **response** carries and this is what a **request** does,
+ * and a browser needs an executable builder for it rather than a type. Until this ticket the field
+ * set existed only inside `packages/server` — once as a `Set` in the route and once as the host's
+ * own interface — so a browser composing a start body had to write the names a third time, which is
+ * verbatim the drift Q-0120 was opened on and Q-0121 closed for the two response shapes.
+ *
+ * `gateAnswerEnvelopeSchema` is the precedent rather than the exception: a request shape has lived
+ * in this package since Q-0013, and this is the second.
+ *
+ * **The three optional fields are optional here because the route treats them so**, and a client
+ * that omits one is not asking for its default — it is saying nothing about it, which is what lets
+ * the daemon own what silence means.
+ */
+export interface WireStartRequest {
+  /** The flow's name, as `harness/flows/<name>.yaml` carries it. */
+  readonly flow: string;
+  /** The ticket token, resolved inside the backlog root by the daemon and never here. */
+  readonly ticket: string;
+  /** Walk the flow without invoking an adapter or writing anything. */
+  readonly dry?: boolean;
+  /** Advance author-declared gates without a human. */
+  readonly auto?: boolean;
+  /** The diff anchor `{base}` resolves to — a review's comparison point and nothing else. */
+  readonly base?: string;
+}
+
+/**
+ * Runtime validation for a start request.
+ *
+ * `.strict()` for the reason the route already gives: an unknown key is refused rather than
+ * ignored, so a client that misspells `ticket` is told so instead of being given a run it did not
+ * ask for. The two required fields are required here and non-emptiness is **not** checked — that is
+ * the route's own predicate, which composes a `missing-field` refusal a caller can read, and a
+ * second rule for it here would be a weaker copy answering in a different vocabulary.
+ */
+export const wireStartRequestSchema: z.ZodType<WireStartRequest> = z.object({
+  flow: z.string(),
+  ticket: z.string(),
+  dry: z.boolean().optional(),
+  auto: z.boolean().optional(),
+  base: z.string().optional(),
 }).strict();
 
 /**
