@@ -140,7 +140,7 @@ describe('AC-16 to AC-18 — owned socket lifecycle', () => {
     expect(sockets).toHaveLength(2);
     expect(connection.snapshot.events, 'the retained tail survived a retry the daemon will replay').toStrictEqual([]);
     expect(connection.snapshot.missedCount, "the daemon's missed count outlived the subscription it described").toBeNull();
-    expect(connection.snapshot.browserDiscardedCount, 'what the retry dropped was not disclosed').toBe(1);
+    expect(connection.snapshot.browserDiscardedCount, 'a retry left a bounded-retention loss standing for events the daemon will replay').toBeNull();
   });
 
   test('rapid repeated retry leaves only its newest socket current', () => {

@@ -223,12 +223,14 @@ export function createRunConnection(factory: SocketFactory): RunConnection {
       // its retained tail to EVERY new subscription, so keeping what the browser already holds
       // renders every retained event twice. The events carry no identity to dedupe on — the union
       // deliberately has no timestamp and no sequence number — so the choice is a doubled trace or a
-      // shorter true one, and a doubled trace claims events that did not happen. What is dropped is
-      // charged to the browser's own discard counter, whose sentence already renders.
-      // Review round 3, M-1.
-      browserDiscardedCount = (browserDiscardedCount ?? 0) + events.length;
+      // shorter true one, and a doubled trace claims events that did not happen. **All three reset**,
+      // because a retry is a fresh subscription and that is exactly what `connect` does: charging the
+      // cleared tail to the browser's discard counter reported a bounded-retention loss for events the
+      // daemon is about to replay, and a third counter would be a third loss cause that AC-10 and the
+      // contract's two-loss model do not have. Review round 3 M-1, corrected at round 4.
       events = [];
       missedCount = null;
+      browserDiscardedCount = null;
       open(runEventsUrl(page, handle));
     },
 

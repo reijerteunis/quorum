@@ -193,6 +193,12 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
     const container = await render(createElement(App, {
       initialPath: '/runs/run%20one',
       socketFactory: () => new FakeSocket(),
+      // Injected since Q-0015: this route draws mission control, which READS, so without a fetcher
+      // the screen reaches the browser's own `fetch` and the test does different work depending on
+      // what answers — the same hazard the socket factory above is injected for, on the same rule.
+      // Review round 4, N-3.
+      fetcher: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ handle: 'run one', flow: 'development', ticketId: null, runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null }) }),
+      clock: () => 'now',
       pageUrl: new URL(`https:${'/' + '/'}page.test`),
     }));
     // Scoped to the run-identity region since Q-0015, and the narrowing is forced rather than

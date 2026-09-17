@@ -146,7 +146,9 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       };
       const name = NAMES[route.path];
       expect(name, `${route.path} claims a screen and this clause has no constant name for it`).toBeDefined();
-      expect(app, `the app does not select ${route.path} by the register's own constant`).toContain(name);
+      // The assertion is that `app.tsx` MENTIONS the register's constant for this row, which is
+      // weaker than selecting by it; the sentence says the weaker thing. Review round 4, N-2.
+      expect(app, `app.tsx does not name ${String(name)}, the register's own constant for ${route.path}`).toContain(name);
     }
     expect(app, 'the app names a route path of its own rather than a register constant')
       .not.toMatch(/['"`]\/backlog/);

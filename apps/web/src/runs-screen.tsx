@@ -21,7 +21,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WireRun, WireRunList } from '@quorum/shared';
 
 import { browserFetch, fetchRuns, isoClock, runsInFlight, type Clock, type FetchLike } from './daemon-client.js';
-import { DAEMON_ENDPOINTS } from './daemon-endpoints.js';
 import { EMPTY_RUNS_TEXT, NO_TICKET_ID_TEXT } from './mission-control-text.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
 import { runPath } from './routes.js';
@@ -35,14 +34,6 @@ export const REFRESH_LABEL = 'Refresh';
 /** The Retry action offered wherever the request failed. */
 export const RETRY_LABEL = 'Retry';
 
-/**
- * The listing's own in-flight state.
- *
- * `daemon-client.ts` holds one of these per existing read, keyed to that read's own path; this
- * screen is the first to read a listing rather than one ticket or one run, so there is no shared
- * helper for it there yet. Built the same way those are — the same path the fetch itself uses,
- * from {@link DAEMON_ENDPOINTS} and nowhere else — rather than a literal of its own.
- */
 
 /** Injectable inputs: the browser supplies none of them, and every test supplies all of them. */
 export interface RunsScreenProps {
