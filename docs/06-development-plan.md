@@ -4071,7 +4071,58 @@ parked at p2 with its three written reopening thresholds.
   `jsdiff` appearing in no manifest. **Q-0128** is its neighbour: a diff served to a browser has the
   same truncation question a diff handed to a reviewer has, and answering it twice is how the two
   drift.
-- Q-0131 The mission control header's measured values. *(Opened 2026-09-16 at Q-0015's requirements
+- Q-0131 The mission control header's measured values. *(`requirements` 2026-09-17, ready at
+  iteration 2 and **cut in two there**, with **Q-0135** taking elapsed time and the cost split.)*
+  **$22.26**. It keeps AC-1 to AC-7: the run number, which is `null` for the whole life of a live run
+  and arrives only on the terminal event, so three screens have been showing a handle where the brief
+  specifies *"run #42"*.
+  **GO-1 is the ruling, and it is a decision NOT to write a decision entry.** Two transports were
+  measured rather than compared in the abstract. A new `start` member on the event union is in-band
+  and mirrors `terminal` — and makes **three landed sentences false**, `docs/GLOSSARY.md`'s **Event**
+  term, `packages/shared/src/events.ts`'s header and `packages/server/src/host.ts`'s `runId` JSDoc,
+  each of which says only the terminal event carries run identity — so it owes an entry. Supplying
+  the number **out of band**, through an option on `runFlow` beside `answerGate`, leaves all three
+  true **verbatim**, because every one of them is about *an event* and a callback is not one. Ratified
+  on that, re-derived at the gate rather than relayed, with the refused alternative recorded in AC-1's
+  own JSDoc on Q-0108's precedent — a ruling that changes no behaviour and contradicts no landed entry
+  belongs in the authority comment. **Its cost is stated rather than waved past**: one read's latency
+  in the worst case, bounded and reversible.
+  **Decision 097 is explicitly not authority for it, which is the distinction worth keeping.** That
+  entry rules a value onto the stream **because its producer already writes it there** — `steps.ts`
+  computes the verdict. The run number's producer is `nextRunId`, which writes to `runs.log` and the
+  run directory and never to the stream. Answering the second from the shape of the first would have
+  been reasoning from a precedent instead of from a measurement, one day after the precedent landed.
+  **The split is a disjoint blocker rather than a size cut**, which is why it is better than the ones
+  this repository has paid for: Half A carries the whole transport ruling, Half B owes no entry under
+  any ruling, and Half B **cannot start first** — the history id is `<TICKET>-<n>` and a live run
+  supplies no `n`. Fifteen criteria is at the role's ceiling and the precedent is unanimous: Q-0013
+  refused at eighteen and split in three, Q-0122 accepted twenty and paid three implement rounds,
+  Q-0126 refused a split at sixteen and paid $177.92 with a round-1 `blocked`.
+  **Iteration 1 returned `needs-input` on two blockers and iteration 2 ruled both on an unchanged
+  tree** — the fourth recorded case of a second pass finding something anyway (Q-0105, Q-0122,
+  Q-0125), and not a breach of *a retry on an unchanged tree cannot rule its own blocker*: these were
+  not questions about the tree, they were questions the document could answer by measuring the tree it
+  already had.
+  **GO-2's contract note was written by hand at the gate**, `contracts/` not being among the chore
+  role's fourteen roots — the surface that cost Q-0129 an implement round one ticket earlier. It moves
+  two clauses of `contracts/Q-0015/mission-control.contract.md`: *five* absent capabilities becomes
+  **four**, and the run number's source. **The second is recorded as a removed premise rather than a
+  contradiction** — *"read from the terminal event in the socket snapshot"* described the only source
+  that existed when it was written, and was not wrong; its subject changed.
+- Q-0135 Mission control shows elapsed time and the per-vendor cost split. *(Opened 2026-09-17 at
+  Q-0131's requirements gate, `draft`, p2, with Appendix A transcribed in full.)* The half that owes
+  no decision entry under any ruling, and it is built on what already exists: `writer.ts` recomputes
+  `manifest.rollup` in full and replaces the manifest atomically on every step, so **the roll-up is
+  live and correct while the run runs**, and `GET /history/:id` already answers it. Nothing has to be
+  computed; it has to be read and rendered.
+  Two things it must not do are already measured. **Elapsed advances and cost does not** — the
+  contract's *"Refresh is the only repeat read; no timer performs one"* bounds **reads**, and a
+  display advancing from a `started_at` the browser already holds performs none, so the brief's word
+  *ticker* does not survive measurement and is not used. And **cost is a read rather than a field on
+  `done`**: a browser accumulating per-step usage over a head-evicting 500-event buffer under-reports
+  silently, precisely when the screen is disclosing a discard. **No total across vendors is rendered
+  anywhere**, and an all-unpriced run renders no `$0.00` — the `n/a`-never-`0` rule, and the one place
+  a blended figure could reach a reader. *(Opened 2026-09-16 at Q-0015's requirements
   gate, `draft`, p3.)* The run number, the elapsed time and the per-vendor cost ticker — three values
   `docs/05-design-prompt.md` screen 5 names and the wire does not carry, each needing a different
   answer. **To be weighed with Q-0129**, whose verdict card is the same problem on a different field:
