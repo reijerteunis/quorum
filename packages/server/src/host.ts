@@ -276,8 +276,8 @@ interface RunRecord {
    * flow: measured over the six shipped flows, `chore` declares one diff site, `review` declares two
    * over one range — which the preflight cache makes one snapshot, Q-0038 AC-10 — and four declare
    * none, so every flow this product ships holds **at most one** snapshot here. It is cleared when
-   * the run ends whether or not any gate wanted it, which is what keeps a record's own footprint
-   * where Q-0123 measured it, `records` never being pruned.
+   * the run ends whether or not any gate wanted it, and on the refusal exit beside it, which is what
+   * keeps a record's own footprint where Q-0123 measured it, `records` never being pruned.
    */
   readonly evidence: Map<string, DiffEvidence>;
   controller: AbortController | null;
@@ -341,6 +341,15 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     record.state = 'refused';
     record.refusal = refusal;
     gates.release(record.handle);
+    // The clean-up `consume` performs when a run ends, on the run's other exit. **Empty on every
+    // refusal this host can meet today, and unconditional anyway.** Measured rather than assumed: a
+    // preflight that fails after materialising an earlier site does not refuse the start, because
+    // the run has emitted its `info` line above the preflight and emits its terminal event before
+    // the error closes the channel, and a first pull settled by either is a run that is `running`.
+    // Both facts are `core`'s, a record is never pruned (Q-0123), and a refusal that did arrive
+    // after a materialisation would hold a capped patch for the life of the process — so the map is
+    // emptied on the exit that owns it rather than on the strength of another package's ordering.
+    record.evidence.clear();
     return { started: false, run: viewOf(record), refusal };
   };
 

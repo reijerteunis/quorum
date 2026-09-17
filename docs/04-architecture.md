@@ -198,9 +198,10 @@ Q-0074 and Q-0115 spent two tickets removing. What bounds it is the flow rather 
 shipped flows `chore` declares one diff site, `review` declares two over one range that the preflight
 cache makes one snapshot, and four declare none, so a run holds **at most one**. **Its lifetime is the
 gate's**: bound as the question is observed, released when that gate is answered and when the run
-releases its gates, with any snapshot no gate claimed cleared as the run ends — so nothing outlives
-the question it was evidence for and a host record carries no patch once its run is over, which is
-what keeps Q-0123's measurement of what a record costs still true.
+releases its gates, with any snapshot no gate claimed cleared on both of a run's exits — as it ends,
+and on the refusal that never became a run — so nothing outlives the question it was evidence for and
+a host record carries no patch once its run is over, which is what keeps Q-0123's measurement of what
+a record costs still true.
 
 **The two routes answering for ONE ticket are Q-0127's, and they are two rather than one because of
 a measurement.** `GET /tickets/:id` carries the same row `GET /tickets` holds for that ticket —

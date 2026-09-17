@@ -552,14 +552,89 @@ describe('Q-0134 AC-6 — the evidence lives exactly as long as the gate that ow
     }
   });
 
-  test('the two releases nothing can observe are asserted over the source, and each discriminates', () => {
-    // **Two properties this package's own API cannot see, registered rather than left to a comment.**
+  test('a preflight that stops the run after materialising an earlier site is not a refusal', async () => {
+    // **The shape round 2's review was about, built so the answer is measured rather than argued.**
+    // `preflightDiffs` walks every diff site before any step runs, so a flow whose SECOND site names
+    // a ref that does not exist stops the run with the FIRST site's patch already reported to the
+    // host. The review read that as reaching `begin`'s refusal path — the one exit `consume`'s
+    // clean-up never covers, on a record nothing prunes. **It does not reach it**, and this fixture
+    // is what says so: the start SUCCEEDS and the failure arrives afterwards, on the loop whose
+    // `finally` clears the map.
+    //
+    // **Two mechanisms in `core` keep it on that path and either alone would be enough**, which is
+    // why the `started` clause below is a recorded measurement rather than a guard anyone should
+    // lean on: `runFlow` emits its `info` line above the preflight, and a run that fails emits its
+    // terminal event before the error that closes the channel — `channel.ts`'s own documented
+    // guarantee. The first pull is settled by whichever arrives, and a rejection needs both to have
+    // been skipped, which is why the only refusals this host meets are the two its own header names
+    // — the stage precondition and the run lock, neither of which reaches a diff. By mutation:
+    // moving that emit below the preflight leaves this green, and making a closing error beat a
+    // queued event leaves it green too. So the clean-up on the refusal exit is pinned by the source
+    // clause below and not here.
+    //
+    // What each clause here can still fail on: the `runs.log` line, if the first site stops being
+    // materialised before the second stops the run — the premise of the whole finding; the failure
+    // text, if something other than the second site stops it; and `started`, if the refusal path
+    // ever does become reachable with a patch in hand.
+    vi.stubEnv('MOCK_ALWAYS_PASS', '1');
+    const project = fixture({
+      flow: `name: probe
+consumes: draft
+produces: requirements
+steps:
+  - id: work
+    input:
+      backlog: ["dev/work.md"]
+      diff: "{base}...harness/{id}/integration"
+    output:
+      write: dev/work.md
+      verdict: approve|changes-requested
+    on_fail:
+      goto: work
+      max_iterations: 1
+      on_exhausted: gate
+  - id: later
+    input:
+      diff: "{base}...harness/{id}/nowhere"
+    output:
+      write: dev/later.md
+  - gate: human
+    reason: approve to advance
+`,
+      // Small enough that the first site TRUNCATES, which is the one thing a materialisation leaves
+      // on disk: `runs.log` then names the range it cut. Without it the premise — a patch actually in
+      // hand at the moment the run stopped — would be inferred from the flow file rather than
+      // measured, and a clause resting on an inference is the shape this ticket keeps refusing.
+      config: 'adapterOverride: mock\nrepo:\n  base_branch: main\n  max_diff_bytes: 40\n',
+    });
+    commitOnBranch(project.repoDir, INTEGRATION, 'changed.txt', `one\n${MARKER}\ntwo\n`);
+    const host = createRunHost({ project: project.project, retain: DEFAULT_RETENTION });
+    try {
+      const outcome = await host.start({ flow: project.flowName, ticket: TICKET_ID });
+      // **First, because it is the claim** — and because a refused start never reaches `ended`, so
+      // asserting it after the wait below would report a ten-second timeout for a one-line answer.
+      expect(outcome.started, 'the start was refused with a patch already reported — read the refusal clause below')
+        .toBe(true);
+      await until(() => host.view(outcome.run.handle)?.state === 'ended', 'the run to end');
+      expect(project.runsLog(), 'the first site was never materialised — this check has lost its subject')
+        .toContain(`diff truncated range=main...${INTEGRATION}`);
+      expect(host.view(outcome.run.handle)?.failure ?? '', 'the run stopped on something other than the second site')
+        .toContain(`harness/${TICKET_ID}/nowhere`);
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  test('the releases nothing can observe are asserted over the source, and each discriminates', () => {
+    // **The properties this package's own API cannot see, registered rather than left to a comment.**
     //
     // The first is `answer`'s: the pending gate is deleted before it is settled, so a read after an
     // answer says `no-such-gate` whether or not the bytes went with it — which means the behavioural
     // clause above passes over a registry that keeps a 200,000-byte patch until the run ends. The
     // second is R-3's: `observe` TRANSFERS the snapshot to the gate rather than copying it, and a
-    // copy is correct in every answer this package gives and doubles what one run holds.
+    // copy is correct in every answer this package gives and doubles what one run holds. The last two
+    // are the run's two exits — an ended run and a refused start — each of which leaves a record
+    // nothing prunes, and neither of which projects the map through `viewOf`.
     //
     // So the instrument is the source, in `q0050.source.test.ts`'s shape and on the immediate
     // precedent of Q-0123's own guard, which pins an eviction that no behaviour reaches either. Each
@@ -618,6 +693,19 @@ describe('Q-0134 AC-6 — the evidence lives exactly as long as the gate that ow
     expect(CLEARS.test(ending), 'a run that ended keeps the snapshots no gate took').toBe(true);
     expect(CLEARS.test(ending.replace(CLEARS, '')), 'the needle matches text it was removed from').toBe(false);
     expect(ending, 'the clean-up is no longer beside the gate release, so the pair is not a pair')
+      .toMatch(/gates\.release\(record\.handle\)/);
+
+    // **And the same on the run's other exit, which `consume` never reaches.** A refused start never
+    // becomes `running`, so the loop above is never entered and its `finally` never fires — and a
+    // refused record is kept like every other (Q-0123), so anything filed on it before the refusal is
+    // held for the life of the process. Nothing this package exposes can see that either, and the
+    // clause below is the only thing between it and a silent retention: what keeps the map EMPTY
+    // there today is two orderings in `core` — measured by the behavioural test above — and neither
+    // of them is this file's to keep.
+    const refusing = body(host, 'const refused =', '\n  };');
+    expect(CLEARS.test(refusing), 'a refused start keeps whatever the run had already reported').toBe(true);
+    expect(CLEARS.test(refusing.replace(CLEARS, '')), 'the needle matches text it was removed from').toBe(false);
+    expect(refusing, 'the clean-up is no longer beside the gate release on the refusal exit either')
       .toMatch(/gates\.release\(record\.handle\)/);
   });
 
