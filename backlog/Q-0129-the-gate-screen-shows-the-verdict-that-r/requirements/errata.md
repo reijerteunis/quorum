@@ -59,3 +59,47 @@ is what AC-8 of Q-0015 rests on and what `docs/05-design-prompt.md`'s screen 6 s
 Verify forced in **both** environment rows and record it. Q-0016's equivalent was reported discharged
 when its by-hand half had not been performed; Q-0015's gate found that, and Q-0130's GO-4 was written
 to be unfakeable because of it. The same standard applies to this ticket's close.
+
+## E-6 — AC-12's contract clause names a surface this flow cannot write; the note is written here, at the gate
+
+Implement round 1 returned **`blocked`** on AC-12's first clause and it is right. It requires
+`contracts/Q-0050/run-events.contract.md` to gain a superseded-by note, and **`contracts/` is not
+among `developer-generalist`'s `paths:`** — verified: the role declares fourteen roots and that is
+not one of them, and every commit that ever touched that directory came from the architect in the
+solutioning flow or from a human. That is *"A requirement may not name a surface its flow cannot
+write"* (2026-08-25).
+
+**What makes this instance worth writing down rather than merely fixing**: the merged requirement's
+own §11 cites that rule **by name** when striking candidate-codex's AC-2 for making the decision
+entry an acceptance criterion — and then names `contracts/` one criterion later. The document knew
+the rule, applied it, and missed a second instance of it in its own text. Sixteenth recorded
+appearance of a loop handed work no agent in it can perform, and the first where the requirement
+**states the rule it then breaks**.
+
+**The note is written by hand at this gate** and merged into the implement branch, which is what
+changes what the step reads and what `retry` is for. Its wording is the implementer's own §7, taken
+as offered: it is correct, it uses the idiom that file already uses three times, and re-writing it
+to prove authorship would be the operator inventing a difference.
+
+**The remedy is `retry`, not `advance`.** AC-12's *Test:* clause wants a guard asserting the note
+names the entry by **title and date** — `packages/shared` is writable, the note now exists, so the
+criterion becomes satisfiable for the first time. `advance` would carry a real unmet criterion into
+review, which is what an exhaustion gate exists to prevent.
+
+**What round 1 did NOT do, and was right not to**: it declined to write a deliberately failing guard
+for the missing note, because a red suite fails `integrate` *after* the gate rather than *at* it.
+That is Q-0117's channel used exactly as intended — *my work is done and this one thing is yours* —
+and it is the difference between this round and the three Q-0062 spent.
+
+**Its two other AC-12 test clauses are already green and are not re-opened**: the source clause is
+keyed on the **routing** forms rather than on the ticket id, because *"completed by Q-0129"* is a
+true provenance sentence an over-broad needle would have forbidden; and both re-aimed register
+clauses were shown red against their replacements.
+
+**Its nit and three observations are accepted as recorded and none is a criterion.** The
+`routing.ts:78` slot race is unreachable — no shipped flow declares a verdict on a `parallel:`
+member — and closing it means a per-call context that AC-3 does not ask for. The `git-identity`
+sweep failure (1 in 3, `exec.test.ts`, an EPIPE write/exit race) is **Q-0102's subject**, recorded
+as a rate rather than characterised, which is that ticket's own reopening discipline. The unused
+`eslint-disable` at `backlog.ts:448` is pre-existing and reported rather than migrated, which is
+`.claude/rules/engineering.md`'s rule.

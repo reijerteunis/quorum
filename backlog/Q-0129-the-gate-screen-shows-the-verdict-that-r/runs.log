@@ -21,3 +21,11 @@ seven-stage route is refused here for a measured reason rather than for cost: a 
 every file a red test needs to be owned by exactly one task (2026-08-23), and this change is one
 schema field with its engine producer and its browser consumer, which must land together. Splitting
 them across tasks would put the field in one worktree and the code that reads it in another.
+2026-09-17T11:51:43.228Z run=3 flow=chore start stage=requirements
+
+GO-1 verified by measurement rather than assumed. In `.quorum/runs/Q-0129-3/steps/001-implement/
+prompt.txt` — the implement step's *actual* prompt, 91,367 bytes — decision 097 appears cited by its
+title and date, and its path is named beside it. The errata file reaches it too. That is the check
+Q-0097 lost two errata by not making and Q-0125's GO-1 made.
+2026-09-17T12:43:45.292Z run=3 step=implement vendor=claude model=- verdict=blocked cost=71.98352200000002 ms=3121682
+2026-09-17T12:43:45.310Z run=3 exhausted stage=requirements→requirements cost=0
