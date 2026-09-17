@@ -63,15 +63,19 @@ async function started(host: RunHost, request: { flow: string; ticket: string; d
 }
 
 describe('AC-3 — identity is the host\'s, and core\'s run number is correlated onto it', () => {
-  test('a completed run carries core\'s runId after the terminal event and none before it', async () => {
+  test('a started run carries core\'s runId from the start, and the terminal event agrees with it', async () => {
     const project = fixture();
     const host = createRunHost({ project: project.project, retain: 100 });
 
     const outcome = await host.start({ flow: 'probe', ticket: TICKET_ID });
 
-    // Under way, and no run number yet: the terminal event is the only event carrying run identity.
+    // **Re-aimed by Q-0131, and the assertion it replaced is why that ticket exists.** This read
+    // `expect(outcome.run.runId).toBeNull()` under *"the terminal event is the only event carrying
+    // run identity"* — which is still true of EVENTS and was never true of what a caller could
+    // know. `core` now reports its number out of band at run start, and `start` does not answer
+    // until the run's first pull has returned, so the number is on the outcome the caller is handed.
     expect(outcome.started).toBe(true);
-    expect(outcome.run.runId).toBeNull();
+    expect(outcome.run.runId, 'the start answered before the run reported its number').toBe(1);
     expect(outcome.run.handle).not.toBe('');
     const seen = watch(host, outcome.run.handle);
     await seen.drained;
@@ -79,7 +83,11 @@ describe('AC-3 — identity is the host\'s, and core\'s run number is correlated
     const view = host.view(outcome.run.handle);
     expect(view?.runId).toBe(1);
     expect(view?.terminal?.status).toBe('completed');
-    expect(view?.terminal?.runId).toBe(1);
+    // **The two deliveries agree, which is what says there is one authority rather than two.** The
+    // number at run start and the number on the terminal event are `core`'s single allocation; a
+    // host that derived either would be free to disagree, and this fails if they do.
+    expect(view?.terminal?.runId, 'the run number reported at the start and the one the terminal event carries disagree')
+      .toBe(outcome.run.runId);
     // The handle is the host's own name and is not core's number spelled differently.
     expect(view?.handle).not.toBe('1');
   });

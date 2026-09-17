@@ -99,7 +99,14 @@ export interface RunView {
   /** The flow name the start named, whether or not it resolved. */
   readonly flow: string;
   /**
-   * `core`'s run number, correlated when the terminal event arrives and `null` before it.
+   * `core`'s run number, correlated at run start and `null` only before the run is under way.
+   *
+   * **`core` is the sole authority for it and this host derives none.** The number arrives out of
+   * band, through the callback `RunFlowOptions.reportRunNumber` declares, at the site the run is
+   * started from — and the terminal event later carries the same number, which is a second delivery
+   * of one authority's value rather than a second authority. Q-0131 replaced a sentence here that
+   * dated the correlation to the terminal event: a live run's number was unreachable by any reader
+   * until the run was over, which is what that ticket was opened on.
    *
    * `null` on a refused start is the honest answer rather than a gap: neither refusal reaches a run
    * number, and the one the lock's contender computed belongs to the run that holds the ticket.
@@ -296,6 +303,13 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
    * The terminal event is the only event carrying run identity, and its `runId` is a typed field.
    * Nothing here reads an event's `message` text or takes a run number out of a `gateId`: two
    * authorities for one run's identity is what {@link minted} exists to prevent.
+   *
+   * **That rule is why the number this assigns is not the first one the record holds.** Since
+   * Q-0131 the run reports its number out of band at run start, so by the time a terminal event
+   * arrives `record.runId` is already set — to the same value, from the same authority, `core`
+   * having allocated it once. The assignment stays rather than being made conditional: the field
+   * is typed, it is what a run that reported nothing still supplies, and a host that trusted one
+   * delivery over the other would be choosing between two readings of one fact.
    */
   const observe = (record: RunRecord, event: Event): void => {
     record.broadcast?.publish(event);
@@ -359,6 +373,11 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
         // gate stay unbypassable exactly as they are for the CLI.
         auto: request.auto ?? false,
         answerGate: gates.channelFor(record.handle),
+        // The run's own number, as soon as it has one, rather than when it ends. `core` allocates it
+        // and this closure records it: nothing here computes, parses or infers a number, which is
+        // the rule `observe` below states and the reason the value is taken from the engine at all.
+        // Q-0131 AC-2.
+        reportRunNumber: (runId) => { record.runId = runId; },
         signal: controller.signal,
         ...(request.base === undefined ? {} : { base: request.base }),
       });

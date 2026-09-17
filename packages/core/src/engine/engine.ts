@@ -192,7 +192,7 @@ function toError(error: unknown): Error {
 
 /** Runs one flow to its terminal state, emitting every event through `emit`. */
 async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent): Promise<void> {
-  const { ticket: caller, flow, project, backlog, dry = false, auto = false, answerGate, base } = options;
+  const { ticket: caller, flow, project, backlog, dry = false, auto = false, answerGate, reportRunNumber, base } = options;
   /**
    * The ticket the run mutates: the caller's on a real run, a copy of it under `dry`.
    *
@@ -337,6 +337,25 @@ async function run(options: RunFlowOptions, signal: AbortSignal, emit: EmitEvent
     };
 
     try {
+      /**
+       * The run's number to whoever asked for it, before the narration that already carries it.
+       *
+       * Outside the `!dry` guard, because a dry walk is allocated a number like any other run and a
+       * caller watching one is owed the same identity. Once per run rather than once per step: this
+       * is above the step loop, so a backward edge re-entering a step cannot reach it a second time.
+       *
+       * **Isolated, because a reporting channel may not take a run down.** A throwing callback is
+       * the caller's defect and not the run's, so it costs one `warn` and the run proceeds exactly
+       * as one whose caller supplied nothing — which is the state that already ships. Errors stay
+       * explicit: nothing is defaulted and the failure is said out loud. Q-0131 AC-1.
+       */
+      if (reportRunNumber !== undefined) {
+        try {
+          reportRunNumber(context.runId);
+        } catch (error) {
+          emit({ type: 'warn', message: `run number could not be reported: ${failureMessage(error)}` });
+        }
+      }
       emit({ type: 'info', message: `run #${runId}  flow=${flow.name}  ticket=${ticket.meta.id}  ${flow.consumes} → ${flow.produces}` });
       context.persistence.appendLog(ticket, `run=${runId} flow=${flow.name} start stage=${ticket.meta.stage}`);
       if (!dry) {

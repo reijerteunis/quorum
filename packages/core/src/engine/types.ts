@@ -75,6 +75,28 @@ export type StepResult = { goto: string; counter: string; limit: number } | { ab
 export type AnswerGate = (question: GateQuestionEvent) => Promise<GateAnswerEnvelope>;
 
 /**
+ * Tells the caller the number this run was allocated, once, at run start.
+ *
+ * Out of band, in {@link AnswerGate}'s shape and for a reason rather than for symmetry. The number
+ * is `core`'s — `nextRunId` allocates it, `runs.log` carries it as `run=N` and `.quorum/runs/<id>-N/`
+ * is named after it — and a caller that wants to correlate a live run with either of those has, until
+ * this, had to wait for the terminal event, which arrives when the run is over.
+ *
+ * Why: deliberate addition, not preservation — Q-0131, whose erratum E-1 refuses the in-band
+ * alternative. A `start` MEMBER on the event union was that alternative: three landed sentences say
+ * in as many words that only the terminal event carries run identity — `docs/GLOSSARY.md`'s
+ * **Event** term, `packages/shared/src/events.ts`'s header, and `packages/server/src/host.ts`'s
+ * `observe` — and each of them is about *an event*, so a callback leaves all three true verbatim
+ * where a member would make all three false by one word and owe a decision entry before a line of
+ * code. What it costs is stated rather than waved past: in the worst case the number reaches a
+ * reader one read later than an in-band event would.
+ *
+ * It reports and decides nothing. A run whose caller supplies none is unchanged in every respect,
+ * and one whose callback throws is unchanged too — see `engine.ts`'s call site.
+ */
+export type ReportRunNumber = (runId: number) => void;
+
+/**
  * What a caller supplies to run one flow. The project and backlog are already loaded: the run
  * never reloads configuration from disk, so a caller-selected `project.config.adapterOverride`
  * survives even when nothing on disk carries it.
@@ -97,6 +119,14 @@ export interface RunFlowOptions {
   auto?: boolean;
   /** Required to answer any gate that is neither `dry` nor auto-eligible; its absence fails the run at that gate. */
   answerGate?: AnswerGate;
+  /**
+   * Told this run's number at run start, before any step event and whether or not the run is `dry`.
+   *
+   * The same kind of channel as {@link RunFlowOptions.answerGate}: out of band, supplied by the
+   * caller, and carrying a value no event gains. See {@link ReportRunNumber}, which records why the
+   * value travels this way rather than on the stream.
+   */
+  reportRunNumber?: ReportRunNumber;
   /** Caller-owned cancellation. The engine installs no process signal handler of its own. */
   signal?: AbortSignal;
   /**

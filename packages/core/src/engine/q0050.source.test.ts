@@ -251,6 +251,11 @@ describe('Q-0050 AC-4h/AC-9d/AC-12 — authorised source-shape checks', () => {
       'routing.ts': ['preserved defect/AC-12', 'preserved defect/Q-0129', 'preserved behavior'],
       'steps.ts': ['behaviour-from-spike', 'preserved defect/Q-0052', 'preserved defect/Q-0052'],
       'suite-output.ts': ['behaviour-from-spike', 'preserved behaviour/Q-0053'],
+      // Q-0131 adds this file to the register and adds no preserved defect: `ReportRunNumber` is a
+      // deliberate addition, and its line names erratum E-1 — which refuses the in-band alternative
+      // rather than ruling anything about the engine's existing behaviour. It is the first `Why:`
+      // line in a file that declares no function, which is why the row is new rather than longer.
+      'types.ts': ['deliberate addition'],
     };
     const found: Record<string, string[]> = {};
     for (const name of production) {

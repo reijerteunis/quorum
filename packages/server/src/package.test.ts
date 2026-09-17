@@ -461,12 +461,34 @@ describe('AC-3 — run identity has one authority, and it is not an event\'s pro
     }
   });
 
-  test('and the one run number this host holds is assigned from the terminal event and nowhere else', () => {
+  test('and every run number this host holds came from core, by identity rather than by count', () => {
+    // **Two assignments since Q-0131, and the register is what keeps that a narrowing.** It was one
+    // — `event.runId`, off the terminal event — and the clause read *"assigned from the terminal
+    // event and nowhere else"*, which said WHERE rather than WHOSE. The property that binds is
+    // whose value it is: `core` allocates the number once, and this host takes it from the engine
+    // twice without deriving, parsing or inferring either delivery.
+    //
+    // A THIRD assignment fails here by name, which is the shape the clause it replaces had: a
+    // number taken out of a `gateId`, off a `message`, or counted by this package would be a second
+    // authority, and the two clauses above are what forbid each of those routes.
+    const SUPPLIED_BY_CORE: Record<string, string> = {
+      'event.runId': "the terminal event's typed field, which is the engine's own value",
+      runId: 'the argument of the out-of-band callback `RunFlowOptions.reportRunNumber` declares, which the engine calls at run start with the number it allocated',
+    };
     const host = read(SRC, 'host.ts');
     const assignments = [...host.matchAll(/record\.runId\s*=\s*([^;]+);/g)].map((match) => match[1]?.trim());
-    expect(assignments, 'the assignment this clause is about has gone').toStrictEqual(['event.runId']);
+    expect(assignments.sort(), 'a run number is assigned from something this register does not name')
+      .toStrictEqual(Object.keys(SUPPLIED_BY_CORE).sort());
+    // …and the second one really is the callback's argument rather than a same-named local: the
+    // parameter is bound where `runFlow` is called, which is the site that owns the record.
+    expect(host, 'the run number is not supplied by the engine at the start site')
+      .toMatch(/reportRunNumber:\s*\(runId\)\s*=>\s*\{\s*record\.runId\s*=\s*runId;\s*\}/);
     // And the initial value is the admission rather than a plausible number.
     expect(host).toContain('runId: null');
+    // The needle discriminates, over a fixture assembled so this file is not its own subject.
+    const derived = `record${'.'}runId = Number(handle.split('-')[1]);`;
+    expect([...derived.matchAll(/record\.runId\s*=\s*([^;]+);/g)].map((match) => match[1]?.trim()),
+      'the needle misses an assignment from a derived value').toStrictEqual(["Number(handle.split('-')[1])"]);
   });
 });
 

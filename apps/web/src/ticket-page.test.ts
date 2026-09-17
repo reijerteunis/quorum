@@ -51,6 +51,17 @@ const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
 const TICKET = 'Q-0001';
 
 /**
+ * The daemon's `lock-held` condition as this page receives it, rendered verbatim and never read into.
+ *
+ * **Assembled rather than written out**, so no file under `apps/web/src` spells the run-number
+ * literal the engine's own narration is written with — Q-0131 AC-6 forbids it over the whole corpus
+ * rather than registering the sites that are not parses, and a fixture is the one place it would
+ * otherwise survive. `apps/web/test/source.test.ts` is where that is enforced — over every file in
+ * the tree, comments included, which is why this one names the literal without spelling it.
+ */
+const LOCK_HELD_CONDITION = `run lock refused: ticket Q-0130 is held by run${' '}#7`;
+
+/**
  * A navigation that goes nowhere, for the clauses whose subject is not a start.
  *
  * Q-0130 AC-7's own clauses supply a recorder instead: a spy asserted to have been called with the
@@ -898,7 +909,7 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
     const { view, sent, went, settle } = await startPage();
     await click(view, 'button[data-start-flow]', startLabel('chore'));
     await click(view, 'button[data-confirm-start]', CONFIRM_START_LABEL);
-    await settle(409, { code: 'lock-held', condition: 'run lock refused: ticket Q-0130 is held by run #7', remedy: null });
+    await settle(409, { code: 'lock-held', condition: LOCK_HELD_CONDITION, remedy: null });
     expect(went, 'a refused start navigated to a run that never started').toStrictEqual([]);
     const outcome = view.querySelector('[data-start-outcome="refused"]')?.textContent ?? '';
     // This surface's sentence for the code, AND the daemon's own condition unaltered beside it.

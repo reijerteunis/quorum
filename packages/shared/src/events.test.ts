@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 
 import { adapterEventSchema, eventSchema } from './events.js';
 import { flowSchema } from './flow.js';
@@ -102,6 +103,33 @@ describe('AC-8 — the union is derived from what the product emits', () => {
     }
     expect(eventSchema.safeParse({ type: 'tool', stepId: 'x', name: 'Read' }).success).toBe(false);
     expect(eventSchema.safeParse({ type: 'text', stepId: 'x', text: 'hello' }).success).toBe(false);
+  });
+
+  test('Q-0131 AC-1 — nine members, and a run-start event is not one of them', () => {
+    // **A ticket that carried a value the union does not, and left the union alone.** `core` now
+    // reports a run's number to its caller at run start, and a `start` MEMBER here was the
+    // alternative — it mirrors `terminal`, has one producer at one site, and is what the next
+    // implementer on this surface reaches for. It is refused because three landed sentences say
+    // only the terminal event carries run identity, this file's own header among them, and a member
+    // makes all three false by one word. Q-0131 erratum E-1; the callback is
+    // `RunFlowOptions.reportRunNumber`, whose JSDoc carries the same ruling.
+    expect(eventSchema.options, 'the event union gained or lost a member').toHaveLength(9);
+    expect(eventSchema.safeParse({ type: 'start', runId: 3 }).success,
+      'the union admits a run-start event').toBe(false);
+    // Both clauses discriminate, over a union that really has the member — built with zod, so the
+    // fixture is the same kind of thing the subject is rather than a cast standing in for one.
+    const widened = z.discriminatedUnion('type', [
+      z.object({ type: z.literal('start'), runId: z.number() }).strict(),
+      ...eventSchema.options,
+    ]);
+    expect(widened.options, 'the count is read from something other than the union').toHaveLength(10);
+    expect(widened.safeParse({ type: 'start', runId: 3 }).success,
+      'the needle is satisfied by a union that really does carry the member').toBe(true);
+    // …and the header that says so is still the sentence it is: the count above is what would move
+    // first, and this is the claim that would then be false.
+    expect(repoFile('packages/shared/src/events.ts'),
+      'the header no longer states that run identity is the terminal event\'s alone')
+      .toContain('run identity only to the terminal event');
   });
 });
 
