@@ -444,8 +444,9 @@ function FileList({ tab, selected, onOpen }: {
 /**
  * The ticket page, at whatever the daemon last answered.
  *
- * Three requests on mount and no more: the listing, then `ticket.md` and `runs.log`, which are the
- * two files this page renders without being asked. Every other file costs one request, when a reader
+ * Four requests on mount and no more: the listing, then `ticket.md` and `runs.log` — the two files
+ * this page renders without being asked — and since Q-0130 the flow directory, which is what says
+ * which flows may be started from here and is the premise a start offer is withdrawn on. Every other file costs one request, when a reader
  * asks for it. Nothing here polls, and nothing keeps a copy — a ticket folder is written by runs
  * while a browser is open, so a cached file would be text that was true earlier.
  */
