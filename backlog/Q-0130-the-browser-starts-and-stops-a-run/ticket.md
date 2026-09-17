@@ -1,14 +1,22 @@
 ---
 id: Q-0130
 title: The browser starts and stops a run
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0130/integration
 priority: p2
 created: 2026-09-16
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-17T07:28:05.782Z
+    cost: 18.22
 ---
 The app's two run-lifecycle mutations, answered once: start and stop widen the same write boundary, need the same discipline and raise the same routing question.
 **M3**, split from Q-0015 at its requirements gate on 2026-09-16. The body below is Appendix A(a)
