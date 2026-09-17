@@ -44,6 +44,12 @@
         // narrowing has an occasion rather than being a document weakened for nothing.
         "../../apps/web/src/daemon-client.ts",
         "../../docs/06-development-plan.md",
+        // Q-0129 AC-12: docs.test.ts parses the superseded-by note in the run-event contract and
+        // resolves its citation against the index and the entry folder below, so a cached pass must
+        // not stand over a note whose citation has drifted from the entry it names. **The first
+        // file under `contracts/` any suite in this workspace reads** — that directory has no
+        // package, so nothing had opened one before and no task declared one.
+        "../../contracts/Q-0050/run-events.contract.md",
         "../../docs/DECISIONS.md",
         "../../docs/decisions/*.md",
         "../../docs/GLOSSARY.md",
