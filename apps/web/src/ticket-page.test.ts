@@ -16,7 +16,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, test } from 'vitest';
 
-import type { WireTicketFileEntry } from '@quorum/shared';
+import type { WireFlow, WireTicketFileEntry } from '@quorum/shared';
 
 import { DAEMON_ENDPOINTS, ticketDetailPath, ticketFilePath } from './daemon-endpoints.js';
 import type { DaemonRequest, DaemonResponse } from './daemon-client.js';
@@ -27,8 +27,8 @@ import {
   WITHDRAW_LABEL, startConfirmation, startLabel,
 } from './run-lifecycle.js';
 import {
-  CHOOSE_FILE, LOG_HEADING, NO_FILES, NO_RUN_LOG, REFRESH_LABEL, RETRY_LABEL, RUN_LOG, tabsOf,
-  TICKET_FILE, TicketPage,
+  CHOOSE_FILE, LOG_HEADING, NO_FILES, NO_RUN_LOG, offerStanding, REFRESH_LABEL, RETRY_LABEL,
+  RUN_LOG, tabsOf, TICKET_FILE, TicketPage,
 } from './ticket-page.js';
 
 declare global {
@@ -628,9 +628,13 @@ describe('AC-8 — every request state renders, and each offers what can be done
 });
 
 describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a run', () => {
-  /** One flow row in the shape `wireFlowSchema` accepts. */
-  const flowRow = (name: string, over: Record<string, unknown> = {}): Record<string, unknown> =>
+  /** One flow row as a VALUE, which is what `wireFlowSchema` produces and a premise is built from. */
+  const flowValue = (name: string, over: Partial<WireFlow> = {}): WireFlow =>
     ({ name, runnable: true, consumes: 'requirements', produces: 'reviewed', problems: [], ...over });
+
+  /** The same row as the daemon ANSWERS it, off the one above so the two cannot describe two shapes. */
+  const flowRow = (name: string, over: Record<string, unknown> = {}): Record<string, unknown> =>
+    ({ ...flowValue(name), ...over });
 
   /** The two flows this repository's own `requirements` stage is consumed by. Both, never one. */
   const TWO = { flows: [flowRow('chore'), flowRow('solutioning'), flowRow('review', { consumes: 'green' })] };
@@ -1018,6 +1022,101 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
       'the ticket never came back, so this clause has lost its subject').toContain('chore');
     expect(failed.view.querySelector('[data-confirm="start"]'),
       'a read that could not answer withdrew a confirmation the daemon had said nothing about').not.toBeNull();
+  });
+
+  test('AC-9/E-7 — a listing that reports the flow gone withdraws the offer while the ticket read fails', async () => {
+    // **Review round 5, and the first of the two mixed sequences erratum E-7 names.** The rule
+    // round 4 left half-written was *an unavailable read is not a premise that stopped holding*,
+    // which is true and is not the whole of it: it is *could not tell* for ITS OWN input, and the
+    // predicate let it stand in for the other's answer. So a listing that conclusively dropped
+    // `chore` was ignored because the ticket read beside it had failed, and the question stayed
+    // answerable for a flow the daemon had just said is not there.
+    //
+    // **Two tests rather than one with two halves**, because under the defect the first failing
+    // clause would stop the second being reached — so each is red on its own rather than red
+    // because its neighbour is.
+    const gone = await startPage();
+    await click(gone.view, 'button[data-start-flow]', startLabel('chore'));
+    expect(gone.view.querySelector('[data-confirm="start"]'),
+      'nothing is confirming — this clause has lost its subject').not.toBeNull();
+
+    // The listing answers and no longer holds `chore`; the ticket read does not answer at all.
+    gone.setFlows({ flows: [flowRow('solutioning')] });
+    gone.setReads('fail', 'ticket');
+    await click(gone.view, 'button', REFRESH_LABEL);
+    expect(gone.view.querySelector('[data-request-state]')?.getAttribute('data-request-state'),
+      'the ticket read this clause stages did not fail').toBe('unreachable');
+
+    // **The withdrawal is asserted once the page is back, and it has to be**: while the detail is
+    // not loaded this page renders none of the start region, so *not on the screen* there would
+    // prove nothing either way — round 5's counter-clause makes the same move for the same reason.
+    // Bringing the ticket back beside a listing that offers `chore` again is also what separates
+    // *withdrawn* from *hidden*: a confirmation merely gated on eligibility comes back here.
+    gone.setFlows(TWO);
+    gone.setReads('answer');
+    await click(gone.view, 'button', RETRY_LABEL);
+    expect(starters(gone.view).map((button) => button.dataset.startFlow),
+      'the ticket never came back, so this clause has lost its subject').toContain('chore');
+    expect(gone.view.querySelector('[data-confirm="start"]'),
+      'a listing that reported the flow gone left its confirmation standing because the ticket read failed').toBeNull();
+  });
+
+  test('AC-9/E-7 — a stage that moved withdraws the offer while the listing read fails', async () => {
+    // The other ordering, and the one that says the premise's two halves are kept INDEPENDENTLY
+    // rather than re-derived from whatever answered last: the listing read is refused here, so the
+    // flow's own `consumes` — which is what a stage is judged against — comes from what the daemon
+    // last reported rather than from this refresh. Without that there is nothing for the new stage
+    // to be compared with, and a premise that dropped the listing would call this *could not tell*.
+    const moved = await startPage();
+    await click(moved.view, 'button[data-start-flow]', startLabel('chore'));
+    expect(moved.view.querySelector('[data-confirm="start"]'),
+      'nothing is confirming — this clause has lost its subject').not.toBeNull();
+
+    // The ticket answers a stage `chore` does not consume; the listing read is refused. A different
+    // failure shape from the clause above deliberately — one unreachable, one refused — because
+    // what decides a report is that the answer CARRIED one, not which way it failed to.
+    moved.setStage('solutioned');
+    moved.setFlows(TWO, 500);
+    await click(moved.view, 'button', REFRESH_LABEL);
+    expect(moved.view.textContent, 'the stage this clause stages did not move').toContain('stage solutioned');
+    expect(moved.view.querySelector('[data-start-unavailable="flows-unread"]'),
+      'the listing read this clause stages did not fail').not.toBeNull();
+    expect(moved.view.querySelector('[data-confirm="start"]'),
+      'a ticket that reported a stage the flow does not consume left its confirmation standing because the listing read failed').toBeNull();
+  });
+
+  test('AC-9/E-7 — the premise answers three ways, and what cannot tell never stands in for what can', () => {
+    // **E-7's rule at the level the rule is written**, which is where its two `unknown` answers have
+    // a subject: both inputs are kept as last reports, so while an offer stands on the screen both
+    // have been reported and no sequence of reads above reaches them. Asserting them here is what
+    // keeps the asymmetry from resting on that — the half-rule is exactly what round 5 found.
+    const CHORE = flowValue('chore');
+    const OTHER = flowValue('solutioning');
+    const BOTH = [CHORE, OTHER];
+    expect(offerStanding('chore', { stage: 'requirements', flows: BOTH }),
+      'a flow the daemon reports as consuming this stage is not offerable').toBe('holds');
+    // The three ways the reports end it, which are the three the clause above stages through the DOM.
+    expect(offerStanding('chore', { stage: 'solutioned', flows: BOTH }),
+      'a stage the flow does not consume did not end the offer').toBe('lapsed');
+    expect(offerStanding('chore', { stage: 'requirements', flows: [flowValue('chore', { runnable: false }), OTHER] }),
+      'a flow the linter now refuses did not end the offer').toBe('lapsed');
+    expect(offerStanding('chore', { stage: 'requirements', flows: [OTHER] }),
+      'a flow the listing no longer holds did not end the offer').toBe('lapsed');
+    // **The asymmetry.** A listing that ends the offer is conclusive at every stage, so an
+    // unreported stage may not mask it — which is the defect, stated as the predicate's own rule.
+    expect(offerStanding('chore', { stage: null, flows: [OTHER] }),
+      'an unreported stage masked a listing that no longer holds the flow').toBe('lapsed');
+    expect(offerStanding('chore', { stage: null, flows: [flowValue('chore', { runnable: false })] }),
+      'an unreported stage masked a listing that reports the flow refused').toBe('lapsed');
+    // …and *could not tell* on its own ends nothing, whichever input it is about: a stage with no
+    // listing has no `consumes` to be judged against, and a listing that still offers the flow says
+    // nothing about a stage that was never reported.
+    expect(offerStanding('chore', { stage: null, flows: BOTH }),
+      'an unreported stage was read as a stage the flow does not consume').toBe('unknown');
+    expect(offerStanding('chore', { stage: 'requirements', flows: null }),
+      'an unreported listing was read as a listing without the flow').toBe('unknown');
+    expect(offerStanding('chore', { stage: null, flows: null }),
+      'two unreported inputs answered something other than could-not-tell').toBe('unknown');
   });
 
   test('AC-9 — a confirmation does not survive a change of subject, and cannot be answered after one', async () => {

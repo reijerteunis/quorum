@@ -171,11 +171,17 @@ export interface RunAct<T, P> {
    * when the act was asked about would answer with what was true then, which is the question this
    * exists to stop being asked.
    *
-   * **A read in flight and a read that failed are not premises that stopped holding.** They are
-   * facts about this browser's request rather than answers about the run or the harness, and a
-   * screen that withdrew an act on them would be withholding it exactly when a reader asked for a
-   * fresher answer. Each screen says so in its own premise by answering `true` where it has no new
-   * report — `docs/GLOSSARY.md`'s *"connection state … is not run state"* one layer over.
+   * **A read in flight and a read that failed are not premises that stopped holding — for their own
+   * input alone.** They are facts about this browser's request rather than answers about the run or
+   * the harness, so a screen that withdrew an act on them would be withholding it exactly when a
+   * reader asked for a fresher answer: `docs/GLOSSARY.md`'s *"connection state … is not run state"*
+   * one layer over. **What that does not license is answering `true` because SOMETHING is
+   * unreported.** A premise built from more than one input answers for each separately, and the two
+   * answers that are not *it holds* are not the same answer: one input that conclusively ends the
+   * offer ends it whatever the others could not tell, while *could not tell* on its own ends
+   * nothing. The half-rule — any unavailable read preserves the offer — is what review round 5
+   * found on the ticket page, where a listing that had just reported the chosen flow gone was
+   * ignored because the ticket read beside it had failed.
    */
   holds(premise: P): boolean;
   /**

@@ -114,17 +114,85 @@ const offerable = (flow: WireFlow, stage: string): boolean => flow.consumes === 
 /**
  * What a pending start on this page was offered under: the stage and the flows, as last REPORTED.
  *
- * **`null` means the daemon has not reported one, and is not a report that there is none.** A
- * refresh replaces both the moment it starts and a read that never answered replaces neither with an
- * answer, so a premise drawn from the request state would withdraw a reader's pending act the
- * instant they asked for a fresher view of the ticket — the defect mission control was corrected for
- * in review round 3, one screen over. Where either is `null` the offer stands, and the daemon
- * remains the authority on the act itself: a start against a stage that has moved is refused
- * `not-runnable`, which `START_REFUSAL_TEXT` already renders as what it is.
+ * **Each is the daemon's last ANSWER about its own input, kept until a later answer replaces it** —
+ * `mission-control-screen.tsx`'s `RunReport` one screen over, and for its reason. A refresh replaces
+ * a request state the instant it starts and a read that never answered replaces it with a failure,
+ * and neither is the daemon reporting anything. Derived from the two request states instead, as this
+ * was until review round 5, the premise LOST whichever input was being re-read — so a listing that
+ * reported the chosen flow gone could not withdraw the offer while the ticket read was failing, and
+ * a stage that had moved could not while the listing read was. **Two things fix that and they are
+ * not the same one twice**: keeping each input as a last report is what leaves the other half
+ * something to decide against, and {@link offerStanding} is what stops an input the daemon has not
+ * reported standing in for one it has.
+ *
+ * **`null` means the daemon has never reported it, and is never a report that there is none.** The
+ * stage is stamped with the ticket it is about, so one ticket's answer cannot decide another's
+ * offer; the listing is not stamped, the flow directory being the harness's rather than any
+ * ticket's. And a refusal reports nothing either way — a `no-such-ticket` is the daemon answering
+ * the request rather than reporting a stage — with the daemon still the authority on the act itself,
+ * since a start against a stage that has moved is refused `not-runnable` and `START_REFUSAL_TEXT`
+ * renders that as what it is.
  */
 interface StartPremise {
   readonly stage: string | null;
   readonly flows: readonly WireFlow[] | null;
+}
+
+/**
+ * The stage the daemon last reported for one ticket, and the ticket that report is about.
+ *
+ * The stamp is what stops a report outliving its subject: this page is keyed by nothing, so one
+ * instance survives a navigation from one ticket to another, and a stage kept without its id would
+ * decide an offer on a ticket it was never about. `useRunMutation`'s own `answered.subject`
+ * arrangement, for its reason.
+ */
+interface StageReport {
+  readonly ticketId: string;
+  readonly stage: string;
+}
+
+/**
+ * What the last reports say about an offer: it still holds, it has conclusively lapsed, or they
+ * cannot tell.
+ *
+ * Three answers rather than two, because the two that are not *holds* are not the same thing —
+ * containment, push lag and a verified version each keep a state meaning *could not tell* that is
+ * never rendered as either of the other two, and this is that discipline a layer inside a browser.
+ */
+export type OfferStanding = 'holds' | 'lapsed' | 'unknown';
+
+/**
+ * Whether the offer to run `flow` on this ticket still stands, given what the daemon LAST REPORTED.
+ *
+ * **The composition is asymmetric, and the asymmetry is the rule rather than an ordering.** One
+ * conclusive lapse ends the offer whatever the other input says: a flow the listing no longer holds,
+ * and one it now reports the linter refused, are offerable at NO stage, so both are decided before
+ * the stage is consulted and an unreported stage cannot mask either. `unknown` alone never ends an
+ * offer — a reader asking for a fresher view of a ticket must not lose the act they were part-way
+ * through asking for, which is `docs/GLOSSARY.md`'s *"connection state … is not run state"* one
+ * layer over. What the half-rule produced is the defect review round 5 found: *either* input being
+ * unavailable preserved the offer, including where the other had already reported it gone.
+ *
+ * **Where this answers `unknown` the daemon has never reported that input at all**, each being kept
+ * as a last report rather than re-derived from a request: while an offer stands both have been
+ * reported by construction, the region that offers a flow rendering only from a loaded listing
+ * beneath a loaded ticket. So no sequence of reads on this screen reaches those two branches, and
+ * clauses in this module's suite are what exercise them rather than the DOM. They are what keeps the
+ * rule from resting on a property of another component's render conditions, which is the shape the
+ * defect above was written in.
+ */
+export function offerStanding(flow: string, { stage, flows }: StartPremise): OfferStanding {
+  if (flows === null) return 'unknown';
+  const entry = flows.find((each) => each.name === flow);
+  // The listing alone, before any stage is consulted: a flow that is gone and one the linter refused
+  // are ineligible at every stage, so there is nothing a stage could add and nothing its absence may
+  // take away. `runnable` is the half of {@link offerable} that needs no stage rather than a second
+  // predicate beside it — a refused flow is offerable at no stage at all.
+  if (entry === undefined || !entry.runnable) return 'lapsed';
+  // Only the stage is missing now, and it is the flow's own `consumes` that a stage is judged
+  // against, so neither input decides this half by itself.
+  if (stage === null) return 'unknown';
+  return offerable(entry, stage) ? 'holds' : 'lapsed';
 }
 
 /** One tab: the top-level segment that names it, and the files filed under it. */
@@ -395,6 +463,15 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
   const [file, setFile] = useState<RequestState<WireTicketFile> | null>(null);
   const [log, setLog] = useState<RequestState<WireTicketFile> | null>(null);
 
+  // What the daemon last SAID about each half of a start's premise, which is not what became of the
+  // last request for either. The start region is about the requests and reads the two states above;
+  // a pending confirmation is about the ticket and the harness, and is held to these — so a read
+  // that is merely out, or one that failed, withdraws nothing, while whatever the OTHER read
+  // answered still decides. Kept separately for that reason: one report may not be lost because its
+  // sibling's request was.
+  const [reportedStage, setReportedStage] = useState<StageReport | null>(null);
+  const [reportedFlows, setReportedFlows] = useState<readonly WireFlow[] | null>(null);
+
   // Which ticket everything above is an answer about, stamped by `load` and compared in the render
   // body. A prop is committed BEFORE the effect that reacts to it runs, so state cleared in an
   // effect is cleared one commit too late: navigating from one ticket to another painted the
@@ -463,7 +540,13 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
     // what stops it reporting one as *could not be read*.
     void (async () => {
       const listed = await fetchFlows(request, clock);
-      if (generation.current === mine) setFlows(listed);
+      if (generation.current !== mine) return;
+      setFlows(listed);
+      // **Only an answer that CARRIED a listing is a report of one.** A refusal is the daemon
+      // answering the request, and nothing answering at all is not the daemon saying anything — so
+      // neither replaces what it last said, and neither may take from the stage half the evidence it
+      // needs to decide. Mission control's `readMetadata` for its reason, one screen over.
+      if (listed.kind === 'loaded') setReportedFlows(listed.value.flows);
     })();
     void (async () => {
       const answered = await fetchTicket(request, ticketId, clock);
@@ -473,6 +556,7 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
       if (generation.current !== mine) return;
       setDetail(answered);
       if (answered.kind !== 'loaded') return;
+      setReportedStage({ ticketId, stage: answered.value.ticket.stage });
       const tabs = tabsOf(answered.value.files);
       const opening = tabs.find((each) => each.name === TICKET_FILE) ?? tabs[0];
       setTab(opening?.name ?? null);
@@ -493,11 +577,14 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
   const shownDetail = loadedFor === ticketId ? detail : ticketInFlight<WireTicketDetail>(ticketId);
 
   // What a pending start is held to, recomputed every render and never captured. Both halves are
-  // what the DAEMON last reported: a read still out or one that failed reaches this as `null`, which
-  // is *no new answer* rather than an answer that there is no such stage or no such flow.
+  // what the DAEMON last reported rather than what became of the last request for it, and they are
+  // read independently: a refresh that fails one read leaves that half standing at the last answer
+  // and leaves the other half's new answer free to decide. The stage's stamp is what keeps a report
+  // from outliving its subject, a navigation between tickets being the one way this page's props
+  // move under one instance.
   const premise: StartPremise = {
-    stage: shownDetail.kind === 'loaded' ? shownDetail.value.ticket.stage : null,
-    flows: flows.kind === 'loaded' ? flows.value.flows : null,
+    stage: reportedStage !== null && reportedStage.ticketId === ticketId ? reportedStage.stage : null,
+    flows: reportedFlows,
   };
 
   // The one act this page performs on a run, under the guard `run-lifecycle.ts` owns. Its subject is
@@ -514,10 +601,11 @@ export function TicketPage({ ticketId, fetcher, now, onNavigate }: TicketPagePro
       // can ask about `chore`, press Refresh, and be handed a ticket whose stage has moved or a
       // listing where the linter now refuses that file — after which the control is gone and, until
       // review round 4, the question beside it was not: it was still answerable, and rendering the
-      // flow as refused while keeping its live confirmation is still offering it. The same predicate
-      // the control is drawn from, over the same listing, asked again.
-      holds: ({ stage, flows: listed }) => stage === null || listed === null
-        || listed.some((each) => each.name === flow.name && offerable(each, stage)),
+      // flow as refused while keeping its live confirmation is still offering it. It lapses on the
+      // first report that says so conclusively, whatever became of the read beside it, which is
+      // {@link offerStanding}'s asymmetry and round 5's finding — over the same {@link offerable}
+      // the control is drawn from, so *offered* and *still offered* stay one predicate.
+      holds: (premise) => offerStanding(flow.name, premise) !== 'lapsed',
       // The three fields this app is willing to send, written here and nowhere else. `auto` is
       // absent because *"Human-gated by default"* is a quality pillar and a browser control that
       // flips it is a decision rather than a checkbox; `base` is absent because it moves a review's
