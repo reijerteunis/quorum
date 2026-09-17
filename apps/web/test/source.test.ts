@@ -289,8 +289,18 @@ describe('Q-0015 AC-6 — browser source never parses values out of human event 
   test('Q-0131 AC-6 — no file under src turns a string into a number, whatever it is called', () => {
     // **The half that needs no dataflow**, and the reason the clause above can state a residual
     // instead of growing a longer list of forms. See {@link COERCES_TO_NUMBER}.
+    // The message carries the exit condition, because this clause is **deliberately wider than
+    // AC-6's words** — that criterion authorises forbidding extraction from event prose and this
+    // forbids every numeric coercion, which is the trade that survives aliasing (E-6(b)). A
+    // constraint wider than its criterion has to say so where it fires, or the next reader meets a
+    // refusal with no way to tell a deliberate breadth from an oversight.
     expect(sourceFiles().filter(([, text]) => COERCES_TO_NUMBER.test(text)).map(([name]) => name),
-      'a file under src coerces a string to a number').toStrictEqual([]);
+      'a file under src coerces a string to a number. This clause is deliberately wider than AC-6, '
+      + 'which is about event prose: anchoring on the coercion rather than on the operand is what '
+      + 'survives a renamed message and an assembled literal. If this file needs a number for a '
+      + 'reason that has nothing to do with a run event, NARROW this clause deliberately rather '
+      + 'than overriding it — see COERCES_TO_NUMBER, and Q-0131 requirements/errata.md E-6(b).')
+      .toStrictEqual([]);
     // Round 2's evasion, which is what this clause is for: the rename defeats the needles above and
     // the assembled literal defeats the one above them, and neither of those matters here.
     const evasion = `const prose = event${'.'}message;\nconst n = Number(prose${'.'}split(['run', ' ', '#'].join(''))[1]);`;
