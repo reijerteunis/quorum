@@ -164,3 +164,49 @@ callback does. Nothing outside `apps/web/test/source.test.ts` and its fixtures n
 this, and no criterion of `merged.md` changes. **This is the last round**; whatever it returns, the
 gate that follows is answered rather than retried, and anything outstanding is repaired by hand
 after it on Q-0073's and Q-0080's precedent.
+
+## E-4 — AC-16's fifth clause is narrowed to what an honest source can answer — 2026-09-18
+
+**Supersedes** AC-16's fifth absent case, *"a vendor in the run but absent from the roll-up"*, which
+becomes **"a vendor OBSERVED in the run but absent from the roll-up"**. Every other clause of AC-16
+stands, and no other criterion moves. Ruled at the review loop's second exhaustion gate, on review
+round 4's major — which offered this ruling as its own alternative remedy and was right to.
+
+**The criterion as written cannot be satisfied by any source keyed the way the roll-up is keyed**,
+which is what makes this the prose moving rather than the code falling short (Q-0121 E-1's shape).
+Three measurements, taken at the gate:
+
+1. **History cannot answer it.** `allocate()` writes an occurrence with `usage: null`, and `vendor`
+   lives **inside** `usage` — so an occurrence that has started and not finished carries no vendor at
+   all. What it does carry is `adapter`, set at allocation.
+2. **`adapter` is a different key from `usage.vendor`.** The roll-up groups on *"the exact
+   `usage.vendor` string, never normalised or mapped"*, and `usage.vendor` is *"exactly as the
+   adapter declared it"* — the adapter's own report, not the configured adapter name. Joining a
+   roster taken from `adapter` to rows keyed by `usage.vendor` is a cross-key identification, and
+   **this repository's corpus is precisely the corpus that would validate it**: every occurrence here
+   has the two coinciding. That is §0.6's finding — *"a developer reading this corpus would conclude
+   … and hard-code it"* — arriving at a second site, and AC-13's *never normalised or mapped* forbids
+   it.
+3. **`spawn` events carry `vendor`**, the same key the roll-up uses. So the event tail is the only
+   source that identifies a vendor the way the rows do, and it is bounded and head-evicting.
+
+**The residual is stated rather than closed, and it is the honest half of this ruling.** A vendor
+whose `spawn` has been evicted from the retained tail **and** which has finished no billed step is
+not named, where other rows exist. It is not rendered as a zero, a dash, a spinner or an empty
+region — `04-architecture.md`'s placeholder rule is untouched — it is simply unmentioned, because
+nothing the browser can read on the roll-up's own key says it was there. **The screen does not
+overclaim about it**: `absentVendorText` says a vendor *"has been seen running on this run"*, which
+is an observation and not a census, and `NO_ROLLUP_ROWS_TEXT` covers the empty-roll-up case including
+*"a run whose events this browser was never sent"*. That wording is what makes the narrowed criterion
+true rather than merely smaller, and **it is not eligible for trimming**: a sentence claiming the
+roster is complete would make this ruling false.
+
+**Two remedies are refused, with their reasons, so a later reader does not re-derive them.**
+Sourcing the roster from `manifest.steps` reverses §0.12's deliberate exclusion of `steps` from
+AC-9's schema — a decision taken on a measurement (the array is carried twice by the route and read
+by nothing that reads this shape) — and delivers the cross-key join above. Widening the retained
+event tail buys a larger lower bound and not a census, since any bound evicts.
+
+**What would close it is a different ticket**: a vendor label on an occurrence at allocation, on the
+same key the roll-up groups by, which is a change to what `core` writes and owes its own requirement.
+It is not opened here, and this clause is the record that it is the thing that would close it.
