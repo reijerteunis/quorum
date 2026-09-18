@@ -108,6 +108,22 @@ export const GATE_ROUTE = '/runs/:handle/gate';
 /** The registered static path for the runs landing. */
 export const RUNS_PATH = '/runs';
 
+/**
+ * Where run history lives — the fourth path a component may reach for by name.
+ *
+ * Declared as a constant at Q-0018 on {@link BOARD_PATH}'s own precedent, when the screen behind it
+ * arrived: `app.tsx` has to know which resolved route draws a real screen, a path written there
+ * would be a second register, and `test/routes.test.ts` refuses any route-path literal these tables
+ * do not hold.
+ *
+ * **Not the daemon's `/history`, which is the same string and a different thing.** That one is
+ * `DAEMON_ENDPOINTS.history` in `daemon-endpoints.ts` — the prefix the development server forwards
+ * and the path a fetch goes to — and this is the shell path a browser is AT. The two are spelled
+ * alike today and are under no obligation to stay that way, which is `runGatePath`'s ruling read in
+ * the other direction.
+ */
+export const HISTORY_PATH = '/history';
+
 /** The registered pattern for mission control. */
 export const RUN_ROUTE = '/runs/:handle';
 
@@ -136,7 +152,8 @@ export const RAIL: readonly RailEntry[] = [
   { id: 'flows', label: 'Flows', path: '/flows', screenExists: false },
   // The second entry to flip, at Q-0015: the runs landing this rail entry points to is built.
   { id: 'runs', label: 'Runs', path: RUNS_PATH, screenExists: true },
-  { id: 'history', label: 'History', path: '/history', screenExists: false },
+  // The third entry to flip, at Q-0018: the run-history table this rail entry points to is built.
+  { id: 'history', label: 'History', path: HISTORY_PATH, screenExists: true },
   { id: 'settings', label: 'Settings', path: '/settings', screenExists: false },
 ];
 
@@ -228,12 +245,16 @@ export const ROUTES: readonly Route[] = [
     screenExists: false,
     waitingFor: 'Step chat is M4 work, for the steps that ask the human a question mid-run.',
   },
+  // Built by Q-0018, which was cut in two at its own requirements gate. The sentence is kept for
+  // the board's, the ticket page's and the gate screen's reason: `screenExists` is what says a
+  // screen is built, and a row whose sentence had been emptied would make a later `false` silent.
   {
-    path: '/history',
+    path: HISTORY_PATH,
     screen: 'Run history',
     ticket: 'Q-0018',
-    screenExists: false,
-    waitingFor: 'Run history lists the runs that finished, and drills into one of them.',
+    screenExists: true,
+    waitingFor:
+      "Run history lists every run on disk with what each cost per vendor, and opens one row inline to the occurrences it recorded. What an occurrence retained is Q-0137's.",
   },
   {
     path: '/settings',

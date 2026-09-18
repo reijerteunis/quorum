@@ -404,6 +404,26 @@ describe('AC-2 — what this package names from core is on core\'s barrel', () =
     expect(hostile.includes('readFileSync')).toBe(true);
   });
 
+  test('Q-0018 AC-1 — every read route assigns its response to a shape `@quorum/shared` declares', () => {
+    // **The arrangement rather than the sentence.** Four handlers in `read.ts` carried a
+    // `const body: Wire…` annotation and two answered a bare object literal nothing declared — which
+    // is not drift while the declared shape is a deliberate narrowing, and is the arrangement that
+    // becomes drift the moment either end moves. `/history` is one of the two and is annotated now.
+    const source = read(SRC, 'read.ts');
+    expect(source, "the /history handler does not assign its response to the listing shape")
+      .toMatch(/const body:\s*WireRunHistoryList\s*=/);
+    // **Shown red against the shape it replaced**, over a fixture of the handler as it stood: the
+    // needle finds nothing in a route that returns its literal straight to `c.json`, so the clause
+    // above is about an annotation that is there rather than about a string that is always present.
+    const asItWas = "app.get('/history', (c) => {\n  return c.json({ runs: [], warnings });\n});";
+    expect(/const body:\s*WireRunHistoryList\s*=/.test(asItWas),
+      'the needle matches the inline literal this criterion replaced').toBe(false);
+    // …and `GET /project` is the one that still answers an unannotated literal, named here rather
+    // than left to be discovered: a different route with a different subject, and not this ticket's.
+    expect(source, 'the project route gained a declared shape, so this register is stale')
+      .toMatch(/app\.get\('\/project',\s*\(c\)\s*=>\s*c\.json\(\{/);
+  });
+
   test('Q-0127 AC-7 — this package declares neither new wire shape of its own', () => {
     // A moved type with no schema is the half-measure Q-0120 had to repair, and a second
     // declaration beside a re-export is free to drift from the one a browser executes. Both shapes
@@ -428,29 +448,49 @@ describe('AC-3 — run identity has one authority, and it is not an event\'s pro
    * Every `.message` read this package's production source performs, and what it reads it from.
    *
    * The register is the claim: a read appearing in a file that is not here fails, and an entry
-   * naming a file with no read fails too. The mechanical half is beneath it — every receiver must
-   * be `error`, so a read of an event's `message` is reported by its receiver rather than by
-   * somebody noticing.
+   * naming a file with no read fails too. The mechanical half is beneath it — every receiver must be
+   * one this register names for that file, so a read of an event's `message` is reported by its
+   * receiver rather than by somebody noticing.
+   *
+   * **A file may name more than one receiver since Q-0018, and each of them owes its own sentence.**
+   * `read.ts` reads two — the run reader's `malformed` outcome and a schema's parse error — and the
+   * alternative to widening the shape was one receiver per file, which would have been satisfied by
+   * calling the second one `read` as well. What keeps this a register rather than a blanket
+   * exemption is unchanged: an unnamed receiver fails, and a named one with no read fails too.
    */
-  const MESSAGE_READS: Record<string, { receiver: string; why: string }> = {
-    'host.ts': { receiver: 'error', why: 'the error a failed stream closed with, in `consume`\'s catch — an Error, never an Event' },
-    'failures.ts': { receiver: 'error', why: 'the condition `core` named, in `conditionOf` — an Error, never an Event' },
+  const MESSAGE_READS: Record<string, Record<string, string>> = {
+    'host.ts': { error: 'the error a failed stream closed with, in `consume`\'s catch — an Error, never an Event' },
+    'failures.ts': { error: 'the condition `core` named, in `conditionOf` — an Error, never an Event' },
     // Q-0119. `readRun`'s `malformed` arm carries the READER's own diagnostic, which is a field of a
-    // narrowed result rather than prose from an event — so the receiver is the result. The register
-    // names it rather than the rule allowing any receiver: an unregistered one still fails, which is
-    // what keeps this from becoming a blanket exemption.
-    'read.ts': { receiver: 'read', why: "readRun's malformed outcome, whose message is the reader's own diagnostic — a narrowed result, never an Event" },
+    // narrowed result rather than prose from an event — so the receiver is the result. Q-0018 added
+    // the second: a `safeParse` failure against the shape `GET /history` declares, which is the
+    // parser's own objection and is what `RunWarning.message`'s contract already names as one of the
+    // three things it carries.
+    'read.ts': {
+      read: "readRun's malformed outcome, whose message is the reader's own diagnostic — a narrowed result, never an Event",
+      error: "a ZodError from `historyRow`'s safeParse against the row shape — the parser's own words, never an Event",
+    },
   };
 
   test('no `.message` is read off anything but an Error, and the register names where', () => {
     const withReads = production().filter(([, text]) => /\.message\b/.test(text)).map(([file]) => file);
     expect(withReads.sort()).toStrictEqual(Object.keys(MESSAGE_READS).sort());
+    const seen = new Set<string>();
     for (const [file, text] of production()) {
-      const allowed = MESSAGE_READS[file]?.receiver;
+      const allowed = MESSAGE_READS[file] ?? {};
       for (const match of text.matchAll(/(\w+)\s*\.\s*message\b/g)) {
-        expect(match[1], `${file} reads .message off \`${String(match[1])}\`, which its register entry does not name`).toBe(allowed);
+        const receiver = String(match[1]);
+        expect(Object.keys(allowed), `${file} reads .message off \`${receiver}\`, which its register entry does not name`)
+          .toContain(receiver);
+        seen.add(`${file}:${receiver}`);
       }
     }
+    // The other direction, which a per-file entry got for free and a per-receiver one does not: a
+    // registered receiver nothing reads is a row excusing nothing, and it would read as coverage.
+    const registered = Object.entries(MESSAGE_READS)
+      .flatMap(([file, receivers]) => Object.keys(receivers).map((receiver) => `${file}:${receiver}`));
+    expect([...seen].sort(), 'a registered receiver is read nowhere, so its row excuses nothing')
+      .toStrictEqual(registered.sort());
   });
 
   test('no gateId is taken apart, and nothing names core\'s run-number allocator', () => {
