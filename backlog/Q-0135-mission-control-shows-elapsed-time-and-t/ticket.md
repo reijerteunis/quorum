@@ -1,14 +1,22 @@
 ---
 id: Q-0135
 title: Mission control shows elapsed time and the per-vendor cost split
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0135/integration
 priority: p2
 created: 2026-09-17
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-18T01:24:03.267Z
+    cost: 23.071
 ---
 The other half of the mission control header: elapsed time from the run's started_at, and one cost row per vendor read from the run's live manifest. Split from Q-0131 at its requirements gate, 2026-09-17, with Appendix A transcribed in full.
 
