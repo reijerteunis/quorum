@@ -307,7 +307,7 @@ export const wireRunHistorySchema: z.ZodType<WireRunHistory> = z.looseObject({
     // get right, met here rather than rediscovered.
     rollup: z.array(z.looseObject({
       vendor: z.string(),
-      cost_usd: z.number().nullable(),
+      cost_usd: z.number().nonnegative().nullable(),
       unpriced_steps: z.number().int().nonnegative(),
       step_count: z.number().int().nonnegative(),
     })),

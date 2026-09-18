@@ -624,3 +624,33 @@ describe('Q-0127 AC-14(a) — a commit count on the wire cannot be negative', ()
     }
   });
 });
+
+describe("Q-0135 GO-4 hand pass — a vendor's billed cost on the wire cannot be negative", () => {
+  test('cost_usd refuses -1 while keeping null and a genuine 0, as its two siblings already did', () => {
+    // Found by the hand pass GO-4 requires over the files the review diff omitted: `wire.ts` and
+    // `wire.test.ts` were cut whole from rounds 3 and 4, and this schema is what the cut hid. Inside
+    // ONE object `unpriced_steps` and `step_count` carried `.int().nonnegative()` and `duration_ms`
+    // beside them `.nonnegative().nullable()`, while `cost_usd` carried no range at all — so a
+    // reader comparing the four learnt the wrong rule about which are constrained. Q-0017's hand
+    // pass found the same asymmetry in the two `ahead` counts and Q-0127 AC-14(a) above closed it.
+    const row = (cost_usd: unknown): unknown => ({
+      manifest: {
+        started_at: '2026-09-18T01:00:00.000Z', ended_at: null, duration_ms: null, status: 'running',
+        rollup: [{ vendor: 'zeta', cost_usd, unpriced_steps: 0, step_count: 1 }],
+      },
+      incomplete: true,
+      tokensByVendor: { zeta: 10 },
+    });
+    expect(wireRunHistorySchema.safeParse(row(-1)).success,
+      'a roll-up row claiming a negative billed cost was accepted').toBe(false);
+    // **Both survivors matter and neither is incidental.** `null` is *the vendor reported no price*
+    // and `0` is *it reported zero*, which `rollup()`'s own JSDoc keeps apart — so a narrowing that
+    // took either would be the `n/a`-never-`0` rule broken from the other side.
+    expect(wireRunHistorySchema.safeParse(row(null)).success, 'an unpriced vendor was refused').toBe(true);
+    expect(wireRunHistorySchema.safeParse(row(0)).success, 'a genuinely reported zero was refused').toBe(true);
+    expect(wireRunHistorySchema.safeParse(row(1.25)).success, 'an ordinary priced row was refused').toBe(true);
+    // …and the refusal names the field, so it is told from its siblings in a message.
+    expect((wireRunHistorySchema.safeParse(row(-1)).error?.issues ?? []).flatMap((issue) => issue.path))
+      .toContain('cost_usd');
+  });
+});
