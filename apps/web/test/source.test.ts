@@ -1512,6 +1512,7 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       'mission-control-measures.test.ts': 'the fixture that drives that reading, including the case where the total is itself null',
       'mission-control-status.test.ts': 'the fixture the rendered vendor rows are asserted over',
       'mission-control-screen.test.ts': "the history payload the screen's own read is answered with",
+      'history-screen.test.ts': "the detail payload an opened history row is answered with — Q-0018",
     };
     expect(sourceFiles().filter(([, text]) => text.includes('tokensByVendor')).map(([name]) => name).sort(),
       'the field left the forbidden list and is named somewhere unregistered')
@@ -1696,9 +1697,13 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // The three Q-0135 added join them under the same rule and in the reading direction: a browser
     // needs an executable parser for the history detail, and a second declaration beside the import
     // is free to drift from the one `@quorum/shared` owns.
+    // The four Q-0018 added join them in the reading direction as well: a browser executes the
+    // listing's schema to render the run-history table, and the occurrence shape is what its opened
+    // row is built from.
     for (const shape of [
       'WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest',
       'WireRunHistory', 'WireRunHistoryManifest', 'WireVendorRollup',
+      'WireRunHistoryList', 'WireRunHistoryRow', 'WireRunHistoryWarning', 'WireRunHistoryOccurrence',
     ]) {
       const offenders = filesBelow(PACKAGE)
         .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
@@ -1715,6 +1720,10 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // had to repair, a browser needing an executable builder rather than a declaration.
     expect(client, 'the client does not import the start shape').toContain('WireStartRequest');
     expect(client, 'the client builds a start body without the shared schema').toContain('wireStartRequestSchema');
+    // The listing shape likewise, and with its SCHEMA: the table is parsed before anything renders
+    // it, which is what stops a body that is not the shape it claims reaching a row.
+    expect(client, 'the client does not import the run-history listing shape').toContain('WireRunHistoryList');
+    expect(client, 'the client reads the listing without the shared schema').toContain('wireRunHistoryListSchema');
     const fixture = `export interface ${'Wire'}${'TicketFile'} { rel: string }`;
     expect(/\b(?:interface|type)\s+WireTicketFile\s*[={]/.test(fixture)).toBe(true);
   });
@@ -2243,5 +2252,77 @@ describe('Q-0131 AC-7 — the browser\'s retention bound, and what would license
     // …and the value pin discriminates: the same reading over a moved bound reports it.
     expect('export const RUN_EVENT_RETENTION = 1000;'.includes('RUN_EVENT_RETENTION = 500'),
       'the value needle is satisfied by a bound that moved').toBe(false);
+  });
+});
+
+describe('Q-0018 AC-8/AC-9 — what the run-history screen may not order, know or link to', () => {
+  /** The screen and its copy, which every clause here is about. Absent, each has lost its subject. */
+  const historyFiles = (): [string, string][] => {
+    const found = sourceFiles().filter(([name]) => name === 'history-screen.tsx' || name === 'history-text.ts');
+    if (found.length !== 2) throw new Error('the run-history screen is not in the corpus — this check has lost its subject');
+    return found;
+  };
+
+  test('AC-8 — the screen declares no comparator, so the order is the one the daemon sent', () => {
+    // `sortRuns` decides it — newest first, by the manifest's own start, with `run_id` ascending as
+    // a tiebreak — and an order derived here would be one this screen invented. The needle is the
+    // act rather than a name: a `.sort(` anywhere over a listing is the thing forbidden, whatever
+    // the array is called.
+    const screen = historyFiles().find(([name]) => name === 'history-screen.tsx')?.[1] ?? '';
+    const sorts = [...screen.matchAll(/\.sort\s*\(/g)];
+    // **One is permitted and it is named, because it is not about the listing at all**: the opened
+    // row orders OCCURRENCES by `seq`, which the route derives from a directory name and which is
+    // the only ordering key that array has. An exemption that forgave the file would forgive the
+    // one this clause exists to refuse, so what is asserted is the count and the operand together.
+    expect(sorts.length, 'the screen sorts in more places than the occurrence timeline').toBe(1);
+    expect(screen, 'the one permitted sort is not the occurrence timeline ordering by `seq`')
+      .toMatch(/\.sort\(\(a, b\) => a\.seq - b\.seq\)/);
+    // The listing is rendered from the response's own array, untouched.
+    expect(screen, 'the rows are no longer mapped straight off the response').toMatch(/runs\.map\(\(run\) =>/);
+    // The needle discriminates, over a fixture assembled so this file is not its own subject.
+    const hostile = `const ordered = [...runs].${'sort'}((a, b) => a.id.localeCompare(b.id));`;
+    expect([...hostile.matchAll(/\.sort\s*\(/g)].length, 'the sort needle matches nothing at all').toBe(1);
+  });
+
+  test('AC-9 — no vendor is known by name, in the screen or in its copy', () => {
+    // **Scoped to this screen's two files rather than to every file under `src`, and the narrowing
+    // is forced rather than chosen.** `backlog-board.tsx` names a vendor by design — its cost legend
+    // says *"steps on token-only vendors (codex) are not included"*, and `@quorum/shared` may name
+    // no vendor in code, which is why that sentence is declared on both surfaces — so a corpus-wide
+    // needle would have been RED on the day it shipped, over a sentence a landed decision requires.
+    // That is Q-0058's shape: a clause whose own rule selects the tree it is written against.
+    // Fourteen further sites are fixtures and comments in the mission-control suites, which name the
+    // two vendors to say what a fixture must not use.
+    const VENDORS = ['claude', 'codex', 'gemini'];
+    for (const [name, text] of historyFiles()) {
+      for (const vendor of VENDORS) {
+        expect(new RegExp(`\\b${vendor}\\b`, 'i').test(text), `${name} names the vendor ${vendor}`).toBe(false);
+      }
+    }
+    // The needle discriminates in both directions, over fixtures rather than over an empty corpus.
+    const hostile = `const colour = row.vendor === '${'cod'}${'ex'}' ? 'amber' : 'violet';`;
+    expect(VENDORS.filter((vendor) => new RegExp(`\\b${vendor}\\b`, 'i').test(hostile)),
+      'the vendor needle matches nothing at all').toStrictEqual(['codex']);
+    expect(VENDORS.filter((vendor) => new RegExp(`\\b${vendor}\\b`, 'i').test('the exact usage.vendor string, verbatim')),
+      'the needle reports a file that names no vendor').toStrictEqual([]);
+    // …and the corpus-wide site this narrowing exists for is still there, so the reason above is a
+    // measurement rather than a story: if the board stops naming a vendor, this clause should widen.
+    const board = sourceFiles().find(([name]) => name === 'backlog-board.tsx')?.[1] ?? '';
+    expect(board, 'the board is not in the corpus — this narrowing has lost its justification').not.toBe('');
+    expect(/\bcodex\b/i.test(board), 'the board no longer names a vendor, so this clause can widen to all of src')
+      .toBe(true);
+  });
+
+  test('AC-11 — the screen builds no run path and composes no handle', () => {
+    // A handle is minted from a counter inside one daemon process and a history id names a
+    // directory; matching one to the other would be a second request on every load and a join that
+    // is wrong outright for a dry walk. So nothing here reaches for the run route's own helper.
+    const screen = historyFiles().find(([name]) => name === 'history-screen.tsx')?.[1] ?? '';
+    for (const helper of ['runPath', 'runDetailPath', 'gatePath', 'runEventsPath', 'historyIdOf', 'runHistoryId']) {
+      expect(screen.includes(helper), `the history screen reaches for ${helper}`).toBe(false);
+    }
+    // …and it renders no anchor at all, which is the structural half of the same claim.
+    expect(/<a\b/.test(screen), 'the history screen rendered a link').toBe(false);
+    expect(/<a\b/.test('<a href={to} className="block">'), 'the anchor needle matches nothing').toBe(true);
   });
 });

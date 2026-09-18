@@ -12,7 +12,8 @@ import { createApp } from './http.js';
 import { mountRead } from './read.js';
 import { isOneName, readTicketFileBytes } from '@quorum/core';
 import {
-  RUN_HISTORY_ROOT, wireFlowListSchema, wireRunHistorySchema, wireTicketDetailSchema,
+  RUN_HISTORY_ROOT, wireFlowListSchema, wireRunHistoryListSchema, wireRunHistorySchema,
+  wireTicketDetailSchema,
   wireTicketFileSchema, wireTicketListSchema,
   type WireRefusal, type WireRunHistory, type WireTicket, type WireTicketDetail, type WireTicketFile,
   type WireTicketList,
@@ -296,6 +297,141 @@ describe('Q-0119 — run history is reported, never repaired', () => {
     expect(Object.keys(body.tokensByVendor).sort(), 'the vendors were merged').toStrictEqual(['claude', 'codex']);
     expect(body.tokensByVendor.claude).toBe(30);
     expect(body.tokensByVendor.codex).toBe(12);
+  });
+});
+
+describe('Q-0018 AC-1/AC-2/AC-3/AC-4 — the listing answers the shape a browser parses it with', () => {
+  /** One manifest occurrence, so an occurrence count is over real entries rather than a number. */
+  const occurrence = (seq: number, stepId: string): Record<string, unknown> => ({
+    step_id: stepId, occurrence_dir: `steps/${String(seq).padStart(3, '0')}-${stepId}`, kind: 'agent',
+    role: null, adapter: 'zeta', model: null, branch: null, worktree: null,
+    started_at: '2026-09-18T01:00:01.000Z', duration_ms: 1200, attempts: 1, status: 'completed',
+    verdict: null, error: null, usage: null,
+  });
+
+  /** The listing, parsed with the schema a browser parses it with rather than read as JSON. */
+  const listing = async (app: ReturnType<typeof served>['app']) => {
+    const response = await app.request('/history');
+    expect(response.status, 'the listing did not answer 200').toBe(200);
+    const parsed = wireRunHistoryListSchema.safeParse(await response.json());
+    expect(parsed.error?.issues, 'the listing does not satisfy the schema a browser parses it with')
+      .toBeUndefined();
+    if (!parsed.success) throw new Error('unreachable');
+    return parsed.data;
+  };
+
+  test('a row carries the manifest\'s own measures, an occurrence count, and a NARROWED roll-up', async () => {
+    const { project, app } = served();
+    const finished = manifestOf(`${TICKET_ID}-1`, 'completed', '2026-09-18T01:10:00.000Z');
+    finished.steps = [occurrence(1, 'implement'), occurrence(2, 'review'), occurrence(3, 'integrate')];
+    finished.rollup = [
+      { vendor: 'zeta', step_count: 2, unpriced_steps: 0, cost_usd: 1.5, input_tokens: 10, output_tokens: 20, cached_input_tokens: null, cache_write_input_tokens: null },
+      { vendor: 'omega', step_count: 1, unpriced_steps: 1, cost_usd: null, input_tokens: 5, output_tokens: 7, cached_input_tokens: null, cache_write_input_tokens: null },
+    ];
+    writeRun(project.repoDir, `${TICKET_ID}-1`, finished);
+
+    const [row] = (await listing(app)).runs;
+    expect(row?.occurrenceCount, 'the occurrence count is not the manifest\'s own array length').toBe(3);
+    expect(row?.duration_ms, "the engine's duration did not cross").toBe(10);
+    expect(row?.started_at, 'the recorded start did not cross').toBe('2026-09-11T00:00:00.000Z');
+    // **Exactly the four a surface renders**, and never the manifest's rows as they sit on disk:
+    // asserted by key identity, because a narrowing that let one token measure through would render
+    // as a listing that works and a payload 57% larger than the one this projection was measured at.
+    expect(row?.rollup.map((entry) => Object.keys(entry).sort()))
+      .toStrictEqual([
+        ['cost_usd', 'step_count', 'unpriced_steps', 'vendor'],
+        ['cost_usd', 'step_count', 'unpriced_steps', 'vendor'],
+      ]);
+    // …and an unpriced vendor stays `null` rather than becoming a zero, which is what separates
+    // *nobody reported a price* from *it cost nothing*.
+    expect(row?.rollup.map((entry) => [entry.vendor, entry.cost_usd]))
+      .toStrictEqual([['zeta', 1.5], ['omega', null]]);
+  });
+
+  test('a run in flight carries no end and no duration, and the server manufactures neither', async () => {
+    const { project, app } = served();
+    writeRun(project.repoDir, `${TICKET_ID}-2`, manifestOf(`${TICKET_ID}-2`, 'running', null));
+    const [row] = (await listing(app)).runs;
+    expect(row?.incomplete, 'a running manifest was not reported incomplete').toBe(true);
+    expect(row?.ended_at, 'a running manifest was given an end').toBeNull();
+    expect(row?.duration_ms, 'a running manifest was given a duration').toBeNull();
+  });
+
+  test('every run is listed, however many there are: no cap, no page, no truncation', async () => {
+    // **More runs than a table shows at once**, which is the discrimination: a clause over three
+    // rows cannot tell a listing that returns everything from one that returns the first page, and
+    // visual containment on a screen is not server truncation.
+    const { project, app } = served();
+    const ids = Array.from({ length: 60 }, (_, index) => `${TICKET_ID}-${String(index + 1)}`);
+    for (const id of ids) writeRun(project.repoDir, id, manifestOf(id, 'completed', '2026-09-18T01:10:00.000Z'));
+    const answered = (await listing(app)).runs.map((row) => row.id);
+    expect(answered.length, 'the listing capped or paged what it returned').toBe(ids.length);
+    expect([...answered].sort(), 'a run was dropped from the listing').toStrictEqual([...ids].sort());
+  });
+
+  test('a run the route cannot compose a row for is NAMED, and never takes the listing with it', async () => {
+    // `readRunsDir` proves five things about a manifest and this route answers with more than five,
+    // so it parses each candidate against the shape it declares. A failure is a warning carrying the
+    // parser's own words — `failSoftly`'s distinction one level in from where that reader applies
+    // it, the difference from the detail route being blast radius rather than principle.
+    const { project, app } = served();
+    writeRun(project.repoDir, `${TICKET_ID}-1`, manifestOf(`${TICKET_ID}-1`, 'completed', '2026-09-18T01:10:00.000Z'));
+    // Passes `manifestShapeError` — `run_id`, `ticket_id` and `status` are strings and both arrays
+    // are arrays — and cannot produce a row: `started_at` is not a string.
+    const damaged = manifestOf(`${TICKET_ID}-2`, 'completed', '2026-09-18T01:10:00.000Z');
+    damaged.started_at = 42;
+    writeRun(project.repoDir, `${TICKET_ID}-2`, damaged);
+    // And the case `readRunsDir` itself catches, so both channels are shown to reach one envelope.
+    const unreadable = path.join(project.repoDir, RUN_HISTORY_ROOT, `${TICKET_ID}-3`);
+    fs.mkdirSync(unreadable, { recursive: true });
+    write(path.join(unreadable, 'manifest.json'), '{ not json\n');
+
+    const body = await listing(app);
+    expect(body.runs.map((row) => row.id), 'a readable run was lost to a damaged sibling')
+      .toStrictEqual([`${TICKET_ID}-1`]);
+    expect(body.warnings.map((warning) => warning.runId).sort(), 'a run that could not be reported was dropped')
+      .toStrictEqual([`${TICKET_ID}-2`, `${TICKET_ID}-3`]);
+    for (const warning of body.warnings) {
+      expect(warning.message.length, `${warning.runId} was named with no reason`).toBeGreaterThan(0);
+    }
+  });
+
+  test("AC-13 — a runs root nothing has written to answers an EMPTY listing, not an error", async () => {
+    // **The only state an adopter's first clone can produce**, `.quorum/` being gitignored: a store
+    // that answered and holds nothing is not a failure, and a 404 or a 500 here would send a reader
+    // looking for a daemon that is running and answering. The fixture writes no run at all, so the
+    // root does not exist rather than existing and being empty.
+    const { project, app } = served();
+    expect(fs.existsSync(path.join(project.repoDir, RUN_HISTORY_ROOT)),
+      'the fixture created a runs root, so this clause is not about one that was never written to')
+      .toBe(false);
+    const body = await listing(app);
+    expect(body.runs, 'a store with no runs invented one').toStrictEqual([]);
+    expect(body.warnings, 'a store never written to was reported as damaged').toStrictEqual([]);
+  });
+
+  test('AC-4 — producing either response repairs nothing, including a manifest still being written', async () => {
+    // Asserted by BYTES, because "did not repair" is exactly the claim a status check cannot make.
+    // The `running` manifest is the live case rather than a hypothetical one: `docs/04-architecture.md`
+    // is explicit that a server must not tidy one it meets on read.
+    const { project, app } = served();
+    const live = manifestOf(`${TICKET_ID}-1`, 'running', null);
+    live.steps = [occurrence(1, 'implement')];
+    writeRun(project.repoDir, `${TICKET_ID}-1`, live);
+    writeRun(project.repoDir, `${TICKET_ID}-2`, manifestOf(`${TICKET_ID}-2`, 'completed', '2026-09-18T01:10:00.000Z'));
+    const root = path.join(project.repoDir, RUN_HISTORY_ROOT);
+    const bytes = (): Record<string, string> => Object.fromEntries(
+      fs.readdirSync(root).map((id) => [id, fs.readFileSync(path.join(root, id, 'manifest.json'), 'utf8')]),
+    );
+
+    const before = bytes();
+    await app.request('/history');
+    await app.request(`/history/${TICKET_ID}-1`);
+    await app.request(`/history/${TICKET_ID}-2`);
+    expect(bytes(), 'the server rewrote a manifest it was only asked to read').toStrictEqual(before);
+    // The directory listing too, so "repaired" cannot be satisfied by a file created beside one.
+    expect(fs.readdirSync(root).sort(), 'the server created or removed a run directory')
+      .toStrictEqual(Object.keys(before).sort());
   });
 });
 

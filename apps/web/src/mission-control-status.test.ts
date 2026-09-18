@@ -42,6 +42,8 @@ const loadedHistory = (
     manifest: { started_at: '2026-09-18T00:00:00.000Z', ended_at: null, duration_ms: null, status: 'running', rollup: [], ...manifest },
     incomplete: true,
     tokensByVendor: {},
+    // Declared on the shape since Q-0018; empty here because no clause in this file renders one.
+    steps: [],
     ...over,
   },
   fetchedAt: 'now',
