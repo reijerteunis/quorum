@@ -4,3 +4,142 @@
 2026-09-18T00:33:59.831Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=5.7169 ms=496958
 2026-09-18T01:24:03.261Z run=1 gate=human answer=advance
 2026-09-18T01:24:03.270Z run=1 completed stage=draft→requirements cost=23.071 tokens=12855241
+2026-09-18T01:29:09.864Z run=2 flow=chore start stage=requirements
+2026-09-18T02:24:55.433Z run=2 step=implement vendor=claude model=- verdict=proceed cost=62.95057750000003 ms=3345152
+2026-09-18T02:25:52.365Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=56890
+2026-09-18T02:40:08.807Z run=2 step=implement vendor=claude model=- verdict=proceed cost=19.451115999999995 ms=856332
+2026-09-18T02:40:08.847Z run=2 diff truncated range=harness/Q-0135/integration...harness/Q-0135/implement limit=200000 kept=200000 of 203923 — every file has some patch and the last one is cut short
+2026-09-18T02:41:04.176Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=55324
+2026-09-18T03:12:21.122Z run=2 step=implement vendor=claude model=- verdict=proceed cost=24.64314849999999 ms=1876829
+2026-09-18T03:12:21.166Z run=2 diff truncated range=harness/Q-0135/integration...harness/Q-0135/implement limit=200000 kept=200000 of 219935 — no patch at all for 2 file(s): packages/shared/src/wire.test.ts, packages/shared/src/wire.ts
+2026-09-18T03:13:50.690Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=89522
+2026-09-18T03:13:50.703Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-18T05:53:14.257Z run=2 gate=human-locked answer=retry
+2026-09-18T05:53:14.258Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-18T06:04:46.427Z run=2 step=implement vendor=claude model=- verdict=proceed cost=13.482089 ms=692086
+2026-09-18T06:04:46.477Z run=2 diff truncated range=harness/Q-0135/integration...harness/Q-0135/implement limit=200000 kept=200000 of 227285 — no patch at all for 5 file(s): packages/server/src/read.test.ts, packages/server/src/wire.ts, packages/shared/src/docs.test.ts, packages/shared/src/wire.test.ts, packages/shared/src/wire.ts
+2026-09-18T06:05:49.525Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=63046
+2026-09-18T06:05:49.532Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-18T12:34:27.616Z run=2 gate=human-locked answer=advance
+2026-09-18T12:36:44.176Z run=2 step=integrate merged=1/1 tests=ok
+
+## GO-4 — the review diff ratio across all four rounds, recorded including where nothing was cut
+
+Measured per round against `repo.max_diff_bytes` = 200,000, from the branch rather than from a report:
+
+| Round | Diff bytes | Kept | Share seen | Files with NO patch at all |
+| --- | --- | --- | --- | --- |
+| 1 | 187,685 | 187,685 | **100%** | none — no truncation notice fired |
+| 2 | 203,923 | 200,000 | 98.1% | none; the tail of `packages/shared/src/wire.ts` cut mid-file |
+| 3 | 219,935 | 200,000 | 90.9% | **2** — `packages/shared/src/wire.ts`, `wire.test.ts` |
+| 4 | 227,285 | 200,000 | 87.9% | **5** — the two above plus `packages/server/src/read.test.ts`, `packages/server/src/wire.ts`, `packages/shared/src/docs.test.ts` |
+
+**The share seen falls monotonically as the loop converges**, which is Q-0017's finding reproduced: the
+longer a revise loop runs the less each successive reviewer sees, and what it loses is the
+alphabetical tail — here `packages/shared/src/wire.ts`, which is AC-8's and AC-9's own subject. The
+prediction GO-4 required was made before round 2 and was right about the direction and wrong about
+round 1, which is why the obligation says to record the ratio **including when nothing was cut**.
+
+**Rounds 3 and 4 both disclosed it through Q-0117's channel and read the omitted files off the
+branch**, in an `observation:` entry naming each file. That is Q-0124's warn and Q-0117's observation
+composing for the fourth consecutive ticket (Q-0016, Q-0129, Q-0130, this) — the warn changing what
+the reviewer did rather than only recording a gap.
+
+**The claim was verified rather than trusted** (Q-0016's precedent). A hand pass over every omitted
+file found **one** thing, and it is the only finding of this pass: `wireRunHistorySchema`'s rollup
+element declares `cost_usd: z.number().nullable()` with no range constraint while `unpriced_steps`
+and `step_count` beside it carry `.int().nonnegative()`. Q-0017's class and Q-0127 AC-14(a)'s
+precedent, fixed by hand after the gate.
+
+Checked and explicitly **not** raised: `step_count` is `.nonnegative()` where its own JSDoc says
+"never zero", because AC-9's *Test:* clause specifies non-negative and the schema is a deliberately
+loose projection of a document `core` writes and may widen.
+
+## GO-5 — discharged by running the product, and this is what it rendered
+
+Performed 2026-09-18 in Chrome against a daemon started by `quorum open` from the merged integration
+worktree, on `http://127.0.0.1:7717`. The served bundle was verified to carry this change's own copy
+before anything was clicked, because a cache hit can serve a page built from code nobody is looking
+at. Transcribed from the page, not from a report.
+
+**The dry walk, started from the ticket page's own checkbox** — §0.2's hazard demonstrated closed
+rather than argued. The page offered one flow (`requirements`, the only one consuming `draft`) and
+confirmed before acting: *"Walk requirements on Q-0137 as a dry run? Nothing is invoked, nothing is
+written and no lock is taken."* Mission control then rendered:
+
+    Mission control   Run 1   requirements · Q-0137 · ended
+    This run is a dry walk: it invoked no adapter and wrote no run history, so nothing was
+    recorded for this page to measure.
+    Elapsed time is unavailable because the run's history, which records when it started, has
+    not been read.
+    Per-vendor cost and token totals are unavailable because the run's history, which records
+    them, has not been read.
+
+**The network is the proof, not the sentence.** With tracking armed, pressing *Check again* — the one
+control that re-reads on a normal run — issued exactly **one** request, `GET /runs/run-1`, and **no
+`/history` request at all**. The browser held `ticketId: Q-0137` and `runId: 1`, which is everything
+needed to compose `Q-0137-1`, and declined because the wire now carries `dry: true`.
+
+**The hazard itself, shown in the product**: the dry walk rendered **Run 1** and wrote no run history;
+the real run that followed also rendered **Run 1** and created `.quorum/runs/Q-0137-1`. Without AC-8
+the first screen would have read the second run's manifest and shown its figures as the walk's.
+Afterwards the ticket still read `stage draft` with *"no run has written one"* for its run log, which
+is *"A dry run changes nothing the caller passed it"* (2026-09-11) holding at the same time.
+
+**The real run, while running** — started through the daemon from the same control, because a
+`quorum run` is a different process the host can never see (Q-0121):
+
+    Mission control   Run 1   requirements · Q-0137 · running
+    Elapsed  00:13   measured by this browser's clock against the start the run recorded
+    Cost per vendor
+    No vendor has finished a billed step on this run, so its roll-up names none. A vendor that
+    has run without finishing one is absent from it rather than free.
+    This run is still in flight: these figures are as of the last read and omit whatever the
+    step now running has not been billed for.
+
+Elapsed advanced **00:02 → 00:13 → 00:29** with no page action, while *"Loaded from the daemon, as of
+2026-09-18T12:43:32.911Z"* stayed put — **elapsed advances and cost does not**, which is §A.2's entire
+design visible in one frame. Pressing *Check again* moved that timestamp to `12:44:00.354Z` and only
+then did the rows change: one read on mount, one per explicit refresh, and none on a timer.
+
+**Two vendors, one priced and one not**, after the refresh — and the one-row-then-two transition
+review round 1's major was about:
+
+    Cost per vendor
+    zeta    $0.020
+    omega   reported no price: 2286 tokens, which is unpriced rather than free.
+    2 of its counted steps reported no price, so this figure is short by whatever they cost.
+
+**No figure is summed across vendors anywhere, and no `$0.00` appears.** The trace columns
+corroborate the header arithmetic independently: `zeta` $0.010 × 2 = $0.020, and `omega`'s two
+unpriced calls report 1053 + 1233 = 2286 tokens.
+
+**The same screen after the run ended**, the gate answered `abort` through the gate screen:
+
+    Mission control   Run 1   requirements · Q-0137 · ended
+    The run has finished.
+    Elapsed  00:56   measured by the engine when the run finished
+
+**The attribution changes with the source** — *"by this browser's clock against the start the run
+recorded"* while live, *"by the engine when the run finished"* once ended, which is `duration_ms`
+rather than a browser subtraction (§0.3). **The figure is frozen**: still `00:56` eight seconds later,
+where it had moved every second while running. The in-flight sentence is gone and both vendor rows
+remain, which is AC-17's conditional rendering.
+
+**What was real and what was mocked, stated rather than blurred.** Real: the daemon, the served
+bundle, the engine, the flow, the backward edge exhausting at limit 1, the gate question and its
+`abort`, `GET /runs/:handle`, `GET /history/:id`, the WebSocket, and the browser. Mocked: the
+**vendor CLI** only, through the shipped mock adapter, with per-role profiles naming vendors this
+product has never seen (`zeta`, `omega`) so that no rendering could pass by branching on `claude` or
+`codex` — which is §0.6's corpus trap avoided in the demonstration as well as in the fixtures.
+
+**Cleaned up, and the one part that was not is stated rather than claimed**: the daemon is stopped
+and `harness/harness.yaml` is restored to zero diff. The scratch ticket
+`backlog/Q-0137-go-5-header-demonstration` and its run directory `.quorum/runs/Q-0137-1`, both inside
+the integration worktree, were **not** removed — the deletion was refused by this environment and was
+handed to the maintainer rather than worked around. **Neither can reach `main`**: the first is
+untracked, so no merge carries it, and the second is under a gitignored path. Both are named here so
+the leftover is visible rather than discovered.
+2026-09-18T13:38:01.851Z run=2 gate=human answer=advance
+2026-09-18T13:38:02.843Z run=2 removed-worktrees=1 kept=1
+2026-09-18T13:38:02.843Z run=2 completed stage=requirements→reviewed cost=120.527 tokens=186098506
