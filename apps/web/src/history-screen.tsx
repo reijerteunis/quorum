@@ -33,7 +33,7 @@ import {
   HISTORY_HEADING, HISTORY_REFRESH_LABEL, HISTORY_RETRY_LABEL, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT,
   LIVE_RUN_TEXT, NO_DURATION_TEXT, NO_OCCURRENCES_TEXT, NO_READABLE_RUNS_TEXT, OCCURRENCES_LABEL,
   OCCURRENCE_NO_DURATION_TEXT, OCCURRENCE_RUNNING_TEXT, UNREADABLE_HEADING, notAnAdapterCallText,
-  runStatusText, unreadableRunText,
+  occurrenceStatusText, runStatusText, unreadableRunText,
 } from './history-text.js';
 import { formatCost, formatElapsed, vendorCostRows } from './mission-control-measures.js';
 import { NO_ROLLUP_ROWS_TEXT, unpricedStepsText, unpricedVendorText } from './mission-control-text.js';
@@ -114,7 +114,7 @@ function Occurrence({ step }: { step: WireRunHistoryOccurrence }): ReactNode {
       <span className="font-mono text-xs text-muted">{step.seq}</span>
       <span className="font-mono text-sm text-text">{step.step_id}</span>
       <span className="font-mono text-xs text-muted">{step.kind}</span>
-      <span className="text-xs text-muted">{runStatusText(step.status)}</span>
+      <span className="text-xs text-muted">{occurrenceStatusText(step.status)}</span>
       {step.adapter === null
         ? <span className="text-xs text-muted">{notAnAdapterCallText(step.kind)}</span>
         : <span className="font-mono text-xs text-text">{step.adapter}</span>}

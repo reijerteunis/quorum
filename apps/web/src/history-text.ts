@@ -186,7 +186,7 @@ export const NO_OCCURRENCES_TEXT =
  * would have retained. What it retained is a different ticket's subject and is not claimed here.
  */
 export const notAnAdapterCallText = (kind: string): string =>
-  `A ${kind} step, which no vendor ran.`;
+  `${/^[aeiou]/i.test(kind) ? 'An' : 'A'} ${kind} step, which no vendor ran.`;
 
 /** An occurrence still going, which is not one that took no time. */
 export const OCCURRENCE_RUNNING_TEXT = 'Still running; no duration has been recorded for it yet.';
@@ -209,3 +209,70 @@ export const NO_DURATION_TEXT = 'No duration was recorded.';
  */
 export const LISTING_UNPRICED_TEXT =
   'reported no price for this run, which is unpriced rather than free; its token total is read with the run itself.';
+
+/**
+ * The four statuses an occurrence can be GIVEN, measured from what assigns one rather than from
+ * what this machine happens to hold.
+ *
+ * `terminalOccurrence` is called with the literals `completed` and `failed` at nine sites across
+ * `packages/core/src/engine/composite.ts` and `steps.ts`; `finaliseActiveOccurrences` is typed
+ * `'failed' | 'interrupted'`; and allocation writes `running`. The other four members of the union
+ * — `aborted`, `regressed`, `exhausted`, `undecided` — are dispositions a RUN ends as, and no code
+ * path gives one to a step.
+ *
+ * **Derived from the call sites and not from `.quorum/runs`**, which is why `interrupted` is here:
+ * it has never been written to an occurrence in this repository's history, and it is reachable.
+ */
+export const OCCURRENCE_STATUSES = ['running', 'completed', 'failed', 'interrupted'] as const;
+
+/** One of {@link OCCURRENCE_STATUSES}. */
+export type OccurrenceStatusName = (typeof OCCURRENCE_STATUSES)[number];
+
+/**
+ * What each says about a STEP — which is a different subject from {@link STATUS_TEXT}'s run, and
+ * the distinction this table exists for.
+ *
+ * Until Q-0018's gate the expansion rendered {@link runStatusText} against an occurrence's status,
+ * so a step that finished said *"The run reached the end of its flow and moved the ticket on"* — a
+ * claim about the run, repeated once per occurrence and carrying nothing. `failed` was worse than
+ * redundant: seven occurrences in this repository's own history carry a status their run does not,
+ * and `Q-0015-4` is a **completed** development run holding four **failed** integrate occurrences,
+ * so that row rendered the run as having finished and, six lines below, as having stopped on an
+ * error. Found by rendering the screen; missed by both cross-vendor review rounds, because the
+ * guard AC-10 asks for is satisfied — `runStatusText` IS total over the run union. It was total
+ * over the wrong subject.
+ *
+ * None of these sentences names the run, which is what the test asserts rather than the wording.
+ */
+const OCCURRENCE_TEXT: Readonly<Record<OccurrenceStatusName, string>> = {
+  running: 'Still under way when the manifest was last written.',
+  completed: 'This step finished and the run carried on past it.',
+  failed: 'This step stopped on an error, which is not the same as the run stopping.',
+  interrupted: 'This step was still open when the run was interrupted, and was closed with it.',
+};
+
+/**
+ * A status a step was never given: named as the run disposition it is, rather than described as
+ * something the step did.
+ *
+ * Inventing a sentence would be asserting a meaning nothing writes, and falling through to the run
+ * vocabulary is the defect above. So it says what it found and where that word belongs.
+ */
+const runDispositionText = (status: string): string =>
+  `The manifest records ${JSON.stringify(status)} for this step, which is a status a run ends as rather than one a step is given.`;
+
+/**
+ * The sentence for one occurrence's recorded status, whatever it is.
+ *
+ * Total over {@link OCCURRENCE_STATUSES}, over the four run-only dispositions, and over every other
+ * string — an occurrence's `status` is a plain string on the wire for {@link runStatusText}'s
+ * reason, and this is the one place it becomes a sentence about a step.
+ */
+export function occurrenceStatusText(status: string): string {
+  if ((OCCURRENCE_STATUSES as readonly string[]).includes(status)) {
+    return OCCURRENCE_TEXT[status as OccurrenceStatusName];
+  }
+  return (RUN_STATUSES as readonly string[]).includes(status)
+    ? runDispositionText(status)
+    : unknownStatusText(status);
+}
