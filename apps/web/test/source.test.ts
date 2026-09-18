@@ -900,6 +900,175 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
   const REACHES_THE_DAEMON = /\b(?:fetch[A-Za-z]*|requestJson|answerGate|startRun|stopRun)[ \t]*\(|\bbrowserFetch\b/;
 
   /**
+   * The same text, with every comment, string, template and regex literal blanked to spaces.
+   *
+   * **Length- and index-preserving**, so an offset into the blanked text is the same offset into the
+   * text as written: `split('')` splits by UTF-16 code unit, which is the unit a `RegExp` match index
+   * is in, and newlines are kept so the two texts have identical line structure. Nothing here reads
+   * the blanked text for CONTENT — every slice this file reports comes from the text as written — so
+   * the only thing this changes is which bracket characters a depth walk counts.
+   *
+   * **It exists because a bracket inside a literal is not a bracket.** Review round 2's finding: the
+   * walk counted every `(`, `[`, `{`, `)`, `]` and `}` character in the module, so a `)` in a string,
+   * a `}` in a template, a `)` in a regex body or a `)` in a comment returned the count to zero
+   * before the end of a timer's argument list — and the callback was then read only as far as that,
+   * which is short of a request written after the literal. Four literal kinds, four false negatives,
+   * all four now fixtured in the clause below.
+   *
+   * Comments, quoted strings and template literals need no context to lex and are exact here,
+   * including a template's `${…}` interpolations, which are lexed as the code they are — so a nested
+   * template, a string holding a `}` or a brace inside an interpolation are all handled by this one
+   * loop rather than by a special case. **The one genuine ambiguity in JavaScript is `/`**, and it is
+   * decided the way the language decides it: a `/` following a value — an identifier that is not a
+   * keyword, a number, `)`, `]`, or a literal that has just closed — is a division, and one following
+   * anything else opens a regex. A candidate regex that reaches a line break opens none, a regex
+   * literal holding no line terminator, so an unterminated one is read as division rather than
+   * guessed at. A quote that does not close on its own line is likewise read as no literal at all,
+   * because blanking a partial line is the one thing here that could remove an OPENING bracket from
+   * the count, and a shorter region is the direction that hides a poll.
+   *
+   * **The `/` of a JSX CLOSING TAG opens no regex either, and that clause is measured rather than
+   * anticipated**: this corpus is half `.tsx`, and `</span></p>` is a `/` preceded by `<` with another
+   * `/` later on the same line — **four live sites, in `diff-view.tsx` and `gate-screen.tsx`** — so
+   * without it a span of JSX between two closing tags is blanked and the brackets inside it stop being
+   * counted. Neither of those two files schedules anything, so nothing was reported wrongly today;
+   * that is luck rather than design, and a scanner introducing the very class it was added to remove
+   * is the shape this repository records most. A self-closing tag needs no clause: a tag name precedes
+   * its `/`, so the value test already reads it as a division. The only regex this refuses is one
+   * written directly after a `<`, which is not an expression position.
+   *
+   * **What the blanked text buys, stated as the property the clause rests on: over syntactically
+   * valid code the walk below closes a timer's argument list exactly where the language does.** The
+   * code between a callback's `{` and the request written after a literal is balanced, so once no
+   * literal contributes a bracket there is nothing left that can return the count to zero early —
+   * which is the whole of review round 2's finding. **Two residuals, and neither is weaker than the
+   * walk this replaced**: a regex directly after `)` or `}` — `if (x) /re/.test(y)`, which no file
+   * here writes — is read as a division and its brackets are counted, which is what the walk did with
+   * every regex everywhere before this; and two apostrophes in one line of JSX text would be read as
+   * a string, which over-blanks a balanced region and so moves nothing. Text that is not valid at all
+   * closes nowhere and is collected WHOLE by {@link timerCallbacks}, which fails this clause rather
+   * than passing over it.
+   */
+  const codeOnly = (text: string): string => {
+    const out = text.split('');
+    const blank = (from: number, to: number): void => {
+      for (let at = Math.max(0, from); at < Math.min(to, out.length); at += 1) {
+        if (out[at] !== '\n') out[at] = ' ';
+      }
+    };
+    /** One past a quoted string's closing quote, or −1 where this quote opens no string literal. */
+    const endOfQuoted = (start: number): number => {
+      for (let at = start + 1; at < text.length; at += 1) {
+        if (text[at] === '\\') { at += 1; continue; }
+        if (text[at] === text[start]) return at + 1;
+        if (text[at] === '\n') return -1;
+      }
+      return -1;
+    };
+    /** One past a regex literal's closing slash, or −1 where this `/` opens no regex at all. */
+    const endOfRegex = (start: number): number => {
+      let inClass = false;
+      for (let at = start + 1; at < text.length; at += 1) {
+        const char = text[at];
+        if (char === '\\') { at += 1; continue; }
+        if (char === '\n') return -1;
+        if (char === '[') inClass = true;
+        else if (char === ']') inClass = false;
+        else if (char === '/' && !inClass) return at + 1;
+      }
+      return -1;
+    };
+    /** A keyword a `/` may follow and still open a regex, which the value test would read as one. */
+    const KEYWORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+      'case', 'do', 'else', 'yield', 'await']);
+    const WORD = /[\w$]+/y;
+    /** One frame per template literal, and one per `${…}` inside it, innermost last. */
+    const modes: ('code' | 'template')[] = ['code'];
+    /** Open braces in each code frame, so the `}` that closes an interpolation is told from a block's. */
+    const braces: number[] = [0];
+    /** Whether what precedes this position could be the left operand of a division. */
+    let value = false;
+    let at = 0;
+    while (at < text.length) {
+      const char = text[at];
+      if (modes[modes.length - 1] === 'template') {
+        if (char === '\\') { blank(at, at + 2); at += 2; continue; }
+        if (char === '`') { blank(at, at + 1); at += 1; modes.pop(); value = true; continue; }
+        if (char === '$' && text[at + 1] === '{') {
+          blank(at, at + 2); at += 2; modes.push('code'); braces.push(0); value = false; continue;
+        }
+        blank(at, at + 1); at += 1; continue;
+      }
+      if (char === '/' && text[at + 1] === '/') {
+        const line = text.indexOf('\n', at);
+        const to = line === -1 ? text.length : line;
+        blank(at, to); at = to; continue;
+      }
+      if (char === '/' && text[at + 1] === '*') {
+        const close = text.indexOf('*/', at + 2);
+        const to = close === -1 ? text.length : close + 2;
+        blank(at, to); at = to; continue;
+      }
+      if (char === '"' || char === '\'') {
+        const to = endOfQuoted(at);
+        if (to !== -1) { blank(at, to); at = to; value = true; continue; }
+      }
+      if (char === '`') { blank(at, at + 1); at += 1; modes.push('template'); continue; }
+      if (char === '/' && !value && text[at - 1] !== '<') {
+        const to = endOfRegex(at);
+        if (to !== -1) { blank(at, to); at = to; value = true; continue; }
+      }
+      if (char !== undefined && /[\w$]/.test(char)) {
+        WORD.lastIndex = at;
+        const word = WORD.exec(text)?.[0] ?? char;
+        at += word.length; value = !KEYWORDS.has(word); continue;
+      }
+      if (char === '{') {
+        braces[braces.length - 1] = (braces[braces.length - 1] ?? 0) + 1;
+        value = false; at += 1; continue;
+      }
+      if (char === '}') {
+        const open = braces[braces.length - 1] ?? 0;
+        if (open === 0 && modes.length > 1) {
+          blank(at, at + 1); at += 1; modes.pop(); braces.pop(); value = true; continue;
+        }
+        braces[braces.length - 1] = Math.max(0, open - 1);
+        value = false; at += 1; continue;
+      }
+      if (char !== undefined && !/\s/.test(char)) value = char === ')' || char === ']';
+      at += 1;
+    }
+    return out.join('');
+  };
+
+  /**
+   * Bracket depth before every position in one module, and one entry past its end.
+   *
+   * Counted over {@link codeOnly}'s blanked text and indexed by offsets into the text as written,
+   * which the two share exactly. A bracket inside a literal or a comment is not a bracket and is not
+   * counted; everything below that reports a slice reports it from the text as written.
+   *
+   * **A second reading over the text as written was written and then taken out**, and the reason is
+   * worth the line: taking the longer of the two regions would have made the clause immune to a lexer
+   * mistake, and no fixture could tell it from this — the whole suite passes with either, because the
+   * only shapes that separate them are ones the scanner gets right. Machinery no fixture discriminates
+   * is machinery a later reader cannot check, so what carries the clause instead is the exactness
+   * argument on {@link codeOnly} and the whole-tail fallback in {@link timerCallbacks}.
+   */
+  const depthsOf = (text: string): number[] => {
+    const code = codeOnly(text);
+    const depths = [0];
+    let depth = 0;
+    for (let at = 0; at < code.length; at += 1) {
+      const char = code[at];
+      if (char === '(' || char === '[' || char === '{') depth += 1;
+      else if (char === ')' || char === ']' || char === '}') depth -= 1;
+      depths.push(depth);
+    }
+    return depths;
+  };
+
+  /**
    * Every name a module binds, with the body that follows it — a WHOLE body, nested bindings and all.
    *
    * Deliberately wider than {@link declarations}, which collects TOP-LEVEL heads only: a helper
@@ -917,34 +1086,43 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
    * **The new extent contains the old one by construction, so this cannot be weaker than what it
    * replaces.** Both end at a head or at the end of the file, and the next head at depth ≤ 0 is at
    * or after the next head of any kind — whatever the depth walk makes of a bracket inside a string
-   * or a comment, which is why this needs no tokeniser and no per-file balance to be sound. What it
-   * can do is credit a name with a sibling's code or with the rest of an enclosing scope; that
-   * over-collects and never under-collects, which is the safe direction for a prohibition.
+   * or a comment, which is why this needs no per-file balance to be sound. What it can do is credit a
+   * name with a sibling's code or with the rest of an enclosing scope; that over-collects and never
+   * under-collects, which is the safe direction for a prohibition.
+   *
+   * **The heads are matched over the text AS WRITTEN while the depths come from {@link depthsOf}**,
+   * and the asymmetry is deliberate. A head found inside a comment or a string is a name that does not
+   * exist, which adds an entry and can never remove the real one — `requestingNames` reads every
+   * entry, so a bogus one only widens what it collects. A head LOST to a lexer mistake would take a
+   * real body out of the walk, which is the direction that hides a poll, so the blanked text decides
+   * no head and only ever decides a depth.
    */
   const bindings = (text: string): { readonly name: string; readonly text: string }[] => {
     const heads = [...text.matchAll(/\b(?:const|let|var|function)[ \t]+([A-Za-z_$][\w$]*)/g)];
-    // Bracket depth at each head, in one pass over the module rather than one pass per head.
-    const depths: number[] = [];
-    let depth = 0;
-    let next = 0;
-    for (let at = 0; at <= text.length; at += 1) {
-      while (next < heads.length && (heads[next]?.index ?? text.length) === at) { depths.push(depth); next += 1; }
-      const char = text[at];
-      if (char === '(' || char === '[' || char === '{') depth += 1;
-      else if (char === ')' || char === ']' || char === '}') depth -= 1;
-    }
+    const depths = depthsOf(text);
+    const depthAt = (head: RegExpExecArray): number => depths[head.index ?? 0] ?? 0;
     return heads.map((head, i) => {
-      const mine = depths[i] ?? 0;
-      const nextSibling = heads.findIndex((other, at) => at > i && (depths[at] ?? 0) <= mine);
+      const sibling = heads.findIndex((other, at) => at > i && depthAt(other) <= depthAt(head));
       return {
         name: head[1] ?? '',
-        text: text.slice(head.index ?? 0, nextSibling === -1 ? text.length : heads[nextSibling]?.index ?? text.length),
+        text: text.slice(head.index ?? 0, sibling === -1 ? text.length : heads[sibling]?.index ?? text.length),
       };
     });
   };
 
-  /** One name, safe to interpolate into a pattern — `$` is legal in an identifier and means end-of-input. */
-  const asNeedle = (name: string): RegExp => new RegExp(`\\b${name.replace(/\$/g, '\\$')}[ \\t]*\\(`);
+  /**
+   * One name as a pattern that matches a CALL to it and nothing else.
+   *
+   * Two hazards, and they are one class — review round 2's second finding. `$` is legal in an
+   * identifier and means end-of-input in a pattern, so an unescaped `reload$now` matches nothing
+   * whatever; and `\b` is no boundary at all before a name that STARTS with `$`, neither a space nor
+   * a `$` being a word character, so `$reload` matched nothing either. Both ends are therefore a
+   * not-an-identifier-character assertion rather than `\b`, which additionally stops `other$reload(`
+   * being read as a call to `reload` — a correction rather than a narrowing: that was never a call to
+   * it, and the two directions are fixtured together below.
+   */
+  const asNeedle = (name: string): RegExp =>
+    new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])[ \\t]*\\(`);
 
   /**
    * Every name in one module that reaches the daemon, directly or through a name that does.
@@ -971,27 +1149,27 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     return names;
   };
 
-  /** The argument list of every timer call in one module, brackets balanced. */
+  /**
+   * The argument list of every timer call in one module, to where its bracket returns to its depth.
+   *
+   * A call that never closes is collected WHOLE rather than dropped, so text this walk cannot read
+   * fails this clause instead of passing over it. The timer calls themselves are matched over the text
+   * as written, on {@link bindings}' rule: a `setInterval(` the lexer wrongly blanked would be a
+   * scheduled callback nobody read, which is the one direction that hides a poll.
+   */
   const timerCallbacks = (text: string): string[] => {
-    const found: string[] = [];
-    for (const timer of TIMERS) {
-      for (const at of text.matchAll(new RegExp(`\\b${timer}[ \\t]*\\(`, 'g'))) {
-        const open = (at.index ?? 0) + at[0].length - 1;
-        let depth = 0;
-        for (let end = open; end < text.length; end += 1) {
-          const char = text[end];
-          if (char === '(' || char === '[' || char === '{') depth += 1;
-          else if (char === ')' || char === ']' || char === '}') {
-            depth -= 1;
-            // A call whose brackets never close is collected WHOLE rather than dropped, so an
-            // unreadable one fails this clause instead of passing over it.
-            if (depth === 0) { found.push(text.slice(open + 1, end)); break; }
-          }
-          if (end === text.length - 1) found.push(text.slice(open + 1));
-        }
+    const depths = depthsOf(text);
+    const closeAfter = (open: number): number => {
+      for (let end = open + 1; end < text.length; end += 1) {
+        if ((depths[end + 1] ?? 0) === (depths[open] ?? 0)) return end;
       }
-    }
-    return found;
+      return text.length;
+    };
+    return TIMERS.flatMap((timer) => [...text.matchAll(new RegExp(`\\b${timer}[ \\t]*\\(`, 'g'))]
+      .map((at) => {
+        const open = (at.index ?? 0) + at[0].length - 1;
+        return text.slice(open + 1, closeAfter(open));
+      }));
   };
 
   /** `<file>: <timer callback>` for every scheduled callback that reaches the daemon. */
@@ -999,7 +1177,7 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     const requesting = requestingNames(text);
     return timerCallbacks(text)
       .filter((callback) => REACHES_THE_DAEMON.test(callback)
-        || [...requesting].some((called) => new RegExp(`\\b${called}[ \\t]*\\(`).test(callback)))
+        || [...requesting].some((called) => asNeedle(called).test(callback)))
       .map((callback) => `${name}: ${callback.slice(0, 60)}`);
   });
 
@@ -1100,6 +1278,77 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     expect([...requestingNames(chain)].sort(), 'the walk stopped short of the end of the chain')
       .toStrictEqual(Array.from({ length: HOPS + 1 }, (_, i) => `h${String(i)}`).sort());
     expect(pollers([['chain.ts', chain]]), 'a timer seven hops from the daemon was not reported').toHaveLength(1);
+
+    // **The four shapes review round 2's finding is about**, one per literal kind. The depth walk
+    // counted every bracket CHARACTER in the module, so a closing delimiter inside a literal
+    // returned the count to zero early and the callback was collected only as far as that — a
+    // request written after the literal was outside the text the clause then read. Each fixture puts
+    // the literal BEFORE the call, which is what makes a truncated callback unable to see it.
+    const TRUNCATING: [string, string][] = [
+      ['a quoted string', `const closer = ${"'"}))${"'"};`],
+      ['a template literal', ['const closer = ', '`', '}}', '`', ';'].join('')],
+      ['a regex literal', 'const closer = /\\)\\)/;'],
+      ['a block comment', `const closer = 1; ${'/*'} )) ${'*/'}`],
+    ];
+    // Reported as one row per kind rather than asserted one at a time, so a run names every kind it
+    // misses instead of stopping at the first — four separate prohibitions, visible together.
+    expect(TRUNCATING.map(([what, literal]) => [what, pollers([['literal.ts',
+      `${'setInterval'}(() => { ${literal} void fetchRuns(request, clock); }, 1000);`]]).length]),
+      'a fetch written after a literal in the callback was not reported')
+      .toStrictEqual(TRUNCATING.map(([what]) => [what, 1]));
+
+    // …and the scanner underneath, by value rather than only through the clause above: each kind is
+    // blanked, and the code on either side of it is kept — so what a depth walk stops counting is the
+    // literal and not its neighbourhood.
+    expect(TRUNCATING.map(([what, literal]) => {
+      const lexed = codeOnly(`const before = 1; ${literal} const after = 2;`);
+      return [what, /[(){}[\]]/.test(lexed), lexed.includes('const after = 2;')];
+    }), 'a literal kind was left for the depth walk to count, or took the code around it with it')
+      .toStrictEqual(TRUNCATING.map(([what]) => [what, false, true]));
+    // …and the one ambiguity a scanner has to decide, decided the way the language decides it. A
+    // division is kept: read as opening a regex, the first `/` here would swallow everything to the
+    // second and the text would come back changed.
+    const division = 'const half = total / 2; const other = count / 4;';
+    expect(codeOnly(division), 'a division was read as opening a regex').toBe(division);
+    // …and a regex is not kept, so the clause above is a decision rather than a scanner that keeps
+    // every `/`. Its own brackets are what a walk must not count.
+    expect(codeOnly('const at = text.replace(/[)]/g, \'\');'), 'a regex body was counted as code')
+      .not.toMatch(/\[\)\]/);
+    // …and the third thing a scanner over a HALF-`.tsx` corpus has to decide, which is measured
+    // rather than anticipated: `</span></p>` is a `/` preceded by `<` with another `/` later on the
+    // same line, at four live sites in `diff-view.tsx` and `gate-screen.tsx`. Read as a regex, the
+    // first swallows the JSX between them and the brackets in it stop being counted — so every
+    // bracket a walk should count survives this line, which is the property rather than the spelling.
+    const brackets = (text: string): string => (text.match(/[(){}[\]]/g) ?? []).join('');
+    const jsx = '<p><span>{DIFF_STEP}</span>{steps.map((n) => (<b>{n}</b>))}</p>';
+    expect(brackets(codeOnly(jsx)), 'a JSX closing tag was read as opening a regex').toBe(brackets(jsx));
+
+    // …and the other half of that finding, at the callback boundary: the needle for a bound name was
+    // interpolated RAW there, where `$` is legal in an identifier and means end-of-input in a
+    // pattern — so the needle for `reload$now` matched nothing whatever and a timer calling that
+    // helper passed. Both ends of the name are the same class: a name BEGINNING with `$` has no `\b`
+    // before it either, neither a space nor a `$` being a word character.
+    const DOLLAR: [string, string][] = [
+      ['a `$` inside the name', 'reload$now'],
+      ['a `$` at the start of the name', '$reload'],
+    ];
+    const dollarFixture = (called: string): string => [
+      `const ${called} = () => { void fetchRuns(request, clock); };`,
+      `${'setInterval'}(() => { ${called}(); }, 1000);`,
+    ].join('\n');
+    // The walk collects the helper either way — the name is a binding whose body reaches the daemon
+    // — so what the needle decides is only whether the CALL in the callback is seen as one.
+    for (const [what, called] of DOLLAR) {
+      expect(requestingNames(dollarFixture(called)), `a helper with ${what} is not collected`).toContain(called);
+    }
+    expect(DOLLAR.map(([what, called]) => [what, pollers([['dollar.ts', dollarFixture(called)]]).length]),
+      'a timer calling a helper whose name carries a `$` was not reported')
+      .toStrictEqual(DOLLAR.map(([what]) => [what, 1]));
+    // …and the needle still tells one name from another rather than matching a substring of one: a
+    // longer name that merely ends with a shorter one is not a call to the shorter one.
+    expect(asNeedle('reload').test('void other$reload();'),
+      'the needle matched a name that only ends with the one it is for').toBe(false);
+    expect(asNeedle('reload').test('void reload();'), 'the needle matches no call at all').toBe(true);
   });
 
   test('no file under src calls a containment answer merged, landed or shipped', () => {
