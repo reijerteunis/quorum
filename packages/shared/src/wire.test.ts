@@ -5,7 +5,9 @@ import { repoFile, sharedSourceFiles } from '../test/corpus.js';
 import { gateQuestionEventSchema } from './events.js';
 import {
   containmentResultSchema, pushLagResultSchema, WIRE_RUN_STATES, wireExcludedFilesSchema,
-  wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunHistorySchema,
+  wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema,
+  wireRunHistoryListSchema, wireRunHistoryOccurrenceSchema, wireRunHistoryRowSchema,
+  wireRunHistorySchema,
   wireRunListSchema,
   wireRunSchema, wireRunStateSchema, wireTicketDetailSchema, wireTicketFileEntrySchema,
   wireTicketFileSchema, wireTicketListSchema, wireTicketSchema, WIRE_START_FIELDS,
@@ -304,6 +306,17 @@ const HISTORY = {
   },
   incomplete: true,
   tokensByVendor: { claude: 15, codex: 10 },
+  // The route's OWN top-level copy of the occurrence array, which is a different document from
+  // `manifest.steps` above: its elements carry `seq`, which `occurrenceSeq` derives from the
+  // occurrence directory's NAME and which exists nowhere on disk. Declared on this shape since
+  // Q-0018; the element below carries one key the schema does not name, so the whole-response
+  // parse above exercises the looseness rather than only asserting it on a fixture of its own.
+  steps: [
+    {
+      step_id: 'implement', kind: 'agent', status: 'completed', started_at: '2026-09-18T01:00:01.000Z',
+      duration_ms: 1200, adapter: 'claude', seq: 1, occurrence_dir: 'steps/001-implement',
+    },
+  ],
 } as const;
 
 describe('Q-0135 AC-9 — one shared schema for the history detail read', () => {
@@ -640,6 +653,9 @@ describe("Q-0135 GO-4 hand pass — a vendor's billed cost on the wire cannot be
       },
       incomplete: true,
       tokensByVendor: { zeta: 10 },
+      // Required on this shape since Q-0018, and empty because this clause is about one roll-up
+      // field: a fixture carrying occurrences would make the refusals below depend on them too.
+      steps: [],
     });
     expect(wireRunHistorySchema.safeParse(row(-1)).success,
       'a roll-up row claiming a negative billed cost was accepted').toBe(false);
@@ -652,5 +668,202 @@ describe("Q-0135 GO-4 hand pass — a vendor's billed cost on the wire cannot be
     // …and the refusal names the field, so it is told from its siblings in a message.
     expect((wireRunHistorySchema.safeParse(row(-1)).error?.issues ?? []).flatMap((issue) => issue.path))
       .toContain('cost_usd');
+  });
+});
+
+describe('Q-0018 AC-1/AC-2 — the run-history listing declares a shape, and it is a narrowing', () => {
+  /** One listing row every clause below starts from, so a refusal is the one field it changed. */
+  const ROW = {
+    id: 'Q-0018-1', ticket: 'Q-0018', flow: 'chore', status: 'completed', incomplete: false,
+    started_at: '2026-09-18T01:00:00.000Z', ended_at: '2026-09-18T01:10:00.000Z', duration_ms: 600_000,
+    occurrenceCount: 4,
+    rollup: [{ vendor: 'zeta', cost_usd: 1.25, unpriced_steps: 0, step_count: 2 }],
+  } as const;
+
+  test('the barrel publishes the shapes, and a whole listing parses', () => {
+    const published = shared as unknown as Record<string, unknown>;
+    for (const name of ['wireRunHistoryListSchema', 'wireRunHistoryRowSchema', 'wireRunHistoryWarningSchema']) {
+      expect(typeof published[name], `${name} is not on the barrel`).toBe('object');
+    }
+    const parsed = wireRunHistoryListSchema.safeParse({
+      runs: [ROW],
+      warnings: [{ runId: 'Q-0018-2', message: 'missing manifest.json' }],
+    });
+    expect(parsed.error?.issues, 'a whole listing was refused').toBeUndefined();
+  });
+
+  test('every named field is REQUIRED, one at a time, so an omission is reported by name', () => {
+    // One clause per field rather than one object missing all ten: a single fixture missing
+    // everything is satisfied by a schema requiring any ONE of them, which is what a count-style
+    // assertion cannot tell from a complete one.
+    for (const field of Object.keys(ROW)) {
+      const without = Object.fromEntries(Object.entries(ROW).filter(([name]) => name !== field));
+      const parsed = wireRunHistoryRowSchema.safeParse(without);
+      expect(parsed.success, `a row missing ${field} was accepted`).toBe(false);
+      expect((parsed.error?.issues ?? []).flatMap((issue) => issue.path),
+        `the refusal for a missing ${field} does not name it`).toContain(field);
+    }
+    // …and the whole row is accepted, so those refusals are about omissions rather than about a
+    // fixture that was never valid.
+    expect(wireRunHistoryRowSchema.safeParse(ROW).success, 'the complete row was refused').toBe(true);
+  });
+
+  test('a row is STRICT where the detail is loose, which is what makes it a projection', () => {
+    // Quorum owns every key of a row: the route composes it field by field rather than carrying a
+    // `core` document through, so an unknown key is a disagreement about this transport's own shape
+    // and never a manifest that widened. The roll-up's elements stay loose for the opposite reason,
+    // and the two are asserted together so the difference cannot be read as an oversight.
+    expect(wireRunHistoryRowSchema.safeParse({ ...ROW, vendorsUsed: [] }).success,
+      'an unknown key on a row was preserved').toBe(false);
+    expect(wireRunHistoryRowSchema.safeParse({
+      ...ROW, rollup: [{ ...ROW.rollup[0], input_tokens: 10, cached_input_tokens: null }],
+    }).success, "a manifest's own roll-up keys were refused").toBe(true);
+    // The envelope is strict too, so a field added on one side and read on neither is reported.
+    expect(wireRunHistoryListSchema.safeParse({ runs: [], warnings: [], total: 0 }).success,
+      'an unknown key on the envelope was preserved').toBe(false);
+  });
+
+  test('a run in flight carries nulls, and an unpriced vendor is not a zero', () => {
+    // The two shapes the route may not manufacture a value for. `ended_at` and `duration_ms` are
+    // `null` while a run is going, and a figure computed here would be a second measurement of one
+    // the engine takes; `cost_usd` is `null` where the vendor reported no price, which is a
+    // different claim from `0` and the one half of it that is not *free*.
+    const live = { ...ROW, status: 'running', incomplete: true, ended_at: null, duration_ms: null };
+    expect(wireRunHistoryRowSchema.safeParse(live).success, 'a run in flight was refused').toBe(true);
+    expect(wireRunHistoryRowSchema.safeParse({
+      ...ROW, rollup: [{ ...ROW.rollup[0], cost_usd: null }],
+    }).success, 'an unpriced vendor was refused').toBe(true);
+    expect(wireRunHistoryRowSchema.safeParse({
+      ...ROW, rollup: [{ ...ROW.rollup[0], cost_usd: 0 }],
+    }).success, 'a genuinely reported zero was refused').toBe(true);
+    // …and the ranges hold on this shape as they do on its sibling: a duration, an occurrence count
+    // and a billed cost are each things that cannot be negative.
+    for (const over of [{ duration_ms: -1 }, { occurrenceCount: -1 }, { occurrenceCount: 1.5 }]) {
+      expect(wireRunHistoryRowSchema.safeParse({ ...ROW, ...over }).success,
+        `${JSON.stringify(over)} was accepted`).toBe(false);
+    }
+    expect(wireRunHistoryRowSchema.safeParse({
+      ...ROW, rollup: [{ ...ROW.rollup[0], cost_usd: -1 }],
+    }).success, 'a negative billed cost was accepted').toBe(false);
+  });
+
+  test('every constraint here is one the DETAIL already applies to a real manifest', () => {
+    // The claim `read.ts`'s `historyRow` JSDoc rests on, asserted rather than stated: a manifest the
+    // listing refuses is one `GET /history/:id` was already refusing, so what this route's own
+    // parse changes is where the refusal lands rather than how often. Each pair is the same value
+    // offered to both schemas, and the two answers have to agree.
+    const detailWith = (over: Record<string, unknown>): unknown => ({
+      manifest: {
+        started_at: '2026-09-18T01:00:00.000Z', ended_at: null, duration_ms: null, status: 'running',
+        rollup: [{ vendor: 'zeta', cost_usd: 1.25, unpriced_steps: 0, step_count: 1 }],
+        ...over,
+      },
+      incomplete: true, tokensByVendor: {}, steps: [],
+    });
+    const rowWith = (over: Record<string, unknown>): unknown => ({ ...ROW, ...over });
+    const CASES: Record<string, unknown>[] = [
+      { started_at: '' },
+      { ended_at: 7 },
+      { duration_ms: -1 },
+      { rollup: [{ vendor: 'zeta', cost_usd: -1, unpriced_steps: 0, step_count: 1 }] },
+      { rollup: [{ vendor: 'zeta', cost_usd: 1.25, unpriced_steps: -1, step_count: 1 }] },
+      { rollup: [{ vendor: 'zeta', cost_usd: 1.25, unpriced_steps: 0, step_count: 1.5 }] },
+    ];
+    for (const over of CASES) {
+      const onDetail = wireRunHistorySchema.safeParse(detailWith(over)).success;
+      const onRow = wireRunHistoryRowSchema.safeParse(rowWith(over)).success;
+      expect(onRow, `the two routes disagree about ${JSON.stringify(over)}`).toBe(onDetail);
+      expect(onRow, `${JSON.stringify(over)} was accepted by both, so this case discriminates nothing`)
+        .toBe(false);
+    }
+    // …and the unchanged pair is accepted by both, so the loop above is about the values it changed
+    // rather than about two schemas that refuse everything.
+    expect(wireRunHistorySchema.safeParse(detailWith({})).success).toBe(true);
+    expect(wireRunHistoryRowSchema.safeParse(rowWith({})).success).toBe(true);
+  });
+
+  test('a warning is the run id and the reason, and nothing else', () => {
+    expect(wireRunHistoryListSchema.safeParse({
+      runs: [], warnings: [{ runId: 'Q-0018-2', message: 'manifest.json is not an object', path: '/x' }],
+    }).success, 'an unknown key on a warning was preserved').toBe(false);
+    expect(wireRunHistoryListSchema.safeParse({ runs: [], warnings: [{ runId: 'Q-0018-2' }] }).success,
+      'a warning carrying no reason was accepted').toBe(false);
+  });
+});
+
+describe('Q-0018 AC-5 — the detail declares the occurrence array it has always sent', () => {
+  /** One occurrence in the shape the route emits: a manifest entry plus the derived `seq`. */
+  const STEP = {
+    step_id: 'implement', kind: 'agent', status: 'completed',
+    started_at: '2026-09-18T01:00:01.000Z', duration_ms: 1200, adapter: 'claude', seq: 1,
+  } as const;
+
+  test('it is LOOSE at the element, because an occurrence carries fifteen keys and this names seven', () => {
+    // *"Unknown keys are refused where Quorum owns the key set, and preserved where it does not"*
+    // (2026-08-25). An occurrence is `core`'s document and the route spreads it whole, so the eight
+    // fields not named here cross untyped rather than turning a manifest this product wrote into a
+    // response a browser refuses.
+    expect(wireRunHistoryOccurrenceSchema.safeParse({
+      ...STEP, role: 'developer-generalist', model: null, branch: null, worktree: null,
+      attempts: 1, verdict: 'proceed', error: null, usage: null, occurrence_dir: 'steps/001-implement',
+    }).success, 'an occurrence carrying its own other keys was refused').toBe(true);
+  });
+
+  test('and the seven it names are required and typed, `seq` among them', () => {
+    expect(wireRunHistoryOccurrenceSchema.safeParse({ ...STEP, step_id: 7 }).success,
+      'a step id that is not a string was accepted').toBe(false);
+    const withoutSeq = Object.fromEntries(Object.entries(STEP).filter(([name]) => name !== 'seq'));
+    expect(wireRunHistoryOccurrenceSchema.safeParse(withoutSeq).success,
+      'an occurrence with no sequence number was accepted — nothing would order it').toBe(false);
+    // The two that are legitimately absent stay absent-able: an occurrence still running has no
+    // duration, and one no vendor ran has no adapter. Those are `null`, never a missing key.
+    expect(wireRunHistoryOccurrenceSchema.safeParse({ ...STEP, duration_ms: null, adapter: null, status: 'running' }).success,
+      'a running occurrence was refused').toBe(true);
+    expect(wireRunHistoryOccurrenceSchema.safeParse(STEP).success, 'the complete occurrence was refused').toBe(true);
+  });
+
+  test('the declaration is load-bearing, and the mutation AC-5 names is measured NOT to be', () => {
+    // **AC-5's *Test:* clause asks for a mutation removing `steps` from the schema to turn an AC-12
+    // assertion red, and that mutation does not discriminate.** Measured here rather than reasoned
+    // about: `z.looseObject` PRESERVES an undeclared key in its output, so a schema that had never
+    // named `steps` would hand a browser the same array it hands one now, and the screen's timeline
+    // would render unchanged. The declaration's runtime value is the opposite of what that clause
+    // supposes — it is what makes a malformed occurrence a REFUSAL instead of a row that says
+    // nothing — and its compile-time value is that `WireRunHistory.steps` exists at all, which
+    // `tsc` proves and no assertion here can.
+    const undeclared = z.looseObject({ incomplete: z.boolean() });
+    const through = undeclared.safeParse({ incomplete: false, steps: [{ seq: 1, step_id: 'implement' }] });
+    expect(through.success, 'the probe schema refused its own fixture').toBe(true);
+    expect((through.data as { steps?: unknown }).steps,
+      'a loose object stripped an undeclared key, so the mutation AC-5 names would discriminate after all')
+      .toStrictEqual([{ seq: 1, step_id: 'implement' }]);
+    // **So this is the honest demonstration**: what the declaration changes is that an occurrence
+    // array a timeline could not order is refused rather than rendered. The screen-level half of the
+    // same claim is in `apps/web/src/history-screen.test.ts`, where such a response renders the
+    // `unparseable` state instead of an opened region.
+    const response = {
+      manifest: { started_at: '2026-09-18T01:00:00.000Z', ended_at: null, duration_ms: null, status: 'running', rollup: [] },
+      incomplete: true,
+      tokensByVendor: {},
+      steps: [{ step_id: 'implement', kind: 'agent', status: 'completed', started_at: '2026-09-18T01:00:01.000Z', duration_ms: 1, adapter: null }],
+    };
+    expect(wireRunHistorySchema.safeParse(response).success,
+      'an occurrence array with no ordering key was accepted').toBe(false);
+    expect(undeclared.safeParse(response).success,
+      'the undeclared probe refused it too, so the clause above is about the declaration').toBe(true);
+  });
+
+  test('the detail shape requires the array, and its docblock no longer says it is absent', () => {
+    // The retired sentence, which AC-5 requires survive nowhere: the reason `steps` was left out was
+    // that nothing read it, and a caller reading it is what spent that reason.
+    const wire = sharedSourceFiles().find(([name]) => name === 'wire.ts')?.[1] ?? '';
+    expect(wire, 'wire.ts is not in the corpus — this clause has lost its subject').not.toBe('');
+    const RETIRED = ['`steps` is', ' deliberately absent'].join('');
+    expect(wire.includes(RETIRED), 'the docblock still says the occurrence array is deliberately absent')
+      .toBe(false);
+    // The needle finds the retired wording where it is written, so the absence above is a removal
+    // rather than a scan for a string nobody would write. Assembled, so this file is not its own
+    // subject: the corpus above walks every file in this package.
+    expect(`${RETIRED}: it is the occurrence array`.includes(RETIRED)).toBe(true);
   });
 });

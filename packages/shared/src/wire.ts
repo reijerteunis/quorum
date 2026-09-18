@@ -241,6 +241,32 @@ export interface WireVendorRollup {
 }
 
 /**
+ * Runtime validation for one roll-up row.
+ *
+ * **Named at Q-0018 rather than written twice**, because two routes now answer one: the detail
+ * carries the manifest's rows whole and the listing carries the four fields above and nothing else,
+ * and a second inline copy of this shape would be free to drift from the first the moment either
+ * route widened.
+ *
+ * **Loose, and it stays loose on both routes for one reason and not two.** *"Unknown keys are
+ * refused where Quorum owns the key set, and preserved where it does not"* (2026-08-25): a row is
+ * `core`'s `VendorRollup`, which carries five token measures beside these four and may gain a
+ * sixth. That the listing's projection happens to emit exactly four is a fact about that route
+ * rather than about this shape, and asserting it here would refuse a document this product wrote
+ * the day the manifest widened. What holds the listing to four is an assertion over its response.
+ *
+ * The ELEMENTS and not just the array, which is the guard `read.ts` needed two review rounds to get
+ * right: `readRun` casts rather than checks, so a hand-edited manifest can carry a `rollup` whose
+ * members are numbers, and `Array.isArray` alone lets those through.
+ */
+export const wireVendorRollupSchema: z.ZodType<WireVendorRollup> = z.looseObject({
+  vendor: z.string(),
+  cost_usd: z.number().nonnegative().nullable(),
+  unpriced_steps: z.number().int().nonnegative(),
+  step_count: z.number().int().nonnegative(),
+});
+
+/**
  * The part of a run manifest {@link WireRunHistory} carries: when it ran, how it stands, and its
  * roll-up.
  *
@@ -265,21 +291,85 @@ export interface WireRunHistoryManifest {
 }
 
 /**
+ * One occurrence of a run, as `GET /history/:id` reports it — what executed, how it went, and where
+ * it sits in the order.
+ *
+ * **The glossary's word for this is *occurrence*, and the field that carries them keeps the
+ * manifest's own name `steps`.** Two vocabularies meet here and neither is renamed into the other:
+ * the manifest `core` writes calls the array `steps`, and one entry of it is an **occurrence** —
+ * *"an adapter call, a script, or an integrate step, carrying its own usage, errors and retained
+ * files"*.
+ *
+ * **`seq` is the only field here that is not on disk.** The route derives it with `occurrenceSeq`,
+ * which reads the occurrence DIRECTORY'S NAME and opens nothing, and it is what orders these for a
+ * reader — the array's own index is the order a manifest happens to have been appended in. It is
+ * also why this is the copy a surface reads: the route sends the occurrence array twice, once
+ * inside `manifest` exactly as `core` wrote it and once at the top level with `seq` added, and only
+ * the second carries an ordering key.
+ *
+ * **Seven fields named out of an occurrence's fifteen, and loose for the rest**, which is
+ * {@link wireVendorRollupSchema}'s rule at a second subject: a projection of a document `core`
+ * writes and may widen. `role`, `model`, `branch`, `worktree`, `attempts`, `verdict`, `error` and
+ * `usage` cross untyped rather than being refused.
+ *
+ * **What a required field costs is stated rather than left to be found.** A manifest whose
+ * occurrence objects lack one of these makes the WHOLE detail response unparseable to a browser,
+ * which reads as a request that could not be understood rather than as a run with no occurrences.
+ * That is this schema's existing arrangement rather than a new hazard — `manifest.started_at` and
+ * `manifest.status` have been required here since Q-0135 and fail the same way — and the honest
+ * alternative, optional fields, would let a screen render a timeline whose rows say nothing.
+ */
+export interface WireRunHistoryOccurrence {
+  /** The step's id, as the flow file declares it. */
+  readonly step_id: string;
+  /** What kind of thing ran — `core`'s `OccurrenceKind`, carried as a plain string. */
+  readonly kind: string;
+  /** How it went, on {@link WireRunHistoryManifest.status}'s rule: a plain string, never an enum. */
+  readonly status: string;
+  /** When it started, as an ISO 8601 instant in UTC. */
+  readonly started_at: string;
+  /** How long it took, or `null` while it is running or where none was recorded. */
+  readonly duration_ms: number | null;
+  /** Which adapter ran it, or `null` for an occurrence that is not an adapter call. */
+  readonly adapter: string | null;
+  /** The sequence number in its directory's name — derived by the route, never read off disk. */
+  readonly seq: number;
+}
+
+/** Runtime validation for one occurrence, loose for the eight fields above it does not name. */
+export const wireRunHistoryOccurrenceSchema: z.ZodType<WireRunHistoryOccurrence> = z.looseObject({
+  step_id: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  started_at: z.string(),
+  duration_ms: z.number().nonnegative().nullable(),
+  adapter: z.string().nullable(),
+  seq: z.number().int().nonnegative(),
+});
+
+/**
  * What `GET /history/:id` answers with, narrowed to what a surface reads.
  *
  * **It is the first validation of `started_at`, `ended_at`, `duration_ms` and `status` anywhere in
- * the chain**, and it closes the last route on this transport that declared no shape: `readRun`'s
- * own JSDoc calls the parsed manifest *"a cast, never a check"*, and the route guards `rollup` and
- * `steps` alone.
+ * the chain**: `readRun`'s own JSDoc calls the parsed manifest *"a cast, never a check"*, and the
+ * route guards `rollup` and `steps` alone.
+ *
+ * **It said it closed *the last route on this transport that declared no shape* until Q-0018, and
+ * that was wrong when it was written.** Two answered an inline object literal nothing declares, and
+ * the other is `GET /project`, which still does after this ticket: a different route with a
+ * different subject, named here so the corrected sentence is not read as coverage for it. What this
+ * ticket closed is `GET /history`, whose shape is {@link WireRunHistoryList} below.
  *
  * **Loose at all three levels, deliberately.** *"Unknown keys are refused where Quorum owns the key
  * set, and preserved where it does not"* (2026-08-25): this is a projection of a document `core`
  * writes and may widen, so a `.strict()` shape here would turn a manifest this product produced into
  * a response a browser refuses. Every field named below is still required and still typed.
  *
- * `steps` is deliberately absent: it is the occurrence array, carried twice by the route and read
- * by nothing that reads this shape. A schema naming it would be asserting over a value no caller
- * wants and would have to keep pace with an occurrence's fifteen keys.
+ * **`steps` was deliberately absent until Q-0018, and what changed is its own stated reason.** That
+ * sentence rested on the array being *"read by nothing that reads this shape"* — a claim with an
+ * expiry date, which a caller reading it is what spent. It is declared now, as
+ * {@link WireRunHistoryOccurrence} rather than over an occurrence's fifteen keys, which is the other
+ * half of the objection that sentence raised and the half that still binds.
  */
 export interface WireRunHistory {
   readonly manifest: WireRunHistoryManifest;
@@ -292,6 +382,15 @@ export interface WireRunHistory {
    * rule: nobody reported a measure is not the claim that the measure was zero.
    */
   readonly tokensByVendor: Readonly<Record<string, number | null>>;
+  /**
+   * What actually executed, in the route's `seq`-enriched copy and never `manifest.steps`.
+   *
+   * The two copies are different documents and only this one can be ordered; see
+   * {@link WireRunHistoryOccurrence}. The duplication is measured and left alone — it is 42.7% of
+   * this route's payload and a shipped screen reads it on every load, so removing the other copy is
+   * a behaviour change rather than a tidy-up.
+   */
+  readonly steps: readonly WireRunHistoryOccurrence[];
 }
 
 /** Runtime validation for one run's history detail. */
@@ -301,20 +400,133 @@ export const wireRunHistorySchema: z.ZodType<WireRunHistory> = z.looseObject({
     ended_at: z.string().nullable(),
     duration_ms: z.number().nonnegative().nullable(),
     status: z.string(),
-    // The ELEMENTS as well as the array: `readRun` casts rather than checks, so a hand-edited
-    // manifest can carry a `rollup` that is not an array — and one whose members are numbers, which
-    // `Array.isArray` alone lets through. That is the guard `read.ts` needed two review rounds to
-    // get right, met here rather than rediscovered.
-    rollup: z.array(z.looseObject({
-      vendor: z.string(),
-      cost_usd: z.number().nonnegative().nullable(),
-      unpriced_steps: z.number().int().nonnegative(),
-      step_count: z.number().int().nonnegative(),
-    })),
+    // The element schema and never a second copy of its four fields, which is what the listing
+    // reads too — see `wireVendorRollupSchema`, whose own JSDoc carries the reasoning this comment
+    // used to.
+    rollup: z.array(wireVendorRollupSchema),
   }),
   incomplete: z.boolean(),
   tokensByVendor: z.record(z.string(), z.number().int().nonnegative().nullable()),
+  steps: z.array(wireRunHistoryOccurrenceSchema),
 });
+
+/**
+ * One finished — or unfinished — run, as `GET /history` lists it.
+ *
+ * **A row is a projection this transport composes**, not a `core` document carried through, which is
+ * why it is `.strict()` where {@link WireRunHistory} is loose: Quorum owns every key below except
+ * the roll-up's, and *"Unknown keys are refused where Quorum owns the key set"* (2026-08-25) is the
+ * rule that decides which way each level goes. The roll-up's elements stay loose for their own
+ * reason, stated on {@link wireVendorRollupSchema}.
+ *
+ * **Two naming conventions meet here and the difference is load-bearing rather than untidy.** A
+ * field carrying a manifest value unaltered keeps the manifest's own snake_case name —
+ * `started_at`, `ended_at`, `duration_ms` — so one run's start reads the same in the listing and in
+ * the detail; a field this transport DERIVED is camelCase, which is `occurrenceCount` alone. A
+ * reader can therefore tell what came off disk from what was computed for them without reading the
+ * route. `id`, `ticket`, `flow`, `status` and `incomplete` predate the rule and are left: they are
+ * the shipped names of the five fields this route has answered with since Q-0119, and renaming them
+ * to satisfy a convention would be a breaking change bought with nothing.
+ *
+ * **Nothing here is nullable that the manifest does not make nullable, and the route manufactures
+ * nothing.** A run in flight carries `ended_at: null` and `duration_ms: null` rather than a
+ * computed value; an unpriced vendor carries `cost_usd: null` rather than `0`. Those are two
+ * different claims, and only one of them is *free*.
+ *
+ * **There is no cap, no page and no truncation.** Measured over this repository's own 171 runs, the
+ * whole listing is **63,115 B — 369 B a row** under the narrowed roll-up, against 16,145 B for the
+ * five fields it carried before and 99,426 B had it carried the manifest's roll-up rows as they sit
+ * on disk. The widening costs no extra read: `readRunsDir` already parses every manifest. A cap a
+ * reader is not told about is worse than the bytes, which is Q-0127's answer to the same question
+ * at a folder 50 times this size — and a later widening past it is a visible act rather than one
+ * this sentence has excused in advance.
+ */
+export interface WireRunHistoryRow {
+  /** The run directory's name, `<ticket id>-<run number>` — the token `GET /history/:id` takes. */
+  readonly id: string;
+  /** The ticket the run was against, as the manifest recorded it. */
+  readonly ticket: string;
+  /** The flow it ran, as `harness/flows/<name>.yaml` carries it. */
+  readonly flow: string;
+  /** How it stands, on {@link WireRunHistoryManifest.status}'s rule: a plain string, never an enum. */
+  readonly status: string;
+  /** Whether it never reached a terminal state — reported as it stands, never repaired. */
+  readonly incomplete: boolean;
+  /** When it started, as an ISO 8601 instant in UTC. Never empty, as the detail's own is not. */
+  readonly started_at: string;
+  /** When it ended, or `null` while it is running or if it was killed outright. */
+  readonly ended_at: string | null;
+  /** `ended_at - started_at` exactly, from one clock reading, or `null`. */
+  readonly duration_ms: number | null;
+  /** How many occurrences the manifest records. Derived by the route; not a manifest field. */
+  readonly occurrenceCount: number;
+  /** One row per vendor that finished a billed occurrence, in first-appearance order. */
+  readonly rollup: readonly WireVendorRollup[];
+}
+
+/** Runtime validation for one history row. */
+export const wireRunHistoryRowSchema: z.ZodType<WireRunHistoryRow> = z.object({
+  id: z.string(),
+  ticket: z.string(),
+  flow: z.string(),
+  status: z.string(),
+  incomplete: z.boolean(),
+  // `.min(1)` because {@link WireRunHistoryManifest.started_at} carries it: one value, two routes,
+  // one rule. An empty recorded start is as unreadable as a missing one, and a row permitting it
+  // where the detail does not would teach a reader that the two disagree about the same field.
+  started_at: z.string().min(1),
+  ended_at: z.string().nullable(),
+  duration_ms: z.number().nonnegative().nullable(),
+  occurrenceCount: z.number().int().nonnegative(),
+  rollup: z.array(wireVendorRollupSchema),
+}).strict();
+
+/**
+ * One run the listing could not read, and why — `core`'s own `RunWarning`, carried whole.
+ *
+ * **Both field names are kept, and Q-0121's GO-3 rule is what permits that rather than an exception
+ * to it**: that rule forbids a wire field NARROWING a richer one from keeping its name, and this
+ * narrows nothing. `runId` here is the run directory's name, which is what `core` puts in it.
+ *
+ * **Named inside the `WireRunHistory` family rather than `WireRunWarning`**, which would be a
+ * near-homograph for something about {@link WireRun} — a live run the daemon is driving, an
+ * unrelated subject reached by an unrelated id.
+ */
+export interface WireRunHistoryWarning {
+  /** The run directory's name. The manifest could not be read, so this is all there is to name it by. */
+  readonly runId: string;
+  /** One sentence: a shape error, a missing manifest, or a parse failure in the parser's own words. */
+  readonly message: string;
+}
+
+/** Runtime validation for one unreadable run. */
+export const wireRunHistoryWarningSchema: z.ZodType<WireRunHistoryWarning> = z.object({
+  runId: z.string(),
+  message: z.string(),
+}).strict();
+
+/**
+ * What a listing of run history answers with: the runs it could read, and every reason for the rest.
+ *
+ * **The warnings travel WITH the rows rather than instead of them**, which is `failSoftly`'s
+ * distinction over HTTP: a store a reader could partly read is not an error, and answering 500 would
+ * hide every run it could read because of one it could not. A surface rendering this owes the
+ * unreadable runs a place of their own — dropping them would make the listing read as the whole
+ * store.
+ *
+ * An envelope rather than a bare array, on {@link WireRunList}'s terms: a later field is additive
+ * rather than a change of the response's own type.
+ */
+export interface WireRunHistoryList {
+  readonly runs: readonly WireRunHistoryRow[];
+  readonly warnings: readonly WireRunHistoryWarning[];
+}
+
+/** Runtime validation for a run-history listing. */
+export const wireRunHistoryListSchema: z.ZodType<WireRunHistoryList> = z.object({
+  runs: z.array(wireRunHistoryRowSchema),
+  warnings: z.array(wireRunHistoryWarningSchema),
+}).strict();
 
 /**
  * The field names `POST /runs` accepts, in that route's own order.

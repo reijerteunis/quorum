@@ -18,7 +18,7 @@ import { describe, expect, test } from 'vitest';
 
 import { activeRailPath, resolve, resolveFinal } from '../src/router.js';
 import { DAEMON_ENDPOINTS } from '../src/daemon-endpoints.js';
-import { BOARD_PATH, GATE_ROUTE, HOME_PATH, isRedirect, RAIL, ROUTES, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
+import { BOARD_PATH, GATE_ROUTE, HISTORY_PATH, HOME_PATH, isRedirect, RAIL, ROUTES, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE, ticketPath, type ScreenRoute } from '../src/routes.js';
 
 /** This package's source directory: `apps/web/test/` → the tree beside it. */
 const SOURCE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -95,17 +95,20 @@ describe('AC-6 — the rail is the seven entries the design brief names, in its 
     }
   });
 
-  test('Q-0015 AC-14 — the backlog and runs rail entries have screens', () => {
+  test('Q-0018 AC-7 — the backlog, runs and history rail entries have screens', () => {
     // The field exists so that "not yet" is a statement the register makes rather than something a
     // component assumes, and Q-0014 left every entry `false` saying *"a later ticket flips exactly
-    // one of these, visibly"*. This is that ticket, and this is the visible part: the count is one,
-    // and the one is named, because a count alone is satisfied by a member swapped for another.
-    expect(RAIL.filter((entry) => entry.screenExists).map((entry) => entry.id)).toStrictEqual(['backlog', 'runs']);
+    // one of these, visibly"*. Three have flipped, and both directions are identities rather than
+    // counts, because a count alone is satisfied by a member swapped for another.
+    expect(RAIL.filter((entry) => entry.screenExists).map((entry) => entry.id))
+      .toStrictEqual(['backlog', 'runs', 'history']);
     expect(RAIL.find((entry) => entry.id === 'backlog')?.path, 'the flipped entry points somewhere else')
       .toBe(BOARD_PATH);
-    // …and the six that did not move, as an identity rather than as a count of what is left.
+    expect(RAIL.find((entry) => entry.id === 'history')?.path, 'the history entry points somewhere else')
+      .toBe(HISTORY_PATH);
+    // …and the four that did not move, as an identity rather than as a count of what is left.
     expect(RAIL.filter((entry) => !entry.screenExists).map((entry) => entry.id))
-      .toStrictEqual(['projects', 'harness', 'flows', 'history', 'settings']);
+      .toStrictEqual(['projects', 'harness', 'flows', 'settings']);
   });
 });
 
@@ -144,14 +147,14 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       'the needle no longer reproduces the wording it refuses').toBe(true);
   });
 
-  test('exactly five route rows claim a screen, and app selects every one by its registered constant', () => {
+  test('exactly six route rows claim a screen, and app selects every one by its registered constant', () => {
     // The rail says which entry has a screen and the rail has no ticket-page or gate entry, which
     // is why this field is on the route row too: `/backlog/:ticketId` and `/runs/:handle/gate` are
     // in neither table the rail draws from, so without it nothing in the register could say those
     // screens exist. An identity rather than a count, because a count is satisfied by a row swapped
-    // for another. Two until Q-0016, which built the third.
+    // for another. Two until Q-0016, which built the third; six since Q-0018.
     expect(SCREEN_ROUTES.filter((route) => route.screenExists).map((route) => route.path))
-      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, RUNS_PATH, RUN_ROUTE, GATE_ROUTE]);
+      .toStrictEqual([BOARD_PATH, TICKET_ROUTE, RUNS_PATH, RUN_ROUTE, GATE_ROUTE, HISTORY_PATH]);
     // The two registers agree where they overlap: the rail's board entry and the route row.
     expect(RAIL.find((entry) => entry.id === 'backlog')?.screenExists).toBe(true);
     // …and the field is load-bearing rather than decorative: every row claiming a screen is one
@@ -164,7 +167,7 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       // evidence. An unmapped row now fails here by name. Review round 1, N4.
       const NAMES: Readonly<Record<string, string>> = {
         [BOARD_PATH]: 'BOARD_PATH', [TICKET_ROUTE]: 'TICKET_ROUTE', [GATE_ROUTE]: 'GATE_ROUTE',
-        [RUNS_PATH]: 'RUNS_PATH', [RUN_ROUTE]: 'RUN_ROUTE',
+        [RUNS_PATH]: 'RUNS_PATH', [RUN_ROUTE]: 'RUN_ROUTE', [HISTORY_PATH]: 'HISTORY_PATH',
       };
       const name = NAMES[route.path];
       expect(name, `${route.path} claims a screen and this clause has no constant name for it`).toBeDefined();

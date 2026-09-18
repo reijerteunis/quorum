@@ -17,9 +17,10 @@ import { BacklogBoard } from './backlog-board.js';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock, FetchLike } from './daemon-client.js';
 import { GateScreen } from './gate-screen.js';
+import { HistoryScreen } from './history-screen.js';
 import { MissionControlScreen } from './mission-control-screen.js';
 import { resolveFinal } from './router.js';
-import { BOARD_PATH, GATE_ROUTE, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE } from './routes.js';
+import { BOARD_PATH, GATE_ROUTE, HISTORY_PATH, RUN_ROUTE, RUNS_PATH, TICKET_ROUTE } from './routes.js';
 import {
   createRunConnection,
   type RunConnection,
@@ -202,6 +203,11 @@ export function App({ initialPath, socketFactory, pageUrl, fetcher, clock }: App
           now={clock}
           onNavigate={navigate}
         />
+      ) : rendered.route.path === HISTORY_PATH ? (
+        // A screen over a directory rather than over a socket: it takes no segment, holds no
+        // connection, and composes no handle from a run id — a finished run has no event stream and
+        // a history id is not a name this daemon's registry knows.
+        <HistoryScreen fetcher={fetcher} now={clock} />
       ) : rendered.route.path === GATE_ROUTE ? (
         // The handle likewise: whatever the URL carried, decoded out of one segment and not trusted
         // to be one this daemon minted. A handle it never minted is the route's own 404, which the

@@ -28,6 +28,9 @@ const history = (
   manifest: { started_at: START, ended_at: null, duration_ms: null, status: 'running', rollup: [], ...manifest },
   incomplete: true,
   tokensByVendor: {},
+  // Declared on the shape since Q-0018, and empty here because nothing in this file is about the
+  // occurrence array: these clauses are about elapsed time and the per-vendor split.
+  steps: [],
   ...over,
 });
 

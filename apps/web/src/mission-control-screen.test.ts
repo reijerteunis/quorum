@@ -421,6 +421,10 @@ describe('Q-0135 AC-10 — the history read, and the three reasons no read is ma
     },
     incomplete: true,
     tokensByVendor: { zeta: 10 },
+    // The route's own `seq`-enriched copy of the occurrence array, declared on the shape since
+    // Q-0018 and empty here because nothing this screen renders reads it: mission control's trace
+    // columns and timeline come from the socket, not from a manifest.
+    steps: [],
   };
 
   /**

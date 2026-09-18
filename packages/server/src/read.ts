@@ -33,20 +33,22 @@ import path from 'node:path';
 import {
   containment, isIncomplete, isOneName, lintFlowDirectory, listTicketFiles, occurrenceSeq, pushLag,
   readRun, readRunsDir, readTicketFileBytes, sortRuns, vendorTokenTotal,
-  type Project, type TicketRecord, type VendorRollup,
+  type Project, type RunEntry, type TicketRecord, type VendorRollup,
 } from '@quorum/core';
 import { Hono } from 'hono';
 
 import {
-  RUN_HISTORY_ROOT,
-  type TicketHistoryEntry, type WireFlow, type WireFlowList, type WireRefusal, type WireTicket,
+  MANIFEST_FILE, RUN_HISTORY_ROOT, wireRunHistoryRowSchema,
+  type TicketHistoryEntry, type WireFlow, type WireFlowList, type WireRefusal,
+  type WireRunHistoryList, type WireRunHistoryRow, type WireRunHistoryWarning, type WireTicket,
   type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
 import { badRequest } from './wire.js';
 
 export type {
-  WireFlow, WireFlowList, WireTicket, WireTicketDetail, WireTicketFile, WireTicketList,
+  WireFlow, WireFlowList, WireRunHistoryList, WireRunHistoryRow, WireTicket, WireTicketDetail,
+  WireTicketFile, WireTicketList,
 };
 
 
@@ -62,6 +64,102 @@ function rollupRows(rollup: unknown): VendorRollup[] {
   if (!Array.isArray(rollup)) return [];
   return rollup.filter((row): row is VendorRollup =>
     typeof row === 'object' && row !== null && typeof (row as { vendor?: unknown }).vendor === 'string');
+}
+
+/**
+ * Every roll-up element narrowed to the four fields a listing row carries, and **none of them
+ * dropped**.
+ *
+ * **Deliberately not {@link rollupRows}, which filters — and filtering is right where that is used
+ * and wrong here.** The detail route derives `tokensByVendor` from it and sends the manifest whole
+ * beside it, so an element it could not read is still in front of a reader. On the listing the
+ * projection IS the answer: a filter there makes this route decide that a manifest holding a row it
+ * cannot read describes a run with fewer vendors, so `rollup: [42]` would list as a perfectly good
+ * run that billed nobody. It would also make the two routes disagree about one file, since
+ * `wireRunHistorySchema` declares `manifest.rollup` over {@link wireVendorRollupSchema}'s elements
+ * and a browser therefore refuses that same manifest on the detail.
+ *
+ * So an element that is not an object crosses **as it stands** and one that is has its four fields
+ * read off whatever is there: either way {@link wireRunHistoryRowSchema} is what judges it, and a
+ * run it refuses is NAMED in `warnings` with the parser's own words rather than misreported as one
+ * with an empty roll-up.
+ */
+function listingRollup(rollup: readonly unknown[]): unknown[] {
+  return rollup.map((row) => {
+    // Handed on unchanged so the schema names what it found. Reading `.vendor` off `null` would
+    // throw, and substituting an empty object here would report a damaged row as a missing one.
+    if (typeof row !== 'object' || row === null) return row;
+    const fields = row as Partial<VendorRollup>;
+    return {
+      vendor: fields.vendor,
+      cost_usd: fields.cost_usd,
+      unpriced_steps: fields.unpriced_steps,
+      step_count: fields.step_count,
+    };
+  });
+}
+
+/**
+ * One listing row for one run, or the sentence saying why this route could not compose one.
+ *
+ * **It parses with the schema the response is declared against, rather than checking fields by
+ * hand.** `readRunsDir` proves five things about a manifest — `run_id`, `ticket_id` and `status` are
+ * strings, `steps` and `rollup` are arrays — and this route answers with more than that: an instant,
+ * an end, a duration and four measures a vendor row. `readRun`'s own JSDoc calls the parsed document
+ * *"a cast, never a check"*, so every one of those can be of the wrong type on a hand-edited file.
+ * Executing {@link wireRunHistoryRowSchema} here is what makes the declaration a promise; it also
+ * covers a field a later ticket adds without anyone remembering to check it.
+ *
+ * **A run it cannot compose is NAMED rather than dropped, and it does not take the listing with
+ * it.** That is `failSoftly`'s distinction applied one level in from where `readRunsDir` already
+ * applies it: a store a reader could partly read is not an error, and the difference between a
+ * listing and a detail is the blast radius — `GET /history/:id` answers about one run, so a damaged
+ * manifest there is one unparseable response, while a single damaged manifest here would otherwise
+ * make every run in the store unreadable at once. The channel is the one already declared for it,
+ * whose own contract is *"a shape error, a missing manifest, or a parse failure with the parser's
+ * own words"*, and this produces the first and the third.
+ *
+ * **What this refuses that `readRunsDir` accepts has a rate nobody has measured, and the claim is
+ * bounded accordingly.** The requirements run measured **0 of 171** run directories unreadable by
+ * `readRunsDir`; it did not measure how many fail THIS check, and this worktree cannot — a run
+ * store is gitignored and is not in it. What is known instead is stronger than a count and does not
+ * rot: every constraint applied here is one `GET /history/:id` has already been applying to real
+ * manifests since Q-0135 — `started_at` a non-empty string, `ended_at` a string or `null`,
+ * `duration_ms` and `cost_usd` non-negative or `null`, the two roll-up counts non-negative
+ * integers — so a manifest this refuses is one that route was already refusing, and the difference
+ * this makes is where the refusal lands rather than how often.
+ *
+ * **That last sentence is a property of `listingRollup` rather than of this function alone**, and it
+ * was false while this projected through `rollupRows`: a roll-up element that is not an object was
+ * dropped here and refused there, so one manifest read as a run with no billed vendors on the
+ * listing and as an unparseable body on the detail. Review round 1's first finding.
+ */
+function historyRow(run: RunEntry): WireRunHistoryRow | string {
+  const parsed = wireRunHistoryRowSchema.safeParse({
+    id: run.runId,
+    ticket: run.manifest.ticket_id,
+    flow: run.manifest.flow,
+    status: run.manifest.status,
+    // Reported, never repaired: `docs/04-architecture.md` is explicit that a server must not tidy a
+    // `running` manifest it meets on read. A run that was interrupted looks incomplete because it
+    // IS, and saying so is the whole value of the field.
+    incomplete: isIncomplete(run.manifest),
+    started_at: run.manifest.started_at,
+    ended_at: run.manifest.ended_at,
+    duration_ms: run.manifest.duration_ms,
+    // A count and never the array: the occurrences themselves are `GET /history/:id`'s, and putting
+    // them on every row of a listing is the 170-reads-or-a-megabyte choice this route exists to
+    // avoid having to make. `steps` is an array here without a guard, and that is one of the five
+    // things `manifestShapeError` proves before `readRunsDir` puts an entry in `runs` at all — a
+    // document failing it is already in `warnings` and never reaches this function.
+    occurrenceCount: run.manifest.steps.length,
+    // Narrowed to the four a surface renders and never the manifest's rows as they sit on disk,
+    // which measured 581 B a row against 369 B — and narrowed WITHOUT dropping, so a row this route
+    // cannot read refuses the whole listing row rather than shrinking the roll-up in silence. See
+    // `listingRollup`, which is why this is not `rollupRows`.
+    rollup: listingRollup(run.manifest.rollup),
+  });
+  return parsed.success ? parsed.data : `${MANIFEST_FILE} does not describe a run this listing can report (${parsed.error.message})`;
 }
 
 /**
@@ -368,23 +466,19 @@ export function mountRead(app: Hono, project: Project): Hono {
   });
 
   app.get('/history', (c) => {
-    const { runs, warnings } = readRunsDir(path.join(project.repoDir, RUN_HISTORY_ROOT));
+    const { runs, warnings: unreadable } = readRunsDir(path.join(project.repoDir, RUN_HISTORY_ROOT));
+    const rows: WireRunHistoryRow[] = [];
+    const warnings: WireRunHistoryWarning[] = [...unreadable];
+    for (const run of sortRuns(runs)) {
+      const row = historyRow(run);
+      if (typeof row === 'string') warnings.push({ runId: run.runId, message: row });
+      else rows.push(row);
+    }
     // The listing is returned WITH its warnings rather than instead of them — `failSoftly`'s
     // distinction in `packages/cli/src/fail.ts`, which this is the HTTP analogue of. A store a
     // reader could partly read is not an error, and answering 500 would hide every run it could.
-    return c.json({
-      runs: sortRuns(runs).map((run) => ({
-        id: run.runId,
-        ticket: run.manifest.ticket_id,
-        flow: run.manifest.flow,
-        status: run.manifest.status,
-        // Reported, never repaired: `docs/04-architecture.md` is explicit that a server must not
-        // tidy a `running` manifest it meets on read. A run that was interrupted looks incomplete
-        // because it IS, and saying so is the whole value of the field.
-        incomplete: isIncomplete(run.manifest),
-      })),
-      warnings,
-    });
+    const body: WireRunHistoryList = { runs: rows, warnings };
+    return c.json(body);
   });
 
   app.get('/history/:id', (c) => {

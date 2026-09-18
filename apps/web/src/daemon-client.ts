@@ -32,11 +32,12 @@
  */
 import {
   diffEvidenceSchema, gateAnswerEnvelopeSchema,
-  wireFlowListSchema, wireRefusalSchema, wireRunHistorySchema, wireRunListSchema, wireRunSchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunHistoryListSchema, wireRunHistorySchema,
+  wireRunListSchema, wireRunSchema,
   wireStartRequestSchema,
   wireTicketDetailSchema, wireTicketFileSchema, wireTicketListSchema,
   type DiffEvidence, type GateAnswer, type WireFlowList, type WireRun, type WireRunHistory,
-  type WireRunList,
+  type WireRunHistoryList, type WireRunList,
   type WireStartRequest, type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
@@ -220,6 +221,25 @@ export const fetchRunHistory = (
   now: Clock,
 ): Promise<RequestState<WireRunHistory>> =>
   requestJson(fetcher, historyDetailPath(id), wireRunHistorySchema, now);
+
+/**
+ * Every run on disk, newest first, with what each one cost per vendor.
+ *
+ * **One request for a whole table, which is the reason the listing carries what it carries.** The
+ * alternative — the five fields it answered with before Q-0018 plus {@link fetchRunHistory} per row
+ * — is 171 requests for one screen against this repository's own store. The widened listing is
+ * 369 B a row and costs the daemon no extra read, `readRunsDir` already parsing every manifest.
+ *
+ * **Keyed by nothing at all, unlike its two neighbours.** {@link fetchRun} takes a handle the daemon
+ * minted in memory and {@link fetchRunHistory} takes `<ticket id>-<run number>`; this asks for the
+ * store. A daemon that restarted has lost every handle and has lost no history, which is why this
+ * screen composes no handle from a row and links to none.
+ */
+export const fetchRunHistoryList = (
+  fetcher: FetchLike,
+  now: Clock,
+): Promise<RequestState<WireRunHistoryList>> =>
+  requestJson(fetcher, DAEMON_ENDPOINTS.history, wireRunHistoryListSchema, now);
 
 /**
  * The diff the step whose decision reached one waiting gate was given.
@@ -497,6 +517,10 @@ export const runInFlight = <T>(handle: string): RequestState<T> =>
 /** One run's history read, in flight — naming the history id rather than the handle it came from. */
 export const runHistoryInFlight = <T>(id: string): RequestState<T> =>
   ({ kind: 'in-flight', path: historyDetailPath(id) });
+
+/** The whole store's in-flight state, naming the listing rather than any run in it. */
+export const runHistoryListInFlight = <T>(): RequestState<T> =>
+  ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.history });
 
 /** One gate's diff read, in flight — naming that gate rather than the run it belongs to. */
 export const gateDiffInFlight = <T>(handle: string, gateId: string): RequestState<T> =>
