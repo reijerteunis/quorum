@@ -1090,19 +1090,45 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
    * name with a sibling's code or with the rest of an enclosing scope; that over-collects and never
    * under-collects, which is the safe direction for a prohibition.
    *
-   * **The heads are matched over the text AS WRITTEN while the depths come from {@link depthsOf}**,
-   * and the asymmetry is deliberate. A head found inside a comment or a string is a name that does not
-   * exist, which adds an entry and can never remove the real one — `requestingNames` reads every
-   * entry, so a bogus one only widens what it collects. A head LOST to a lexer mistake would take a
-   * real body out of the walk, which is the direction that hides a poll, so the blanked text decides
-   * no head and only ever decides a depth.
+   * **The heads are matched over the text AS WRITTEN, and a head only TERMINATES an extent if it is
+   * also code.** That second half is review round 3's finding, and the paragraph it replaces had the
+   * reasoning backwards: it argued that a head born inside a string or a comment "adds an entry and
+   * can never remove the real one", which weighed the adding and missed the terminating. A phantom
+   * head does both — it ends the extent of every real binding before it whose depth is at or above
+   * its own — so over
+   *
+   * ```
+   * const reload = () => 'const fake' && fetchRuns(request, clock);
+   * ```
+   *
+   * `reload` was cut at the quote, the request was credited to a name born inside a string, and a
+   * timer calling `reload` passed a clause whose whole subject is that call. The realistic form is
+   * not that literal but a commented-out line inside a braceless arrow, where the comment sits at
+   * the same bracket depth as the head above it; both are fixtured in the clause below and both
+   * were shown red against the walk this replaces.
+   *
+   * **A head is therefore refused as a terminator unless it stands unblanked in {@link codeOnly},
+   * while entries still come from the text as written** — which keeps the direction the paragraph
+   * above was right about. Selecting the heads themselves from the blanked text closes the same
+   * finding and trades it for a quieter one: a real declaration the scanner wrongly blanked would
+   * leave the walk altogether, and a timer calling that name would pass. Refusing the phantom only
+   * as a terminator loses no body in either direction, so a lexer mistake can still only
+   * over-collect, and the clause below pins that choice rather than leaving it to be re-taken.
    */
   const bindings = (text: string): { readonly name: string; readonly text: string }[] => {
     const heads = [...text.matchAll(/\b(?:const|let|var|function)[ \t]+([A-Za-z_$][\w$]*)/g)];
+    const code = codeOnly(text);
     const depths = depthsOf(text);
     const depthAt = (head: RegExpExecArray): number => depths[head.index ?? 0] ?? 0;
+    /**
+     * Whether this head is code, rather than one born inside a literal or a comment.
+     *
+     * `codeOnly` preserves index and length, so a head that is code stands unchanged at its own
+     * offset in the blanked text and one inside a literal is spaces there.
+     */
+    const real = (head: RegExpExecArray): boolean => code.startsWith(head[0], head.index ?? 0);
     return heads.map((head, i) => {
-      const sibling = heads.findIndex((other, at) => at > i && depthAt(other) <= depthAt(head));
+      const sibling = heads.findIndex((other, at) => at > i && real(other) && depthAt(other) <= depthAt(head));
       return {
         name: head[1] ?? '',
         text: text.slice(head.index ?? 0, sibling === -1 ? text.length : heads[sibling]?.index ?? text.length),
@@ -1201,6 +1227,20 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     // no comment token and no register of permitted callers**, because an escape hatch beside a
     // predicate is Q-0079 round 2's repository-wide silencer, which is the failure this narrowing
     // must not become. E-2 permits a change to the predicate and nothing beside it.
+    //
+    // **What this clause CANNOT see, so a green tick here names what it examined.** It is LEXICAL
+    // and not syntax-aware: it reads a module's text and never its semantics. It has no parser and
+    // is not getting one — three review rounds each found a hole in the analysis underneath it, and
+    // a fourth would find a fifth, which is why erratum E-3 bounds it as a tripwire rather than a
+    // sandbox. So it reasons about NAMES and the text that follows them, and every shape that
+    // separates a name from the call it ends up making is outside it: a callback reached through a
+    // value rather than a binding — an array element, an object property, a parameter, a `bind` or
+    // a returned closure — a name assembled at run time, a timer called through an alias of its
+    // own, and a module whose text it cannot lex, which it collects whole and fails on rather than
+    // passing over. **A callback written to evade this clause can pass it.** What it is for is the
+    // poll somebody writes without meaning to; it is evidence about that and about nothing else,
+    // and it is not the reason the rule holds — that is the comment above and the contract the
+    // review reads.
     expect(pollers(sourceFiles()),
       'a timer callback reaches the daemon. This clause was narrowed at Q-0135 from *no timer '
       + 'primitive appears* to *no fetch is reachable from a timer callback*, which is the behaviour '
@@ -1208,7 +1248,11 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       + 'callback that reads a clock and sets local state. If a timer here needs to reach the daemon, '
       + 'that is a POLL and the rule stands — do not add a file exemption, a comment token or a '
       + 'register of permitted callers beside this predicate, which is Q-0079 round 2\'s '
-      + 'repository-wide silencer. See requirements/errata.md E-2 on this ticket.')
+      + 'repository-wide silencer. See requirements/errata.md E-2 on this ticket. And read what this '
+      + 'clause examined before treating a green run as coverage: it is LEXICAL, it follows names '
+      + 'and the text after them, it has no parser by ruling rather than by omission, and a callback '
+      + 'reached through a value rather than a binding — or a name assembled at run time — is '
+      + 'outside what it can see. See requirements/errata.md E-3.')
       .toStrictEqual([]);
 
     // **The narrowing is proven NECESSARY and not merely safe**: the clause this replaced reports
@@ -1349,6 +1393,58 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     expect(asNeedle('reload').test('void other$reload();'),
       'the needle matched a name that only ends with the one it is for').toBe(false);
     expect(asNeedle('reload').test('void reload();'), 'the needle matches no call at all').toBe(true);
+
+    // **Review round 3's finding: a head that does not exist can END one that does.** The extent
+    // used to be terminated by the next head matched over the text AS WRITTEN, and the reasoning
+    // above `bindings` argued that was safe because a bogus head "adds an entry and can never
+    // remove the real one". That sentence weighed the ADDING and missed the TERMINATING: a head
+    // born inside a string or a comment, at a depth at or below the real binding's, cuts that
+    // binding's body off before the request in it — so the name the callback actually calls is not
+    // collected and the timer is not reported. One fixture per birthplace, each a shape a reader
+    // writes: the first is the review's own, the second is a commented-out line inside a braceless
+    // arrow, where the comment sits at the same bracket depth as the head above it.
+    //
+    // **The mechanism is live in this corpus rather than hypothetical, and it was measured before
+    // the fix was trusted.** A phantom head needs no contrivance — English prose does it, any
+    // sentence putting a word after *a function*, *a const* or *let*. Measured across `src`: **23
+    // phantom heads in 11 files**, truncating **15 real bindings in 8 files** — `isoClock` in
+    // `daemon-client.ts` among them, and `MeasuredAbsenceRegion` in `mission-control-status.tsx`,
+    // which is the ONE file under `src` that schedules anything. What that cost the walk's output
+    // today is **nothing**: no name is gained by the fix and none is lost, because none of the
+    // fifteen truncated bodies reaches the daemon. So the defect is live and its consequence is
+    // latent, which is the honest form — a prohibition is judged on what it would fail to see.
+    // Those counts are evidence and deliberately not asserted: they are corpus figures and a
+    // reworded comment moves them, and a clause pinned to one would fail on an edit it is not about.
+    const PHANTOM: [string, string, string][] = [
+      ['a string', 'reload', [
+        `const reload = () => ${"'"}const fake${"'"} && fetchRuns(request, clock);`,
+        `${'setInterval'}(() => { reload(); }, 1000);`,
+      ].join('\n')],
+      ['a comment', 'load', [
+        'const load = () =>',
+        `  ${'//'} const cached = readCached(handle);`,
+        '  fetchRuns(request, clock);',
+        `${'setInterval'}(() => { load(); }, 1000);`,
+      ].join('\n')],
+    ];
+    // Asserted at the walk and at the clause separately, so a run says WHICH half moved: the body
+    // is what the phantom truncates, and the report is what that costs.
+    expect(PHANTOM.map(([where, name, text]) => [where, requestingNames(text).has(name)]),
+      'a declaration head inside a literal or a comment truncated the real binding above it')
+      .toStrictEqual(PHANTOM.map(([where]) => [where, true]));
+    expect(PHANTOM.map(([where, , text]) => [where, pollers([['phantom.ts', text]]).length]),
+      'a timer reaching the daemon through a helper a phantom head had truncated was not reported')
+      .toStrictEqual(PHANTOM.map(([where]) => [where, 1]));
+    // …and WHICH of the two available fixes is in force, pinned because they are not equally safe.
+    // A phantom is disarmed by being refused as a TERMINATOR and not by being dropped: it still
+    // yields its own entry, so the walk goes on over-collecting and never under-collects. Selecting
+    // heads from the blanked text instead would close this finding too and would trade it for a
+    // quieter one in the other direction — a real declaration the scanner wrongly blanked would
+    // leave the walk altogether, and a timer calling THAT name would pass. Over-collection is the
+    // safe direction for a prohibition, so the phantom survives here as a name nobody calls.
+    expect(bindings(PHANTOM[0]?.[2] ?? '').map((one) => one.name),
+      'a phantom head was dropped rather than refused as a terminator, which loses a real head too')
+      .toStrictEqual(['reload', 'fake']);
   });
 
   test('no file under src calls a containment answer merged, landed or shipped', () => {
