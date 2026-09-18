@@ -197,7 +197,7 @@ describe('AC-7 — a route whose screen does not exist says what it is waiting f
       // the screen reaches the browser's own `fetch` and the test does different work depending on
       // what answers — the same hazard the socket factory above is injected for, on the same rule.
       // Review round 4, N-3.
-      fetcher: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ handle: 'run one', flow: 'development', ticketId: null, runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null }) }),
+      fetcher: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ handle: 'run one', flow: 'development', ticketId: null, runId: null, dry: false, state: 'running', pendingGates: 0, gates: [], refusal: null }) }),
       clock: () => 'now',
       pageUrl: new URL(`https:${'/' + '/'}page.test`),
     }));

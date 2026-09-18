@@ -206,7 +206,7 @@ export const ROUTES: readonly Route[] = [
     ticket: 'Q-0015',
     screenExists: true,
     waitingFor:
-      "Mission control streams a run live: a run-activity lane, one trace column per parallel step, and an observed-only timeline. The header's run number, elapsed time and per-vendor cost are Q-0131's; starting or stopping a run is Q-0130's.",
+      "Mission control streams a run live: a run-activity lane, one trace column per parallel step, an observed-only timeline, and the header's run number, elapsed time and per-vendor cost split, which Q-0135 completed. Starting or stopping a run is Q-0130's.",
   },
   // Built by Q-0016, which was cut in two at its own requirements gate; completed by Q-0129, which
   // added the decision that reached it once the question carried it; and by Q-0134, which added the

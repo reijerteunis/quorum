@@ -112,6 +112,15 @@ export interface RunView {
    * number, and the one the lock's contender computed belongs to the run that holds the ticket.
    */
   readonly runId: number | null;
+  /**
+   * Whether the start asked for a walk that invokes no adapter and writes nothing.
+   *
+   * The request's EFFECTIVE value — `false` where the field was omitted — so this says what the run
+   * is doing rather than what its caller mentioned. Retained since Q-0135 because a dry walk writes
+   * no run history and is allocated a run number that the next real run of the same ticket receives
+   * again, so a reader composing `<ticket>-<number>` without it reads another run's manifest.
+   */
+  readonly dry: boolean;
   /** The ticket this run was started against, or `null` where the start never resolved one. */
   readonly ticket: TicketRecord | null;
   readonly state: RunState;
@@ -244,6 +253,8 @@ export interface RunHost {
 interface RunRecord {
   readonly handle: string;
   readonly flow: string;
+  /** The start request's effective `dry`, settled when the handle is minted and never revised. */
+  readonly dry: boolean;
   ticket: TicketRecord | null;
   runId: number | null;
   state: RunState;
@@ -313,6 +324,7 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     handle: record.handle,
     flow: record.flow,
     runId: record.runId,
+    dry: record.dry,
     ticket: record.ticket,
     state: record.state,
     terminal: record.terminal,
@@ -322,12 +334,19 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
     watchers: record.broadcast?.size ?? 0,
   });
 
-  /** One run's bookkeeping under a fresh handle, registered before anything can fail. */
-  const mint = (flow: string): RunRecord => {
+  /**
+   * One run's bookkeeping under a fresh handle, registered before anything can fail.
+   *
+   * It takes the whole request rather than the flow name alone since Q-0135, so that `dry` is
+   * settled on the record at the moment the handle exists: a refused start is minted here too, and a
+   * caller asking what this host knows about that handle is owed the same answer about it.
+   */
+  const mint = (request: StartRequest): RunRecord => {
     minted += 1;
     const record: RunRecord = {
       handle: `run-${minted}`,
-      flow,
+      flow: request.flow,
+      dry: request.dry ?? false,
       ticket: null, runId: null, state: 'refused',
       terminal: null, failure: null, refusal: null, evidence: new Map(),
       broadcast: null, controller: null, iterator: null, drained: null,
@@ -436,7 +455,7 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
    * method is waiting on while it is.
    */
   const begin = async (request: StartRequest): Promise<StartOutcome> => {
-    const record = mint(request.flow);
+    const record = mint(request);
 
     let stream: AsyncIterable<Event>;
     try {
@@ -501,7 +520,7 @@ export function createRunHost({ project, retain }: RunHostOptions): RunHost {
       // Refused before a flow is loaded or a ticket is read, because a run started now is one
       // nothing would release: the snapshot shutdown takes has already been taken, or is about to
       // be taken over a set this run would not have joined.
-      if (closed) return refused(mint(request.flow), refusalOf(HOST_CLOSED_CONDITION));
+      if (closed) return refused(mint(request), refusalOf(HOST_CLOSED_CONDITION));
       const outcome = begin(request);
       beginning.add(outcome);
       try {

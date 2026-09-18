@@ -11,7 +11,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const roots: (() => void)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const close of roots.splice(0)) await act(async () => close()); document.body.innerHTML = ''; });
 const CLOCK = (): string => '2026-09-16T09:00:00.000Z';
-const row = (handle: string, ticketId: string | null) => ({ handle, flow: 'development', ticketId, runId: null, state: 'running', pendingGates: 2, gates: [], refusal: null });
+const row = (handle: string, ticketId: string | null) => ({ handle, flow: 'development', ticketId, runId: null, dry: false, state: 'running', pendingGates: 2, gates: [], refusal: null });
 async function mount(body: unknown, status = 200): Promise<{ view: HTMLElement; calls: string[] }> { const calls: string[] = []; const fetcher = (path: string) => { calls.push(path); return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) }); }; const view = document.createElement('div'); document.body.append(view); const root = createRoot(view); roots.push(() => root.unmount()); await act(async () => root.render(createElement(RunsScreen, { fetcher, now: CLOCK, onNavigate: () => undefined }))); return { view, calls }; }
 
 describe('Q-0015 AC-1/2/3 — runs landing', () => {

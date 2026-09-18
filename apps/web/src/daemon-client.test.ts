@@ -47,7 +47,7 @@ const LISTING = {
 };
 
 describe('Q-0015 AC-1 — fetchRuns is the one validated runs-list read', () => {
-  const body = { runs: [{ handle: 'run-b', flow: 'development', ticketId: null, runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null }] };
+  const body = { runs: [{ handle: 'run-b', flow: 'development', ticketId: null, runId: null, dry: false, state: 'running', pendingGates: 0, gates: [], refusal: null }] };
 
   test('loads the registered endpoint exactly once and preserves the clock value', async () => {
     const server = answering(body);
@@ -507,7 +507,7 @@ describe('AC-4 — fetchRun reads one run, over the route that answers for one h
 
   /** One run row in the shape `wireRunSchema` accepts, with one gate waiting. */
   const RUN = {
-    handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, state: 'running', pendingGates: 1,
+    handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, dry: false, state: 'running', pendingGates: 1,
     gates: [{ type: 'gate', gateId: '3:1', kind: 'human', reason: 'approve to advance', ticketDir: '/repo/backlog/Q-0016-a' }],
     refusal: null,
   };
@@ -541,7 +541,7 @@ describe('AC-4 — fetchRun reads one run, over the route that answers for one h
 describe('Q-0130 AC-3 — startRun, whose success is a body and not a status', () => {
   /** One run row in the shape `wireRunSchema` accepts — what a `201` carries. */
   const STARTED = {
-    handle: 'run-9', flow: 'chore', ticketId: 'Q-0130', runId: null, state: 'running',
+    handle: 'run-9', flow: 'chore', ticketId: 'Q-0130', runId: null, dry: false, state: 'running',
     pendingGates: 0, gates: [], refusal: null,
   };
 

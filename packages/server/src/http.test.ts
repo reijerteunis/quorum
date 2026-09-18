@@ -399,6 +399,60 @@ describe('Q-0121 AC-6 — both reads are GETs, and reading moves nothing', () =>
   });
 });
 
+describe('Q-0135 AC-8 — a run row says whether it is a dry walk', () => {
+  test('both values cross, on the start, the lookup and the listing, and never as undefined', async () => {
+    // **The hazard this closes is a wrong answer rather than a missing one.** A dry walk is
+    // allocated a run number and writes no run history; core's allocator reserves nothing, so the next
+    // real run of that ticket is allocated the identical number — and a reader composing
+    // `<ticket>-<number>` would then read that run's manifest and render its start time and cost as
+    // the walk's. A 404 is the case an inference from the status would get RIGHT.
+    const { host, app } = served();
+    const walk = await startedRun(host, { flow: 'probe', ticket: TICKET_ID, dry: true });
+    const real = await startedRun(host, { flow: 'probe', ticket: TICKET_ID });
+
+    const lookup = async (handle: string): Promise<WireRun> => {
+      const parsed = wireRunSchema.safeParse(await (await app.request(`/runs/${handle}`)).json());
+      expect(parsed.error?.issues, 'a run row does not satisfy the schema a browser parses it with').toBeUndefined();
+      if (!parsed.success) throw new Error('unreachable');
+      return parsed.data;
+    };
+    expect((await lookup(walk)).dry, 'a dry walk is indistinguishable from a real run').toBe(true);
+    // **`false` and never `undefined`**, which is the half a default would take away: an omitted
+    // field reads as *nothing was said* and `false` is what composes a history id.
+    expect((await lookup(real)).dry, 'a run started with no dry field reported something other than false').toBe(false);
+
+    const listed = await listRuns(app);
+    expect(listed.map((row) => [row.handle, row.dry]), 'the listing and the lookup disagree about a walk')
+      .toStrictEqual([[real, false], [walk, true]]);
+
+    await host.shutdown();
+  });
+
+  test('the projection carries it, so dropping the field is not a silent narrowing', () => {
+    // Driven over `wireRunOf` itself rather than over the host, because the claim is about the ONE
+    // projection every route answering with a run goes through: a `RunView` carrying `true` that
+    // answered `false` would make every row above pass for the wrong reason.
+    const view = (dry: boolean): RunView => ({
+      handle: 'run-1', flow: 'probe', runId: null, dry, ticket: null, state: 'running',
+      terminal: null, failure: null, refusal: null, gates: [], watchers: 0,
+    });
+    expect(wireRunOf(view(true)).dry, 'the projection does not carry a walk').toBe(true);
+    expect(wireRunOf(view(false)).dry, 'the projection does not carry a real run').toBe(false);
+  });
+
+  test('a start the host refused carries it too, the record being minted before anything can fail', async () => {
+    // A refused start is a run this host minted, and a caller asking what it knows about that handle
+    // is owed the same answer about it — which is why `dry` is settled at `mint` rather than at the
+    // pull that proves a run is under way.
+    const { host } = served();
+    const outcome = await host.start({ flow: 'no-such-flow', ticket: TICKET_ID, dry: true });
+    expect(outcome.started, 'the fixture flow resolved — this clause has lost its subject').toBe(false);
+    expect(outcome.run.dry, 'a refused walk reports nothing about being one').toBe(true);
+    expect(wireRunOf(outcome.run).dry, 'the refused row drops it on the way to the wire').toBe(true);
+    await host.shutdown();
+  });
+});
+
 describe('Q-0121 AC-8 — one projection, and a row says which ticket and how many gates are waiting', () => {
   test('a run at a gate reports pendingGates 1, and POST /runs answers the same key set as a listing row', async () => {
     const project = fixture({ flow: GATED_FLOW });
@@ -421,7 +475,7 @@ describe('Q-0121 AC-8 — one projection, and a row says which ticket and how ma
     const looked = await (await app.request(`/runs/${handle}`)).json() as Record<string, unknown>;
     expect(Object.keys(looked).sort()).toStrictEqual(Object.keys(created).sort());
     expect(Object.keys(created).sort())
-      .toStrictEqual(['flow', 'gates', 'handle', 'pendingGates', 'refusal', 'runId', 'state', 'ticketId']);
+      .toStrictEqual(['dry', 'flow', 'gates', 'handle', 'pendingGates', 'refusal', 'runId', 'state', 'ticketId']);
     // `state` is the host's closed three rather than the string it was declared as until this ticket.
     expect([...WIRE_RUN_STATES], 'the wire state vocabulary widened').toContain(String(created.state));
 
@@ -533,7 +587,7 @@ describe('Q-0016 AC-2 — the projection carries the questions, derived per requ
     const question = (gateId: string): GateQuestionEvent =>
       ({ type: 'gate', gateId, kind: 'human', reason: 'approve', ticketDir: '/repo/backlog/T-0001-a' });
     const view = (gates: GateQuestionEvent[]): RunView => ({
-      handle: 'run-1', flow: 'probe', runId: null, ticket: null, state: 'running',
+      handle: 'run-1', flow: 'probe', runId: null, dry: false, ticket: null, state: 'running',
       terminal: null, failure: null, refusal: null, gates, watchers: 0,
     });
     for (const gates of [[], [question('1:1')], [question('1:1'), question('1:2')]]) {

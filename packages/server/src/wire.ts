@@ -136,6 +136,13 @@ export const STOP_REFUSAL_STATUS = {
  * redundancy safe rather than a second authority. `RunView.gates` is derived per call from the
  * registry `askGate` parks on, so both are answers about this request and nothing is cached.
  *
+ * **`dry` crosses since Q-0135, and it is the one field here that is about the REQUEST.** Everything
+ * else is what became of the run; this is what the run was asked to be, carried back because a walk
+ * that writes no run history is allocated a number the next real run of that ticket receives again —
+ * so a reader composing a history id from `ticketId` and `runId` alone reads another run's manifest,
+ * which is a wrong answer rather than a missing one. It narrows no {@link RunView} field, so Q-0121
+ * GO-3's naming rule permits the name.
+ *
  * **`refusal` crosses whole since Q-0016 as well, and it carries no code.** A `refused` row said
  * only that the start never happened, so the one surface that renders one had to say it carried no
  * reason — an admitted gap with the daemon's own sentence one field away. What is NOT carried is a
@@ -150,6 +157,7 @@ export function wireRunOf(view: RunView): WireRun {
     flow: view.flow,
     ticketId: view.ticket === null ? null : String(view.ticket.meta.id),
     runId: view.runId,
+    dry: view.dry,
     state: view.state,
     pendingGates: view.gates.length,
     gates: view.gates,

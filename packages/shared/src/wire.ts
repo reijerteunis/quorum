@@ -152,6 +152,21 @@ export interface WireRun {
   /** The ticket's id, or `null` where the start never resolved one. */
   readonly ticketId: string | null;
   readonly runId: number | null;
+  /**
+   * Whether this run is a walk that invokes no adapter and writes nothing.
+   *
+   * **Required rather than optional, and never inferred.** The word already crosses in the other
+   * direction — {@link WIRE_START_FIELDS} carries `dry` and {@link WireStartRequest} declares it —
+   * and until Q-0135 nothing carried it back, so a reader holding a run row could not tell a walk
+   * from a run. That is a wrong answer rather than a missing one: a dry walk is allocated a run
+   * number like any other run and writes no run history, `nextRunId` reserves nothing, and the next
+   * real run of that ticket therefore receives the identical number — so `<ticketId>-<runId>` names
+   * a directory belonging to a different run, and a surface composing it would render that run's
+   * start time and cost as this walk's.
+   *
+   * It narrows no {@link RunView} field, so Q-0121 GO-3's naming rule permits the name.
+   */
+  readonly dry: boolean;
   readonly state: WireRunState;
   /** How many of this run's gates are waiting on an answer. Always `gates.length`. */
   readonly pendingGates: number;
@@ -170,6 +185,10 @@ export const wireRunSchema: z.ZodType<WireRun> = z.object({
   flow: z.string(),
   ticketId: z.string().nullable(),
   runId: z.number().int().nullable(),
+  // Required and not `.optional()`, which is the half a default would take away: an optional field
+  // lets a projection drop it and a reader read the omission as `false`, and `false` is the answer
+  // that composes a history id. A row that omits it is refused here instead.
+  dry: z.boolean(),
   state: wireRunStateSchema,
   pendingGates: z.number().int().nonnegative(),
   // The event union's own schema as the element, never a second declaration of its fields: the
@@ -196,6 +215,106 @@ export interface WireRunList {
 export const wireRunListSchema: z.ZodType<WireRunList> = z.object({
   runs: z.array(wireRunSchema),
 }).strict();
+
+/**
+ * One vendor's row of a run's roll-up, as `GET /history/:id` reports it.
+ *
+ * The four fields are the ones a surface renders and not the whole row — `core`'s own `VendorRollup`
+ * carries five token measures beside them — which is why every level of {@link wireRunHistorySchema}
+ * is loose rather than `.strict()`.
+ *
+ * **`cost_usd` is `null` where the vendor reported no price, and `0` where it reported zero**, which
+ * are different claims and only one of them is *free*: *"Codex cost is reported as tokens, never
+ * priced locally"* (2026-08-22). **`step_count` is never zero** — `rollup()` emits a row only for a
+ * vendor that finished a billed occurrence, so a vendor that has run and finished none is ABSENT
+ * here rather than present at zero, which is a third thing again and is not *unpriced*.
+ */
+export interface WireVendorRollup {
+  /** The grouping key: the exact `usage.vendor` string, never normalised or mapped. */
+  readonly vendor: string;
+  /** What that vendor billed, or `null` where it reported no price at all. */
+  readonly cost_usd: number | null;
+  /** How many of its counted occurrences reported no price, so a row can say what it cannot see. */
+  readonly unpriced_steps: number;
+  /** How many occurrences carrying usage were counted. Never zero — a row without one is absent. */
+  readonly step_count: number;
+}
+
+/**
+ * The part of a run manifest {@link WireRunHistory} carries: when it ran, how it stands, and its
+ * roll-up.
+ *
+ * `duration_ms` is the engine's own figure — `finalise` computes it from the same `Date` reading
+ * that produced `ended_at`, so it is one measurement rather than a subtraction of two, and a reader
+ * that recomputed it would be taking a second reading of a value it was handed.
+ *
+ * **`status` is a plain string and not an enum**, on {@link WireTicket}'s rule: refusing a status
+ * this vocabulary does not know would refuse a document this product itself wrote, and naming an
+ * unplaceable value is a screen's job rather than a parser's.
+ */
+export interface WireRunHistoryManifest {
+  /** When the run started, as an ISO 8601 instant in UTC. Never empty. */
+  readonly started_at: string;
+  /** When it ended, or `null` while it is running or if it was killed outright. */
+  readonly ended_at: string | null;
+  /** `ended_at - started_at` exactly, from one clock reading, or `null`. */
+  readonly duration_ms: number | null;
+  readonly status: string;
+  /** One row per vendor that finished a billed occurrence, in first-appearance order. */
+  readonly rollup: readonly WireVendorRollup[];
+}
+
+/**
+ * What `GET /history/:id` answers with, narrowed to what a surface reads.
+ *
+ * **It is the first validation of `started_at`, `ended_at`, `duration_ms` and `status` anywhere in
+ * the chain**, and it closes the last route on this transport that declared no shape: `readRun`'s
+ * own JSDoc calls the parsed manifest *"a cast, never a check"*, and the route guards `rollup` and
+ * `steps` alone.
+ *
+ * **Loose at all three levels, deliberately.** *"Unknown keys are refused where Quorum owns the key
+ * set, and preserved where it does not"* (2026-08-25): this is a projection of a document `core`
+ * writes and may widen, so a `.strict()` shape here would turn a manifest this product produced into
+ * a response a browser refuses. Every field named below is still required and still typed.
+ *
+ * `steps` is deliberately absent: it is the occurrence array, carried twice by the route and read
+ * by nothing that reads this shape. A schema naming it would be asserting over a value no caller
+ * wants and would have to keep pace with an occurrence's fifteen keys.
+ */
+export interface WireRunHistory {
+  readonly manifest: WireRunHistoryManifest;
+  /** Whether the run is still in flight, as the route reports it — never repaired, only reported. */
+  readonly incomplete: boolean;
+  /**
+   * Each vendor's token total, already reduced over its own roll-up row and never across rows.
+   *
+   * `null` where that vendor reported neither input nor output tokens, which is the `n/a`-never-`0`
+   * rule: nobody reported a measure is not the claim that the measure was zero.
+   */
+  readonly tokensByVendor: Readonly<Record<string, number | null>>;
+}
+
+/** Runtime validation for one run's history detail. */
+export const wireRunHistorySchema: z.ZodType<WireRunHistory> = z.looseObject({
+  manifest: z.looseObject({
+    started_at: z.string().min(1),
+    ended_at: z.string().nullable(),
+    duration_ms: z.number().nonnegative().nullable(),
+    status: z.string(),
+    // The ELEMENTS as well as the array: `readRun` casts rather than checks, so a hand-edited
+    // manifest can carry a `rollup` that is not an array — and one whose members are numbers, which
+    // `Array.isArray` alone lets through. That is the guard `read.ts` needed two review rounds to
+    // get right, met here rather than rediscovered.
+    rollup: z.array(z.looseObject({
+      vendor: z.string(),
+      cost_usd: z.number().nullable(),
+      unpriced_steps: z.number().int().nonnegative(),
+      step_count: z.number().int().nonnegative(),
+    })),
+  }),
+  incomplete: z.boolean(),
+  tokensByVendor: z.record(z.string(), z.number().int().nonnegative().nullable()),
+});
 
 /**
  * The field names `POST /runs` accepts, in that route's own order.

@@ -1273,6 +1273,47 @@ describe('Q-0014 AC-11 — the architecture document describes the shell that sh
     }
   });
 
+  test('Q-0135 — and it says all four header values are on the screen, not that two are not', () => {
+    // **The negative is asserted beside the positive**, in the shape the two clauses around this one
+    // use: what a document of this kind gets wrong is not the new sentence but the old one nobody
+    // re-read. §`apps/web` said *"Two of the four values … are still not on this wire and the screen
+    // says so rather than showing them"*, and gave a reason per value — no event carries a timestamp,
+    // and cost crosses only inside a message composed for a human. Both were true of the WIRE when
+    // they were written and both describe a premise this ticket removed rather than contradicted:
+    // the figures are read from a route, and no event gained anything.
+    const text = section();
+    expect(text, 'the section still says two of the four header values are not on this wire')
+      .not.toMatch(/Two of the four values/);
+    expect(text, 'the section still gives the retired reason for the elapsed figure')
+      .not.toMatch(/no event carries a timestamp so there is no elapsed time to compute/);
+    expect(text, 'the section still says cost crosses only inside a message')
+      .not.toMatch(/cost crosses only inside a message composed for a human/);
+    // The positives, and they are the clauses a later edit is likeliest to trim: WHERE the figures
+    // come from, that the two behave differently, what stops the advancing one, and the two rules a
+    // cost rendering is under.
+    expect(text, 'the section does not say where the two figures are read from').toContain('GET /history/:id');
+    expect(text, 'the section does not say the two values behave differently')
+      .toMatch(/elapsed advances from `manifest\.started_at`/);
+    expect(text, 'the section does not say what stops the advancing figure')
+      .toMatch(/whichever authority speaks first/);
+    expect(text, 'the section does not say the frozen figure is the engine\'s own')
+      .toContain('manifest.duration_ms');
+    expect(text, 'the section does not say no figure is summed across vendors')
+      .toMatch(/No figure is summed across vendors/);
+    expect(text, 'the section does not say the wire carries whether a run is a dry walk')
+      .toMatch(/`WireRun` gains `dry`/);
+    // The negatives have subjects: the same needles find the superseded wording where it is written,
+    // so this clause refuses a sentence rather than matching nothing.
+    const asItWas = "**Two of the four values `docs/05-design-prompt.md` screen 5 puts in the header are still not on this wire and the screen says so rather than showing them**: no event carries a timestamp so there is no elapsed time to compute, and cost crosses only inside a message composed for a human — which is **Q-0135**'s.";
+    for (const needle of [
+      /Two of the four values/,
+      /no event carries a timestamp so there is no elapsed time to compute/,
+      /cost crosses only inside a message composed for a human/,
+    ]) {
+      expect(needle.test(asItWas), `the fixture no longer reproduces ${String(needle)}`).toBe(true);
+    }
+  });
+
   test('Q-0122 AC-8 — and it says the app emits, rather than that it emits nothing', () => {
     // **The clause held the opposite until 2026-09-12, and that is why it is a clause rather than a
     // correction.** This section read *"The app emits nothing: it declares no `build` script, so

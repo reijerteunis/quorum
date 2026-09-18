@@ -125,6 +125,25 @@ describe('Q-0127 AC-13 — the register gains no path, and says which screens ex
       .not.toMatch(/does not have yet/);
   });
 
+  test('Q-0135 AC-17 — the mission-control row no longer promises two of its values under another id', () => {
+    // **A register entry promising work under the wrong id**, which is what this sentence was: it
+    // said the header's run number, elapsed time and per-vendor cost were *Q-0131's*, and that
+    // ticket shipped the run number alone and split the other two here. Nothing checked it, which is
+    // how it survived a ticket that edited the value beside it.
+    const route = SCREEN_ROUTES.find((entry) => entry.path === RUN_ROUTE);
+    if (!route) throw new Error('no mission-control route — this check has lost its subject');
+    expect(route.waitingFor, 'the row still attributes the elapsed and cost figures to Q-0131')
+      .not.toMatch(/elapsed time and per-vendor cost are Q-0131's/);
+    expect(route.waitingFor, 'the row does not name the ticket that completed them').toContain('Q-0135');
+    // …and it describes the values as present rather than as awaited, the screen being built.
+    expect(route.screenExists, 'the row stopped claiming a screen').toBe(true);
+    expect(route.waitingFor, 'the row does not name the two figures at all').toMatch(/elapsed time and per-vendor cost/);
+    // The needle has a subject: the same one finds the superseded wording where it is written.
+    const asItWas = "The header's run number, elapsed time and per-vendor cost are Q-0131's; starting or stopping a run is Q-0130's.";
+    expect(/elapsed time and per-vendor cost are Q-0131's/.test(asItWas),
+      'the needle no longer reproduces the wording it refuses').toBe(true);
+  });
+
   test('exactly five route rows claim a screen, and app selects every one by its registered constant', () => {
     // The rail says which entry has a screen and the rail has no ticket-page or gate entry, which
     // is why this field is on the route row too: `/backlog/:ticketId` and `/runs/:handle/gate` are

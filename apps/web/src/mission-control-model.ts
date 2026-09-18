@@ -35,8 +35,14 @@ function stepIdOf(event: Event): string | null {
   return 'stepId' in event ? event.stepId : null;
 }
 
-/** The vendor an event names, or `null` — only `spawn` and `retry` carry one. */
-function vendorOf(event: Event): string | null {
+/**
+ * The vendor an event names, or `null` — only `spawn` and `retry` carry one.
+ *
+ * Exported since Q-0135 because the measured region asks the same question of the same two events,
+ * and a second copy of *which events carry a vendor label* would be free to drift from this one the
+ * day a third does.
+ */
+export function vendorOf(event: Event): string | null {
   return event.type === 'spawn' || event.type === 'retry' ? event.vendor : null;
 }
 

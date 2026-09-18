@@ -885,17 +885,566 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       .toContain('a different process that this daemon cannot see');
   });
 
+  /** The three ways this app could schedule work, which is what a timer callback is reached from. */
+  const TIMERS = ['setInterval', 'setTimeout', 'requestIdleCallback'];
+
+  /**
+   * Anything that reaches the daemon: a request, or one of the three acts that write.
+   *
+   * Wider than the word *fetch* deliberately. `requestJson` is what every reader goes through, every
+   * reader's own name begins with `fetch`, and `answerGate`, `startRun` and `stopRun` are the three
+   * writes this app performs — a timer that sent one of those would be worse than a timer that read.
+   * The three writers are the identity register one describe over, so a fourth act is a visible
+   * change there and would be added here with it.
+   */
+  const REACHES_THE_DAEMON = /\b(?:fetch[A-Za-z]*|requestJson|answerGate|startRun|stopRun)[ \t]*\(|\bbrowserFetch\b/;
+
+  /**
+   * The same text, with every comment, string, template and regex literal blanked to spaces.
+   *
+   * **Length- and index-preserving**, so an offset into the blanked text is the same offset into the
+   * text as written: `split('')` splits by UTF-16 code unit, which is the unit a `RegExp` match index
+   * is in, and newlines are kept so the two texts have identical line structure. Nothing here reads
+   * the blanked text for CONTENT — every slice this file reports comes from the text as written — so
+   * the only thing this changes is which bracket characters a depth walk counts.
+   *
+   * **It exists because a bracket inside a literal is not a bracket.** Review round 2's finding: the
+   * walk counted every `(`, `[`, `{`, `)`, `]` and `}` character in the module, so a `)` in a string,
+   * a `}` in a template, a `)` in a regex body or a `)` in a comment returned the count to zero
+   * before the end of a timer's argument list — and the callback was then read only as far as that,
+   * which is short of a request written after the literal. Four literal kinds, four false negatives,
+   * all four now fixtured in the clause below.
+   *
+   * Comments, quoted strings and template literals need no context to lex and are exact here,
+   * including a template's `${…}` interpolations, which are lexed as the code they are — so a nested
+   * template, a string holding a `}` or a brace inside an interpolation are all handled by this one
+   * loop rather than by a special case. **The one genuine ambiguity in JavaScript is `/`**, and it is
+   * decided the way the language decides it: a `/` following a value — an identifier that is not a
+   * keyword, a number, `)`, `]`, or a literal that has just closed — is a division, and one following
+   * anything else opens a regex. A candidate regex that reaches a line break opens none, a regex
+   * literal holding no line terminator, so an unterminated one is read as division rather than
+   * guessed at. A quote that does not close on its own line is likewise read as no literal at all,
+   * because blanking a partial line is the one thing here that could remove an OPENING bracket from
+   * the count, and a shorter region is the direction that hides a poll.
+   *
+   * **The `/` of a JSX CLOSING TAG opens no regex either, and that clause is measured rather than
+   * anticipated**: this corpus is half `.tsx`, and `</span></p>` is a `/` preceded by `<` with another
+   * `/` later on the same line — **four live sites, in `diff-view.tsx` and `gate-screen.tsx`** — so
+   * without it a span of JSX between two closing tags is blanked and the brackets inside it stop being
+   * counted. Neither of those two files schedules anything, so nothing was reported wrongly today;
+   * that is luck rather than design, and a scanner introducing the very class it was added to remove
+   * is the shape this repository records most. A self-closing tag needs no clause: a tag name precedes
+   * its `/`, so the value test already reads it as a division. The only regex this refuses is one
+   * written directly after a `<`, which is not an expression position.
+   *
+   * **What the blanked text buys, stated as the property the clause rests on: over syntactically
+   * valid code the walk below closes a timer's argument list exactly where the language does.** The
+   * code between a callback's `{` and the request written after a literal is balanced, so once no
+   * literal contributes a bracket there is nothing left that can return the count to zero early —
+   * which is the whole of review round 2's finding. **Two residuals, and neither is weaker than the
+   * walk this replaced**: a regex directly after `)` or `}` — `if (x) /re/.test(y)`, which no file
+   * here writes — is read as a division and its brackets are counted, which is what the walk did with
+   * every regex everywhere before this; and two apostrophes in one line of JSX text would be read as
+   * a string, which over-blanks a balanced region and so moves nothing. Text that is not valid at all
+   * closes nowhere and is collected WHOLE by {@link timerCallbacks}, which fails this clause rather
+   * than passing over it.
+   */
+  const codeOnly = (text: string): string => {
+    const out = text.split('');
+    const blank = (from: number, to: number): void => {
+      for (let at = Math.max(0, from); at < Math.min(to, out.length); at += 1) {
+        if (out[at] !== '\n') out[at] = ' ';
+      }
+    };
+    /** One past a quoted string's closing quote, or −1 where this quote opens no string literal. */
+    const endOfQuoted = (start: number): number => {
+      for (let at = start + 1; at < text.length; at += 1) {
+        if (text[at] === '\\') { at += 1; continue; }
+        if (text[at] === text[start]) return at + 1;
+        if (text[at] === '\n') return -1;
+      }
+      return -1;
+    };
+    /** One past a regex literal's closing slash, or −1 where this `/` opens no regex at all. */
+    const endOfRegex = (start: number): number => {
+      let inClass = false;
+      for (let at = start + 1; at < text.length; at += 1) {
+        const char = text[at];
+        if (char === '\\') { at += 1; continue; }
+        if (char === '\n') return -1;
+        if (char === '[') inClass = true;
+        else if (char === ']') inClass = false;
+        else if (char === '/' && !inClass) return at + 1;
+      }
+      return -1;
+    };
+    /** A keyword a `/` may follow and still open a regex, which the value test would read as one. */
+    const KEYWORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+      'case', 'do', 'else', 'yield', 'await']);
+    const WORD = /[\w$]+/y;
+    /** One frame per template literal, and one per `${…}` inside it, innermost last. */
+    const modes: ('code' | 'template')[] = ['code'];
+    /** Open braces in each code frame, so the `}` that closes an interpolation is told from a block's. */
+    const braces: number[] = [0];
+    /** Whether what precedes this position could be the left operand of a division. */
+    let value = false;
+    let at = 0;
+    while (at < text.length) {
+      const char = text[at];
+      if (modes[modes.length - 1] === 'template') {
+        if (char === '\\') { blank(at, at + 2); at += 2; continue; }
+        if (char === '`') { blank(at, at + 1); at += 1; modes.pop(); value = true; continue; }
+        if (char === '$' && text[at + 1] === '{') {
+          blank(at, at + 2); at += 2; modes.push('code'); braces.push(0); value = false; continue;
+        }
+        blank(at, at + 1); at += 1; continue;
+      }
+      if (char === '/' && text[at + 1] === '/') {
+        const line = text.indexOf('\n', at);
+        const to = line === -1 ? text.length : line;
+        blank(at, to); at = to; continue;
+      }
+      if (char === '/' && text[at + 1] === '*') {
+        const close = text.indexOf('*/', at + 2);
+        const to = close === -1 ? text.length : close + 2;
+        blank(at, to); at = to; continue;
+      }
+      if (char === '"' || char === '\'') {
+        const to = endOfQuoted(at);
+        if (to !== -1) { blank(at, to); at = to; value = true; continue; }
+      }
+      if (char === '`') { blank(at, at + 1); at += 1; modes.push('template'); continue; }
+      if (char === '/' && !value && text[at - 1] !== '<') {
+        const to = endOfRegex(at);
+        if (to !== -1) { blank(at, to); at = to; value = true; continue; }
+      }
+      if (char !== undefined && /[\w$]/.test(char)) {
+        WORD.lastIndex = at;
+        const word = WORD.exec(text)?.[0] ?? char;
+        at += word.length; value = !KEYWORDS.has(word); continue;
+      }
+      if (char === '{') {
+        braces[braces.length - 1] = (braces[braces.length - 1] ?? 0) + 1;
+        value = false; at += 1; continue;
+      }
+      if (char === '}') {
+        const open = braces[braces.length - 1] ?? 0;
+        if (open === 0 && modes.length > 1) {
+          blank(at, at + 1); at += 1; modes.pop(); braces.pop(); value = true; continue;
+        }
+        braces[braces.length - 1] = Math.max(0, open - 1);
+        value = false; at += 1; continue;
+      }
+      if (char !== undefined && !/\s/.test(char)) value = char === ')' || char === ']';
+      at += 1;
+    }
+    return out.join('');
+  };
+
+  /**
+   * Bracket depth before every position in one module, and one entry past its end.
+   *
+   * Counted over {@link codeOnly}'s blanked text and indexed by offsets into the text as written,
+   * which the two share exactly. A bracket inside a literal or a comment is not a bracket and is not
+   * counted; everything below that reports a slice reports it from the text as written.
+   *
+   * **A second reading over the text as written was written and then taken out**, and the reason is
+   * worth the line: taking the longer of the two regions would have made the clause immune to a lexer
+   * mistake, and no fixture could tell it from this — the whole suite passes with either, because the
+   * only shapes that separate them are ones the scanner gets right. Machinery no fixture discriminates
+   * is machinery a later reader cannot check, so what carries the clause instead is the exactness
+   * argument on {@link codeOnly} and the whole-tail fallback in {@link timerCallbacks}.
+   */
+  const depthsOf = (text: string): number[] => {
+    const code = codeOnly(text);
+    const depths = [0];
+    let depth = 0;
+    for (let at = 0; at < code.length; at += 1) {
+      const char = code[at];
+      if (char === '(' || char === '[' || char === '{') depth += 1;
+      else if (char === ')' || char === ']' || char === '}') depth -= 1;
+      depths.push(depth);
+    }
+    return depths;
+  };
+
+  /**
+   * Every name a module binds, with the body that follows it — a WHOLE body, nested bindings and all.
+   *
+   * Deliberately wider than {@link declarations}, which collects TOP-LEVEL heads only: a helper
+   * declared inside a component — `const readMetadata = useCallback(…)`, which is how every read in
+   * this app is written — is not top-level, and a timer whose callback called one would otherwise be
+   * invisible.
+   *
+   * **The extent ends at the next head at the SAME OR SHALLOWER bracket depth, and it used to end at
+   * the next head of any kind.** That difference is review round 1's finding: a function that
+   * declares a local of its own — `function reload() { const path = …; fetchRun(…); }`, which is how
+   * every reader in this app is written — had its body cut off at that `const`, so the call after it
+   * was credited to the local instead and `reload` was never collected. A timer calling `reload`
+   * then passed a clause whose whole subject is that call.
+   *
+   * **The new extent contains the old one by construction, so this cannot be weaker than what it
+   * replaces.** Both end at a head or at the end of the file, and the next head at depth ≤ 0 is at
+   * or after the next head of any kind — whatever the depth walk makes of a bracket inside a string
+   * or a comment, which is why this needs no per-file balance to be sound. What it can do is credit a
+   * name with a sibling's code or with the rest of an enclosing scope; that over-collects and never
+   * under-collects, which is the safe direction for a prohibition.
+   *
+   * **The heads are matched over the text AS WRITTEN, and a head only TERMINATES an extent if it is
+   * also code.** That second half is review round 3's finding, and the paragraph it replaces had the
+   * reasoning backwards: it argued that a head born inside a string or a comment "adds an entry and
+   * can never remove the real one", which weighed the adding and missed the terminating. A phantom
+   * head does both — it ends the extent of every real binding before it whose depth is at or above
+   * its own — so over
+   *
+   * ```
+   * const reload = () => 'const fake' && fetchRuns(request, clock);
+   * ```
+   *
+   * `reload` was cut at the quote, the request was credited to a name born inside a string, and a
+   * timer calling `reload` passed a clause whose whole subject is that call. The realistic form is
+   * not that literal but a commented-out line inside a braceless arrow, where the comment sits at
+   * the same bracket depth as the head above it; both are fixtured in the clause below and both
+   * were shown red against the walk this replaces.
+   *
+   * **A head is therefore refused as a terminator unless it stands unblanked in {@link codeOnly},
+   * while entries still come from the text as written** — which keeps the direction the paragraph
+   * above was right about. Selecting the heads themselves from the blanked text closes the same
+   * finding and trades it for a quieter one: a real declaration the scanner wrongly blanked would
+   * leave the walk altogether, and a timer calling that name would pass. Refusing the phantom only
+   * as a terminator loses no body in either direction, so a lexer mistake can still only
+   * over-collect, and the clause below pins that choice rather than leaving it to be re-taken.
+   */
+  const bindings = (text: string): { readonly name: string; readonly text: string }[] => {
+    const heads = [...text.matchAll(/\b(?:const|let|var|function)[ \t]+([A-Za-z_$][\w$]*)/g)];
+    const code = codeOnly(text);
+    const depths = depthsOf(text);
+    const depthAt = (head: RegExpExecArray): number => depths[head.index ?? 0] ?? 0;
+    /**
+     * Whether this head is code, rather than one born inside a literal or a comment.
+     *
+     * `codeOnly` preserves index and length, so a head that is code stands unchanged at its own
+     * offset in the blanked text and one inside a literal is spaces there.
+     */
+    const real = (head: RegExpExecArray): boolean => code.startsWith(head[0], head.index ?? 0);
+    return heads.map((head, i) => {
+      const sibling = heads.findIndex((other, at) => at > i && real(other) && depthAt(other) <= depthAt(head));
+      return {
+        name: head[1] ?? '',
+        text: text.slice(head.index ?? 0, sibling === -1 ? text.length : heads[sibling]?.index ?? text.length),
+      };
+    });
+  };
+
+  /**
+   * One name as a pattern that matches a CALL to it and nothing else.
+   *
+   * Two hazards, and they are one class — review round 2's second finding. `$` is legal in an
+   * identifier and means end-of-input in a pattern, so an unescaped `reload$now` matches nothing
+   * whatever; and `\b` is no boundary at all before a name that STARTS with `$`, neither a space nor
+   * a `$` being a word character, so `$reload` matched nothing either. Both ends are therefore a
+   * not-an-identifier-character assertion rather than `\b`, which additionally stops `other$reload(`
+   * being read as a call to `reload` — a correction rather than a narrowing: that was never a call to
+   * it, and the two directions are fixtured together below.
+   */
+  const asNeedle = (name: string): RegExp =>
+    new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])[ \\t]*\\(`);
+
+  /**
+   * Every name in one module that reaches the daemon, directly or through a name that does.
+   *
+   * **A fixpoint rather than a fixed number of rounds**, which is the other half of review round 1's
+   * finding: the walk ran five passes and stopped, so a call chain longer than that — written in the
+   * order a reader writes one, the caller above the callee, which is the order that costs a round per
+   * hop — was followed part of the way and then dropped. Each round either adds a name or is the
+   * last, and the set is bounded by the bindings the module has, so this terminates in at most
+   * `bound.length` rounds and follows a chain of any length.
+   */
+  const requestingNames = (text: string): Set<string> => {
+    const names = new Set<string>();
+    const bound = bindings(text);
+    for (;;) {
+      const before = names.size;
+      for (const one of bound) {
+        if (names.has(one.name)) continue;
+        const callsOne = [...names].some((name) => asNeedle(name).test(one.text));
+        if (REACHES_THE_DAEMON.test(one.text) || callsOne) names.add(one.name);
+      }
+      if (names.size === before) break;
+    }
+    return names;
+  };
+
+  /**
+   * The argument list of every timer call in one module, to where its bracket returns to its depth.
+   *
+   * A call that never closes is collected WHOLE rather than dropped, so text this walk cannot read
+   * fails this clause instead of passing over it. The timer calls themselves are matched over the text
+   * as written, on {@link bindings}' rule: a `setInterval(` the lexer wrongly blanked would be a
+   * scheduled callback nobody read, which is the one direction that hides a poll.
+   */
+  const timerCallbacks = (text: string): string[] => {
+    const depths = depthsOf(text);
+    const closeAfter = (open: number): number => {
+      for (let end = open + 1; end < text.length; end += 1) {
+        if ((depths[end + 1] ?? 0) === (depths[open] ?? 0)) return end;
+      }
+      return text.length;
+    };
+    return TIMERS.flatMap((timer) => [...text.matchAll(new RegExp(`\\b${timer}[ \\t]*\\(`, 'g'))]
+      .map((at) => {
+        const open = (at.index ?? 0) + at[0].length - 1;
+        return text.slice(open + 1, closeAfter(open));
+      }));
+  };
+
+  /** `<file>: <timer callback>` for every scheduled callback that reaches the daemon. */
+  const pollers = (files: [string, string][]): string[] => files.flatMap(([name, text]) => {
+    const requesting = requestingNames(text);
+    return timerCallbacks(text)
+      .filter((callback) => REACHES_THE_DAEMON.test(callback)
+        || [...requesting].some((called) => asNeedle(called).test(callback)))
+      .map((callback) => `${name}: ${callback.slice(0, 60)}`);
+  });
+
   test('nothing refetches on a timer, and nothing persists a board in the browser', () => {
     // `GET /tickets` walks the backlog and probes git per ticket, so an interval would make the
     // most expensive route on the transport this app's hot path — and a stored copy would be the UI
     // holding a git fact it cannot keep current. The persistence half is the block at the top of
     // this file; this is the timer half, which nothing covered.
-    const timers = ['setInterval', 'setTimeout', 'requestIdleCallback'];
-    for (const [name, text] of sourceFiles()) {
-      for (const timer of timers) expect(text.includes(`${timer}(`), `${name} schedules work with ${timer}`).toBe(false);
+    //
+    // **The clause is `no fetch is reachable from a timer callback` and was `no timer primitive
+    // appears` until Q-0135** — a narrowing ruled at that ticket's gate (erratum E-2) and
+    // **restoring the subject this comment already claims**: the sentence above justifies the rule
+    // entirely in terms of refetching, so the guard was keyed on the mechanism where its own title
+    // and reasoning name the behaviour. Seventh instance in this repository of a guard keyed on a
+    // name rather than on the behaviour it is about.
+    //
+    // **What it still forbids, so the narrowing cannot be over-read**: a timer that reaches `fetch`,
+    // `requestJson`, any `fetch*` helper or one of the three acts that write — directly or through a
+    // function it calls — fails, and so does any persisted board. What is permitted is exactly one
+    // shape: a callback that reads a clock and sets local state. **There is no file-level exemption,
+    // no comment token and no register of permitted callers**, because an escape hatch beside a
+    // predicate is Q-0079 round 2's repository-wide silencer, which is the failure this narrowing
+    // must not become. E-2 permits a change to the predicate and nothing beside it.
+    //
+    // **What this clause CANNOT see, so a green tick here names what it examined.** It is LEXICAL
+    // and not syntax-aware: it reads a module's text and never its semantics. It has no parser and
+    // is not getting one — three review rounds each found a hole in the analysis underneath it, and
+    // a fourth would find a fifth, which is why erratum E-3 bounds it as a tripwire rather than a
+    // sandbox. So it reasons about NAMES and the text that follows them, and every shape that
+    // separates a name from the call it ends up making is outside it: a callback reached through a
+    // value rather than a binding — an array element, an object property, a parameter, a `bind` or
+    // a returned closure — a name assembled at run time, a timer called through an alias of its
+    // own, and a module whose text it cannot lex, which it collects whole and fails on rather than
+    // passing over. **A callback written to evade this clause can pass it.** What it is for is the
+    // poll somebody writes without meaning to; it is evidence about that and about nothing else,
+    // and it is not the reason the rule holds — that is the comment above and the contract the
+    // review reads.
+    expect(pollers(sourceFiles()),
+      'a timer callback reaches the daemon. This clause was narrowed at Q-0135 from *no timer '
+      + 'primitive appears* to *no fetch is reachable from a timer callback*, which is the behaviour '
+      + 'its own title and the comment above already name. What is permitted is exactly one shape: a '
+      + 'callback that reads a clock and sets local state. If a timer here needs to reach the daemon, '
+      + 'that is a POLL and the rule stands — do not add a file exemption, a comment token or a '
+      + 'register of permitted callers beside this predicate, which is Q-0079 round 2\'s '
+      + 'repository-wide silencer. See requirements/errata.md E-2 on this ticket. And read what this '
+      + 'clause examined before treating a green run as coverage: it is LEXICAL, it follows names '
+      + 'and the text after them, it has no parser by ruling rather than by omission, and a callback '
+      + 'reached through a value rather than a binding — or a name assembled at run time — is '
+      + 'outside what it can see. See requirements/errata.md E-3.')
+      .toStrictEqual([]);
+
+    // **The narrowing is proven NECESSARY and not merely safe**: the clause this replaced reports
+    // the shipped elapsed tick, so the guard as it stood would refuse a display that makes no
+    // request at all. A narrowing demonstrated only by a green suite has not been established.
+    const scheduling = sourceFiles().filter(([, text]) => TIMERS.some((timer) => text.includes(`${timer}(`)))
+      .map(([name]) => name);
+    expect(scheduling, 'nothing under src schedules anything — this narrowing has no subject')
+      .toStrictEqual(['mission-control-status.tsx']);
+
+    // And it discriminates, over fixtures assembled so this file is not its own subject. The two
+    // differ by the fetch alone: same timer, same shape, one call in the callback.
+    const tick = `${'setInterval'}(() => { setAt(clock.current()); }, 1000);`;
+    const poll = `${'setInterval'}(() => { void ${'fetch'}Runs(request, clock); }, 1000);`;
+    expect(pollers([['render.ts', tick]]), 'a render-only tick was reported as a poll').toStrictEqual([]);
+    expect(pollers([['poll.ts', poll]]), 'a fetch scheduled on a timer was not reported').toHaveLength(1);
+    // …and the half a direct needle cannot see: the callback calls a local helper, and the helper is
+    // what reaches the daemon. It is declared INSIDE a component, which is where every read in this
+    // app is written and which a top-level walk would miss.
+    const indirect = [
+      'export function Screen() {',
+      '  const reload = useCallback(() => { void fetchRuns(request, clock); }, []);',
+      `  ${'setInterval'}(() => { reload(); }, 1000);`,
+      '}',
+    ].join('\n');
+    expect(pollers([['indirect.ts', indirect]]), 'a timer reaching the daemon through a helper was not reported')
+      .toHaveLength(1);
+    // …and a rename of a rename, so the walk is a fixpoint rather than one hop.
+    const twoHops = [
+      'const reload = () => { void fetchRuns(request, clock); };',
+      'const later = () => { reload(); };',
+      `${'setInterval'}(() => { later(); }, 1000);`,
+    ].join('\n');
+    expect(pollers([['hops.ts', twoHops]]), 'a timer two hops from the daemon was not reported').toHaveLength(1);
+    // …and a write is not exempt from a rule about reads: it is worse.
+    expect(pollers([['write.ts', `${'setTimeout'}(() => { void stopRun(request, handle, clock); }, 1000);`]]),
+      'a write scheduled on a timer was not reported').toHaveLength(1);
+
+    // **The two shapes the walk this replaced could not follow, which is review round 1's finding.**
+    //
+    // A helper that declares a local of its own — the form every reader in this app is written in.
+    // The extent used to end at the NEXT BINDING HEAD of any kind, so `const path` cut `reload`'s
+    // body off before the call in it, the call was credited to `path`, and nothing calls `path(`.
+    const nested = [
+      'export function Screen() {',
+      '  const reload = () => {',
+      '    const path = runDetailPath(handle);',
+      '    void fetchRun(request, path, clock);',
+      '  };',
+      `  ${'setInterval'}(() => { reload(); }, 1000);`,
+      '}',
+    ].join('\n');
+    expect(requestingNames(nested), 'a helper that declares a local of its own is not collected').toContain('reload');
+    expect(pollers([['nested.ts', nested]]),
+      'a timer reaching the daemon through a helper with a local binding was not reported').toHaveLength(1);
+
+    // …and a chain longer than the five passes the walk used to run, written in the order a reader
+    // writes one — the caller above the callee, which is the order that costs a round per hop. Seven
+    // hops need eight rounds, so a capped walk collected `h0` to `h4` and stopped one short of the
+    // name the callback actually calls.
+    const HOPS = 7;
+    const chain = [
+      ...Array.from({ length: HOPS }, (_, i) => `const h${String(HOPS - i)} = () => { h${String(HOPS - i - 1)}(); };`),
+      'const h0 = () => { void fetchRuns(request, clock); };',
+      `${'setInterval'}(() => { h${String(HOPS)}(); }, 1000);`,
+    ].join('\n');
+    expect([...requestingNames(chain)].sort(), 'the walk stopped short of the end of the chain')
+      .toStrictEqual(Array.from({ length: HOPS + 1 }, (_, i) => `h${String(i)}`).sort());
+    expect(pollers([['chain.ts', chain]]), 'a timer seven hops from the daemon was not reported').toHaveLength(1);
+
+    // **The four shapes review round 2's finding is about**, one per literal kind. The depth walk
+    // counted every bracket CHARACTER in the module, so a closing delimiter inside a literal
+    // returned the count to zero early and the callback was collected only as far as that — a
+    // request written after the literal was outside the text the clause then read. Each fixture puts
+    // the literal BEFORE the call, which is what makes a truncated callback unable to see it.
+    const TRUNCATING: [string, string][] = [
+      ['a quoted string', `const closer = ${"'"}))${"'"};`],
+      ['a template literal', ['const closer = ', '`', '}}', '`', ';'].join('')],
+      ['a regex literal', 'const closer = /\\)\\)/;'],
+      ['a block comment', `const closer = 1; ${'/*'} )) ${'*/'}`],
+    ];
+    // Reported as one row per kind rather than asserted one at a time, so a run names every kind it
+    // misses instead of stopping at the first — four separate prohibitions, visible together.
+    expect(TRUNCATING.map(([what, literal]) => [what, pollers([['literal.ts',
+      `${'setInterval'}(() => { ${literal} void fetchRuns(request, clock); }, 1000);`]]).length]),
+      'a fetch written after a literal in the callback was not reported')
+      .toStrictEqual(TRUNCATING.map(([what]) => [what, 1]));
+
+    // …and the scanner underneath, by value rather than only through the clause above: each kind is
+    // blanked, and the code on either side of it is kept — so what a depth walk stops counting is the
+    // literal and not its neighbourhood.
+    expect(TRUNCATING.map(([what, literal]) => {
+      const lexed = codeOnly(`const before = 1; ${literal} const after = 2;`);
+      return [what, /[(){}[\]]/.test(lexed), lexed.includes('const after = 2;')];
+    }), 'a literal kind was left for the depth walk to count, or took the code around it with it')
+      .toStrictEqual(TRUNCATING.map(([what]) => [what, false, true]));
+    // …and the one ambiguity a scanner has to decide, decided the way the language decides it. A
+    // division is kept: read as opening a regex, the first `/` here would swallow everything to the
+    // second and the text would come back changed.
+    const division = 'const half = total / 2; const other = count / 4;';
+    expect(codeOnly(division), 'a division was read as opening a regex').toBe(division);
+    // …and a regex is not kept, so the clause above is a decision rather than a scanner that keeps
+    // every `/`. Its own brackets are what a walk must not count.
+    expect(codeOnly('const at = text.replace(/[)]/g, \'\');'), 'a regex body was counted as code')
+      .not.toMatch(/\[\)\]/);
+    // …and the third thing a scanner over a HALF-`.tsx` corpus has to decide, which is measured
+    // rather than anticipated: `</span></p>` is a `/` preceded by `<` with another `/` later on the
+    // same line, at four live sites in `diff-view.tsx` and `gate-screen.tsx`. Read as a regex, the
+    // first swallows the JSX between them and the brackets in it stop being counted — so every
+    // bracket a walk should count survives this line, which is the property rather than the spelling.
+    const brackets = (text: string): string => (text.match(/[(){}[\]]/g) ?? []).join('');
+    const jsx = '<p><span>{DIFF_STEP}</span>{steps.map((n) => (<b>{n}</b>))}</p>';
+    expect(brackets(codeOnly(jsx)), 'a JSX closing tag was read as opening a regex').toBe(brackets(jsx));
+
+    // …and the other half of that finding, at the callback boundary: the needle for a bound name was
+    // interpolated RAW there, where `$` is legal in an identifier and means end-of-input in a
+    // pattern — so the needle for `reload$now` matched nothing whatever and a timer calling that
+    // helper passed. Both ends of the name are the same class: a name BEGINNING with `$` has no `\b`
+    // before it either, neither a space nor a `$` being a word character.
+    const DOLLAR: [string, string][] = [
+      ['a `$` inside the name', 'reload$now'],
+      ['a `$` at the start of the name', '$reload'],
+    ];
+    const dollarFixture = (called: string): string => [
+      `const ${called} = () => { void fetchRuns(request, clock); };`,
+      `${'setInterval'}(() => { ${called}(); }, 1000);`,
+    ].join('\n');
+    // The walk collects the helper either way — the name is a binding whose body reaches the daemon
+    // — so what the needle decides is only whether the CALL in the callback is seen as one.
+    for (const [what, called] of DOLLAR) {
+      expect(requestingNames(dollarFixture(called)), `a helper with ${what} is not collected`).toContain(called);
     }
-    expect(timers.filter((timer) => `${'setInterval'}(reload, 5000)`.includes(`${timer}(`)))
-      .toStrictEqual(['setInterval']);
+    expect(DOLLAR.map(([what, called]) => [what, pollers([['dollar.ts', dollarFixture(called)]]).length]),
+      'a timer calling a helper whose name carries a `$` was not reported')
+      .toStrictEqual(DOLLAR.map(([what]) => [what, 1]));
+    // …and the needle still tells one name from another rather than matching a substring of one: a
+    // longer name that merely ends with a shorter one is not a call to the shorter one.
+    expect(asNeedle('reload').test('void other$reload();'),
+      'the needle matched a name that only ends with the one it is for').toBe(false);
+    expect(asNeedle('reload').test('void reload();'), 'the needle matches no call at all').toBe(true);
+
+    // **Review round 3's finding: a head that does not exist can END one that does.** The extent
+    // used to be terminated by the next head matched over the text AS WRITTEN, and the reasoning
+    // above `bindings` argued that was safe because a bogus head "adds an entry and can never
+    // remove the real one". That sentence weighed the ADDING and missed the TERMINATING: a head
+    // born inside a string or a comment, at a depth at or below the real binding's, cuts that
+    // binding's body off before the request in it — so the name the callback actually calls is not
+    // collected and the timer is not reported. One fixture per birthplace, each a shape a reader
+    // writes: the first is the review's own, the second is a commented-out line inside a braceless
+    // arrow, where the comment sits at the same bracket depth as the head above it.
+    //
+    // **The mechanism is live in this corpus rather than hypothetical, and it was measured before
+    // the fix was trusted.** A phantom head needs no contrivance — English prose does it, any
+    // sentence putting a word after *a function*, *a const* or *let*. Measured across `src`: **23
+    // phantom heads in 11 files**, truncating **15 real bindings in 8 files** — `isoClock` in
+    // `daemon-client.ts` among them, and `MeasuredAbsenceRegion` in `mission-control-status.tsx`,
+    // which is the ONE file under `src` that schedules anything. What that cost the walk's output
+    // today is **nothing**: no name is gained by the fix and none is lost, because none of the
+    // fifteen truncated bodies reaches the daemon. So the defect is live and its consequence is
+    // latent, which is the honest form — a prohibition is judged on what it would fail to see.
+    // Those counts are evidence and deliberately not asserted: they are corpus figures and a
+    // reworded comment moves them, and a clause pinned to one would fail on an edit it is not about.
+    const PHANTOM: [string, string, string][] = [
+      ['a string', 'reload', [
+        `const reload = () => ${"'"}const fake${"'"} && fetchRuns(request, clock);`,
+        `${'setInterval'}(() => { reload(); }, 1000);`,
+      ].join('\n')],
+      ['a comment', 'load', [
+        'const load = () =>',
+        `  ${'//'} const cached = readCached(handle);`,
+        '  fetchRuns(request, clock);',
+        `${'setInterval'}(() => { load(); }, 1000);`,
+      ].join('\n')],
+    ];
+    // Asserted at the walk and at the clause separately, so a run says WHICH half moved: the body
+    // is what the phantom truncates, and the report is what that costs.
+    expect(PHANTOM.map(([where, name, text]) => [where, requestingNames(text).has(name)]),
+      'a declaration head inside a literal or a comment truncated the real binding above it')
+      .toStrictEqual(PHANTOM.map(([where]) => [where, true]));
+    expect(PHANTOM.map(([where, , text]) => [where, pollers([['phantom.ts', text]]).length]),
+      'a timer reaching the daemon through a helper a phantom head had truncated was not reported')
+      .toStrictEqual(PHANTOM.map(([where]) => [where, 1]));
+    // …and WHICH of the two available fixes is in force, pinned because they are not equally safe.
+    // A phantom is disarmed by being refused as a TERMINATOR and not by being dropped: it still
+    // yields its own entry, so the walk goes on over-collecting and never under-collects. Selecting
+    // heads from the blanked text instead would close this finding too and would trade it for a
+    // quieter one in the other direction — a real declaration the scanner wrongly blanked would
+    // leave the walk altogether, and a timer calling THAT name would pass. Over-collection is the
+    // safe direction for a prohibition, so the phantom survives here as a name nobody calls.
+    expect(bindings(PHANTOM[0]?.[2] ?? '').map((one) => one.name),
+      'a phantom head was dropped rather than refused as a terminator, which loses a real head too')
+      .toStrictEqual(['reload', 'fake']);
   });
 
   test('no file under src calls a containment answer merged, landed or shipped', () => {
@@ -923,7 +1472,16 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     // rather than on the behaviour, which is the family this repository records most. These five are
     // every shape a count reaches this app in: `GET /history/:id`'s roll-up field, the `core`
     // function behind it, and the three measures a manifest occurrence carries.
-    const COUNT_FIELDS = ['tokensByVendor', 'vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens'];
+    // **`tokensByVendor` left this list at Q-0135, by exactly one row and deliberately.** It is the
+    // one shape in which a count reaches this app ALREADY REDUCED — `vendorTokenTotal` applied to
+    // ONE roll-up row, inside `packages/server` — so it is a figure the browser is handed rather
+    // than one it could compose, and it is what an unpriced vendor renders instead of a price it
+    // does not have. The other four stay: they are the four a browser could add up for itself, and
+    // `vendorTokenTotal` is the reduction that would let it do so across rows.
+    //
+    // `cost_usd` and `unpriced_steps` are on no list, before and after: this guard is about COUNTS
+    // and says so in its own name, and a price is not one.
+    const COUNT_FIELDS = ['vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens'];
     const PHRASE = `cost to ${'date'}`;
     for (const [name, text] of sourceFiles()) {
       expect(text.toLowerCase().includes(PHRASE), `${name} labels a figure "${PHRASE}"`).toBe(false);
@@ -931,10 +1489,198 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
         expect(text.includes(field), `${name} reaches for ${field}, which is a count and not a price`).toBe(false);
       }
     }
-    // Both halves discriminate, over fixtures rather than over an empty corpus.
-    expect(`${PHRASE} per vendor`.includes(PHRASE)).toBe(true);
+    // An IDENTITY and not a count, so a FIFTH entry leaving quietly fails here rather than being
+    // absorbed by a length that still reads as four.
+    expect(COUNT_FIELDS, 'the forbidden count set moved without anyone deciding to')
+      .toStrictEqual(['vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens']);
+    // Each survivor is shown to FIRE on its own, over its own fixture, so the emptiness above is
+    // four prohibitions rather than one carrying three that match nothing.
+    for (const field of COUNT_FIELDS) {
+      expect(COUNT_FIELDS.filter((each) => `const n = row.${field};`.includes(each)),
+        `the ${field} needle matches nothing at all`).toContain(field);
+    }
+    // …and the existing discriminator, which is the shape this list exists to refuse: a local total
+    // assembled out of two forbidden fields.
     expect(COUNT_FIELDS.filter((field) => 'const total = row.input_tokens + row.output_tokens;'.includes(field)))
       .toStrictEqual(['input_tokens', 'output_tokens']);
+    // **The retired entry is retired for a REASON rather than because nobody names it**, and every
+    // site that does is registered with what it is — one reading and three fixtures driving it. An
+    // identity over the whole corpus rather than a corpus narrowed to what ships: a fifth site fails
+    // here, and a scan that excluded tests would be the Q-0014 AC-5 narrowing at this clause.
+    const NAMES_THE_TOTAL: Record<string, string> = {
+      'mission-control-measures.ts': 'the one site that READS it: a vendor reporting no price renders its token total instead',
+      'mission-control-measures.test.ts': 'the fixture that drives that reading, including the case where the total is itself null',
+      'mission-control-status.test.ts': 'the fixture the rendered vendor rows are asserted over',
+      'mission-control-screen.test.ts': "the history payload the screen's own read is answered with",
+    };
+    expect(sourceFiles().filter(([, text]) => text.includes('tokensByVendor')).map(([name]) => name).sort(),
+      'the field left the forbidden list and is named somewhere unregistered')
+      .toStrictEqual(Object.keys(NAMES_THE_TOTAL).sort());
+    // Both halves of the phrase clause discriminate, over fixtures rather than over an empty corpus.
+    expect(`${PHRASE} per vendor`.includes(PHRASE)).toBe(true);
+  });
+});
+
+describe('Q-0135 AC-12/AC-17 — the clock is injected, and every sentence is imported', () => {
+  /**
+   * The two ways a module could read the wall clock without being handed it.
+   *
+   * **Aimed at an ARGUMENT-LESS `new Date()` and not at `new Date(`**, which is a correction rather
+   * than a narrowing: converting an ISO instant to milliseconds is `new Date(iso).getTime()`, the
+   * one conversion an elapsed figure needs, and a needle written the looser way would match both
+   * that and `isoClock` itself — reporting the conversion as an ambient read and making the clause
+   * unsatisfiable by the code it is written for.
+   */
+  const CLOCK_READS = [/\bDate[ \t]*\.[ \t]*now[ \t]*\(/g, /\bnew[ \t]+Date[ \t]*\([ \t]*\)/g];
+
+  /** How many ambient clock reads one file carries. */
+  const clockReads = (text: string): number =>
+    CLOCK_READS.reduce((total, needle) => total + [...text.matchAll(needle)].length, 0);
+
+  test('no file under src reads the wall clock, except the one injectable clock that is one', () => {
+    // A figure derived from an ambient clock is one whose value depends on when the suite ran, which
+    // is `04-architecture.md`'s no-fabricated-value rule and *"A test's verdict is a property of the
+    // commit"* (2026-08-30) at the same site. Every consumer takes a `Clock`.
+    const reading = sourceFiles().filter(([, text]) => clockReads(text) > 0).map(([name]) => name);
+    expect(reading, 'a file under src reads the wall clock without being handed it')
+      .toStrictEqual(['daemon-client.ts']);
+    // **An identity and not a file exemption**: the one permitted read is `isoClock`'s own body, so
+    // a SECOND read added to that module fails here rather than being forgiven by its name.
+    const client = sourceFiles().find(([name]) => name === 'daemon-client.ts')?.[1] ?? '';
+    expect(client, 'the client is not in the corpus — this clause has lost its subject').not.toBe('');
+    expect(clockReads(client), 'the permitted module gained a second ambient clock read').toBe(1);
+    expect(/isoClock[^\n]*new Date[ \t]*\([ \t]*\)/.test(client), 'the one read is not the injectable clock').toBe(true);
+    // The needles discriminate, over fixtures assembled so this file is not its own subject.
+    expect(clockReads(`const at = Date${'.'}now();`), 'the epoch needle matches nothing').toBe(1);
+    expect(clockReads(`const at = new ${'Date'}().toISOString();`), 'the bare-constructor needle matches nothing').toBe(1);
+    // …and the conversion an elapsed figure needs is NOT reported, which is the whole reason the
+    // needle is argument-less: a clause that matched this would forbid the code it exists to permit.
+    expect(clockReads(`const ms = new ${'Date'}(iso).getTime();`), 'the conversion was reported as an ambient read').toBe(0);
+  });
+
+  /**
+   * Every quoted literal that reads as a sentence: it has a space and it ends in a full stop.
+   *
+   * The full stop is what keeps a Tailwind class list out — `"flex flex-wrap items-baseline gap-2"`
+   * has spaces and ends in a digit — so the needle is about prose rather than about length, and no
+   * register of permitted attribute values is needed.
+   */
+  const SENTENCE_SHAPED = /(['"`])([^'"`\n]*[a-z][^'"`\n]* [^'"`\n]*\.)\1/g;
+
+  /**
+   * The same text with its comments removed, because the clause is about what a module RENDERS.
+   *
+   * These renderers quote landed documents in their own JSDoc — `mission-control-screen.tsx` quotes
+   * the frozen contract's *"A no-such-run state creates no columns."* — and a scan that reported
+   * those would be forbidding the citations `.claude/rules/engineering.md` asks for. **The residual
+   * is stated**: a sentence literal written on the same line after a `//` is invisible here, which
+   * is a comment and is exactly what this is meant to skip; and a string containing `/*` would be
+   * mangled, which no file here has and which can only over-report the remainder.
+   */
+  const withoutComments = (text: string): string => text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+  /** The three modules that render mission control, which every sentence this ticket adds is in. */
+  const RENDERERS = ['mission-control-status.tsx', 'mission-control-screen.tsx', 'mission-control-trace.tsx'];
+
+  test('no mission-control renderer writes a sentence of its own; every one is imported', () => {
+    // **`mission-control-text.ts` is the single copy contract** (the frozen contract's own words),
+    // so a renderer and a test read identical bytes and neither approximates the other. A sentence
+    // written in a component is one a test would have to restate to assert, which is the drift that
+    // module exists to stop — and it is also how a value gets *parsed out of* an event's free text
+    // instead of being read as a field.
+    //
+    // **Scoped to the three renderers rather than to the whole corpus**, and the reason is measured:
+    // the copy module itself is where the sentences live, and `request-state.ts` and
+    // `connection-state.ts` own their own two closed vocabularies, which are contracts of their own
+    // rather than mission control's. A scan over every file would be asserting a rule those modules
+    // are not under.
+    for (const name of RENDERERS) {
+      const found = sourceFiles().find(([each]) => each === name);
+      expect(found, `${name} is not in the corpus — this clause has lost a subject`).toBeDefined();
+      const sentences = [...withoutComments(found?.[1] ?? '').matchAll(SENTENCE_SHAPED)].map((at) => at[2] ?? '');
+      expect(sentences, `${name} renders a sentence of its own rather than importing one`).toStrictEqual([]);
+    }
+    // The renderer this ticket adds sentences to imports them, so the emptiness above is a
+    // delegation rather than a module that renders no prose at all.
+    const status = sourceFiles().find(([name]) => name === 'mission-control-status.tsx')?.[1] ?? '';
+    expect(status, 'the status module does not import the copy contract').toContain('mission-control-text.js');
+    for (const exported of ['MEASURED_DRY_TEXT', 'COST_IN_FLIGHT_TEXT', 'NO_ROLLUP_ROWS_TEXT', 'absentVendorText']) {
+      expect(status, `the status module does not import ${exported}`).toContain(exported);
+    }
+    // The needle discriminates, over fixtures rather than over an empty corpus: prose is reported,
+    // a class list is not, and a sentence QUOTED IN A COMMENT is not — the three cases that decide
+    // whether this clause is about rendering or about text.
+    const prose = [...withoutComments(`const say = 'Nothing was spent either.';`).matchAll(SENTENCE_SHAPED)];
+    expect(prose, 'the sentence needle matches no sentence at all').toHaveLength(1);
+    expect([...withoutComments(`className="flex flex-wrap items-baseline gap-2"`).matchAll(SENTENCE_SHAPED)],
+      'a Tailwind class list was reported as a sentence').toHaveLength(0);
+    const quoted = `${'/*'} the contract says "A no-such-run state creates no columns." ${'*/'}`;
+    expect([...withoutComments(quoted).matchAll(SENTENCE_SHAPED)],
+      'a document quoted in a comment was reported as a rendered sentence').toHaveLength(0);
+    // …and a sentence rendered on the SAME LINE as a comment is still reported, so the strip is not
+    // an escape hatch a later file can put a violation behind.
+    expect([...withoutComments(`const say = 'Nothing was spent either.'; ${'//'} a note`).matchAll(SENTENCE_SHAPED)],
+      'stripping a trailing comment took the sentence with it').toHaveLength(1);
+  });
+
+  test('Q-0135 AC-13 — no file under src reads a cost or a token total off the terminal event', () => {
+    // **The one place a blended figure could reach a reader.** `terminal.cost` and `terminal.tokens`
+    // are typed numbers already in this browser's hands, summed across every vendor by the engine —
+    // which is exactly the figure *"Codex cost is reported as tokens, never priced locally"*
+    // (2026-08-22) refuses, a priced vendor and a token-only one in one number. The per-vendor split
+    // is read from the roll-up instead, and this is what keeps the easier answer out.
+    //
+    // **Comments are stripped before the scan**, on {@link withoutComments}'s terms: the module that
+    // refuses these two fields has to NAME them to say why, and a whole-file scan that reported its
+    // own explanation is the failure Q-0111's one-place guard hit — a needle matching nothing at all
+    // including its own subject, or one that forbids the citation `.claude/rules/engineering.md`
+    // asks for. The clause is about what a module READS.
+    const BLENDED = [/\bterminal[ \t]*\.[ \t]*cost\b/, /\bterminal[ \t]*\.[ \t]*tokens\b/];
+    const reading = (files: [string, string][]): string[] => files.flatMap(([name, text]) =>
+      BLENDED.filter((needle) => needle.test(withoutComments(text))).map((needle) => `${name}: ${String(needle)}`));
+    expect(reading(sourceFiles()), 'a file under src reads a blended total off the terminal event')
+      .toStrictEqual([]);
+    // Both needles discriminate, over fixtures assembled so this file is not its own subject.
+    expect(reading([['bad.ts', `const spent = ${'terminal'}.cost;`]]), 'the cost needle matches nothing').toHaveLength(1);
+    expect(reading([['bad.ts', `const n = ${'terminal'}.tokens;`]]), 'the tokens needle matches nothing').toHaveLength(1);
+    // …and the field a screen legitimately reads off that event is not reported, so the clause is
+    // about the two measures rather than about the event.
+    expect(reading([['ok.ts', `const number = ${'terminal'}.runId;`]]), 'a run number was reported as a blended total')
+      .toStrictEqual([]);
+    // **The emptiness above is an absence over a corpus that names both fields**, rather than one
+    // where the question never arose: the module that refuses them cites them, in a comment, and is
+    // still scanned. A read written beside that citation fails.
+    const citing = sourceFiles().filter(([, text]) => BLENDED.some((needle) => needle.test(text)));
+    expect(citing.map(([name]) => name), 'no file explains why these two fields are refused — this clause has lost its subject')
+      .toContain('mission-control-measures.ts');
+    expect(reading([['cite.ts', `${'/*'} never reads ${'terminal'}.cost ${'*/'}\nconst spent = ${'terminal'}.cost;`]]),
+      'a read beside its own citation was forgiven with it').toHaveLength(1);
+    // **`RequestState` stays closed at five**, which AC-16 rests on and which
+    // `src/request-state.test.ts` already asserts by identity — cited rather than restated, a second
+    // copy of a register being free to drift from the one that owns it.
+    const states = sourceFiles().find(([name]) => name === 'request-state.test.ts')?.[1] ?? '';
+    expect(states, 'the request-state suite is not in the corpus — this citation has lost its subject').not.toBe('');
+    expect(states, 'the closed-at-five assertion this clause defers to is gone')
+      .toMatch(/REQUEST_STATE_KINDS\.length[^\n]*\)\.toBe\(5\)/);
+  });
+
+  test('the word "ticker" appears nowhere under src, because the value it names does not behave like one', () => {
+    // `docs/05-design-prompt.md` screen 5 says *cost tickers*, and the measurement refuses the word:
+    // **elapsed advances and cost does not**. Cost ships as of the last read, with the existing
+    // refresh control, because the frozen contract's *"Refresh is the only repeat read; no timer
+    // performs one"* bounds reads — so a name promising a moving figure would be a claim this screen
+    // cannot support. Q-0017's precedent, where two divergences from the brief were recorded rather
+    // than approximated.
+    const WORD = ['tick', 'er'].join('');
+    expect(sourceFiles().filter(([, text]) => new RegExp(`\\b${WORD}s?\\b`, 'i').test(text)).map(([name]) => name),
+      'a file under src calls one of these values a ticker').toStrictEqual([]);
+    expect(new RegExp(`\\b${WORD}s?\\b`, 'i').test('per-vendor cost tickers'), 'the needle matches nothing at all')
+      .toBe(true);
+    // …and the word it is NOT about: the tick an elapsed figure is recomputed on is a different
+    // word, and a needle that matched it would forbid the mechanism rather than the claim.
+    expect(new RegExp(`\\b${WORD}s?\\b`, 'i').test('ELAPSED_TICK_MS'), 'the needle reached the tick constant').toBe(false);
   });
 });
 
@@ -947,7 +1693,13 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // is the first shape here this app BUILDS rather than reads, and the field set had lived only
     // inside `packages/server` — so a browser composing a start body without it would have written
     // the five names a third time, which is verbatim the drift Q-0120 was opened on.
-    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest']) {
+    // The three Q-0135 added join them under the same rule and in the reading direction: a browser
+    // needs an executable parser for the history detail, and a second declaration beside the import
+    // is free to drift from the one `@quorum/shared` owns.
+    for (const shape of [
+      'WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest',
+      'WireRunHistory', 'WireRunHistoryManifest', 'WireVendorRollup',
+    ]) {
       const offenders = filesBelow(PACKAGE)
         .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
         .map(([name]) => name);
