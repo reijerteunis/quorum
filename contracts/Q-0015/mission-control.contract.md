@@ -85,6 +85,41 @@ union, daemon routes and wire schemas are existing contracts and are not changed
   and **would** owe one. See *"A gate question carries the decision that reached it"* (2026-09-17)
   for the neighbouring ruling, which is not authority for this one: that field rides the stream
   because its producer already wrote it there.
+  **Superseded in one further clause by Q-0135, written at its requirements gate.** *Four* absent
+  capabilities becomes **two**: **elapsed time** and **structured cost and token totals** are both
+  supplied, so their two disclosures retire. What stays absent is the next flow step and the
+  structured tool and reasoning events, and **the no-placeholder rule is unchanged and binds over
+  both new values** — an absent figure is named in prose and never rendered as `0`, `—`, a spinner or
+  an empty region.
+
+  **This is a removed premise, not a reversal**, on the note above's own pattern. Both clauses
+  described the only sources that existed when they were written: nothing on the wire carried a
+  per-vendor split, and nothing carried a start instant the screen could advance from. Neither
+  reasoning is contradicted — the figures are now read from `GET /history/:id`, whose manifest
+  `core` has been writing live all along, `writer.ts` recomputing `manifest.rollup` on every
+  occurrence that terminates rather than only at run end.
+
+  **The `Refresh is the only repeat read; no timer performs one` clause above is unchanged and still
+  binds**, and is recorded here because an advancing elapsed display looks like a violation of it and
+  is not. That clause bounds **reads**. Elapsed advances from `manifest.started_at`, a value the
+  browser already holds, and performs no read; **cost does not advance** and ships as of the last
+  read, with the existing refresh control. The distinction is the design rather than an exemption
+  from it, and it is one line of code wide.
+
+  **Two obligations this note carries into the implementation**, because a retired disclosure must
+  not become a fabricated value. A disclosure retires **only where its value is present**: a run
+  whose number is not yet known, a dry walk, a history that could not be read, and a vendor that
+  reported no price are each named in their own prose. And elapsed **stops** on whichever authority
+  speaks first — the connection reporting the run ended, or a read supplying `ended_at` — because the
+  manifest read is a snapshot and a browser holding `status: 'running'` would otherwise advance past
+  an end that has already happened. The frozen figure is `manifest.duration_ms`, which `finalise`
+  computes from the same `Date` that produced `started_at`, and never a browser-computed difference
+  naming an instant nobody measured.
+
+  **No decision entry is owed for it.** The event union is untouched and all three landed sentences on
+  run identity stay true verbatim; `WireRun` gains `dry`, which Q-0016 precedented on this exact shape
+  and which narrows no `RunView` field; and the new schema closes the last two routes on this
+  transport with no declared shape rather than adding a one-off.
 - Every connection state has non-empty main-region prose. A no-such-run state creates no columns.
   Raw vendor output may be asymmetric and is not presented as a complete run history.
 
