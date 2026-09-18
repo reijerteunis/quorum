@@ -143,3 +143,26 @@ the leftover is visible rather than discovered.
 2026-09-18T13:38:01.851Z run=2 gate=human answer=advance
 2026-09-18T13:38:02.843Z run=2 removed-worktrees=1 kept=1
 2026-09-18T13:38:02.843Z run=2 completed stage=requirements→reviewed cost=120.527 tokens=186098506
+
+## A neighbour GO-5 found, fixed by hand rather than ticketed
+
+Setting up the demonstration, `quorum open --help` **started the daemon** instead of printing help.
+Diagnosed rather than patched at the symptom: `main.ts` dispatched on the command name alone and
+never consulted the flag, so help was reachable only where the name was absent or unknown — **all
+ten commands took `--help` and acted**, and `open` is simply the instance with a side effect, binding
+a port and opening a browser. The one token a stranger types to find out what something does was the
+token that did the most.
+
+Fixed at the frame: a dispatched command asked for help answers it and acts on nothing. **Q-0110's
+line is preserved and was verified through the built binary** — `quorum nonsense --help` still exits
+**1**, because help beside a name this binary cannot dispatch is not help on purpose; `open`, `board`
+and a bare `--help` all exit **0** and start nothing. Safe because `--help` is in `argv.ts`'s
+`VALUELESS` set (Q-0124), so it can never be a value meant for another flag.
+
+Shown red before green, and the unit suite's own runtime is corroboration: 20.39 s before the fix,
+**0.57 s** after, because `open` was really starting a daemon inside a test.
+
+**No per-command help is owed and none was invented**: the global help already carries each command's
+own usage line, `quorum open [--port <n>] [--no-open]` among them, so the reader gets what they asked
+for. Fixed by hand on Q-0108's precedent — the gate costs more than the work — rather than opened as
+a ticket.

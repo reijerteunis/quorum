@@ -160,6 +160,27 @@ describe('AC-6, as Q-0110 ruled it — every route prints the help; only the one
     expect((await invoke(argv)).exitCode).toBe(ERROR);
   });
 
+  test('a dispatched command asked for help answers it instead of acting', async () => {
+    // **`quorum open --help` started the daemon.** The frame dispatched on the command name alone
+    // and never consulted the flag, so help was reachable only where the name was absent or
+    // unknown — every one of the ten commands took `--help` and acted. `open` is the instance that
+    // shows why it matters rather than a special case: it binds a port, serves a bundle and opens a
+    // browser, so the one token a stranger types to find out what something does is the token that
+    // did the most.
+    //
+    // This does NOT reach `HELP_BESIDE_A_NAME` above, and the two must stay apart: an UNKNOWN name
+    // beside `--help` is still ERROR, per *"What an exit code may claim"* (2026-09-08). Help on
+    // purpose is success; help beside a name this binary cannot dispatch is not.
+    //
+    // `--help` is in `argv.ts`'s `VALUELESS` set (Q-0124), so it never consumes the token after it
+    // and `flags.help === true` cannot be a value somebody meant for another flag.
+    for (const argv of [['open', '--help'], ['board', '--help'], ['runs', '--help']]) {
+      const { stdout, exitCode } = await invoke(argv);
+      expect(stdout, `quorum ${argv.join(' ')} did not answer with the help`).toContain(HELP);
+      expect(exitCode ?? SUCCESS, `quorum ${argv.join(' ')} did not report success`).toBe(SUCCESS);
+    }
+  });
+
   test('and the one registered command prints the same text', async () => {
     const { stdout, exitCode } = await invoke(['help']);
     expect(stdout).toContain(HELP);

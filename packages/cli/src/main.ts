@@ -122,6 +122,13 @@ export async function main(argv: readonly string[]): Promise<void> {
   const parsed = parseArgv(argv);
   const { cmd } = parsed;
   if (cmd !== undefined && isCommand(cmd)) {
+    // A dispatched command that was asked for help answers it rather than acting: `quorum open
+    // --help` bound a port and opened a browser. `--help` is valueless (`argv.ts`), so this cannot
+    // be a value meant for another flag, and an UNKNOWN name beside it stays ERROR below.
+    if (parsed.flags.help === true) {
+      console.log(HELP);
+      return;
+    }
     await HANDLERS[cmd](parsed);
     return;
   }
