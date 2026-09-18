@@ -116,6 +116,33 @@ does that forwarding survive the difference between an empty `.harness/` inside 
 Measure before choosing; Q-0090's erratum E-1 is the precedent for ruling a scope question of
 exactly this shape, and it ruled the cited entry **did not** govern.
 
+## Re-measured at launch, 2026-09-18
+
+Every figure above was re-derived before this ticket's requirements run, per Q-0018 erratum E-4's
+own instruction. **The three the payload decision rests on did not move**: largest occurrence
+**355,744 B**, largest run **3,514,617 B**, largest single file **353,626 B**
+(`Q-0129-3/steps/009-review/prompt.txt`) — so §*What the files measure* stands as the argument it
+makes. The store grew by Q-0018's own runs: **172** runs, **938** occurrences, **1,791** files,
+**116,567,139 B**, median per occurrence 99,716 and p90 237,843, median per run 460,510. Occurrences
+with no `prompt.txt` are **85** and **every one is still an `integrate` step** (78 completed, 7
+failed), so §*Two occurrence cases* holds with its count moved by one. Occurrences with no
+`output.txt` are **zero**, which is what that section predicted. **8** files are empty, **0** are not
+well-formed UTF-8 under `TextDecoder('utf-8', {fatal: true})`, and **14** contain U+FFFD
+legitimately — so the naive replacement-character test would still report fourteen real prompts as
+binary. **No `occurrence_dir` on disk traverses**; the threat is what a manifest *may* carry, not
+what one does.
+
+**One citation was wrong and is corrected here rather than inherited.** OQ-1's framing sentence is
+at `packages/shared/src/wire.ts:737`, not `:526` — Q-0018's own edits to that file moved it. The
+sentence is unchanged and says what OQ-1 quotes.
+
+**And one measurement OQ-1 should start from, which the body above does not have.** The transport
+has served `.quorum/runs` state since Q-0119: `GET /history` and `GET /history/:id` both answer from
+it, and Q-0018 widened the second. So *may a route serve `.quorum/`* is not open — it is answered by
+six days of shipped code. What is open is narrower than the body states: whether a **file's bytes**
+differ in kind from a **manifest's fields**, both being read from the same gitignored tree. Measure
+that difference before choosing; do not re-derive the authority question the routes already settle.
+
 ## Non-goals
 
 1. **Q-0018's half is not re-opened.** The listing, the table, the widened wire shapes and the
