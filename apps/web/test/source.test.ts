@@ -885,17 +885,151 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       .toContain('a different process that this daemon cannot see');
   });
 
+  /** The three ways this app could schedule work, which is what a timer callback is reached from. */
+  const TIMERS = ['setInterval', 'setTimeout', 'requestIdleCallback'];
+
+  /**
+   * Anything that reaches the daemon: a request, or one of the three acts that write.
+   *
+   * Wider than the word *fetch* deliberately. `requestJson` is what every reader goes through, every
+   * reader's own name begins with `fetch`, and `answerGate`, `startRun` and `stopRun` are the three
+   * writes this app performs — a timer that sent one of those would be worse than a timer that read.
+   * The three writers are the identity register one describe over, so a fourth act is a visible
+   * change there and would be added here with it.
+   */
+  const REACHES_THE_DAEMON = /\b(?:fetch[A-Za-z]*|requestJson|answerGate|startRun|stopRun)[ \t]*\(|\bbrowserFetch\b/;
+
+  /**
+   * Every name a module binds, with the text that follows it up to the next binding.
+   *
+   * Deliberately wider than {@link declarations}, which collects TOP-LEVEL heads only: a helper
+   * declared inside a component — `const readMetadata = useCallback(…)`, which is how every read in
+   * this app is written — is not top-level, and a timer whose callback called one would otherwise be
+   * invisible. The extent runs to the next binding head, so a name can be credited with a sibling's
+   * code; that over-collects and never under-collects, which is the safe direction for a
+   * prohibition.
+   */
+  const bindings = (text: string): { readonly name: string; readonly text: string }[] => {
+    const heads = [...text.matchAll(/\b(?:const|let|var|function)[ \t]+([A-Za-z_$][\w$]*)/g)];
+    return heads.map((head, i) => ({
+      name: head[1] ?? '',
+      text: text.slice(head.index ?? 0, heads[i + 1]?.index ?? text.length),
+    }));
+  };
+
+  /** Every name in one module that reaches the daemon, directly or through a name that does. */
+  const requestingNames = (text: string): Set<string> => {
+    const names = new Set<string>();
+    const bound = bindings(text);
+    for (let pass = 0; pass < 5; pass += 1) {
+      const before = names.size;
+      for (const one of bound) {
+        if (names.has(one.name)) continue;
+        const callsOne = [...names].some((name) => new RegExp(`\\b${name}[ \\t]*\\(`).test(one.text));
+        if (REACHES_THE_DAEMON.test(one.text) || callsOne) names.add(one.name);
+      }
+      if (names.size === before) break;
+    }
+    return names;
+  };
+
+  /** The argument list of every timer call in one module, brackets balanced. */
+  const timerCallbacks = (text: string): string[] => {
+    const found: string[] = [];
+    for (const timer of TIMERS) {
+      for (const at of text.matchAll(new RegExp(`\\b${timer}[ \\t]*\\(`, 'g'))) {
+        const open = (at.index ?? 0) + at[0].length - 1;
+        let depth = 0;
+        for (let end = open; end < text.length; end += 1) {
+          const char = text[end];
+          if (char === '(' || char === '[' || char === '{') depth += 1;
+          else if (char === ')' || char === ']' || char === '}') {
+            depth -= 1;
+            // A call whose brackets never close is collected WHOLE rather than dropped, so an
+            // unreadable one fails this clause instead of passing over it.
+            if (depth === 0) { found.push(text.slice(open + 1, end)); break; }
+          }
+          if (end === text.length - 1) found.push(text.slice(open + 1));
+        }
+      }
+    }
+    return found;
+  };
+
+  /** `<file>: <timer callback>` for every scheduled callback that reaches the daemon. */
+  const pollers = (files: [string, string][]): string[] => files.flatMap(([name, text]) => {
+    const requesting = requestingNames(text);
+    return timerCallbacks(text)
+      .filter((callback) => REACHES_THE_DAEMON.test(callback)
+        || [...requesting].some((called) => new RegExp(`\\b${called}[ \\t]*\\(`).test(callback)))
+      .map((callback) => `${name}: ${callback.slice(0, 60)}`);
+  });
+
   test('nothing refetches on a timer, and nothing persists a board in the browser', () => {
     // `GET /tickets` walks the backlog and probes git per ticket, so an interval would make the
     // most expensive route on the transport this app's hot path — and a stored copy would be the UI
     // holding a git fact it cannot keep current. The persistence half is the block at the top of
     // this file; this is the timer half, which nothing covered.
-    const timers = ['setInterval', 'setTimeout', 'requestIdleCallback'];
-    for (const [name, text] of sourceFiles()) {
-      for (const timer of timers) expect(text.includes(`${timer}(`), `${name} schedules work with ${timer}`).toBe(false);
-    }
-    expect(timers.filter((timer) => `${'setInterval'}(reload, 5000)`.includes(`${timer}(`)))
-      .toStrictEqual(['setInterval']);
+    //
+    // **The clause is `no fetch is reachable from a timer callback` and was `no timer primitive
+    // appears` until Q-0135** — a narrowing ruled at that ticket's gate (erratum E-2) and
+    // **restoring the subject this comment already claims**: the sentence above justifies the rule
+    // entirely in terms of refetching, so the guard was keyed on the mechanism where its own title
+    // and reasoning name the behaviour. Seventh instance in this repository of a guard keyed on a
+    // name rather than on the behaviour it is about.
+    //
+    // **What it still forbids, so the narrowing cannot be over-read**: a timer that reaches `fetch`,
+    // `requestJson`, any `fetch*` helper or one of the three acts that write — directly or through a
+    // function it calls — fails, and so does any persisted board. What is permitted is exactly one
+    // shape: a callback that reads a clock and sets local state. **There is no file-level exemption,
+    // no comment token and no register of permitted callers**, because an escape hatch beside a
+    // predicate is Q-0079 round 2's repository-wide silencer, which is the failure this narrowing
+    // must not become. E-2 permits a change to the predicate and nothing beside it.
+    expect(pollers(sourceFiles()),
+      'a timer callback reaches the daemon. This clause was narrowed at Q-0135 from *no timer '
+      + 'primitive appears* to *no fetch is reachable from a timer callback*, which is the behaviour '
+      + 'its own title and the comment above already name. What is permitted is exactly one shape: a '
+      + 'callback that reads a clock and sets local state. If a timer here needs to reach the daemon, '
+      + 'that is a POLL and the rule stands — do not add a file exemption, a comment token or a '
+      + 'register of permitted callers beside this predicate, which is Q-0079 round 2\'s '
+      + 'repository-wide silencer. See requirements/errata.md E-2 on this ticket.')
+      .toStrictEqual([]);
+
+    // **The narrowing is proven NECESSARY and not merely safe**: the clause this replaced reports
+    // the shipped elapsed tick, so the guard as it stood would refuse a display that makes no
+    // request at all. A narrowing demonstrated only by a green suite has not been established.
+    const scheduling = sourceFiles().filter(([, text]) => TIMERS.some((timer) => text.includes(`${timer}(`)))
+      .map(([name]) => name);
+    expect(scheduling, 'nothing under src schedules anything — this narrowing has no subject')
+      .toStrictEqual(['mission-control-status.tsx']);
+
+    // And it discriminates, over fixtures assembled so this file is not its own subject. The two
+    // differ by the fetch alone: same timer, same shape, one call in the callback.
+    const tick = `${'setInterval'}(() => { setAt(clock.current()); }, 1000);`;
+    const poll = `${'setInterval'}(() => { void ${'fetch'}Runs(request, clock); }, 1000);`;
+    expect(pollers([['render.ts', tick]]), 'a render-only tick was reported as a poll').toStrictEqual([]);
+    expect(pollers([['poll.ts', poll]]), 'a fetch scheduled on a timer was not reported').toHaveLength(1);
+    // …and the half a direct needle cannot see: the callback calls a local helper, and the helper is
+    // what reaches the daemon. It is declared INSIDE a component, which is where every read in this
+    // app is written and which a top-level walk would miss.
+    const indirect = [
+      'export function Screen() {',
+      '  const reload = useCallback(() => { void fetchRuns(request, clock); }, []);',
+      `  ${'setInterval'}(() => { reload(); }, 1000);`,
+      '}',
+    ].join('\n');
+    expect(pollers([['indirect.ts', indirect]]), 'a timer reaching the daemon through a helper was not reported')
+      .toHaveLength(1);
+    // …and a rename of a rename, so the walk is a fixpoint rather than one hop.
+    const twoHops = [
+      'const reload = () => { void fetchRuns(request, clock); };',
+      'const later = () => { reload(); };',
+      `${'setInterval'}(() => { later(); }, 1000);`,
+    ].join('\n');
+    expect(pollers([['hops.ts', twoHops]]), 'a timer two hops from the daemon was not reported').toHaveLength(1);
+    // …and a write is not exempt from a rule about reads: it is worse.
+    expect(pollers([['write.ts', `${'setTimeout'}(() => { void stopRun(request, handle, clock); }, 1000);`]]),
+      'a write scheduled on a timer was not reported').toHaveLength(1);
   });
 
   test('no file under src calls a containment answer merged, landed or shipped', () => {
@@ -923,7 +1057,16 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     // rather than on the behaviour, which is the family this repository records most. These five are
     // every shape a count reaches this app in: `GET /history/:id`'s roll-up field, the `core`
     // function behind it, and the three measures a manifest occurrence carries.
-    const COUNT_FIELDS = ['tokensByVendor', 'vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens'];
+    // **`tokensByVendor` left this list at Q-0135, by exactly one row and deliberately.** It is the
+    // one shape in which a count reaches this app ALREADY REDUCED — `vendorTokenTotal` applied to
+    // ONE roll-up row, inside `packages/server` — so it is a figure the browser is handed rather
+    // than one it could compose, and it is what an unpriced vendor renders instead of a price it
+    // does not have. The other four stay: they are the four a browser could add up for itself, and
+    // `vendorTokenTotal` is the reduction that would let it do so across rows.
+    //
+    // `cost_usd` and `unpriced_steps` are on no list, before and after: this guard is about COUNTS
+    // and says so in its own name, and a price is not one.
+    const COUNT_FIELDS = ['vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens'];
     const PHRASE = `cost to ${'date'}`;
     for (const [name, text] of sourceFiles()) {
       expect(text.toLowerCase().includes(PHRASE), `${name} labels a figure "${PHRASE}"`).toBe(false);
@@ -931,10 +1074,198 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
         expect(text.includes(field), `${name} reaches for ${field}, which is a count and not a price`).toBe(false);
       }
     }
-    // Both halves discriminate, over fixtures rather than over an empty corpus.
-    expect(`${PHRASE} per vendor`.includes(PHRASE)).toBe(true);
+    // An IDENTITY and not a count, so a FIFTH entry leaving quietly fails here rather than being
+    // absorbed by a length that still reads as four.
+    expect(COUNT_FIELDS, 'the forbidden count set moved without anyone deciding to')
+      .toStrictEqual(['vendorTokenTotal', 'input_tokens', 'output_tokens', 'cached_input_tokens']);
+    // Each survivor is shown to FIRE on its own, over its own fixture, so the emptiness above is
+    // four prohibitions rather than one carrying three that match nothing.
+    for (const field of COUNT_FIELDS) {
+      expect(COUNT_FIELDS.filter((each) => `const n = row.${field};`.includes(each)),
+        `the ${field} needle matches nothing at all`).toContain(field);
+    }
+    // …and the existing discriminator, which is the shape this list exists to refuse: a local total
+    // assembled out of two forbidden fields.
     expect(COUNT_FIELDS.filter((field) => 'const total = row.input_tokens + row.output_tokens;'.includes(field)))
       .toStrictEqual(['input_tokens', 'output_tokens']);
+    // **The retired entry is retired for a REASON rather than because nobody names it**, and every
+    // site that does is registered with what it is — one reading and three fixtures driving it. An
+    // identity over the whole corpus rather than a corpus narrowed to what ships: a fifth site fails
+    // here, and a scan that excluded tests would be the Q-0014 AC-5 narrowing at this clause.
+    const NAMES_THE_TOTAL: Record<string, string> = {
+      'mission-control-measures.ts': 'the one site that READS it: a vendor reporting no price renders its token total instead',
+      'mission-control-measures.test.ts': 'the fixture that drives that reading, including the case where the total is itself null',
+      'mission-control-status.test.ts': 'the fixture the rendered vendor rows are asserted over',
+      'mission-control-screen.test.ts': "the history payload the screen's own read is answered with",
+    };
+    expect(sourceFiles().filter(([, text]) => text.includes('tokensByVendor')).map(([name]) => name).sort(),
+      'the field left the forbidden list and is named somewhere unregistered')
+      .toStrictEqual(Object.keys(NAMES_THE_TOTAL).sort());
+    // Both halves of the phrase clause discriminate, over fixtures rather than over an empty corpus.
+    expect(`${PHRASE} per vendor`.includes(PHRASE)).toBe(true);
+  });
+});
+
+describe('Q-0135 AC-12/AC-17 — the clock is injected, and every sentence is imported', () => {
+  /**
+   * The two ways a module could read the wall clock without being handed it.
+   *
+   * **Aimed at an ARGUMENT-LESS `new Date()` and not at `new Date(`**, which is a correction rather
+   * than a narrowing: converting an ISO instant to milliseconds is `new Date(iso).getTime()`, the
+   * one conversion an elapsed figure needs, and a needle written the looser way would match both
+   * that and `isoClock` itself — reporting the conversion as an ambient read and making the clause
+   * unsatisfiable by the code it is written for.
+   */
+  const CLOCK_READS = [/\bDate[ \t]*\.[ \t]*now[ \t]*\(/g, /\bnew[ \t]+Date[ \t]*\([ \t]*\)/g];
+
+  /** How many ambient clock reads one file carries. */
+  const clockReads = (text: string): number =>
+    CLOCK_READS.reduce((total, needle) => total + [...text.matchAll(needle)].length, 0);
+
+  test('no file under src reads the wall clock, except the one injectable clock that is one', () => {
+    // A figure derived from an ambient clock is one whose value depends on when the suite ran, which
+    // is `04-architecture.md`'s no-fabricated-value rule and *"A test's verdict is a property of the
+    // commit"* (2026-08-30) at the same site. Every consumer takes a `Clock`.
+    const reading = sourceFiles().filter(([, text]) => clockReads(text) > 0).map(([name]) => name);
+    expect(reading, 'a file under src reads the wall clock without being handed it')
+      .toStrictEqual(['daemon-client.ts']);
+    // **An identity and not a file exemption**: the one permitted read is `isoClock`'s own body, so
+    // a SECOND read added to that module fails here rather than being forgiven by its name.
+    const client = sourceFiles().find(([name]) => name === 'daemon-client.ts')?.[1] ?? '';
+    expect(client, 'the client is not in the corpus — this clause has lost its subject').not.toBe('');
+    expect(clockReads(client), 'the permitted module gained a second ambient clock read').toBe(1);
+    expect(/isoClock[^\n]*new Date[ \t]*\([ \t]*\)/.test(client), 'the one read is not the injectable clock').toBe(true);
+    // The needles discriminate, over fixtures assembled so this file is not its own subject.
+    expect(clockReads(`const at = Date${'.'}now();`), 'the epoch needle matches nothing').toBe(1);
+    expect(clockReads(`const at = new ${'Date'}().toISOString();`), 'the bare-constructor needle matches nothing').toBe(1);
+    // …and the conversion an elapsed figure needs is NOT reported, which is the whole reason the
+    // needle is argument-less: a clause that matched this would forbid the code it exists to permit.
+    expect(clockReads(`const ms = new ${'Date'}(iso).getTime();`), 'the conversion was reported as an ambient read').toBe(0);
+  });
+
+  /**
+   * Every quoted literal that reads as a sentence: it has a space and it ends in a full stop.
+   *
+   * The full stop is what keeps a Tailwind class list out — `"flex flex-wrap items-baseline gap-2"`
+   * has spaces and ends in a digit — so the needle is about prose rather than about length, and no
+   * register of permitted attribute values is needed.
+   */
+  const SENTENCE_SHAPED = /(['"`])([^'"`\n]*[a-z][^'"`\n]* [^'"`\n]*\.)\1/g;
+
+  /**
+   * The same text with its comments removed, because the clause is about what a module RENDERS.
+   *
+   * These renderers quote landed documents in their own JSDoc — `mission-control-screen.tsx` quotes
+   * the frozen contract's *"A no-such-run state creates no columns."* — and a scan that reported
+   * those would be forbidding the citations `.claude/rules/engineering.md` asks for. **The residual
+   * is stated**: a sentence literal written on the same line after a `//` is invisible here, which
+   * is a comment and is exactly what this is meant to skip; and a string containing `/*` would be
+   * mangled, which no file here has and which can only over-report the remainder.
+   */
+  const withoutComments = (text: string): string => text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+  /** The three modules that render mission control, which every sentence this ticket adds is in. */
+  const RENDERERS = ['mission-control-status.tsx', 'mission-control-screen.tsx', 'mission-control-trace.tsx'];
+
+  test('no mission-control renderer writes a sentence of its own; every one is imported', () => {
+    // **`mission-control-text.ts` is the single copy contract** (the frozen contract's own words),
+    // so a renderer and a test read identical bytes and neither approximates the other. A sentence
+    // written in a component is one a test would have to restate to assert, which is the drift that
+    // module exists to stop — and it is also how a value gets *parsed out of* an event's free text
+    // instead of being read as a field.
+    //
+    // **Scoped to the three renderers rather than to the whole corpus**, and the reason is measured:
+    // the copy module itself is where the sentences live, and `request-state.ts` and
+    // `connection-state.ts` own their own two closed vocabularies, which are contracts of their own
+    // rather than mission control's. A scan over every file would be asserting a rule those modules
+    // are not under.
+    for (const name of RENDERERS) {
+      const found = sourceFiles().find(([each]) => each === name);
+      expect(found, `${name} is not in the corpus — this clause has lost a subject`).toBeDefined();
+      const sentences = [...withoutComments(found?.[1] ?? '').matchAll(SENTENCE_SHAPED)].map((at) => at[2] ?? '');
+      expect(sentences, `${name} renders a sentence of its own rather than importing one`).toStrictEqual([]);
+    }
+    // The renderer this ticket adds sentences to imports them, so the emptiness above is a
+    // delegation rather than a module that renders no prose at all.
+    const status = sourceFiles().find(([name]) => name === 'mission-control-status.tsx')?.[1] ?? '';
+    expect(status, 'the status module does not import the copy contract').toContain('mission-control-text.js');
+    for (const exported of ['MEASURED_DRY_TEXT', 'COST_IN_FLIGHT_TEXT', 'NO_ROLLUP_ROWS_TEXT']) {
+      expect(status, `the status module does not import ${exported}`).toContain(exported);
+    }
+    // The needle discriminates, over fixtures rather than over an empty corpus: prose is reported,
+    // a class list is not, and a sentence QUOTED IN A COMMENT is not — the three cases that decide
+    // whether this clause is about rendering or about text.
+    const prose = [...withoutComments(`const say = 'Nothing was spent either.';`).matchAll(SENTENCE_SHAPED)];
+    expect(prose, 'the sentence needle matches no sentence at all').toHaveLength(1);
+    expect([...withoutComments(`className="flex flex-wrap items-baseline gap-2"`).matchAll(SENTENCE_SHAPED)],
+      'a Tailwind class list was reported as a sentence').toHaveLength(0);
+    const quoted = `${'/*'} the contract says "A no-such-run state creates no columns." ${'*/'}`;
+    expect([...withoutComments(quoted).matchAll(SENTENCE_SHAPED)],
+      'a document quoted in a comment was reported as a rendered sentence').toHaveLength(0);
+    // …and a sentence rendered on the SAME LINE as a comment is still reported, so the strip is not
+    // an escape hatch a later file can put a violation behind.
+    expect([...withoutComments(`const say = 'Nothing was spent either.'; ${'//'} a note`).matchAll(SENTENCE_SHAPED)],
+      'stripping a trailing comment took the sentence with it').toHaveLength(1);
+  });
+
+  test('Q-0135 AC-13 — no file under src reads a cost or a token total off the terminal event', () => {
+    // **The one place a blended figure could reach a reader.** `terminal.cost` and `terminal.tokens`
+    // are typed numbers already in this browser's hands, summed across every vendor by the engine —
+    // which is exactly the figure *"Codex cost is reported as tokens, never priced locally"*
+    // (2026-08-22) refuses, a priced vendor and a token-only one in one number. The per-vendor split
+    // is read from the roll-up instead, and this is what keeps the easier answer out.
+    //
+    // **Comments are stripped before the scan**, on {@link withoutComments}'s terms: the module that
+    // refuses these two fields has to NAME them to say why, and a whole-file scan that reported its
+    // own explanation is the failure Q-0111's one-place guard hit — a needle matching nothing at all
+    // including its own subject, or one that forbids the citation `.claude/rules/engineering.md`
+    // asks for. The clause is about what a module READS.
+    const BLENDED = [/\bterminal[ \t]*\.[ \t]*cost\b/, /\bterminal[ \t]*\.[ \t]*tokens\b/];
+    const reading = (files: [string, string][]): string[] => files.flatMap(([name, text]) =>
+      BLENDED.filter((needle) => needle.test(withoutComments(text))).map((needle) => `${name}: ${String(needle)}`));
+    expect(reading(sourceFiles()), 'a file under src reads a blended total off the terminal event')
+      .toStrictEqual([]);
+    // Both needles discriminate, over fixtures assembled so this file is not its own subject.
+    expect(reading([['bad.ts', `const spent = ${'terminal'}.cost;`]]), 'the cost needle matches nothing').toHaveLength(1);
+    expect(reading([['bad.ts', `const n = ${'terminal'}.tokens;`]]), 'the tokens needle matches nothing').toHaveLength(1);
+    // …and the field a screen legitimately reads off that event is not reported, so the clause is
+    // about the two measures rather than about the event.
+    expect(reading([['ok.ts', `const number = ${'terminal'}.runId;`]]), 'a run number was reported as a blended total')
+      .toStrictEqual([]);
+    // **The emptiness above is an absence over a corpus that names both fields**, rather than one
+    // where the question never arose: the module that refuses them cites them, in a comment, and is
+    // still scanned. A read written beside that citation fails.
+    const citing = sourceFiles().filter(([, text]) => BLENDED.some((needle) => needle.test(text)));
+    expect(citing.map(([name]) => name), 'no file explains why these two fields are refused — this clause has lost its subject')
+      .toContain('mission-control-measures.ts');
+    expect(reading([['cite.ts', `${'/*'} never reads ${'terminal'}.cost ${'*/'}\nconst spent = ${'terminal'}.cost;`]]),
+      'a read beside its own citation was forgiven with it').toHaveLength(1);
+    // **`RequestState` stays closed at five**, which AC-16 rests on and which
+    // `src/request-state.test.ts` already asserts by identity — cited rather than restated, a second
+    // copy of a register being free to drift from the one that owns it.
+    const states = sourceFiles().find(([name]) => name === 'request-state.test.ts')?.[1] ?? '';
+    expect(states, 'the request-state suite is not in the corpus — this citation has lost its subject').not.toBe('');
+    expect(states, 'the closed-at-five assertion this clause defers to is gone')
+      .toMatch(/REQUEST_STATE_KINDS\.length[^\n]*\)\.toBe\(5\)/);
+  });
+
+  test('the word "ticker" appears nowhere under src, because the value it names does not behave like one', () => {
+    // `docs/05-design-prompt.md` screen 5 says *cost tickers*, and the measurement refuses the word:
+    // **elapsed advances and cost does not**. Cost ships as of the last read, with the existing
+    // refresh control, because the frozen contract's *"Refresh is the only repeat read; no timer
+    // performs one"* bounds reads — so a name promising a moving figure would be a claim this screen
+    // cannot support. Q-0017's precedent, where two divergences from the brief were recorded rather
+    // than approximated.
+    const WORD = ['tick', 'er'].join('');
+    expect(sourceFiles().filter(([, text]) => new RegExp(`\\b${WORD}s?\\b`, 'i').test(text)).map(([name]) => name),
+      'a file under src calls one of these values a ticker').toStrictEqual([]);
+    expect(new RegExp(`\\b${WORD}s?\\b`, 'i').test('per-vendor cost tickers'), 'the needle matches nothing at all')
+      .toBe(true);
+    // …and the word it is NOT about: the tick an elapsed figure is recomputed on is a different
+    // word, and a needle that matched it would forbid the mechanism rather than the claim.
+    expect(new RegExp(`\\b${WORD}s?\\b`, 'i').test('ELAPSED_TICK_MS'), 'the needle reached the tick constant').toBe(false);
   });
 });
 
@@ -947,7 +1278,13 @@ describe('Q-0127 AC-7/AC-10/AC-11/AC-12 — what the ticket page may not declare
     // is the first shape here this app BUILDS rather than reads, and the field set had lived only
     // inside `packages/server` — so a browser composing a start body without it would have written
     // the five names a third time, which is verbatim the drift Q-0120 was opened on.
-    for (const shape of ['WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest']) {
+    // The three Q-0135 added join them under the same rule and in the reading direction: a browser
+    // needs an executable parser for the history detail, and a second declaration beside the import
+    // is free to drift from the one `@quorum/shared` owns.
+    for (const shape of [
+      'WireTicketDetail', 'WireTicketFile', 'WireTicketFileEntry', 'WireExcludedFiles', 'WireStartRequest',
+      'WireRunHistory', 'WireRunHistoryManifest', 'WireVendorRollup',
+    ]) {
       const offenders = filesBelow(PACKAGE)
         .filter(([, text]) => new RegExp(`\\b(?:interface|type)\\s+${shape}\\s*[={]`).test(text))
         .map(([name]) => name);

@@ -44,12 +44,14 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import type { WireRun } from '@quorum/shared';
+import type { WireRun, WireRunHistory } from '@quorum/shared';
 
 import {
-  browserFetch, fetchRun, isoClock, runInFlight, runStopInFlight, stopRun,
+  browserFetch, fetchRun, fetchRunHistory, isoClock, runHistoryInFlight, runInFlight,
+  runStopInFlight, stopRun,
   type Clock, type FetchLike,
 } from './daemon-client.js';
+import { runHistoryId } from './mission-control-measures.js';
 import { buildStepTimeline } from './mission-control-model.js';
 import { MissionControlStatus } from './mission-control-status.js';
 import { STEP_DISPOSITION_TEXT } from './mission-control-text.js';
@@ -83,6 +85,19 @@ export interface MissionControlScreenProps {
 interface RunReport {
   readonly handle: string;
   readonly run: WireRun;
+}
+
+/**
+ * One run's history read, and the id it is an answer about.
+ *
+ * The id travels with the state for {@link RunReport}'s reason one value over: a run's history is
+ * addressed by `<ticket id>-<run number>` rather than by the handle, so a read made for one id may
+ * not be rendered under another — and a handle-to-handle navigation remounts this screen, which is
+ * what makes the pair the identity rather than the handle alone.
+ */
+interface RunHistoryRead {
+  readonly id: string;
+  readonly state: RequestState<WireRunHistory>;
 }
 
 /**
@@ -210,9 +225,40 @@ export function MissionControlScreen({
   // the instant it starts.
   const [reported, setReported] = useState<RunReport | null>(null);
 
+  // The run's own history, addressed by `<ticket id>-<run number>` rather than by the handle, or
+  // `null` where no read was made at all — which is one of three answers rather than a failure.
+  const [history, setHistory] = useState<RunHistoryRead | null>(null);
+
   // Guards a superseded read exactly as the gate screen's `generation` does: a handle change starts
   // a new read before the previous one may have resolved, and only the newest one may commit state.
   const generation = useRef(0);
+
+  // The same counter for the history read, separate because the two supersede independently: a
+  // refresh repeats the metadata and the history read follows from its answer, so one counter would
+  // let either read drop the other's. The gate screen's arrangement for its two reads.
+  const historyGeneration = useRef(0);
+
+  /**
+   * Read the run's history, or answer that no read was made and why.
+   *
+   * **Three gates, and each is a reason rather than an optimisation.** A run with no ticket id and
+   * one with no number yet have no id to compose. A DRY walk has one and must not use it: such a
+   * walk is allocated a run number and writes no run history, `nextRunId` reserves nothing, so the
+   * next real run of that ticket receives the identical number — and the id would then name that
+   * run's directory. Reading it would render another run's start time and cost as this walk's, which
+   * is a wrong answer rather than a missing one.
+   */
+  const readHistory = useCallback((run: WireRun) => {
+    const id = runHistoryId(run);
+    historyGeneration.current += 1;
+    if (id === null) { setHistory(null); return; }
+    const mine = historyGeneration.current;
+    setHistory({ id, state: runHistoryInFlight<WireRunHistory>(id) });
+    void (async () => {
+      const answered = await fetchRunHistory(request, id, clock);
+      if (historyGeneration.current === mine) setHistory({ id, state: answered });
+    })();
+  }, [request, clock]);
 
   const readMetadata = useCallback(() => {
     const mine = (generation.current += 1);
@@ -228,14 +274,24 @@ export function MissionControlScreen({
       // evidence is the asymmetry AC-8 already refuses for a socket that dropped, and the daemon
       // stays the authority either way: a stop sent to a run that is gone is answered `no-such-run`
       // and rendered as that refusal rather than guessed at here.
-      if (result.kind === 'loaded') setReported({ handle, run: result.value });
+      if (result.kind !== 'loaded') return;
+      setReported({ handle, run: result.value });
+      // **One history read per metadata answer that carried a run, and none otherwise.** It hangs
+      // off this continuation rather than off an effect keyed on the composed id, which is what
+      // makes the count exactly AC-10's: an effect would not fire on a refresh that answered with
+      // the same id, and one keyed on a refresh counter would fire before the metadata it is meant
+      // to follow. Nothing schedules it and nothing repeats it — a reader asking again is what does.
+      readHistory(result.value);
     })();
-  }, [request, clock, handle]);
+  }, [request, clock, handle, readHistory]);
 
   useEffect(() => {
     readMetadata();
     return () => {
       generation.current += 1;
+      // Bumped on the way out so a history read still outstanding settles nothing on a screen that
+      // is gone, which is the metadata read's own rule at the second read.
+      historyGeneration.current += 1;
     };
   }, [readMetadata]);
 
@@ -245,6 +301,18 @@ export function MissionControlScreen({
   // prop to move under one instance — and a read that then fails at the new handle would otherwise
   // leave the previous run's `running` standing indefinitely rather than for one commit.
   const lastReported = reported !== null && reported.handle === handle ? reported.run : null;
+
+  /**
+   * The history read for the run on the screen NOW, or `null` where none was made for it.
+   *
+   * Compared in the render body rather than cleared in an effect, which is the arrangement every
+   * other keyed value here uses and for its reason: a state committed before the effect that would
+   * clear it runs is one commit of the previous answer under the new subject. What identifies it is
+   * the composed id and not the handle, so a read made for a run whose number has since been
+   * corrected is no answer rather than a stale one.
+   */
+  const lastHistoryId = lastReported === null ? null : runHistoryId(lastReported);
+  const historyFor = history !== null && history.id === lastHistoryId ? history.state : null;
 
   // The one act this screen performs on a run, under the guard `run-lifecycle.ts` owns. Its subject
   // is the handle, so a stop that resolves after a reader has moved to another run settles nothing
@@ -284,8 +352,15 @@ export function MissionControlScreen({
         handle={handle}
         snapshot={snapshot}
         metadata={metadata}
+        reported={lastReported}
+        history={historyFor}
+        now={clock}
         onRetryConnection={onRetryConnection}
         onRetryMetadata={readMetadata}
+        // A failed history read is repeated on its own, without a second metadata read beside it:
+        // the id it is keyed by came from a report this screen already holds, so re-reading the run
+        // to repeat a read of its history would be asking two questions to answer one.
+        onRetryHistory={() => { if (lastReported !== null) readHistory(lastReported); }}
         onNavigate={onNavigate}
       />
       <StopControl

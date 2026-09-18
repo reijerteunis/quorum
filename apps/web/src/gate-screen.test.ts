@@ -80,7 +80,7 @@ const question = (over: Record<string, unknown> = {}): Record<string, unknown> =
 
 /** One run row, parked on that question unless a fixture says otherwise. */
 const run = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, state: 'running',
+  handle: HANDLE, flow: 'chore', ticketId: 'Q-0016', runId: null, dry: false, state: 'running',
   pendingGates: 1, gates: [question()], refusal: null, ...over,
 });
 

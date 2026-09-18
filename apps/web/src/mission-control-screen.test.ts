@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { App } from './app.js';
 import type { DaemonRequest, DaemonResponse } from './daemon-client.js';
-import { runDetailPath, runStopPath } from './daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, historyDetailPath, runDetailPath, runStopPath } from './daemon-endpoints.js';
 import { MissionControlScreen } from './mission-control-screen.js';
 import { STEP_DISPOSITION_TEXT } from './mission-control-text.js';
 import { RUNS_PATH, runPath } from './routes.js';
@@ -17,7 +17,11 @@ import type { RunConnectionSnapshot, SocketTransport } from './run-connection.js
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 class FakeSocket implements SocketTransport { onopen: (() => void) | null = null; onmessage: ((e: { readonly data: unknown }) => void) | null = null; onerror: (() => void) | null = null; onclose: ((e: { readonly code: number; readonly reason: string }) => void) | null = null; closes = 0; close(): void { this.closes += 1; } }
 const roots: (() => void)[] = []; afterEach(async () => { for (const close of roots.splice(0)) await act(async () => close()); document.body.innerHTML = ''; });
-const body = (handle: string) => ({ handle, flow: 'development', ticketId: 'Q-0015', runId: null, state: 'running', pendingGates: 0, gates: [], refusal: null });
+// Fake timers for the whole file, because one clause asserts that time passing repeats no read: a
+// real clock would make that assertion about how fast the suite runs rather than about the screen.
+beforeAll(() => { vi.useFakeTimers(); });
+afterAll(() => { vi.useRealTimers(); });
+const body = (handle: string, over: Record<string, unknown> = {}) => ({ handle, flow: 'development', ticketId: 'Q-0015', runId: null, dry: false, state: 'running', pendingGates: 0, gates: [], refusal: null, ...over });
 async function app(path: string): Promise<{ view: HTMLElement; sockets: FakeSocket[] }> { const sockets: FakeSocket[] = []; const view = document.createElement('div'); document.body.append(view); const root = createRoot(view); roots.push(() => root.unmount()); await act(async () => root.render(createElement(App, { initialPath: path, pageUrl: new URL(`https:${'/' + '/'}page.test`), socketFactory: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; }, fetcher: (asked) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(asked === '/runs' ? { runs: [] } : body(path.split('/').at(-1) ?? '')) }), clock: () => 'now' }))); return { view, sockets }; }
 async function screen(state: { readonly kind: 'no-such-run' } | { readonly kind: 'ended' }, events: readonly object[]): Promise<HTMLElement> { const view = document.createElement('div'); const root = createRoot(view); roots.push(() => root.unmount()); await act(async () => root.render(createElement(MissionControlScreen, { handle: 'a', snapshot: { state, events: events as never[], missedCount: null, browserDiscardedCount: null }, onRetryConnection: () => undefined, fetcher: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body('a')) }), now: () => 'now', onNavigate: () => undefined }))); return view; }
 
@@ -393,5 +397,120 @@ describe('Q-0130 AC-8/AC-9/AC-10 — the stop control, and what decides whether 
     expect(sent.slice(before).every((each) => each.request === undefined), 'the action was not a GET').toBe(true);
     expect(sent.slice(before).map((each) => each.path), 'the action read something other than the run')
       .toStrictEqual([runDetailPath(HANDLE)]);
+  });
+});
+
+describe('Q-0135 AC-10 — the history read, and the three reasons no read is made', () => {
+  const HANDLE = 'run-9';
+  const TICKET = 'Q-0015';
+  const NUMBER = 4;
+  /** `<ticket id>-<run number>`, composed here so a clause asserts the path rather than restates it. */
+  const HISTORY_ID = `${TICKET}-${String(NUMBER)}`;
+
+  /** One history response the fetcher answers with, whatever id is asked for. */
+  const historyBody = {
+    manifest: {
+      schema_version: 1, run_id: HISTORY_ID, ticket_id: TICKET, ticket_path: `backlog/${TICKET}`,
+      flow: 'development', flow_file: 'development.yaml', stage: { before: 'red', after: null },
+      started_at: '2026-09-18T00:00:00.000Z', ended_at: null, duration_ms: null, status: 'running',
+      steps: [],
+      // The four fields the browser reads and not the row's other five: the schema is loose at every
+      // level precisely so a projection of a document `core` may widen is not a `.strict()` copy of
+      // it, and the five token measures are ones no file under `apps/web/src` may name.
+      rollup: [{ vendor: 'zeta', cost_usd: 12.5, unpriced_steps: 0, step_count: 2 }],
+    },
+    incomplete: true,
+    tokensByVendor: { zeta: 10 },
+  };
+
+  /**
+   * The screen over a daemon that answers a run in whatever shape a clause needs, and — **always** —
+   * a valid history at whatever history id is asked for.
+   *
+   * The second half is R-6 staged rather than described: a fixture where the id resolves to nothing
+   * passes whether or not a gate exists, so every no-read clause below is asserted against a daemon
+   * that WOULD have answered. A dry walk and the next real run of one ticket are allocated the same
+   * number, so *there is nothing at that address* is exactly the assumption that fails in practice.
+   */
+  async function screenFor(over: Record<string, unknown>): Promise<{ view: HTMLElement; asked: string[] }> {
+    const asked: string[] = [];
+    const view = document.createElement('div');
+    document.body.append(view);
+    const root = createRoot(view);
+    roots.push(() => root.unmount());
+    await act(async () => root.render(createElement(MissionControlScreen, {
+      handle: HANDLE,
+      snapshot: { state: { kind: 'live', requestedUrl: 'x' }, events: [], missedCount: null, browserDiscardedCount: null },
+      onRetryConnection: () => undefined,
+      fetcher: (path: string) => {
+        asked.push(path);
+        const isHistory = path.startsWith(DAEMON_ENDPOINTS.history);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(isHistory ? historyBody : body(HANDLE, over)),
+        });
+      },
+      now: () => '2026-09-18T00:00:10.000Z',
+      onNavigate: () => undefined,
+    })));
+    return { view, asked };
+  }
+
+  /** Every read of a run's history one run of a clause issued. */
+  const historyReads = (asked: string[]): string[] =>
+    asked.filter((path) => path.startsWith(DAEMON_ENDPOINTS.history));
+
+  test('one read once the metadata supplies both components, keyed by the id and never the handle', async () => {
+    const { view, asked } = await screenFor({ ticketId: TICKET, runId: NUMBER });
+    expect(asked.filter((path) => path === runDetailPath(HANDLE)), 'the metadata was read more than once')
+      .toHaveLength(1);
+    expect(historyReads(asked), 'the history was not read exactly once')
+      .toStrictEqual([historyDetailPath(HISTORY_ID)]);
+    // The id is composed from two typed fields of the answer, and the handle — this daemon's
+    // in-memory name for a run, meaningless across a restart — is no component of it.
+    expect(historyReads(asked)[0], 'the read was keyed by the handle').not.toContain(HANDLE);
+    // …and the values reached the screen, so the read is one that was used rather than merely made.
+    expect(view.querySelector('[data-elapsed-figure]')?.textContent, 'the elapsed figure did not render').toBe('00:10');
+    expect(view.querySelector('[data-vendor-row="zeta"]')?.textContent, 'the vendor row did not render').toContain('$12.500');
+  });
+
+  test('Check again performs one metadata read and one history read, and nothing repeats either alone', async () => {
+    const { view, asked } = await screenFor({ ticketId: TICKET, runId: NUMBER });
+    const before = asked.length;
+    const again = [...view.querySelectorAll('button')].find((button) => /again/i.test(button.textContent ?? ''));
+    expect(again, 'the metadata region offers no way to ask again — this clause has lost its subject').toBeDefined();
+    await act(async () => { again?.click(); });
+    expect(asked.slice(before), 'a refresh did not read exactly the run and then its history')
+      .toStrictEqual([runDetailPath(HANDLE), historyDetailPath(HISTORY_ID)]);
+    // **And nothing repeats either read on its own**: time passing is not a reader asking. The
+    // source half of this — that no fetch is reachable from a timer callback at all — is
+    // `apps/web/test/source.test.ts`'s narrowed clause; this is the behavioural half.
+    const settled = asked.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(asked.length, 'a read repeated with nobody asking for it').toBe(settled);
+  });
+
+  test('each of the three gates issues no history read at all, against a daemon that would answer', async () => {
+    // **The dry gate is proven against a fixture where the id RESOLVES**, which is R-6: the fetcher
+    // above answers a valid history for any history path, so a screen with no gate would render this
+    // walk with another run's start time and cost. A fixture where nothing is at that address would
+    // pass whether or not the gate existed.
+    const walk = await screenFor({ ticketId: TICKET, runId: NUMBER, dry: true });
+    expect(historyReads(walk.asked), 'a dry walk read run history').toStrictEqual([]);
+    expect(walk.view.querySelector('[data-measured-absence]')?.getAttribute('data-measured-absence'))
+      .toBe('dry');
+    expect(walk.view.querySelector('[data-elapsed-figure]'), "a walk rendered another run's figure").toBeNull();
+    expect(walk.view.querySelector('[data-vendor-row]'), "a walk rendered another run's cost").toBeNull();
+
+    const noNumber = await screenFor({ ticketId: TICKET, runId: null });
+    expect(historyReads(noNumber.asked), 'a run with no number read run history').toStrictEqual([]);
+    expect(noNumber.view.querySelector('[data-measured-absence]')?.getAttribute('data-measured-absence'))
+      .toBe('no-run-number');
+
+    const noTicket = await screenFor({ ticketId: null, runId: NUMBER });
+    expect(historyReads(noTicket.asked), 'a run with no ticket read run history').toStrictEqual([]);
+    expect(noTicket.view.querySelector('[data-measured-absence]')?.getAttribute('data-measured-absence'))
+      .toBe('no-ticket-id');
   });
 });
