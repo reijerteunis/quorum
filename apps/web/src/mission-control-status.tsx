@@ -32,14 +32,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { canRetry, connectionStateText } from './connection-state.js';
 import type { Clock } from './daemon-client.js';
 import {
-  ELAPSED_TICK_MS, connectionReportsEnded, elapsedView, measuredView, vendorCostRows,
+  ELAPSED_TICK_MS, absentVendors, connectionReportsEnded, elapsedView, measuredView, vendorCostRows,
   type MeasuredAbsence,
 } from './mission-control-measures.js';
 import {
   COST_IN_FLIGHT_TEXT, COST_LABEL, ELAPSED_BROWSER_CLOCK_TEXT, ELAPSED_ENDED_UNMEASURED_TEXT,
   ELAPSED_ENGINE_TEXT, ELAPSED_LABEL, ELAPSED_UNREADABLE_START_TEXT, MEASURED_DRY_TEXT,
   MEASURED_NO_RUN_NUMBER_TEXT, MEASURED_NO_TICKET_TEXT, MISSION_CONTROL_DISCLOSURES,
-  NO_ROLLUP_ROWS_TEXT, browserDiscardedText, daemonMissedText, unpricedStepsText, unpricedVendorText,
+  NO_ROLLUP_ROWS_TEXT, absentVendorText, browserDiscardedText, daemonMissedText, unpricedStepsText,
+  unpricedVendorText,
 } from './mission-control-text.js';
 import { canRetryRequest, requestStateRemedy, requestStateText, type RequestState } from './request-state.js';
 import { gatePath } from './routes.js';
@@ -234,18 +235,27 @@ function ElapsedRegion({ history, endedOnStream, now }: {
  * number matters most. Nothing here branches on a vendor's name, so a third adapter's row appears
  * because the roll-up carries it.
  *
+ * **A vendor the stream has shown running with no roll-up row of its own gets a line too**, from the
+ * events rather than from the read, because a row appears only once a billed occurrence has
+ * finished. Without it a two-vendor run whose second vendor has finished none rendered one figure
+ * and nothing whatever about the other — the roll-up is not empty in that state, so the sentence
+ * below it never spoke. Review round 1, major 2. What is observed is a lower bound and the sentence
+ * says only that: a vendor named here was seen, and one not named here is not thereby absent.
+ *
  * **A row is marked `data-vendor-row` and not `data-vendor-cost`**, because the second ends in the
  * money field followed by an equals sign — one of the six parse needles
  * `apps/web/test/source.test.ts` forbids anywhere under `src`. An attribute is not a parse, and a
  * needle that had to tell the two apart is a needle with exceptions, which is what that scan
  * refused everywhere except the one measured accessibility collision. Renaming is the cheaper half.
  */
-function CostRegion({ history }: { history: WireRunHistory }): ReactNode {
+function CostRegion({ history, snapshot }: { history: WireRunHistory; snapshot: RunConnectionSnapshot }): ReactNode {
   const rows = vendorCostRows(history);
+  const absent = absentVendors(history, snapshot.events);
   return (
     <div className="flex flex-col gap-1 text-xs" data-vendor-costs>
       <span className="text-muted">{COST_LABEL}</span>
-      {rows.length === 0 ? <p className="text-muted">{NO_ROLLUP_ROWS_TEXT}</p> : (
+      {rows.length === 0 && absent.length === 0 ? <p className="text-muted">{NO_ROLLUP_ROWS_TEXT}</p> : null}
+      {rows.length === 0 ? null : (
         <ul className="flex flex-col gap-1">
           {rows.map((row) => (
             <li key={row.vendor} className="flex flex-wrap items-baseline gap-2" data-vendor-row={row.vendor}>
@@ -255,6 +265,13 @@ function CostRegion({ history }: { history: WireRunHistory }): ReactNode {
                 : <span className="font-mono text-text">{row.cost}</span>}
               {row.unpricedSteps > 0 ? <span className="text-muted">{unpricedStepsText(row.unpricedSteps)}</span> : null}
             </li>
+          ))}
+        </ul>
+      )}
+      {absent.length === 0 ? null : (
+        <ul className="flex flex-col gap-1" data-vendor-absences>
+          {absent.map((vendor) => (
+            <li key={vendor} className="text-muted" data-vendor-absent={vendor}>{absentVendorText(vendor)}</li>
           ))}
         </ul>
       )}
@@ -296,7 +313,7 @@ function MeasuredRegion({ reported, history, snapshot, now, onRetry }: {
               endedOnStream={connectionReportsEnded(snapshot)}
               now={now}
             />
-            <CostRegion history={measured.history} />
+            <CostRegion history={measured.history} snapshot={snapshot} />
           </>
         )}
     </div>

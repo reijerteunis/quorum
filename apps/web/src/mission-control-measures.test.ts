@@ -11,8 +11,8 @@ import { describe, expect, test } from 'vitest';
 import type { WireRun, WireRunHistory, WireVendorRollup } from '@quorum/shared';
 
 import {
-  COST_DECIMALS, connectionReportsEnded, elapsedMs, elapsedView, formatCost, formatElapsed,
-  historyIdOf, measuredView, runHistoryId, vendorCostRows,
+  COST_DECIMALS, absentVendors, connectionReportsEnded, elapsedMs, elapsedView, formatCost,
+  formatElapsed, historyIdOf, measuredView, observedVendors, runHistoryId, vendorCostRows,
 } from './mission-control-measures.js';
 import type { ConnectionState } from './connection-state.js';
 import type { RunConnectionSnapshot } from './run-connection.js';
@@ -180,6 +180,39 @@ describe('Q-0135 AC-13 — one entry per vendor, in the roll-up\'s order, keyed 
     expect(rows).toHaveLength(2);
     const blended = formatCost(1.5 + 2.25);
     expect(rows.map((row) => row.cost), 'a figure across vendors was composed').not.toContain(blended);
+  });
+
+  test('a vendor seen running with no roll-up row is absent from it, one vendor at a time', () => {
+    // **The state an emptiness check cannot see**, which is review round 1's second major: the
+    // roll-up is NOT empty here — one vendor has finished a billed occurrence and the other has not
+    // — so a region that spoke only when the whole of it was empty said nothing about the second.
+    const events = [
+      { type: 'spawn', stepId: 'a', vendor: 'zeta', cmd: 'go' },
+      { type: 'stdout', stepId: 'a', line: 'working' },
+      { type: 'spawn', stepId: 'b', vendor: 'omega', cmd: 'go' },
+    ] as never[];
+    expect(observedVendors(events), 'the observed set is not in first-appearance order')
+      .toStrictEqual(['zeta', 'omega']);
+    const oneBilled = history({ rollup: [rollupRow({ vendor: 'zeta', cost_usd: 1.5 })] });
+    expect(absentVendors(oneBilled, events), 'a vendor seen running with no row of its own was not named')
+      .toStrictEqual(['omega']);
+    // …and the transition the reader actually watches: once the second vendor's occurrence
+    // terminates, the roll-up carries it and there is no absence left to name.
+    const bothBilled = history({
+      rollup: [rollupRow({ vendor: 'zeta', cost_usd: 1.5 }), rollupRow({ vendor: 'omega', cost_usd: null })],
+    });
+    expect(absentVendors(bothBilled, events), 'a vendor the roll-up now carries was still called absent')
+      .toStrictEqual([]);
+    // A vendor label reaches this only from the two events that carry one, which is `vendorOf`'s
+    // rule rather than a second register here — a `retry` carries one as well as a `spawn`.
+    expect(observedVendors([{ type: 'retry', stepId: 'c', vendor: 'iota', attempt: 2, of: 3, delayMs: 1, reason: 'drop', message: 'again' }] as never[]),
+      'a retry does not carry its vendor into the observed set').toStrictEqual(['iota']);
+    expect(observedVendors([{ type: 'stdout', stepId: 'a', line: 'zeta' }] as never[]),
+      'a vendor name was read out of an event that carries no label').toStrictEqual([]);
+    // **What it never claims**: an empty stream names no vendor, and that is silence about the run
+    // rather than the claim that it has none. The browser's tail is bounded and head-evicting.
+    expect(absentVendors(oneBilled, []), 'an unobserved vendor was reported absent from the roll-up')
+      .toStrictEqual([]);
   });
 
   test('money renders to three decimals, matching the one existing renderer of this field', () => {

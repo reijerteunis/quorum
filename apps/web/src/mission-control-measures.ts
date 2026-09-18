@@ -34,9 +34,10 @@
  * the browser's hands — makes the wrong answer tempting.
  */
 import { historyDetailPath } from './daemon-endpoints.js';
+import { vendorOf } from './mission-control-model.js';
 import type { RequestState } from './request-state.js';
 import type { RunConnectionSnapshot } from './run-connection.js';
-import type { WireRun, WireRunHistory } from '@quorum/shared';
+import type { Event, WireRun, WireRunHistory } from '@quorum/shared';
 
 /**
  * How often a live elapsed figure is recomputed.
@@ -94,7 +95,7 @@ export function runHistoryId(run: WireRun): string | null {
  * rule forbids: none of them may render as `0`, a dash, a spinner or an empty region.
  */
 export type MeasuredAbsence =
-  /** A walk that invoked no adapter and wrote no run history — so nothing was recorded, and nothing spent. */
+  /** A walk that invoked no adapter and wrote no run history, so nothing was recorded to measure. */
   | { readonly kind: 'dry' }
   /** The run's number has not been read from the daemon, and history is addressed by it. */
   | { readonly kind: 'no-run-number' }
@@ -246,4 +247,44 @@ export function vendorCostRows(history: WireRunHistory): readonly VendorCostRow[
     tokens: row.cost_usd === null ? history.tokensByVendor[row.vendor] ?? null : null,
     unpricedSteps: row.unpriced_steps,
   }));
+}
+
+/**
+ * Every vendor this browser has SEEN take a step on the run, in first-appearance order.
+ *
+ * `spawn` and `retry` are the two events that carry a vendor label, and {@link vendorOf} is the one
+ * place that is written down — so a third label-carrying event is a change there rather than a
+ * second register here that could go on naming two.
+ *
+ * **It is a lower bound and never a roster**, which is what bounds what may be said from it. The
+ * browser keeps a bounded, head-evicting tail of a run's events, and a late joiner is replayed only
+ * what the daemon retained, so a vendor whose `spawn` has been discarded is invisible here. What is
+ * rendered from this is therefore a positive claim about a vendor that WAS observed, and never a
+ * claim about the ones it does not name.
+ */
+export function observedVendors(events: readonly Event[]): readonly string[] {
+  const seen = new Set<string>();
+  for (const event of events) {
+    const vendor = vendorOf(event);
+    if (vendor !== null) seen.add(vendor);
+  }
+  return [...seen];
+}
+
+/**
+ * Every observed vendor the roll-up has no row for, in the order it was first observed.
+ *
+ * **A roll-up row exists only for a vendor that has FINISHED a billed occurrence** —
+ * `VendorRollup.step_count` is documented *"Never zero — a row without one is absent"* — so a vendor
+ * that has been seen running and finished none is ABSENT from the roll-up rather than present at
+ * zero, and that is a third claim beside *priced* and *unpriced*.
+ *
+ * **Naming them one at a time is what an emptiness check cannot do.** A two-vendor run whose first
+ * vendor has finished a billed step and whose second has not has a non-empty roll-up, so a region
+ * that spoke only when the whole roll-up was empty rendered one row and nothing whatever about the
+ * other — a reader seeing a vendor in the trace columns beside it and no account of it here.
+ */
+export function absentVendors(history: WireRunHistory, events: readonly Event[]): readonly string[] {
+  const billed = new Set(history.manifest.rollup.map((row) => row.vendor));
+  return observedVendors(events).filter((vendor) => !billed.has(vendor));
 }

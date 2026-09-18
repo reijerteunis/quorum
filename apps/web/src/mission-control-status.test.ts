@@ -9,7 +9,8 @@ import { MissionControlStatus, type MissionControlStatusProps } from './mission-
 import {
   COST_IN_FLIGHT_TEXT, ELAPSED_BROWSER_CLOCK_TEXT, ELAPSED_ENDED_UNMEASURED_TEXT, ELAPSED_ENGINE_TEXT,
   MEASURED_DRY_TEXT, MEASURED_NO_RUN_NUMBER_TEXT, MEASURED_NO_TICKET_TEXT, MISSION_CONTROL_DISCLOSURES,
-  NO_ROLLUP_ROWS_TEXT, browserDiscardedText, daemonMissedText, unpricedStepsText, unpricedVendorText,
+  NO_ROLLUP_ROWS_TEXT, absentVendorText, browserDiscardedText, daemonMissedText, unpricedStepsText,
+  unpricedVendorText,
 } from './mission-control-text.js';
 import type { RequestState } from './request-state.js';
 import { gatePath } from './routes.js';
@@ -297,6 +298,47 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect(formatCost(78.675 + 2.25), 'the sum needle is one of the two row figures').toBe('$80.925');
   });
 
+  test('Q-0135 AC-16 — a vendor seen running with no roll-up row is named, one row then two', async () => {
+    // **The state an emptiness check cannot see**, which is review round 1's second major. The
+    // roll-up is not empty — `zeta` has finished a billed occurrence and `omega` has not — so the
+    // sentence that speaks for a wholly empty one never spoke, and the second vendor rendered as
+    // nothing at all beside a trace column carrying its name.
+    const events = [
+      { type: 'spawn', stepId: 'a', vendor: 'zeta', cmd: 'go' },
+      { type: 'spawn', stepId: 'b', vendor: 'omega', cmd: 'go' },
+    ] as never[];
+    const oneBilled = await renderStatus(states[2]!, {
+      reported: run(0, 1),
+      snapshot: { state: states[2], events, missedCount: null, browserDiscardedCount: null },
+      history: loadedHistory({ rollup: [priced] }),
+    });
+    expect([...oneBilled.querySelectorAll('[data-vendor-row]')].map((node) => node.getAttribute('data-vendor-row')),
+      'the billed vendor lost its row').toStrictEqual(['zeta']);
+    const named = [...oneBilled.querySelectorAll('[data-vendor-absent]')];
+    expect(named.map((node) => node.getAttribute('data-vendor-absent')),
+      'a vendor seen running with no roll-up row of its own was rendered as nothing').toStrictEqual(['omega']);
+    expect(named[0]?.textContent, 'the absent vendor does not render its own sentence')
+      .toBe(absentVendorText('omega'));
+    // …and it is an absence rather than a zero, which is the placeholder rule: no fabricated figure.
+    expect(named[0]?.textContent, 'an absent vendor was rendered as a figure').not.toMatch(/\$|—|00:00/);
+    // **The general sentence gives way to the specific one**, so a reader is never shown both a
+    // statement that the roll-up names none and a list of the ones it does not name.
+    expect(oneBilled.querySelector('[data-vendor-costs]')?.textContent, 'the general sentence stood beside the specific one')
+      .not.toContain(NO_ROLLUP_ROWS_TEXT);
+
+    // Then the transition the reader actually watches: the second vendor's occurrence terminates,
+    // the roll-up carries it, and there is no absence left to name.
+    const bothBilled = await renderStatus(states[2]!, {
+      reported: run(0, 1),
+      snapshot: { state: states[2], events, missedCount: null, browserDiscardedCount: null },
+      history: loadedHistory({ rollup: [priced, unpriced] }, { tokensByVendor: { omega: 714_125 } }),
+    });
+    expect([...bothBilled.querySelectorAll('[data-vendor-row]')].map((node) => node.getAttribute('data-vendor-row')),
+      'the second vendor did not become a row when the roll-up gained one').toStrictEqual(['zeta', 'omega']);
+    expect(bothBilled.querySelector('[data-vendor-absent]'), 'a vendor the roll-up carries was still called absent')
+      .toBeNull();
+  });
+
   test('Q-0135 AC-13/AC-16 — an all-unpriced run renders no zero, and an empty roll-up says why', async () => {
     const allUnpriced = await renderStatus(states[2]!, {
       reported: run(0, 1),
@@ -333,9 +375,12 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
       rendered.push(text);
     }
     // **The dry case specifically**, being both the first anyone exercising this will meet and the
-    // one no inference from a 404 can get right — and it says nothing was spent, because a run a
-    // reader has just started showing no figures otherwise reads as a defect.
+    // one no inference from a 404 can get right. It explains the absence by what the walk RECORDED,
+    // and deliberately not by what it spent: those are claims about two different subjects, and only
+    // the first is why this screen has no figures. Review round 1, nit.
     expect(rendered[0], 'the dry sentence does not say a walk recorded nothing').toContain('wrote no run history');
+    expect(rendered[0], 'the dry sentence explains the absence by what was spent rather than by what was recorded')
+      .not.toMatch(/\bspent\b/);
     expect(new Set(rendered).size, 'two absences share a sentence').toBe(3);
 
     // The fourth reason is the only repairable one, and it carries the daemon's own words with a
@@ -352,13 +397,17 @@ describe('Q-0015 AC-8/10/11/12 — mission-control status', () => {
     expect(dry.querySelector('[data-measured-absence] button'), 'a walk offered a retry').toBeNull();
   });
 
-  test('Q-0135 AC-16 — the six sentences this screen adds are six, non-empty, and share none', () => {
+  test('Q-0135 AC-16 — the sentences this screen adds are non-empty, distinct, and share no prefix', () => {
     // Asserted over the copy contract by value, because *no two cases share a sentence* is a claim
     // about the words rather than about a render — and a case that quietly reused a neighbour's
     // would be invisible to a clause that only checked each one rendered something.
+    // **The per-vendor absence joined them at review round 1**, and it is asserted here at a
+    // supplied label for the same reason the fixtures use one: a sentence built around a vendor's
+    // name must be distinct whatever that name is, which the two real ones would not establish.
     const ADDED = [
       MEASURED_DRY_TEXT, MEASURED_NO_RUN_NUMBER_TEXT, MEASURED_NO_TICKET_TEXT,
       ELAPSED_ENDED_UNMEASURED_TEXT, NO_ROLLUP_ROWS_TEXT, COST_IN_FLIGHT_TEXT,
+      absentVendorText('omega'),
     ];
     expect(new Set(ADDED).size, 'two of the absent cases share a sentence').toBe(ADDED.length);
     for (const sentence of ADDED) {

@@ -67,12 +67,14 @@ export const ELAPSED_ENGINE_TEXT = 'measured by the engine when the run finished
 /**
  * A walk that wrote no run history, which is a reason of its own and not a failed read.
  *
- * It says what is absent and why, and it says the second half — that nothing was spent — because
- * *no figures* beside a run a reader has just started looks like a defect rather than the point of
- * a dry walk.
+ * **The explanation is that nothing was RECORDED, and deliberately not that nothing was spent.** It
+ * carried a second clause saying the latter until review round 1; the criterion contrasts the two in
+ * as many words, and the reason the distinction is worth keeping is that *nothing was spent* is a
+ * claim about a different subject — what a walk cost — where the absence on this screen is about
+ * what a walk wrote. Only one of the two is why there are no figures here.
  */
 export const MEASURED_DRY_TEXT =
-  'This run is a dry walk: it invoked no adapter and wrote no run history, so there is nothing recorded to measure. Nothing was spent either.';
+  'This run is a dry walk: it invoked no adapter and wrote no run history, so nothing was recorded for this page to measure.';
 
 /** No run number yet, so there is no history id to ask for — a state, not a failure. */
 export const MEASURED_NO_RUN_NUMBER_TEXT =
@@ -91,14 +93,34 @@ export const ELAPSED_UNREADABLE_START_TEXT =
   "The run's history records a start time this page cannot read as an instant, so no elapsed time is shown.";
 
 /**
- * An empty roll-up, which is not the same claim as *free* and not the same claim as *unpriced*.
+ * An empty roll-up with no vendor to name, which is not *free* and is not *unpriced*.
  *
  * A roll-up row exists only for a vendor that has finished a billed occurrence, so a vendor that has
  * run and finished none is ABSENT rather than present at zero. Saying nothing here would let a
  * reader take an empty region for a run that cost nothing.
+ *
+ * **It is the general sentence, and it gives way to the specific one.** Where the stream has shown
+ * which vendors are running, {@link absentVendorText} names each of them instead: this is what is
+ * left to say when an empty roll-up is all there is — before any `spawn` has been seen, or on a run
+ * whose events this browser was never sent.
  */
 export const NO_ROLLUP_ROWS_TEXT =
   'No vendor has finished a billed step on this run, so its roll-up names none. A vendor that has run without finishing one is absent from it rather than free.';
+
+/**
+ * One vendor seen running with no roll-up row of its own, which is a third claim beside the other two.
+ *
+ * *Priced* and *unpriced* are both claims about a vendor the roll-up HAS a row for. This one has
+ * none, because a row appears only once a billed occurrence has finished — so the honest sentence is
+ * that nothing has been billed for it yet, rather than a zero, a dash or an empty space where the
+ * other vendors have figures.
+ *
+ * **It says the vendor was observed and never that the set of them is complete.** The observation
+ * comes from a bounded, head-evicting tail of the run's events, so what this can support is a claim
+ * about a vendor that was seen and nothing about one that was not.
+ */
+export const absentVendorText = (vendor: string): string =>
+  `${vendor} has been seen running on this run and has finished no billed step, so the roll-up holds no row for it yet: absent from it rather than free.`;
 
 /**
  * That the figures are behind, and by what.

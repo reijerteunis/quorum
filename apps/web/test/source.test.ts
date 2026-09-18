@@ -900,32 +900,70 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
   const REACHES_THE_DAEMON = /\b(?:fetch[A-Za-z]*|requestJson|answerGate|startRun|stopRun)[ \t]*\(|\bbrowserFetch\b/;
 
   /**
-   * Every name a module binds, with the text that follows it up to the next binding.
+   * Every name a module binds, with the body that follows it — a WHOLE body, nested bindings and all.
    *
    * Deliberately wider than {@link declarations}, which collects TOP-LEVEL heads only: a helper
    * declared inside a component — `const readMetadata = useCallback(…)`, which is how every read in
    * this app is written — is not top-level, and a timer whose callback called one would otherwise be
-   * invisible. The extent runs to the next binding head, so a name can be credited with a sibling's
-   * code; that over-collects and never under-collects, which is the safe direction for a
-   * prohibition.
+   * invisible.
+   *
+   * **The extent ends at the next head at the SAME OR SHALLOWER bracket depth, and it used to end at
+   * the next head of any kind.** That difference is review round 1's finding: a function that
+   * declares a local of its own — `function reload() { const path = …; fetchRun(…); }`, which is how
+   * every reader in this app is written — had its body cut off at that `const`, so the call after it
+   * was credited to the local instead and `reload` was never collected. A timer calling `reload`
+   * then passed a clause whose whole subject is that call.
+   *
+   * **The new extent contains the old one by construction, so this cannot be weaker than what it
+   * replaces.** Both end at a head or at the end of the file, and the next head at depth ≤ 0 is at
+   * or after the next head of any kind — whatever the depth walk makes of a bracket inside a string
+   * or a comment, which is why this needs no tokeniser and no per-file balance to be sound. What it
+   * can do is credit a name with a sibling's code or with the rest of an enclosing scope; that
+   * over-collects and never under-collects, which is the safe direction for a prohibition.
    */
   const bindings = (text: string): { readonly name: string; readonly text: string }[] => {
     const heads = [...text.matchAll(/\b(?:const|let|var|function)[ \t]+([A-Za-z_$][\w$]*)/g)];
-    return heads.map((head, i) => ({
-      name: head[1] ?? '',
-      text: text.slice(head.index ?? 0, heads[i + 1]?.index ?? text.length),
-    }));
+    // Bracket depth at each head, in one pass over the module rather than one pass per head.
+    const depths: number[] = [];
+    let depth = 0;
+    let next = 0;
+    for (let at = 0; at <= text.length; at += 1) {
+      while (next < heads.length && (heads[next]?.index ?? text.length) === at) { depths.push(depth); next += 1; }
+      const char = text[at];
+      if (char === '(' || char === '[' || char === '{') depth += 1;
+      else if (char === ')' || char === ']' || char === '}') depth -= 1;
+    }
+    return heads.map((head, i) => {
+      const mine = depths[i] ?? 0;
+      const nextSibling = heads.findIndex((other, at) => at > i && (depths[at] ?? 0) <= mine);
+      return {
+        name: head[1] ?? '',
+        text: text.slice(head.index ?? 0, nextSibling === -1 ? text.length : heads[nextSibling]?.index ?? text.length),
+      };
+    });
   };
 
-  /** Every name in one module that reaches the daemon, directly or through a name that does. */
+  /** One name, safe to interpolate into a pattern — `$` is legal in an identifier and means end-of-input. */
+  const asNeedle = (name: string): RegExp => new RegExp(`\\b${name.replace(/\$/g, '\\$')}[ \\t]*\\(`);
+
+  /**
+   * Every name in one module that reaches the daemon, directly or through a name that does.
+   *
+   * **A fixpoint rather than a fixed number of rounds**, which is the other half of review round 1's
+   * finding: the walk ran five passes and stopped, so a call chain longer than that — written in the
+   * order a reader writes one, the caller above the callee, which is the order that costs a round per
+   * hop — was followed part of the way and then dropped. Each round either adds a name or is the
+   * last, and the set is bounded by the bindings the module has, so this terminates in at most
+   * `bound.length` rounds and follows a chain of any length.
+   */
   const requestingNames = (text: string): Set<string> => {
     const names = new Set<string>();
     const bound = bindings(text);
-    for (let pass = 0; pass < 5; pass += 1) {
+    for (;;) {
       const before = names.size;
       for (const one of bound) {
         if (names.has(one.name)) continue;
-        const callsOne = [...names].some((name) => new RegExp(`\\b${name}[ \\t]*\\(`).test(one.text));
+        const callsOne = [...names].some((name) => asNeedle(name).test(one.text));
         if (REACHES_THE_DAEMON.test(one.text) || callsOne) names.add(one.name);
       }
       if (names.size === before) break;
@@ -1030,6 +1068,38 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
     // …and a write is not exempt from a rule about reads: it is worse.
     expect(pollers([['write.ts', `${'setTimeout'}(() => { void stopRun(request, handle, clock); }, 1000);`]]),
       'a write scheduled on a timer was not reported').toHaveLength(1);
+
+    // **The two shapes the walk this replaced could not follow, which is review round 1's finding.**
+    //
+    // A helper that declares a local of its own — the form every reader in this app is written in.
+    // The extent used to end at the NEXT BINDING HEAD of any kind, so `const path` cut `reload`'s
+    // body off before the call in it, the call was credited to `path`, and nothing calls `path(`.
+    const nested = [
+      'export function Screen() {',
+      '  const reload = () => {',
+      '    const path = runDetailPath(handle);',
+      '    void fetchRun(request, path, clock);',
+      '  };',
+      `  ${'setInterval'}(() => { reload(); }, 1000);`,
+      '}',
+    ].join('\n');
+    expect(requestingNames(nested), 'a helper that declares a local of its own is not collected').toContain('reload');
+    expect(pollers([['nested.ts', nested]]),
+      'a timer reaching the daemon through a helper with a local binding was not reported').toHaveLength(1);
+
+    // …and a chain longer than the five passes the walk used to run, written in the order a reader
+    // writes one — the caller above the callee, which is the order that costs a round per hop. Seven
+    // hops need eight rounds, so a capped walk collected `h0` to `h4` and stopped one short of the
+    // name the callback actually calls.
+    const HOPS = 7;
+    const chain = [
+      ...Array.from({ length: HOPS }, (_, i) => `const h${String(HOPS - i)} = () => { h${String(HOPS - i - 1)}(); };`),
+      'const h0 = () => { void fetchRuns(request, clock); };',
+      `${'setInterval'}(() => { h${String(HOPS)}(); }, 1000);`,
+    ].join('\n');
+    expect([...requestingNames(chain)].sort(), 'the walk stopped short of the end of the chain')
+      .toStrictEqual(Array.from({ length: HOPS + 1 }, (_, i) => `h${String(i)}`).sort());
+    expect(pollers([['chain.ts', chain]]), 'a timer seven hops from the daemon was not reported').toHaveLength(1);
   });
 
   test('no file under src calls a containment answer merged, landed or shipped', () => {
@@ -1191,7 +1261,7 @@ describe('Q-0135 AC-12/AC-17 — the clock is injected, and every sentence is im
     // delegation rather than a module that renders no prose at all.
     const status = sourceFiles().find(([name]) => name === 'mission-control-status.tsx')?.[1] ?? '';
     expect(status, 'the status module does not import the copy contract').toContain('mission-control-text.js');
-    for (const exported of ['MEASURED_DRY_TEXT', 'COST_IN_FLIGHT_TEXT', 'NO_ROLLUP_ROWS_TEXT']) {
+    for (const exported of ['MEASURED_DRY_TEXT', 'COST_IN_FLIGHT_TEXT', 'NO_ROLLUP_ROWS_TEXT', 'absentVendorText']) {
       expect(status, `the status module does not import ${exported}`).toContain(exported);
     }
     // The needle discriminates, over fixtures rather than over an empty corpus: prose is reported,
