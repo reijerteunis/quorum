@@ -22,7 +22,7 @@ import { HistoryScreen } from './history-screen.js';
 import {
   COLLAPSE_LABEL, EMPTY_HISTORY_TEXT, EXPAND_LABEL, HISTORY_HEADING, HISTORY_REFRESH_LABEL,
   HISTORY_RETRY_LABEL, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT, LIVE_RUN_TEXT, NO_DURATION_TEXT,
-  UNREADABLE_HEADING, notAnAdapterCallText, runStatusText,
+  NO_READABLE_RUNS_TEXT, UNREADABLE_HEADING, notAnAdapterCallText, runStatusText,
 } from './history-text.js';
 import { NO_ROLLUP_ROWS_TEXT, unpricedStepsText, unpricedVendorText } from './mission-control-text.js';
 
@@ -349,6 +349,83 @@ describe('Q-0018 AC-12 — one row opens inline to what ran, in `seq` order', ()
       'a body this page cannot read was not reported as one').toBe('unparseable');
   });
 
+  test('collapsing a row whose read is still out discards it, and its answer does not reopen the row', async () => {
+    // **Review round 1's second finding.** A detail already out carries the generation it was issued
+    // under, and collapsing without spending that number left its answer able to land afterwards —
+    // so a row the reader had closed re-opened itself, with nothing on screen having asked for it.
+    // Staged rather than reasoned about: the detail body is a promise this test settles, so the
+    // collapse genuinely happens while the read is outstanding.
+    let settle: (body: unknown) => void = () => {};
+    const outstanding = new Promise<unknown>((resolve) => { settle = resolve; });
+    const fetcher = (path: string) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => (path === DAEMON_ENDPOINTS.history
+        ? Promise.resolve({ runs: [row({ id: 'Q-0018-1' })], warnings: [] })
+        : outstanding),
+    });
+    const view = document.createElement('div');
+    document.body.append(view);
+    const root = createRoot(view);
+    roots.push(() => root.unmount());
+    await act(async () => root.render(createElement(HistoryScreen, { fetcher, now: CLOCK })));
+
+    await act(async () => toggleFor(view, 'Q-0018-1').click());
+    const region = (): string | null | undefined =>
+      view.querySelector('[data-history-row="Q-0018-1"] [data-request-state]')?.getAttribute('data-request-state');
+    expect(region(), 'the read was not still out, so this clause has no subject').toBe('in-flight');
+
+    await act(async () => toggleFor(view, 'Q-0018-1').click());
+    expect(view.querySelector('[data-opened-run]'), 'collapsing left the region open').toBeNull();
+    expect(region(), 'a collapsed row kept the state of the read it discarded').toBeUndefined();
+
+    await act(async () => { settle(detail({})); await outstanding; });
+    expect(view.querySelector('[data-opened-run]'),
+      'a detail that arrived after the row was closed re-opened it').toBeNull();
+    expect(region(), 'a discarded read reported itself under a row the reader had closed').toBeUndefined();
+  });
+
+  test('Retry beside a failed detail reads that run again, rather than collapsing the row', async () => {
+    // **Review round 1's third finding.** The Retry is offered on a row that is already open, so a
+    // retry routed through the row's toggle takes its collapse branch: a control naming a remedy and
+    // performing none. Asserted on the REQUEST COUNT and then on the answer, because a clause over
+    // the rendering alone passes for an implementation that merely re-renders the failure.
+    const calls: string[] = [];
+    let attempt = 0;
+    const fetcher = (path: string) => {
+      calls.push(path);
+      if (path === DAEMON_ENDPOINTS.history) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ runs: [row({ id: 'Q-0018-1' })], warnings: [] }),
+        });
+      }
+      attempt += 1;
+      // The first read answers a body this page cannot read; the second answers the run.
+      const body = attempt === 1 ? { nope: true } : detail({});
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    };
+    const view = document.createElement('div');
+    document.body.append(view);
+    const root = createRoot(view);
+    roots.push(() => root.unmount());
+    await act(async () => root.render(createElement(HistoryScreen, { fetcher, now: CLOCK })));
+
+    await act(async () => toggleFor(view, 'Q-0018-1').click());
+    expect(calls, 'opening the row did not read that run').toHaveLength(2);
+    const retry = (): HTMLButtonElement | undefined =>
+      [...view.querySelectorAll('[data-history-row="Q-0018-1"] button')]
+        .find((node): node is HTMLButtonElement => node.textContent === HISTORY_RETRY_LABEL);
+    expect(retry(), 'a failed detail offered no retry, so this clause has no subject').toBeDefined();
+
+    await act(async () => (retry() as HTMLButtonElement).click());
+    expect(calls, 'Retry issued no request at all').toHaveLength(3);
+    expect(calls[2], 'Retry read something other than the run it was offered on')
+      .toBe(historyDetailPath('Q-0018-1'));
+    expect(view.querySelector('[data-opened-run]'), 'Retry collapsed the row instead of reading it again')
+      .not.toBeNull();
+  });
+
   test('a run that recorded no occurrences says so, and a failed detail read renders its own state', async () => {
     const { view } = await opened({ steps: [] });
     await act(async () => toggleFor(view, 'Q-0018-1').click());
@@ -395,6 +472,37 @@ describe('Q-0018 AC-3/AC-13 — what the daemon could not read, and a store that
     // It is the ANSWER having arrived, so it is not one of the five request states: the loaded
     // sentence is rendered beside it rather than replaced by it.
     expect(view.querySelector('[data-request-state]')?.getAttribute('data-request-state')).toBe('loaded');
+  });
+
+  test('a store whose every run was unreadable is not reported as a store nobody has written to', async () => {
+    // **Review round 1's fourth finding.** `runs: []` arrives for two opposite reasons, and the
+    // empty-store sentence said over this one tells a reader that nothing has ever run here while
+    // the region below names the runs that did — reporting a probe that could not answer as a
+    // negative, and sending somebody to start a flow rather than at the reasons underneath.
+    const { view } = await mount({
+      runs: [],
+      warnings: [
+        { runId: 'Q-0018-1', message: 'malformed manifest.json (Unexpected token n)' },
+        { runId: 'Q-0018-2', message: 'manifest.json rollup is not an array' },
+      ],
+    });
+    expect(view.querySelector('[data-history-empty]'),
+      'a store nobody could read was reported as one nobody had written to').toBeNull();
+    expect(view.textContent, 'the empty-store sentence was rendered over runs that are there')
+      .not.toContain(EMPTY_HISTORY_TEXT);
+    expect(view.querySelector('[data-history-none-readable]')?.textContent,
+      'a listing that could report none of its runs said nothing about why it was empty')
+      .toBe(NO_READABLE_RUNS_TEXT);
+    // …and every run it found is still named with its own reason, which is what that sentence points at.
+    for (const id of ['Q-0018-1', 'Q-0018-2']) {
+      expect(view.querySelector(`[data-history-warning="${id}"]`), `${id} was not named`).not.toBeNull();
+    }
+    // The clause discriminates rather than firing on any empty table: a store that answered and
+    // holds nothing keeps its own sentence and renders neither of the other's markers.
+    const truly = await mount({ runs: [], warnings: [] });
+    expect(truly.view.querySelector('[data-history-none-readable]'),
+      'a store nobody had written to was reported as one that could not be read').toBeNull();
+    expect(truly.view.querySelector('[data-history-empty]')?.textContent).toBe(EMPTY_HISTORY_TEXT);
   });
 
   test.each([

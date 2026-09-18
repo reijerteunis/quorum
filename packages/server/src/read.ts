@@ -67,6 +67,39 @@ function rollupRows(rollup: unknown): VendorRollup[] {
 }
 
 /**
+ * Every roll-up element narrowed to the four fields a listing row carries, and **none of them
+ * dropped**.
+ *
+ * **Deliberately not {@link rollupRows}, which filters — and filtering is right where that is used
+ * and wrong here.** The detail route derives `tokensByVendor` from it and sends the manifest whole
+ * beside it, so an element it could not read is still in front of a reader. On the listing the
+ * projection IS the answer: a filter there makes this route decide that a manifest holding a row it
+ * cannot read describes a run with fewer vendors, so `rollup: [42]` would list as a perfectly good
+ * run that billed nobody. It would also make the two routes disagree about one file, since
+ * `wireRunHistorySchema` declares `manifest.rollup` over {@link wireVendorRollupSchema}'s elements
+ * and a browser therefore refuses that same manifest on the detail.
+ *
+ * So an element that is not an object crosses **as it stands** and one that is has its four fields
+ * read off whatever is there: either way {@link wireRunHistoryRowSchema} is what judges it, and a
+ * run it refuses is NAMED in `warnings` with the parser's own words rather than misreported as one
+ * with an empty roll-up.
+ */
+function listingRollup(rollup: readonly unknown[]): unknown[] {
+  return rollup.map((row) => {
+    // Handed on unchanged so the schema names what it found. Reading `.vendor` off `null` would
+    // throw, and substituting an empty object here would report a damaged row as a missing one.
+    if (typeof row !== 'object' || row === null) return row;
+    const fields = row as Partial<VendorRollup>;
+    return {
+      vendor: fields.vendor,
+      cost_usd: fields.cost_usd,
+      unpriced_steps: fields.unpriced_steps,
+      step_count: fields.step_count,
+    };
+  });
+}
+
+/**
  * One listing row for one run, or the sentence saying why this route could not compose one.
  *
  * **It parses with the schema the response is declared against, rather than checking fields by
@@ -95,6 +128,11 @@ function rollupRows(rollup: unknown): VendorRollup[] {
  * `duration_ms` and `cost_usd` non-negative or `null`, the two roll-up counts non-negative
  * integers — so a manifest this refuses is one that route was already refusing, and the difference
  * this makes is where the refusal lands rather than how often.
+ *
+ * **That last sentence is a property of `listingRollup` rather than of this function alone**, and it
+ * was false while this projected through `rollupRows`: a roll-up element that is not an object was
+ * dropped here and refused there, so one manifest read as a run with no billed vendors on the
+ * listing and as an unparseable body on the detail. Review round 1's first finding.
  */
 function historyRow(run: RunEntry): WireRunHistoryRow | string {
   const parsed = wireRunHistoryRowSchema.safeParse({
@@ -116,14 +154,10 @@ function historyRow(run: RunEntry): WireRunHistoryRow | string {
     // document failing it is already in `warnings` and never reaches this function.
     occurrenceCount: run.manifest.steps.length,
     // Narrowed to the four a surface renders and never the manifest's rows as they sit on disk,
-    // which measured 581 B a row against 369 B. `rollupRows` is what the detail route already reads
-    // a roll-up through, so an unusable row is refused the same way on both.
-    rollup: rollupRows(run.manifest.rollup).map((row) => ({
-      vendor: row.vendor,
-      cost_usd: row.cost_usd,
-      unpriced_steps: row.unpriced_steps,
-      step_count: row.step_count,
-    })),
+    // which measured 581 B a row against 369 B — and narrowed WITHOUT dropping, so a row this route
+    // cannot read refuses the whole listing row rather than shrinking the roll-up in silence. See
+    // `listingRollup`, which is why this is not `rollupRows`.
+    rollup: listingRollup(run.manifest.rollup),
   });
   return parsed.success ? parsed.data : `${MANIFEST_FILE} does not describe a run this listing can report (${parsed.error.message})`;
 }

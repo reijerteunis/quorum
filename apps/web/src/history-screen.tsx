@@ -31,8 +31,9 @@ import {
 import {
   COLLAPSE_LABEL, EXPAND_LABEL, EMPTY_HISTORY_TEXT, HISTORY_COST_LABEL, HISTORY_DISCLOSURES,
   HISTORY_HEADING, HISTORY_REFRESH_LABEL, HISTORY_RETRY_LABEL, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT,
-  LIVE_RUN_TEXT, NO_DURATION_TEXT, NO_OCCURRENCES_TEXT, OCCURRENCES_LABEL, OCCURRENCE_NO_DURATION_TEXT,
-  OCCURRENCE_RUNNING_TEXT, UNREADABLE_HEADING, notAnAdapterCallText, runStatusText, unreadableRunText,
+  LIVE_RUN_TEXT, NO_DURATION_TEXT, NO_OCCURRENCES_TEXT, NO_READABLE_RUNS_TEXT, OCCURRENCES_LABEL,
+  OCCURRENCE_NO_DURATION_TEXT, OCCURRENCE_RUNNING_TEXT, UNREADABLE_HEADING, notAnAdapterCallText,
+  runStatusText, unreadableRunText,
 } from './history-text.js';
 import { formatCost, formatElapsed, vendorCostRows } from './mission-control-measures.js';
 import { NO_ROLLUP_ROWS_TEXT, unpricedStepsText, unpricedVendorText } from './mission-control-text.js';
@@ -193,6 +194,9 @@ export function HistoryScreen({ fetcher, now }: HistoryScreenProps): ReactNode {
   // One counter for every load this screen starts, whoever starts it — the mount, Refresh, or a row
   // being opened. A superseded request's answer is dropped rather than landing on top of a newer
   // one, and an unmount bumps the same counter so a late answer never reaches a screen that is gone.
+  // **Discarding a read is an act that spends a number too**, which is what collapsing a row does:
+  // see `toggle` below, where not spending one let a detail already out reopen a row after the
+  // reader had closed it.
   const generation = useRef(0);
 
   const load = useCallback(() => {
@@ -213,8 +217,14 @@ export function HistoryScreen({ fetcher, now }: HistoryScreenProps): ReactNode {
     return () => { generation.current += 1; };
   }, [load]);
 
-  const toggle = useCallback((id: string) => {
-    if (opened?.id === id) { setOpened(null); return; }
+  /**
+   * Read one run's detail, whoever asked for it — a row being opened, or a Retry after one failed.
+   *
+   * **Reached directly rather than through {@link toggle}**: a Retry is offered on a row that is
+   * already open, so a Retry routed through the toggle takes its collapse branch and issues no
+   * request at all — a control naming a remedy and performing none.
+   */
+  const openRun = useCallback((id: string) => {
     const mine = (generation.current += 1);
     setOpened({ id, state: runHistoryInFlight(id) });
     void (async () => {
@@ -223,7 +233,20 @@ export function HistoryScreen({ fetcher, now }: HistoryScreenProps): ReactNode {
       // out must not have the first one's answer land under the second one's heading.
       if (generation.current === mine) setOpened({ id, state: result });
     })();
-  }, [opened, request, clock]);
+  }, [request, clock]);
+
+  const toggle = useCallback((id: string) => {
+    if (opened?.id === id) {
+      // **The read is discarded rather than merely hidden.** A detail already out carries the
+      // generation it was issued under, so closing a row without spending that number leaves its
+      // answer able to land afterwards — and `setOpened` in that answer re-opens the row a reader
+      // has just closed, under their hands and with nothing on screen having asked for it.
+      generation.current += 1;
+      setOpened(null);
+      return;
+    }
+    openRun(id);
+  }, [opened, openRun]);
 
   const heading = (
     <div className="flex flex-wrap items-baseline gap-4">
@@ -252,7 +275,14 @@ export function HistoryScreen({ fetcher, now }: HistoryScreenProps): ReactNode {
       </ul>
 
       {runs.length === 0 ? (
-        <p className="mt-4 max-w-2xl text-sm text-muted" data-history-empty>{EMPTY_HISTORY_TEXT}</p>
+        // **`runs: []` arrives for two opposite reasons and they are told apart here.** A store
+        // nothing has written to is the adopter's first view and says what would put a run in it; a
+        // store whose every run the daemon could not read is the same array with the region below
+        // full of reasons, and the empty-store sentence over that one would report the runs that ARE
+        // there as runs that are not.
+        warnings.length === 0
+          ? <p className="mt-4 max-w-2xl text-sm text-muted" data-history-empty>{EMPTY_HISTORY_TEXT}</p>
+          : <p className="mt-4 max-w-2xl text-sm text-muted" data-history-none-readable>{NO_READABLE_RUNS_TEXT}</p>
       ) : (
         // The daemon's own order, which `sortRuns` decided — newest first, by the manifest's own
         // start. This screen declares no comparator: an order derived here would be one it invented.
@@ -290,7 +320,7 @@ export function HistoryScreen({ fetcher, now }: HistoryScreenProps): ReactNode {
               </button>
               {opened?.id !== run.id ? null : opened.state.kind === 'loaded'
                 ? <OpenedRun history={opened.state.value} />
-                : <div className="mt-2"><RequestRegion state={opened.state} onRetry={() => toggle(run.id)} /></div>}
+                : <div className="mt-2"><RequestRegion state={opened.state} onRetry={() => openRun(run.id)} /></div>}
             </li>
           ))}
         </ul>

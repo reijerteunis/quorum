@@ -102,6 +102,21 @@ export const COLLAPSE_LABEL = 'Hide what ran';
 export const EMPTY_HISTORY_TEXT =
   'The daemon found no runs under this project. Run history is written when a flow runs — start one from a ticket page, or run quorum run at a command line, and this table fills up.';
 
+/**
+ * A store that answered, holds runs, and could report **none** of them — which is not an empty one.
+ *
+ * The two answers arrive as the same `runs: []` and mean opposite things, and {@link
+ * EMPTY_HISTORY_TEXT} said over this one would tell a reader that nothing has ever run here while
+ * the region below names the runs that did. That is *"A probe that could not answer is not a
+ * negative"* (2026-09-10) on a screen: the daemon found runs and could not read them, and reporting
+ * that as absence sends somebody looking for a flow to start rather than at the reasons underneath.
+ *
+ * It does not say what to do, because the reasons do: each is one sentence in the daemon's own
+ * words, and a remedy composed here would be this screen guessing which of them it was.
+ */
+export const NO_READABLE_RUNS_TEXT =
+  'The daemon found runs under this project and could not report any of them. Every one is named below, with the reason it could not be read.';
+
 /** What the region naming the runs the daemon could not read is called. */
 export const UNREADABLE_HEADING = 'Runs the daemon could not read';
 

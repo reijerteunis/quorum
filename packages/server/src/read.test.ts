@@ -396,6 +396,39 @@ describe('Q-0018 AC-1/AC-2/AC-3/AC-4 — the listing answers the shape a browser
     }
   });
 
+  test('a roll-up element this route cannot read refuses the ROW, and is never dropped from it', async () => {
+    // **Review round 1's first finding.** The projection narrows a roll-up row to four fields, and
+    // narrowing through a FILTER made an element the route could not read disappear — so a manifest
+    // carrying `rollup: [42]` listed as a perfectly good run that billed nobody. It also made the
+    // two routes disagree about one file: `wireRunHistorySchema` declares `manifest.rollup` over the
+    // element schema, so a browser refuses that same manifest on the detail. Both halves are
+    // asserted, because the listing's own answer alone cannot show the disagreement.
+    const { project, app } = served();
+    const damaged = manifestOf(`${TICKET_ID}-1`, 'completed', '2026-09-18T01:10:00.000Z');
+    damaged.rollup = [
+      { vendor: 'zeta', step_count: 1, unpriced_steps: 0, cost_usd: 1.5, input_tokens: 10, output_tokens: 20, cached_input_tokens: null, cache_write_input_tokens: null },
+      42,
+    ];
+    writeRun(project.repoDir, `${TICKET_ID}-1`, damaged);
+    // …beside a sound run, so what is asserted is that the damage is confined rather than that the
+    // listing failed over.
+    writeRun(project.repoDir, `${TICKET_ID}-2`, manifestOf(`${TICKET_ID}-2`, 'completed', '2026-09-18T01:10:00.000Z'));
+
+    const body = await listing(app);
+    expect(body.runs.map((row) => row.id), 'a run whose roll-up could not be read was listed anyway')
+      .toStrictEqual([`${TICKET_ID}-2`]);
+    expect(body.warnings.map((warning) => warning.runId), 'a damaged roll-up was silently shrunk to an empty one')
+      .toStrictEqual([`${TICKET_ID}-1`]);
+    // The row it could not compose never reaches a reader as one with fewer vendors, which is the
+    // misreport rather than the refusal.
+    expect(body.runs.some((row) => row.id === `${TICKET_ID}-1` && row.rollup.length === 1),
+      'a two-row roll-up was reported as a one-row roll-up').toBe(false);
+    // And the detail route refuses the same manifest at the browser, so the two now agree.
+    const detail = wireRunHistorySchema.safeParse(await (await app.request(`/history/${TICKET_ID}-1`)).json());
+    expect(detail.success, 'the detail accepted a manifest the listing refused, so they still disagree')
+      .toBe(false);
+  });
+
   test("AC-13 — a runs root nothing has written to answers an EMPTY listing, not an error", async () => {
     // **The only state an adopter's first clone can produce**, `.quorum/` being gitignored: a store
     // that answered and holds nothing is not a failure, and a 404 or a 500 here would send a reader
