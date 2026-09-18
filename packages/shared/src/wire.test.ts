@@ -5,7 +5,8 @@ import { repoFile, sharedSourceFiles } from '../test/corpus.js';
 import { gateQuestionEventSchema } from './events.js';
 import {
   containmentResultSchema, pushLagResultSchema, WIRE_RUN_STATES, wireExcludedFilesSchema,
-  wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunListSchema,
+  wireFlowListSchema, wireFlowSchema, wireMessageSchema, wireRefusalSchema, wireRunHistorySchema,
+  wireRunListSchema,
   wireRunSchema, wireRunStateSchema, wireTicketDetailSchema, wireTicketFileEntrySchema,
   wireTicketFileSchema, wireTicketListSchema, wireTicketSchema, WIRE_START_FIELDS,
   wireStartRequestSchema, type WireRun, type WireStartRequest,
@@ -21,8 +22,8 @@ const QUESTION = {
 
 /** One run row that every clause below starts from, so a refusal is the one field it changed. */
 const RUN = {
-  handle: 'run-7', flow: 'probe', ticketId: 'T-0001', runId: null, state: 'running', pendingGates: 1,
-  gates: [QUESTION], refusal: null,
+  handle: 'run-7', flow: 'probe', ticketId: 'T-0001', runId: null, dry: false, state: 'running',
+  pendingGates: 1, gates: [QUESTION], refusal: null,
 } as const;
 
 /** The issue codes one refusal carried, which is what "distinguishably" is asserted over. */
@@ -174,6 +175,25 @@ describe('Q-0016 AC-1 — a run row carries the questions its gates are asking',
       'a row omitting the field entirely was accepted').toBe(false);
   });
 
+  test('Q-0135 AC-8 — a row says whether it is a dry walk, and omitting the field is refused', () => {
+    // **Required and not optional**, which is the half a default would take away: an omitted field
+    // reads as *nothing was said*, and `false` is the value that composes a history id. The hazard
+    // is a wrong answer rather than a missing one — a walk and the next real run of the same ticket
+    // are allocated the same number, `nextRunId` reserving nothing — so a reader that inferred
+    // dryness from a 404 would be right about the case it can already see and wrong about the other.
+    const walk = wireRunSchema.safeParse({ ...RUN, dry: true });
+    expect(walk.error?.issues, 'a row reporting a dry walk was refused').toBeUndefined();
+    expect(walk.success && walk.data.dry, 'the field did not cross').toBe(true);
+    const { dry: _omitted, ...withoutDry } = RUN;
+    expect(wireRunSchema.safeParse(withoutDry).success, 'a row omitting the field entirely was accepted')
+      .toBe(false);
+    expect(wireRunSchema.safeParse({ ...RUN, dry: 'true' }).success, 'a row carrying a string was accepted')
+      .toBe(false);
+    // …and the name is permitted by Q-0121 GO-3's rule rather than in spite of it: it narrows no
+    // `RunView` field, `RunView.dry` being the same boolean under the same name.
+    expect(WIRE_START_FIELDS, 'the word crosses in one direction only').toContain('dry');
+  });
+
   test('the element is the event union\'s own schema, not a second declaration of those six fields', () => {
     // A re-declaration is free to drift the moment either end gains a field, and the question a
     // browser echoes back has to be the question `askGate` emitted. Asserted two ways: the same
@@ -261,6 +281,93 @@ describe('Q-0016 AC-1 — a run row carries the questions its gates are asking',
 });
 
 /** One ticket row every clause below starts from, so a refusal is the one field it changed. */
+/**
+ * One history response, in the shape `GET /history/:id` answers with — a whole manifest and all.
+ *
+ * Written out rather than read from `.quorum/runs`, and that is a rule rather than convenience:
+ * that directory is gitignored and created by use, so a fixture taken from it would make this
+ * clause's verdict a property of the checkout — which *"A test's verdict is a property of the
+ * commit"* (2026-08-30) forbids. The route's OWN bytes are run through this schema in
+ * `packages/server/src/read.test.ts`, over a run directory that suite builds.
+ */
+const HISTORY = {
+  id: 'Q-0135-1',
+  manifest: {
+    schema_version: 1, run_id: 'Q-0135-1', ticket_id: 'Q-0135', ticket_path: 'backlog/Q-0135',
+    flow: 'chore', flow_file: 'chore.yaml', stage: { before: 'requirements', after: null },
+    started_at: '2026-09-18T01:00:00.000Z', ended_at: null, duration_ms: null, status: 'running',
+    steps: [],
+    rollup: [
+      { vendor: 'claude', input_tokens: 10, output_tokens: 5, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 1.25, step_count: 2, unpriced_steps: 0 },
+      { vendor: 'codex', input_tokens: 7, output_tokens: 3, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: null, step_count: 1, unpriced_steps: 1 },
+    ],
+  },
+  incomplete: true,
+  tokensByVendor: { claude: 15, codex: 10 },
+} as const;
+
+describe('Q-0135 AC-9 — one shared schema for the history detail read', () => {
+  test('the barrel publishes it, and it accepts a whole response including keys it does not name', () => {
+    const published = shared as unknown as Record<string, unknown>;
+    expect(typeof published.wireRunHistorySchema, 'the schema is not on the barrel').toBe('object');
+    const parsed = wireRunHistorySchema.safeParse(HISTORY);
+    expect(parsed.error?.issues, 'a whole history response was refused').toBeUndefined();
+    if (!parsed.success) return;
+    expect(parsed.data.manifest.rollup.map((row) => row.vendor), 'the roll-up did not cross in order')
+      .toStrictEqual(['claude', 'codex']);
+    expect(parsed.data.tokensByVendor.codex, 'a vendor token total did not cross').toBe(10);
+  });
+
+  test('every level is LOOSE, because this is a projection of a document core may widen', () => {
+    // *"Unknown keys are refused where Quorum owns the key set, and preserved where it does not"*
+    // (2026-08-25). A `.strict()` shape here would turn a manifest this product wrote into a
+    // response a browser refuses — `readRun`'s own JSDoc calls the parsed document *"a cast, never
+    // a check"*, and `steps` alone is fifteen keys per occurrence that nothing here reads.
+    const wider = {
+      ...HISTORY, warnings: [],
+      manifest: { ...HISTORY.manifest, interrupted_by: 'SIGTERM' },
+    };
+    expect(wireRunHistorySchema.safeParse(wider).success, 'a response carrying an unknown key was refused')
+      .toBe(true);
+    const row = { ...HISTORY.manifest.rollup[0], vendor_display_name: 'Claude' };
+    expect(wireRunHistorySchema.safeParse({ ...HISTORY, manifest: { ...HISTORY.manifest, rollup: [row] } }).success,
+      'a roll-up row carrying an unknown key was refused').toBe(true);
+  });
+
+  test('the ELEMENTS are guarded and not only the array, which is the half read.ts needed twice', () => {
+    // `Array.isArray` alone lets `[1, 2, 3]` through, and a number has no `vendor` — the guard that
+    // route's review moved from the `.map` to inside it. Met here rather than rediscovered.
+    for (const rollup of [null, {}, 'claude', [1, 2, 3], [{ vendor: 7 }], [{ ...HISTORY.manifest.rollup[0], vendor: null }]]) {
+      expect(wireRunHistorySchema.safeParse({ ...HISTORY, manifest: { ...HISTORY.manifest, rollup } }).success,
+        `a roll-up of ${JSON.stringify(rollup)} was accepted`).toBe(false);
+    }
+  });
+
+  test('a count cannot be negative, a cost may be null and may not be a string, and a start is never empty', () => {
+    const row = HISTORY.manifest.rollup[0];
+    const withRow = (over: Record<string, unknown>): unknown =>
+      ({ ...HISTORY, manifest: { ...HISTORY.manifest, rollup: [{ ...row, ...over }] } });
+    expect(wireRunHistorySchema.safeParse(withRow({ step_count: -1 })).success, 'a negative step count was accepted').toBe(false);
+    expect(wireRunHistorySchema.safeParse(withRow({ unpriced_steps: 1.5 })).success, 'a fractional count was accepted').toBe(false);
+    expect(wireRunHistorySchema.safeParse(withRow({ cost_usd: null })).success, 'an unpriced row was refused').toBe(true);
+    expect(wireRunHistorySchema.safeParse(withRow({ cost_usd: '1.25' })).success, 'a string cost was accepted').toBe(false);
+    const withManifest = (over: Record<string, unknown>): unknown => ({ ...HISTORY, manifest: { ...HISTORY.manifest, ...over } });
+    expect(wireRunHistorySchema.safeParse(withManifest({ started_at: '' })).success, 'an empty start instant was accepted').toBe(false);
+    expect(wireRunHistorySchema.safeParse(withManifest({ duration_ms: -1 })).success, 'a negative duration was accepted').toBe(false);
+    expect(wireRunHistorySchema.safeParse(withManifest({ duration_ms: null, ended_at: null })).success,
+      'a run still going was refused').toBe(true);
+    // **`status` is a plain string and not an enum**, on `WireTicket`'s rule: refusing a value this
+    // vocabulary does not know would refuse a document this product itself wrote.
+    expect(wireRunHistorySchema.safeParse(withManifest({ status: 'a-status-nobody-declared' })).success,
+      'an unfamiliar status was refused').toBe(true);
+    // …and a token total may be `null`, which is the `n/a`-never-`0` rule on the wire.
+    expect(wireRunHistorySchema.safeParse({ ...HISTORY, tokensByVendor: { codex: null } }).success,
+      'a vendor reporting no token measure was refused').toBe(true);
+    expect(wireRunHistorySchema.safeParse({ ...HISTORY, tokensByVendor: { codex: -1 } }).success,
+      'a negative token total was accepted').toBe(false);
+  });
+});
+
 const TICKET = {
   id: 'Q-0017',
   folder: 'Q-0017-backlog-board-and-ticket-page',

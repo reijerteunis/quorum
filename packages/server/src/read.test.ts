@@ -12,9 +12,10 @@ import { createApp } from './http.js';
 import { mountRead } from './read.js';
 import { isOneName, readTicketFileBytes } from '@quorum/core';
 import {
-  RUN_HISTORY_ROOT, wireFlowListSchema, wireTicketDetailSchema, wireTicketFileSchema,
-  wireTicketListSchema,
-  type WireRefusal, type WireTicket, type WireTicketDetail, type WireTicketFile, type WireTicketList,
+  RUN_HISTORY_ROOT, wireFlowListSchema, wireRunHistorySchema, wireTicketDetailSchema,
+  wireTicketFileSchema, wireTicketListSchema,
+  type WireRefusal, type WireRunHistory, type WireTicket, type WireTicketDetail, type WireTicketFile,
+  type WireTicketList,
 } from '@quorum/shared';
 import { fixture, removeTempDirs, TICKET_ID, write } from '../test/fixture.js';
 import fs from 'node:fs';
@@ -295,6 +296,46 @@ describe('Q-0119 — run history is reported, never repaired', () => {
     expect(Object.keys(body.tokensByVendor).sort(), 'the vendors were merged').toStrictEqual(['claude', 'codex']);
     expect(body.tokensByVendor.claude).toBe(30);
     expect(body.tokensByVendor.codex).toBe(12);
+  });
+});
+
+describe('Q-0135 AC-9 — the route answers the shape a browser parses it with', () => {
+  test("a real run directory's own bytes satisfy wireRunHistorySchema, running and finished", async () => {
+    // **The route's OWN bytes rather than a fixture of them**, which is `http.test.ts`'s `listRuns`
+    // arrangement for its reason: a schema nothing executes over real output is a declaration with
+    // no subject, and this is the first validation `started_at`, `ended_at`, `duration_ms` and
+    // `status` have had anywhere in this chain. The directory is one this suite builds, so nothing
+    // here depends on `.quorum/runs` existing in the checkout.
+    const { project, app } = served();
+    const running = manifestOf(`${TICKET_ID}-1`, 'running', null);
+    running.rollup = [
+      { vendor: 'claude', step_count: 2, unpriced_steps: 0, cost_usd: 1.5, input_tokens: 10, output_tokens: 20, cached_input_tokens: null, cache_write_input_tokens: null },
+      { vendor: 'codex', step_count: 1, unpriced_steps: 1, cost_usd: null, input_tokens: 5, output_tokens: 7, cached_input_tokens: null, cache_write_input_tokens: null },
+    ];
+    writeRun(project.repoDir, `${TICKET_ID}-1`, running);
+    writeRun(project.repoDir, `${TICKET_ID}-2`, manifestOf(`${TICKET_ID}-2`, 'completed', '2026-09-11T00:00:10.000Z'));
+
+    const read = async (id: string): Promise<WireRunHistory> => {
+      const parsed = wireRunHistorySchema.safeParse(await (await app.request(`/history/${id}`)).json());
+      expect(parsed.error?.issues, `${id} does not satisfy the schema a browser parses it with`).toBeUndefined();
+      if (!parsed.success) throw new Error('unreachable');
+      return parsed.data;
+    };
+
+    const live = await read(`${TICKET_ID}-1`);
+    expect(live.incomplete, 'a running manifest was not reported incomplete').toBe(true);
+    expect(live.manifest.ended_at, 'a running manifest carried an end').toBeNull();
+    expect(live.manifest.duration_ms, 'a running manifest carried a duration').toBeNull();
+    // The order is the roll-up's own and the price of an unpriced vendor stays `null`, which is what
+    // separates *nobody reported one* from *it cost nothing*.
+    expect(live.manifest.rollup.map((row) => [row.vendor, row.cost_usd]))
+      .toStrictEqual([['claude', 1.5], ['codex', null]]);
+
+    const done = await read(`${TICKET_ID}-2`);
+    expect(done.incomplete, 'a finished manifest was reported incomplete').toBe(false);
+    // The engine's own figure, which is what a screen freezes rather than subtracting two instants.
+    expect(done.manifest.duration_ms, "the engine's duration did not cross").toBe(10);
+    expect(done.manifest.rollup, 'a run with no billed step invented a row').toStrictEqual([]);
   });
 });
 

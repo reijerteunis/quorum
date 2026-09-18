@@ -652,7 +652,7 @@ describe('Q-0130 AC-6/AC-7/AC-9/AC-10/AC-12 — the one place this app starts a 
 
   /** One run row, as `POST /runs` answers a start it accepted. */
   const STARTED = {
-    handle: 'run-9', flow: 'chore', ticketId: TICKET, runId: null, state: 'running',
+    handle: 'run-9', flow: 'chore', ticketId: TICKET, runId: null, dry: false, state: 'running',
     pendingGates: 0, gates: [], refusal: null,
   };
 

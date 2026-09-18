@@ -32,15 +32,17 @@
  */
 import {
   diffEvidenceSchema, gateAnswerEnvelopeSchema,
-  wireFlowListSchema, wireRefusalSchema, wireRunListSchema, wireRunSchema, wireStartRequestSchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunHistorySchema, wireRunListSchema, wireRunSchema,
+  wireStartRequestSchema,
   wireTicketDetailSchema, wireTicketFileSchema, wireTicketListSchema,
-  type DiffEvidence, type GateAnswer, type WireFlowList, type WireRun, type WireRunList,
+  type DiffEvidence, type GateAnswer, type WireFlowList, type WireRun, type WireRunHistory,
+  type WireRunList,
   type WireStartRequest, type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
 import {
-  DAEMON_ENDPOINTS, gateDiffPath, runDetailPath, runGatePath, runStopPath, ticketDetailPath,
-  ticketFilePath,
+  DAEMON_ENDPOINTS, gateDiffPath, historyDetailPath, runDetailPath, runGatePath, runStopPath,
+  ticketDetailPath, ticketFilePath,
 } from './daemon-endpoints.js';
 import type { RequestState } from './request-state.js';
 
@@ -198,6 +200,26 @@ export const fetchRun = (fetcher: FetchLike, handle: string, now: Clock): Promis
 /** Read the daemon's ordered run listing once; callers decide when an explicit refresh repeats it. */
 export const fetchRuns = (fetcher: FetchLike, now: Clock): Promise<RequestState<WireRunList>> =>
   requestJson(fetcher, DAEMON_ENDPOINTS.runs, wireRunListSchema, now);
+
+/**
+ * One run's history: when it started, how it stands, and what each vendor billed.
+ *
+ * **A separate request from {@link fetchRun} and keyed by a different token**, which is the shape
+ * rather than an accident: `GET /runs/:handle` answers about a run this daemon is DRIVING, keyed by
+ * a handle minted in memory, and this answers about the directory `core` wrote, keyed by
+ * `<ticket id>-<run number>`. A daemon that restarted has lost every handle and has lost no history.
+ *
+ * **It is a read and never a subscription, and nothing here schedules it.** The roll-up is
+ * recomputed in full on every occurrence that terminates — `writer.ts` replaces the manifest
+ * atomically — so what this answers is correct as of the moment it was asked and says nothing about
+ * the step now running. A caller repeats it when a reader asks and at no other time.
+ */
+export const fetchRunHistory = (
+  fetcher: FetchLike,
+  id: string,
+  now: Clock,
+): Promise<RequestState<WireRunHistory>> =>
+  requestJson(fetcher, historyDetailPath(id), wireRunHistorySchema, now);
 
 /**
  * The diff the step whose decision reached one waiting gate was given.
@@ -471,6 +493,10 @@ export const ticketFileInFlight = <T>(id: string, rel: string): RequestState<T> 
 /** One run's in-flight state, naming the run rather than the listing. */
 export const runInFlight = <T>(handle: string): RequestState<T> =>
   ({ kind: 'in-flight', path: runDetailPath(handle) });
+
+/** One run's history read, in flight — naming the history id rather than the handle it came from. */
+export const runHistoryInFlight = <T>(id: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: historyDetailPath(id) });
 
 /** One gate's diff read, in flight — naming that gate rather than the run it belongs to. */
 export const gateDiffInFlight = <T>(handle: string, gateId: string): RequestState<T> =>

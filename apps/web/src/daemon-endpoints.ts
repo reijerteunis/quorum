@@ -101,6 +101,23 @@ export function gateDiffPath(handle: string, gateId: string): string {
 }
 
 /**
+ * The page-relative path for one run's history, with the id confined to one segment.
+ *
+ * Named for the DAEMON route on {@link runDetailPath}'s precedent, and distinguished from it by
+ * what it takes: a HANDLE names a run this daemon is driving now and is meaningless across a
+ * restart, while a history id is `<ticket id>-<run number>` and names a directory on disk. The two
+ * identify one run by two unrelated schemes, which is why neither path helper takes the other's
+ * token.
+ *
+ * **It writes no path literal of its own.** {@link DAEMON_ENDPOINTS} already declares the prefix and
+ * the development server already forwards it, so `test/routes.test.ts` is owed no exception row —
+ * the rule `runStopPath` records for `/stop` read in the other direction.
+ */
+export function historyDetailPath(id: string): string {
+  return `${DAEMON_ENDPOINTS.history}/${encodeURIComponent(id)}`;
+}
+
+/**
  * The page-relative path for one ticket, with the id confined to one segment.
  *
  * Named for the DAEMON route rather than for the screen: `routes.ts` has a `ticketPath` too and it
