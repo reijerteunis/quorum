@@ -1,14 +1,22 @@
 ---
 id: Q-0018
 title: Run history lists the runs that finished, and drills into one
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0018/integration
 priority: p2
 created: 2026-09-18
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-18T18:30:22.082Z
+    cost: 14.638
 ---
 apps/web renders the /history screen: a table of finished runs, and a drill-down into one run's occurrences and the prompt and output each retained. GET /history declares no shape and has no consumer; nothing serves an occurrence's retained files.
 
