@@ -79,3 +79,134 @@ per-file opt-out, an exemption register, or any marker a future file can carry t
 is **refused by this ruling**; what is permitted is a change to the *predicate*, not an escape hatch
 beside it. This is also the Q-0014 AC-5 failure to avoid — a scan narrowed until every file carrying
 the defect sits outside it.
+
+## E-3 — the review loop is ruled at its exhaustion gate: round 3's major is accepted, round 2's first half is refused — 2026-09-18
+
+**Supersedes** nothing in `merged.md`. It rules what the three review rounds asked of **one** guard —
+`apps/web/test/source.test.ts`'s narrowed timer clause — so that the one remaining round has a
+bounded and satisfiable task rather than a fourth hole to close. Written **at the gate and before
+the retry is answered**, because an erratum landed after an answer is not read by the round it was
+written for (Q-0097 lost two that way; *"the window for an erratum is a gate"*, Q-0094 E-3).
+
+### What is accepted, because it is a defect and not an escalation
+
+**Round 3's major stands.** `bindings()` matches declaration heads over the text **as written** while
+taking depths from `depthsOf`, and the JSDoc above it argues the asymmetry is safe: *"A head found
+inside a comment or a string is a name that does not exist, which adds an entry and can never remove
+the real one."* **That sentence is false**, and it was verified at this gate by executing the shipped
+function rather than by reading it — which is this repository's own rule (*"A check is not
+established by reading it"*, 2026-08-29). Over
+
+    const reload = () => 'const fake' && fetchRuns(request, clock);
+    setInterval(() => reload(), 1000);
+
+the binding `reload` captures `const reload = () => '` and **does not contain its own fetch**, while
+the bogus `fake` — born inside the string — captures `fetchRuns(...)`. `reload` is therefore absent
+from `requestingNames`, and the timer calling it is not reported. **The prohibition AC-11 exists to
+state is unenforced for that shape.**
+
+The reasoning's error is precise and worth naming, because it is subtle and a fourth round should not
+re-derive it: a bogus head does not only **add** an entry, it **terminates the extent** of the real
+binding that precedes it whenever its depth is less than or equal to that binding's. The comment
+weighed the adding and missed the terminating. The realistic form is not the contrived literal above
+but a commented-out line inside a braceless arrow function, where the comment sits at the same
+bracket depth as the head:
+
+    const load = () =>
+      // const cached = ...
+      fetchRuns(request, clock);
+
+**The remedy is the narrow one the review named**, and it is available rather than new: select heads
+from `codeOnly`'s **index-preserving** blanked text, or reject a raw head whose declaration token was
+blanked. `codeOnly` already exists and `depthsOf` already reads it, so this is one filter and not a
+new instrument. **It must be shown red before green** — a string fixture and a comment fixture that
+both fail under the current implementation and pass after — because a fix demonstrated only by the
+suite staying green has not been established.
+
+### What is refused, and why the refusal is not a weakening
+
+**Round 2's first half is refused as raising the job**: *"Use a syntax-aware traversal or a lexical
+scanner that skips literals/comments"* as a **general** demand. AC-11's `Test:` clause bounds this
+instrument at four demonstrations — a fixture scheduling a fetch inside a timer fails naming the
+file, a render-only tick passes, the two are shown to differ by the fetch alone, and the
+pre-narrowing clause is demonstrated to fail over the shipped tick. **A criterion's `Test:` clause
+bounds the instrument: a reviewer may find the instrument fails the job that clause gives it — which
+is what rounds 1 and 3 correctly did — and may not raise the job.** Seventh site, after Q-0067 E-1
+and Q-0131 E-6.
+
+Two further grounds, so the refusal rests on more than precedent. A syntax-aware traversal means a
+JavaScript parser inside a test guard, and `.claude/rules/engineering.md` makes a new dependency a
+separate decision with its own justification — work no implement step on this route may perform.
+And the demand has no stopping condition: three rounds have each found a new hole in a hand-rolled
+analyser, and a fourth would find a fifth. **The guard is a tripwire, not a sandbox.**
+
+**Round 2's second half was accepted and has landed**, and is recorded here so it is not re-raised:
+`asNeedle` is now used at the callback boundary (`:1180`) as well as in `requestingNames` (`:1144`),
+with a discriminating `other$reload` fixture. Round 1's two majors and its nit are likewise closed.
+
+### What the last round owes instead of more strength
+
+**The guard states its blind spots, in its own header and in its failure message.** This is not an
+addition to AC-11: that criterion already requires the narrowing be *"recorded in place with its
+reason **and in the guard's own failure message**"*, and what a lexical guard cannot see is part of
+that reason. It says, in substance, that it is lexical rather than syntax-aware; that it reads a
+module's text and not its semantics; and that a callback written to evade it can pass — so a reader
+meeting a green tick knows what was examined. That is Q-0079's tripwire discipline, whose header
+says it *"sees literals only and says so"*, and `turbo-inputs.test.ts`'s fail-open disclosure. **An
+unstated weakness becomes a stated bound**, which is the honest close and is what *"A green tick
+names what it examined"* (2026-08-27) asks for.
+
+### The bound on round 4, stated so it is not exceeded
+
+No parser and no new dependency. **E-2's bound is unchanged and still binds**: no file-level
+exemption, no comment token, no register of permitted callers — the discriminator is what the
+callback does. Nothing outside `apps/web/test/source.test.ts` and its fixtures needs to move for
+this, and no criterion of `merged.md` changes. **This is the last round**; whatever it returns, the
+gate that follows is answered rather than retried, and anything outstanding is repaired by hand
+after it on Q-0073's and Q-0080's precedent.
+
+## E-4 — AC-16's fifth clause is narrowed to what an honest source can answer — 2026-09-18
+
+**Supersedes** AC-16's fifth absent case, *"a vendor in the run but absent from the roll-up"*, which
+becomes **"a vendor OBSERVED in the run but absent from the roll-up"**. Every other clause of AC-16
+stands, and no other criterion moves. Ruled at the review loop's second exhaustion gate, on review
+round 4's major — which offered this ruling as its own alternative remedy and was right to.
+
+**The criterion as written cannot be satisfied by any source keyed the way the roll-up is keyed**,
+which is what makes this the prose moving rather than the code falling short (Q-0121 E-1's shape).
+Three measurements, taken at the gate:
+
+1. **History cannot answer it.** `allocate()` writes an occurrence with `usage: null`, and `vendor`
+   lives **inside** `usage` — so an occurrence that has started and not finished carries no vendor at
+   all. What it does carry is `adapter`, set at allocation.
+2. **`adapter` is a different key from `usage.vendor`.** The roll-up groups on *"the exact
+   `usage.vendor` string, never normalised or mapped"*, and `usage.vendor` is *"exactly as the
+   adapter declared it"* — the adapter's own report, not the configured adapter name. Joining a
+   roster taken from `adapter` to rows keyed by `usage.vendor` is a cross-key identification, and
+   **this repository's corpus is precisely the corpus that would validate it**: every occurrence here
+   has the two coinciding. That is §0.6's finding — *"a developer reading this corpus would conclude
+   … and hard-code it"* — arriving at a second site, and AC-13's *never normalised or mapped* forbids
+   it.
+3. **`spawn` events carry `vendor`**, the same key the roll-up uses. So the event tail is the only
+   source that identifies a vendor the way the rows do, and it is bounded and head-evicting.
+
+**The residual is stated rather than closed, and it is the honest half of this ruling.** A vendor
+whose `spawn` has been evicted from the retained tail **and** which has finished no billed step is
+not named, where other rows exist. It is not rendered as a zero, a dash, a spinner or an empty
+region — `04-architecture.md`'s placeholder rule is untouched — it is simply unmentioned, because
+nothing the browser can read on the roll-up's own key says it was there. **The screen does not
+overclaim about it**: `absentVendorText` says a vendor *"has been seen running on this run"*, which
+is an observation and not a census, and `NO_ROLLUP_ROWS_TEXT` covers the empty-roll-up case including
+*"a run whose events this browser was never sent"*. That wording is what makes the narrowed criterion
+true rather than merely smaller, and **it is not eligible for trimming**: a sentence claiming the
+roster is complete would make this ruling false.
+
+**Two remedies are refused, with their reasons, so a later reader does not re-derive them.**
+Sourcing the roster from `manifest.steps` reverses §0.12's deliberate exclusion of `steps` from
+AC-9's schema — a decision taken on a measurement (the array is carried twice by the route and read
+by nothing that reads this shape) — and delivers the cross-key join above. Widening the retained
+event tail buys a larger lower bound and not a census, since any bound evicts.
+
+**What would close it is a different ticket**: a vendor label on an occurrence at allocation, on the
+same key the roll-up groups by, which is a change to what `core` writes and owes its own requirement.
+It is not opened here, and this clause is the record that it is the thing that would close it.
