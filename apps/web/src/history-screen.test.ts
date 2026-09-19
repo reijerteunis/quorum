@@ -21,7 +21,8 @@ import { DAEMON_ENDPOINTS, historyDetailPath, historyFilePath, historyRetainedPa
 import { HistoryScreen } from './history-screen.js';
 import {
   COLLAPSE_LABEL, EMPTY_HISTORY_TEXT, EXPAND_LABEL, HISTORY_HEADING, HISTORY_REFRESH_LABEL,
-  HISTORY_RETRY_LABEL, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT, LIVE_RUN_TEXT, NO_DURATION_TEXT,
+  HISTORY_RETRY_LABEL, INCOMPLETE_NO_OCCURRENCES_TEXT, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT,
+  LIVE_RUN_TEXT, NO_DURATION_TEXT, NO_OCCURRENCES_TEXT,
   NO_READABLE_RUNS_TEXT, UNREADABLE_HEADING, notAnAdapterCallText, runStatusText,
 } from './history-text.js';
 import { NO_ROLLUP_ROWS_TEXT, unpricedStepsText, unpricedVendorText } from './mission-control-text.js';
@@ -537,5 +538,84 @@ describe('Q-0018 AC-3/AC-13 — what the daemon could not read, and a store that
     // send a reader looking for runs that are there.
     expect(view.textContent, 'a failed listing was presented as an empty store')
       .not.toContain(EMPTY_HISTORY_TEXT);
+  });
+});
+
+describe('Q-0138 AC-8 — the row counts the occurrences the manifest holds when it is read', () => {
+  test('a run whose one step has not finished reports `1 occurrence`, singular', async () => {
+    const { view } = await mount({
+      runs: [row({ id: 'Q-0138-1', status: 'running', incomplete: true, ended_at: null, duration_ms: null, occurrenceCount: 1 })],
+      warnings: [],
+    });
+    const cells = view.querySelector('[data-history-row="Q-0138-1"]')?.textContent ?? '';
+    expect(cells, 'a run with one allocated step was counted as empty').toContain('1 occurrence');
+    // The plural is the thing the singular has to be told apart from, and `1 occurrences` would
+    // satisfy a `toContain('1 occurrence')` on its own.
+    expect(cells, 'the singular was rendered as a plural').not.toContain('1 occurrences');
+  });
+
+  test('and a run that recorded none still reports zero, plural', async () => {
+    const { view } = await mount({
+      runs: [row({ id: 'Q-0138-2', occurrenceCount: 0 })],
+      warnings: [],
+    });
+    expect(view.querySelector('[data-history-row="Q-0138-2"]')?.textContent).toContain('0 occurrences');
+  });
+});
+
+describe('Q-0138 AC-11 — an opened run that has not ended never claims nothing happened', () => {
+  /** The opened region's empty-list sentence, and which of the two branches produced it. */
+  const emptyRegion = (view: HTMLElement): { kind: string | null; text: string } => {
+    const node = view.querySelector('[data-no-occurrences]');
+    if (!node) throw new Error('no empty-occurrences region rendered — this clause has lost its subject');
+    return { kind: node.getAttribute('data-no-occurrences'), text: node.textContent ?? '' };
+  };
+
+  test('an incomplete run with an empty `steps` array states the bound instead', async () => {
+    const { view } = await mount(
+      { runs: [row({ id: 'Q-0138-1', status: 'running', incomplete: true, ended_at: null, duration_ms: null, occurrenceCount: 0 })], warnings: [] },
+      {
+        [historyDetailPath('Q-0138-1')]: detail({
+          incomplete: true,
+          manifest: { started_at: '2026-09-19T01:00:00.000Z', ended_at: null, duration_ms: null, status: 'running', rollup: [] },
+        }),
+        [historyRetainedPath('Q-0138-1')]: { occurrences: [], warnings: [] },
+      },
+    );
+    await act(async () => toggleFor(view, 'Q-0138-1').click());
+    const region = emptyRegion(view);
+    expect(region.kind).toBe('incomplete');
+    expect(region.text).toBe(INCOMPLETE_NO_OCCURRENCES_TEXT);
+    // The retired claim, and not merely a different string: the sentence that says nothing happened
+    // is the one this criterion exists to withdraw from this case.
+    expect(view.textContent, 'a run still in flight was told it recorded nothing')
+      .not.toContain(NO_OCCURRENCES_TEXT);
+    // …and the region is not empty, which is the other way to stop making a false claim and is the
+    // one *"no member of it is silence"* refuses.
+    expect(region.text.trim().length).toBeGreaterThan(0);
+  });
+
+  test('and a COMPLETE run with an empty `steps` array still says what it always said', async () => {
+    // The half that keeps this a narrowing rather than a deletion: a finished run genuinely did
+    // record no occurrence, and that sentence is still the true one.
+    const { view } = await mount(
+      { runs: [row({ id: 'Q-0138-2', occurrenceCount: 0 })], warnings: [] },
+      {
+        [historyDetailPath('Q-0138-2')]: detail(),
+        [historyRetainedPath('Q-0138-2')]: { occurrences: [], warnings: [] },
+      },
+    );
+    await act(async () => toggleFor(view, 'Q-0138-2').click());
+    const region = emptyRegion(view);
+    expect(region.kind).toBe('ended');
+    expect(region.text).toBe(NO_OCCURRENCES_TEXT);
+    expect(view.textContent).not.toContain(INCOMPLETE_NO_OCCURRENCES_TEXT);
+  });
+
+  test('the two sentences are not each other, and neither says what the other says', () => {
+    // A check on the check: two constants that had drifted into one string would satisfy both
+    // clauses above without the screen distinguishing anything.
+    expect(INCOMPLETE_NO_OCCURRENCES_TEXT).not.toBe(NO_OCCURRENCES_TEXT);
+    expect(INCOMPLETE_NO_OCCURRENCES_TEXT).not.toContain('recorded no occurrences');
   });
 });

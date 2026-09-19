@@ -1,0 +1,28 @@
+{
+  // **No `$schema` key, unlike every sibling configuration**, and that is deliberate rather than an
+  // omission: `test/source.test.ts`'s AC-10 clause counts a URL literal in EVERY file of this
+  // package, and turbo's schema URL is one. The key buys editor completion and nothing turbo reads,
+  // so it is the cheaper of the two things to give up — narrowing a guard that forbids a network
+  // literal in the package a browser is served from is not.
+  "extends": ["//"],
+  "tasks": {
+    // As in packages/server/turbo.json: a hit claims that nothing this task READS has changed.
+    //
+    // This package had no configuration at all until Q-0138. What is declared is the one
+    // out-of-package read its suite performs: `test/history-producer.test.ts` holds this screen's
+    // running-occurrence branch against the writer that produces that state, and `@quorum/web`
+    // depends on `@quorum/shared` alone — so no `^test` edge carries `@quorum/core`'s hash and,
+    // undeclared, a cache hit here would stand over a changed producer.
+    //
+    // **`packages/core/src/turbo-inputs.test.ts` does not scan this package**, its `SUITES` being
+    // `@quorum/shared#test` and `@quorum/core#test`, so nothing reports an omission here. That is
+    // the same standing residual `packages/server/turbo.json` records, and this file is written
+    // from the rule rather than in answer to a red test.
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../packages/core/src/run-history/writer.ts"
+      ]
+    }
+  }
+}

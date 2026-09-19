@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
-import { eventSchema } from '@quorum/shared';
+import { RUN_HISTORY_ROOT, eventSchema } from '@quorum/shared';
 import type { Event, GateQuestionEvent } from '@quorum/shared';
 
 import fixtureText from '../../../../contracts/Q-0050/run-messages.fixture.json' with { type: 'json' };
@@ -433,5 +433,53 @@ describe('Q-0052 AC-14 — the gate oracle\'s last four leaf keys gain their fir
 
     expect(gate.ticketDir).toBe(fixture.ticketDir);
     expect(fs.existsSync(path.join(gate.ticketDir, 'ticket.md'))).toBe(true);
+  });
+});
+
+// Q-0138 AC-5 — the dry walk, over the three step kinds that allocate.
+//
+// The clause it protects is a regression rather than a new behaviour: a dry walk has never
+// allocated, and Q-0138 makes an allocation write the manifest, so the one place the two could meet
+// is the branch `engine.ts` takes when there is no run history. Q-0135 found a dry walk reporting a
+// run number it had not reserved, and nothing here adds a second instance.
+describe('Q-0138 AC-5 — a dry walk over an adapter, a script and an integrate step allocates nothing', () => {
+  /** The three kinds that reach `allocateOccurrence`; gates and fan-out parents allocate by design. */
+  const THREE_KINDS: Record<string, unknown>[] = [
+    { id: 'implement', role: 'developer-backend' },
+    { id: 'probe', type: 'script', run: 'exit 0' },
+    { id: 'integrate', type: 'integrate', branches: [], run_tests: false },
+  ];
+
+  test('no run directory exists, so no occurrence was allocated and nothing was written', async () => {
+    const fixture = runFixture({ run: { dry: true } });
+    fixture.role('developer-backend', '---\nadapter: mock\n---\nA developer.\n');
+    fixture.steps(THREE_KINDS);
+
+    const { events, error } = await fixture.settle();
+
+    expect(error).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({ type: 'terminal' });
+    // All three steps genuinely ran, so the clause below is about a walk that reached every site
+    // rather than about one that stopped early and allocated nothing for that reason.
+    expect(events.filter((event) => event.type === 'step').map((event) => event.stepId))
+      .toStrictEqual(['implement', 'probe', 'integrate']);
+    // `initialiseRunHistory` is never called under `dry`, so `allocateOccurrence` answers `null` at
+    // every site — and the whole root is absent, not merely the manifest.
+    expect(fs.existsSync(path.join(fixture.repoDir, RUN_HISTORY_ROOT)), 'a dry walk created run history').toBe(false);
+  });
+
+  test('and the same three steps DO allocate when the walk is real, which is what gives that a subject', async () => {
+    // The discriminator. Without it the clause above is satisfied by a flow that allocates nowhere,
+    // under `dry` or otherwise — a check passing over a subject it never had.
+    const fixture = runFixture();
+    fixture.role('developer-backend', '---\nadapter: mock\n---\nA developer.\n');
+    fixture.steps(THREE_KINDS);
+    stubAdapter(() => ({ output: { summary: 's' }, raw: '{}', usage: BILLED }));
+
+    const { error } = await fixture.settle();
+
+    expect(error).toBeUndefined();
+    expect(manifestOf(fixture.repoDir).steps.map((step) => [step.step_id, step.kind]))
+      .toStrictEqual([['implement', 'adapter'], ['probe', 'script'], ['integrate', 'integrate']]);
   });
 });

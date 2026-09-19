@@ -173,9 +173,30 @@ export const HISTORY_COST_LABEL = 'Cost per vendor';
  *
  * Distinguished from a read that is still out, which is a request state with a sentence of its own:
  * this is the answer having arrived and holding nothing.
+ *
+ * **It is said only where the run reached an end**, which is Q-0138: the manifest is a snapshot and
+ * the run is what decides whether that snapshot is the whole story, so over a run still in flight
+ * this sentence asserts a negative nothing established. {@link INCOMPLETE_NO_OCCURRENCES_TEXT} is
+ * what that case says instead.
  */
 export const NO_OCCURRENCES_TEXT =
   'This run recorded no occurrences: nothing it did was an adapter call, a script or an integrate step.';
+
+/**
+ * …and the same empty list under a run that has not ended, which is a different claim.
+ *
+ * **It states the bound and claims nothing beyond it.** What a reader is looking at is two
+ * snapshots — the manifest as it was last written, and this page as it last read — and neither is a
+ * statement about what has happened since. So the sentence says what was recorded and that the run
+ * has not ended, and says nothing about occurrences it cannot see: the manifest cannot tell *not
+ * written yet* from *genuinely none*, and a sentence that guessed would be inventing the difference.
+ *
+ * Distinguished from {@link INCOMPLETE_TEXT}, which is the row's and is about the RUN; this is the
+ * opened region's and is about the list. And it names no remedy — Refresh is on the screen and
+ * whether another read would answer differently is not something this page knows.
+ */
+export const INCOMPLETE_NO_OCCURRENCES_TEXT =
+  'No occurrences are in what this run last recorded, and the run has not ended: this is the manifest as it stood when this page read it, not an account of what has happened since.';
 
 /**
  * An occurrence that was not an adapter call, said from the one field that establishes it.

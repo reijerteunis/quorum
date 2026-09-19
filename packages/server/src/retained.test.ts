@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  RUN_HISTORY_ROOT, wireRunHistoryRetainedSchema, wireRunHistoryRetainedTextSchema,
+  RUN_HISTORY_ROOT, wireRunHistoryListSchema, wireRunHistoryRetainedSchema,
+  wireRunHistoryRetainedTextSchema, wireRunHistorySchema,
   type WireRefusal, type WireRunHistoryRetained, type WireRunHistoryRetainedText,
 } from '@quorum/shared';
 import { afterAll, describe, expect, test } from 'vitest';
@@ -19,6 +20,7 @@ import { afterAll, describe, expect, test } from 'vitest';
 import { createRunHost } from './host.js';
 import { createApp } from './http.js';
 import { mountRead } from './read.js';
+import { serve } from './serve.js';
 import { fixture, removeTempDirs, TICKET_ID, write } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
@@ -621,5 +623,97 @@ describe('Q-0137 AC-13 — an unknown retained name opens, and nothing anywhere 
 
     expect(snapshot(), 'answering a retained-file request changed something under .quorum/runs')
       .toStrictEqual(before);
+  });
+});
+
+/**
+ * Q-0138 AC-8 and AC-9 — what the three read routes answer about a step that has not finished.
+ *
+ * **The barrier is the fixture's shape rather than a moment in time.** A manifest recording one
+ * running occurrence, no `ended_at`, and an occurrence directory holding `prompt.txt` and no
+ * `output.txt` is exactly the state `RunHistory.allocate` leaves between allocation and completion,
+ * and written out here it is reached with nothing racing and nothing terminating. That the writer
+ * genuinely produces it is `packages/core`'s to establish and it does — `run-history/writer.test.ts`
+ * (AC-1) and `run-history/retained.test.ts` (AC-7) drive the real writer and assert this document —
+ * which this package cannot, `initialiseRunHistory` being deliberately absent from `@quorum/core`'s
+ * barrel so that a surface presenting run history cannot create a run directory.
+ *
+ * **Over a socket rather than through `app.request`**, unlike every case above: these are the three
+ * routes a browser actually issues for a run in flight, and the listing is one of them.
+ */
+describe('Q-0138 AC-8/AC-9 — a run with one unfinished step is counted, listed and readable', () => {
+  /** A manifest of a run in flight: one occurrence, `running`, no end, and no roll-up yet. */
+  const inFlight = (): Record<string, unknown> => ({
+    ...manifestOf([occurrence({
+      step_id: 'implement', occurrence_dir: 'steps/001-implement', status: 'running',
+    })]),
+    ended_at: null,
+    duration_ms: null,
+    status: 'running',
+  });
+
+  /** A listening daemon over a project whose store already holds `document`. */
+  async function listening(document: unknown, files: Record<string, Record<string, string>>) {
+    const project = fixture({});
+    writeRun(project.project.repoDir, document, files);
+    const host = createRunHost({ project: project.project, retain: 10 });
+    const server = await serve({ host });
+    const get = async (route: string): Promise<Response> =>
+      fetch(`http://127.0.0.1:${String(server.port)}${route}`);
+    return {
+      get,
+      stop: async (): Promise<void> => { await host.shutdown(); await server.close(); },
+    };
+  }
+
+  test('the listing counts it, the detail names it running, and the retained listing has its prompt', async () => {
+    const { get, stop } = await listening(inFlight(), { 'steps/001-implement': { 'prompt.txt': 'ask' } });
+    try {
+      // AC-8 — one allocated unfinished step is one occurrence, and the row says so.
+      const list = wireRunHistoryListSchema.parse(await (await get('/history')).json());
+      const row = list.runs.find((entry) => entry.id === RUN);
+      expect(row?.occurrenceCount, 'a run whose only step is still going was counted as empty').toBe(1);
+      expect(row?.incomplete, 'a run with no end was reported as finished').toBe(true);
+
+      // AC-9 — the detail carries the occurrence with the status the manifest recorded.
+      const detailResponse = await get(`/history/${encodeURIComponent(RUN)}`);
+      expect(detailResponse.status).toBe(200);
+      const detail = wireRunHistorySchema.parse(await detailResponse.json());
+      expect(detail.steps.map((step) => [step.seq, step.step_id, step.status]))
+        .toStrictEqual([[1, 'implement', 'running']]);
+
+      // …and the retained listing answers for the same occurrence, under the same seq and step id.
+      const retainedResponse = await get(retainedAt(RUN));
+      expect(retainedResponse.status).toBe(200);
+      const retained = wireRunHistoryRetainedSchema.parse(await retainedResponse.json());
+      expect(retained.warnings, 'a running occurrence was named as one the listing could not read')
+        .toStrictEqual([]);
+      expect(retained.occurrences).toStrictEqual([
+        { seq: 1, step_id: 'implement', files: [{ name: 'prompt.txt', bytes: 3 }] },
+      ]);
+      // The prompt is there and the output is not, which is the whole of what a reader wants while
+      // the step is still going.
+      expect(retained.occurrences[0].files.map((file) => file.name)).not.toContain('output.txt');
+
+      // And the file itself is readable, over the same socket, while nothing has finished.
+      const file = await get(fileAt(RUN, '1', 'prompt.txt'));
+      expect(file.status).toBe(200);
+      expect((await file.json() as WireRunHistoryRetainedText).text).toBe('ask');
+    } finally {
+      await stop();
+    }
+  });
+
+  test('and an empty `steps` array still counts zero, so the clause above is not satisfied by any manifest', async () => {
+    const document = { ...inFlight(), steps: [] };
+    const { get, stop } = await listening(document, {});
+    try {
+      const list = wireRunHistoryListSchema.parse(await (await get('/history')).json());
+      expect(list.runs.find((entry) => entry.id === RUN)?.occurrenceCount).toBe(0);
+      const retained = wireRunHistoryRetainedSchema.parse(await (await get(retainedAt(RUN))).json());
+      expect(retained.occurrences).toStrictEqual([]);
+    } finally {
+      await stop();
+    }
   });
 });

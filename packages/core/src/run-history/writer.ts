@@ -95,10 +95,19 @@ export interface RunHistory {
   /** The one in-memory snapshot every replacement serialises; authoritative if a write fails. */
   readonly manifest: RunManifest;
   /**
-   * Allocates the next occurrence, creates its directory, and adds it to the run.
+   * Allocates the next occurrence, creates its directory, adds it to the run, and replaces the
+   * manifest — so the step is on disk while it is still running.
    *
    * It allocates only when asked, which is this module's half of "gates and fan-out parents
    * allocate no occurrence" — there is no path here that allocates on its own.
+   *
+   * **The replacement carries whatever roll-up the last terminal left**, because an allocation adds
+   * no usage: `manifest.rollup` is recomputed by {@link RunHistory.terminal} and
+   * {@link RunHistory.finalise} and by nothing else, so a run of N occurrences computes it N+2 times
+   * rather than 2N+2. **And a replacement that fails costs one warning and nothing else**, exactly
+   * as `terminal`'s does: the occurrence is returned, its directory exists, and the next successful
+   * replacement persists it.
+   * Why: see Q-0138 AC-1 and AC-3.
    *
    * @param step the step being performed; only its `id` is read.
    * @param kind what is performing the work.
@@ -141,12 +150,18 @@ export interface RunHistory {
 /**
  * Each occurrence's monotonic start time, deliberately NOT a field on the occurrence itself.
  *
- * Every occurrence lives in `manifest.steps`, and the whole array is re-serialised on each terminal
- * occurrence — so a bookkeeping field stamped on a *still-running* occurrence reaches
- * `manifest.json` and violates the schema's `additionalProperties: false`. It hid because the old
- * code deleted the field just before its own write: only a sibling finishing first, or a kill in
- * that window, persisted it, and the latter permanently. A side table cannot leak into
- * `JSON.stringify` at all.
+ * Every occurrence lives in `manifest.steps`, and the whole array is re-serialised on every
+ * replacement — so a bookkeeping field stamped on a *still-running* occurrence reaches
+ * `manifest.json` and violates the schema's `additionalProperties: false`. A side table cannot leak
+ * into `JSON.stringify` at all.
+ *
+ * **Since Q-0138 that failure is deterministic, because the hiding place is gone.** The old code
+ * deleted the field just before its own write, so such a key reached disk only when some *other*
+ * occurrence ended inside that window, or when a kill did; {@link RunHistory.allocate} now replaces
+ * the manifest while the occurrence it has just added is still running, so the same mistake would
+ * reach disk on every run rather than on the fraction of occurrences a neighbour happened to make
+ * visible. That is the better failure rather than a new hazard, and it is why the key-set assertion
+ * is made at allocation time too.
  *
  * Why: preserved design, see Q-0034 — a class field, a TypeScript `private` and a symbol-keyed
  * property each reintroduce it.
@@ -562,6 +577,12 @@ export function initialiseRunHistory(start: RunStart, host: RunHistoryHost): Run
       occurrenceStart.set(occurrence, Date.now());
       manifest.steps.push(occurrence);
       active.add(occurrence);
+      // The manifest learns of a step when the step starts rather than when a sibling finishes, so a
+      // reader asking what a run is doing is answered about the occurrence that is doing it. No
+      // roll-up call: an allocation adds no usage, so the whole-list recompute `terminal` carries is
+      // not paid a second time here.
+      // Why: see Q-0138 AC-1 and AC-3.
+      replaceManifest();
       return occurrence;
     },
 
