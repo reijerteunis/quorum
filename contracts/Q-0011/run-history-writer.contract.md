@@ -55,6 +55,27 @@ and integrate occurrences have no `prompt.txt` and always receive `output.txt`, 
 stdout/stderr or an empty file when the command produces no text. Text is unbounded in Q-0011;
 silent truncation is rejected.
 
+**Read-side note added by Q-0137, written at its requirements gate. Nothing above changes, and the
+clause binds as written.** It is a statement about **what the writer does**, and Q-0137 is the first
+ticket to **read** these files back — so it records what a reader may not infer from it. *"Always
+receive `output.txt`"* is the writer's guarantee and it is not a promise that a reader will find a
+readable one: `terminal()` writes the empty file behind an `fs.existsSync` guard, **which answers
+true for a directory**, and an `output.txt` that is a directory is left alone silently — landed
+preserved behaviour, pinned by `packages/core/src/run-history/writer.test.ts`'s *"and an
+`output.txt` that is a directory is left alone, silently"*.
+
+So a **terminal** occurrence with no readable output is **reachable rather than hypothetical**, and
+it is a different state from a **running** occurrence that has not answered yet. Q-0137's AC-8
+carries both as separate sentences for exactly this reason, and **an implementer reading the clause
+above must not conclude that its third sentence is unreachable and drop it** — that conclusion is
+the only way this note can be got wrong, which is why it sits here rather than only in that
+ticket's own document.
+
+**Q-0137 does not fix the defect** (its §6 non-goal 10) and does not repair, rewrite or touch
+anything under `.quorum/`; it declines to trip over it. **No decision entry is owed**: what the
+writer does is unchanged, no sentence above becomes false, and the reader's rule is stated in the
+reading function's own authority comment.
+
 Each manifest occurrence contains the schema fields. `attempts` counts adapter invocations,
 including retries: it is `1` for a first-try success and the actual invocation count on success or
 failure after retries; script and integrate use zero. The retry wrapper exposes that count on both
