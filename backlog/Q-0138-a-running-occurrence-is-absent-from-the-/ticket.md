@@ -1,6 +1,6 @@
 ---
 id: Q-0138
-title: A running occurrence is absent from the retained listing, not described
+title: A running occurrence is named while it is running
 stage: reviewed
 owner: ruud
 repos: []
