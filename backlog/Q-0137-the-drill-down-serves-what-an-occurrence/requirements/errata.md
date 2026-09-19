@@ -139,3 +139,110 @@ argued from those, and they are stable.
 This is `merged.md` R-2 demonstrating itself rather than a correction to it. **AC-8's instruction
 that the count of such occurrences is asserted nowhere binds, and extends to every figure in §0** —
 a criterion may assert a *rule* and never a *count* drawn from `.quorum/runs`.
+
+---
+
+## E-5 — AC-5's refusal table gains a tenth row, and the implementer is not blocked on its absence
+
+**Supersedes:** AC-5's nine-row table, and only by addition. Written at the review exhaustion gate on
+2026-09-19, before the `retry` was answered, because the window for an erratum is a gate (Q-0094 E-3)
+and one landed after a round begins is invisible to it (Q-0097, which lost two that way).
+
+**The finding it authorises is round 3's surviving major, and it is accepted.** `readRetainedFile`
+maps every non-confinement `retainedIn` failure — `EACCES`, `EIO`, anything that is not `ENOENT` or
+`ENOTDIR` — to **`not-an-occurrence-file`**, whose stated meaning in AC-5 is *the name was never this
+occurrence's*. Nothing was enumerated, so that asserts knowledge the process does not have: **"could
+not tell" rendered as a negative**, which is the class Q-0074 and Q-0115 were spent removing and
+which **AC-4 of this same document cites by name** — *"A probe that could not answer is not a
+negative"* (2026-09-10).
+
+**Three things make it a carry rather than an invention, and they are why no round should be spent
+deliberating it.**
+
+1. **`retainedIn` already computes the distinction.** `reader.ts` sets
+   `missing = code === 'ENOENT' || code === 'ENOTDIR'` and renders one of two messages from it. The
+   boolean exists and is discarded one line later.
+2. **The listing route already keeps it.** `listRetainedFiles` pushes `found.problem.message` into
+   `warnings` verbatim, so `GET /history/:id/retained` already tells a reader *"this occurrence's
+   recorded directory is not there"* apart from *"…could not be read"*. Only the file route
+   flattens it. **The product would otherwise answer one condition two ways on two routes of one
+   feature**, and the honest one is already shipped.
+3. **The function's own JSDoc states the rule it breaks**: *"Every other failure propagates: a file
+   this process may not open is not a file that is not there."* It applies that to the `open` and
+   not to the `enumerate`.
+
+**Replacement.** AC-5's table gains a tenth condition — *the occurrence's directory could not be
+enumerated* — carrying **its own code, distinct from every row above it**, and it may never be
+answered as `not-an-occurrence-file`, `no-such-occurrence` or `no-such-file`, each of which asserts
+an absence that was not established. **The recommended spelling is `422` with
+`unreadable-occurrence-directory`**, mirroring `unsafe-occurrence-directory`'s status and shape:
+both say the store is in a state that prevents an answer, and neither blames the client. **The
+spelling and the status are not pinned** — a requirement describes what must be conveyed (Q-0094
+E-3) — and an implementer choosing differently is not deviating, provided the distinction survives
+to the caller and the code asserts no absence.
+
+**AC-1 and AC-4 need no change.** The listing's warning channel already carries both messages, and
+`unsafe` stays the only flag that selects a confinement refusal.
+
+**Do not return `blocked` on the ground that AC-5 enumerates nine conditions.** That is this
+erratum's whole subject and it is ruled here: the tenth row is authorised, this is the one more
+traversal the `retry` grants, and the ruling reaches the implement step through this file rather than
+through `ticket.md`, which that step does not read.
+
+*Test:* the existing AC-5 row-by-row test gains the tenth, staged by making an occurrence directory
+unreadable rather than by mocking — and **shown red against the shipped collapse**, which answers
+`not-an-occurrence-file` for it today. A `readdir` that fails `ENOENT` must still answer the absence
+row, so the two are asserted apart rather than one being asserted alone.
+
+---
+
+## E-6 — round 4's blocker is accepted, the remedy is precedented and named, and no criterion moves
+
+**Supersedes:** nothing. Written at the second review exhaustion gate on 2026-09-19, before any
+answer, because a ruling reaches the implement step through this file and an erratum landed after a
+round begins is invisible to it (Q-0097).
+
+**The blocker is real.** `readRetainedFile` opens `path.join(found.directory, name)` with
+`O_NOFOLLOW`, which **governs the last component only**. `found.directory` was resolved by
+`pathInside` and enumerated by `retainedIn`; if the occurrence *directory* is replaced by a symlink
+between that enumeration and this open, the open follows it and a file of the same leaf name outside
+the run is served. AC-3 is this ticket's one security property and is named not eligible for
+trimming.
+
+**The remedy is not for the implementer to invent, and AC-2 already asks for it.** That criterion
+says the read is *"`readTicketFileBytes`'s discipline, **which is Q-0122's TOCTOU fix reused rather
+than re-derived**"*. Round 4 reused the file-level half and stopped short of the parent case — which
+`packages/server/src/static.ts`'s own module docblock names, in as many words:
+
+> *"A replaced **parent** is why this is an identity comparison rather than an `O_NOFOLLOW` open —
+> that flag governs the last component only, and Node exposes no `openat` to walk the rest."*
+
+**So the shape is shipped in this repository and is to be reused rather than designed.**
+`confinedFile` answers with the **identity** of what it validated and `readConfined` refuses unless
+the descriptor it opened carries that identity, so the bytes returned come from the inode
+confinement approved or from nothing. Here that is nearly free: `retainedIn` already `lstat`s every
+entry and reads `.size` off the result, so `dev` and `ino` are on the `Stats` object it already
+holds, and the read path already `fstat`s the descriptor — what is missing is carrying the identity
+across and comparing it.
+
+**Also reuse the reason it is an identity comparison and not a refusal of links outright**, which
+that docblock gives: refusing a link would refuse the alias *inside* the root that `pathInside`
+deliberately admits.
+
+**The residual is accepted on the same terms Q-0122 accepted it, and must be stated rather than
+implied.** Q-0122's docblock says what it cannot claim — *"the approved inode may itself have been
+linked elsewhere, and bytes appended to it after the check are the bytes returned"* — and the same
+two sentences are true here and are acceptable here. `docs/GLOSSARY.md`'s **Confinement** entry is
+the authority: it is *"not a permission model, not a sandbox, and **not a claim about a race** — it
+says where a path is at the moment it is checked"*. A stated bound is this repository's answer to a
+race Node cannot close, which is Q-0039's run lock at a second subject.
+
+**Do not return `blocked` on the ground that the race cannot be fully closed in Node.** That is true,
+it is Q-0122's own finding, and stating the bound in the docblock **is** the deliverable. Equally, do
+not narrow AC-3 — nothing in it moves, and no criterion is superseded here.
+
+*Test:* AC-3's fixture set gains the staged case the review names — the **occurrence directory**, not
+the leaf, replaced by a symlink to a directory holding the same leaf name, between membership
+enumeration and the read — asserted to be refused, with the outside file's bytes asserted **not**
+returned and the planted target asserted unread. Shown red against round 4's `O_NOFOLLOW`-only open,
+which serves them.
