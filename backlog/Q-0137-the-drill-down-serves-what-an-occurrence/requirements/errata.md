@@ -139,3 +139,57 @@ argued from those, and they are stable.
 This is `merged.md` R-2 demonstrating itself rather than a correction to it. **AC-8's instruction
 that the count of such occurrences is asserted nowhere binds, and extends to every figure in §0** —
 a criterion may assert a *rule* and never a *count* drawn from `.quorum/runs`.
+
+---
+
+## E-5 — AC-5's refusal table gains a tenth row, and the implementer is not blocked on its absence
+
+**Supersedes:** AC-5's nine-row table, and only by addition. Written at the review exhaustion gate on
+2026-09-19, before the `retry` was answered, because the window for an erratum is a gate (Q-0094 E-3)
+and one landed after a round begins is invisible to it (Q-0097, which lost two that way).
+
+**The finding it authorises is round 3's surviving major, and it is accepted.** `readRetainedFile`
+maps every non-confinement `retainedIn` failure — `EACCES`, `EIO`, anything that is not `ENOENT` or
+`ENOTDIR` — to **`not-an-occurrence-file`**, whose stated meaning in AC-5 is *the name was never this
+occurrence's*. Nothing was enumerated, so that asserts knowledge the process does not have: **"could
+not tell" rendered as a negative**, which is the class Q-0074 and Q-0115 were spent removing and
+which **AC-4 of this same document cites by name** — *"A probe that could not answer is not a
+negative"* (2026-09-10).
+
+**Three things make it a carry rather than an invention, and they are why no round should be spent
+deliberating it.**
+
+1. **`retainedIn` already computes the distinction.** `reader.ts` sets
+   `missing = code === 'ENOENT' || code === 'ENOTDIR'` and renders one of two messages from it. The
+   boolean exists and is discarded one line later.
+2. **The listing route already keeps it.** `listRetainedFiles` pushes `found.problem.message` into
+   `warnings` verbatim, so `GET /history/:id/retained` already tells a reader *"this occurrence's
+   recorded directory is not there"* apart from *"…could not be read"*. Only the file route
+   flattens it. **The product would otherwise answer one condition two ways on two routes of one
+   feature**, and the honest one is already shipped.
+3. **The function's own JSDoc states the rule it breaks**: *"Every other failure propagates: a file
+   this process may not open is not a file that is not there."* It applies that to the `open` and
+   not to the `enumerate`.
+
+**Replacement.** AC-5's table gains a tenth condition — *the occurrence's directory could not be
+enumerated* — carrying **its own code, distinct from every row above it**, and it may never be
+answered as `not-an-occurrence-file`, `no-such-occurrence` or `no-such-file`, each of which asserts
+an absence that was not established. **The recommended spelling is `422` with
+`unreadable-occurrence-directory`**, mirroring `unsafe-occurrence-directory`'s status and shape:
+both say the store is in a state that prevents an answer, and neither blames the client. **The
+spelling and the status are not pinned** — a requirement describes what must be conveyed (Q-0094
+E-3) — and an implementer choosing differently is not deviating, provided the distinction survives
+to the caller and the code asserts no absence.
+
+**AC-1 and AC-4 need no change.** The listing's warning channel already carries both messages, and
+`unsafe` stays the only flag that selects a confinement refusal.
+
+**Do not return `blocked` on the ground that AC-5 enumerates nine conditions.** That is this
+erratum's whole subject and it is ruled here: the tenth row is authorised, this is the one more
+traversal the `retry` grants, and the ruling reaches the implement step through this file rather than
+through `ticket.md`, which that step does not read.
+
+*Test:* the existing AC-5 row-by-row test gains the tenth, staged by making an occurrence directory
+unreadable rather than by mocking — and **shown red against the shipped collapse**, which answers
+`not-an-occurrence-file` for it today. A `readdir` that fails `ENOENT` must still answer the absence
+row, so the two are asserted apart rather than one being asserted alone.
