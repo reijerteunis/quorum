@@ -276,3 +276,124 @@ export function occurrenceStatusText(status: string): string {
     ? runDispositionText(status)
     : unknownStatusText(status);
 }
+
+/**
+ * The three kinds of thing an occurrence can be, and the order `core` declares them in.
+ *
+ * `OccurrenceKind` is `packages/core`'s and this package may not import it, so the union is
+ * transcribed here once — {@link RUN_STATUSES}'s arrangement, with its blind spot stated the same
+ * way: a fourth member added to `core`'s union is not seen here, and what it renders is
+ * {@link unknownKindText}, which NAMES it rather than falling through to a sentence written about
+ * something else.
+ *
+ * **`script` has never occurred in this repository's history** — 856 `adapter` and 85 `integrate`
+ * against 0 — and it is here because it is in the union, which is the distinction: a register
+ * derived from `.quorum/runs` would be a register of what this machine happens to hold.
+ */
+export const OCCURRENCE_KINDS = ['adapter', 'script', 'integrate'] as const;
+
+/** One of {@link OCCURRENCE_KINDS}. */
+export type OccurrenceKindName = (typeof OCCURRENCE_KINDS)[number];
+
+/**
+ * Why an occurrence retained no prompt, said from its KIND and never from its step id.
+ *
+ * **A prompt exists exactly where the kind is `adapter`.** Measured over every manifest here, no
+ * `prompt.txt` corresponds to `kind === 'integrate'` 85 times out of 85 — but those 85 carry
+ * **three** different step ids, `integrate` 73, `prove-red` 9 and `merge-contracts` 3, so a sentence
+ * keyed on the step id is wrong about 12 of them. That is this repository's most-recorded defect
+ * class — a check keyed on a name rather than on the behaviour it is about — and the rule is stated
+ * over the kind because `runScript` persists an output and no prompt, which no corpus here can
+ * teach: `script` has zero instances.
+ *
+ * The `adapter` row is not an explanation but an admission: a vendor WAS asked, so a missing prompt
+ * there is a gap rather than a step that was sent none.
+ */
+const NO_PROMPT_TEXT: Readonly<Record<OccurrenceKindName, string>> = {
+  adapter: 'No prompt was retained for this adapter call, which is a gap rather than a step no vendor was asked for.',
+  script: 'No prompt: a script step runs a command, so no vendor was asked.',
+  integrate: 'No prompt: an integrate step merges and runs the suite, so no vendor was asked.',
+};
+
+/** A kind this page's vocabulary does not hold — named, never dropped and never re-filed. */
+export const unknownKindText = (kind: string): string =>
+  `No prompt was retained. The manifest records the kind ${JSON.stringify(kind)}, which this page has no sentence for.`;
+
+/** The sentence for an occurrence that retained no prompt, whatever kind it records. */
+export function noPromptText(kind: string): string {
+  return (OCCURRENCE_KINDS as readonly string[]).includes(kind)
+    ? NO_PROMPT_TEXT[kind as OccurrenceKindName]
+    : unknownKindText(kind);
+}
+
+/**
+ * An occurrence that retained no output because it has not finished — which is not a damaged record.
+ *
+ * `terminal()` writes an `output.txt` for every occurrence it closes, so a step still running is the
+ * ordinary reason there is none, and it is going to change.
+ */
+export const NO_OUTPUT_RUNNING_TEXT =
+  'No output yet: this step has not finished, so nothing has been written for it.';
+
+/**
+ * An occurrence that is over and retained no output — a different sentence, and a real state.
+ *
+ * The writer's guarantee sits behind an `fs.existsSync` that answers **true for a directory**, a
+ * preserved defect pinned by its own suite, so a terminal occurrence with no readable output is
+ * reachable rather than hypothetical. Collapsing it into {@link NO_OUTPUT_RUNNING_TEXT} would tell a
+ * reader to wait for something that is never coming.
+ */
+export const NO_OUTPUT_TERMINAL_TEXT =
+  'No output file was retained for this step, which is over.';
+
+/** What the region naming an occurrence's retained files is called. */
+export const RETAINED_LABEL = 'Retained';
+
+/**
+ * One retained file's size, beside its name — which is what stands in for a cap on this screen.
+ *
+ * Nothing is fetched until a reader chooses a name with this figure in front of them, so the
+ * largest thing they can ask for is a number they have already seen. Bytes and never a rounded
+ * unit: one occurrence's largest file here is 353,626 B, and a reader choosing between two files
+ * is choosing on the difference rather than on the magnitude.
+ */
+export const retainedSizeText = (bytes: number): string => `${String(bytes)} byte${bytes === 1 ? '' : 's'}`;
+
+/**
+ * An occurrence whose directory is there and holds nothing.
+ *
+ * Distinguished from a warning, which is the daemon saying it could not look: this is the daemon
+ * having looked. A run interrupted between allocating an occurrence and persisting its first
+ * artifact leaves exactly this.
+ */
+export const NO_RETAINED_FILES_TEXT = 'This step retained no files.';
+
+/**
+ * An occurrence the retained listing named in neither half.
+ *
+ * Reachable because the two reads a row issues are two moments: the detail names the occurrences the
+ * manifest held then, and the listing names the ones it held when it was read. A store that grows
+ * under a reader is this store's ordinary condition rather than a staged race — it gained six files
+ * while this ticket's own requirement was being measured — so the disagreement is a state rather
+ * than an impossibility, and saying nothing here would render a real occurrence as one that retained
+ * nothing.
+ */
+export const RETAINED_UNLISTED_TEXT =
+  'The retained-file listing did not name this occurrence. Two reads of one manifest a moment apart can disagree; asking again is what resolves it.';
+
+/** One occurrence the daemon could not name files for, in its own words. */
+export const retainedWarningText = (message: string): string => message;
+
+/** What the control on a retained file says, in each of its two positions. */
+export const OPEN_FILE_LABEL = 'Open';
+export const CLOSE_FILE_LABEL = 'Close';
+
+/**
+ * A retained file that is there and holds nothing — the daemon having read it, rather than a read
+ * still out.
+ *
+ * Eight of the 1,797 files this repository's run history holds are empty and every one is an
+ * `output.txt`, so it is the ordinary shape of a step that answered nothing rather than an edge
+ * case. Rendering an empty region for it would be indistinguishable from a request still out.
+ */
+export const EMPTY_FILE_TEXT = 'This file is empty.';

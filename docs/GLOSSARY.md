@@ -70,7 +70,16 @@ symlink, and a string prefix would put `/x/backlog-old` inside `/x/backlog`. Two
 this way. The **backlog root**: a ticket token resolves to a directory directly under it, and
 `write`, `writeFile`, `readFiles` and `log` work inside that ticket's own folder, so a `../` in a
 token or in a flow's write path is refused rather than followed (Q-0059). The **run-history root**:
-a run id names a directory directly inside `.quorum/runs` (Q-0034, Q-0049). Enforced in `core`, so
+a run id names a directory directly inside `.quorum/runs` (Q-0034, Q-0049) — **and since Q-0137 a
+second path inside that same root is confined too, by a different predicate.** An **occurrence
+directory** is the `steps/NNN-<step id>` a run's manifest records for one occurrence, which sits
+**two** components below the run's rather than one, so `isFolderIn` — whose whole question is
+*directly inside* — would refuse every legitimate one; what asks of it is `pathInside`, strictly
+inside at any depth. The two are also confined against different kinds of value: a run id is a token
+a client typed, and an occurrence directory is a string **this product wrote and re-checks nowhere
+else**, `readRun` calling a parsed manifest *"a cast, never a check"*. A leaf inside that directory
+is closed by membership instead — enumerated for the request that reads it, never taken from a
+listing fetched earlier. Enforced in `core`, so
 the CLI and M3's server inherit one rule instead of each writing a weaker one. **Not containment**,
 which is a git ancestry fact about two refs that the board renders as a token: the two words are
 near-homographs for unrelated questions, and neither is ever used for the other. Not a permission

@@ -118,6 +118,53 @@ export function historyDetailPath(id: string): string {
 }
 
 /**
+ * The two segments that make a history path one of the retained-file routes.
+ *
+ * Written as literals for {@link GATES_SEGMENT}'s reason and with its one difference: both routes
+ * are GETs, so no write guard has a string to look for here and `test/routes.test.ts`'s
+ * route-literal scan is the only register that asks whether a path this app names is one somebody
+ * decided on. A segment assembled inside a template is a path no scan sees. Neither is a shell
+ * route and neither is a `DAEMON_ENDPOINTS` prefix: `/history` is already forwarded by the
+ * development server and covers everything below it.
+ *
+ * `/file` is the same last segment `ticketFilePath` builds, and the two are deliberately not shared:
+ * they hang off different prefixes, take different query values — a ticket's file is named by a
+ * relative `?path=` holding separators, a retained one by `?occurrence=` and a leaf `?name=` — and a
+ * constant serving both would be one name for two contracts.
+ */
+const RETAINED_SEGMENT = '/retained';
+const RETAINED_FILE_SEGMENT = '/file';
+
+/**
+ * The page-relative path for what one run's occurrences retained, with the id confined to one
+ * segment.
+ *
+ * A separate path from {@link historyDetailPath} and not a query flag on it: that route is mission
+ * control's and is read on every load of a screen that never fetches a retained file, so a response
+ * whose shape depended on a parameter's presence would be a branch every client carries for ever.
+ */
+export function historyRetainedPath(id: string): string {
+  return `${historyDetailPath(id)}${RETAINED_SEGMENT}`;
+}
+
+/**
+ * The page-relative path for one file one occurrence of one run retained.
+ *
+ * **The occurrence and the name are QUERY values**, which is the daemon's own shape. The occurrence
+ * is addressed by the sequence number its listing carries and **never by its directory**: that field
+ * crosses to this app today only because the detail route spreads a whole manifest occurrence
+ * through a loose schema, so sending it back would ratify an accident as a contract — and it is the
+ * one string on this subject that nothing validates.
+ *
+ * Both are encoded rather than trusted: a retained file's name is whatever a directory holds, and
+ * `persist` takes an artifact's name as a plain parameter.
+ */
+export function historyFilePath(id: string, seq: number, name: string): string {
+  const occurrence = encodeURIComponent(String(seq));
+  return `${historyDetailPath(id)}${RETAINED_FILE_SEGMENT}?occurrence=${occurrence}&name=${encodeURIComponent(name)}`;
+}
+
+/**
  * The page-relative path for one ticket, with the id confined to one segment.
  *
  * Named for the DAEMON route rather than for the screen: `routes.ts` has a `ticketPath` too and it

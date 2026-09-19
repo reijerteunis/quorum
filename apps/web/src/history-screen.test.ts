@@ -17,7 +17,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { WireRunHistory, WireRunHistoryRow, WireVendorRollup } from '@quorum/shared';
 
-import { DAEMON_ENDPOINTS, historyDetailPath } from './daemon-endpoints.js';
+import { DAEMON_ENDPOINTS, historyDetailPath, historyFilePath, historyRetainedPath } from './daemon-endpoints.js';
 import { HistoryScreen } from './history-screen.js';
 import {
   COLLAPSE_LABEL, EMPTY_HISTORY_TEXT, EXPAND_LABEL, HISTORY_HEADING, HISTORY_REFRESH_LABEL,
@@ -238,15 +238,18 @@ describe('Q-0018 AC-12 — one row opens inline to what ran, in `seq` order', ()
     { [historyDetailPath('Q-0018-1')]: detail(over) },
   );
 
-  test('opening issues exactly one detail read, and collapsing issues none', async () => {
+  test('opening issues one detail read and one retained read, and collapsing issues none', async () => {
+    // **Q-0137 AC-12 moved this from one request to two and the clause is stronger for it**: the
+    // assertion is an identity over both paths rather than a count, so a third request — one per
+    // occurrence as they render, which is what this screen must never do — fails by name.
     const { view, calls } = await opened({});
     expect(calls).toHaveLength(1);
     await act(async () => toggleFor(view, 'Q-0018-1').click());
-    expect(calls, 'opening a row did not read that run')
-      .toStrictEqual([DAEMON_ENDPOINTS.history, historyDetailPath('Q-0018-1')]);
+    expect([...calls].sort(), 'opening a row did not read that run and what it retained')
+      .toStrictEqual([DAEMON_ENDPOINTS.history, historyDetailPath('Q-0018-1'), historyRetainedPath('Q-0018-1')].sort());
     expect(view.querySelector('[data-opened-run]'), 'the opened region did not render').not.toBeNull();
     await act(async () => toggleFor(view, 'Q-0018-1').click());
-    expect(calls, 'collapsing issued a request').toHaveLength(2);
+    expect(calls, 'collapsing issued a request').toHaveLength(3);
     expect(view.querySelector('[data-opened-run]'), 'collapsing left the region open').toBeNull();
   });
 
@@ -296,15 +299,20 @@ describe('Q-0018 AC-12 — one row opens inline to what ran, in `seq` order', ()
     expect(cell('implement'), 'a running occurrence was rendered as one with no duration')
       .toContain('Still running');
     expect(cell('integrate'), 'a finished occurrence did not render its duration').toContain('00:04');
-    // **What it retained is not named and not claimed.** What is said is the manifest's own `kind`,
-    // established by the `adapter` field rather than by an inference about what is on disk.
+    // **What it retained is not claimed from the manifest.** What is said here is the manifest's own
+    // `kind`, established by the `adapter` field rather than by an inference about what is on disk.
     expect(cell('integrate'), 'an occurrence no vendor ran did not name its kind')
       .toContain(notAnAdapterCallText('integrate'));
     expect(cell('implement'), 'an adapter call was reported as not being one')
       .not.toContain(notAnAdapterCallText('agent'));
-    // Nothing here opens a file, which is Q-0137's subject: no retained file is named.
+    // **And a retained file is named from the RETAINED LISTING and from nowhere else** (Q-0137).
+    // This fixture answers no retained read at all, so the screen knows nothing about what these
+    // two occurrences hold — and says nothing, rather than deriving a name from the two constants
+    // this product writes. A screen that hard-coded `prompt.txt` and `output.txt` off the manifest
+    // would render both names here with no directory ever having been read.
     for (const name of ['prompt.txt', 'output.txt']) {
-      expect(view.textContent, `the opened region names ${name}`).not.toContain(name);
+      expect(view.textContent, `the opened region names ${name} without a listing having answered`)
+        .not.toContain(name);
     }
   });
 
@@ -412,15 +420,18 @@ describe('Q-0018 AC-12 — one row opens inline to what ran, in `seq` order', ()
     await act(async () => root.render(createElement(HistoryScreen, { fetcher, now: CLOCK })));
 
     await act(async () => toggleFor(view, 'Q-0018-1').click());
-    expect(calls, 'opening the row did not read that run').toHaveLength(2);
+    // Three: the listing, the detail, and Q-0137's retained read. The retained one answers the same
+    // unreadable body here, which is deliberate — a Retry offered under a failed DETAIL must read
+    // the detail, and a screen whose two failures shared one control could not be shown to.
+    expect(calls, 'opening the row did not read that run').toHaveLength(3);
     const retry = (): HTMLButtonElement | undefined =>
       [...view.querySelectorAll('[data-history-row="Q-0018-1"] button')]
         .find((node): node is HTMLButtonElement => node.textContent === HISTORY_RETRY_LABEL);
     expect(retry(), 'a failed detail offered no retry, so this clause has no subject').toBeDefined();
 
     await act(async () => (retry() as HTMLButtonElement).click());
-    expect(calls, 'Retry issued no request at all').toHaveLength(3);
-    expect(calls[2], 'Retry read something other than the run it was offered on')
+    expect(calls, 'Retry issued no request at all').toHaveLength(4);
+    expect(calls[3], 'Retry read something other than the run it was offered on')
       .toBe(historyDetailPath('Q-0018-1'));
     expect(view.querySelector('[data-opened-run]'), 'Retry collapsed the row instead of reading it again')
       .not.toBeNull();
