@@ -391,6 +391,12 @@ const DOMAIN = [
   // this register, so a symbol the barrel must carry has to appear on it; what the register claims
   // of them is true in the strongest form, the frame naming none of the three.
   'isOneName', 'listTicketFiles', 'readTicketFileBytes',
+  // Q-0137 added two, on the same clause: `listRetainedFiles` names and measures what one run's
+  // occurrences retained and `readRetainedFile` reads one of those files as bytes, and no command
+  // reaches either — `quorum runs` prints an occurrence's directory and opens nothing in it. They
+  // are here because the barrel is derived from this register, and what the register claims of them
+  // holds in the strongest form: the frame names neither, and neither does any command module.
+  'listRetainedFiles', 'readRetainedFile',
 ];
 
 /**
@@ -599,9 +605,14 @@ describe('AC-8 and Q-0091 AC-10 — the frame implements no command, and a comma
     expect(DOMAIN, 'the register still holds the twenty-four it held before Q-0122').not.toHaveLength(24);
     expect(DOMAIN, 'the register still holds the twenty-five it held before Q-0126').not.toHaveLength(25);
     expect(DOMAIN, 'the register still holds the twenty-six it held before Q-0127').not.toHaveLength(26);
-    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(29);
+    expect(DOMAIN, 'the register still holds the twenty-nine it held before Q-0137').not.toHaveLength(29);
+    expect(DOMAIN, 'the symbol list moved and no ticket said so').toHaveLength(31);
     for (const added of ['isOneName', 'listTicketFiles', 'readTicketFileBytes']) {
       expect(DOMAIN, `the name Q-0127 added is not on the list it is supposed to be on: ${added}`)
+        .toContain(added);
+    }
+    for (const added of ['listRetainedFiles', 'readRetainedFile']) {
+      expect(DOMAIN, `the name Q-0137 added is not on the list it is supposed to be on: ${added}`)
         .toContain(added);
     }
     expect(DOMAIN, 'the name Q-0105 added is not on the list it is supposed to be on')

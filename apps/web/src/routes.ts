@@ -245,16 +245,17 @@ export const ROUTES: readonly Route[] = [
     screenExists: false,
     waitingFor: 'Step chat is M4 work, for the steps that ask the human a question mid-run.',
   },
-  // Built by Q-0018, which was cut in two at its own requirements gate. The sentence is kept for
-  // the board's, the ticket page's and the gate screen's reason: `screenExists` is what says a
-  // screen is built, and a row whose sentence had been emptied would make a later `false` silent.
+  // Built by Q-0018 and completed by Q-0137, which took the retained files at that ticket's own
+  // requirements gate. The sentence is kept for the board's, the ticket page's and the gate
+  // screen's reason: `screenExists` is what says a screen is built, and a row whose sentence had
+  // been emptied would make a later `false` silent.
   {
     path: HISTORY_PATH,
     screen: 'Run history',
     ticket: 'Q-0018',
     screenExists: true,
     waitingFor:
-      "Run history lists every run on disk with what each cost per vendor, and opens one row inline to the occurrences it recorded. What an occurrence retained is Q-0137's.",
+      'Run history lists every run on disk with what each cost per vendor, opens one row inline to the occurrences it recorded, and names what each of those retained — one file at a time, with its size in front of the reader.',
   },
   {
     path: '/settings',

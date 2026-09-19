@@ -26,29 +26,45 @@
  * in for one is that nothing large is fetched until a reader names that file with its size in front
  * of them.
  *
+ * **Q-0137 added the two that answer for what a RUN retained**, in that pair's shape and for its
+ * reasons at a store fifty times the size: `GET /history/:id/retained` names and measures every
+ * occurrence's retained files without opening one, and `GET /history/:id/file` reads one of them.
+ * They are two routes rather than a widening of `GET /history/:id` because that route is mission
+ * control's, read on every load of a screen that will never fetch a retained file, and because
+ * widening it would retire its own documented property — *"It reads exactly one file."*
+ * **Neither composes a filesystem path.** A client supplies a run token, an occurrence's sequence
+ * number and one leaf name; `core` resolves the run, confines the occurrence directory the manifest
+ * records, enumerates it for that request and opens the file — so the one untrusted value here, the
+ * `occurrence_dir` nothing on the read path validates, never crosses this boundary in either
+ * direction. Why: ruled at that ticket's requirements gate, `requirements/errata.md` E-1 — a route
+ * may serve a file under `.quorum/`, which `GET /history` has been doing since Q-0119, and no
+ * decision entry is owed.
+ *
  * Why: deliberate addition, not preservation — Q-0119.
  */
 import path from 'node:path';
 
 import {
-  containment, isIncomplete, isOneName, lintFlowDirectory, listTicketFiles, occurrenceSeq, pushLag,
-  readRun, readRunsDir, readTicketFileBytes, sortRuns, vendorTokenTotal,
-  type Project, type RunEntry, type TicketRecord, type VendorRollup,
+  containment, isIncomplete, isOneName, lintFlowDirectory, listRetainedFiles, listTicketFiles,
+  occurrenceSeq, pushLag, readRetainedFile, readRun, readRunsDir, readTicketFileBytes, sortRuns,
+  vendorTokenTotal,
+  type Project, type RetainedFileRead, type RunEntry, type TicketRecord, type VendorRollup,
 } from '@quorum/core';
 import { Hono } from 'hono';
 
 import {
   MANIFEST_FILE, RUN_HISTORY_ROOT, wireRunHistoryRowSchema,
   type TicketHistoryEntry, type WireFlow, type WireFlowList, type WireRefusal,
-  type WireRunHistoryList, type WireRunHistoryRow, type WireRunHistoryWarning, type WireTicket,
+  type WireRunHistoryList, type WireRunHistoryRetained, type WireRunHistoryRetainedText,
+  type WireRunHistoryRow, type WireRunHistoryWarning, type WireTicket,
   type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
 import { badRequest } from './wire.js';
 
 export type {
-  WireFlow, WireFlowList, WireRunHistoryList, WireRunHistoryRow, WireTicket, WireTicketDetail,
-  WireTicketFile, WireTicketList,
+  WireFlow, WireFlowList, WireRunHistoryList, WireRunHistoryRetained, WireRunHistoryRetainedText,
+  WireRunHistoryRow, WireTicket, WireTicketDetail, WireTicketFile, WireTicketList,
 };
 
 
@@ -304,8 +320,15 @@ const notListed = (rel: string): string => `${JSON.stringify(rel)} is not a file
  * against a second `stat` would make the verdict a function of two moments. One read, one verdict.
  *
  * Note what this is NOT: a test for the replacement character. Three files under this repository's
- * own backlog contain U+FFFD legitimately, so a scan for that character would report hand-written
- * markdown as binary on the day it shipped.
+ * own backlog contain U+FFFD legitimately, and **sixteen of the 1,797 files its run history
+ * retains** — so a scan for that character would report sixteen real prompts as binary on the day it
+ * shipped. Zero files in either store fail the decode below, which is why the criterion behind it
+ * cannot be learned from this machine and is pinned against a constructed fixture instead.
+ *
+ * One function for both stores rather than one per route, which is the reuse Q-0137 was asked for by
+ * name: a UTF-8 verdict must be taken with the decoder that will serve the bytes, and two decoders
+ * would be two answers — `iconv` and `TextDecoder` already disagree about a file under this backlog
+ * that round-trips byte for byte.
  */
 function asUtf8(bytes: Buffer): string | null {
   try {
@@ -318,6 +341,127 @@ function asUtf8(bytes: Buffer): string | null {
 /** A file whose bytes this route cannot characterise, named rather than served substituted. */
 const notUtf8 = (rel: string): string =>
   `${JSON.stringify(rel)} is not well-formed UTF-8, so this route cannot serve it as text`;
+
+/** What a client can do about an occurrence or a name the retained-file route will not read. */
+const RETAINED_REMEDY = 'ask this run for what its occurrences retained and request one of the names it lists';
+
+/**
+ * A base-10 non-negative safe integer, or `null` for anything else a query value can be.
+ *
+ * Anchored on the digits rather than on `Number`, which accepts a sign, a fractional part, an
+ * exponent, a hexadecimal prefix, whitespace and the empty string — every one of which would make a
+ * client's `+1`, `1.0` or `0x1` address an occurrence it did not name.
+ */
+function sequenceValue(given: string): number | null {
+  if (!/^[0-9]+$/.test(given)) return null;
+  const value = Number(given);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/** Why `given` is not an occurrence this route will look up, or `null` where it is one. */
+const notASequence = (given: string): string =>
+  `${JSON.stringify(given)} is not an occurrence: an occurrence of a run is named by the sequence number its listing carries`;
+
+/**
+ * Why `name` is not a retained file this route will look up, or `null` where it is one.
+ *
+ * A leaf and never a path, which is the difference from `GET /tickets/:id/file`'s `?path=`: a
+ * ticket's file is named relative to its folder and holds separators, while a retained file sits
+ * directly in its occurrence's own directory and is one name. `core` refuses the same shapes again
+ * at the join — this is what turns the refusal into a status and a sentence rather than replacing it.
+ */
+function notARetainedName(name: string): string | null {
+  if (name === '') return 'no file was asked for';
+  if (name === '.' || name === '..') return `${JSON.stringify(name)} names a directory, and this route reads one file`;
+  if (name.includes('/') || name.includes('\\')) {
+    return `${JSON.stringify(name)} is a path, and a retained file is named by one name`;
+  }
+  return null;
+}
+
+/** The status and the sentence for each way `core` refuses a retained-file read. */
+type RetainedRefusal = Exclude<RetainedFileRead, { outcome: 'file' | 'malformed' }>['outcome'];
+
+/**
+ * How each of those becomes an answer — a code a client switches on, a status, and a condition.
+ *
+ * **Decided by a discriminant and never by matching an error's prose**, which is `ticketFor`'s rule
+ * at a second surface: `core` answers one of eight outcomes and each maps to exactly one row here,
+ * so a reworded sentence in `core` cannot silently move a status.
+ *
+ * **The code is declared rather than taken from the outcome's own name**, and one row is why: a
+ * token naming no run is `core`'s `not-a-run` and this transport's **`no-such-run`**, which is what
+ * the listing route beside this one has answered since Q-0119 and what `GET /history/:id` answers.
+ * Deriving the code from the outcome made the two routes answer two codes for one condition, and a
+ * client switching on it would have had to know which route it had asked.
+ *
+ * `not-an-occurrence-file` and `no-such-file` are two rows and are never collapsed. The first says
+ * the name was never this occurrence's — including where its directory is gone, which enumerated
+ * nothing — and the second that it was named by this request's own listing and has stopped being a
+ * regular file since. A listed name replaced by a symlink is the second, and its target is not read.
+ *
+ * **The remedy is per row and three rows have none**, which is *"A `core` error names the
+ * condition; the remedy belongs to the surface"* (2026-09-07) read the way round it is usually
+ * needed: a surface that has nothing useful to say says nothing. Telling a reader to ask a run for
+ * its retained files is advice on four rows and nonsense on the three where the run is not there,
+ * where its own record refused the directory, and where the listing already reports that the
+ * number they asked for is not addressable at all.
+ *
+ * **Every outcome `core` can answer with has a row by construction**: {@link RetainedRefusal} is
+ * derived from that union, so a ninth outcome fails to compile here rather than falling through to
+ * a status nobody chose. `not-a-file-name` is reachable from `core` alone — the route refuses a
+ * malformed name first, with the same predicate — and is kept as the second of the two refusals
+ * rather than deleted, because a caller other than this route gets the same answer.
+ */
+const RETAINED_REFUSAL: Readonly<Record<RetainedRefusal, {
+  code: string;
+  status: 400 | 404 | 409 | 422;
+  condition: (seq: number, name: string) => string;
+  remedy: string | null;
+}>> = {
+  'not-a-run': {
+    code: 'no-such-run',
+    status: 404,
+    condition: () => 'no run history under that token',
+    remedy: null,
+  },
+  'not-a-file-name': {
+    code: 'not-a-file-name',
+    status: 400,
+    condition: (_seq, name) => notARetainedName(name) ?? 'no file was asked for',
+    remedy: RETAINED_REMEDY,
+  },
+  'no-such-occurrence': {
+    code: 'no-such-occurrence',
+    status: 404,
+    condition: (seq) => `no occurrence of this run carries sequence number ${String(seq)}`,
+    remedy: RETAINED_REMEDY,
+  },
+  'ambiguous-occurrence': {
+    code: 'ambiguous-occurrence',
+    status: 409,
+    condition: (seq) => `more than one occurrence of this run carries sequence number ${String(seq)}, so none of them can be addressed by it`,
+    remedy: null,
+  },
+  'unsafe-occurrence-directory': {
+    code: 'unsafe-occurrence-directory',
+    status: 422,
+    condition: () => "this occurrence's recorded directory is not inside the run's own directory, so nothing in it was read",
+    remedy: null,
+  },
+  'not-an-occurrence-file': {
+    code: 'not-an-occurrence-file',
+    status: 400,
+    condition: (_seq, name) => `${JSON.stringify(name)} is not a file this occurrence retained`,
+    remedy: RETAINED_REMEDY,
+  },
+  'no-such-file': {
+    code: 'no-such-file',
+    status: 404,
+    condition: (_seq, name) => `${JSON.stringify(name)} is no longer a file this occurrence retained`,
+    remedy: RETAINED_REMEDY,
+  },
+};
 
 /**
  * One ticket, as every route here reports it — the **one** projection the listing and the detail
@@ -520,6 +664,54 @@ export function mountRead(app: Hono, project: Project): Hono {
         .filter((step): step is typeof step => typeof step === 'object' && step !== null)
         .map((step) => ({ ...step, seq: occurrenceSeq(step.occurrence_dir) })),
     });
+  });
+
+  app.get('/history/:id/retained', (c) => {
+    const token = c.req.param('id') ?? '';
+    const read = listRetainedFiles(path.join(project.repoDir, RUN_HISTORY_ROOT), token);
+    // The two failures are told apart exactly as `GET /history/:id` tells them apart, and for its
+    // reason: answering 404 to both reports a run that IS there as absent.
+    if (read.outcome === 'not-a-run') {
+      return c.json(badRequest('no-such-run', `no run history under ${JSON.stringify(token)}`, null), 404);
+    }
+    if (read.outcome === 'malformed') {
+      return c.json(badRequest('malformed-manifest', read.message, null), 422);
+    }
+    // 200 WITH its warnings rather than instead of them, which is the `failSoftly` distinction the
+    // listing above already applies to a store — here applied to one run's occurrences, so a single
+    // refused directory does not cost a reader the other fifty-four.
+    const body: WireRunHistoryRetained = { occurrences: read.occurrences, warnings: read.warnings };
+    return c.json(body);
+  });
+
+  app.get('/history/:id/file', (c) => {
+    const token = c.req.param('id') ?? '';
+    // Two QUERY values and no path segment. The occurrence is addressed by the sequence number its
+    // listing carries and never by `occurrence_dir`: that field crosses to a browser today only
+    // because the detail route spreads a whole manifest occurrence through a loose schema, and it is
+    // absent even from that schema's own enumeration of what crosses — so taking it back would
+    // ratify an accident as a contract, and would hand this route the one untrusted string it exists
+    // to keep out of a client's hands.
+    const asked = c.req.query('occurrence') ?? '';
+    const name = c.req.query('name') ?? '';
+    // Both are validated before any retained file is read, so a malformed request opens nothing.
+    const seq = sequenceValue(asked);
+    if (seq === null) return c.json(badRequest('not-a-file-name', notASequence(asked), RETAINED_REMEDY), 400);
+    const shape = notARetainedName(name);
+    if (shape !== null) return c.json(badRequest('not-a-file-name', shape, RETAINED_REMEDY), 400);
+    const read = readRetainedFile(path.join(project.repoDir, RUN_HISTORY_ROOT), token, seq, name);
+    if (read.outcome === 'malformed') return c.json(badRequest('malformed-manifest', read.message, null), 422);
+    if (read.outcome !== 'file') {
+      const refusal = RETAINED_REFUSAL[read.outcome];
+      return c.json(badRequest(refusal.code, refusal.condition(seq, name), refusal.remedy), refusal.status);
+    }
+    const text = asUtf8(read.bytes);
+    if (text === null) return c.json(badRequest('unsupported-file-encoding', notUtf8(read.name), null), 422);
+    // The size of what was READ and never the size that was listed: this store grows under a reader
+    // in ordinary operation, so the listing is what a reader chooses by rather than a promise about
+    // what arrives.
+    const body: WireRunHistoryRetainedText = { name: read.name, bytes: read.bytes.length, text };
+    return c.json(body);
   });
 
   return app;

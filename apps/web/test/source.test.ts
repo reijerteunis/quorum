@@ -1513,6 +1513,7 @@ describe('Q-0017 AC-5/AC-10/AC-11/AC-13 — what the board may not reach for, na
       'mission-control-status.test.ts': 'the fixture the rendered vendor rows are asserted over',
       'mission-control-screen.test.ts': "the history payload the screen's own read is answered with",
       'history-screen.test.ts': "the detail payload an opened history row is answered with — Q-0018",
+      'history-retained.test.ts': 'the same payload, in the fixtures that drive what an opened occurrence RETAINED — Q-0137, which reads no token measure at all and needs the field only because the detail shape requires it',
     };
     expect(sourceFiles().filter(([, text]) => text.includes('tokensByVendor')).map(([name]) => name).sort(),
       'the field left the forbidden list and is named somewhere unregistered')

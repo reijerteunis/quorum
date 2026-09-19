@@ -93,6 +93,14 @@
  * arrived under — a consumer needs them — and the consumer is `packages/server`, as it was for
  * `pathInside`: no command reaches any of the three.
  *
+ * **Q-0137 added two, and they are `pathInside`'s case rather than `openUrl`'s: no command reaches
+ * either.** `listRetainedFiles` names and measures what one run's occurrences retained without
+ * opening any of it, and `readRetainedFile` reads one of those files as bytes. Neither returns a
+ * path, which is the whole reason they are a pair rather than `resolveRunDirectory` plus a reader:
+ * that function is deliberately withheld from this list, because publishing a path-returning
+ * confinement helper leaves a caller free to resolve lexically and read anyway (Q-0092 OQ-1), and
+ * the consumer here — `packages/server`'s retained-file routes — composes no filesystem path at all.
+ *
  * Types are re-exported one at a time, by name, and never wholesale — the wildcard objection in a
  * second form. A type export adds no runtime key, so the surface `package.test.ts` counts is the
  * value list above and nothing else. `TicketFile`, `TicketFileEntry` and `TicketFolderListing`
@@ -121,5 +129,11 @@ export { configuredUser, containment, pushLag } from './git/git.js';
 export { FlowError, lintDirectory, lintFlowDirectory } from './lint/lint.js';
 export type { FlowFileReport } from './lint/lint.js';
 export type { Occurrence, OccurrenceUsage, RunManifest, VendorRollup } from './run-history/manifest.js';
-export { isIncomplete, occurrenceSeq, readRun, readRunsDir, sortRuns, vendorTokenTotal } from './run-history/reader.js';
-export type { RunEntry, RunRead, RunWarning } from './run-history/reader.js';
+export {
+  isIncomplete, listRetainedFiles, occurrenceSeq, readRetainedFile, readRun, readRunsDir, sortRuns,
+  vendorTokenTotal,
+} from './run-history/reader.js';
+export type {
+  RetainedFile, RetainedFileRead, RetainedOccurrence, RetainedRead, RetainedWarning, RunEntry,
+  RunRead, RunWarning,
+} from './run-history/reader.js';

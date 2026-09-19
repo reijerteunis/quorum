@@ -74,6 +74,17 @@ const EXCEPTION_REASONS: Record<string, string> = {
   'daemon-endpoints.ts:/gate': "the DAEMON's gate-answering segment, which is not a shell route and is deliberately not a DAEMON_ENDPOINTS prefix — the dev proxy forwards `/runs`, which already covers it, and a sixth entry there would claim a prefix nothing forwards. Written as a literal rather than as a template tail so that `test/source.test.ts`'s write guard, which permits it in this module and nowhere else, has a string to find: an exemption forgiving something nobody wrote would forgive nothing",
   'daemon-endpoints.ts:/gates': "the first of the DAEMON's two gate-diff segments, on the `/gate` row's terms with one difference: that route is a POST and this is a GET, so no write guard has a string to look for here and this register is the only one that asks whether a path this app names is one somebody decided on. Written as a literal rather than as a template tail for exactly that reason — a segment assembled out of a template is a path no scan sees. Not a shell route and not a `DAEMON_ENDPOINTS` prefix: `/runs` is already forwarded by the development server and covers everything below it (Q-0134 AC-5)",
   'daemon-endpoints.ts:/diff': "the second of them, on the row above's terms and for its reasons. Two segments rather than one because the gate id sits between them, and it is percent-encoded — `nextGateId` spells `<run number>:<n>`, so a correlation token carries a separator and is not one path segment by construction",
+  'daemon-endpoints.ts:/retained': "the DAEMON's segment for what one run's occurrences retained, on the `/gates` row's terms and for its reasons (Q-0137 AC-14): a GET, so no write guard has a string to look for and this register is the only one asking whether a path this app names is one somebody decided on. Written as a literal rather than as a template tail for exactly that reason. Not a shell route and not a `DAEMON_ENDPOINTS` prefix — `/history` is already forwarded by the development server and covers everything below it",
+  'daemon-endpoints.ts:/file': "the DAEMON's segment for one retained file, on the row above's terms. It is the same last segment `ticketFilePath` builds and the two are deliberately not one constant: they hang off different prefixes and take different query values — a ticket's file is named by a relative `?path=` holding separators, a retained one by `?occurrence=` and a leaf `?name=` — so one name would be a single spelling for two contracts",
+  // Q-0137's six. Each is a DAEMON path a test asserts a helper builds, written out rather than
+  // taken from that helper — which would assert the implementation against itself, the reason the
+  // `backlog-board.test.ts` row above already gives. None is a shell route, and the three carrying
+  // an interpolation are the prefix a path is asserted to begin with rather than a URL.
+  'daemon-client-retained.test.ts:/history/${RUN}/file?occurrence=7&name=transcript.jsonl': "the retained-file path in full, asserted byte for byte: the occurrence is addressed by the sequence number its listing carries and the name is one leaf, both as QUERY values",
+  'daemon-client-retained.test.ts:/history/Q-0137%201/retained': 'the retained listing for a run id holding a space, asserted encoded rather than trusted — a run id is a directory name',
+  'daemon-client-retained.test.ts:/history/Q%2F0137/file?occurrence=1&name=a%20b%26c%3Dd.txt': "the same for a run id holding a separator and a retained name holding a space, an ampersand and an equals sign — `persist` takes an artifact's name as a plain parameter, so neither is a token this app composed",
+  'daemon-client-retained.test.ts:/history/${RUN}/': 'the prefix both helpers are asserted to build under, which is what keeps either from colliding with the one-segment-shorter detail path',
+  'history-retained.test.ts:/file': "the segment a screen test filters the file requests by, so a request-count clause counts the reads for a FILE rather than every read a row issued",
   'gate-screen.test.ts:/repo/backlog/Q-0016-the-gate-screen': "the ticket folder a gate question carries, which is an absolute path on the DAEMON's machine rather than a route — `GateQuestionEvent.ticketDir`, asserted rendered verbatim. Declared once in that file so it is one row here rather than one per fixture",
   'daemon-client.test.ts:/repo/backlog/Q-0016-a': 'the same field in the client suite, where a run body has to carry a well-formed question for the schema to accept it',
 };
@@ -109,6 +120,39 @@ describe('AC-6 — the rail is the seven entries the design brief names, in its 
     // …and the four that did not move, as an identity rather than as a count of what is left.
     expect(RAIL.filter((entry) => !entry.screenExists).map((entry) => entry.id))
       .toStrictEqual(['projects', 'harness', 'flows', 'settings']);
+  });
+});
+
+describe('Q-0137 AC-14 / E-2 — the history row stops routing its other half to a successor', () => {
+  test('the run-history row describes what it does rather than what it is waiting for', () => {
+    // **A register entry promising work under another id**, which is what this sentence was: it
+    // said what an occurrence retained was Q-0137's, and this is that ticket. Nothing checked it,
+    // which is how the same shape survived a ticket that edited the value beside it (Q-0135 AC-17
+    // below) — so the clause is written the same way, over the row rather than over a document.
+    const route = SCREEN_ROUTES.find((entry) => entry.path === HISTORY_PATH);
+    if (!route) throw new Error('no run-history route — this check has lost its subject');
+    expect(route.waitingFor, 'the row still routes what an occurrence retained to Q-0137')
+      .not.toMatch(/retained is Q-0137's/);
+    expect(route.waitingFor, 'the row does not say what it names now').toMatch(/names what each of those retained/);
+    expect(route.screenExists, 'the row stopped claiming a screen').toBe(true);
+    // The needle has a subject: the same one finds the superseded wording where it was written.
+    const asItWas = "Run history lists every run on disk with what each cost per vendor, and opens one row inline to the occurrences it recorded. What an occurrence retained is Q-0137's.";
+    expect(/retained is Q-0137's/.test(asItWas), 'the needle no longer reproduces the wording it refuses')
+      .toBe(true);
+  });
+
+  test('no file under src still claims this ticket is unbuilt', () => {
+    // E-2's wider half, over the app rather than over `docs/`: every surviving mention of this
+    // ticket is a record of what it DID rather than a promise of what it will. An obligation left
+    // in a source comment is the shape Q-0100's survived in for four days (Q-0111).
+    const promises = componentFiles().flatMap(([name, text]) =>
+      [/is Q-0137's/, /which is Q-0137's/, /Q-0137's subject/, /a successor's subject/]
+        .filter((needle) => needle.test(text))
+        .map((needle) => `${name}: ${String(needle)}`));
+    expect(promises, 'a file under src still routes a subject to a successor').toStrictEqual([]);
+    // Anti-vacuity: the needles find the sentences they were written for.
+    const asItWas = "What it retained is not named and not claimed. An occurrence's `prompt.txt` and `output.txt` are a successor's subject.";
+    expect(/a successor's subject/.test(asItWas), 'the needle matches nothing').toBe(true);
   });
 });
 
