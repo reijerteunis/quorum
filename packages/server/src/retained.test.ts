@@ -375,7 +375,7 @@ describe('Q-0137 AC-6 — seq is the identity, and occurrence_dir is never an in
       const route = `/history/${RUN}/file?${key}=${encodeURIComponent('steps/001-implement')}&name=prompt.txt`;
       const response = await app.request(route);
       expect(response.status, `${key} was accepted as an occurrence`).toBe(400);
-      expect(await codeOf(response), key).toBe('not-a-file-name');
+      expect(await codeOf(response), key).toBe('unknown-field');
     }
   });
 
@@ -392,27 +392,42 @@ describe('Q-0137 AC-6 — seq is the identity, and occurrence_dir is never an in
     for (const key of [...FORBIDDEN_KEYS, 'Occurrence', 'Name', 'anything-nobody-thought-of']) {
       const response = await app.request(`${sound}&${key}=${encodeURIComponent('steps/002-integrate')}`);
       expect(response.status, `${key} was ignored rather than refused`).toBe(400);
-      expect(await codeOf(response), key).toBe('not-a-file-name');
+      expect(await codeOf(response), key).toBe('unknown-field');
       const refusal = await (await app.request(`${sound}&${key}=x`)).json() as WireRefusal;
       expect(refusal.condition, `${key} is not named in the refusal`).toContain(key);
       expect(refusal.condition, 'the refusal quotes what the key selected').not.toContain('steps/');
+      expect(refusal.remedy, 'the refusal does not name what this route does accept')
+        .toBe('remove it; this route accepts occurrence, name');
     }
   });
 
-  test('the listing selects nothing, so a key it does not read changes no answer it gives', async () => {
-    // Why the route beside this one is NOT given a 400 for the same keys, recorded as a checked
-    // property rather than as an assumption: its answer is a function of the run token alone, so a
-    // key it does not read cannot be mistaken for one it honoured. Adding a refusal there would be
-    // a fourth answer AC-4 does not enumerate, for a request that selects nothing.
+  test('the listing refuses a key it does not accept, rather than answering 200 over it', async () => {
+    // **Review round 2's major.** This route was left answering 200 on the reasoning that its
+    // answer is a function of the run token alone, so a key nobody reads misleads nobody. AC-6 says
+    // both routes reject the directory under every spelling, and *ignored* is not *rejected*: a
+    // client that sent one and was answered 200 has been told its request was understood.
+    //
+    // Its accepted set is EMPTY rather than absent, so what refuses these four is the same
+    // mechanism that refuses them next door — one condition, one code, on both routes.
     const { app } = soundRun();
-    const plain = await (await app.request(retainedAt(RUN))).json() as WireRunHistoryRetained;
-    expect(plain.occurrences.length, 'the fixture lists nothing, so this clause has no subject')
-      .toBeGreaterThan(0);
-    for (const key of FORBIDDEN_KEYS) {
+    const plain = await app.request(retainedAt(RUN));
+    expect(plain.status, 'the plain listing does not answer, so this clause has no subject').toBe(200);
+    expect((await plain.json() as WireRunHistoryRetained).occurrences.length,
+      'the fixture lists nothing, so this clause has no subject').toBeGreaterThan(0);
+
+    for (const key of [...FORBIDDEN_KEYS, 'occurrence', 'name', 'anything-nobody-thought-of']) {
       const response = await app.request(`${retainedAt(RUN)}?${key}=${encodeURIComponent('steps/002-integrate')}`);
-      expect(response.status, `${key} changed the listing's status`).toBe(200);
-      expect(await response.json(), `${key} changed what the listing answered`).toStrictEqual(plain);
+      expect(response.status, `${key} was ignored rather than refused`).toBe(400);
+      const refusal = await response.json() as WireRefusal;
+      expect(refusal.code, key).toBe('unknown-field');
+      expect(refusal.condition, `${key} is not named in the refusal`).toContain(key);
+      expect(refusal.condition, 'the refusal quotes what the key selected').not.toContain('steps/');
+      expect(refusal.remedy, 'the refusal does not say this route accepts none')
+        .toBe('remove it; this route accepts no query value');
     }
+    // `occurrence` and `name` are in that loop on purpose: they are the file route's and this route
+    // accepts neither, so a shared constant would have made this listing answer over a selection it
+    // cannot honour.
   });
 
   test('the handler reads no query key naming the occurrence directory, under any spelling', async () => {
@@ -432,8 +447,12 @@ describe('Q-0137 AC-6 — seq is the identity, and occurrence_dir is never an in
     // The argument-less `c.req.query()` the key check performs reads every key a request carries
     // and is what REFUSES them, so the identity above bounds what this route looks up by name
     // rather than what it inspects — stated here because the two are not the same claim.
-    expect(source.includes('unexpectedQuery(c.req.query())'), 'the key check is gone, so nothing refuses an unknown key')
-      .toBe(true);
+    //
+    // **Two call sites and not one**, which is review round 2's major made structural: the listing
+    // route performs the same check against its own accepted set, so a fix that reached only the
+    // route that selects fails here as well as behaviourally.
+    expect((source.match(/unexpectedQuery\(c\.req\.query\(\), RETAINED_[A-Z_]+_QUERY\)/g) ?? []).length,
+      'a retained route does not check the keys it was given').toBe(2);
   });
 });
 

@@ -505,6 +505,16 @@ type OccurrenceFiles =
  * socket and a symlink have no size to report and no bytes to serve. `lstat` rather than `stat`, so
  * the symlink is judged as itself rather than as whatever it points at.
  *
+ * **The enumeration and the measurement are one error boundary, which is review round 2's major.**
+ * `throwIfNoEntry` suppresses `ENOENT` and nothing else, so an `lstat` outside the `try` threw an
+ * `EACCES` or an `EIO` raised entry by entry straight out of {@link listRetainedFiles} — one
+ * occurrence's metadata error becoming the whole run's 500, against a listing whose warnings channel
+ * exists so that one refused occurrence does not cost a reader the other fifty-four. A failure
+ * anywhere in it is the occurrence's warning, named by its error code alone so no path is quoted
+ * back. **It is the occurrence rather than the entry**: a listing that dropped the one file it could
+ * not measure would be complete-looking and short, and a caller cannot tell a file that is not there
+ * from one nobody could size.
+ *
  * **And so is an entry {@link isRetainedName} refuses**, which is what makes the listing and the
  * read one answer rather than two: a name this module would not join onto a directory is a name no
  * request can fetch, so offering it would be a listing that names a file and then refuses it.
@@ -517,20 +527,18 @@ function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFil
   if (typeof occurrenceDir !== 'string') return { problem: { unsafe: false, message: NOT_A_PATH } };
   const directory = pathInside(runDirectory, occurrenceDir);
   if (directory === null) return { problem: { unsafe: true, message: OUTSIDE_RUN } };
-  let entries: fs.Dirent[];
+  const files: RetainedFile[] = [];
   try {
-    entries = fs.readdirSync(directory, { withFileTypes: true });
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!isRetainedName(entry.name)) continue;
+      const found = fs.lstatSync(path.join(directory, entry.name), { throwIfNoEntry: false });
+      if (found === undefined || !found.isFile()) continue;
+      files.push({ name: entry.name, bytes: found.size });
+    }
   } catch (error) {
     const code = errorProperty(error, 'code');
     const missing = code === 'ENOENT' || code === 'ENOTDIR';
     return { problem: { unsafe: false, message: missing ? NO_DIRECTORY : unreadableDirectory(code) } };
-  }
-  const files: RetainedFile[] = [];
-  for (const entry of entries) {
-    if (!isRetainedName(entry.name)) continue;
-    const found = fs.lstatSync(path.join(directory, entry.name), { throwIfNoEntry: false });
-    if (found === undefined || !found.isFile()) continue;
-    files.push({ name: entry.name, bytes: found.size });
   }
   files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return { directory, files };

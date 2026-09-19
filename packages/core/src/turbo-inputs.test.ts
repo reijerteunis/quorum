@@ -1819,6 +1819,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     root: "path.join(tempDir('retained-'), 'quorum', 'runs') — the runs root storeWith creates, two levels down so a fixture can sit outside it and still be cleaned up",
     'inRun(root)': "path.join(that runs root, 'Q-0137-1') — the one run directory these fixtures build, resolved so a comparison against what the code saw is not vacuous on darwin",
     "inRun(root, 'steps', '001-implement')": 'an occurrence directory inside that run, read through to show the symlink fixture is live before the guard refuses it',
+    "inRun(root, 'steps/001-refused')": 'another one inside that same run, enumerated to show that readdir itself still succeeds where the hook refuses one entry — which is what makes that failure entry-level rather than the directory-level one beside it',
     "inRun(root, 'steps/001-implement', 'prompt.txt')": 'a retained file inside that same occurrence directory, read back to show the bytes the code answered are the bytes on disk',
     'inRun(root, dir, held.name)': "the same, for each file the listing named, so the sizes are the filesystem's rather than lengths this test computed",
     dir: 'inRun(root, …) bound once where a case reads several names under one occurrence directory',

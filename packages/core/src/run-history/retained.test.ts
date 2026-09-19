@@ -111,6 +111,27 @@ function stageOn(target: string, change: () => void): MockInstance {
   return vi.spyOn(fs, 'lstatSync').mockImplementation(hook as never);
 }
 
+/**
+ * Make the enumeration's `lstat` of `target` fail with `code`, as an operating system may.
+ *
+ * **Hooked rather than staged with a mode bit.** A directory chmodded `r--` enumerates and refuses
+ * its entries for everybody except root, which reads it anyway — so the verdict would be a property
+ * of the account that ran the suite, which *"A test's verdict is a property of the commit, not of
+ * the checkout or the account"* (2026-08-30) forbids. The condition is the operating system's to
+ * raise; what is under test is what this module does with it.
+ *
+ * The delegate, the type and the one-shot reasoning are {@link stageOn}'s and hold for the same
+ * reasons: no fixture below holds a symlink, which is the only case where `stat` and `lstat`
+ * disagree.
+ */
+function refuseOn(target: string, code: string): MockInstance {
+  const hook = (given: fs.PathLike, options?: { throwIfNoEntry?: boolean; bigint?: boolean }): unknown => {
+    if (String(given) === target) throw Object.assign(new Error(`${code}: refused by the hook`), { code });
+    return fs.statSync(given, options);
+  };
+  return vi.spyOn(fs, 'lstatSync').mockImplementation(hook as never);
+}
+
 /** A path inside the one run these fixtures build. */
 const inRun = (root: string, ...rest: string[]): string => path.join(root, 'Q-0137-1', ...rest);
 
@@ -244,6 +265,56 @@ describe('Q-0137 AC-1 — an occurrence\'s retained files are named and measured
       .toStrictEqual([{ seq: 2, step_id: 'fresh', files: [] }]);
     expect(answer.warnings.map((warning) => warning.seq), 'an absent directory was not named').toStrictEqual([1]);
     expect(answer.warnings[0].message, 'the warning does not name the condition').toContain('not there');
+  });
+
+  test("a metadata error raised entry by entry is that occurrence's warning, not the run's failure", () => {
+    // Review round 2's major. `throwIfNoEntry` suppresses `ENOENT` and nothing else, so an `lstat`
+    // standing outside the enumeration's `try` threw an `EACCES` or an `EIO` straight out of
+    // `listRetainedFiles` — one occurrence's metadata error becoming the whole run's 500, against a
+    // warnings channel whose entire purpose is that one refused occurrence does not cost a reader
+    // the other fifty-four.
+    //
+    // Constructed, and it has to be (R-1): every entry under every occurrence directory in this
+    // repository's own store stats, so a fixture drawn from `.quorum/runs` would pass over an
+    // implementation with no error boundary at all.
+    const root = runWith(
+      [
+        occurrence({ step_id: 'refused', occurrence_dir: 'steps/001-refused' }),
+        occurrence({ step_id: 'sound', occurrence_dir: 'steps/002-sound' }),
+      ],
+      { 'steps/001-refused': { 'prompt.txt': 'ask' }, 'steps/002-sound': { 'output.txt': 'answered' } },
+    );
+    const lstat = refuseOn(realInRun(root, 'steps/001-refused', 'prompt.txt'), 'EACCES');
+    try {
+      // The directory itself still enumerates, which is what makes this the ENTRY-level failure and
+      // not the directory-level one two clauses above already cover.
+      expect(fs.readdirSync(inRun(root, 'steps/001-refused')), 'the fixture does not enumerate')
+        .toStrictEqual(['prompt.txt']);
+
+      const answer = listRetainedFiles(root, 'Q-0137-1');
+      if (answer.outcome !== 'listing') throw new Error('one occurrence took the whole run with it');
+      expect(answer.occurrences, 'the occurrence beside the refused one was lost with it')
+        .toStrictEqual([{ seq: 2, step_id: 'sound', files: [{ name: 'output.txt', bytes: 8 }] }]);
+      expect(answer.warnings.map(({ seq, step_id }) => ({ seq, step_id })), 'the refused occurrence was not named')
+        .toStrictEqual([{ seq: 1, step_id: 'refused' }]);
+      expect(answer.warnings[0].message, 'the warning does not name the condition').toContain('EACCES');
+      // Named by its code alone: the value being reported on is the manifest's own, and quoting a
+      // path back is how a refusal hands out what it refused.
+      expect(answer.warnings[0].message, 'the warning quotes a path').not.toContain(root);
+      // **The occurrence rather than the entry**, stated as a checked property: a listing that
+      // dropped the one file it could not measure would be short and complete-looking.
+      expect(answer.occurrences.some((entry) => entry.seq === 1), 'a file nobody could size was listed as absent')
+        .toBe(false);
+      // And the read beside it answers rather than throwing, both halves going through this one
+      // enumeration. What it answers is `not-an-occurrence-file`, which is the same treatment a
+      // directory the operating system refuses already had before this change and is stated here so
+      // the widening is visible: it is the answer for a name nobody could enumerate, and a caller
+      // reading it as *proven absent* is reading more than it says.
+      expect(readRetainedFile(root, 'Q-0137-1', 1, 'prompt.txt').outcome, 'the read threw instead of answering')
+        .toBe('not-an-occurrence-file');
+    } finally {
+      lstat.mockRestore();
+    }
   });
 
   test('it opens no retained file, and the one file it does open is the manifest', () => {

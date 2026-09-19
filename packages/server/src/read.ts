@@ -349,30 +349,49 @@ const RETAINED_REMEDY = 'ask this run for what its occurrences retained and requ
 const RETAINED_FILE_QUERY: readonly string[] = ['occurrence', 'name'];
 
 /**
- * Why this route will not read the query it was given, or `null` where every key in it is one it
- * accepts.
+ * The same for `GET /history/:id/retained`, which is answered by the run token alone and so accepts
+ * nothing — an empty set rather than an absent check, which is what makes it refuse a key.
+ */
+const RETAINED_LISTING_QUERY: readonly string[] = [];
+
+/**
+ * Why a retained route will not read the query it was given, or `null` where every key in it is one
+ * that route accepts.
  *
  * **A declared set rather than a register of forbidden spellings**, which is what makes
  * *"`occurrence_dir` is not an input under any spelling"* a property rather than a list somebody
  * has to keep adding to: `occurrenceDir`, `dir`, `path`, `Occurrence` and anything nobody has
- * thought of are all refused by not being one of two. It is *"Unknown keys are refused where Quorum
- * owns the key set, and preserved where it does not"* (2026-08-25) applied to a request rather than
- * to a body — Quorum owns this route's query entirely.
+ * thought of are all refused by not being one of the names the route declares. It is *"Unknown keys
+ * are refused where Quorum owns the key set, and preserved where it does not"* (2026-08-25) applied
+ * to a request rather than to a body — Quorum owns both of these queries entirely.
  *
- * **Why this route refuses where the listing beside it ignores**, which is the asymmetry a reader
- * meets first: this query *selects*, so a key nobody honours reads as one that was — before this,
- * `occurrence=1&occurrence_dir=steps/999-other` was served from occurrence 1 and the client was
- * told nothing. The listing's answer is a function of the run token alone, so an unread key there
- * can mislead nobody and it keeps its 200.
+ * **Both routes, and the listing is review round 2's major.** It was left answering 200 over a key
+ * it does not read, on the reasoning that its answer is a function of the run token alone so an
+ * unread key there misleads nobody. AC-6 says both routes reject the directory under every
+ * spelling, and *ignored* is not *rejected*: a client that sent one and was answered 200 has been
+ * told its request was understood, which is the same sentence the file route stopped telling one
+ * round earlier.
  *
- * The code stays `not-a-file-name`, which is already this route's shape refusal for a malformed
- * OCCURRENCE as well as a malformed name, so the declared code set does not gain a tenth member.
- * Why: the nine codes are AC-5's, `requirements/merged.md`.
+ * **The code is `unknown-field`, which is `http.ts`'s own for this condition** — a request carrying
+ * a key a route does not accept, there in a body and here in a query. One condition gets one code:
+ * two sibling routes answering two codes for one thing is what round 1 fixed for `no-such-run`,
+ * where a client would have had to know which route it had asked. It is not a tenth member of
+ * AC-5's nine, which answer for a malformed VALUE or for what `core` found — an unaccepted key is
+ * refused before either is read.
  */
-function unexpectedQuery(given: Readonly<Record<string, string>>): string | null {
-  const unknown = Object.keys(given).filter((key) => !RETAINED_FILE_QUERY.includes(key)).sort();
+function unexpectedQuery(
+  given: Readonly<Record<string, string>>,
+  accepted: readonly string[],
+): WireRefusal | null {
+  const unknown = Object.keys(given).filter((key) => !accepted.includes(key)).sort();
   if (unknown.length === 0) return null;
-  return `${unknown.map((key) => JSON.stringify(key)).join(', ')} ${unknown.length === 1 ? 'is not a query value' : 'are not query values'} this route accepts: an occurrence is named by the sequence number its listing carries, and a file by one name`;
+  return badRequest(
+    'unknown-field',
+    `the query carries ${unknown.map((key) => JSON.stringify(key)).join(', ')}, which this route does not accept`,
+    accepted.length === 0
+      ? 'remove it; this route accepts no query value'
+      : `remove it; this route accepts ${[...accepted].join(', ')}`,
+  );
 }
 
 /**
@@ -698,6 +717,12 @@ export function mountRead(app: Hono, project: Project): Hono {
 
   app.get('/history/:id/retained', (c) => {
     const token = c.req.param('id') ?? '';
+    // The keys first, and this route's accepted set is empty: it is answered by the run token
+    // alone, so a query value is a selection its sender believes it made. Refused rather than
+    // ignored — `occurrence_dir` is not an input to EITHER route under any spelling, and a 200 over
+    // a key nobody read tells a client its request was understood.
+    const unexpected = unexpectedQuery(c.req.query(), RETAINED_LISTING_QUERY);
+    if (unexpected !== null) return c.json(unexpected, 400);
     const read = listRetainedFiles(path.join(project.repoDir, RUN_HISTORY_ROOT), token);
     // The two failures are told apart exactly as `GET /history/:id` tells them apart, and for its
     // reason: answering 404 to both reports a run that IS there as absent.
@@ -724,8 +749,8 @@ export function mountRead(app: Hono, project: Project): Hono {
     // to keep out of a client's hands.
     // The keys first, so a request naming something this route does not accept is refused rather
     // than served from the two it does understand while the third is dropped in silence.
-    const unexpected = unexpectedQuery(c.req.query());
-    if (unexpected !== null) return c.json(badRequest('not-a-file-name', unexpected, RETAINED_REMEDY), 400);
+    const unexpected = unexpectedQuery(c.req.query(), RETAINED_FILE_QUERY);
+    if (unexpected !== null) return c.json(unexpected, 400);
     const asked = c.req.query('occurrence') ?? '';
     const name = c.req.query('name') ?? '';
     // Both are validated before any retained file is read, so a malformed request opens nothing.

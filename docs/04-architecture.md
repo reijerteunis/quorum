@@ -297,12 +297,16 @@ arrives from a file this product wrote and re-checks nowhere — `readRun` calls
 *"a cast, never a check"*, and no occurrence field is validated anywhere on the read path. It is
 confined with `pathInside` and deliberately not `isFolderIn`, an occurrence directory sitting two
 components below a run's rather than one. **The browser never receives `occurrence_dir` and neither
-route accepts it under any spelling**, by two different mechanisms rather than one: the file route
-declares the query keys it accepts — `occurrence` and `name`, and nothing else — and refuses any
-other rather than serving the request from the two it understood while dropping the third in
-silence, which is *"Unknown keys are refused where Quorum owns the key set"* (2026-08-25) applied to
-a request; the listing route reads no query value at all, its answer being a function of the run
-token alone, so a key it does not read cannot be mistaken for one it honoured. The identity is
+route accepts it under any spelling**, by one mechanism and not two: each declares the query keys it
+accepts — `occurrence` and `name` for the file route, and **nothing at all** for the listing, which
+is answered by the run token alone — and refuses any other under `unknown-field`, rather than
+serving the request from the keys it understood while dropping the rest in silence. That is
+*"Unknown keys are refused where Quorum owns the key set"* (2026-08-25) applied to a request rather
+than to a body, under the code this transport already answers where a **body** carries a field a
+route does not accept: one condition, one code, so a client switching on it need not know which of
+the two routes it asked. An empty accepted set rather than an absent check is what makes the listing
+refuse one, and *ignored* is not *rejected* — a 200 over a key nobody read tells a client its
+request was understood. The identity is
 `seq`, and a sequence number more than one
 occurrence answers to is refused as ambiguous rather than answered, because *more than one* is not
 *none*. **Membership is derived for the request that reads**, never from a listing a client fetched
@@ -319,7 +323,11 @@ fatal decode the ticket-file route uses, which is not a test for the replacement
 of the 1,797 files this repository's run history retains carry one legitimately. **A single refused
 occurrence never takes the run's listing with it** — it is named in `warnings` beside the
 occurrences that were readable, which is `failSoftly`'s distinction one level in from where the
-store listing already applies it — and nothing here creates, repairs, rewrites or deletes anything
+store listing already applies it. That holds for a directory the operating system refuses **while it
+is being read**, entry by entry, and not only for one it refuses outright: `throwIfNoEntry`
+suppresses `ENOENT` and nothing else, so the enumeration and the measurement of what it found are
+one error boundary rather than two, and the warning names the error's code alone. Nothing here
+creates, repairs, rewrites or deletes anything
 under `.quorum/`, including for a manifest whose `occurrence_dir` is refused.
 
 **A body is validated before the host is reached, and a refused request starts nothing.** Unknown
