@@ -297,7 +297,13 @@ arrives from a file this product wrote and re-checks nowhere — `readRun` calls
 *"a cast, never a check"*, and no occurrence field is validated anywhere on the read path. It is
 confined with `pathInside` and deliberately not `isFolderIn`, an occurrence directory sitting two
 components below a run's rather than one. **The browser never receives `occurrence_dir` and neither
-route accepts it under any spelling**: the identity is `seq`, and a sequence number more than one
+route accepts it under any spelling**, by two different mechanisms rather than one: the file route
+declares the query keys it accepts — `occurrence` and `name`, and nothing else — and refuses any
+other rather than serving the request from the two it understood while dropping the third in
+silence, which is *"Unknown keys are refused where Quorum owns the key set"* (2026-08-25) applied to
+a request; the listing route reads no query value at all, its answer being a function of the run
+token alone, so a key it does not read cannot be mistaken for one it honoured. The identity is
+`seq`, and a sequence number more than one
 occurrence answers to is refused as ambiguous rather than answered, because *more than one* is not
 *none*. **Membership is derived for the request that reads**, never from a listing a client fetched
 earlier, which is what makes a name the writer *could* have created and did not unreadable —

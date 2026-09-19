@@ -345,6 +345,36 @@ const notUtf8 = (rel: string): string =>
 /** What a client can do about an occurrence or a name the retained-file route will not read. */
 const RETAINED_REMEDY = 'ask this run for what its occurrences retained and request one of the names it lists';
 
+/** The query keys `GET /history/:id/file` accepts, and the whole of what it accepts. */
+const RETAINED_FILE_QUERY: readonly string[] = ['occurrence', 'name'];
+
+/**
+ * Why this route will not read the query it was given, or `null` where every key in it is one it
+ * accepts.
+ *
+ * **A declared set rather than a register of forbidden spellings**, which is what makes
+ * *"`occurrence_dir` is not an input under any spelling"* a property rather than a list somebody
+ * has to keep adding to: `occurrenceDir`, `dir`, `path`, `Occurrence` and anything nobody has
+ * thought of are all refused by not being one of two. It is *"Unknown keys are refused where Quorum
+ * owns the key set, and preserved where it does not"* (2026-08-25) applied to a request rather than
+ * to a body — Quorum owns this route's query entirely.
+ *
+ * **Why this route refuses where the listing beside it ignores**, which is the asymmetry a reader
+ * meets first: this query *selects*, so a key nobody honours reads as one that was — before this,
+ * `occurrence=1&occurrence_dir=steps/999-other` was served from occurrence 1 and the client was
+ * told nothing. The listing's answer is a function of the run token alone, so an unread key there
+ * can mislead nobody and it keeps its 200.
+ *
+ * The code stays `not-a-file-name`, which is already this route's shape refusal for a malformed
+ * OCCURRENCE as well as a malformed name, so the declared code set does not gain a tenth member.
+ * Why: the nine codes are AC-5's, `requirements/merged.md`.
+ */
+function unexpectedQuery(given: Readonly<Record<string, string>>): string | null {
+  const unknown = Object.keys(given).filter((key) => !RETAINED_FILE_QUERY.includes(key)).sort();
+  if (unknown.length === 0) return null;
+  return `${unknown.map((key) => JSON.stringify(key)).join(', ')} ${unknown.length === 1 ? 'is not a query value' : 'are not query values'} this route accepts: an occurrence is named by the sequence number its listing carries, and a file by one name`;
+}
+
 /**
  * A base-10 non-negative safe integer, or `null` for anything else a query value can be.
  *
@@ -692,6 +722,10 @@ export function mountRead(app: Hono, project: Project): Hono {
     // absent even from that schema's own enumeration of what crosses — so taking it back would
     // ratify an accident as a contract, and would hand this route the one untrusted string it exists
     // to keep out of a client's hands.
+    // The keys first, so a request naming something this route does not accept is refused rather
+    // than served from the two it does understand while the third is dropped in silence.
+    const unexpected = unexpectedQuery(c.req.query());
+    if (unexpected !== null) return c.json(badRequest('not-a-file-name', unexpected, RETAINED_REMEDY), 400);
     const asked = c.req.query('occurrence') ?? '';
     const name = c.req.query('name') ?? '';
     // Both are validated before any retained file is read, so a malformed request opens nothing.

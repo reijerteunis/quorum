@@ -173,6 +173,40 @@ describe('Q-0137 AC-1 — an occurrence\'s retained files are named and measured
     }
   });
 
+  test('an entry whose own NAME is not a leaf this module will join is skipped, not offered', () => {
+    // Review round 1's major, staged rather than reasoned about: `a\b` is a legal POSIX filename,
+    // so `readdir` answers it and it passed the `isFile` test — while `readRetainedFile` refuses
+    // the same string as `not-a-file-name`. The listing named a file no request could fetch.
+    //
+    // Constructed, because nothing in this repository's own store carries such a name: `persist`
+    // takes the artifact's name as a parameter and its two callers pass constants, so a fixture
+    // drawn from `.quorum/runs` would pass over an implementation with no clause at all (R-1).
+    const root = runWith(
+      [occurrence({ step_id: 'implement', occurrence_dir: 'steps/001-implement' })],
+      { 'steps/001-implement': { 'prompt.txt': 'ask' } },
+    );
+    const dir = inRun(root, 'steps/001-implement');
+    const awkward = 'a\\b.txt';
+    write(path.join(dir, awkward), 'BACKSLASH');
+    // The fixture really holds it, and the operating system really reports it as a regular file —
+    // so what omits it below is the name clause rather than the `isFile` clause above it.
+    expect(fs.readdirSync(dir).sort(), 'the fixture does not hold the awkward name')
+      .toStrictEqual([awkward, 'prompt.txt'].sort());
+    expect(fs.lstatSync(path.join(dir, awkward)).isFile(), 'the fixture is not a regular file').toBe(true);
+
+    const answer = listRetainedFiles(root, 'Q-0137-1');
+    if (answer.outcome !== 'listing') throw new Error('the fixture did not list, so this clause has no subject');
+    expect(answer.occurrences[0].files, 'a name this module will not join was offered as addressable')
+      .toStrictEqual([{ name: 'prompt.txt', bytes: 3 }]);
+    // The two halves are one answer: what the listing declines to name is what the read declines to
+    // open, so nothing offered is unfetchable and nothing fetchable is unlisted.
+    expect(readRetainedFile(root, 'Q-0137-1', 1, awkward).outcome, 'the read accepted what the listing refused')
+      .toBe('not-a-file-name');
+    // Skipped and NOT an error, exactly as a non-regular entry is: the occurrence is still listed.
+    expect(answer.warnings, 'an unaddressable name was reported as a failure of the occurrence')
+      .toStrictEqual([]);
+  });
+
   test('a directory entry that is not a regular file is skipped rather than measured', () => {
     // A directory NAMED `output.txt` is a shape this product can actually produce: `terminal()`
     // guards its write with `fs.existsSync`, which answers true for a directory, so the writer

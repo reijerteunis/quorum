@@ -72,6 +72,16 @@ const fileAt = (id: string, occurrenceValue: string, name: string): string =>
 /** The refusal code a response carries, so a clause asserts the code and never only the status. */
 const codeOf = async (response: Response): Promise<string> => (await response.json() as WireRefusal).code;
 
+/**
+ * Spellings of *the occurrence's directory* a client might send, which is the one value AC-6 keeps
+ * out of a client's hands.
+ *
+ * A sample rather than a register the route consults: what refuses them is the declared
+ * `['occurrence', 'name']`, so the clauses below add keys nobody has a spelling for and assert the
+ * same answer — a list that had to be kept complete would be the defect this shape avoids.
+ */
+const FORBIDDEN_KEYS = ['occurrence_dir', 'occurrenceDir', 'dir', 'path'] as const;
+
 /** A sound run: one adapter occurrence with both artifacts, one integrate occurrence with output. */
 function soundRun() {
   const served_ = served();
@@ -351,27 +361,79 @@ describe('Q-0137 AC-6 — seq is the identity, and occurrence_dir is never an in
     for (const served_ of ['ONE', 'TWO']) expect(text, `${served_} was served anyway`).not.toContain(served_);
   });
 
-  test('neither route reads a query key naming the occurrence DIRECTORY, under any spelling', async () => {
+  test('a directory key IN PLACE OF the sequence number is refused, and nothing is served', async () => {
     // `occurrence_dir` crosses to a browser today only because `GET /history/:id` spreads the whole
     // manifest occurrence through a loose schema — it is absent even from that schema's own
     // enumeration of what crosses — so accepting it back would ratify an accident as a contract.
-    const { project, app } = soundRun();
-    for (const key of ['occurrence_dir', 'occurrenceDir', 'dir', 'path']) {
+    //
+    // **This clause refuses a request that names no occurrence**, and review round 1 was right that
+    // it cannot tell WHY on its own: it would pass over a route that ignored the key entirely. The
+    // clause below is the one that discriminates, and this one stays because a client substituting
+    // the directory for the sequence number is the substitution itself.
+    const { app } = soundRun();
+    for (const key of FORBIDDEN_KEYS) {
       const route = `/history/${RUN}/file?${key}=${encodeURIComponent('steps/001-implement')}&name=prompt.txt`;
       const response = await app.request(route);
       expect(response.status, `${key} was accepted as an occurrence`).toBe(400);
       expect(await codeOf(response), key).toBe('not-a-file-name');
     }
-    // The structural half: the handler asks for exactly two query keys and neither names a path.
+  });
+
+  test('a directory key BESIDE both valid values is refused, rather than ignored while the rest is served', async () => {
+    // Review round 1's second major. The request is otherwise complete and is served 200 on the
+    // line above, so what refuses it below is the KEY and not a missing value — which is the
+    // discrimination the substitution clause cannot make. A selector nobody honours reads as one
+    // that was: without this, `occurrence=1&occurrence_dir=steps/002-integrate` answered occurrence
+    // 1's file and told the client nothing about the half of its request that was dropped.
+    const { app } = soundRun();
+    const sound = `/history/${RUN}/file?occurrence=1&name=prompt.txt`;
+    expect((await app.request(sound)).status, 'the fixture does not serve, so this clause has no subject')
+      .toBe(200);
+    for (const key of [...FORBIDDEN_KEYS, 'Occurrence', 'Name', 'anything-nobody-thought-of']) {
+      const response = await app.request(`${sound}&${key}=${encodeURIComponent('steps/002-integrate')}`);
+      expect(response.status, `${key} was ignored rather than refused`).toBe(400);
+      expect(await codeOf(response), key).toBe('not-a-file-name');
+      const refusal = await (await app.request(`${sound}&${key}=x`)).json() as WireRefusal;
+      expect(refusal.condition, `${key} is not named in the refusal`).toContain(key);
+      expect(refusal.condition, 'the refusal quotes what the key selected').not.toContain('steps/');
+    }
+  });
+
+  test('the listing selects nothing, so a key it does not read changes no answer it gives', async () => {
+    // Why the route beside this one is NOT given a 400 for the same keys, recorded as a checked
+    // property rather than as an assumption: its answer is a function of the run token alone, so a
+    // key it does not read cannot be mistaken for one it honoured. Adding a refusal there would be
+    // a fourth answer AC-4 does not enumerate, for a request that selects nothing.
+    const { app } = soundRun();
+    const plain = await (await app.request(retainedAt(RUN))).json() as WireRunHistoryRetained;
+    expect(plain.occurrences.length, 'the fixture lists nothing, so this clause has no subject')
+      .toBeGreaterThan(0);
+    for (const key of FORBIDDEN_KEYS) {
+      const response = await app.request(`${retainedAt(RUN)}?${key}=${encodeURIComponent('steps/002-integrate')}`);
+      expect(response.status, `${key} changed the listing's status`).toBe(200);
+      expect(await response.json(), `${key} changed what the listing answered`).toStrictEqual(plain);
+    }
+  });
+
+  test('the handler reads no query key naming the occurrence directory, under any spelling', async () => {
+    // The structural half, beside the behavioural one: the two keys this route looks up by name are
+    // its own, and the directory is not one of them under any spelling.
     const source = fs.readFileSync(path.join(import.meta.dirname, 'read.ts'), 'utf8');
     const queried = [...source.matchAll(/c\.req\.query\('([^']+)'\)/g)].map((match) => match[1]);
     expect([...new Set(queried)].sort(), 'this route reads a query key nobody registered')
       .toStrictEqual(['name', 'occurrence', 'path']);
     // `path` is `GET /tickets/:id/file`'s, which is a different route with a different subject —
-    // named here so the identity above is not read as permitting one on this route.
-    expect(source.includes("c.req.query('occurrence_dir')"), 'a handler reads the directory from a client')
-      .toBe(false);
-    expect(project.repoDir, 'the fixture has no project, so this clause has no subject').not.toBe('');
+    // named here so the identity above is not read as permitting one on this route, and excluded
+    // from the loop below for that reason rather than overlooked. What keeps it off THIS route is
+    // the identity above plus the behavioural clauses, which refuse it with both values valid.
+    for (const key of FORBIDDEN_KEYS.filter((spelling) => spelling !== 'path')) {
+      expect(source.includes(`c.req.query('${key}')`), `a handler reads ${key} from a client`).toBe(false);
+    }
+    // The argument-less `c.req.query()` the key check performs reads every key a request carries
+    // and is what REFUSES them, so the identity above bounds what this route looks up by name
+    // rather than what it inspects — stated here because the two are not the same claim.
+    expect(source.includes('unexpectedQuery(c.req.query())'), 'the key check is gone, so nothing refuses an unknown key')
+      .toBe(true);
   });
 });
 

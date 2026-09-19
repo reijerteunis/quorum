@@ -436,6 +436,11 @@ const unopenable = (code: unknown): boolean =>
  * {@link isOneName} is the shipped predicate and refuses `''`, `.`, `..` and anything whose basename
  * differs from it; the backslash clause is beside it because `path.basename` is platform-specific
  * and a POSIX basename of `a\b` is the whole string.
+ *
+ * **It governs both directions, which is what keeps them one answer.** It decides what a name a
+ * caller supplies may be, and it decides what {@link retainedIn} will *offer* — so nothing this
+ * module lists is a name it would then refuse to open. Applying it on one side alone is the defect
+ * review round 1 found: a listing that names a file no request can fetch.
  */
 const isRetainedName = (name: string): boolean =>
   isOneName(name) && !name.includes('/') && !name.includes('\\');
@@ -499,6 +504,14 @@ type OccurrenceFiles =
  * A directory entry that is not a **regular file** is skipped rather than measured: a directory, a
  * socket and a symlink have no size to report and no bytes to serve. `lstat` rather than `stat`, so
  * the symlink is judged as itself rather than as whatever it points at.
+ *
+ * **And so is an entry {@link isRetainedName} refuses**, which is what makes the listing and the
+ * read one answer rather than two: a name this module would not join onto a directory is a name no
+ * request can fetch, so offering it would be a listing that names a file and then refuses it.
+ * **What that drops is one shape and it is stated rather than left to be found** (Q-0135 E-3):
+ * `readdir` never answers `''`, `.`, `..` or a name holding `/`, so the only reachable case is a
+ * POSIX file whose own name contains a backslash — which `persist` cannot create, its two callers
+ * passing constants, and which therefore means somebody put it there by hand.
  */
 function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFiles {
   if (typeof occurrenceDir !== 'string') return { problem: { unsafe: false, message: NOT_A_PATH } };
@@ -514,6 +527,7 @@ function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFil
   }
   const files: RetainedFile[] = [];
   for (const entry of entries) {
+    if (!isRetainedName(entry.name)) continue;
     const found = fs.lstatSync(path.join(directory, entry.name), { throwIfNoEntry: false });
     if (found === undefined || !found.isFile()) continue;
     files.push({ name: entry.name, bytes: found.size });
