@@ -444,6 +444,50 @@ describe('Q-0137 AC-3 — a traversing occurrence_dir is refused, and nothing is
       .toBe('SECRET-PROMPT');
   });
 
+  test('the occurrence DIRECTORY replaced by a symlink after the enumeration is refused, unread', (ctx) => {
+    // **Review round 4's blocker, ruled by `requirements/errata.md` E-6.** The test above replaces
+    // the LEAF, which `O_NOFOLLOW` refuses at the open; this replaces the PARENT, which that flag
+    // does not govern and which Node exposes no `openat` to walk. What refuses it is the identity
+    // the enumeration measured, held against the descriptor that opened — `static.ts`'s
+    // `ConfinedFile`/`readConfined` pair at a second root, reused rather than re-derived.
+    const root = runWith(
+      [occurrence({ step_id: 'implement', occurrence_dir: 'steps/001-implement' })],
+      { 'steps/001-implement': { 'prompt.txt': 'ask' } },
+    );
+    const outside = outsideOf(root, 'elsewhere');
+    write(path.join(outside, 'prompt.txt'), 'SECRET-BYTES');
+    const directory = realInRun(root, 'steps', '001-implement');
+    const target = path.join(directory, 'prompt.txt');
+    let read;
+    const lstat = stageOn(target, () => {
+      // `renameSync` rather than a removal, so nothing the hook delegates to is re-entered, and the
+      // occurrence's real directory survives for the assertions below.
+      fs.renameSync(directory, `${directory}-moved`);
+      fs.symlinkSync(outside, directory);
+    });
+    try {
+      read = readRetainedFile(root, 'Q-0137-1', 1, 'prompt.txt');
+    } finally {
+      lstat.mockRestore();
+    }
+    // Three premises before the verdict, because a swap that did not happen, a link that does not
+    // resolve, or a name the open would have failed on anyway would each make this clause pass over
+    // an implementation with no identity check at all.
+    if (!fs.lstatSync(directory).isSymbolicLink()) ctx.skip('the directory swap was not staged');
+    expect(fs.readFileSync(target, 'utf8'),
+      'the outside file is not reachable through the name the read joins, so this clause has no subject')
+      .toBe('SECRET-BYTES');
+    expect(fs.lstatSync(target).isFile(),
+      'the replacement is not a regular file, so O_NOFOLLOW alone would have refused it').toBe(true);
+
+    expect(read.outcome, 'a replaced parent directory was followed and an outside file was served')
+      .toBe('no-such-file');
+    expect(JSON.stringify(read), "the outside file's bytes reached the answer").not.toContain('SECRET');
+    // …and nothing at the target moved, which is the other half of "refused rather than followed".
+    expect(fs.readFileSync(path.join(outside, 'prompt.txt'), 'utf8'), 'the planted file was altered')
+      .toBe('SECRET-BYTES');
+  });
+
   test('an occurrence_dir that is not a string at all is a warning rather than a throw', () => {
     for (const dir of [42, null, ['steps/001-a'], { dir: 'steps/001-a' }] as unknown[]) {
       const steps = [{ ...occurrence({ step_id: 'implement', occurrence_dir: 'steps/001-implement' }), occurrence_dir: dir }];

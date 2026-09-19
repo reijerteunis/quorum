@@ -296,7 +296,13 @@ request and opens the file. That value is the untrusted one here and the differe
 arrives from a file this product wrote and re-checks nowhere — `readRun` calls the parsed manifest
 *"a cast, never a check"*, and no occurrence field is validated anywhere on the read path. It is
 confined with `pathInside` and deliberately not `isFolderIn`, an occurrence directory sitting two
-components below a run's rather than one. **The browser never receives `occurrence_dir` and neither
+components below a run's rather than one. **The check and the read name one file**, which is
+`static.ts`'s discipline at a second root: confinement says where a path is at the moment it is
+checked, so the enumeration keeps each file's `dev`/`ino` and the descriptor that opens is held
+against it — an `O_NOFOLLOW` open covers the last component alone, and a parent replaced between the
+two would otherwise be followed. The residual is Q-0122's and is accepted on its terms: an approved
+inode linked elsewhere, or bytes appended to it after the check, are still the file that was
+approved. **The browser never receives `occurrence_dir` and neither
 route accepts it under any spelling**, by one mechanism and not two: each declares the query keys it
 accepts — `occurrence` and `name` for the file route, and **nothing at all** for the listing, which
 is answered by the run token alone — and refuses any other under `unknown-field`, rather than

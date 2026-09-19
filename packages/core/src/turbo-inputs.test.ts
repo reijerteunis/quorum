@@ -1825,6 +1825,7 @@ const READ_BASES: Record<string, Record<string, string>> = {
     dir: 'inRun(root, …) bound once where a case reads several names under one occurrence directory',
     outside: 'the sandbox outsideOf(root, …) built beside the runs root, holding the file a refused symlink points at — asserted unread and unaltered',
     target: 'one retained file inside that run directory, staged to vanish or to become a symlink between the enumeration and the open',
+    directory: "realInRun(root, 'steps', '001-implement') — one occurrence directory inside that same run, read back to show the PARENT swap really happened and that the outside file is reachable through the name the code joins, which is what stops the identity clause passing over an unstaged fixture",
     given: "stageOn's hook parameter: whatever path the code under test lstats, delegated to statSync so that no read API is taken as a value",
   },
   'packages/core/src/run-history/writer.test.ts': {

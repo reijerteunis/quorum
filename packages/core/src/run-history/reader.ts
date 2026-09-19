@@ -396,7 +396,13 @@ export type RetainedFileRead =
   | { /** Its recorded directory is not inside this run's own. */ outcome: 'unsafe-occurrence-directory' }
   | { /** That directory could not be enumerated, so what it holds is unknown. */ outcome: 'unreadable-occurrence-directory' }
   | { /** The name is not in this request's own enumeration of that directory. */ outcome: 'not-an-occurrence-file' }
-  | { /** It was, and nothing regular stands at it now. */ outcome: 'no-such-file' };
+  | {
+    /**
+     * It was, and the file that was enumerated is not what opened — gone, no longer a regular file,
+     * or a different one standing where it was, under its name or under a replaced parent's.
+     */
+    outcome: 'no-such-file';
+  };
 
 /** What a listing says about an occurrence whose recorded directory is not a path at all. */
 const NOT_A_PATH = 'the manifest records no directory for this occurrence, so nothing was named for it';
@@ -425,10 +431,19 @@ const sharedSequence = (seq: number): string =>
 /**
  * `O_NOFOLLOW` where the platform defines it, and nothing where it does not.
  *
- * **The blind spot is stated rather than left to be found** (Q-0135 E-3): Node leaves this constant
- * undefined on Windows, where the final-component symlink a listed name may have been replaced by is
- * therefore followed. Every environment this repository runs in — `ubuntu-latest` on CI and darwin
- * for development — defines it, and this product has never claimed Windows support (Q-0098).
+ * **It is a narrowing and never the boundary, and since review round 4 that is measurable rather
+ * than asserted**: neutralised, every clause of `retained.test.ts` stays green, because the identity
+ * comparison in {@link readRetainedFile} refuses the replaced leaf with no flag at all. **So no
+ * behavioural clause discriminates it and that is by design** — the two paths answer one outcome,
+ * which the union deliberately does not split — and what it buys is stated instead of left to look
+ * like defence in depth nobody can justify: the replacement is **never opened**, where the identity
+ * comparison refuses it after the fact. A symlink to a FIFO is the shape where opening is itself the
+ * harm, `openSync` on one blocking until a writer appears.
+ *
+ * **Its blind spot is stated rather than left to be found** (Q-0135 E-3): Node leaves this constant
+ * undefined on Windows, so the narrowing is absent there and the boundary is not. Every environment
+ * this repository runs in — `ubuntu-latest` on CI and darwin for development — defines it, and this
+ * product has never claimed Windows support (Q-0098).
  */
 const NO_FOLLOW: number = fs.constants.O_NOFOLLOW ?? 0;
 
@@ -497,9 +512,28 @@ function collidingSeqs(occurrences: readonly ManifestOccurrence[]): Set<number> 
  */
 type OccurrenceProblem = 'not-a-path' | 'outside-run' | 'no-directory' | 'unreadable';
 
+/**
+ * One entry an occurrence's directory held when it was enumerated, with the identity of the file
+ * that was measured.
+ *
+ * **The identity travels because the enumeration and the open are two syscalls and the name between
+ * them is not stable**, which is review round 4's blocker and `static.ts`'s `ConfinedFile` at a
+ * second root. `dev` and `ino` together name one file on one filesystem, and they are `bigint`
+ * because an inode is a 64-bit number `Number` cannot hold on every filesystem — which is the whole
+ * reason Node offers `{ bigint: true }`. Deliberately not on {@link RetainedFile}: a caller is
+ * answered a name and a size, and what filesystem the store sits on is not a fact this module
+ * discloses.
+ */
+interface RetainedEntry extends RetainedFile {
+  /** The filesystem the measured file sits on. */
+  readonly dev: bigint;
+  /** The measured file itself, which the opened descriptor is then held against. */
+  readonly ino: bigint;
+}
+
 /** What one occurrence's directory yielded: where it is and what it holds, or why neither. */
 type OccurrenceFiles =
-  | { directory: string; files: RetainedFile[] }
+  | { directory: string; entries: RetainedEntry[] }
   | { problem: { reason: OccurrenceProblem; message: string } };
 
 /**
@@ -540,6 +574,15 @@ const REFUSAL_FOR: Readonly<Record<
  * socket and a symlink have no size to report and no bytes to serve. `lstat` rather than `stat`, so
  * the symlink is judged as itself rather than as whatever it points at.
  *
+ * **That same `lstat` is where a file's identity is taken, which is review round 4's blocker.**
+ * Confinement decides where a path is *at the moment it is checked*, so this function hands its
+ * caller a directory **name** — and a name is resolved again when something under it is opened.
+ * Between the two, anything with write access to the chain can put a link where the occurrence
+ * directory was, and the second resolution lands somewhere this one never approved. So every entry
+ * carries the `dev`/`ino` of the file that was measured, and {@link readRetainedFile} refuses unless
+ * the descriptor it opens carries it: the bytes that leave this module come from an inode enumerated
+ * inside the confined directory, or from nothing.
+ *
  * **The enumeration and the measurement are one error boundary, which is review round 2's major.**
  * `throwIfNoEntry` suppresses `ENOENT` and nothing else, so an `lstat` outside the `try` threw an
  * `EACCES` or an `EIO` raised entry by entry straight out of {@link listRetainedFiles} — one
@@ -563,13 +606,16 @@ function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFil
   if (typeof occurrenceDir !== 'string') return { problem: { reason: 'not-a-path', message: NOT_A_PATH } };
   const directory = pathInside(runDirectory, occurrenceDir);
   if (directory === null) return { problem: { reason: 'outside-run', message: OUTSIDE_RUN } };
-  const files: RetainedFile[] = [];
+  const entries: RetainedEntry[] = [];
   try {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       if (!isRetainedName(entry.name)) continue;
-      const found = fs.lstatSync(path.join(directory, entry.name), { throwIfNoEntry: false });
+      // `bigint` for the identity's sake rather than for the size's: an inode is a 64-bit number,
+      // and this `lstat` is the only moment at which the file that was confined and measured can be
+      // named to the open that follows it.
+      const found = fs.lstatSync(path.join(directory, entry.name), { bigint: true, throwIfNoEntry: false });
       if (found === undefined || !found.isFile()) continue;
-      files.push({ name: entry.name, bytes: found.size });
+      entries.push({ name: entry.name, bytes: Number(found.size), dev: found.dev, ino: found.ino });
     }
   } catch (error) {
     const code = errorProperty(error, 'code');
@@ -578,8 +624,8 @@ function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFil
       ? { problem: { reason: 'no-directory', message: NO_DIRECTORY } }
       : { problem: { reason: 'unreadable', message: unreadableDirectory(code) } };
   }
-  files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return { directory, files };
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { directory, entries };
 }
 
 /**
@@ -625,7 +671,9 @@ export function listRetainedFiles(runsRoot: string, token: string): RetainedRead
     }
     const found = retainedIn(read.directory, occurrence.occurrence_dir);
     if ('problem' in found) warnings.push({ ...named, message: found.problem.message });
-    else occurrences.push({ ...named, files: found.files });
+    // A name and a size apiece, and never the identity beside them: that is the open's business and
+    // not a caller's, and a listing that carried it would be telling a browser about the disk.
+    else occurrences.push({ ...named, files: found.entries.map(({ name, bytes }) => ({ name, bytes })) });
   }
   return { outcome: 'listing', occurrences, warnings };
 }
@@ -645,9 +693,25 @@ export function listRetainedFiles(runsRoot: string, token: string): RetainedRead
  *
  * **Opened once, `fstat`ed on the descriptor, and read from it** — `readTicketFileBytes`'s
  * discipline, which is Q-0122's TOCTOU fix reused rather than re-derived: a `statSync` followed by
- * an open by name measures one moment and serves another. {@link NO_FOLLOW} closes the half that
- * leaves: a listed name replaced by a symlink between the enumeration above and this open is refused
- * rather than having its target served, and the target is not read to find that out.
+ * an open by name measures one moment and serves another. {@link NO_FOLLOW} refuses the narrow half
+ * of that at the open itself — a listed *leaf* replaced by a symlink has its target left unread
+ * rather than served — and **the identity comparison is what covers the rest**, which is review
+ * round 4's blocker: that flag governs the last component only, and Node exposes no `openat` to walk
+ * the parents, so an occurrence *directory* replaced by a link between the enumeration and this open
+ * was followed and a file of the same leaf name outside the run was served. The descriptor's
+ * `dev`/`ino` are held against the ones {@link retainedIn} measured, so what is served is the file
+ * that was enumerated inside the confined directory or nothing at all. It is an identity comparison
+ * rather than a refusal of links outright for `static.ts`'s reason: refusing one would refuse the
+ * alias *inside* the root that `pathInside` deliberately admits.
+ *
+ * **What that cannot claim is stated rather than implied**, on the terms Q-0122 accepted the same
+ * bound: the approved inode may itself have been linked elsewhere, and bytes appended to it after
+ * the check are the bytes returned. Both are the file the enumeration approved, and neither is a
+ * path outside the run being served. `docs/GLOSSARY.md`'s **Confinement** is the authority — it is
+ * *"not a claim about a race … it says where a path is at the moment it is checked"* — and a stated
+ * bound is this repository's answer where no syscall Node exposes can close one, which is the run
+ * lock's own remainder at a second subject. Why: ruled at this ticket's review gate,
+ * `requirements/errata.md` E-6.
  *
  * Every other failure propagates: a file this process may not open is not a file that is not there.
  * **The enumeration above it is held to the same sentence**, which is review round 3's major: a
@@ -678,7 +742,8 @@ export function readRetainedFile(
   // is a true sentence about the name that was asked for. One the operating system refused is not:
   // nothing was enumerated, so nothing was established, and it keeps its own outcome.
   if ('problem' in found) return { outcome: REFUSAL_FOR[found.problem.reason] };
-  if (!found.files.some((file) => file.name === name)) return { outcome: 'not-an-occurrence-file' };
+  const member = found.entries.find((entry) => entry.name === name);
+  if (member === undefined) return { outcome: 'not-an-occurrence-file' };
   let handle: number;
   try {
     handle = fs.openSync(path.join(found.directory, name), fs.constants.O_RDONLY | NO_FOLLOW);
@@ -687,7 +752,13 @@ export function readRetainedFile(
     throw error;
   }
   try {
-    if (!fs.fstatSync(handle).isFile()) return { outcome: 'no-such-file' };
+    const opened = fs.fstatSync(handle, { bigint: true });
+    // Asked of the open handle rather than of the name, so a leaf replaced by a link, a parent
+    // directory replaced by one, and a file moved away with another put in its place are all one
+    // answer: a different file from the one the enumeration above approved, and a refusal.
+    if (!opened.isFile() || opened.dev !== member.dev || opened.ino !== member.ino) {
+      return { outcome: 'no-such-file' };
+    }
     return { outcome: 'file', name, bytes: fs.readFileSync(handle) };
   } finally {
     fs.closeSync(handle);

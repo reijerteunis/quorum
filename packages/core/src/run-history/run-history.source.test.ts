@@ -234,6 +234,9 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     // eight declared fields add six here. Q-0137 added eight across three more in reader.ts —
     // RetainedFile 2, RetainedOccurrence 3 and RetainedWarning 3 — and none for the two discriminated
     // unions beside them, which are `export type` and which this walk deliberately does not enter.
+    // Nor for `RetainedEntry`, which extends RetainedFile with the identity review round 4's blocker
+    // needed: it is module-private for that reason, so its two fields are the lock record's case
+    // above rather than an interface the walk failed to enter.
     expect(fields.length).toBe(70);
   });
 
