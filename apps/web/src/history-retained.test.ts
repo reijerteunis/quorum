@@ -311,14 +311,18 @@ describe('Q-0138 AC-10 — the occurrence a real allocation leaves, rendered', (
     // rendering half, and the fixture is hand-built because the states this screen has to get right
     // are ones no store supplies (see this file's header).
     //
-    // **That it is the shape the writer really produces is established by EXECUTING the producer,
-    // and not here.** `packages/server/src/retained.test.ts`'s Q-0138 block starts a real run
-    // through the daemon's own host, holds it between allocation and completion, and asserts what
-    // the three routes answer — including that the status a real allocation puts on the wire is the
-    // one `history-screen.tsx` branches on. It lives there because that is the only package where
-    // both halves are reachable: this one depends on `@quorum/shared` alone and may reach neither the
-    // engine nor the daemon, and giving the browser app a dependency on either to make a test
-    // convenient would be an architecture change rather than a test.
+    // **That it is the shape the writer really produces is established by EXECUTING both halves,
+    // and neither of them is here.** `packages/server/src/retained.test.ts`'s Q-0138 block starts a
+    // real run through the daemon's own host, holds it between allocation and completion, and
+    // asserts that what the three routes answer still equals
+    // `apps/web/test/fixtures/running-occurrence.json` — a recording of those same three bodies, with
+    // only a clock and a file's own size normalised. `apps/web/test/history-producer.test.ts` then
+    // renders **those recorded bytes** through this same screen. So the fixture below and the
+    // producer cannot drift: editing the recording turns the producer's suite red, and changing what
+    // the producer emits turns it red too. The producer half lives in `packages/server` because that
+    // is the only package that can reach the engine — this one depends on `@quorum/shared` alone, and
+    // giving the browser app a dependency on the engine or on the daemon it talks to over HTTP to
+    // make a test convenient would be an architecture change rather than a test.
     const { view, render } = oneRun(
       [step({ step_id: 'implement', seq: 1, status: 'running', duration_ms: null })],
       retained({ occurrences: [{ seq: 1, step_id: 'implement', files: [{ name: PROMPT_FILE, bytes: 14 }] }] }),

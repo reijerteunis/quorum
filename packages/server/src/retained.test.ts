@@ -13,7 +13,8 @@ import path from 'node:path';
 import {
   PROMPT_FILE, RUN_HISTORY_ROOT, wireRunHistoryListSchema, wireRunHistoryRetainedSchema,
   wireRunHistoryRetainedTextSchema, wireRunHistorySchema,
-  type WireRefusal, type WireRunHistoryRetained, type WireRunHistoryRetainedText,
+  type WireRefusal, type WireRunHistory, type WireRunHistoryList, type WireRunHistoryRetained,
+  type WireRunHistoryRetainedText,
 } from '@quorum/shared';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
@@ -28,18 +29,20 @@ afterAll(removeTempDirs);
 /**
  * The workspace root, reached from this file rather than by climbing to a repository.
  *
- * `static.test.ts`'s idiom, and here for its reason: the Q-0138 block below reads `apps/web`'s
- * history screen as tracked source, because the value it compares that screen against is one only a
- * run in THIS package can produce.
+ * `static.test.ts`'s idiom, and here for its reason: the Q-0138 block below holds what a real run
+ * puts on the wire against `apps/web`'s recording of it, and only a run in THIS package can produce
+ * the one side while only `@quorum/web` can render the other.
  *
- * **The read is NOT declared in `packages/server/turbo.json`, and that is measured rather than
- * assumed.** `@quorum/core#test` declares `../../apps/**\/*.tsx` — verified in turbo's own `inputs`
- * report, where `apps/web/src/history-screen.tsx` appears under that task — and `@quorum/server`
- * depends on `@quorum/core`, so the root `test` task's `^test` edge puts that task's hash inside this
- * one. Declaring it here would be the same claim written twice, free to drift, which is exactly the
- * reasoning that file already gives for not re-declaring `docs/04-architecture.md`. What it declares
- * instead are the two reads NOTHING covers, `apps/web/src/routes.ts` and `apps/web/vite.config.ts`;
- * a `.tsx` under `apps/web/src` is not one of them.
+ * **The read IS declared in `packages/server/turbo.json`, and which way round that goes was measured
+ * rather than assumed.** `@quorum/core#test` declares `../../apps/**\/*.ts` and `../../apps/**\/*.tsx`
+ * and `@quorum/server` depends on `@quorum/core`, so the root `test` task's `^test` edge would carry a
+ * TypeScript file under `apps/web` into this task's hash with no declaration — which is why the
+ * status scan this block used to perform needed none. {@link RECORDING} is a **`.json`**, which no
+ * glob in that list reaches, so nothing would have invalidated this task when the recording changed.
+ * Verified in turbo's own `inputs` report, which is the instrument that discriminates here: a task's
+ * hash moves when any package's source moves, `globalCacheInputs.hashOfInternalDependencies` being in
+ * every one of them, so comparing hashes with and without a declaration reports nothing in this
+ * workspace.
  */
 const WORKSPACE = path.resolve(import.meta.dirname, '..', '..', '..');
 
@@ -668,6 +671,20 @@ describe('Q-0137 AC-13 — an unknown retained name opens, and nothing anywhere 
  *
  * **Over a socket rather than through `app.request`**, unlike every case above: these are the three
  * routes a browser actually issues for a run in flight, and the listing is one of them.
+ *
+ * **AC-10's half here is what makes the screen's fixture trustworthy, and it is an equality over a
+ * recording rather than a scan of source.** Run 2 iteration 2 compared one status literal against
+ * `history-screen.tsx`'s text, which is this repository's weakest instrument and could not see the
+ * sixteen other fields on the wire — the review's finding, and it is right. What replaced it:
+ * {@link RECORDING} holds the three bodies a held run answered, `apps/web/test/history-producer.test.ts`
+ * **renders those bytes through `HistoryScreen`**, and the case below starts the same run and asserts
+ * what it answers still equals them. Neither half passes alone, which is AC-10's closing clause —
+ * editing the recording to satisfy the renderer turns this suite red.
+ *
+ * **Why an artifact rather than one process:** producing needs the engine, rendering needs React and
+ * jsdom, and no package holds both. `@quorum/web` declares `@quorum/shared` alone, and giving the
+ * browser app a dependency on the engine or on the daemon it talks to over HTTP to make a test
+ * convenient is an architecture change rather than a test.
  */
 describe('Q-0138 AC-8/AC-9/AC-10 — a real run, held mid-step, is counted, listed and readable', () => {
   /**
@@ -690,8 +707,13 @@ repo:
   base_branch: main
 `;
 
-  /** `apps/web`'s history screen, read as tracked source. Why it may be, and what hashes it: {@link WORKSPACE}. */
-  const SCREEN = 'apps/web/src/history-screen.tsx';
+  /**
+   * `apps/web`'s recording of what this daemon answers for a held run.
+   *
+   * Read as tracked data rather than as text — the whole point of the change that introduced it.
+   * Why this package may read it, and what hashes the read: {@link WORKSPACE}.
+   */
+  const RECORDING = 'apps/web/test/fixtures/running-occurrence.json';
 
   /** One occurrence of the manifest, narrowed to the four fields these clauses read. */
   interface WrittenOccurrence {
@@ -709,8 +731,64 @@ repo:
     manifest(): { readonly steps: readonly WrittenOccurrence[] };
   }
 
-  /** `apps/web`'s history screen as text, read once per call so a case cannot cache a stale copy. */
-  const SCREEN_SOURCE = (): string => fs.readFileSync(path.join(WORKSPACE, SCREEN), 'utf8');
+  /** What {@link RECORDING} holds: the three bodies, under a note saying where they came from. */
+  interface Recorded {
+    readonly wire: {
+      readonly list: WireRunHistoryList;
+      readonly detail: WireRunHistory;
+      readonly retained: WireRunHistoryRetained;
+    };
+  }
+
+  /** The recording, read once per call so a case cannot compare against a stale copy. */
+  const recorded = (): Recorded =>
+    JSON.parse(fs.readFileSync(path.join(WORKSPACE, RECORDING), 'utf8')) as Recorded;
+
+  /**
+   * The only two keys a recording cannot pin, and what each is replaced with before comparison.
+   *
+   * `started_at` is a clock and `bytes` is the size of a prompt the fixture's own ticket text
+   * decides — neither is a property of this change, and a recording that pinned them would go red on
+   * the next run and on an unrelated edit to the fixture. **Everything else is compared as recorded**,
+   * `status` and `duration_ms` included, which is what the status scan this replaced could not do.
+   *
+   * Narrow deliberately, and the register below is what keeps it narrow: a normalisation that
+   * quietly reached a third field would be the instrument losing its subject, so the paths it
+   * touched are asserted rather than counted.
+   */
+  const VARIES: Record<string, string> = { started_at: '<clock>', bytes: '<size>' };
+
+  /**
+   * Replace every {@link VARIES} value in `value`, reporting the paths that were replaced.
+   *
+   * `Object.hasOwn` rather than `in`, so a wire field spelled like something on `Object.prototype`
+   * is compared rather than silently normalised away.
+   */
+  function settle(value: unknown): { document: unknown; touched: string[] } {
+    const touched: string[] = [];
+    const walk = (node: unknown, at: string): unknown => {
+      if (Array.isArray(node)) return node.map((entry, index) => walk(entry, `${at}[${String(index)}]`));
+      if (node === null || typeof node !== 'object') return node;
+      return Object.fromEntries(Object.entries(node).map(([key, entry]) => {
+        const here = `${at}.${key}`;
+        if (Object.hasOwn(VARIES, key)) {
+          touched.push(here);
+          return [key, VARIES[key]];
+        }
+        return [key, walk(entry, here)];
+      }));
+    };
+    return { document: walk(value, '$'), touched: touched.sort() };
+  }
+
+  /** Where a clock or a size sits in these three bodies — asserted on both sides of the comparison. */
+  const VARYING_PATHS = [
+    '$.detail.manifest.started_at',
+    '$.detail.manifest.steps[0].started_at',
+    '$.detail.steps[0].started_at',
+    '$.list.runs[0].started_at',
+    '$.retained.occurrences[0].files[0].bytes',
+  ];
 
   /**
    * Start one real run, hold it between allocation and completion, and run `body` against it.
@@ -806,28 +884,42 @@ repo:
     });
   });
 
-  test('AC-10 — the status a real allocation produces is the one the screen branches on', async () => {
-    await whileHeld(async ({ get }) => {
-      const detail = wireRunHistorySchema.parse(
-        await (await get(`/history/${encodeURIComponent(RUN)}`)).json(),
-      );
-      const produced = detail.steps[0]?.status;
-      expect(produced, 'this run produced no occurrence to read a status from').toBe('running');
+  test('AC-10 — what this run answers is still the recording the screen renders', async () => {
+    const wire = recorded().wire;
 
-      // The join AC-10 asks for, with the half that has to be EXECUTED rather than read: the value
-      // above came off the wire from a real allocation, and the screen's no-output branch is required
-      // to name it. It is compared here rather than in `apps/web` because that package depends on
-      // `@quorum/shared` alone and may reach neither the engine nor this one — giving the browser app
-      // a dependency on the daemon to make a test convenient is an architecture change, not a test.
-      // Reading `apps/web`'s tracked source from this package is `static.test.ts`'s arrangement for
-      // the same reason — derive the register, never transcribe it — and what hashes the read is
-      // measured rather than declared twice; see {@link WORKSPACE}.
-      expect(SCREEN_SOURCE(), `${SCREEN} does not branch on the status a real allocation produces`)
-        .toContain(`step.status === '${String(produced)}'`);
-      // …and the comparison has a subject: a screen that branched on something else fails above
-      // rather than passing over a needle that matches nothing.
-      expect(SCREEN_SOURCE().includes("step.status === 'in-progress'"),
-        'the needle matches a status no allocation produces').toBe(false);
+    // The premise, asserted before anything is compared: the recording has to be OF a step that had
+    // not finished, or the equality below could be satisfied by a recording of a finished one and
+    // `apps/web` would be rendering the terminal sentence with this suite green. The same clause is
+    // made on the rendering side, because each half has to be able to fail on its own.
+    expect(wire.detail.steps[0]?.status, 'the recording is not of a step that was still going').toBe('running');
+    expect(wire.detail.steps[0]?.duration_ms, 'the recorded occurrence carries a duration').toBeNull();
+    expect(wire.retained.occurrences[0]?.files.map((file) => file.name),
+      'the recorded occurrence retained no prompt, or already has an output').toStrictEqual([PROMPT_FILE]);
+
+    await whileHeld(async ({ get }) => {
+      const produced = {
+        list: wireRunHistoryListSchema.parse(await (await get('/history')).json()),
+        detail: wireRunHistorySchema.parse(await (await get(`/history/${encodeURIComponent(RUN)}`)).json()),
+        retained: wireRunHistoryRetainedSchema.parse(await (await get(retainedAt(RUN))).json()),
+      };
+
+      // The register has a subject on both sides, and the same one: a normalisation that had stopped
+      // reaching a clock would make the comparison below fail for a reason that is not a defect, and
+      // one that had started reaching a third field would make it pass over a real difference.
+      const live = settle(produced);
+      const recording = settle(wire);
+      expect(live.touched, 'the clocks and sizes in what this run answers are not the ones this register names')
+        .toStrictEqual(VARYING_PATHS);
+      expect(recording.touched, 'the clocks and sizes in the recording are not the ones this register names')
+        .toStrictEqual(VARYING_PATHS);
+
+      // The join AC-10 asks for, with both halves EXECUTED rather than read. This one is the
+      // producer: every other field of all three bodies — `status` and `duration_ms` among them — is
+      // compared exactly as recorded. The consumer is `apps/web/test/history-producer.test.ts`, which
+      // renders these same bytes through `HistoryScreen` and asserts the not-finished sentence.
+      expect(live.document, `what this daemon answers is no longer ${RECORDING}, which \
+apps/web renders through HistoryScreen — re-record it from this run rather than editing the screen's \
+expectations, and see that file's note`).toStrictEqual(recording.document);
     });
   });
 
