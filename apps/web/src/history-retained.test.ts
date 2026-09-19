@@ -307,9 +307,18 @@ describe('Q-0138 AC-10 — the occurrence a real allocation leaves, rendered', (
 
   test('a step the writer has only allocated has its prompt, no output, and the not-finished sentence', async () => {
     // The shape `RunHistory.allocate` leaves and nothing else touches: `running`, no duration, one
-    // retained file — the prompt `runAgentStep` writes before the vendor is invoked. That it is the
-    // shape the writer really produces is `test/history-producer.test.ts`'s, which holds the branch
-    // below against `allocate` itself; this is the rendering half.
+    // retained file — the prompt `runAgentStep` writes before the vendor is invoked. This is the
+    // rendering half, and the fixture is hand-built because the states this screen has to get right
+    // are ones no store supplies (see this file's header).
+    //
+    // **That it is the shape the writer really produces is established by EXECUTING the producer,
+    // and not here.** `packages/server/src/retained.test.ts`'s Q-0138 block starts a real run
+    // through the daemon's own host, holds it between allocation and completion, and asserts what
+    // the three routes answer — including that the status a real allocation puts on the wire is the
+    // one `history-screen.tsx` branches on. It lives there because that is the only package where
+    // both halves are reachable: this one depends on `@quorum/shared` alone and may reach neither the
+    // engine nor the daemon, and giving the browser app a dependency on either to make a test
+    // convenient would be an architecture change rather than a test.
     const { view, render } = oneRun(
       [step({ step_id: 'implement', seq: 1, status: 'running', duration_ms: null })],
       retained({ occurrences: [{ seq: 1, step_id: 'implement', files: [{ name: PROMPT_FILE, bytes: 14 }] }] }),

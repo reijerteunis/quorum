@@ -11,11 +11,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  RUN_HISTORY_ROOT, wireRunHistoryListSchema, wireRunHistoryRetainedSchema,
+  PROMPT_FILE, RUN_HISTORY_ROOT, wireRunHistoryListSchema, wireRunHistoryRetainedSchema,
   wireRunHistoryRetainedTextSchema, wireRunHistorySchema,
   type WireRefusal, type WireRunHistoryRetained, type WireRunHistoryRetainedText,
 } from '@quorum/shared';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import { createRunHost } from './host.js';
 import { createApp } from './http.js';
@@ -24,6 +24,24 @@ import { serve } from './serve.js';
 import { fixture, removeTempDirs, TICKET_ID, write } from '../test/fixture.js';
 
 afterAll(removeTempDirs);
+
+/**
+ * The workspace root, reached from this file rather than by climbing to a repository.
+ *
+ * `static.test.ts`'s idiom, and here for its reason: the Q-0138 block below reads `apps/web`'s
+ * history screen as tracked source, because the value it compares that screen against is one only a
+ * run in THIS package can produce.
+ *
+ * **The read is NOT declared in `packages/server/turbo.json`, and that is measured rather than
+ * assumed.** `@quorum/core#test` declares `../../apps/**\/*.tsx` — verified in turbo's own `inputs`
+ * report, where `apps/web/src/history-screen.tsx` appears under that task — and `@quorum/server`
+ * depends on `@quorum/core`, so the root `test` task's `^test` edge puts that task's hash inside this
+ * one. Declaring it here would be the same claim written twice, free to drift, which is exactly the
+ * reasoning that file already gives for not re-declaring `docs/04-architecture.md`. What it declares
+ * instead are the two reads NOTHING covers, `apps/web/src/routes.ts` and `apps/web/vite.config.ts`;
+ * a `.tsx` under `apps/web/src` is not one of them.
+ */
+const WORKSPACE = path.resolve(import.meta.dirname, '..', '..', '..');
 
 /** The run every fixture here builds, named as the store names it. */
 const RUN = `${TICKET_ID}-1`;
@@ -627,60 +645,145 @@ describe('Q-0137 AC-13 — an unknown retained name opens, and nothing anywhere 
 });
 
 /**
- * Q-0138 AC-8 and AC-9 — what the three read routes answer about a step that has not finished.
+ * Q-0138 AC-8, AC-9 and AC-10's producer half — the three read routes over a step that has not
+ * finished, in a run this daemon really started.
  *
- * **The barrier is the fixture's shape rather than a moment in time.** A manifest recording one
- * running occurrence, no `ended_at`, and an occurrence directory holding `prompt.txt` and no
- * `output.txt` is exactly the state `RunHistory.allocate` leaves between allocation and completion,
- * and written out here it is reached with nothing racing and nothing terminating. That the writer
- * genuinely produces it is `packages/core`'s to establish and it does — `run-history/writer.test.ts`
- * (AC-1) and `run-history/retained.test.ts` (AC-7) drive the real writer and assert this document —
- * which this package cannot, `initialiseRunHistory` being deliberately absent from `@quorum/core`'s
- * barrel so that a surface presenting run history cannot create a run directory.
+ * **Driven through the product's own producer, not a manifest written here**, which is what run 2
+ * iteration 1 got wrong: a hand-built document is a *claim* about what `RunHistory.allocate` leaves,
+ * and establishing that claim is what AC-9 asks for — so a fixture stays green if the writer stops
+ * producing a server-readable manifest or drifts from the shape invented beside it.
+ * `initialiseRunHistory` is deliberately absent from `@quorum/core`'s barrel, so this package cannot
+ * call the writer directly and must not: a surface presenting run history may not create a run
+ * directory. It does not have to. `host.start` is the one production caller of `runFlow`, and the
+ * chain a start drives is `steps.ts` → `allocateOccurrence` → `allocate` → `manifest.json` on disk →
+ * these routes. That is a **longer** join than AC-7's arrangement and the one the daemon performs.
+ *
+ * **The barrier is a timer that cannot fire, and the release is explicit.** The mock adapter's only
+ * pause is `setTimeout(cfg.delayMs)`, so a real delay would make the state a window and every
+ * assertion a race against it — which AC-9 forbids in as many words. Under `vi.useFakeTimers` that
+ * timer never fires: the run allocates the occurrence, persists the prompt it is about to send, and
+ * stops inside `adapter.run` until {@link whileHeld} advances the clock. Nothing below waits for a
+ * duration, and **nothing terminates to make the occurrence visible** — the flow has ONE step, so
+ * there is no sibling that could, which is stronger than a second occurrence that merely did not.
  *
  * **Over a socket rather than through `app.request`**, unlike every case above: these are the three
  * routes a browser actually issues for a run in flight, and the listing is one of them.
  */
-describe('Q-0138 AC-8/AC-9 — a run with one unfinished step is counted, listed and readable', () => {
-  /** A manifest of a run in flight: one occurrence, `running`, no end, and no roll-up yet. */
-  const inFlight = (): Record<string, unknown> => ({
-    ...manifestOf([occurrence({
-      step_id: 'implement', occurrence_dir: 'steps/001-implement', status: 'running',
-    })]),
-    ended_at: null,
-    duration_ms: null,
-    status: 'running',
-  });
+describe('Q-0138 AC-8/AC-9/AC-10 — a real run, held mid-step, is counted, listed and readable', () => {
+  /**
+   * What the mock adapter is told its call takes.
+   *
+   * Never waited for, and large deliberately: the timer it creates is a faked one, so this is the
+   * amount of fake clock {@link whileHeld} advances to release the run rather than a duration
+   * anything sleeps for. Large enough that a real timer of this length would be an obvious defect,
+   * which is the point — if the fake clock is ever not installed, the test hangs its own budget out
+   * rather than quietly racing.
+   */
+  const HELD_MS = 600_000;
 
-  /** A listening daemon over a project whose store already holds `document`. */
-  async function listening(document: unknown, files: Record<string, Record<string, string>>) {
-    const project = fixture({});
-    writeRun(project.project.repoDir, document, files);
-    const host = createRunHost({ project: project.project, retain: 10 });
-    const server = await serve({ host });
-    const get = async (route: string): Promise<Response> =>
-      fetch(`http://127.0.0.1:${String(server.port)}${route}`);
-    return {
-      get,
-      stop: async (): Promise<void> => { await host.shutdown(); await server.close(); },
-    };
+  /** A project whose adapter is the mock and whose mock pauses until a clock is advanced. */
+  const HELD_CONFIG = `adapterOverride: mock
+adapters:
+  mock:
+    delayMs: ${String(HELD_MS)}
+repo:
+  base_branch: main
+`;
+
+  /** `apps/web`'s history screen, read as tracked source. Why it may be, and what hashes it: {@link WORKSPACE}. */
+  const SCREEN = 'apps/web/src/history-screen.tsx';
+
+  /** One occurrence of the manifest, narrowed to the four fields these clauses read. */
+  interface WrittenOccurrence {
+    readonly step_id: string;
+    readonly status: string;
+    readonly duration_ms: number | null;
+    readonly occurrence_dir: string;
   }
 
-  test('the listing counts it, the detail names it running, and the retained listing has its prompt', async () => {
-    const { get, stop } = await listening(inFlight(), { 'steps/001-implement': { 'prompt.txt': 'ask' } });
+  /** What one held run offers a case: the daemon's socket, and the document the writer left. */
+  interface Held {
+    /** One GET against the listening daemon. */
+    get(route: string): Promise<Response>;
+    /** The manifest `RunHistory` has written, read off disk rather than from any cache. */
+    manifest(): { readonly steps: readonly WrittenOccurrence[] };
+  }
+
+  /** `apps/web`'s history screen as text, read once per call so a case cannot cache a stale copy. */
+  const SCREEN_SOURCE = (): string => fs.readFileSync(path.join(WORKSPACE, SCREEN), 'utf8');
+
+  /**
+   * Start one real run, hold it between allocation and completion, and run `body` against it.
+   *
+   * A callback rather than a returned handle so the clock and the socket are restored on every exit:
+   * a failed assertion inside `body` must not leave fake timers installed for the rest of the file.
+   */
+  async function whileHeld(body: (held: Held) => Promise<void>): Promise<void> {
+    const project = fixture({ config: HELD_CONFIG });
+    const host = createRunHost({ project: project.project, retain: 100 });
+    const server = await serve({ host });
+    // Installed before the run starts, so the timer the mock creates is the faked one. `toFake` is
+    // the two timer functions and nothing else: the clock the writer stamps `started_at` from stays
+    // real, because a manifest is what these routes answer from.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] });
     try {
+      const outcome = await host.start({ flow: 'probe', ticket: TICKET_ID });
+      if (!outcome.started) throw new Error(`the run did not start: ${outcome.refusal.condition}`);
+      const subscription = host.subscribe(outcome.run.handle);
+      if (!subscription) throw new Error('the started run has no subscription');
+      try {
+        // `runAgentStep` emits its `step` event AFTER allocating the occurrence and persisting the
+        // prompt and BEFORE awaiting the adapter, so receiving that event IS the proof that the
+        // barrier has been reached. Awaited on the event stream rather than polled, so nothing here
+        // needs a timer either — which matters, because the only one available is faked.
+        let reached = false;
+        for await (const event of subscription.events) {
+          if (event.type === 'step') { reached = true; break; }
+        }
+        if (!reached) throw new Error('the run ended without reaching a step, so nothing was held');
+        await body({
+          get: async (route) => fetch(`http://127.0.0.1:${String(server.port)}${route}`),
+          manifest: () => JSON.parse(
+            fs.readFileSync(path.join(runDir(project.repoDir), 'manifest.json'), 'utf8'),
+          ) as { readonly steps: readonly WrittenOccurrence[] },
+        });
+      } finally {
+        subscription.close();
+      }
+    } finally {
+      // Advanced on EVERY exit, a failed assertion included: the promise the run is suspended on is
+      // waiting for a FAKE timer, so restoring the real clock without firing it would leave that
+      // promise pending for ever and `shutdown()` — which waits for the run to finish persisting —
+      // would never resolve. A failing assertion would then present as a hung file.
+      await vi.advanceTimersByTimeAsync(HELD_MS);
+      vi.useRealTimers();
+      await host.shutdown();
+      await server.close();
+    }
+  }
+
+  test('the writer names it, the listing counts it, the detail says running, and its prompt is readable', async () => {
+    await whileHeld(async ({ get, manifest }) => {
+      // The document the REAL writer left, read off disk: the state AC-1 pins in `packages/core`,
+      // here as the premise every clause below answers about. Without the allocate-time replacement
+      // this array is empty and every clause in this case fails.
+      const steps = manifest().steps;
+      expect(steps.map((step) => [step.step_id, step.status, step.duration_ms]),
+        'the manifest does not name the step this run is inside').toStrictEqual([['work', 'running', null]]);
+      expect(steps[0].occurrence_dir).toBe('steps/001-work');
+
       // AC-8 — one allocated unfinished step is one occurrence, and the row says so.
       const list = wireRunHistoryListSchema.parse(await (await get('/history')).json());
       const row = list.runs.find((entry) => entry.id === RUN);
       expect(row?.occurrenceCount, 'a run whose only step is still going was counted as empty').toBe(1);
       expect(row?.incomplete, 'a run with no end was reported as finished').toBe(true);
 
-      // AC-9 — the detail carries the occurrence with the status the manifest recorded.
+      // AC-9 — the detail carries the occurrence with the status the writer recorded.
       const detailResponse = await get(`/history/${encodeURIComponent(RUN)}`);
       expect(detailResponse.status).toBe(200);
       const detail = wireRunHistorySchema.parse(await detailResponse.json());
-      expect(detail.steps.map((step) => [step.seq, step.step_id, step.status]))
-        .toStrictEqual([[1, 'implement', 'running']]);
+      expect(detail.steps.map((step) => [step.seq, step.step_id, step.status, step.duration_ms]))
+        .toStrictEqual([[1, 'work', 'running', null]]);
 
       // …and the retained listing answers for the same occurrence, under the same seq and step id.
       const retainedResponse = await get(retainedAt(RUN));
@@ -688,32 +791,64 @@ describe('Q-0138 AC-8/AC-9 — a run with one unfinished step is counted, listed
       const retained = wireRunHistoryRetainedSchema.parse(await retainedResponse.json());
       expect(retained.warnings, 'a running occurrence was named as one the listing could not read')
         .toStrictEqual([]);
-      expect(retained.occurrences).toStrictEqual([
-        { seq: 1, step_id: 'implement', files: [{ name: 'prompt.txt', bytes: 3 }] },
-      ]);
-      // The prompt is there and the output is not, which is the whole of what a reader wants while
-      // the step is still going.
-      expect(retained.occurrences[0].files.map((file) => file.name)).not.toContain('output.txt');
+      expect(retained.occurrences.map((entry) => [entry.seq, entry.step_id, entry.files.map((file) => file.name)]),
+        'the listing does not name this run\'s prompt, or names an output it cannot have yet')
+        .toStrictEqual([[1, 'work', [PROMPT_FILE]]]);
 
-      // And the file itself is readable, over the same socket, while nothing has finished.
-      const file = await get(fileAt(RUN, '1', 'prompt.txt'));
+      // The byte count is the prompt this run built rather than a number written here, so the file
+      // served and the file measured are one file.
+      const bytes = retained.occurrences[0].files[0].bytes;
+      const file = await get(fileAt(RUN, '1', PROMPT_FILE));
       expect(file.status).toBe(200);
-      expect((await file.json() as WireRunHistoryRetainedText).text).toBe('ask');
-    } finally {
-      await stop();
-    }
+      const served = wireRunHistoryRetainedTextSchema.parse(await file.json());
+      expect(Buffer.byteLength(served.text), 'the text served is not the file the listing measured').toBe(bytes);
+      expect(served.text, 'what was served is not the prompt this run composed').toContain(`# Ticket ${TICKET_ID}`);
+    });
   });
 
-  test('and an empty `steps` array still counts zero, so the clause above is not satisfied by any manifest', async () => {
-    const document = { ...inFlight(), steps: [] };
-    const { get, stop } = await listening(document, {});
+  test('AC-10 — the status a real allocation produces is the one the screen branches on', async () => {
+    await whileHeld(async ({ get }) => {
+      const detail = wireRunHistorySchema.parse(
+        await (await get(`/history/${encodeURIComponent(RUN)}`)).json(),
+      );
+      const produced = detail.steps[0]?.status;
+      expect(produced, 'this run produced no occurrence to read a status from').toBe('running');
+
+      // The join AC-10 asks for, with the half that has to be EXECUTED rather than read: the value
+      // above came off the wire from a real allocation, and the screen's no-output branch is required
+      // to name it. It is compared here rather than in `apps/web` because that package depends on
+      // `@quorum/shared` alone and may reach neither the engine nor this one — giving the browser app
+      // a dependency on the daemon to make a test convenient is an architecture change, not a test.
+      // Reading `apps/web`'s tracked source from this package is `static.test.ts`'s arrangement for
+      // the same reason — derive the register, never transcribe it — and what hashes the read is
+      // measured rather than declared twice; see {@link WORKSPACE}.
+      expect(SCREEN_SOURCE(), `${SCREEN} does not branch on the status a real allocation produces`)
+        .toContain(`step.status === '${String(produced)}'`);
+      // …and the comparison has a subject: a screen that branched on something else fails above
+      // rather than passing over a needle that matches nothing.
+      expect(SCREEN_SOURCE().includes("step.status === 'in-progress'"),
+        'the needle matches a status no allocation produces').toBe(false);
+    });
+  });
+
+  test('and an empty `steps` array still counts zero, so the clauses above are not satisfied by any manifest', async () => {
+    // Hand-built deliberately, and the one case here that must be: a manifest recording no
+    // occurrence at all is what a run leaves in its first instants, and no run this test can drive
+    // stands still there long enough to be read.
+    const project = fixture({});
+    writeRun(project.repoDir, { ...manifestOf([]), ended_at: null, duration_ms: null, status: 'running' });
+    const host = createRunHost({ project: project.project, retain: 10 });
+    const server = await serve({ host });
+    const get = async (route: string): Promise<Response> =>
+      fetch(`http://127.0.0.1:${String(server.port)}${route}`);
     try {
       const list = wireRunHistoryListSchema.parse(await (await get('/history')).json());
       expect(list.runs.find((entry) => entry.id === RUN)?.occurrenceCount).toBe(0);
       const retained = wireRunHistoryRetainedSchema.parse(await (await get(retainedAt(RUN))).json());
       expect(retained.occurrences).toStrictEqual([]);
     } finally {
-      await stop();
+      await host.shutdown();
+      await server.close();
     }
   });
 });
