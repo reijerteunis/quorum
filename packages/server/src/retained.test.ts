@@ -73,6 +73,22 @@ const fileAt = (id: string, occurrenceValue: string, name: string): string =>
 const codeOf = async (response: Response): Promise<string> => (await response.json() as WireRefusal).code;
 
 /**
+ * Whether this process can enumerate `dir` — the premise the mode-0 fixture rests on.
+ *
+ * A capability of the environment rather than of the commit: a mode of 0 stops nothing when the
+ * process is root, so the case that needs it probes and skips rather than asserting over an
+ * unstaged subject. The shape `backlog.test.ts`'s mode-0 case already uses.
+ */
+function enumerable(dir: string): boolean {
+  try {
+    fs.readdirSync(dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Spellings of *the occurrence's directory* a client might send, which is the one value AC-6 keeps
  * out of a client's hands.
  *
@@ -217,6 +233,10 @@ describe('Q-0137 AC-5 — one file\'s bytes as text, and every refusal under its
       [fileAt(RUN, '2', 'prompt.txt'), 422, 'unsafe-occurrence-directory'],
       [fileAt(RUN, '1', 'nope.txt'), 400, 'not-an-occurrence-file'],
     ];
+    // The tenth row — a directory the operating system refuses — is the clause below rather than an
+    // entry here, and the reason is what a skip costs: it is the one row whose fixture needs a
+    // capability this process may not have, and `ctx.skip` inside this loop would take the other
+    // nine with it on a machine running as root.
     for (const [route, status, code] of cases) {
       const response = await app.request(route);
       expect(response.status, route).toBe(status);
@@ -228,6 +248,59 @@ describe('Q-0137 AC-5 — one file\'s bytes as text, and every refusal under its
     const refused = await damaged.app.request(fileAt(RUN, '1', 'prompt.txt'));
     expect(refused.status).toBe(422);
     expect(await codeOf(refused)).toBe('malformed-manifest');
+  });
+
+  test('AC-5\'s tenth row: a directory this process cannot enumerate is 422 under its own code', async (ctx) => {
+    // **Review round 3's major, ruled by `requirements/errata.md` E-5.** It was answered
+    // `not-an-occurrence-file`, whose stated meaning is *the name was never this occurrence's* —
+    // a negative nothing established, because no listing could be derived. Its own row now, at
+    // `unsafe-occurrence-directory`'s status and shape: both say the store is in a state that
+    // prevents an answer and neither blames the client.
+    //
+    // **Staged rather than mocked**, as E-5 asks. The premise is a capability of the environment
+    // rather than of the commit, so it is probed and skipped where the probe fails — running as
+    // root, where a mode of 0 stops nothing — on *"A test's verdict is a property of the commit,
+    // not of the checkout or the account"* (2026-08-30). `core`'s hooked entry-level case covers
+    // the same outcome with no capability, so the skip is a lost fixture rather than a hole.
+    const { project, app } = served();
+    writeRun(
+      project.repoDir,
+      manifestOf([
+        occurrence({ step_id: 'refused', occurrence_dir: 'steps/001-refused' }),
+        occurrence({ step_id: 'gone', occurrence_dir: 'steps/002-gone' }),
+      ]),
+      { 'steps/001-refused': { 'prompt.txt': 'ask' } },
+    );
+    const refused = path.join(runDir(project.repoDir), 'steps/001-refused');
+    fs.chmodSync(refused, 0o000);
+    try {
+      ctx.skip(enumerable(refused),
+        'this process enumerates a directory whose mode is 0 — running as root, most likely — so a '
+        + 'directory that can be named and not read cannot be staged here');
+
+      const response = await app.request(fileAt(RUN, '1', 'prompt.txt'));
+      expect(response.status, 'a directory nobody could enumerate was not 422').toBe(422);
+      const body = await response.json() as WireRefusal;
+      expect(body.code, 'the condition was answered under a code that asserts an absence')
+        .toBe('unreadable-occurrence-directory');
+      expect(body.condition, 'the refusal does not name the condition').toMatch(/could not be read/);
+      expect(body.remedy, 'a reader is told to re-ask a run whose directory cannot be read').toBeNull();
+      expect(JSON.stringify(body), 'the refusal quoted the repository path').not.toContain(project.repoDir);
+
+      // Asserted APART rather than alone: the absence beside it keeps its own row, so this is a
+      // distinction the two routes make and not a rename of one of them.
+      const absent = await app.request(fileAt(RUN, '2', 'prompt.txt'));
+      expect(absent.status, 'an absent directory stopped answering as an absence').toBe(400);
+      expect(await codeOf(absent)).toBe('not-an-occurrence-file');
+
+      // And the listing still answers 200 over both, which is what E-5 leaves untouched.
+      const listed = await app.request(retainedAt(RUN));
+      expect(listed.status, 'one refused occurrence took the run listing with it').toBe(200);
+      const listing = await listed.json() as WireRunHistoryRetained;
+      expect(listing.warnings.map((warning) => warning.step_id)).toStrictEqual(['refused', 'gone']);
+    } finally {
+      fs.chmodSync(refused, 0o755);
+    }
   });
 
   test('the two routes answer ONE code for a condition they share', async () => {

@@ -435,8 +435,8 @@ type RetainedRefusal = Exclude<RetainedFileRead, { outcome: 'file' | 'malformed'
  * How each of those becomes an answer — a code a client switches on, a status, and a condition.
  *
  * **Decided by a discriminant and never by matching an error's prose**, which is `ticketFor`'s rule
- * at a second surface: `core` answers one of eight outcomes and each maps to exactly one row here,
- * so a reworded sentence in `core` cannot silently move a status.
+ * at a second surface: `core` answers one of nine outcomes and each maps to exactly one row here or
+ * is answered above this table, so a reworded sentence in `core` cannot silently move a status.
  *
  * **The code is declared rather than taken from the outcome's own name**, and one row is why: a
  * token naming no run is `core`'s `not-a-run` and this transport's **`no-such-run`**, which is what
@@ -449,18 +449,26 @@ type RetainedRefusal = Exclude<RetainedFileRead, { outcome: 'file' | 'malformed'
  * nothing — and the second that it was named by this request's own listing and has stopped being a
  * regular file since. A listed name replaced by a symlink is the second, and its target is not read.
  *
- * **The remedy is per row and three rows have none**, which is *"A `core` error names the
+ * **`unreadable-occurrence-directory` is a third row beside them and is review round 3's major.** A
+ * directory the operating system refused was answered as `not-an-occurrence-file`, which says the
+ * name was not this occurrence's — a negative nothing established, because no enumeration happened.
+ * It is `unsafe-occurrence-directory`'s status and shape for the same reason: both say the store is
+ * in a state that prevents an answer, and neither blames the client. Why: `requirements/errata.md`
+ * E-5.
+ *
+ * **The remedy is per row and four rows have none**, which is *"A `core` error names the
  * condition; the remedy belongs to the surface"* (2026-09-07) read the way round it is usually
  * needed: a surface that has nothing useful to say says nothing. Telling a reader to ask a run for
- * its retained files is advice on four rows and nonsense on the three where the run is not there,
- * where its own record refused the directory, and where the listing already reports that the
- * number they asked for is not addressable at all.
+ * its retained files is advice on four rows and nonsense on the four where the run is not there,
+ * where its own record refused the directory, where that directory could not be read at all, and
+ * where the listing already reports that the number they asked for is not addressable at all.
  *
  * **Every outcome `core` can answer with has a row by construction**: {@link RetainedRefusal} is
- * derived from that union, so a ninth outcome fails to compile here rather than falling through to
- * a status nobody chose. `not-a-file-name` is reachable from `core` alone — the route refuses a
- * malformed name first, with the same predicate — and is kept as the second of the two refusals
- * rather than deleted, because a caller other than this route gets the same answer.
+ * derived from that union, so a further outcome fails to compile here rather than falling through
+ * to a status nobody chose — which is what E-5's row cost, one added row and nothing else.
+ * `not-a-file-name` is reachable from `core` alone — the route refuses a malformed name first, with
+ * the same predicate — and is kept as the second of the two refusals rather than deleted, because a
+ * caller other than this route gets the same answer.
  */
 const RETAINED_REFUSAL: Readonly<Record<RetainedRefusal, {
   code: string;
@@ -496,6 +504,12 @@ const RETAINED_REFUSAL: Readonly<Record<RetainedRefusal, {
     code: 'unsafe-occurrence-directory',
     status: 422,
     condition: () => "this occurrence's recorded directory is not inside the run's own directory, so nothing in it was read",
+    remedy: null,
+  },
+  'unreadable-occurrence-directory': {
+    code: 'unreadable-occurrence-directory',
+    status: 422,
+    condition: () => "this occurrence's recorded directory could not be read, so what it retained is unknown",
     remedy: null,
   },
   'not-an-occurrence-file': {

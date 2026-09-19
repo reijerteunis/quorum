@@ -368,11 +368,16 @@ export type RetainedRead =
 /**
  * What {@link readRetainedFile} answers with — one file's bytes, or exactly why not.
  *
- * Eight outcomes rather than a `null`, because a surface choosing a status has to tell them apart
+ * Nine outcomes rather than a `null`, because a surface choosing a status has to tell them apart
  * and `null` would make it choose by matching prose. **`not-an-occurrence-file` and `no-such-file`
  * are never collapsed**: the first says the name was never this occurrence's, the second that it was
  * and is no longer — a distinction the store makes on its own, this product's run history having
  * grown by six files while this ticket's own requirement was being measured.
+ *
+ * **Nor is either of them collapsed with `unreadable-occurrence-directory`**, which is the ninth and
+ * says that nothing was enumerated at all: the other two assert an absence that was established, and
+ * a directory the operating system refused establishes none — *"A probe that could not answer is not
+ * a negative"* (2026-09-10). Why: ruled at this ticket's review gate, `requirements/errata.md` E-5.
  */
 export type RetainedFileRead =
   | {
@@ -389,6 +394,7 @@ export type RetainedFileRead =
   | { /** No occurrence of this run answers to that sequence number. */ outcome: 'no-such-occurrence' }
   | { /** More than one does, so none of them can be addressed by it. */ outcome: 'ambiguous-occurrence' }
   | { /** Its recorded directory is not inside this run's own. */ outcome: 'unsafe-occurrence-directory' }
+  | { /** That directory could not be enumerated, so what it holds is unknown. */ outcome: 'unreadable-occurrence-directory' }
   | { /** The name is not in this request's own enumeration of that directory. */ outcome: 'not-an-occurrence-file' }
   | { /** It was, and nothing regular stands at it now. */ outcome: 'no-such-file' };
 
@@ -480,10 +486,39 @@ function collidingSeqs(occurrences: readonly ManifestOccurrence[]): Set<number> 
   return new Set([...counted].filter(([, count]) => count > 1).map(([seq]) => seq));
 }
 
+/**
+ * Why one occurrence's directory yielded no files — the discriminant, beside the sentence.
+ *
+ * **The reason travels rather than a flag, which is review round 3's major.** A boolean said
+ * *confinement or everything else*, and everything else held two conditions that are not one:
+ * `not-a-path` and `no-directory` establish that this occurrence holds no file of any name, while
+ * `unreadable` establishes nothing at all — the enumeration did not happen. A read that answered
+ * them alike reported *could not tell* as a proven absence.
+ */
+type OccurrenceProblem = 'not-a-path' | 'outside-run' | 'no-directory' | 'unreadable';
+
 /** What one occurrence's directory yielded: where it is and what it holds, or why neither. */
 type OccurrenceFiles =
   | { directory: string; files: RetainedFile[] }
-  | { problem: { unsafe: boolean; message: string } };
+  | { problem: { reason: OccurrenceProblem; message: string } };
+
+/**
+ * What each of those becomes when one file was asked for.
+ *
+ * Every reason is mapped, so a fifth fails to compile here rather than falling through to an
+ * outcome nobody chose — `RETAINED_REFUSAL` one package up is derived from its own union for the
+ * same reason. `outside-run` is the only one that reports the confinement, and `unreadable` the
+ * only one that reports that nothing was enumerated.
+ */
+const REFUSAL_FOR: Readonly<Record<
+  OccurrenceProblem,
+  'not-an-occurrence-file' | 'unsafe-occurrence-directory' | 'unreadable-occurrence-directory'
+>> = {
+  'not-a-path': 'not-an-occurrence-file',
+  'no-directory': 'not-an-occurrence-file',
+  'outside-run': 'unsafe-occurrence-directory',
+  unreadable: 'unreadable-occurrence-directory',
+};
 
 /**
  * One occurrence's directory, confined and enumerated — and nothing in it opened.
@@ -513,7 +548,8 @@ type OccurrenceFiles =
  * anywhere in it is the occurrence's warning, named by its error code alone so no path is quoted
  * back. **It is the occurrence rather than the entry**: a listing that dropped the one file it could
  * not measure would be complete-looking and short, and a caller cannot tell a file that is not there
- * from one nobody could size.
+ * from one nobody could size. Which failure it was travels with the sentence as an
+ * {@link OccurrenceProblem}, because a reader asking for one file needs the two told apart.
  *
  * **And so is an entry {@link isRetainedName} refuses**, which is what makes the listing and the
  * read one answer rather than two: a name this module would not join onto a directory is a name no
@@ -524,9 +560,9 @@ type OccurrenceFiles =
  * passing constants, and which therefore means somebody put it there by hand.
  */
 function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFiles {
-  if (typeof occurrenceDir !== 'string') return { problem: { unsafe: false, message: NOT_A_PATH } };
+  if (typeof occurrenceDir !== 'string') return { problem: { reason: 'not-a-path', message: NOT_A_PATH } };
   const directory = pathInside(runDirectory, occurrenceDir);
-  if (directory === null) return { problem: { unsafe: true, message: OUTSIDE_RUN } };
+  if (directory === null) return { problem: { reason: 'outside-run', message: OUTSIDE_RUN } };
   const files: RetainedFile[] = [];
   try {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -538,7 +574,9 @@ function retainedIn(runDirectory: string, occurrenceDir: unknown): OccurrenceFil
   } catch (error) {
     const code = errorProperty(error, 'code');
     const missing = code === 'ENOENT' || code === 'ENOTDIR';
-    return { problem: { unsafe: false, message: missing ? NO_DIRECTORY : unreadableDirectory(code) } };
+    return missing
+      ? { problem: { reason: 'no-directory', message: NO_DIRECTORY } }
+      : { problem: { reason: 'unreadable', message: unreadableDirectory(code) } };
   }
   files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return { directory, files };
@@ -612,6 +650,10 @@ export function listRetainedFiles(runsRoot: string, token: string): RetainedRead
  * rather than having its target served, and the target is not read to find that out.
  *
  * Every other failure propagates: a file this process may not open is not a file that is not there.
+ * **The enumeration above it is held to the same sentence**, which is review round 3's major: a
+ * directory the operating system refused enumerated nothing, so it answers
+ * `unreadable-occurrence-directory` rather than joining the two conditions that did establish an
+ * absence. `retainedIn` already computed the distinction and this is what reads it.
  *
  * @param runsRoot absolute path of the runs root.
  * @param token the run id as it was typed.
@@ -632,12 +674,10 @@ export function readRetainedFile(
   if (matches.length === 0) return { outcome: 'no-such-occurrence' };
   if (matches.length > 1) return { outcome: 'ambiguous-occurrence' };
   const found = retainedIn(read.directory, matches[0].occurrence_dir);
-  if ('problem' in found) {
-    // A directory that is absent or unreadable enumerated nothing, so no name is one this occurrence
-    // holds — which is a true sentence about the name that was asked for. Only the confinement
-    // refusal is reported as itself, because it is the one a caller must not read as *not there*.
-    return { outcome: found.problem.unsafe ? 'unsafe-occurrence-directory' : 'not-an-occurrence-file' };
-  }
+  // A directory that is absent, or that the manifest never named, holds no file of any name — which
+  // is a true sentence about the name that was asked for. One the operating system refused is not:
+  // nothing was enumerated, so nothing was established, and it keeps its own outcome.
+  if ('problem' in found) return { outcome: REFUSAL_FOR[found.problem.reason] };
   if (!found.files.some((file) => file.name === name)) return { outcome: 'not-an-occurrence-file' };
   let handle: number;
   try {

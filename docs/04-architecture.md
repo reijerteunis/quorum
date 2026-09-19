@@ -311,14 +311,18 @@ request was understood. The identity is
 occurrence answers to is refused as ambiguous rather than answered, because *more than one* is not
 *none*. **Membership is derived for the request that reads**, never from a listing a client fetched
 earlier, which is what makes a name the writer *could* have created and did not unreadable —
-`persist` takes an artifact's name as a plain `string` parameter. Eight refusals, each with its own
+`persist` takes an artifact's name as a plain `string` parameter. Nine refusals, each with its own
 code: a token naming no run **404**, a manifest that would not parse **422**, an occurrence or name
 value that is malformed **400**, a sequence number matching no occurrence **404**, one matching more
-than one **409**, an occurrence whose recorded directory is refused **422**, a name this request's
-own listing does not hold **400**, and a listed name that has stopped being a regular file **404** —
+than one **409**, an occurrence whose recorded directory is refused **422**, one whose recorded
+directory could not be read at all **422**, a name this request's own listing does not hold **400**,
+and a listed name that has stopped being a regular file **404** —
 the last two never collapsed, the first saying the name was never this occurrence's and the second
 that it was and is no longer. A listed name replaced by a symlink is the second and its target is
-not followed. A file whose bytes are not well-formed UTF-8 is **422**, through the same whole-file
+not followed. **Neither of them is collapsed with the unreadable directory either**: they assert an
+absence the read established, and a directory the operating system refused enumerated nothing, so it
+establishes none — *"A probe that could not answer is not a negative"* (2026-09-10) at the code a
+client switches on. A file whose bytes are not well-formed UTF-8 is **422**, through the same whole-file
 fatal decode the ticket-file route uses, which is not a test for the replacement character: sixteen
 of the 1,797 files this repository's run history retains carry one legitimately. **A single refused
 occurrence never takes the run's listing with it** — it is named in `warnings` beside the

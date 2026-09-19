@@ -132,6 +132,24 @@ function refuseOn(target: string, code: string): MockInstance {
   return vi.spyOn(fs, 'lstatSync').mockImplementation(hook as never);
 }
 
+/**
+ * Whether this process can enumerate `dir` — the premise a mode-0 fixture rests on.
+ *
+ * A capability of the environment rather than of the commit: a mode of 0 stops nothing when the
+ * process is root, so the case that needs it probes and reports a skip rather than asserting over
+ * an unstaged subject. `backlog.test.ts`'s mode-0 case and `git.test.ts`'s ownership case are the
+ * same shape, for *"A test's verdict is a property of the commit, not of the checkout or the
+ * account"* (2026-08-30).
+ */
+function enumerable(dir: string): boolean {
+  try {
+    fs.readdirSync(dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A path inside the one run these fixtures build. */
 const inRun = (root: string, ...rest: string[]): string => path.join(root, 'Q-0137-1', ...rest);
 
@@ -306,12 +324,12 @@ describe('Q-0137 AC-1 — an occurrence\'s retained files are named and measured
       expect(answer.occurrences.some((entry) => entry.seq === 1), 'a file nobody could size was listed as absent')
         .toBe(false);
       // And the read beside it answers rather than throwing, both halves going through this one
-      // enumeration. What it answers is `not-an-occurrence-file`, which is the same treatment a
-      // directory the operating system refuses already had before this change and is stated here so
-      // the widening is visible: it is the answer for a name nobody could enumerate, and a caller
-      // reading it as *proven absent* is reading more than it says.
+      // enumeration. What it answers is `unreadable-occurrence-directory` since E-5: this round
+      // registered the widening — an entry-level metadata error reaching the read as
+      // `not-an-occurrence-file` — and the erratum closed it, because a name nobody could enumerate
+      // is not a name this occurrence never held.
       expect(readRetainedFile(root, 'Q-0137-1', 1, 'prompt.txt').outcome, 'the read threw instead of answering')
-        .toBe('not-an-occurrence-file');
+        .toBe('unreadable-occurrence-directory');
     } finally {
       lstat.mockRestore();
     }
@@ -539,6 +557,58 @@ describe('Q-0137 AC-2 — one retained file\'s bytes, with membership and the re
     // read it as absence.
     const root = runWith([occurrence({ step_id: 'gone', occurrence_dir: 'steps/001-gone' })]);
     expect(readRetainedFile(root, 'Q-0137-1', 1, 'prompt.txt').outcome).toBe('not-an-occurrence-file');
+  });
+
+  test('a directory the operating system REFUSES is its own outcome, and an absent one still is not', (ctx) => {
+    // **Review round 3's major, ruled by `requirements/errata.md` E-5.** The two were answered
+    // alike: a directory that enumerated nothing and one that could not be enumerated at all — the
+    // second asserting an absence no read established, which is *"A probe that could not answer is
+    // not a negative"* (2026-09-10) at the outcome a client switches on.
+    //
+    // **Staged rather than hooked**, which is what E-5 asks for: the condition is the operating
+    // system's own, raised by a mode a real store can carry. Its premise is a capability of the
+    // environment rather than of the commit, so it is PROBED and the case reports a skip where the
+    // probe fails — running as root, where a mode of 0 stops nothing. *"A test's verdict is a
+    // property of the commit, not of the checkout or the account"* (2026-08-30). The skip is a lost
+    // fixture rather than a hole: the hooked entry-level case above reaches the same outcome with
+    // no capability at all, and that is what keeps this covered everywhere.
+    const root = runWith(
+      [
+        occurrence({ step_id: 'refused', occurrence_dir: 'steps/001-refused' }),
+        occurrence({ step_id: 'gone', occurrence_dir: 'steps/002-gone' }),
+      ],
+      { 'steps/001-refused': { 'prompt.txt': 'ask' } },
+    );
+    const refused = inRun(root, 'steps/001-refused');
+    fs.chmodSync(refused, 0o000);
+    try {
+      ctx.skip(enumerable(refused),
+        'this process enumerates a directory whose mode is 0 — running as root, most likely — so a '
+        + 'directory that can be named and not read cannot be staged here');
+
+      expect(readRetainedFile(root, 'Q-0137-1', 1, 'prompt.txt').outcome,
+        'a directory nobody could enumerate was answered as a name this occurrence never held')
+        .toBe('unreadable-occurrence-directory');
+      // …and the absence beside it has not moved, which is what makes this a distinction rather
+      // than a rename: `steps/002-gone` was never created, so its `ENOENT` still answers the
+      // absence it establishes. The two are asserted apart rather than one being asserted alone.
+      expect(readRetainedFile(root, 'Q-0137-1', 2, 'prompt.txt').outcome,
+        'an absent directory stopped answering as an absence')
+        .toBe('not-an-occurrence-file');
+
+      // The listing is untouched by E-5 and says so here: both are warnings, told apart by the
+      // sentence each carries, and neither quotes a path back.
+      const answer = listRetainedFiles(root, 'Q-0137-1');
+      if (answer.outcome !== 'listing') throw new Error('the fixture did not list, so this clause has no subject');
+      expect(answer.warnings.map((warning) => warning.seq)).toStrictEqual([1, 2]);
+      expect(answer.warnings[0].message, 'the refused directory does not name the condition').toContain('EACCES');
+      expect(answer.warnings[1].message, 'the absent directory does not name the condition').toContain('not there');
+      expect(JSON.stringify(answer), 'a warning quoted a path').not.toContain(root);
+    } finally {
+      // Restored whatever happened above, including a skip: `removeTempDirs` cannot delete a
+      // directory it may not enumerate, so a fixture left at mode 0 is litter the next run inherits.
+      fs.chmodSync(refused, 0o755);
+    }
   });
 
   test('the run-level failures are readRun\'s own, before any name is considered', () => {
