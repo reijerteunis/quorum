@@ -529,6 +529,139 @@ export const wireRunHistoryListSchema: z.ZodType<WireRunHistoryList> = z.object(
 }).strict();
 
 /**
+ * One file an occurrence retained, as the retained listing names it: what to ask for, and how large.
+ *
+ * **No text**, which is {@link WireTicketFileEntry}'s arrangement for its reason at a store fifty
+ * times the size: one run's retained text reaches 3,514,617 B and one occurrence's 355,744 B, so a
+ * response carrying contents would hand a browser megabytes for a file nobody opened. `name` is what
+ * a reader asks for afterwards, one file at a time, and `bytes` is what tells them what they are
+ * about to ask for — which is what stands in for a cap here rather than a cap nobody is told about.
+ *
+ * **One leaf name and never a path.** `persist` takes an artifact's name as a plain `string`
+ * parameter and every shipped caller passes one of two constants, so what a directory holds is not
+ * what those constants say: the listing is the directory's own contents, and a name is joined onto a
+ * directory the client never sees.
+ */
+export interface WireRunHistoryRetainedFile {
+  /** The leaf name: non-empty, neither `.` nor `..`, and holding no path separator. */
+  readonly name: string;
+  readonly bytes: number;
+}
+
+/** Runtime validation for one named retained file. */
+export const wireRunHistoryRetainedFileSchema: z.ZodType<WireRunHistoryRetainedFile> = z.object({
+  name: z.string(),
+  bytes: z.number().int().nonnegative(),
+}).strict();
+
+/**
+ * One occurrence's retained files, under the number a client addresses that occurrence by.
+ *
+ * **`seq` is the identity and `occurrence_dir` is never one.** That field crosses to a browser today
+ * only because `GET /history/:id` spreads the whole manifest occurrence through a `looseObject`, and
+ * it is absent even from {@link WireRunHistoryOccurrence}'s own enumeration of what crosses loose —
+ * so accepting it back would ratify an accident as a contract. Nothing here carries it, and neither
+ * route accepts it under any spelling.
+ *
+ * `step_id` carries the manifest's value unaltered and therefore keeps the manifest's own name,
+ * which is {@link WireRunHistoryRow}'s stated convention; it is here so that a collision names both
+ * occurrences rather than one number twice.
+ */
+export interface WireRunHistoryRetainedOccurrence {
+  /** The sequence number in the occurrence's directory name, as `GET /history/:id` also reports it. */
+  readonly seq: number;
+  /** The step's id, or `""` where the manifest carried none — a cast, never a check. */
+  readonly step_id: string;
+  /** Its retained files, sorted by name. Empty where the directory is there and holds none. */
+  readonly files: readonly WireRunHistoryRetainedFile[];
+}
+
+/** Runtime validation for one occurrence's retained files. */
+export const wireRunHistoryRetainedOccurrenceSchema: z.ZodType<WireRunHistoryRetainedOccurrence> = z.object({
+  seq: z.number().int().nonnegative(),
+  step_id: z.string(),
+  files: z.array(wireRunHistoryRetainedFileSchema),
+}).strict();
+
+/**
+ * One occurrence a retained listing could not name files for, and why.
+ *
+ * {@link WireRunHistoryWarning}'s arrangement one level in: the answer travels **with** the
+ * occurrences it could name rather than instead of them, so one occurrence whose recorded directory
+ * is gone or is refused never costs a reader the other fifty-four.
+ *
+ * **The message names a condition and never a path.** The value that made it necessary is the
+ * manifest's own `occurrence_dir`, which nothing on the read path validates, so quoting a refused
+ * one back would put a path nobody asked for into an answer.
+ */
+export interface WireRunHistoryRetainedWarning {
+  /** The sequence number a reader would have addressed this occurrence by. */
+  readonly seq: number;
+  /** Its step id, so a shared sequence number names both occurrences rather than one twice. */
+  readonly step_id: string;
+  /** One sentence in the daemon's own words. */
+  readonly message: string;
+}
+
+/** Runtime validation for one unnameable occurrence. */
+export const wireRunHistoryRetainedWarningSchema: z.ZodType<WireRunHistoryRetainedWarning> = z.object({
+  seq: z.number().int().nonnegative(),
+  step_id: z.string(),
+  message: z.string(),
+}).strict();
+
+/**
+ * What one run's retained-file listing answers with: the occurrences it could name, and every reason
+ * for the rest.
+ *
+ * **`.strict()` at all three levels, where {@link WireRunHistory} is loose**, and the rule that
+ * decides each is *"Unknown keys are refused where Quorum owns the key set, and preserved where it
+ * does not"* (2026-08-25). That shape is a projection of a document `core` writes and may widen;
+ * this is composed by the transport out of a directory listing, so Quorum owns every key in it.
+ *
+ * **A separate route from `GET /history/:id` rather than a field on it**, which is measured rather
+ * than preferred: that route is mission control's, read on every load of a screen that will never
+ * fetch a retained file, and widening it would put a `readdir` and two `lstat`s per occurrence — up
+ * to 55 of them on this repository's largest run — behind a header. It would also retire that
+ * route's own documented property, *"It reads exactly one file."*
+ */
+export interface WireRunHistoryRetained {
+  readonly occurrences: readonly WireRunHistoryRetainedOccurrence[];
+  readonly warnings: readonly WireRunHistoryRetainedWarning[];
+}
+
+/** Runtime validation for one run's retained-file listing. */
+export const wireRunHistoryRetainedSchema: z.ZodType<WireRunHistoryRetained> = z.object({
+  occurrences: z.array(wireRunHistoryRetainedOccurrenceSchema),
+  warnings: z.array(wireRunHistoryRetainedWarningSchema),
+}).strict();
+
+/**
+ * One retained file, with its text.
+ *
+ * {@link WireTicketFile}'s contract at a second store, and the two clauses that make it honest are
+ * the same. `bytes` is the size of the bytes **actually read** and never the size the listing
+ * reported: this store moves under a reader in ordinary operation — it grew by six files while this
+ * ticket's own requirement was being measured — so a listing is what a reader chooses by and never a
+ * guarantee about what arrives. `text` is that file decoded as UTF-8, which is a claim the route has
+ * to be able to make: a file whose bytes are not well-formed UTF-8 is refused under its own code
+ * rather than served with substitutions in it. An empty file succeeds, carrying `bytes: 0`.
+ */
+export interface WireRunHistoryRetainedText {
+  /** The leaf name that was read, echoed so a reader can tell which file answered. */
+  readonly name: string;
+  readonly bytes: number;
+  readonly text: string;
+}
+
+/** Runtime validation for one retained file's contents. */
+export const wireRunHistoryRetainedTextSchema: z.ZodType<WireRunHistoryRetainedText> = z.object({
+  name: z.string(),
+  bytes: z.number().int().nonnegative(),
+  text: z.string(),
+}).strict();
+
+/**
  * The field names `POST /runs` accepts, in that route's own order.
  *
  * **The order is part of the value**, which is why this is a tuple and not a set: the route's

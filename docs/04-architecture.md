@@ -1,6 +1,16 @@
 # Quorum — Technical Architecture (v1)
 
-*Status: 2026-09-18 (Q-0018) — **run history is a screen, and `GET /history` declares a shape at
+*Status: 2026-09-19 (Q-0137) — **the drill-down opens what an occurrence retained, so the last thing
+this product wrote and had never read back is on a screen.** Two routes: `GET /history/:id/retained`
+names and measures every occurrence's retained files without opening one, and
+`GET /history/:id/file` reads one of them by its sequence number and its leaf name. **Occurrence
+confinement and byte reading are `core`'s** — `listRetainedFiles` and `readRetainedFile`, neither of
+which returns a path — because the untrusted value here is the manifest's own `occurrence_dir`,
+which nothing on the read path validates and which no client ever sees or supplies. There is no cap:
+one file at a time, with its size in front of the reader, which is Q-0127's answer at a store whose
+largest run retains 3.5 MB. No decision entry is owed and OQ-1 was ratified at the gate — a route
+has served `.quorum/` since Q-0119, and what Q-0127 excluded was a different subsystem's state
+inside a *backlog* route. Earlier — 2026-09-18 (Q-0018) — **run history is a screen, and `GET /history` declares a shape at
 last.** That route answered an inline object literal nothing declared, and its five fields could not
 fill the table `docs/05-design-prompt.md` §8 asks for: `WireRunHistoryList` and
 `WireRunHistoryRow` are `@quorum/shared`'s, the listing gained the manifest's start, end, duration,
@@ -12,7 +22,8 @@ refuted rather than deferred**: *"reuse screen 5 in a 'completed' state"* cannot
 events are not persisted and a finished run therefore has no event stream, and because a handle is
 meaningless across a restart while a history id names a directory — **171 run directories against
 zero handles in a freshly started daemon**. So the drill-down is an occurrence list, opened inline,
-and this screen composes no handle and links to no run. What an occurrence RETAINED is **Q-0137**'s;
+and this screen composes no handle and links to no run. What an occurrence RETAINED was **Q-0137**'s
+and is the paragraph above;
 `GET /project` is still the one route here that declares no shape, named so the correction above is
 not read as covering it. No route was added and no decision entry is owed, which was ratified at the
 gate against five landed sentences rather than assumed. Earlier the same day — 2026-09-18 (Q-0135) — **mission control shows how long a run has been going and what it has
@@ -265,6 +276,70 @@ about a damaged ticket**: `GET /tickets` renders it, named by its folder, becaus
 one is wrong about the one question a board answers; the page refuses it, because a page of blanks
 is not a ticket. That surfaces Q-0060 at this boundary and changes no parser.
 
+**The two answering for what a RUN retained are Q-0137's, and they are the first routes here that
+read a file `core` itself wrote.** `GET /history/:id/retained` names and measures every occurrence's
+retained files — a leaf name and a size apiece, from `readdir` and `lstat`, with nothing in the
+directory opened — and `GET /history/:id/file` reads exactly one of them, named by an `?occurrence=`
+sequence number and a `?name=` leaf. Two routes rather than a widening of `GET /history/:id`, which
+is mission control's and is read on every load of a screen that will never fetch one: widening it
+would put a `readdir` and an `lstat` per occurrence behind a cost header — up to 55 on this
+repository's largest run — and would retire that route's own property, *"It reads exactly one
+file."* **There is no cap anywhere and that is the design**, which is the ticket-file pair's answer
+at a store fifty times the size: one run's retained text reaches 3,514,617 B and one occurrence's
+355,744 B, and nothing large is fetched until a reader names that file with its size in front of
+them.
+**Occurrence confinement and byte reading are `core`'s, and no filesystem path crosses this boundary
+in either direction.** A client supplies a run token, a sequence number and one name; `core`
+resolves the run, confines the occurrence directory **the manifest records**, enumerates it for that
+request and opens the file. That value is the untrusted one here and the difference from
+`GET /tickets/:id/file` is worth stating: there the untrusted string arrives over HTTP, and here it
+arrives from a file this product wrote and re-checks nowhere — `readRun` calls the parsed manifest
+*"a cast, never a check"*, and no occurrence field is validated anywhere on the read path. It is
+confined with `pathInside` and deliberately not `isFolderIn`, an occurrence directory sitting two
+components below a run's rather than one. **The check and the read name one file**, which is
+`static.ts`'s discipline at a second root: confinement says where a path is at the moment it is
+checked, so the enumeration keeps each file's `dev`/`ino` and the descriptor that opens is held
+against it — an `O_NOFOLLOW` open covers the last component alone, and a parent replaced between the
+two would otherwise be followed. The residual is Q-0122's and is accepted on its terms: an approved
+inode linked elsewhere, or bytes appended to it after the check, are still the file that was
+approved. **The browser never receives `occurrence_dir` and neither
+route accepts it under any spelling**, by one mechanism and not two: each declares the query keys it
+accepts — `occurrence` and `name` for the file route, and **nothing at all** for the listing, which
+is answered by the run token alone — and refuses any other under `unknown-field`, rather than
+serving the request from the keys it understood while dropping the rest in silence. That is
+*"Unknown keys are refused where Quorum owns the key set"* (2026-08-25) applied to a request rather
+than to a body, under the code this transport already answers where a **body** carries a field a
+route does not accept: one condition, one code, so a client switching on it need not know which of
+the two routes it asked. An empty accepted set rather than an absent check is what makes the listing
+refuse one, and *ignored* is not *rejected* — a 200 over a key nobody read tells a client its
+request was understood. The identity is
+`seq`, and a sequence number more than one
+occurrence answers to is refused as ambiguous rather than answered, because *more than one* is not
+*none*. **Membership is derived for the request that reads**, never from a listing a client fetched
+earlier, which is what makes a name the writer *could* have created and did not unreadable —
+`persist` takes an artifact's name as a plain `string` parameter. Nine refusals, each with its own
+code: a token naming no run **404**, a manifest that would not parse **422**, an occurrence or name
+value that is malformed **400**, a sequence number matching no occurrence **404**, one matching more
+than one **409**, an occurrence whose recorded directory is refused **422**, one whose recorded
+directory could not be read at all **422**, a name this request's own listing does not hold **400**,
+and a listed name that has stopped being a regular file **404** —
+the last two never collapsed, the first saying the name was never this occurrence's and the second
+that it was and is no longer. A listed name replaced by a symlink is the second and its target is
+not followed. **Neither of them is collapsed with the unreadable directory either**: they assert an
+absence the read established, and a directory the operating system refused enumerated nothing, so it
+establishes none — *"A probe that could not answer is not a negative"* (2026-09-10) at the code a
+client switches on. A file whose bytes are not well-formed UTF-8 is **422**, through the same whole-file
+fatal decode the ticket-file route uses, which is not a test for the replacement character: sixteen
+of the 1,797 files this repository's run history retains carry one legitimately. **A single refused
+occurrence never takes the run's listing with it** — it is named in `warnings` beside the
+occurrences that were readable, which is `failSoftly`'s distinction one level in from where the
+store listing already applies it. That holds for a directory the operating system refuses **while it
+is being read**, entry by entry, and not only for one it refuses outright: `throwIfNoEntry`
+suppresses `ENOENT` and nothing else, so the enumeration and the measurement of what it found are
+one error boundary rather than two, and the warning names the error's code alone. Nothing here
+creates, repairs, rewrites or deletes anything
+under `.quorum/`, including for a manifest whose `occurrence_dir` is refused.
+
 **A body is validated before the host is reached, and a refused request starts nothing.** Unknown
 fields are refused rather than ignored, and the offender is quoted. A refusal carries three fields
 with three different authorities: a `code` a client switches on, the `condition` in `core`'s own
@@ -461,8 +536,17 @@ vocabulary does not hold is named rather than dropped. **An empty table is two o
 they are told apart**: a store nothing has written to is the adopter's first view and says what would
 put a run in it, while a store whose every run the daemon could not read is the same `runs: []` with
 the reasons beside it, and saying the first over the second reports the runs that ARE there as runs
-that are not. What an occurrence RETAINED — its `prompt.txt` and its `output.txt` — is **Q-0137**'s,
-and nothing here opens a file.
+that are not. **Since Q-0137 an opened occurrence names what it retained and one of those files
+opens**: the names and sizes come from a second read the row issues beside its detail, a file's text
+from a third a reader's own act issues, and nothing large is fetched until that reader has its size
+in front of them. The two names this product writes are `prompt.txt` and `output.txt` and the
+listing is the **directory's** contents rather than those two constants, `persist` taking an
+artifact's name as a plain parameter — so a third file is named and opens with no code here moving.
+**Three sentences say what is absent, and all three are keyed on the occurrence's `kind`**: a
+prompt exists exactly where the kind is `adapter`, so a `prove-red` step whose kind is `integrate`
+says no vendor was asked — keying that on the step id would be wrong about 12 of the 85 such
+occurrences this repository holds — while a missing output is *this step has not finished* where it
+is running and *no output file was retained* where it is over, which are two states and not one.
 
 **Since Q-0130 this app drives a run's lifecycle, and the daemon has a producer at last.** `host.start` had exactly one production caller — `POST /runs` — and nothing issued it, so on a real machine the run registry was empty and stayed empty: three screens were built against runs a human had to create by hand with an HTTP client. The ticket page starts one and mission control stops one. **The start is on the ticket page and deliberately not on a board card**, which is measured rather than a preference: the board names the flows that consume a stage per COLUMN, so that naming is attached to no ticket and cannot be made actionable where it is, and a card is one anchor by design so a reader can middle-click it. **It names every flow that consumes the ticket's stage and never one** — `chore` and `solutioning` both consume `requirements`, and one button would take the most consequential routing choice in this product silently — with a flow the linter refused named and not offered, and the board's own two sentences for *no flow consumes this stage* and *the flow list could not be read* imported rather than re-worded, beside a third for a listing that is merely still out. **It sends `flow`, `ticket` and at most `dry`, never `auto` and never `base`**: *"Human-gated by default, auto opt-in per gate"* (2026-08-06) puts that choice in the flow file, so a browser checkbox for it is a second mechanism for one rule and would owe an entry this ticket did not take, and `base` needs a revision no route here can enumerate. **Both acts are confirmed, single, and at most one in flight**, under one guard in `src/run-lifecycle.ts` rather than two beside the screens — released by the request's own resolution and by nothing else, which is Q-0016's review blocker written once instead of being available to come back twice. **And a confirmation stands only as long as the premise it was offered under does**: a screen hands that premise to the hook — the run the daemon last reported, the flows it last listed — declares it once as a predicate beside the act, and withdraws nothing itself. One mechanism rather than a guard per screen, because the guard-per-screen shape is what this ticket's review loop priced: the same class four times across three surfaces, each round closing the instance it was handed and the next finding it on a sibling. A read still out and a read that failed are not premises that stopped holding, which is *"connection state … is not run state"* one layer over — **and they are that for their own input alone**. Each input a premise is built from is kept as the daemon's last ANSWER about it rather than re-derived from the last request for it, so a listing reporting the chosen flow gone still ends the offer while the ticket read is failing, and a stage that has moved still does while the listing read is; and the predicate over them is asymmetric, one conclusive lapse ending an offer whatever the other input is while *could not tell* alone never does. **Never allowed to stand in for the other's answer**, which is containment's discipline — a state meaning *could not tell* that is never reported as either of the other two — at a site inside a browser. **A start's success is a `201` carrying the run**, whose handle is minted inside the daemon and reaches a client there and nowhere else, so nothing composes one or recovers it from the listing; **a stop's is a `204`**, which says the cancellation was delivered and never that the run ended, and a `not-running` refusal is not proof that it completed either. The stop control is offered from the DAEMON's last answer and never from connection state, which *"is not run state"*. **The request shape is `@quorum/shared`'s** — `WIRE_START_FIELDS`, `WireStartRequest` and `wireStartRequestSchema` — and `packages/server` builds its accepted set from that tuple, so the five names exist once; the write register moved by exactly **one permission** with the permitted module set unchanged at two, and gained a second clause with a different subject, because after this ticket those needles can no longer tell *this app starts runs* from *this app lists runs*. *(Before that: **since Q-0015 five of those screens existed — the backlog board, the ticket page, the gate screen, the runs landing and mission control — and the gate screen was where this app stopped being read-only**.)* It is reached at `/runs/:handle/gate`, it reads `GET /runs/:id` on mount and when the reader asks again, and it holds no socket: a gate asked while it is open is not shown until the reader asks again, and what the run does next is shown by reading again rather than live, because rendering a run's event stream is mission control's subject. **Neither does the route it is drawn at**: the shell opens a live connection for a route the register gives a `:handle`, and this one is excluded there by name — a shell streaming a run behind a screen that is deliberately not live is the same socket by another door, and it would answer a second way about a handle the screen is already reporting on, a handle the host never minted being a 1008 close there and a route refusal here. What it renders is the question the engine asked — the kind as the word that was sent, the reason verbatim, the ticket folder, and the step a send-back returns to where the question carries one. **Since Q-0129 it renders the decision that reached the gate as well**, which this section said was not on this wire until that ticket put it there: the question carries `reached`, so the screen shows the deciding step's id, its verdict word, its summary and every entry it reported as *values* rather than parsing a sentence composed for a human — and where a gate follows a step that declared no verdict it names that condition, which is not a claim that nothing was wrong. Entries are grouped only by the register `@quorum/shared` declares, imported rather than re-spelled, and one carrying no severity this product declares is rendered whole in a place of its own: **150 of this repository's 1,080 are in that state**, so the mockup's severity headline would be a number that is wrong without saying so, and there is no cap, no paging and nothing behind a control because the largest such record here is 13 KB. What the step's change was *about* is **Q-0134**'s, needing a range no route on this transport carries and this workspace's first diff dependency. **It offers exactly the answers that gate will honour, which is two of them more often than three**: `retry` is offered only where the question carries a target, because `routing.ts` answers a `retry` at a gate that names none with `{ abort: true }` — measured at this ticket's gate, 148 of 220 engine-recorded answers in this repository's own history were at gates carrying none, so an unconditional third control would have ended the run at two thirds of them. There is no fourth control and no reason field. **Its own write is `POST /runs/:id/gate`, which was this app's only one until Q-0130 and is now one of three**: `apps/web/test/source.test.ts` still forbids every non-GET method in every file under `src`, permitting one method in `daemon-client.ts` and two path segments in `daemon-endpoints.ts` and nothing else, with the exemptions themselves shown to be doing work — and, since the needles alone can no longer tell a start from a read, an identity register of the three functions that issue a non-GET: `answerGate`, `startRun`, `stopRun`. Its success is a `204` with no body, recognised from the status before anything reads one, and two of its refusals share a `404` — so the code and never the status is what tells *that handle names no run* from *that gate is not waiting any more*, the second of which may claim neither that an earlier answer arrived nor that it failed. **A read withdraws no answer that is already on its way**: asking to see the run again does not release the one-answer-in-flight guard and does not clear the sentence saying an answer is out, because re-enabling the controls there would let a second answer race the first and an `abort` dispatched after an `advance` can arrive before it. **And what the daemon did with an answer outlives the read that follows it**: an accepted answer sends the screen straight back to reading, so the sentence naming the answer that was taken — and the one saying a gate is no longer waiting, which is the only thing standing between a reader and answering a third time — are rendered outside the branch that holds a loaded run, and survive a follow-up read that is still out or that failed. What each is *about* travels with it, so one run's answer is never rendered under another's. **Every state that is not *parked* names itself, the refused one included**: it renders the daemon's own condition and the remedy it composed, unaltered, and where the row carries neither — a start that had not resolved when it was read — it says that rather than composing a likely reason. *(Before that: **since Q-0017 one of those screens existed — the backlog board — and the shell was what the other eight sat in**.)* The board is this app's first request of any kind: `src/daemon-client.ts` is where every request it makes is made, `src/request-state.ts` is the closed set of answers one can have, and no member of that set is silence or a spinner. It never polls and holds no copy: `GET /tickets` walks the backlog and probes git per ticket, so the board loads on mount and when the reader asks again, and it shows *when* it loaded, because containment and push lag are derived per request and stored nowhere. **Every rule it renders by is `quorum board`'s, read from one register** — `@quorum/shared`'s `board.ts` holds which empty columns render, when a branch that does not exist is worth saying, how a containment answer is spelled, what `indeterminate` may not be read as, and the push-lag sentence that may warn and may never reassure, and `packages/cli/src/board.ts` imports the same five without one printed byte moving. The sixth, the cost legend, could not follow them: `@quorum/shared` may name no vendor in code, and that sentence names one by design, so it is declared on both surfaces and `packages/cli/src/board.test.ts` holds the two byte-identical. **Three things it deliberately does not do** are recorded where it does them: it renders no `1/3` counter, a denominator being a value no route on this transport carries; it labels its one cost figure neither per vendor nor cost to date, because it is neither; and it offers no control that starts a run, two flows consuming `requirements` and the choice between them being the most consequential routing decision in this product. The ticket page behind `/backlog/:ticketId` is **Q-0127**'s, and needs a route that answers for one ticket. *(Before that: **since Q-0014 the shell exists, and none of those screens did**.)* What shipped there is what every screen sits in: a left rail, a top bar, a dark palette, and client-side routing. The **route register** is the whole of it — `src/routes.ts` holds two tables, the rail's seven entries in the design prompt's own order and the twelve paths the shell recognises, and the router, the rail and every placeholder are built *from* them rather than beside them. A component may not name a route the register does not hold, which is what keeps four later tickets inheriting a URL shape instead of each inventing one; the M4 paths are declared there now for that reason. The eleven semantic colour tokens are declared in one file and referred to by name everywhere else, and **every request this app makes is same-origin and page-relative: no absolute URL, no third-party host, no font host** — a deliberate divergence from `05-design-prompt.md`'s "except Google Fonts", recorded in place, because that document describes a clickable mockup and a local-first tool that requires the internet to render is not local-first. That clause said *"nothing is fetched from a network"* until Q-0017, and it moved because the app started fetching: the board asks the daemon for the backlog on every load. What the scan behind it has always enforced is the property now stated, and `apps/web/test/source.test.ts`'s own describe title moved with this sentence — `packages/shared/src/docs.test.ts` holds the two against each other, because a claim enforced by a scan that cannot see it going false is one that goes quiet rather than red.
 

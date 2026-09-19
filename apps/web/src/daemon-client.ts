@@ -32,17 +32,20 @@
  */
 import {
   diffEvidenceSchema, gateAnswerEnvelopeSchema,
-  wireFlowListSchema, wireRefusalSchema, wireRunHistoryListSchema, wireRunHistorySchema,
+  wireFlowListSchema, wireRefusalSchema, wireRunHistoryListSchema,
+  wireRunHistoryRetainedSchema, wireRunHistoryRetainedTextSchema, wireRunHistorySchema,
   wireRunListSchema, wireRunSchema,
   wireStartRequestSchema,
   wireTicketDetailSchema, wireTicketFileSchema, wireTicketListSchema,
   type DiffEvidence, type GateAnswer, type WireFlowList, type WireRun, type WireRunHistory,
-  type WireRunHistoryList, type WireRunList,
+  type WireRunHistoryList, type WireRunHistoryRetained, type WireRunHistoryRetainedText,
+  type WireRunList,
   type WireStartRequest, type WireTicketDetail, type WireTicketFile, type WireTicketList,
 } from '@quorum/shared';
 
 import {
-  DAEMON_ENDPOINTS, gateDiffPath, historyDetailPath, runDetailPath, runGatePath, runStopPath,
+  DAEMON_ENDPOINTS, gateDiffPath, historyDetailPath, historyFilePath, historyRetainedPath,
+  runDetailPath, runGatePath, runStopPath,
   ticketDetailPath, ticketFilePath,
 } from './daemon-endpoints.js';
 import type { RequestState } from './request-state.js';
@@ -240,6 +243,45 @@ export const fetchRunHistoryList = (
   now: Clock,
 ): Promise<RequestState<WireRunHistoryList>> =>
   requestJson(fetcher, DAEMON_ENDPOINTS.history, wireRunHistoryListSchema, now);
+
+/**
+ * What one run's occurrences retained: a leaf name and a size apiece, and no text at all.
+ *
+ * **A separate request from {@link fetchRunHistory} rather than a field on it**, which is
+ * {@link fetchTicketFile}'s arrangement one register over and is measured rather than preferred:
+ * that route is mission control's too, read on every load of a screen that will never open a
+ * retained file, and carrying this on it would put a directory walk per occurrence behind a cost
+ * header — up to 55 of them on this repository's largest run.
+ *
+ * It answers **warnings beside occurrences**, not instead of them: one occurrence whose recorded
+ * directory is gone or is refused is named, and the rest are still listed.
+ */
+export const fetchRunHistoryRetained = (
+  fetcher: FetchLike,
+  id: string,
+  now: Clock,
+): Promise<RequestState<WireRunHistoryRetained>> =>
+  requestJson(fetcher, historyRetainedPath(id), wireRunHistoryRetainedSchema, now);
+
+/**
+ * One retained file of one occurrence, with its text.
+ *
+ * Issued by a reader's own act and never on a load, which is what stands in for a cap: one
+ * occurrence retains up to 355,744 B and one run up to 3,514,617 B across this repository's own
+ * history, so nothing large is asked for until a reader names that file with its size in front of
+ * them.
+ *
+ * **The occurrence is named by its `seq` and never by its directory**, which this app neither
+ * receives nor composes.
+ */
+export const fetchRunHistoryFile = (
+  fetcher: FetchLike,
+  id: string,
+  seq: number,
+  name: string,
+  now: Clock,
+): Promise<RequestState<WireRunHistoryRetainedText>> =>
+  requestJson(fetcher, historyFilePath(id, seq, name), wireRunHistoryRetainedTextSchema, now);
 
 /**
  * The diff the step whose decision reached one waiting gate was given.
@@ -521,6 +563,14 @@ export const runHistoryInFlight = <T>(id: string): RequestState<T> =>
 /** The whole store's in-flight state, naming the listing rather than any run in it. */
 export const runHistoryListInFlight = <T>(): RequestState<T> =>
   ({ kind: 'in-flight', path: DAEMON_ENDPOINTS.history });
+
+/** One run's retained-file listing, in flight — naming that read rather than the detail beside it. */
+export const runHistoryRetainedInFlight = <T>(id: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: historyRetainedPath(id) });
+
+/** One retained file's read, in flight — naming the file a reader asked for. */
+export const runHistoryFileInFlight = <T>(id: string, seq: number, name: string): RequestState<T> =>
+  ({ kind: 'in-flight', path: historyFilePath(id, seq, name) });
 
 /** One gate's diff read, in flight — naming that gate rather than the run it belongs to. */
 export const gateDiffInFlight = <T>(handle: string, gateId: string): RequestState<T> =>

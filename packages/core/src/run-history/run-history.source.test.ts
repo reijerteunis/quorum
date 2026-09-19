@@ -86,14 +86,23 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     expect(Object.keys(writerModule).sort()).toStrictEqual(['acquireRunLock', 'initialiseRunHistory', 'nextRunId']);
   });
 
-  test('reader.ts holds the nine names it is assigned, and the three shapes it answers with', () => {
+  test('reader.ts holds the eleven names it is assigned, and the eight shapes it answers with', () => {
+    // Q-0137 added two values and five types. They land here rather than in a fourth file of this
+    // folder deliberately: the folder register above is the port's own assignment and this module
+    // is *"Reading `.quorum/runs/` back — and writing nothing at all"*, which is exactly what
+    // naming and reading a retained file is. The properties the three-file split exists to make
+    // checkable are untouched — this file still writes nothing and still does not import the
+    // writer, both asserted below.
     expect(exportsOf(sourceOf(READER_SOURCE)).sort()).toStrictEqual([
-      'RunEntry', 'RunRead', 'RunWarning', 'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError',
-      'occurrenceSeq', 'readRun', 'readRunsDir', 'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
+      'RetainedFile', 'RetainedFileRead', 'RetainedOccurrence', 'RetainedRead', 'RetainedWarning',
+      'RunEntry', 'RunRead', 'RunWarning', 'TICKET_ID_PATTERN', 'isIncomplete', 'listRetainedFiles',
+      'manifestShapeError', 'occurrenceSeq', 'readRetainedFile', 'readRun', 'readRunsDir',
+      'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
     ]);
     expect(Object.keys(readerModule).sort()).toStrictEqual([
-      'TICKET_ID_PATTERN', 'isIncomplete', 'manifestShapeError', 'occurrenceSeq', 'readRun',
-      'readRunsDir', 'resolveRunDirectory', 'sortRuns', 'vendorTokenTotal',
+      'TICKET_ID_PATTERN', 'isIncomplete', 'listRetainedFiles', 'manifestShapeError', 'occurrenceSeq',
+      'readRetainedFile', 'readRun', 'readRunsDir', 'resolveRunDirectory', 'sortRuns',
+      'vendorTokenTotal',
     ]);
   });
 
@@ -222,19 +231,35 @@ describe('AC-1 — three files, the exact surface, no dependency, and nothing na
     // OccurrenceFields 5, RunHistory 6, RunLockClaim 4 and RunLock 2 in writer.ts; RunEntry 3 and
     // RunWarning 2 in reader.ts. Q-0039 added the last two interfaces and six of the fields; the
     // record a lock file carries is module-private and is therefore not among them, which is why
-    // eight declared fields add six here.
-    expect(fields.length).toBe(62);
+    // eight declared fields add six here. Q-0137 added eight across three more in reader.ts —
+    // RetainedFile 2, RetainedOccurrence 3 and RetainedWarning 3 — and none for the two discriminated
+    // unions beside them, which are `export type` and which this walk deliberately does not enter.
+    // Nor for `RetainedEntry`, which extends RetainedFile with the identity review round 4's blocker
+    // needed: it is module-private for that reason, so its two fields are the lock record's case
+    // above rather than an interface the walk failed to enter.
+    expect(fields.length).toBe(70);
   });
 
-  test('the barrel re-exports exactly the six readers a command needs (Q-0092 AC-4)', () => {
+  test('the barrel re-exports exactly the eight readers its consumers need (Q-0092 AC-4)', () => {
     // Until Q-0096 this pinned `packages/core/src/index.ts` byte for byte; from Q-0096 to Q-0092 it
     // asserted that the folder was absent from the barrel altogether, with its own comment saying
     // *"the six readers are Q-0092's to present, and it imports them when it lands"*. This is that
-    // sentence arriving. An identity rather than a `toContain`, so a seventh name is a visible act.
+    // sentence arriving. An identity rather than a `toContain`, so a ninth name is a visible act.
+    //
+    // **Q-0137's two are the first here no COMMAND needs**, which is why the title says consumers:
+    // `packages/server` is what reaches them, exactly as it is for `pathInside` and for Q-0127's
+    // three one folder over. `resolveRunDirectory` is still absent and still deliberately so —
+    // publishing a path-returning confinement helper is what Q-0092 OQ-1 ruled against, and these
+    // two exist in the shape they do because of that ruling rather than in spite of it.
     expect([...Object.keys(manifestModule), ...Object.keys(readerModule), ...Object.keys(writerModule)]
       .filter((symbol) => symbol in barrel).sort()).toStrictEqual([
-      'isIncomplete', 'occurrenceSeq', 'readRun', 'readRunsDir', 'sortRuns', 'vendorTokenTotal',
+      'isIncomplete', 'listRetainedFiles', 'occurrenceSeq', 'readRetainedFile', 'readRun',
+      'readRunsDir', 'sortRuns', 'vendorTokenTotal',
     ]);
+    expect(Object.keys(readerModule), 'resolveRunDirectory left the module')
+      .toContain('resolveRunDirectory');
+    expect('resolveRunDirectory' in barrel, 'a path-returning confinement helper is on the public surface')
+      .toBe(false);
   });
 
   test('and the writer is still absent from it in full, which is what the split was for', () => {
@@ -327,14 +352,52 @@ describe('AC-7 — no money can originate here, and the roll-up has no second im
 });
 
 describe('AC-10 — the reader writes nothing, and it is a property of the file', () => {
-  test('no filesystem write API is called in reader.ts, in any form', () => {
+  /**
+   * The one write-verb occurrence this module is permitted, quoted whole.
+   *
+   * `open` is on the scan's list because an open CAN create — `O_CREAT` is what makes it a write
+   * verb — and Q-0137 gave this module one that cannot. It is admitted as an **identity** rather
+   * than by dropping `open` from the list: a count is satisfied by a member swapped for another
+   * (Q-0073), and dropping the verb would exempt every future open in this file including a
+   * creating one. Three clauses bound the admission below, so the verb stays scanned.
+   */
+  const READ_ONLY_OPEN = 'fs.openSync(path.join(found.directory, name), fs.constants.O_RDONLY | NO_FOLLOW)';
+
+  /** Every flag or mode string that can create, truncate or write through an open. */
+  const CREATING = ['O_CREAT', 'O_WRONLY', 'O_RDWR', 'O_APPEND', 'O_TRUNC', "'w'", "'a'", "'r+'", "'wx'"];
+
+  test('no filesystem write API is called in reader.ts, and its one open cannot create anything', () => {
     const text = sourceOf(READER_SOURCE);
     const writes = [...text.matchAll(/\b(writeFile|mkdir|mkdtemp|rename|rm|rmdir|unlink|appendFile|copyFile|cp|truncate|open|chmod|symlink|link|utimes|watch)(Sync)?\s*\(/g)]
       .map((m) => m[0]);
-    expect(writes).toStrictEqual([]);
+    expect(writes).toStrictEqual(['openSync(']);
+    expect(text, 'the admitted open is not the one this register describes').toContain(READ_ONLY_OPEN);
+    for (const flag of CREATING) {
+      expect(text.includes(flag), `reader.ts names ${flag}, which can create, truncate or write`).toBe(false);
+    }
     // And the write side is where it belongs: every one of those verbs the module uses is in the
     // writer, which is what makes the split a rule rather than an intention.
     expect(sourceOf(WRITER_SOURCE)).toContain('fs.writeFileSync(');
+  });
+
+  test('and the narrowing has a subject — a creating open still fails every clause it should', () => {
+    // The check on the check (Q-0135 E-3): a narrowing that stopped seeing its subject would read
+    // exactly like one that is correct. Each clause is shown refusing a hostile file on its own.
+    const scan = (text: string): string[] =>
+      [...text.matchAll(/\b(writeFile|mkdir|mkdtemp|rename|rm|rmdir|unlink|appendFile|copyFile|cp|truncate|open|chmod|symlink|link|utimes|watch)(Sync)?\s*\(/g)]
+        .map((m) => m[0]);
+    // A second open, however innocent, is not the one identity this register names.
+    expect(scan(`${READ_ONLY_OPEN}; fs.openSync(other, 'r');`), 'a second open is admitted')
+      .toStrictEqual(['openSync(', 'openSync(']);
+    // A creating open at the permitted site is caught by the flag clause rather than by the count.
+    const creating = READ_ONLY_OPEN.replace('O_RDONLY | NO_FOLLOW', 'O_RDONLY | fs.constants.O_CREAT');
+    expect(scan(creating), 'the verb scan no longer sees an open at all').toStrictEqual(['openSync(']);
+    expect(CREATING.some((flag) => creating.includes(flag)), 'a creating flag is not refused').toBe(true);
+    // …and an open spelled some other way fails the identity clause rather than passing quietly.
+    expect(`fs.openSync(somewhereElse, 'r')`.includes(READ_ONLY_OPEN), 'any open satisfies the identity')
+      .toBe(false);
+    // The ordinary write verbs are untouched, which is what the admission must not have cost.
+    expect(scan('fs.writeFileSync(a, b); fs.mkdirSync(c);')).toStrictEqual(['writeFileSync(', 'mkdirSync(']);
   });
 
   test('the writer is the only file in core that names the run-history root as a value', () => {

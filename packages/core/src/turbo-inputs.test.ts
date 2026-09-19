@@ -732,6 +732,12 @@ const INDIRECT_ROUTES: Record<string, Record<string, string>> = {
     'repoRoot → relative': "one of those two joined to a directory found beneath it, for the existence check that decides whether a directory is a package at all",
     'repoFile → `${relative}/${MANIFEST}`': "the same directory joined to MANIFEST, which is the literal 'package.json' declared in that describe",
   },
+  // Q-0137. Every call passes `ARCHITECTURE`, `BRIEF` or `GLOSSARY`, or a member of a literal array
+  // of those three — each a path literal declared at the top of that file, which clause B collects
+  // and the manifest names. The same shape as the `docs.test.ts` row above it.
+  'packages/shared/src/docs-retained.test.ts': {
+    'repoFile → file': "the loop iterates either a literal array of the two numbered documents or the RETIRED table, whose first column is one of the three constants declared at the top of that file",
+  },
   'packages/shared/src/plan-backlog.test.ts': {
     'repoFile → PLAN': 'the constant is \'docs/06-development-plan.md\', a literal at the top of that file, which clause B collects',
     'read → file': 'the value comes from ticketFiles(), the audited walk of backlog/*/ticket.md, exactly as in ticket.test.ts',
@@ -1286,6 +1292,18 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     '..': 'the same token, handed to the guard and asserted refused',
     '../secret': 'a hostile run id, asserted refused; its target is built under os.tmpdir by the test itself',
   },
+  // Q-0137. Every one of these is an `occurrence_dir` a MANIFEST could carry, handed to the
+  // retained-file listing and asserted refused before anything is joined — the value nothing on the
+  // read path validates, which is why the hostile shapes have to be constructed: all 940 on this
+  // machine are well-formed. None names a file this suite opens, and each target that exists at all
+  // is built under os.tmpdir by the test itself.
+  'packages/core/src/run-history/retained.test.ts': {
+    '..': 'one of the leaf names readRetainedFile refuses outright, asserted alongside `.` and the empty string',
+    '../escape': 'a hostile occurrence_dir naming a parent of the run directory, asserted refused and never quoted back',
+    'steps/../../escape': 'the same, written to climb out through a subdirectory rather than from the run root',
+    'steps/001-implement/../../../escape': 'the same again, carrying a readable sequence prefix so the occurrence is ADDRESSABLE — which is what proves the confinement refuses it rather than the sequence lookup failing first',
+    '../prompt.txt': 'a hostile leaf name handed to readRetainedFile and asserted refused before any directory is enumerated',
+  },
   'packages/core/src/turbo-inputs.test.ts': {
     '..': 'the value `escapes` compares a normalised path against, and the key of two entries above',
     '../': 'the prefix it compares against, and the key of two entries above',
@@ -1298,6 +1316,10 @@ const ESCAPING_LITERALS: Record<string, Record<string, string>> = {
     'dev/../../escape.md': 'likewise',
     '../elsewhere/': 'likewise',
     '../ticket.md': 'likewise, for the Q-0127 entry above',
+    '../escape': 'the key of the first Q-0137 entry above',
+    'steps/../../escape': 'likewise, for the second',
+    'steps/001-implement/../../../escape': 'likewise, for the third — the addressable one',
+    '../prompt.txt': 'likewise, for the hostile leaf name',
     '../../docs/GLOSSARY.md': 'the expected value of clause C3\'s own fixture below',
     '/../../docs': 'the expected value of the template-chunk fixture below',
     '../a/b': 'likewise, for the fixture showing a real assertion site is still reported',
@@ -1770,6 +1792,14 @@ const READ_BASES: Record<string, Record<string, string>> = {
     manifestPath: 'path.join(runsRoot, runId, MANIFEST_FILE) inside it',
     target: 'realPath\'s parameter, rooted by both of its callers at that same runs root',
     realDir: 'the realpath of a single-segment child of it, refused unless its real parent IS the real root',
+    // Q-0137's three. The occurrence directory is the one base in this package whose *value* comes
+    // out of a file rather than from a caller, which is why each entry says what confines it rather
+    // than only where it came from: `readRun` has already resolved the run directory through
+    // `resolveRunDirectory`, and `pathInside` then refuses any `occurrence_dir` — lexical, absolute
+    // or reached through a link — that does not land strictly inside it.
+    directory: 'pathInside(run directory, the manifest\'s occurrence_dir) inside retainedIn — `null`, and no read at all, for a recorded directory that is not strictly inside the run directory resolveRunDirectory returned',
+    'found.directory': 'that same confined occurrence directory, returned by retainedIn to its two callers so the enumeration and the read are rooted at one answer rather than at two',
+    handle: 'not a path at all: the descriptor openSync returned for a leaf this same call enumerated inside `found.directory`, fstat-ed and read from rather than reopened by name, so what is measured is what is served (Q-0122\'s TOCTOU fix)',
   },
   'packages/core/src/run-history/writer.ts': {
     file: 'path.join(repoDir, runLockPath(ticket.meta.id)) — the run lock inside the repository the caller named, read back to say who is holding it and to prove it is still this run\'s before it is removed (Q-0039)',
@@ -1781,6 +1811,22 @@ const READ_BASES: Record<string, Record<string, string>> = {
   },
   'packages/core/src/run-history/reader.test.ts': {
     root: 'a runs root under tempDir(\'runs-\'), built by this file two levels down so a fixture outside it is still inside what removeTempDirs deletes',
+  },
+  // Q-0137. Every base here is inside one run directory this file built under `tempDir('retained-')`
+  // — or, in two cases, the sandbox beside it that a symlink fixture points at, which is outside the
+  // runs root and still inside what `removeTempDirs` deletes. Nothing reaches the repository.
+  'packages/core/src/run-history/retained.test.ts': {
+    root: "path.join(tempDir('retained-'), 'quorum', 'runs') — the runs root storeWith creates, two levels down so a fixture can sit outside it and still be cleaned up",
+    'inRun(root)': "path.join(that runs root, 'Q-0137-1') — the one run directory these fixtures build, resolved so a comparison against what the code saw is not vacuous on darwin",
+    "inRun(root, 'steps', '001-implement')": 'an occurrence directory inside that run, read through to show the symlink fixture is live before the guard refuses it',
+    "inRun(root, 'steps/001-refused')": 'another one inside that same run, enumerated to show that readdir itself still succeeds where the hook refuses one entry — which is what makes that failure entry-level rather than the directory-level one beside it',
+    "inRun(root, 'steps/001-implement', 'prompt.txt')": 'a retained file inside that same occurrence directory, read back to show the bytes the code answered are the bytes on disk',
+    'inRun(root, dir, held.name)': "the same, for each file the listing named, so the sizes are the filesystem's rather than lengths this test computed",
+    dir: 'inRun(root, …) bound once where a case reads several names under one occurrence directory',
+    outside: 'the sandbox outsideOf(root, …) built beside the runs root, holding the file a refused symlink points at — asserted unread and unaltered',
+    target: 'one retained file inside that run directory, staged to vanish or to become a symlink between the enumeration and the open',
+    directory: "realInRun(root, 'steps', '001-implement') — one occurrence directory inside that same run, read back to show the PARENT swap really happened and that the outside file is reachable through the name the code joins, which is what stops the identity clause passing over an unstaged fixture",
+    given: "stageOn's hook parameter: whatever path the code under test lstats, delegated to statSync so that no read API is taken as a value",
   },
   'packages/core/src/run-history/writer.test.ts': {
     'history.dir': 'the run directory initialiseRunHistory created, under the sandbox repository',
