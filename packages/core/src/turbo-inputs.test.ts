@@ -1827,6 +1827,9 @@ const READ_BASES: Record<string, Record<string, string>> = {
     target: 'one retained file inside that run directory, staged to vanish or to become a symlink between the enumeration and the open',
     directory: "realInRun(root, 'steps', '001-implement') — one occurrence directory inside that same run, read back to show the PARENT swap really happened and that the outside file is reachable through the name the code joins, which is what stops the identity clause passing over an unstaged fixture",
     given: "stageOn's hook parameter: whatever path the code under test lstats, delegated to statSync so that no read API is taken as a value",
+    // Q-0138 AC-7 — the one block in that file whose run directory is the real writer's rather than
+    // a fixture's, which is what gives it a different base from every entry above.
+    runsRoot: "path.join(repo(), '.quorum', 'runs') — the runs root initialiseRunHistory wrote into, inside the temp git repository repo() created for that block; the manifest read back from it is the writer's own",
   },
   'packages/core/src/run-history/writer.test.ts': {
     'history.dir': 'the run directory initialiseRunHistory created, under the sandbox repository',

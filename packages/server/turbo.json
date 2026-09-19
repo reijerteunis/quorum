@@ -24,11 +24,23 @@
     // `@quorum/shared#test` and `@quorum/core#test`, so nothing would have reported the omission.
     // That is why this file is written from a measurement rather than in answer to a red test, and
     // it is the standing residual: a later read out of this package is covered by nobody's guard.
+    // Q-0138 AC-10 adds a third, and it is the first here that is NOT a TypeScript file — which is
+    // the whole reason it needs declaring. `src/retained.test.ts` holds what a held run answers
+    // against `apps/web`'s recording of it, so this task's verdict depends on that recording; and
+    // `@quorum/core#test`'s `../../apps/**/*.ts` and `../../apps/**/*.tsx`, which the `^test` edge
+    // carries into this task and which is why the status scan this replaced needed no entry, reach
+    // no `.json`. Measured rather than assumed, and NOT by comparing hashes: every task's hash
+    // carries `globalCacheInputs.hashOfInternalDependencies`, so any package's edit moves all of
+    // them and that instrument discriminates nothing here. What discriminates is turbo's own
+    // `inputs` report — with no declaration, `turbo run test --filter=@quorum/server --dry=json`
+    // named `apps/web/src/history-screen.tsx` and did not name the recording anywhere in the graph,
+    // so a cached pass would have stood over an edited one.
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../apps/web/src/routes.ts",
-        "../../apps/web/vite.config.ts"
+        "../../apps/web/vite.config.ts",
+        "../../apps/web/test/fixtures/*.json"
       ]
     }
   }

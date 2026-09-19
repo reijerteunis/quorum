@@ -47,7 +47,8 @@ import {
 import {
   CLOSE_FILE_LABEL, COLLAPSE_LABEL, EMPTY_FILE_TEXT, EXPAND_LABEL, EMPTY_HISTORY_TEXT,
   HISTORY_COST_LABEL, HISTORY_DISCLOSURES,
-  HISTORY_HEADING, HISTORY_REFRESH_LABEL, HISTORY_RETRY_LABEL, INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT,
+  HISTORY_HEADING, HISTORY_REFRESH_LABEL, HISTORY_RETRY_LABEL, INCOMPLETE_NO_OCCURRENCES_TEXT,
+  INCOMPLETE_TEXT, LISTING_UNPRICED_TEXT,
   LIVE_RUN_TEXT, NO_DURATION_TEXT, NO_OCCURRENCES_TEXT, NO_OUTPUT_RUNNING_TEXT,
   NO_OUTPUT_TERMINAL_TEXT, NO_READABLE_RUNS_TEXT, NO_RETAINED_FILES_TEXT, OCCURRENCES_LABEL,
   OCCURRENCE_NO_DURATION_TEXT, OCCURRENCE_RUNNING_TEXT, OPEN_FILE_LABEL, RETAINED_LABEL,
@@ -326,7 +327,15 @@ function OpenedRun({ history, retained, open, onToggleFile, onRetryFile, onRetry
         {retained.kind === 'loaded' ? null
           : <div data-retained-request><RequestRegion state={retained} onRetry={onRetryListing} /></div>}
         {ordered.length === 0
-          ? <p className="text-xs text-muted">{NO_OCCURRENCES_TEXT}</p>
+          // **Two different claims over one empty array, and the run decides which.** A finished run
+          // recorded what it recorded; a run still in flight has a manifest written at a moment, so
+          // saying "nothing it did was an adapter call" over one asserts a negative nothing
+          // established — the class Q-0074 and Q-0115 exist to remove. Q-0138.
+          ? (
+            <p className="text-xs text-muted" data-no-occurrences={history.incomplete ? 'incomplete' : 'ended'}>
+              {history.incomplete ? INCOMPLETE_NO_OCCURRENCES_TEXT : NO_OCCURRENCES_TEXT}
+            </p>
+          )
           : (
             // Keyed by position rather than by `seq`: `occurrenceSeq` answers `MAX_SAFE_INTEGER`
             // for a directory name it cannot read, so two unreadable ones would share a key. The
