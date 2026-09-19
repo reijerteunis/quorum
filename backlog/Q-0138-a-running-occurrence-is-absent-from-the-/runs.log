@@ -15,3 +15,70 @@
 2026-09-19T16:32:51.450Z run=2 gate=human answer=advance
 2026-09-19T16:32:53.183Z run=2 removed-worktrees=2 kept=0
 2026-09-19T16:32:53.185Z run=2 completed stage=requirements→reviewed cost=87.071 tokens=136406757
+2026-09-19T16:45:00Z run=2 GO-5 discharged by running the product; transcribed rather than reported.
+  Built bundle verified BY CONTENT first, because the build reported `5 cached, 5 total` and a cache
+  hit can serve a page built from code nobody is looking at: the served asset carries this change's
+  own sentence. A scratch T-0001 was driven with adapters.mock.delayMs 90000 and chore's `implement`
+  pointed at the mock; the run was started THROUGH the daemon (POST /runs -> handle run-2, runId 2),
+  because a `quorum run` is a process the host can never see (Q-0121).
+  A CHORE row was chosen deliberately: M-3 measures that route at 0 of 469 ever visible, so nothing
+  in it can mask the defect the way this ticket's OWN requirements run did, where pm-codex finishing
+  made pm-claude visible and head-of-product was invisible alone.
+  Rendered in Chrome at /history while `implement` was still running, quoted verbatim:
+    row      T-0001-2  T-0001  chore  2026-09-19T16:41:20.006Z  No duration was recorded.
+             1 occurrence            <- AC-8; this read `0 occurrences` before the change
+             "The manifest records this run as still under way."
+             "No vendor has finished a billed step on this run, so its roll-up names none. A vendor
+              that has run without finishing one is absent from it rather than free."
+    what ran 1  implement  adapter  "Still under way when the manifest was last written."
+             mock  "Still running; no duration has been recorded for it yet."
+    retained Open  prompt.txt  25796 bytes
+             "No output yet: this step has not finished, so nothing has been written for it."
+  That last line is Q-0137 AC-8 sentence 2 (NO_OUTPUT_RUNNING_TEXT) rendered for an occurrence a REAL
+  writer produced. Q-0137's own GO-5 recorded it as unrenderable on the serial path and routed it
+  here; it renders. The occurrence is keyed on `kind: adapter`, and NOTHING ELSE EXISTS IN THIS RUN —
+  no sibling terminated, which is the state AC-9 forbids staging by terminating a second occurrence.
+  The API underneath, read at the same moment: GET /history row occurrenceCount 1; GET /history/T-0001-1
+  manifest.status running, steps [(implement, running, adapter)], duration_ms null, ROLLUP [] — AC-3,
+  no roll-up recomputed at allocation; GET /history/T-0001-2/retained {"occurrences":[{"seq":1,
+  "step_id":"implement","files":[{"name":"prompt.txt","bytes":25796}]}],"warnings":[]}.
+  AC-11's own sentence was NOT rendered and could not be: after (A) a run reaches an empty `steps`
+  only between run start and the first allocation's write, which is the window (A) exists to close.
+  It stays covered by the constructed fixture AC-11 names. Stated rather than reported as discharged.
+  Incidental, and a correction to this operator's own earlier read rather than a finding: `curl /`
+  answered 404 and looked like a regression in Q-0122's navigation fallback. It is not. The fallback
+  honours a navigation-shaped Accept, which curl does not send by default; with
+  `Accept: text/html` the shell answers 200 text/html at /, /projects and /settings, and /nope.js
+  still answers 404 with that same header, which is Q-0126's clause 4 holding. Nothing changed.
+  A second observation, kept because it is the product working: `POST /runs/run-1/stop` returned and
+  the run did not end at once — `implement` was mid-mock-delay and unwound first, reaching
+  `interrupted` 90s later with the step `completed`. That is exactly the sentence Q-0130 shipped,
+  that whether a run has ended is a read rather than something the page can infer.
+  Cleanup, listed: the scratch ticket, both T-0001 run directories, the implement worktree, both
+  harness/T-0001/* branches and the verification worktree are gone; `git worktree list` is one entry
+  and `git status` in this checkout holds only this ticket's own plan entry and Q-0139.
+2026-09-19T16:45:00Z run=2 GO-4 measured rather than assumed: NO truncation on any of the three
+  reviews, which CONFIRMS R-6 where Q-0137 predicted the same and was refuted.
+    round 1  132640 B      round 2  154577 B      round 3  192283 B      cap 200000
+  Zero `diff truncated` lines in this log. Round 3 came within 7,717 B of the cap, so the margin is
+  thin rather than comfortable and a larger change on this surface should expect to cross it.
+  Fourth consecutive data point for Q-0128 that the cap tracks change size rather than ambition.
+2026-09-19T16:45:00Z run=2 GO-6 verified forced in BOTH environment rows, the bare row independently
+  by the operator rather than from `integrate`'s worktree-scoped tick.
+    bare (detached worktree, no .harness/worktrees, no .quorum/runs, at 7aa2f7b):
+      pnpm turbo run test --force --continue        7/7 tasks, 0 cached, exit 0 (@quorum/cli 693 passed)
+      pnpm turbo run lint typecheck --force         14/14 tasks, 0 cached
+      pnpm sweep:git-identity                       exit 0, 7/7 forced, "executed and green with no
+                                                    resolvable git identity"
+    populated (`main` after the merge, at 542a642):
+      pnpm turbo run test --force --continue        7/7 tasks, 0 cached, exit 0
+  The populated row EARNED ITSELF: its first pass was red on `backlog.test.ts`'s "every ticket.md in
+  this repository survives parse-then-render unchanged", and the offender was Q-0139's ticket.md,
+  which this operator had hand-written minutes earlier with a blank line after the closing `---` that
+  `renderFrontmatter` does not emit. An operator error rather than a code defect, and `integrate` and
+  the bare row were both green over it — which is the whole argument for the second row.
+2026-09-19T16:45:00Z run=2 GO-3's threshold is crossed and its successor is OPENED rather than left in
+  a closing entry: Q-0139, p3, with the four remedies and Q-0037's refusal to batch written into its
+  body. 57 -> 112 replacements, 1,000,394 -> 1,955,529 B, p95 +335-350 ms (+88%) on a 55-occurrence
+  loop, against +0.014% of Q-0015-4's real 41.5-minute wall time. The implement step named the
+  obligation in all three rounds and correctly could not act on it, `backlog/` being the harness's.

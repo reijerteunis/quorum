@@ -4845,7 +4845,85 @@ parked at p2 with its three written reopening thresholds.
   sites. Verified forced in both environment rows — a worktree with neither `.harness/worktrees` nor
   `.quorum/runs`, and `main` after the merge — 7/7 tasks 0 cached in each, `quorum lint` 6/6 and the
   git-identity sweep exit 0.
-- Q-0138 A running occurrence is absent from the retained listing, not described. *(Opened
+- Q-0138 A running occurrence is named while it is running. *(`reviewed` and `main:contained`
+  2026-09-19; retitled from *"A running occurrence is absent from the retained listing, not
+  described"*, because the run measured that absence is the third of three surfaces and the second
+  is a false sentence.)* **$100.37** — $13.30 requirements, ready on the **first** head-of-product
+  iteration at twelve criteria, and $87.07 chore across three implement rounds converging
+  **`revise` → `revise` → `approve`**, no exhaustion gate and no `retry`. 13 files, 1,191
+  insertions, of which the production surface is **35 lines in `writer.ts`, 13 in
+  `history-screen.tsx` and 21 in `history-text.ts`**; the rest is tests and one fixture.
+  **The reframing is worth more than the fix, and it came from reading the shipped screen rather
+  than the ticket.** The body said a running occurrence is *absent* from the listing.
+  `history-screen.tsx:329` rendered `NO_OCCURRENCES_TEXT` — *"This run recorded no occurrences:
+  nothing it did was an adapter call, a script or an integrate step."* — for **any** empty list, so
+  a chore run three minutes into an adapter call with a 23 KB `prompt.txt` on disk was told nothing
+  had happened. That is **Q-0074's and Q-0115's class**, a negative derived from a snapshot that had
+  not been taken, and the sentence's own JSDoc names the distinction it was on the wrong side of:
+  *"Distinguished from a read that is still out… this is the answer having arrived and holding
+  nothing."* So the ticket is a defect rather than a limitation, and the design is two halves —
+  `allocate` persists, and an `incomplete` run's expansion stops claiming — each refused as
+  sufficient alone.
+  **The measurement the ticket owed, taken three ways and agreeing.** Both candidates and the
+  operator independently measured **174 of 952 occurrences visible while running — 18.3%** — and
+  **`chore` at 0 of 469**, the route 55 of this repository's tickets took, with `qa-red` 0 of 36 and
+  `solutioning` 0 of 35. The structural check is that `requirements` covers **exactly one per run**,
+  80 of 80: two simultaneous PMs mean the slower is made visible by the faster, and the solo
+  head-of-product never is.
+  **The ticket body's own cost objection was refuted, independently, by the run and by the
+  operator.** It blamed *"Q-0037's measured quadratic roll-up paid once more per occurrence"*.
+  `rollup()` opens `if (!usage) continue;` and `allocate` sets `usage: null`, so an allocate-time
+  write needs **no roll-up call at all** — invocations stay at **N+2 rather than 2N+2**, which AC-3
+  pins — and the roll-up is negligible regardless, measured at **0.12 ms summed across a whole
+  55-occurrence run**. The real cost is the `fsync`.
+  **The defect reproduced live on its own investigation run**, which is how M-2 caught the serial
+  case the parallel one masks: with both PM steps executing, `.quorum/runs/Q-0138-1` held `steps: 0`
+  against two `prompt.txt` on disk; pm-codex then terminated and pm-claude appeared as
+  `status=running, duration_ms=null`; then `003-head-of-product` ran alone, on disk with its prompt
+  and in a manifest recording two. It also corrects candidate-claude's own M-5, whose one `running`
+  occurrence **terminated inside the run that reported it** — Q-0018's *"one of 171 is `running` —
+  the run writing the document"* one ticket later.
+  **Both review rounds are one class, and it is R-5's own risk landing at a second site.** Round 1:
+  AC-9's daemon test built the manifest **by hand**, so it stayed green if `allocate` stopped
+  producing a server-readable manifest; and AC-10's producer test only **grepped TypeScript source
+  for literals**, executing neither the writer nor the wire schemas. Round 2: AC-10 still not
+  joined, the real wire response never reaching `HistoryScreen`. **Round 3's closure is genuine
+  rather than a third iteration**: the two halves meet at a recording, `apps/web` renders the real
+  screen against it and `packages/server` starts a real held run and asserts what it answers **still
+  equals** it, so editing the recording to satisfy the renderer turns the producer's suite red. It
+  also caught that a `.json` reaches no glob in the task's inputs, which is what
+  `packages/server/turbo.json` moved for — Q-0072's guard discipline.
+  **R-1 is the risk that earned AC-6, and it was answered in the source rather than argued.**
+  `writer.ts`'s `occurrenceStart` docblock records that a bookkeeping field on a still-running
+  occurrence violates `additionalProperties: false`, and that *"it hid because the old code deleted
+  the field just before its own write"*. Persisting at allocate **removes the hiding place**, so the
+  same mistake would now fail on every run rather than on 18% of them. The docblock is corrected in
+  place to say so and calls it *"the better failure rather than a new hazard"*.
+  **Three errata at the gate.** E-1 ratifies that **no decision entry is owed**, checked at six
+  sites — and corrects GO-1's **destination**: it said to ratify in the ticket body, and the chore
+  implement step reads `merged.md` and `errata.md` and **never `ticket.md`**, which is the error
+  Q-0137's close recorded one ticket earlier. Verified by grep in the real `prompt.txt`: all three
+  errata present, `ticket.md` **zero** times. E-2 ratifies one ticket at twelve, names the (A)/(B)
+  seam in advance and marks **AC-6 and AC-11 not eligible for trimming**. E-3 corrects M-3's account
+  of the occurrence-count delta: the `started_at` filter it blames **drops zero occurrences**, and
+  the corpus grew inside the run measuring it — 952 → 954 → 955 — so all three figures were right at
+  their moment and the document commits, one section later, the error M-2 correctly diagnoses.
+  **GO-4 settles R-6 by measurement: zero truncations**, 132,640 → 154,577 → **192,283 B** against
+  the 200,000 cap, so all three reviews covered the whole change — though round 3 came within
+  **7,717 B** of it. Third consecutive ticket under the cap, and a fourth data point for **Q-0128**
+  that the cap tracks change size.
+  **GO-3's threshold is crossed and its successor is opened rather than left in this entry**, which
+  is the failure this ticket exists because of: 57 → **112** replacements, 1.00 MB → **1.96 MB**
+  written, allocation-to-finalisation p95 up **≈335–350 ms (+88%)** — past both halves of the
+  threshold — against **+0.014%** of `Q-0015-4`'s real 41.5-minute wall time. **Q-0139** carries it,
+  at p3, with the four remedies and Q-0037's refusal to batch written into its body. The implement
+  step named the obligation in all three rounds and correctly could not act on it, `backlog/` being
+  the harness's.
+  Verified forced in **both** environment rows, and the bare row independently by the operator
+  rather than from `integrate`'s worktree-scoped tick: a detached worktree with neither
+  `.harness/worktrees` nor `.quorum/runs` at 7/7 tasks 0 cached, lint and typecheck 14/14 0 cached,
+  and the git-identity sweep exit 0; then `main` after the merge.
+  *(The original scope follows.)* *(Opened
   2026-09-19 at Q-0137's close, `draft`, p2, from what that ticket's **GO-5 measured by running the
   product** — five review rounds did not find it.)* `allocate` pushes an occurrence into
   `manifest.steps` with `status: 'running'` and **does not persist**; `replaceManifest()` is called
@@ -4864,6 +4942,21 @@ parked at p2 with its three written reopening thresholds.
   the extra write costs on the largest run here (`Q-0015-4`, 55 occurrences), and whether the honest
   answer is instead that the screen says *this run has occurrences it cannot yet name*, which is
   **Connection state**'s rule that no member is silence applied to a listing.
+- Q-0139 Manifest persistence is whole-list, and now runs twice per occurrence. *(Opened
+  2026-09-19 at Q-0138's close, `draft`, p3, because **GO-3's measured threshold was crossed** and
+  that obligation requires a successor before its ticket closes.)* `replaceManifest` serialises the
+  whole `manifest.steps` array, so cost is **quadratic in occurrence count**, and Q-0138 doubled the
+  constant: **57 → 112 replacements, 1.00 MB → 1.96 MB written, p95 +335–350 ms (+88%)** on a
+  55-occurrence loop, ≈5.6 ms per extra replacement. **Against real wall clock it is nothing** —
+  +0.35 s on `Q-0015-4`'s 41.5 minutes, **0.014%** — which is why it is p3 and why Q-0138 was right
+  to ship without it. What makes it a ticket is that **only the constant was measured**: 55 is
+  today's maximum and nothing caps occurrence count, so at 200 the same arithmetic is roughly
+  sixteen times the work. Its four remedies — skip the allocate-time `fsync` only, write
+  incrementally, journal and compact, or measure a cap — are each a design choice on the one file a
+  run must never lose, which is why it owes a requirement rather than a repair. **Read Q-0037
+  first**: it measured this at *"~3 ms against 63 minutes"* and refused batched persistence as a
+  behaviour change to the path that must never lose a billed step. That refusal is the argument this
+  ticket must answer, not one it may skip — what changed is the constant, not the reasoning.
 - Q-0019 Resume interrupted runs.
 
 
