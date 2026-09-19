@@ -193,3 +193,56 @@ through `ticket.md`, which that step does not read.
 unreadable rather than by mocking — and **shown red against the shipped collapse**, which answers
 `not-an-occurrence-file` for it today. A `readdir` that fails `ENOENT` must still answer the absence
 row, so the two are asserted apart rather than one being asserted alone.
+
+---
+
+## E-6 — round 4's blocker is accepted, the remedy is precedented and named, and no criterion moves
+
+**Supersedes:** nothing. Written at the second review exhaustion gate on 2026-09-19, before any
+answer, because a ruling reaches the implement step through this file and an erratum landed after a
+round begins is invisible to it (Q-0097).
+
+**The blocker is real.** `readRetainedFile` opens `path.join(found.directory, name)` with
+`O_NOFOLLOW`, which **governs the last component only**. `found.directory` was resolved by
+`pathInside` and enumerated by `retainedIn`; if the occurrence *directory* is replaced by a symlink
+between that enumeration and this open, the open follows it and a file of the same leaf name outside
+the run is served. AC-3 is this ticket's one security property and is named not eligible for
+trimming.
+
+**The remedy is not for the implementer to invent, and AC-2 already asks for it.** That criterion
+says the read is *"`readTicketFileBytes`'s discipline, **which is Q-0122's TOCTOU fix reused rather
+than re-derived**"*. Round 4 reused the file-level half and stopped short of the parent case — which
+`packages/server/src/static.ts`'s own module docblock names, in as many words:
+
+> *"A replaced **parent** is why this is an identity comparison rather than an `O_NOFOLLOW` open —
+> that flag governs the last component only, and Node exposes no `openat` to walk the rest."*
+
+**So the shape is shipped in this repository and is to be reused rather than designed.**
+`confinedFile` answers with the **identity** of what it validated and `readConfined` refuses unless
+the descriptor it opened carries that identity, so the bytes returned come from the inode
+confinement approved or from nothing. Here that is nearly free: `retainedIn` already `lstat`s every
+entry and reads `.size` off the result, so `dev` and `ino` are on the `Stats` object it already
+holds, and the read path already `fstat`s the descriptor — what is missing is carrying the identity
+across and comparing it.
+
+**Also reuse the reason it is an identity comparison and not a refusal of links outright**, which
+that docblock gives: refusing a link would refuse the alias *inside* the root that `pathInside`
+deliberately admits.
+
+**The residual is accepted on the same terms Q-0122 accepted it, and must be stated rather than
+implied.** Q-0122's docblock says what it cannot claim — *"the approved inode may itself have been
+linked elsewhere, and bytes appended to it after the check are the bytes returned"* — and the same
+two sentences are true here and are acceptable here. `docs/GLOSSARY.md`'s **Confinement** entry is
+the authority: it is *"not a permission model, not a sandbox, and **not a claim about a race** — it
+says where a path is at the moment it is checked"*. A stated bound is this repository's answer to a
+race Node cannot close, which is Q-0039's run lock at a second subject.
+
+**Do not return `blocked` on the ground that the race cannot be fully closed in Node.** That is true,
+it is Q-0122's own finding, and stating the bound in the docblock **is** the deliverable. Equally, do
+not narrow AC-3 — nothing in it moves, and no criterion is superseded here.
+
+*Test:* AC-3's fixture set gains the staged case the review names — the **occurrence directory**, not
+the leaf, replaced by a symlink to a directory holding the same leaf name, between membership
+enumeration and the read — asserted to be refused, with the outside file's bytes asserted **not**
+returned and the planted target asserted unread. Shown red against round 4's `O_NOFOLLOW`-only open,
+which serves them.
