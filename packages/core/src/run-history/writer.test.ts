@@ -14,6 +14,7 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
+import * as manifestModule from './manifest.js';
 import { acquireRunLock, initialiseRunHistory, nextRunId } from './writer.js';
 import type { RunHistory, RunStart } from './writer.js';
 import type { Occurrence, RunManifest, RunStatus } from './manifest.js';
@@ -303,9 +304,12 @@ describe('AC-4 — an occurrence has exactly fifteen keys, and its start time is
   });
 
   test('a still-running occurrence on disk carries no sixteenth key', () => {
-    // The defect this WeakMap exists to prevent, in the only state that exposed it. The old code
-    // stamped a start time on the occurrence and deleted it just before its own write, so a
-    // sibling finishing first — or a kill in that window — persisted a key the schema refuses.
+    // The defect this WeakMap exists to prevent, in the state that used to be the ONLY one exposing
+    // it: the old code stamped a start time on the occurrence and deleted it just before its own
+    // write, so a key the schema refuses reached disk only when a neighbour ended in that window.
+    // Since Q-0138 an allocation persists too, so the same state is reached with nothing finishing
+    // at all — which is Q-0138 AC-6's case, and this one stays because a neighbour's write is a
+    // second route to the same document and a later change could break one and not the other.
     const { start } = project();
     const history = initialiseRunHistory(start, collector());
     const first = history.allocate({ id: 'one' }, 'adapter', { adapter: 'mock' });
@@ -678,6 +682,292 @@ describe('AC-12 — the writer\'s output passes the frozen schema and the indepe
       expect(checkRunManifestSemantics(manifest), name).toStrictEqual([]);
     }
     expect(cases[2][1].ended_at, 'the killed run is incomplete, and stays so').toBeNull();
+  });
+});
+
+// Q-0138 — the manifest learns of a step when the step starts.
+//
+// Every assertion below reads `manifest.json` off disk rather than `history.manifest`, and that is
+// the point: the in-memory snapshot has always held the occurrence, so a case reading it would pass
+// over the unchanged function (R-5). The state is staged by NOT calling `terminal`, which is the
+// deterministic barrier — a hand-driven writer completes nothing on its own.
+describe('Q-0138 AC-1 — a running occurrence is on disk before anything of it finishes', () => {
+  test('the manifest names it the moment it is allocated, with no sibling terminating', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    expect(onDisk(history).steps, 'a run that has allocated nothing records nothing').toStrictEqual([]);
+
+    const first = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    // Off disk, not out of `history.manifest`: the snapshot held it before this ticket too.
+    const afterFirst = onDisk(history);
+    expect(afterFirst.steps).toHaveLength(1);
+    expect(afterFirst.steps[0]).toMatchObject({
+      step_id: 'implement', occurrence_dir: first.occurrence_dir, status: 'running', duration_ms: null,
+    });
+    // And the run is still running, so a reader meets an incomplete manifest rather than a finished
+    // one with a step missing from it.
+    expect(afterFirst.status).toBe('running');
+    expect(afterFirst.ended_at).toBeNull();
+
+    // Two more with the first still open: the case a serial flow never reaches and a parallel one
+    // used to be the only way to reach.
+    const second = history.allocate({ id: 'review' }, 'adapter', { adapter: 'mock' });
+    const third = history.allocate({ id: 'integrate' }, 'integrate');
+    const afterThird = onDisk(history);
+    expect(afterThird.steps.map((step) => step.step_id)).toStrictEqual(['implement', 'review', 'integrate']);
+    for (const [occurrence, recorded] of [[first, 0], [second, 1], [third, 2]] as const) {
+      expect(afterThird.steps[recorded]).toMatchObject({
+        occurrence_dir: occurrence.occurrence_dir, status: 'running', duration_ms: null,
+      });
+    }
+  });
+});
+
+describe('Q-0138 AC-2 — the replacement is the one that already existed, and allocation is otherwise unchanged', () => {
+  test('three allocations take three sequence numbers, three directories and one order', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    const allocated = [
+      history.allocate({ id: 'one' }, 'adapter', { adapter: 'mock' }),
+      history.allocate({ id: 'two' }, 'script'),
+      history.allocate({ id: 'three' }, 'integrate'),
+    ];
+    expect(allocated.map((occurrence) => occurrence.occurrence_dir))
+      .toStrictEqual(['steps/001-one', 'steps/002-two', 'steps/003-three']);
+    const manifest = onDisk(history);
+    expect(manifest.steps).toHaveLength(3);
+    expect(manifest.steps.map((step) => step.occurrence_dir))
+      .toStrictEqual(allocated.map((occurrence) => occurrence.occurrence_dir));
+    expect(fs.readdirSync(path.join(history.dir, 'steps')).sort())
+      .toStrictEqual(['001-one', '002-two', '003-three']);
+  });
+
+  test('and it goes through the temporary file and the rename, never in place', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    const target = path.join(history.dir, 'manifest.json');
+    const written: unknown[] = [];
+    const renamed: [string, string][] = [];
+    const writeFileSync = vi.spyOn(fs, 'writeFileSync');
+    const renameSync = vi.spyOn(fs, 'renameSync');
+    try {
+      history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+      for (const call of writeFileSync.mock.calls) written.push(call[0]);
+      for (const call of renameSync.mock.calls) renamed.push([String(call[0]), String(call[1])]);
+    } finally {
+      writeFileSync.mockRestore();
+      renameSync.mockRestore();
+    }
+    // The manifest's own path is never a write target: the descriptor the replacement writes to is
+    // the temporary file's, and the target only ever appears as a rename destination.
+    expect(written.includes(target), 'the allocation wrote the manifest in place').toBe(false);
+    expect(renamed).toStrictEqual([[`${target}.tmp`, target]]);
+    expect(fs.readdirSync(history.dir).filter((entry) => entry.endsWith('.tmp'))).toStrictEqual([]);
+  });
+});
+
+describe('Q-0138 AC-3 — the roll-up is not recomputed at allocation', () => {
+  test('a run of N occurrences computes it N+2 times, not 2N+2', () => {
+    const { start } = project();
+    // The spy is on the module the writer resolves `rollup` through, so it counts the writer's own
+    // calls rather than this file's. It calls through: nothing about the arithmetic changes.
+    const rollup = vi.spyOn(manifestModule, 'rollup');
+    try {
+      const history = initialiseRunHistory(start, collector());
+      expect(rollup, 'initialisation computes none: the first manifest carries the literal []')
+        .toHaveBeenCalledTimes(0);
+      const occurrences = [1, 2, 3, 4, 5].map((n) => history.allocate({ id: `step-${String(n)}` }, 'adapter', { adapter: 'mock' }));
+      expect(rollup, 'an allocation added a roll-up computation').toHaveBeenCalledTimes(0);
+      for (const occurrence of occurrences) history.terminal(occurrence, 'completed');
+      expect(rollup, 'one per terminal occurrence').toHaveBeenCalledTimes(5);
+      history.finalise('completed', 'reviewed');
+      // N+2 rather than 2N+2: five terminals, one finalise, and the run-start manifest that computes
+      // none at all. Q-0037's whole-list recompute is paid once per occurrence and not twice.
+      expect(rollup).toHaveBeenCalledTimes(6);
+    } finally {
+      rollup.mockRestore();
+    }
+  });
+
+  test('a manifest holding only running occurrences carries the roll-up the last terminal left', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    history.allocate({ id: 'one' }, 'adapter', { adapter: 'mock' });
+    history.allocate({ id: 'two' }, 'adapter', { adapter: 'mock' });
+    history.allocate({ id: 'three' }, 'adapter', { adapter: 'mock' });
+    expect(onDisk(history).rollup, 'an allocation invented a roll-up row').toStrictEqual([]);
+    expect(onDisk(history).steps).toHaveLength(3);
+  });
+});
+
+describe('Q-0138 AC-4 — a failed allocate-time write costs one warning and nothing else', () => {
+  test('the occurrence is returned, the directory exists, and a later terminal still records it', () => {
+    const { start } = project();
+    const guard = collector();
+    const history = initialiseRunHistory(start, guard);
+    const target = path.join(history.dir, 'manifest.json');
+    let occurrence: Occurrence;
+    // Fail the replacement and nothing else: the occurrence's own `mkdirSync` must still succeed, so
+    // that what is being asserted is the write's failure rather than the allocation's.
+    const openSync = vi.spyOn(fs, 'openSync').mockImplementation(() => { throw new Error('no space left on device'); });
+    try {
+      occurrence = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    } finally {
+      openSync.mockRestore();
+    }
+    expect(occurrence.step_id, 'a failed write refused the allocation').toBe('implement');
+    expect(fs.statSync(path.join(history.dir, occurrence.occurrence_dir)).isDirectory()).toBe(true);
+    expect(guard.said).toStrictEqual([`could not persist run history at ${target}: no space left on device`]);
+    // The in-memory snapshot stays authoritative, so the next successful replacement persists what
+    // the failed one could not — the same guarantee `terminal`'s failure path already carries.
+    history.terminal(occurrence, 'completed');
+    expect(onDisk(history).steps.map((step) => step.step_id)).toStrictEqual(['implement']);
+    expect(guard.said, 'the terminal write warned as well').toHaveLength(1);
+  });
+
+  test('and the run-start write stays fatal, which is a different contract', () => {
+    const { start } = project();
+    const openSync = vi.spyOn(fs, 'openSync').mockImplementation(() => { throw new Error('the disk went away'); });
+    try {
+      expect(() => initialiseRunHistory(start, collector())).toThrow(FlowError);
+    } finally {
+      openSync.mockRestore();
+    }
+  });
+});
+
+describe('Q-0138 AC-6 — a persisted running occurrence is schema-clean', () => {
+  /** The occurrence keys the frozen contract requires, read out of it rather than transcribed. */
+  const schemaOccurrenceKeys = (): string[] => {
+    const schema = readData(SCHEMA_FILE) as { $defs?: { step?: { required?: unknown } } };
+    const required = schema.$defs?.step?.required;
+    if (!Array.isArray(required) || required.length === 0) {
+      throw new Error('contract missing: run-manifest.schema.json declares no required keys for $defs.step');
+    }
+    return [...required as string[]].sort();
+  };
+
+  test('its key set is the contract\'s own, and no bookkeeping field rides along', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    history.allocate({ id: 'review' }, 'adapter', { adapter: 'mock' });
+    const keys = schemaOccurrenceKeys();
+    // The register above and the schema agree, so neither stands alone: a sixteenth key added to
+    // the writer fails here whichever of the two a later reader trusts.
+    expect(keys).toStrictEqual(OCCURRENCE_KEYS);
+    for (const step of onDisk(history).steps) expect(Object.keys(step).sort()).toStrictEqual(keys);
+  });
+
+  test('and the manifest validates at run start, at allocation, and at finalisation', () => {
+    const anonymous = { ...(readData(SCHEMA_FILE) as Record<string, unknown>) };
+    delete anonymous.$id;
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    const moments: [string, RunManifest][] = [['run start', onDisk(history)]];
+    const occurrence = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    moments.push(['a running occurrence', onDisk(history)]);
+    history.terminal(occurrence, 'completed');
+    history.finalise('completed', 'reviewed');
+    moments.push(['finalisation', onDisk(history)]);
+    for (const [moment, manifest] of moments) {
+      expect(validate(anonymous, manifest), moment).toStrictEqual({ ok: true, errors: [] });
+      expect(checkRunManifestSemantics(manifest), moment).toStrictEqual([]);
+    }
+    // The middle one is the new state and it is the one to be sure of: `running` with a null
+    // duration, which the semantic pass has a rule of its own about.
+    expect(moments[1][1].steps[0]).toMatchObject({ status: 'running', duration_ms: null });
+  });
+});
+
+describe('Q-0138 AC-12 — the cadence sentences are corrected, and a finished run is unchanged', () => {
+  /** What no surviving sentence in this module may claim about when the manifest is written. */
+  const RETIRED = [
+    're-serialised on each terminal occurrence',
+    'only a sibling finishing first',
+  ];
+
+  test('no source sentence still says the manifest is written only on a terminal occurrence', () => {
+    const writer = repoFile('packages/core/src/run-history/writer.ts');
+    for (const sentence of RETIRED) {
+      expect(writer.includes(sentence), `writer.ts still claims: ${sentence}`).toBe(false);
+    }
+    // The check has a subject: the pre-change text is what it is shown red against, quoted from the
+    // file as it stood rather than paraphrased, so a scan that stopped matching anything would fail
+    // here instead of reporting a pass over nothing.
+    const before = 'the whole array is re-serialised on each terminal occurrence — so a bookkeeping field';
+    expect(RETIRED.some((sentence) => before.includes(sentence)), 'the scan no longer sees its own subject').toBe(true);
+    // And the corrected sentence is present rather than the claim merely deleted.
+    expect(writer, 'allocate does not say what it now does').toContain('still running');
+  });
+
+  test('the manifest a completed run leaves is the document it was before', () => {
+    const { start } = project();
+    const history = initialiseRunHistory(start, collector());
+    const occurrence = history.allocate({ id: 'implement' }, 'adapter', {
+      role: 'developer-generalist', adapter: 'mock', model: 'test-model', branch: 'harness/Q-0049/implement',
+    });
+    history.persist(occurrence, 'output.txt', 'the agent answered');
+    history.terminal(occurrence, 'completed', {
+      attempts: 1,
+      usage: { vendor: 'mock', input_tokens: 900, output_tokens: 100, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 4.54 },
+    });
+    history.finalise('completed', 'reviewed');
+    const manifest = onDisk(history);
+    // An equality assertion over the whole finished document, with only the three values a clock
+    // decides normalised — so an extra replacement that leaked anything into what a completed run
+    // leaves behind fails here rather than being argued about.
+    const normalised = {
+      ...manifest,
+      started_at: '<instant>',
+      duration_ms: typeof manifest.duration_ms === 'number' ? '<ms>' : manifest.duration_ms,
+      steps: manifest.steps.map((step) => ({
+        ...step,
+        started_at: '<instant>',
+        duration_ms: typeof step.duration_ms === 'number' ? '<ms>' : step.duration_ms,
+      })),
+      ended_at: typeof manifest.ended_at === 'string' ? '<instant>' : manifest.ended_at,
+    };
+    expect(normalised).toStrictEqual({
+      schema_version: 1,
+      run_id: 'Q-0049-1',
+      ticket_id: 'Q-0049',
+      ticket_path: 'backlog/Q-0049-core-run-history/ticket.md',
+      flow: 'chore',
+      flow_file: 'harness/flows/chore.yaml',
+      stage: { before: 'requirements', after: 'reviewed' },
+      started_at: '<instant>',
+      ended_at: '<instant>',
+      duration_ms: '<ms>',
+      status: 'completed',
+      steps: [{
+        step_id: 'implement',
+        occurrence_dir: 'steps/001-implement',
+        kind: 'adapter',
+        role: 'developer-generalist',
+        adapter: 'mock',
+        model: 'test-model',
+        branch: 'harness/Q-0049/implement',
+        worktree: null,
+        started_at: '<instant>',
+        duration_ms: '<ms>',
+        attempts: 1,
+        status: 'completed',
+        verdict: null,
+        error: null,
+        usage: { vendor: 'mock', input_tokens: 900, output_tokens: 100, cached_input_tokens: null, cache_write_input_tokens: null, cost_usd: 4.54 },
+      }],
+      rollup: [{
+        vendor: 'mock',
+        step_count: 1,
+        unpriced_steps: 0,
+        input_tokens: 900,
+        output_tokens: 100,
+        cached_input_tokens: null,
+        cache_write_input_tokens: null,
+        cost_usd: 4.54,
+      }],
+    });
   });
 });
 

@@ -1,0 +1,106 @@
+{
+  "note": [
+    "Q-0138 AC-10 — what the daemon put on the wire for a run held between allocation and completion.",
+    "A RECORDING, not an invention: captured verbatim from the three routes of a real run started",
+    "through `createRunHost` and suspended inside the mock adapter, then committed here.",
+    "It is rendered through `HistoryScreen` by apps/web/test/history-producer.test.ts, and it is held",
+    "against the live producer by packages/server/src/retained.test.ts, which starts that same run and",
+    "compares what it answers with `wire` below. Editing this file alone therefore turns that suite RED.",
+    "To re-record: read the failure message there — it names the produced document beside this one."
+  ],
+  "wire": {
+    "list": {
+      "runs": [
+        {
+          "id": "T-0001-1",
+          "ticket": "T-0001",
+          "flow": "probe",
+          "status": "running",
+          "incomplete": true,
+          "started_at": "2026-09-19T16:08:24.036Z",
+          "ended_at": null,
+          "duration_ms": null,
+          "occurrenceCount": 1,
+          "rollup": []
+        }
+      ],
+      "warnings": []
+    },
+    "detail": {
+      "id": "T-0001-1",
+      "manifest": {
+        "schema_version": 1,
+        "run_id": "T-0001-1",
+        "ticket_id": "T-0001",
+        "ticket_path": "backlog/T-0001-the-server-runs-a-flow/ticket.md",
+        "flow": "probe",
+        "flow_file": "harness/flows/probe.yaml",
+        "stage": {
+          "before": "draft",
+          "after": null
+        },
+        "started_at": "2026-09-19T16:08:24.036Z",
+        "ended_at": null,
+        "duration_ms": null,
+        "status": "running",
+        "steps": [
+          {
+            "step_id": "work",
+            "occurrence_dir": "steps/001-work",
+            "kind": "adapter",
+            "role": null,
+            "adapter": "mock",
+            "model": null,
+            "branch": null,
+            "worktree": null,
+            "started_at": "2026-09-19T16:08:24.050Z",
+            "duration_ms": null,
+            "attempts": 0,
+            "status": "running",
+            "verdict": null,
+            "error": null,
+            "usage": null
+          }
+        ],
+        "rollup": []
+      },
+      "incomplete": true,
+      "tokensByVendor": {},
+      "steps": [
+        {
+          "step_id": "work",
+          "occurrence_dir": "steps/001-work",
+          "kind": "adapter",
+          "role": null,
+          "adapter": "mock",
+          "model": null,
+          "branch": null,
+          "worktree": null,
+          "started_at": "2026-09-19T16:08:24.050Z",
+          "duration_ms": null,
+          "attempts": 0,
+          "status": "running",
+          "verdict": null,
+          "error": null,
+          "usage": null,
+          "seq": 1
+        }
+      ]
+    },
+    "retained": {
+      "occurrences": [
+        {
+          "seq": 1,
+          "step_id": "work",
+          "files": [
+            {
+              "name": "prompt.txt",
+              "bytes": 199
+            }
+          ]
+        }
+      ],
+      "warnings": []
+    }
+  }
+}

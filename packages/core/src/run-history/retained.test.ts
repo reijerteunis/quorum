@@ -19,7 +19,10 @@ import type { MockInstance } from 'vitest';
 
 import { listRetainedFiles, occurrenceSeq, readRetainedFile, readRun } from './reader.js';
 import type { Occurrence, RunManifest } from './manifest.js';
-import { removeTempDirs, tempDir, walk, write } from '../../test/repo.js';
+import { initialiseRunHistory } from './writer.js';
+import type { RunHistory } from './writer.js';
+import type { TicketRecord } from '../backlog/backlog.js';
+import { removeTempDirs, repo, tempDir, walk, write } from '../../test/repo.js';
 
 afterAll(removeTempDirs);
 
@@ -765,5 +768,64 @@ describe('Q-0137 AC-13 — listing and reading create, repair and delete nothing
     expect(read.outcome).toBe('file');
     if (read.outcome !== 'file') return;
     expect(read.bytes.toString('utf8')).toBe('{"a":1}');
+  });
+});
+
+// Q-0138 AC-7 — the one block in this file whose manifest is NOT hand-built.
+//
+// Every case above states a shape `.quorum/runs` does not hold, which is why it builds one. This
+// states the opposite: that the shape the reader is asked about is one the writer actually produces
+// — the chain *real writer → manifest → listing* that Q-0137 left uncovered (M-8), and which a
+// fixture cannot establish however carefully it is written.
+describe('Q-0138 AC-7 — the reader names a step before that step ends, driven by the real writer', () => {
+  /** A repository with a ticket in it, and the run history a real run would open over it. */
+  function driven(): { runsRoot: string; token: string; history: RunHistory } {
+    const repoDir = repo();
+    const dir = path.join(repoDir, 'backlog', 'Q-0138-running-occurrence');
+    write(path.join(dir, 'ticket.md'), '---\nid: Q-0138\nstage: requirements\n---\nbody\n');
+    const meta = { id: 'Q-0138', stage: 'requirements' } as TicketRecord['meta'];
+    const ticket: TicketRecord = { dir, folder: 'Q-0138-running-occurrence', meta, body: 'body\n' };
+    const flowFile = path.join(repoDir, 'harness', 'flows', 'chore.yaml');
+    write(flowFile, 'name: chore\n');
+    const history = initialiseRunHistory({ repoDir, ticket, run: 1, flow: 'chore', flowFile }, { warn: () => {} });
+    return { runsRoot: path.join(repoDir, '.quorum', 'runs'), token: 'Q-0138-1', history };
+  }
+
+  test('an allocated, unfinished occurrence is listed with the prompt it has already retained', () => {
+    const { runsRoot, token, history } = driven();
+    const occurrence = history.allocate({ id: 'implement' }, 'adapter', { adapter: 'mock' });
+    // Exactly what `runAgentStep` does before the vendor is invoked, and nothing after it: `terminal`
+    // is never called, which is the barrier — a hand-driven writer finishes nothing on its own.
+    history.persist(occurrence, 'prompt.txt', 'ask the vendor');
+
+    const answer = listRetainedFiles(runsRoot, token);
+    if (answer.outcome !== 'listing') throw new Error(`the writer's own run did not list: ${answer.outcome}`);
+    expect(answer.warnings, 'a running occurrence was reported as one the listing could not name').toStrictEqual([]);
+    expect(answer.occurrences).toStrictEqual([
+      { seq: 1, step_id: 'implement', files: [{ name: 'prompt.txt', bytes: 14 }] },
+    ]);
+    // And the manifest that produced it is the writer's, not this file's: `running`, with no end.
+    const manifest = JSON.parse(fs.readFileSync(path.join(runsRoot, token, 'manifest.json'), 'utf8')) as RunManifest;
+    expect(manifest.steps[0]).toMatchObject({ status: 'running', duration_ms: null });
+    expect(manifest.ended_at).toBeNull();
+
+    // The file is readable while the step is still going, which is what the listing is for.
+    const read = readRetainedFile(runsRoot, token, 1, 'prompt.txt');
+    expect(read.outcome).toBe('file');
+    if (read.outcome !== 'file') return;
+    expect(read.bytes.toString('utf8')).toBe('ask the vendor');
+  });
+
+  test('and a second allocation joins it without the first finishing', () => {
+    const { runsRoot, token, history } = driven();
+    const first = history.allocate({ id: 'pm-claude' }, 'adapter', { adapter: 'mock' });
+    history.persist(first, 'prompt.txt', 'one');
+    const second = history.allocate({ id: 'pm-codex' }, 'adapter', { adapter: 'mock' });
+    history.persist(second, 'prompt.txt', 'two');
+    const answer = listRetainedFiles(runsRoot, token);
+    if (answer.outcome !== 'listing') throw new Error(`the writer's own run did not list: ${answer.outcome}`);
+    expect(answer.occurrences.map((entry) => [entry.seq, entry.step_id]))
+      .toStrictEqual([[1, 'pm-claude'], [2, 'pm-codex']]);
+    expect(answer.warnings).toStrictEqual([]);
   });
 });

@@ -24,6 +24,7 @@ import type {
 
 import { DAEMON_ENDPOINTS, historyDetailPath, historyFilePath, historyRetainedPath } from './daemon-endpoints.js';
 import { HistoryScreen } from './history-screen.js';
+import * as historyText from './history-text.js';
 import {
   CLOSE_FILE_LABEL, EMPTY_FILE_TEXT, EXPAND_LABEL, HISTORY_RETRY_LABEL, NO_OUTPUT_RUNNING_TEXT,
   NO_OUTPUT_TERMINAL_TEXT, NO_RETAINED_FILES_TEXT, OPEN_FILE_LABEL, RETAINED_UNLISTED_TEXT,
@@ -292,6 +293,61 @@ describe('Q-0137 AC-8 — the three absence sentences, keyed on kind and never o
     await act(async () => toggleFor(view, RUN).click());
     expect(promptText(view, 1), 'an unplaceable kind rendered nothing').toBe(noPromptText('panel'));
     expect(promptText(view, 1), 'the kind was not named').toContain('panel');
+  });
+});
+
+describe('Q-0138 AC-10 — the occurrence a real allocation leaves, rendered', () => {
+  /** The sentence rendered for one occurrence's missing prompt, or `null` where none is. */
+  const promptText = (view: HTMLElement, seq: number): string | null =>
+    view.querySelector(`[data-no-prompt="${seq}"]`)?.textContent ?? null;
+
+  /** …and for its missing output. */
+  const outputText = (view: HTMLElement, seq: number): string | null =>
+    view.querySelector(`[data-no-output="${seq}"]`)?.textContent ?? null;
+
+  test('a step the writer has only allocated has its prompt, no output, and the not-finished sentence', async () => {
+    // The shape `RunHistory.allocate` leaves and nothing else touches: `running`, no duration, one
+    // retained file — the prompt `runAgentStep` writes before the vendor is invoked. This is the
+    // rendering half, and the fixture is hand-built because the states this screen has to get right
+    // are ones no store supplies (see this file's header).
+    //
+    // **That it is the shape the writer really produces is established by EXECUTING both halves,
+    // and neither of them is here.** `packages/server/src/retained.test.ts`'s Q-0138 block starts a
+    // real run through the daemon's own host, holds it between allocation and completion, and
+    // asserts that what the three routes answer still equals
+    // `apps/web/test/fixtures/running-occurrence.json` — a recording of those same three bodies, with
+    // only a clock and a file's own size normalised. `apps/web/test/history-producer.test.ts` then
+    // renders **those recorded bytes** through this same screen. So the fixture below and the
+    // producer cannot drift: editing the recording turns the producer's suite red, and changing what
+    // the producer emits turns it red too. The producer half lives in `packages/server` because that
+    // is the only package that can reach the engine — this one depends on `@quorum/shared` alone, and
+    // giving the browser app a dependency on the engine or on the daemon it talks to over HTTP to
+    // make a test convenient would be an architecture change rather than a test.
+    const { view, render } = oneRun(
+      [step({ step_id: 'implement', seq: 1, status: 'running', duration_ms: null })],
+      retained({ occurrences: [{ seq: 1, step_id: 'implement', files: [{ name: PROMPT_FILE, bytes: 14 }] }] }),
+    );
+    await render();
+    await act(async () => toggleFor(view, RUN).click());
+    expect(outputText(view, 1), 'a step that has not finished was told it retained nothing')
+      .toBe(NO_OUTPUT_RUNNING_TEXT);
+    expect(outputText(view, 1), 'the terminal sentence reached a running step').not.toBe(NO_OUTPUT_TERMINAL_TEXT);
+    // Its prompt is named and sized without being opened, which is what a reader watching a step
+    // actually wants.
+    expect(promptText(view, 1), 'a step with a prompt was reported as having none').toBeNull();
+    const cell = view.querySelector(`[data-occurrence="implement"]`)?.textContent ?? '';
+    expect(cell).toContain(PROMPT_FILE);
+    expect(cell).not.toContain(OUTPUT_FILE);
+  });
+
+  test('and no second running-state sentence was introduced beside the one that exists', async () => {
+    // AC-10's other half: the case is answered by the constant Q-0137 already added rather than by
+    // a new placeholder, so a reader meets one sentence for one state rather than two that have to
+    // be told apart. Asserted over the module's own exports so a fourth is a visible act.
+    const running = Object.entries(historyText)
+      .filter(([, value]) => typeof value === 'string' && value.includes('has not finished'))
+      .map(([name]) => name);
+    expect(running, 'a second sentence for a step that has not finished').toStrictEqual(['NO_OUTPUT_RUNNING_TEXT']);
   });
 });
 
