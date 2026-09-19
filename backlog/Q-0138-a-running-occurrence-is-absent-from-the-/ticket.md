@@ -1,14 +1,22 @@
 ---
 id: Q-0138
 title: A running occurrence is absent from the retained listing, not described
-stage: draft
+stage: requirements
 owner: ruud
 repos: []
 branch: harness/Q-0138/integration
 priority: p2
 created: 2026-09-19
 iterations: {}
-history: []
+history:
+  - stage: requirements
+    run: 1
+    flow: requirements
+    status: completed
+    stage_before: draft
+    stage_after: requirements
+    at: 2026-09-19T14:54:44.851Z
+    cost: 13.298
 ---
 allocate pushes an occurrence with status running but does not persist, and replaceManifest runs only in terminal(), finalise() and once at run start — so a running occurrence reaches GET /history/:id/retained only when a different occurrence terminates. In a serial flow a step that is running is absent from the listing rather than carrying Q-0137 AC-8's sentence 2.
 
