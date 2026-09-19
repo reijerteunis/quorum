@@ -4,3 +4,96 @@
 2026-09-18T21:41:08.089Z run=1 step=head-of-product vendor=claude model=opus verdict=ready cost=7.612452000000001 ms=484136
 2026-09-19T06:55:57.789Z run=1 gate=human answer=advance
 2026-09-19T06:55:57.799Z run=1 completed stage=draft→requirements cost=21.93 tokens=10246433
+2026-09-19T07:06:54.123Z run=2 flow=chore start stage=requirements
+2026-09-19T08:10:00.908Z run=2 step=implement vendor=claude model=- verdict=proceed cost=77.80836299999999 ms=3786321
+2026-09-19T08:10:00.955Z run=2 diff truncated range=harness/Q-0137/integration...harness/Q-0137/implement limit=200000 kept=200000 of 267762 — no patch at all for 5 file(s): packages/server/src/read.ts, packages/server/src/retained.test.ts, packages/shared/src/docs-retained.test.ts, packages/shared/src/wire-retained.test.ts, packages/shared/src/wire.ts
+2026-09-19T08:11:10.453Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=69496
+2026-09-19T08:26:11.398Z run=2 step=implement vendor=claude model=- verdict=proceed cost=13.994577999999999 ms=900839
+2026-09-19T08:26:11.453Z run=2 diff truncated range=harness/Q-0137/integration...harness/Q-0137/implement limit=200000 kept=200000 of 278417 — no patch at all for 6 file(s): packages/server/src/package.test.ts, packages/server/src/read.ts, packages/server/src/retained.test.ts, packages/shared/src/docs-retained.test.ts, packages/shared/src/wire-retained.test.ts, packages/shared/src/wire.ts
+2026-09-19T08:27:15.054Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=63598
+2026-09-19T08:44:24.962Z run=2 step=implement vendor=claude model=- verdict=proceed cost=20.234959999999997 ms=1029783
+2026-09-19T08:44:25.004Z run=2 diff truncated range=harness/Q-0137/integration...harness/Q-0137/implement limit=200000 kept=200000 of 287398 — no patch at all for 7 file(s): packages/core/src/turbo-inputs.test.ts, packages/server/src/package.test.ts, packages/server/src/read.ts, packages/server/src/retained.test.ts, packages/shared/src/docs-retained.test.ts, packages/shared/src/wire-retained.test.ts, packages/shared/src/wire.ts
+2026-09-19T08:45:39.616Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=74607
+2026-09-19T08:45:39.631Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-19T11:31:51.364Z run=2 gate=human-locked answer=retry
+2026-09-19T11:31:51.365Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-19T11:47:57.600Z run=2 step=implement vendor=claude model=- verdict=proceed cost=19.684816 ms=966140
+2026-09-19T11:47:57.639Z run=2 diff truncated range=harness/Q-0137/integration...harness/Q-0137/implement limit=200000 kept=200000 of 299508 — no patch at all for 7 file(s): packages/core/src/turbo-inputs.test.ts, packages/server/src/package.test.ts, packages/server/src/read.ts, packages/server/src/retained.test.ts, packages/shared/src/docs-retained.test.ts, packages/shared/src/wire-retained.test.ts, packages/shared/src/wire.ts
+2026-09-19T11:48:42.500Z run=2 step=review vendor=codex model=- verdict=revise cost=? ms=44856
+2026-09-19T11:48:42.512Z run=2 exhausted stage=requirements→requirements cost=0
+2026-09-19T12:28:16.531Z run=2 gate=human-locked answer=retry
+2026-09-19T12:28:16.531Z run=2 gate=retry counter=chore.review set=2 (one further traversal authorised)
+2026-09-19T12:45:46.876Z run=2 step=implement vendor=claude model=- verdict=proceed cost=18.802357999999998 ms=1050240
+2026-09-19T12:45:46.917Z run=2 diff truncated range=harness/Q-0137/integration...harness/Q-0137/implement limit=200000 kept=200000 of 308365 — no patch at all for 8 file(s): packages/core/src/run-history/run-history.source.test.ts, packages/core/src/turbo-inputs.test.ts, packages/server/src/package.test.ts, packages/server/src/read.ts, packages/server/src/retained.test.ts, packages/shared/src/docs-retained.test.ts, packages/shared/src/wire-retained.test.ts, packages/shared/src/wire.ts
+2026-09-19T12:46:35.539Z run=2 step=review vendor=codex model=- verdict=approve cost=? ms=48619
+2026-09-19T12:48:40.539Z run=2 step=integrate merged=1/1 tests=ok
+2026-09-19T13:05:00Z run=2 GO-5 discharged by running the product; transcribed rather than reported.
+  Environment: `quorum open` in a detached worktree at harness/Q-0137/integration (387bee4), serving
+  127.0.0.1:7717, with four real run directories copied in from the main checkout — Q-0015-2,
+  Q-0015-3, Q-0018-2, Q-0129-3. Only the vendor CLI was mocked, and only for the live-run half below;
+  every rendering transcribed here is over REAL retained bytes this repository's own runs wrote.
+  The served bundle was verified BY CONTENT before anything was clicked, because the build reported
+  `5 successful, 5 cached` and a cache hit replays an artifact: apps/web/dist/assets/index-CKATFyBG.js
+  was grepped for "no vendor was asked", "retained" and "unreadable", all three present.
+  The row was chosen to be able to contradict itself rather than for being first (Q-0018's lesson):
+  Q-0015-3 seq=3, `step_id: prove-red` with `kind: integrate` — one of the 12-of-85 occurrences whose
+  step id is NOT "integrate", which is the case a step_id-keyed sentence gets wrong.
+  Rendered, verbatim:
+    3  prove-red  integrate  This step finished and the run carried on past it.
+       An integrate step, which no vendor ran.  01:52
+       Retained
+       Open  output.txt  112537 bytes
+       No prompt: an integrate step merges and runs the suite, so no vendor was asked.
+  So AC-8 sentence 1 is keyed on `kind` in the shipped product, not on `step_id`.
+  One file opened, Q-0015-3 seq=2 `write-tests` output.txt, 470 bytes. The control toggled Open to
+  Close and the complete text rendered in a whitespace-preserving region. Its first line:
+    {"summary":"Created five acceptance suites: mission-control-model.test.ts, runs-screen.test.ts,
+  Adapter occurrences listed both files with byte counts (e.g. seq=1 output.txt 21284, prompt.txt
+  103691); integrate occurrences listed output.txt alone. No file request was issued until a file
+  was chosen.
+2026-09-19T13:05:00Z run=2 GO-5, second half: the still-running sentence could NOT be rendered, and
+  the reason is a measured property of the product rather than of the attempt. A mock run was started
+  THROUGH the daemon (POST /runs, handle run-1, runId 1 — a `quorum run` is a process the host can
+  never see, Q-0121) with adapters.mock.delayMs 45000 against a scratch T-0001. While two occurrence
+  directories existed on disk WITH their prompt.txt written, the manifest recorded `steps: 0`, and the
+  retained listing answered `{"occurrences": [], "warnings": []}`.
+  Read rather than inferred from the miss: `allocate` pushes the occurrence with `status: 'running'`
+  into `manifest.steps` and does NOT persist, and `replaceManifest()` is called only at the end of
+  `terminal()`, at `finalise()`, and once at run start. So a running occurrence reaches this listing
+  ONLY when a DIFFERENT occurrence terminates while it is running — the parallel-sibling case. In a
+  serial flow a running step is absent from the listing rather than described by AC-8 sentence 2.
+  Not a defect in this change and not fixed here: the listing is manifest-derived by design (AC-1,
+  §4.3), and reading the directory to find occurrences the manifest does not record would be the
+  route inventing occurrences. Recorded as a successor's subject rather than a paragraph.
+  AC-8 sentence 3 was not rendered either and could not be: zero occurrences in this store lack an
+  output.txt. Both are what §9 R-1 said in advance — three criteria cannot be learned from this store
+  — and both remain covered by constructed fixtures alone. Stated rather than reported as discharged.
+  Incidental, and worth keeping: a second POST /runs for the same ticket was refused
+  `lock-held — run lock refused: ticket T-0001 is held by run #1 (flow requirements, pid 91973 …)`,
+  which is Q-0039's lock naming its holder rather than waiting, observed in the product.
+  Cleanup, listed: the scratch ticket, the copied run history, both T-0001 run directories and the
+  daemon are gone, harness.yaml is restored, and `git status` in that worktree is empty.
+2026-09-19T13:05:00Z run=2 GO-4: every one of the five reviews was handed a truncated diff, which
+  REFUTES §9 R-5's prediction that this change's shape would come in under the cap.
+    round 1  200000 of 267762  74.7%  5 files with no patch at all
+    round 2  200000 of 278417  71.8%  6 files
+    round 3  200000 of 287398  69.6%  7 files
+    round 4  200000 of 299508  66.8%  7 files
+    round 5  200000 of 308365  64.9%  8 files
+  The omitted set grew as the branch did and `git diff`'s path ordering lost the same tail every
+  time, including packages/shared/src/wire.ts — AC-9's own subject — and packages/server/src/read.ts,
+  the ticket's central production file. Every round disclosed it and every round reported, as an
+  `observation:`, that it had read the omitted files directly from harness/Q-0137/implement rather
+  than judging them from the stat. That is Q-0124's warn and Q-0117's channel composing on a fifth
+  consecutive ticket, and it is why the verdicts stand. Third consecutive data point for Q-0128 that
+  the cap tracks change size rather than ticket ambition.
+2026-09-19T13:05:00Z run=2 correction to §10 GO-1, recorded rather than left standing. That
+  obligation said the implementer would "meet a live BLOCKING question in the body" without E-1,
+  citing Q-0125 E-1. It could not have: `ticket.md` is not an input to chore's implement step — the
+  prompt carries requirements/merged.md and requirements/errata.md and nothing else, verified by
+  grep on the real prompt.txt — and merged.md §7 already records OQ-1 as ANSWERED. In Q-0125 the
+  blocking marker sat in merged.md, a file that IS read; here it sits in one that is not. E-1's
+  ruling stands and was worth landing as the gate's ratification; its stated rationale did not hold.
+2026-09-19T14:08:06.534Z run=2 gate=human answer=advance
+2026-09-19T14:08:08.210Z run=2 removed-worktrees=2 kept=0
+2026-09-19T14:08:08.211Z run=2 completed stage=requirements→reviewed cost=150.525 tokens=241338532

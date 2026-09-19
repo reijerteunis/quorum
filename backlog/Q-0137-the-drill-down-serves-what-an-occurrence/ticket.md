@@ -1,13 +1,14 @@
 ---
 id: Q-0137
 title: The drill-down serves what an occurrence retained
-stage: requirements
+stage: reviewed
 owner: ruud
 repos: []
 branch: harness/Q-0137/integration
 priority: p2
 created: 2026-09-18
-iterations: {}
+iterations:
+  chore.review: 2
 history:
   - stage: requirements
     run: 1
@@ -17,6 +18,30 @@ history:
     stage_after: requirements
     at: 2026-09-19T06:55:57.797Z
     cost: 21.93
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-19T08:45:39.624Z
+    cost: 0
+  - stage: requirements
+    run: 2
+    flow: chore
+    status: exhausted
+    stage_before: requirements
+    stage_after: requirements
+    at: 2026-09-19T11:48:42.509Z
+    cost: 0
+  - stage: reviewed
+    run: 2
+    flow: chore
+    status: completed
+    stage_before: requirements
+    stage_after: reviewed
+    at: 2026-09-19T14:08:06.539Z
+    cost: 150.525
 ---
 A finished run's history screen names each occurrence and can open none of them. The prompt each adapter step was sent and the output it returned are on disk and nothing in packages/server reads one. The confinement threat is that the path comes out of the manifest, which nothing on the read path validates.
 
